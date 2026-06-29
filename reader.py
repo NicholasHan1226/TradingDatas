@@ -192,6 +192,13 @@ def _degraded_empty(source_id: str, reason: str, *, lineage: dict[str, Any] | No
     ]
 
 
+def _safe_public(source_id: str, lineage: dict[str, Any], producer: Callable[[], str]) -> list[dict[str, Any]]:
+    try:
+        return _clone_cached(producer())
+    except Exception as exc:  # pragma: no cover - final public boundary
+        return _degraded_empty(source_id, f"reader failed: {exc}", lineage=lineage)
+
+
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8-sig", newline="") as fh:
         return [_clean_row(row) for row in csv.DictReader(fh)]
@@ -309,7 +316,8 @@ def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjus
 
 
 def get_market_data(ts_code: str, start: Any, end: Any, freq: str = "daily", adjusted: bool = True) -> list[dict[str, Any]]:
-    return _clone_cached(_get_market_data_cached(str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
+    lineage = {"reader": "get_market_data", "filters": {"ts_code": ts_code, "start": start, "end": end, "freq": freq, "adjusted": adjusted}}
+    return _safe_public("sqlite:market_bars_daily", lineage, lambda: _get_market_data_cached(str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
 
 
 @lru_cache(maxsize=512)
@@ -326,7 +334,8 @@ def _get_events_cached(start: str, end: str, event_type: str | None) -> str:
 
 
 def get_events(start: Any, end: Any, event_type: str | None = None) -> list[dict[str, Any]]:
-    return _clone_cached(_get_events_cached(str(start), str(end), event_type))
+    lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type}}
+    return _safe_public("csv:event_candidates", lineage, lambda: _get_events_cached(str(start), str(end), event_type))
 
 
 @lru_cache(maxsize=512)
@@ -343,7 +352,8 @@ def _get_sentiment_cached(start: str, end: str, tier: str | None) -> str:
 
 
 def get_sentiment(start: Any, end: Any, tier: str | None = None) -> list[dict[str, Any]]:
-    return _clone_cached(_get_sentiment_cached(str(start), str(end), tier))
+    lineage = {"reader": "get_sentiment", "filters": {"start": start, "end": end, "tier": tier}}
+    return _safe_public("csv:sentiment_signals", lineage, lambda: _get_sentiment_cached(str(start), str(end), tier))
 
 
 @lru_cache(maxsize=512)
@@ -361,7 +371,8 @@ def _get_fundamentals_cached(ts_code: str) -> str:
 
 
 def get_fundamentals(ts_code: str) -> list[dict[str, Any]]:
-    return _clone_cached(_get_fundamentals_cached(str(ts_code)))
+    lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
+    return _safe_public("sqlite:market_factors", lineage, lambda: _get_fundamentals_cached(str(ts_code)))
 
 
 @lru_cache(maxsize=512)
@@ -379,7 +390,8 @@ def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
 
 
 def get_capital_flow(date: Any, ts_code: str | None = None) -> list[dict[str, Any]]:
-    return _clone_cached(_get_capital_flow_cached(str(date), ts_code))
+    lineage = {"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code}}
+    return _safe_public("csv:moneyflow", lineage, lambda: _get_capital_flow_cached(str(date), ts_code))
 
 
 @lru_cache(maxsize=512)
@@ -394,7 +406,8 @@ def _get_macro_factors_cached(start: str, end: str) -> str:
 
 
 def get_macro_factors(start: Any, end: Any) -> list[dict[str, Any]]:
-    return _clone_cached(_get_macro_factors_cached(str(start), str(end)))
+    lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end}}
+    return _safe_public("csv:macro_factors", lineage, lambda: _get_macro_factors_cached(str(start), str(end)))
 
 
 @lru_cache(maxsize=512)
@@ -412,7 +425,8 @@ def _get_crypto_klines_cached(symbol: str, limit: int) -> str:
 
 
 def get_crypto_klines(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
-    return _clone_cached(_get_crypto_klines_cached(str(symbol), int(limit)))
+    lineage = {"reader": "get_crypto_klines", "filters": {"symbol": symbol, "limit": limit}}
+    return _safe_public("csv:crypto_klines", lineage, lambda: _get_crypto_klines_cached(str(symbol), int(limit)))
 
 
 @lru_cache(maxsize=512)
@@ -430,7 +444,8 @@ def _get_pm_markets_cached(limit: int) -> str:
 
 
 def get_pm_markets(limit: int = 100) -> list[dict[str, Any]]:
-    return _clone_cached(_get_pm_markets_cached(int(limit)))
+    lineage = {"reader": "get_pm_markets", "filters": {"limit": limit}}
+    return _safe_public("sqlite:market_pm_markets", lineage, lambda: _get_pm_markets_cached(int(limit)))
 
 
 def _safe_reference_path(table: str) -> Path | None:
@@ -463,7 +478,8 @@ def _get_reference_cached(table: str) -> str:
 
 
 def get_reference(table: str) -> list[dict[str, Any]]:
-    return _clone_cached(_get_reference_cached(str(table)))
+    lineage = {"reader": "get_reference", "filters": {"table": table}}
+    return _safe_public("csv:reference", lineage, lambda: _get_reference_cached(str(table)))
 
 
 @lru_cache(maxsize=512)
@@ -485,7 +501,8 @@ def _is_trading_day_cached(date_value: str) -> str:
 
 
 def is_trading_day(date: Any) -> list[dict[str, Any]]:
-    return _clone_cached(_is_trading_day_cached(str(date)))
+    lineage = {"reader": "is_trading_day", "filters": {"date": date}}
+    return _safe_public("reference:market_calendar", lineage, lambda: _is_trading_day_cached(str(date)))
 
 
 @lru_cache(maxsize=512)
@@ -510,7 +527,8 @@ def _get_realtime_5min_cached(ts_code: str, date_value: str) -> str:
 
 
 def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
-    return _clone_cached(_get_realtime_5min_cached(str(ts_code), str(date)))
+    lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
+    return _safe_public("csv:rt_min_5m", lineage, lambda: _get_realtime_5min_cached(str(ts_code), str(date)))
 
 
 def _summary(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
