@@ -52,6 +52,14 @@ MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", MARKETGRAPH_ROOT 
 CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
 
+LEGACY_RECOMMENDATIONS = ASHARE_ROOT / "data" / "recommendations" / "recommendations.csv"
+LEGACY_REVIEWS = ASHARE_ROOT / "data" / "recommendations" / "reviews.csv"
+LEGACY_DIRECTION_HITS = ASHARE_ROOT / "data" / "recommendations" / "direction_hit_reviews.csv"
+LEGACY_SHADOW_TRADES = ASHARE_ROOT / "data" / "shadow_sim" / "shadow_sim_trades.csv"
+LEGACY_SHADOW_POSITIONS = ASHARE_ROOT / "data" / "shadow_sim" / "latest_shadow_positions.csv"
+LEGACY_PAPER_POSITIONS = ASHARE_ROOT / "data" / "paper_portfolio" / "positions.csv"
+LEGACY_SIM_EXECUTION_LOG = ASHARE_ROOT / "data" / "tradebook" / "simulated_execution_log.jsonl"
+
 
 def _json_cached(fn: Callable[..., list[dict[str, Any]]], *args: Any) -> str:
     return json.dumps(fn(*args), ensure_ascii=False, sort_keys=True, default=str)
@@ -204,6 +212,76 @@ def _read_csv(path: Path) -> list[dict[str, Any]]:
         return [_clean_row(row) for row in csv.DictReader(fh)]
 
 
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            if isinstance(item, dict):
+                rows.append(_clean_row(item))
+    return rows
+
+
+def _legacy_wrapped_rows(rows: list[dict[str, Any]], *, source_id: str, source_tier: str, collected_at: Any, lineage: dict[str, Any], stale_after_hours: float = 24.0) -> list[dict[str, Any]]:
+    return _rows_to_wrappers(rows, source_id=source_id, source_tier=source_tier, collected_at=collected_at, lineage=lineage, stale_after_hours=stale_after_hours)
+
+
+def _legacy_market_dataset(dataset: str, **kwargs: Any) -> list[dict[str, Any]] | None:
+    name = str(dataset or "").strip()
+    if name == "market_factors":
+        symbols = [str(s) for s in kwargs.get("symbols", []) if s] or [str(kwargs.get("symbol") or "")]
+        symbols = [s for s in symbols if s]
+        for symbol in symbols:
+            rows = get_fundamentals(symbol)
+            if rows and not rows[0].get("degraded"):
+                return rows
+        return _degraded_empty("sqlite:market_factors", "no rows matched", lineage={"reader": "legacy_market_dataset", "dataset": name, "filters": kwargs})
+
+    if name == "market_bars_daily":
+        symbols = [str(s) for s in kwargs.get("symbols", []) if s] or [str(kwargs.get("symbol") or "")]
+        limit = int(kwargs.get("limit", 60))
+        for symbol in [s for s in symbols if s]:
+            query = """
+                SELECT * FROM market_bars_daily
+                WHERE symbol = ?
+                ORDER BY trade_date DESC
+                LIMIT ?
+            """
+            rows, degraded = _sqlite_rows(query, (symbol, limit), "market_bars_daily")
+            if degraded is not None:
+                return degraded
+            if rows:
+                rows = list(reversed(rows))
+                lineage = {"reader": "legacy_market_dataset", "dataset": name, "filters": {**kwargs, "symbol": symbol}}
+                return _legacy_wrapped_rows(rows, source_id="sqlite:market_bars_daily", source_tier="marketdata", collected_at=None, lineage=lineage, stale_after_hours=48.0)
+        return _degraded_empty("sqlite:market_bars_daily", "no rows matched", lineage={"reader": "legacy_market_dataset", "dataset": name, "filters": kwargs})
+
+    file_map = {
+        "recommendations": (LEGACY_RECOMMENDATIONS, _read_csv, "legacy:recommendations", "recommendation", 24.0),
+        "reviews": (LEGACY_REVIEWS, _read_csv, "legacy:reviews", "review", 24.0),
+        "direction_hit_reviews": (LEGACY_DIRECTION_HITS, _read_csv, "legacy:direction_hit_reviews", "review", 24.0),
+        "shadow_sim_trades": (LEGACY_SHADOW_TRADES, _read_csv, "legacy:shadow_sim_trades", "tradebook", 24.0),
+        "latest_shadow_positions": (LEGACY_SHADOW_POSITIONS, _read_csv, "legacy:latest_shadow_positions", "portfolio", 24.0),
+        "paper_positions": (LEGACY_PAPER_POSITIONS, _read_csv, "legacy:paper_positions", "portfolio", 24.0),
+        "simulated_execution_log": (LEGACY_SIM_EXECUTION_LOG, _read_jsonl, "legacy:simulated_execution_log", "tradebook", 24.0),
+    }
+    config = file_map.get(name)
+    if config is None:
+        return None
+    path, loader, source_id, source_tier, stale_after_hours = config
+    lineage = {"reader": "legacy_market_dataset", "dataset": name, "source_path": str(path)}
+    try:
+        if not path.exists():
+            return _degraded_empty(source_id, f"missing file: {path}", lineage=lineage)
+        rows = loader(path)
+        return _legacy_wrapped_rows(rows, source_id=source_id, source_tier=source_tier, collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=stale_after_hours)
+    except Exception as exc:
+        return _degraded_empty(source_id, f"legacy dataset read failed: {exc}", lineage=lineage)
+
+
 def _safe_csv(path: Path, source_id: str, lineage: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
     try:
         if not path.exists():
@@ -315,7 +393,11 @@ def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjus
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_bars_daily", source_tier="marketdata", lineage=lineage, stale_after_hours=48.0))
 
 
-def get_market_data(ts_code: str, start: Any, end: Any, freq: str = "daily", adjusted: bool = True) -> list[dict[str, Any]]:
+def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str = "daily", adjusted: bool = True, **kwargs: Any) -> list[dict[str, Any]]:
+    if start is None and end is None:
+        legacy_rows = _legacy_market_dataset(str(ts_code), **kwargs)
+        if legacy_rows is not None:
+            return legacy_rows
     lineage = {"reader": "get_market_data", "filters": {"ts_code": ts_code, "start": start, "end": end, "freq": freq, "adjusted": adjusted}}
     return _safe_public("sqlite:market_bars_daily", lineage, lambda: _get_market_data_cached(str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
 
@@ -333,9 +415,20 @@ def _get_events_cached(start: str, end: str, event_type: str | None) -> str:
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:event_candidates", source_tier="event_candidate", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
 
 
-def get_events(start: Any, end: Any, event_type: str | None = None) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type}}
-    return _safe_public("csv:event_candidates", lineage, lambda: _get_events_cached(str(start), str(end), event_type))
+def get_events(start: Any = None, end: Any = None, event_type: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    if start is None and "date" in kwargs:
+        start = kwargs.get("date")
+    if end is None:
+        end = start
+    lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
+    rows = _safe_public("csv:event_candidates", lineage, lambda: _get_events_cached(str(start), str(end), event_type))
+    subject_code = kwargs.get("subject_code")
+    subject_type = kwargs.get("subject_type")
+    if subject_code:
+        rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_code") == subject_code]
+    if subject_type:
+        rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_type") == subject_type]
+    return rows
 
 
 @lru_cache(maxsize=512)
@@ -351,9 +444,17 @@ def _get_sentiment_cached(start: str, end: str, tier: str | None) -> str:
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:sentiment_signals", source_tier="sentiment", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
 
 
-def get_sentiment(start: Any, end: Any, tier: str | None = None) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_sentiment", "filters": {"start": start, "end": end, "tier": tier}}
-    return _safe_public("csv:sentiment_signals", lineage, lambda: _get_sentiment_cached(str(start), str(end), tier))
+def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    if start is None and "date" in kwargs:
+        start = kwargs.get("date")
+    if end is None:
+        end = start
+    lineage = {"reader": "get_sentiment", "filters": {"start": start, "end": end, "tier": tier, **kwargs}}
+    rows = _safe_public("csv:sentiment_signals", lineage, lambda: _get_sentiment_cached(str(start), str(end), tier))
+    subject_code = kwargs.get("subject_code")
+    if subject_code:
+        rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_code") == subject_code]
+    return rows
 
 
 @lru_cache(maxsize=512)
@@ -389,9 +490,24 @@ def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:moneyflow", source_tier="tushare", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=48.0))
 
 
-def get_capital_flow(date: Any, ts_code: str | None = None) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code}}
-    return _safe_public("csv:moneyflow", lineage, lambda: _get_capital_flow_cached(str(date), ts_code))
+def get_capital_flow(date: Any = None, ts_code: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    if date is None and "trade_date" in kwargs:
+        date = kwargs.get("trade_date")
+    if ts_code is None and kwargs.get("symbol"):
+        ts_code = kwargs.get("symbol")
+    lookback_days = max(int(kwargs.get("lookback_days", kwargs.get("window", 1)) or 1), 1)
+    if lookback_days <= 1:
+        lineage = {"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code, **kwargs}}
+        return _safe_public("csv:moneyflow", lineage, lambda: _get_capital_flow_cached(str(date), ts_code))
+
+    merged: list[dict[str, Any]] = []
+    base = _parse_datetime(date)
+    if base is None:
+        return _degraded_empty("csv:moneyflow", f"invalid date: {date}", lineage={"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code, **kwargs}})
+    for offset in range(lookback_days):
+        day = (base - timedelta(days=offset)).strftime("%Y%m%d")
+        merged.extend(_safe_public("csv:moneyflow", {"reader": "get_capital_flow", "filters": {"date": day, "ts_code": ts_code, **kwargs}}, lambda day=day: _get_capital_flow_cached(day, ts_code)))
+    return merged
 
 
 @lru_cache(maxsize=512)
@@ -405,8 +521,12 @@ def _get_macro_factors_cached(start: str, end: str) -> str:
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:macro_factors", source_tier="macro", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=168.0))
 
 
-def get_macro_factors(start: Any, end: Any) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end}}
+def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list[dict[str, Any]]:
+    if start is None and "date" in kwargs:
+        start = kwargs.get("date")
+    if end is None:
+        end = start
+    lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}}
     return _safe_public("csv:macro_factors", lineage, lambda: _get_macro_factors_cached(str(start), str(end)))
 
 

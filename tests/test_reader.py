@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 
-# Ensure SharedSignals is importable
 _SHARED = Path(__file__).resolve().parents[1]
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))
@@ -49,7 +48,7 @@ class TestSchemaSQL:
         from storage.schema import SCHEMA_SQL
         tmp_db.executescript(SCHEMA_SQL)
         tables = tmp_db.execute(
-            "SELECT name FROM sqlite_master WHERE type=table ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall()
         table_names = [r[0] for r in tables]
         assert "market_assets" in table_names
@@ -86,7 +85,7 @@ class TestMarketdataDB:
         from bridge.marketgraph_marketdata_db import connect
         conn = connect(Path(tmp_db_path))
         tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type=table"
+            "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
         assert len(tables) >= 11
         conn.close()
@@ -100,7 +99,6 @@ class TestMarketdataDB:
         row = rows[0]
         assert row["symbol"] is not None
         assert row["market"] == "Ashare"
-        # verify column access by name works (row_factory check)
         assert isinstance(row["symbol"], str)
 
     def test_query_bars_daily_has_ohlcv(self, tmp_db_with_data: sqlite3.Connection):
@@ -271,13 +269,9 @@ class TestMarketCalendar:
         """include_today=True on trading day should return today."""
         from reference.market_calendar import get_next_trading_day, clear_cache
         clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260629", "is_open": "1"},
-        ]
-        # first call for is_trading_day, second for the range
         mock_tushare_call.side_effect = [
-            [{"cal_date": "20260629", "is_open": "1"}],  # is_trading_day
-            [{"cal_date": "20260629", "is_open": "1"}],  # range
+            [{"cal_date": "20260629", "is_open": "1"}],
+            [{"cal_date": "20260629", "is_open": "1"}],
         ]
         result = get_next_trading_day(date(2026, 6, 29), include_today=True)
         assert result == date(2026, 6, 29)
@@ -319,12 +313,5 @@ class TestMarketCalendar:
         with pytest.raises(TradingCalendarUnavailableError):
             get_trading_days(date(2026, 6, 29), date(2026, 7, 1))
 
-    @staticmethod
-    def patch(target, **kwargs):
-        """Helper to create a unittest patch (imported from mock)."""
-        from unittest.mock import patch as _patch
-        return _patch(target, **kwargs)
 
-
-# Import patch from mock module for the fixture
 from unittest.mock import patch

@@ -1,16 +1,15 @@
 """Test-specific fixtures for SharedSignals test suite.
 
-Re-exports root conftest fixtures and adds test-only helpers.
+Root conftest fixtures (tmp_db, tmp_db_with_data, tmp_csv_dir, etc.)
+are auto-discovered by pytest from the parent directory.
+This file exists to allow test-specific overrides.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+import sys
 
-# Import all root fixtures so pytest discovers them
-_TEST_DIR = Path(__file__).resolve().parent
-_SHARED = _TEST_DIR.parent
-
-# Manually re-export fixtures from root conftest
-# (pytest collects from parent dirs automatically, but explicit is safer)
-pytest_plugins = ["conftest"]
+# Ensure SharedSignals root is importable from any cwd
+_SHARED = Path(__file__).resolve().parent.parent
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))

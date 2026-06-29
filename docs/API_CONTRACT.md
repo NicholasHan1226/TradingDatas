@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> Auto-generated from `capability_registry.json` at 2026-06-30T02:32:08+08:00
+> Auto-generated from `capability_registry.json` at 2026-06-30T02:33:14+08:00
 > Service: SharedSignals v1.0.0
 
 ## Summary
@@ -11,6 +11,7 @@
 | OK | 7 |
 | Degraded | 8 |
 | Down | 0 |
+| New this week | 12 |
 
 ---
 
@@ -73,7 +74,7 @@
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
 - **Description**: Read Crypto daily OHLCV from unified marketdata DB
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
 
@@ -113,7 +114,7 @@
 - **Status**: `degraded`
 - **Path**: `bridge/marketgraph_marketdata_db.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.6ms
+- **Latency**: 0.5ms
 - **Rows returned**: 0
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
@@ -163,36 +164,36 @@
 - **Status**: `ok`
 - **Path**: `reference/a_share_tushare_api.py`
 - **Version**: `1.0.0`
-- **Latency**: 15.2ms
+- **Latency**: 16.1ms
 - **Rows returned**: 5193
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, buy_sm_vol, sell_sm_vol, net_mf_vol
 - **Description**: Get A-share money flow data for a trading day
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ### [OK] `get_margin`
 
 - **Status**: `ok`
 - **Path**: `reference/a_share_tushare_api.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.1ms
+- **Latency**: 0.6ms
 - **Rows returned**: 2
 - **SLA**: 24h freshness
 - **Fields**: trade_date, rzye, rzmre, rqye, rqmcl
 - **Description**: Get margin trading summary for a trading day
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ### [OK] `get_limit_list`
 
 - **Status**: `ok`
 - **Path**: `reference/a_share_tushare_api.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.2ms
+- **Latency**: 0.7ms
 - **Rows returned**: 60
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, limit, pct_chg, close
 - **Description**: Get limit-up/limit-down list for a trading day
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
 
@@ -208,7 +209,7 @@
 - **SLA**: 24h freshness
 - **Fields**: market_name, outcome, price, volume, updated_at
 - **Description**: Read Polymarket market list from unified marketdata DB
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
 
@@ -219,12 +220,12 @@
 - **Status**: `ok`
 - **Path**: `bridge/marketgraph_marketdata_db.py`
 - **Version**: `1.0.0`
-- **Latency**: 8.4ms
+- **Latency**: 8.3ms
 - **Rows returned**: 200
 - **SLA**: 24h freshness
 - **Fields**: market, symbol_count, earliest_date, latest_date, status
 - **Description**: Read data coverage status from unified marketdata DB
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
 
@@ -235,12 +236,12 @@
 - **Status**: `ok`
 - **Path**: `bridge/marketgraph_marketdata_db.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.6ms
+- **Latency**: 0.5ms
 - **Rows returned**: 1
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
 - **Description**: Read US stock daily data from unified marketdata DB
-- **Last success**: 2026-06-30T02:32:08+08:00
+- **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
 
@@ -251,15 +252,15 @@
 | `is_trading_day` | `degraded` | 0.1 | 0 | - | calendar | `reference/market_calendar.py` |
 | `get_trading_days` | `degraded` | 0.8 | 0 | - | calendar | `reference/market_calendar.py` |
 | `get_market_data` | `degraded` | 0.0 | 0 | - | market_data | `reference/a_share_tushare_api.py` |
-| `get_moneyflow` | `ok` | 15.2 | 5193 | - | market_depth | `reference/a_share_tushare_api.py` |
-| `get_margin` | `ok` | 0.1 | 2 | - | market_depth | `reference/a_share_tushare_api.py` |
-| `get_limit_list` | `ok` | 0.2 | 60 | - | market_depth | `reference/a_share_tushare_api.py` |
+| `get_moneyflow` | `ok` | 16.1 | 5193 | - | market_depth | `reference/a_share_tushare_api.py` |
+| `get_margin` | `ok` | 0.6 | 2 | - | market_depth | `reference/a_share_tushare_api.py` |
+| `get_limit_list` | `ok` | 0.7 | 60 | - | market_depth | `reference/a_share_tushare_api.py` |
 | `get_hk_hold` | `degraded` | 0.0 | 0 | - | cross_border | `reference/a_share_tushare_api.py` |
 | `get_stock_minutes` | `degraded` | 0.0 | 0 | - | intraday | `reference/a_share_tushare_api.py` |
 | `get_news_list` | `degraded` | 0.0 | 0 | - | events | `reference/a_share_tushare_api.py` |
 | `get_crypto_klines` | `ok` | 0.8 | 8 | - | crypto | `bridge/marketgraph_marketdata_db.py` |
-| `get_us_daily` | `ok` | 0.6 | 1 | - | us_market | `bridge/marketgraph_marketdata_db.py` |
+| `get_us_daily` | `ok` | 0.5 | 1 | - | us_market | `bridge/marketgraph_marketdata_db.py` |
 | `get_hk_etf` | `degraded` | 0.5 | 0 | - | hk_market | `bridge/marketgraph_marketdata_db.py` |
-| `get_hk_index` | `degraded` | 0.6 | 0 | - | hk_market | `bridge/marketgraph_marketdata_db.py` |
+| `get_hk_index` | `degraded` | 0.5 | 0 | - | hk_market | `bridge/marketgraph_marketdata_db.py` |
 | `get_pm_markets` | `ok` | 0.9 | 50 | - | prediction_markets | `bridge/marketgraph_marketdata_db.py` |
-| `get_reference` | `ok` | 8.4 | 200 | - | reference | `bridge/marketgraph_marketdata_db.py` |
+| `get_reference` | `ok` | 8.3 | 200 | - | reference | `bridge/marketgraph_marketdata_db.py` |
