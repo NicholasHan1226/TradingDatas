@@ -1,0 +1,139 @@
+# SharedSignals Production Configuration
+# All sources, full frequency, production database
+
+environment: prod
+server: 8.138.181.177
+secondary_server: 47.82.153.58  # Singapore RSS mirror
+
+# ---- Database ----
+database:
+  marketdata: "/opt/investment/SharedSignals/storage/marketdata.sqlite"
+  reference_index: "/opt/investment/SharedSignals/storage/reference_index.sqlite"
+  rss_collector: "/opt/investment/MarketGraphRuntime/rss_collector.db"
+  max_size_mb: 500
+
+# ---- Collectors ----
+collectors:
+  enabled:
+    - tushare_full      # A-share: all symbols (14 interfaces)
+    - binance_full      # Crypto: 9 symbols (4 intervals)
+    - polymarket_full   # Prediction Markets: all tags
+    - rss_full          # RSS: 883 feeds (495 Singapore + 388 local)
+
+  tushare:
+    enabled: true
+    symbols: "all"
+    interfaces:
+      - daily
+      - daily_basic
+      - moneyflow
+      - moneyflow_industry
+      - margin
+      - margin_detail
+      - limit_list
+      - hk_hold
+      - hk_daily
+      - index_daily
+      - index_global
+      - news
+      - stk_mins
+      - trade_cal
+    frequency: "5min"     # intraday
+    postclose_frequency: "daily"
+
+  binance:
+    enabled: true
+    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
+              "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT"]
+    intervals: ["1d", "4h", "1h", "15m"]
+    frequency: "5min"
+    proxy: "http://127.0.0.1:7890"
+
+  polymarket:
+    enabled: true
+    tags: ["politics", "crypto", "sports", "technology", "world",
+           "science", "economics", "entertainment", "business", "health"]
+    frequency: "10min"
+    proxy: "http://127.0.0.1:7890"
+
+  rss:
+    enabled: true
+    feeds_count: 883
+    feeds_local: 388
+    feeds_singapore: 495
+    singapore_rsync_interval_minutes: 5
+    interval_minutes: 10
+    fallback_enabled: true
+    proxy: "http://127.0.0.1:7890"
+    max_retries: 4
+    timeout_seconds: 30
+
+  tavily:
+    enabled: true
+    frequency: "15min"
+    max_queries_per_run: 100
+
+  deepseek:
+    enabled: true
+    frequency: "15min"
+    max_tokens_per_run: 50000
+
+# ---- Staging ----
+staging:
+  root: "/opt/investment/MarketGraphRuntime/staging"
+  streams:
+    - event_candidates
+    - collection_runs
+    - enterprise_relation_source_results
+    - event_candidate_repair_workpack
+    - market_move_observations
+    - sentiment_signals
+  archive_dir: "/opt/investment/MarketGraphRuntime/archive"
+  rejected_dir: "/opt/investment/MarketGraphRuntime/rejected"
+  min_file_age_seconds: 30
+  max_file_age_hours: 24
+
+# ---- Bridge ----
+bridge:
+  runtime_bridge_script: "bridge/marketgraph_runtime_bridge.py"
+  marketdata_db_script: "bridge/marketgraph_marketdata_db.py"
+  batch_size: 10000
+  lock_timeout_seconds: 1800
+
+# ---- Health ----
+health:
+  patrol_interval_minutes: 5
+  freshness_max_age_hours: 2
+  dedup_enabled: true
+  dedup_url_normalize: true
+  quality_checks: true
+  quality_min_score: 0.6
+  source_health_threshold:
+    healthy: 0.95
+    intermittent: 0.70
+  fallback_sources:
+    coindesk: reuters
+    yahoo_finance: google_finance
+
+# ---- Backfill ----
+backfill:
+  max_days_lookback: 365
+  batch_size_symbols: 50
+  rate_limit_seconds: 0.2
+
+# ---- Notifications ----
+notifications:
+  enabled: true
+  email:
+    system: "notice@tradingagent.cc"
+    trading: "notice@agentspaces.cc"
+  lark:
+    enabled: false
+
+# ---- Logging ----
+logging:
+  level: "INFO"
+  file: "/opt/investment/SharedSignals/logs/sharedsignals.log"
+  max_size_mb: 50
+  backup_count: 5
+  format: "json"
