@@ -7,3 +7,16 @@ logs/
 *.log
 node_modules/
 .DS_Store
+
+# Runtime patrol/heal artifacts (keep dir structure)
+memory/*.json
+memory/*.jsonl
+memory/*.tmp
+!memory/.gitkeep
+
+# Tools runtime artifacts
+tools/__pycache__/
+tools/capability_changes.jsonl
+tools/capability_registry.json
+reference/__pycache__/
+tests/__pycache__/
