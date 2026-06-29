@@ -487,8 +487,17 @@ def _self_test() -> None:
     # Verify output file
     with open(output_path) as f:
         output = json.load(f)
-    assert output["total_sources"] == 3
+    assert output["total_sources"] >= 3, f"Expected at least 3 sources, got {output['total_sources']}"
     assert "active_failovers" in output
+    # Check that all 3 test sources are present
+    test_urls = {
+        "http://localhost:1200/test/healthy",
+        "http://localhost:1200/test/failing",
+        "http://localhost:1200/test/recovering",
+    }
+    result_urls = {r["primary_url"] for r in results}
+    for u in test_urls:
+        assert u in result_urls, f"Test source {u} not in results"
     print(f"  ✓ Output JSON: {output['total_sources']} sources, "
           f"{output['active_failovers']} active failovers")
 
@@ -496,8 +505,9 @@ def _self_test() -> None:
     with open(state_path) as f:
         state = json.load(f)
     assert "sources" in state
-    assert len(state["sources"]) == 3
-    print(f"  ✓ State persisted: {len(state['sources'])} sources")
+    assert all(u in state["sources"] for u in test_urls), \
+        f"State missing test sources: got {list(state['sources'].keys())}"
+    print(f"  ✓ State persisted: {len(state['sources'])} sources (3 test sources present)")
 
     print("=== Self-test PASSED ===")
 

@@ -540,7 +540,8 @@ def _self_test() -> None:
     )
 
     # Populate fetch history: S-tier has gaps on 3 consecutive days
-    for i in range(14):
+    # Use range(15) to cover the full lookback window (start_date = today - 14d)
+    for i in range(15):
         d = (today - timedelta(days=i)).isoformat()
         # Days 3,4,5 ago → empty (gap of 3 days)
         if i in (3, 4, 5):
@@ -557,7 +558,7 @@ def _self_test() -> None:
             )
 
     # A-tier has 2 empty days → gap
-    for i in range(14):
+    for i in range(15):
         d = (today - timedelta(days=i)).isoformat()
         if i in (6, 7):
             conn.execute(
@@ -583,11 +584,15 @@ def _self_test() -> None:
         print(f"  - {g['source_id']}: {g['gap_start']}→{g['gap_end']} ({g['gap_days']}d) "
               f"tier={g['tier']}")
 
-    # Verify: S-tier gap should exist
+    # Verify: S-tier gap should exist (at least one gap with 3+ days)
     s_gaps = [g for g in gaps if "cls" in g["source_id"]]
     assert len(s_gaps) > 0, "Should detect S-tier gap"
-    assert s_gaps[0]["gap_days"] >= 3, f"S-tier gap should be >= 3 days, got {s_gaps[0]['gap_days']}"
-    print(f"  ✓ S-tier gap detected: {s_gaps[0]['gap_days']} days")
+    # Find the largest gap (should be the 3-day one)
+    largest_s_gap = max(s_gaps, key=lambda g: g["gap_days"])
+    assert largest_s_gap["gap_days"] >= 3, \
+        f"Largest S-tier gap should be >= 3 days, got {largest_s_gap['gap_days']}"
+    print(f"  ✓ S-tier gap detected: max={largest_s_gap['gap_days']} days "
+          f"({len(s_gaps)} gap(s) total)")
 
     # Verify: A-tier gap should exist
     a_gaps = [g for g in gaps if "wallstreetcn" in g["source_id"]]

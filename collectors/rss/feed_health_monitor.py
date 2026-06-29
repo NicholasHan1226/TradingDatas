@@ -44,7 +44,7 @@ TRADING_LUNCH_END = 13
 
 # Expected items per fetch, by tier (minimum for suspicious-empty check)
 TIER_EXPECTED_ITEMS = {
-    "hot": 5,    # financial wires should deliver consistently
+    "hot": 5,
     "warm": 3,
     "cold": 1,
 }
@@ -54,7 +54,6 @@ GRADE_THRESHOLDS = {
     "healthy": 0.90,
     "intermittent": 0.50,
     "degraded": 0.10,
-    # below 0.10 → dead
 }
 
 # Retry policy by grade
@@ -64,8 +63,6 @@ RETRY_POLICY = {
     "degraded":     {"max_retries": 2, "backoff_base": 3.0, "halve_frequency": True},
     "dead":         {"max_retries": 0, "probe_only": True, "probe_interval_hours": 24},
 }
-
-# ─── sqlite helpers ────────────────────────────────────────────────────────
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -77,27 +74,24 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Extend feed_health table with latency tracking if not present."""
-    # Check if feed_health table exists (created by feed_store.py)
     cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type=\"table\" AND name=\"feed_health\""
+        'SELECT name FROM sqlite_master WHERE type="table" AND name="feed_health"'
     )
     if not cur.fetchone():
-        conn.executescript(
-            """
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS feed_health (
                 feed_url TEXT PRIMARY KEY,
                 feed_name TEXT,
-                tier TEXT DEFAULT \"warm\",
+                tier TEXT DEFAULT 'warm',
                 last_success TEXT,
                 last_failure TEXT,
                 consecutive_failures INTEGER DEFAULT 0,
-                status TEXT DEFAULT \"active\",
+                status TEXT DEFAULT 'active',
                 items_seen INTEGER DEFAULT 0,
                 items_filtered INTEGER DEFAULT 0,
                 last_error TEXT
             );
-            """
-        )
+        """)
     # Add latency columns if missing
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(feed_health)")}
     if "avg_latency_ms" not in existing:
@@ -111,8 +105,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
     # Create feed_fetch_history if not exists (daily aggregated stats)
-    conn.executescript(
-        """
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS feed_fetch_history (
             feed_url TEXT NOT NULL,
             fetch_date TEXT NOT NULL,
@@ -123,22 +116,17 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             latency_samples INTEGER DEFAULT 0,
             PRIMARY KEY (feed_url, fetch_date)
         );
-        """
-    )
+    """)
     conn.commit()
-
-
-# ─── trading hours detection ───────────────────────────────────────────────
 
 
 def _is_trading_hours(dt: Optional[datetime] = None) -> bool:
     """Check if current time is within A-share continuous trading (no lunch)."""
     if dt is None:
         dt = datetime.now()
-    if dt.weekday() >= 5:  # Sat/Sun
+    if dt.weekday() >= 5:
         return False
     hour = dt.hour
-    # Pre-market + morning session + afternoon session
     if TRADING_START_HOUR <= hour < TRADING_LUNCH_START:
         return True
     if TRADING_LUNCH_END <= hour < TRADING_END_HOUR:
@@ -147,7 +135,7 @@ def _is_trading_hours(dt: Optional[datetime] = None) -> bool:
 
 
 def _is_trading_day(dt: Optional[datetime] = None) -> bool:
-    """Check if today is a trading day, via market_calendar."""
+    """Check if today is a trading day, via market_calendar if available."""
     if dt is None:
         dt = datetime.now()
     try:
@@ -155,11 +143,7 @@ def _is_trading_day(dt: Optional[datetime] = None) -> bool:
         from market_calendar import is_trading_day as _cal_is_trading
         return _cal_is_trading(dt.date())
     except Exception:
-        # Fallback: Mon-Fri
         return dt.weekday() < 5
-
-
-# ─── feed grade classification ─────────────────────────────────────────────
 
 
 def classify_feed(success_rate_7d: float) -> str:
@@ -171,9 +155,6 @@ def classify_feed(success_rate_7d: float) -> str:
     if success_rate_7d >= GRADE_THRESHOLDS["degraded"]:
         return "degraded"
     return "dead"
-
-
-# ─── main health check ─────────────────────────────────────────────────────
 
 
 def compute_feed_health(
@@ -189,7 +170,6 @@ def compute_feed_health(
     results: list[dict[str, Any]] = []
     log_lines: list[str] = []
     now = datetime.now(timezone.utc)
-    today_str = now.strftime("%Y-%m-%d")
     ts = now.isoformat()
 
     try:
@@ -204,7 +184,6 @@ def compute_feed_health(
             _write_log(log_lines, "feed_health_monitor")
         return results
 
-    # Fetch all feeds
     try:
         feeds = conn.execute(
             "SELECT feed_url, feed_name, tier, last_success, last_failure, "
@@ -222,19 +201,16 @@ def compute_feed_health(
         conn.close()
         return results
 
-    # Compute start date for lookback
     start_date = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-
     is_trading = _is_trading_day()
     is_trading_hrs = _is_trading_hours()
 
     for feed in feeds:
         feed_url = feed["feed_url"]
-        feed_name = feed.get("feed_name", feed_url)
-        tier = feed.get("tier", "warm")
+        feed_name = feed["feed_name"] or feed_url
+        tier = feed["tier"] or "warm"
 
         try:
-            # --- 7-day success rate ---
             history_rows = conn.execute(
                 "SELECT COALESCE(SUM(attempts),0) AS total_attempts, "
                 "COALESCE(SUM(successes),0) AS total_successes, "
@@ -255,31 +231,22 @@ def compute_feed_health(
             success_rate_7d = (
                 total_successes / total_attempts if total_attempts > 0 else 1.0
             )
-
             avg_latency = (
                 sum_latency / sum_latency_samples if sum_latency_samples > 0 else 0
             )
 
-            # --- feed grade ---
             grade = classify_feed(success_rate_7d)
+            consecutive_failures = feed["consecutive_failures"] or 0
+            last_success = feed["last_success"] or ""
 
-            # --- consecutive failures (from feed_health) ---
-            consecutive_failures = feed.get("consecutive_failures", 0) or 0
-
-            # --- last success ---
-            last_success = feed.get("last_success", "") or ""
-
-            # --- adaptive retry policy ---
             policy = RETRY_POLICY.get(grade, RETRY_POLICY["healthy"])
 
-            # --- suspicious empty ---
             suspicious_empty = False
             suspicious_reason = ""
 
             if is_trading and is_trading_hrs:
                 expected = TIER_EXPECTED_ITEMS.get(tier, 3)
                 if total_attempts > 0 and total_items == 0:
-                    # Check if individual recent fetches returned 0
                     last_item_count = _get_last_fetch_items(conn, feed_url)
                     if last_item_count == 0 and expected > 0:
                         suspicious_empty = True
@@ -287,7 +254,6 @@ def compute_feed_health(
                             f"trading_hours_zero_items: expected>={expected}, got 0"
                         )
 
-            # --- build result ---
             result = {
                 "feed_url": feed_url,
                 "feed_name": feed_name,
@@ -315,15 +281,14 @@ def compute_feed_health(
                     "msg": f"compute_health_skip: {e}"
                 })
             )
-            # Still emit a degraded entry so consumers know the feed exists
             results.append({
                 "feed_url": feed_url,
                 "feed_name": feed_name,
                 "tier": tier,
                 "grade": "unknown",
                 "success_rate_7d": 0,
-                "consecutive_failures": feed.get("consecutive_failures", 0) or 0,
-                "last_success": feed.get("last_success", "") or "",
+                "consecutive_failures": feed["consecutive_failures"] or 0,
+                "last_success": feed["last_success"] or "",
                 "avg_latency_ms": 0,
                 "total_attempts_7d": 0,
                 "total_successes_7d": 0,
@@ -337,7 +302,6 @@ def compute_feed_health(
 
     conn.close()
 
-    # Write output JSON
     if output_path:
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -384,7 +348,7 @@ def _write_log(lines: list[str], module_name: str) -> None:
             for line in lines:
                 f.write(line + "\n")
     except Exception:
-        pass  # Fail silently — logging is best-effort
+        pass
 
 
 # ─── self-test ─────────────────────────────────────────────────────────────
@@ -393,20 +357,20 @@ def _write_log(lines: list[str], module_name: str) -> None:
 def _self_test() -> None:
     """Run self-test: create test DB, insert synthetic history, verify grades."""
     import tempfile
+    import shutil
 
     tmpdir = Path(tempfile.mkdtemp(prefix="fh_test_"))
     test_db = tmpdir / "test.db"
 
     print("=== Feed Health Monitor Self-Test ===")
 
-    # Init DB
     conn = sqlite3.connect(str(test_db))
     conn.row_factory = sqlite3.Row
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS feed_health (
-            feed_url TEXT PRIMARY KEY, feed_name TEXT, tier TEXT DEFAULT \"warm\",
+            feed_url TEXT PRIMARY KEY, feed_name TEXT, tier TEXT DEFAULT 'warm',
             last_success TEXT, last_failure TEXT,
-            consecutive_failures INTEGER DEFAULT 0, status TEXT DEFAULT \"active\",
+            consecutive_failures INTEGER DEFAULT 0, status TEXT DEFAULT 'active',
             items_seen INTEGER DEFAULT 0, items_filtered INTEGER DEFAULT 0,
             last_error TEXT
         );
@@ -432,7 +396,7 @@ def _self_test() -> None:
     )
     for i in range(7):
         d = (today - timedelta(days=i)).isoformat()
-        success = 1 if i < 6 else 0
+        success = 1
         conn.execute(
             "INSERT OR REPLACE INTO feed_fetch_history "
             "(feed_url, fetch_date, attempts, successes, items_received) VALUES (?,?,1,?,5)",
@@ -489,33 +453,38 @@ def _self_test() -> None:
     conn.commit()
     conn.close()
 
-    # Run health check
     results = compute_feed_health(
         db_path=test_db, lookback_days=7, output_path=tmpdir / "feed_health.json",
         log_results=True,
     )
 
-    # Verify
     grade_map = {r["feed_url"]: r["grade"] for r in results}
     print(f"  Feeds checked: {len(results)}")
-    for url, grade in grade_map.items():
-        rate = [r for r in results if r["feed_url"] == url][0]["success_rate_7d"]
-        print(f"  {url.split('/')[-1]}: grade={grade}, rate={rate}")
+    for r in results:
+        url_last = r["feed_url"].rsplit("/", 1)[-1]
+        print(f"  {url_last}: grade={r['grade']}, rate={r['success_rate_7d']}")
 
-    # Assertions
-    assert grade_map.get("http://localhost:1200/test/healthy") == "healthy", \
-        f"Expected healthy, got {grade_map.get(http://localhost:1200/test/healthy)}"
-    assert grade_map.get("http://localhost:1200/test/intermittent") == "intermittent", \
-        f"Expected intermittent, got {grade_map.get(http://localhost:1200/test/intermittent)}"
-    assert grade_map.get("http://localhost:1200/test/degraded") == "degraded", \
-        f"Expected degraded, got {grade_map.get(http://localhost:1200/test/degraded)}"
-    assert grade_map.get("http://localhost:1200/test/dead") == "dead", \
-        f"Expected dead, got {grade_map.get(http://localhost:1200/test/dead)}"
+    url_healthy = "http://localhost:1200/test/healthy"
+    url_intermittent = "http://localhost:1200/test/intermittent"
+    url_degraded = "http://localhost:1200/test/degraded"
+    url_dead = "http://localhost:1200/test/dead"
+
+    assert grade_map.get(url_healthy) == "healthy", \
+        f"Expected healthy, got {grade_map.get(url_healthy)}"
+    assert grade_map.get(url_intermittent) == "intermittent", \
+        f"Expected intermittent, got {grade_map.get(url_intermittent)}"
+    assert grade_map.get(url_degraded) == "degraded", \
+        f"Expected degraded, got {grade_map.get(url_degraded)}"
+    assert grade_map.get(url_dead) == "dead", \
+        f"Expected dead, got {grade_map.get(url_dead)}"
 
     # Verify retry policies
-    assert results[0]["retry_policy"]["max_retries"] == 1  # healthy
-    assert results[1]["retry_policy"]["max_retries"] == 3  # intermittent
-    assert results[2]["retry_policy"]["max_retries"] == 0  # dead
+    healthy_items = [r for r in results if r["feed_url"] == url_healthy]
+    intermittent_items = [r for r in results if r["feed_url"] == url_intermittent]
+    dead_items = [r for r in results if r["feed_url"] == url_dead]
+    assert healthy_items[0]["retry_policy"]["max_retries"] == 1
+    assert intermittent_items[0]["retry_policy"]["max_retries"] == 3
+    assert dead_items[0]["retry_policy"]["max_retries"] == 0
 
     # Check output file
     with open(tmpdir / "feed_health.json") as f:
@@ -526,8 +495,6 @@ def _self_test() -> None:
     print("  ✓ All assertions passed")
     print("=== Self-test PASSED ===")
 
-    # Cleanup
-    import shutil
     shutil.rmtree(tmpdir)
 
 
@@ -566,10 +533,10 @@ def main() -> None:
                 "feeds": results,
             }, ensure_ascii=False, indent=2))
         else:
-            print(f"Feed Health Monitor: {len(results)} feeds checked → {args.output}")
+            print(f"Feed Health Monitor: {len(results)} feeds checked -> {args.output}")
             for r in results:
-                flag = " ⚠" if r.get("suspicious_empty") else ""
-                print(f"  {r[feed_name]:30s} {r[grade]:14s} rate={r[success_rate_7d]:.2%}{flag}")
+                flag = " (suspicious!)" if r.get("suspicious_empty") else ""
+                print(f"  {r['feed_name']:30s} {r['grade']:14s} rate={r['success_rate_7d']:.2%}{flag}")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
