@@ -32,9 +32,13 @@ logger = logging.getLogger(__name__)
 # in the real Ashare/tools directory, so we add that directory to sys.path.
 # ---------------------------------------------------------------------------
 _ASHARE_TOOLS = Path(__file__).resolve().parent
+# Resolve the real Ashare/tools directory: a_share_tushare_api (symlinked here)
+# imports its sibling a_share_common, which lives in the real Ashare/tools dir.
+_ASHARE_REAL_TOOLS = (_ASHARE_TOOLS / "a_share_tushare_api.py").resolve().parent
 import sys as _sys
-if str(_ASHARE_TOOLS) not in _sys.path:
-    _sys.path.insert(0, str(_ASHARE_TOOLS))
+for _p in (_ASHARE_TOOLS, _ASHARE_REAL_TOOLS):
+    if str(_p) not in _sys.path:
+        _sys.path.insert(0, str(_p))
 
 try:
     from a_share_tushare_api import _call  # type: ignore
