@@ -26,14 +26,7 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Make the Ashare wrapper importable.  a_share_tushare_api lives next to
-# this file (as a symlink) but its sibling dependency a_share_common lives
-# in the real Ashare/tools directory, so we add that directory to sys.path.
-# ---------------------------------------------------------------------------
 _ASHARE_TOOLS = Path(__file__).resolve().parent
-# Resolve the real Ashare/tools directory: a_share_tushare_api (symlinked here)
-# imports its sibling a_share_common, which lives in the real Ashare/tools dir.
 _ASHARE_REAL_TOOLS = (_ASHARE_TOOLS / "a_share_tushare_api.py").resolve().parent
 import sys as _sys
 for _p in (_ASHARE_TOOLS, _ASHARE_REAL_TOOLS):
@@ -52,13 +45,12 @@ except Exception as _import_err:  # pragma: no cover - import guard
 
 DateLike = Union[date, datetime, str]
 
-# In-process cache: (start_iso, end_iso) -> list[date]
 _range_cache: dict[tuple[str, str], list[date]] = {}
 
 
-# ---------------------------------------------------------------------------
-# Parsing helpers
-# ---------------------------------------------------------------------------
+class TradingCalendarUnavailableError(RuntimeError):
+    """Raised when the trading calendar API returns an unusable response."""
+
 
 def _to_date(d: DateLike) -> date:
     """Coerce date/datetime/str to datetime.date."""
@@ -89,9 +81,15 @@ def _from_tushare_date(s: str) -> date:
     return datetime.strptime(s, "%Y%m%d").date()
 
 
-# ---------------------------------------------------------------------------
-# Core API
-# ---------------------------------------------------------------------------
+def _range_contains_weekday(start: date, end: date) -> bool:
+    """Return True if the inclusive range contains at least one weekday."""
+    cursor = start
+    while cursor <= end:
+        if cursor.weekday() < 5:
+            return True
+        cursor += timedelta(days=1)
+    return False
+
 
 def _fetch_trading_days(start: date, end: date) -> list[date]:
     """Fetch trading days in [start, end] from Tushare, with caching."""
@@ -105,12 +103,19 @@ def _fetch_trading_days(start: date, end: date) -> list[date]:
             "import failed); cannot resolve trading days"
         )
 
-    # Tushare trade_cal returns is_open=1 for trading days.
     rows = _call("trade_cal", {
         "exchange": "SSE",
         "start_date": _to_tushare_date(start),
         "end_date": _to_tushare_date(end),
     })
+    if not rows:
+        weekday_hint = _range_contains_weekday(start, end)
+        raise TradingCalendarUnavailableError(
+            "market_calendar: trade_cal returned no rows for "
+            f"{start.isoformat()}..{end.isoformat()}"
+            + (" (range includes weekdays; treating as API failure)" if weekday_hint else " (cannot distinguish closure from API failure)")
+        )
+
     days: list[date] = []
     for row in rows:
         if str(row.get("is_open", "")) in ("1", "1.0"):
@@ -151,7 +156,6 @@ def get_next_trading_day(d: DateLike = None, *, include_today: bool = False) -> 
     if include_today and is_trading_day(target):
         return target
 
-    # Look ahead up to 30 calendar days to bound the query.
     horizon = target + timedelta(days=30)
     days = _fetch_trading_days(target, horizon)
     for day in days:
@@ -166,7 +170,6 @@ def clear_cache() -> None:
 
 
 if __name__ == "__main__":
-    # Smoke test
     import argparse
     p = argparse.ArgumentParser(description="A-share trading calendar helper")
     p.add_argument("--is-trading-day", metavar="DATE", help="check if DATE is a trading day")
