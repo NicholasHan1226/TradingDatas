@@ -502,6 +502,8 @@ def run_scan(dry_run: bool = False, test_only: bool = False) -> dict[str, Any]:
                 "fields": meta.get("fields", []),
                 "freshness": meta.get("sla_hours", 24),
                 "degraded": f"Module '{meta['module']}' import failed (check deps/auth/env)",
+                "category": meta.get("category", ""),
+                "description": meta.get("description", ""),
             }
         else:
             call_result = _call_func(mod, meta["func"], meta.get("smoke_args", []))
@@ -539,6 +541,8 @@ def run_scan(dry_run: bool = False, test_only: bool = False) -> dict[str, Any]:
                 "fields": meta.get("fields", []),
                 "freshness": meta.get("sla_hours", 24),
                 "degraded": degraded,
+                "category": meta.get("category", ""),
+                "description": meta.get("description", ""),
             }
         endpoints.append(result)
 
