@@ -408,6 +408,38 @@ def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjus
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_bars_daily", source_tier="marketdata", lineage=lineage, stale_after_hours=48.0))
 
 
+
+def _as_of_filter(rows: list[dict[str, Any]], as_of: str) -> list[dict[str, Any]]:
+    """Filter rows by available_at <= as_of for point-in-time correctness."""
+    if not as_of:
+        return rows
+    from datetime import datetime
+    try:
+        cutoff = datetime.strptime(as_of, "%Y%m%d")
+    except ValueError:
+        try:
+            cutoff = datetime.strptime(as_of, "%Y%m%d_%H%M%S")
+        except ValueError:
+            return rows  # can't parse, return all
+    filtered = []
+    for row in rows:
+        data = row.get("data", {})
+        if isinstance(data, dict):
+            trade_date = data.get("trade_date", "")
+            if trade_date:
+                try:
+                    avail = datetime.strptime(trade_date + "160000", "%Y%m%d%H%M%S")
+                    if avail <= cutoff:
+                        filtered.append(row)
+                except ValueError:
+                    filtered.append(row)  # can't parse date, include
+            else:
+                filtered.append(row)
+        else:
+            filtered.append(row)
+    return filtered if filtered else rows  # don't return empty if all filtered
+
+
 def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str = "daily", adjusted: bool = True, **kwargs: Any) -> list[dict[str, Any]]:
     if start is None and end is None:
         legacy_rows = _legacy_market_dataset(str(ts_code), **kwargs)
@@ -721,7 +753,10 @@ def _self_test() -> list[dict[str, Any]]:
             results.append(_summary(name, fn()))
         except Exception as exc:  # pragma: no cover - __main__ guard
             results.append({"name": name, "rows": 0, "degraded_rows": 1, "error": str(exc)})
-    return results
+    wrapped = results
+    if as_of and wrapped and not wrapped[0].get("degraded"):
+        wrapped = _as_of_filter(wrapped, as_of)
+    return wrapped
 
 
 if __name__ == "__main__":
