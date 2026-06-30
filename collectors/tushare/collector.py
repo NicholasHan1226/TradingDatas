@@ -55,6 +55,143 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class TushareCollector:
+
+    @staticmethod
+    def _dedup_key(api_name: str, row: dict) -> tuple:
+        """Generate dedup key per API: (ts_code, trade_date) or equivalent."""
+        keys = {
+            "daily": ("ts_code", "trade_date"),
+            "moneyflow": ("ts_code", "trade_date"),
+            "adj_factor": ("ts_code", "trade_date"),
+            "daily_basic": ("ts_code", "trade_date"),
+            "fina_indicator": ("ts_code", "end_date"),
+            "income": ("ts_code", "end_date"),
+            "balancesheet": ("ts_code", "end_date"),
+            "margin_detail": ("ts_code", "trade_date"),
+            "stock_basic": ("ts_code",),
+            "stk_factor": ("ts_code", "trade_date"),
+            "index_daily": ("ts_code", "trade_date"),
+            "fund_daily": ("ts_code", "trade_date"),
+            "moneyflow_hsgt": ("trade_date",),
+            "limit_list": ("ts_code", "trade_date"),
+            "top_list": ("ts_code", "trade_date"),
+            "block_trade": ("ts_code", "trade_date"),
+            "hk_daily": ("ts_code", "trade_date"),
+            "us_daily": ("ts_code", "trade_date"),
+            "cn_cpi": ("month",),
+            "cn_pmi": ("month",),
+            "shibor": ("date",),
+        }
+        key_fields = keys.get(api_name, ("ts_code", "trade_date"))
+        return tuple(str(row.get(f, "")) for f in key_fields)
+
+    @staticmethod
+    def _validate_row(api_name: str, row: dict) -> dict:
+        """Basic validation: mark quality issues."""
+        quality = {"score": 1.0, "issues": []}
+        # OHLCV sanity
+        if api_name in ("daily", "hk_daily", "us_daily"):
+            for f in ("open", "high", "low", "close"):
+                if f in row and row.get(f):
+                    try:
+                        v = float(row[f])
+                        if v <= 0:
+                            quality["issues"].append(f"{f}_zero_or_negative")
+                            quality["score"] = max(0, quality["score"] - 0.2)
+                    except (ValueError, TypeError):
+                        quality["issues"].append(f"{f}_non_numeric")
+                        quality["score"] = max(0, quality["score"] - 0.3)
+            # High < Low check
+            try:
+                if float(row.get("high", 0)) < float(row.get("low", 0)):
+                    quality["issues"].append("high_less_than_low")
+                    quality["score"] = 0.0
+            except: pass
+        # Missing key fields
+        for f in ("ts_code", "trade_date"):
+            if api_name in ("daily", "moneyflow", "stk_factor"):
+                if not row.get(f):
+                    quality["issues"].append(f"missing_{f}")
+                    quality["score"] = max(0, quality["score"] - 0.5)
+        row["_quality"] = quality
+        return row
+
+    
+    @staticmethod
+    def _text_fingerprint(title: str, content: str = "") -> str:
+        """Generate content hash for dedup."""
+        clean = re.sub(r"\s+", "", (title + content)[:500])
+        return hashlib.sha256(clean.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _title_similar(a: str, b: str) -> float:
+        """Simple token overlap ratio for title similarity."""
+        if not a or not b:
+            return 0.0
+        ta = set(re.findall(r"[一-鿿\w]+", a.lower()))
+        tb = set(re.findall(r"[一-鿿\w]+", b.lower()))
+        if not ta or not tb:
+            return 0.0
+        return len(ta & tb) / len(ta | tb)
+
+    @classmethod
+    def event_deduplicate(cls, rows: list[dict], time_window_h: int = 24) -> list[dict]:
+        """Semantic dedup for news/events:
+        1. URL exact match → skip
+        2. Content hash match → skip  
+        3. Title similarity >0.85 → skip (same news, different source)
+        4. Time-window: same title within 24h → skip
+        """
+        if not rows:
+            return rows
+        seen_urls = set()
+        seen_hashes = set()
+        seen_titles = {}  # title → (hash, time)
+        result = []
+        for row in rows:
+            url = str(row.get("source_url", row.get("url", ""))).strip()
+            title = str(row.get("title", "")).strip()
+            summary = str(row.get("summary", row.get("content", ""))).strip()
+            event_time = str(row.get("event_time", row.get("trade_date", ""))).strip()
+            
+            # 1. URL dedup
+            if url and url in seen_urls:
+                row["_dedup_skip"] = "url_duplicate"
+                continue
+            if url:
+                seen_urls.add(url)
+            
+            # 2. Content hash dedup
+            fprint = cls._text_fingerprint(title, summary)
+            if fprint in seen_hashes:
+                row["_dedup_skip"] = "hash_duplicate"
+                continue
+            seen_hashes.add(fprint)
+            
+            # 3. Title similarity check
+            for seen_title, (seen_hash, _) in list(seen_titles.items()):
+                if cls._title_similar(title, seen_title) > 0.85:
+                    row["_dedup_skip"] = "title_similar"
+                    break
+            if row.get("_dedup_skip"):
+                continue
+            
+            seen_titles[title] = (fprint, event_time)
+            result.append(row)
+        
+        return result
+
+    def deduplicate(self, api_name: str, rows: list) -> list:
+        """Dedup rows by primary key, keeping latest."""
+        seen = {}
+        for row in rows:
+            key = self._dedup_key(api_name, row)
+            seen[key] = row  # last wins
+        return list(seen.values())
+
+    def validate(self, api_name: str, rows: list) -> list:
+        """Add quality metadata to each row."""
+        return [self._validate_row(api_name, r) for r in rows]
     """Generic Tushare data collector backed by the Ashare API wrapper.
 
     Usage::
