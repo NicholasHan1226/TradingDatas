@@ -82,14 +82,21 @@ def send_email(*, to: str, subject: str, html_body: str, channel: str = "system"
     from_addr = ch["from"]
     errors = []
     
-    # 1. Cloudflare
+    # 1. SMTP (primary — always available once configured)
+    try:
+        if _try_smtp(to, subject, html_body, from_addr):
+            return {"status": "sent", "provider": "smtp", "to": to}
+    except Exception as e:
+        errors.append(f"smtp: {e}")
+    
+    # 2. Cloudflare (requires Account ID + API token)
     try:
         if _try_cloudflare(to, subject, html_body, from_addr):
             return {"status": "sent", "provider": "cloudflare", "to": to, "from": from_addr, "subject": subject}
     except Exception as e:
         errors.append(f"cloudflare: {e}")
     
-    # 2. DeadSimple (generic HTTP mail API)
+    # 3. DeadSimple (generic HTTP mail API)
     try:
         ds_url = os.getenv("DEADSIMPLE_URL", "")
         if ds_url:
