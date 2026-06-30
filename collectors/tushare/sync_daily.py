@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
-"""SharedSignals daily Tushare sync — P0 + P1 APIs for all stocks in stock_master.csv.
+"""SharedSignals Tushare daily sync — multi-tier collector.
 
-Reads config.yaml for P0/P1 API definitions, iterates over every stock in
-reference/stock_master.csv, calls each API for a configurable lookback window,
-and writes date-partitioned CSV output.
+Usage:
+    sync_daily.py --tier P0_trading_5min         # 5-min trading data
+    sync_daily.py --tier P1_eod_daily            # EOD after close
+    sync_daily.py --tier P2_financial_daily      # financial statements
+    sync_daily.py --tier P3_reference_daily      # reference/master
+    sync_daily.py --tier P4_macro_daily          # macro indicators
+    sync_daily.py --tier P5_hk_us_daily          # HK/US markets
+    sync_daily.py --tier P6_other_daily          # futures/funds/news
+    sync_daily.py --test --tier P0_trading_5min  # quick test on 3 stocks
+
+Reads config.yaml for tier definitions, iterates over stocks in
+reference/stock_master.csv (for per_stock APIs), calls each API,
+and writes date-partitioned CSV output to data/tushare/.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +47,16 @@ CONFIG_PATH = _COLLECTOR_DIR / "config.yaml"
 STOCK_MASTER_PATH = _BASE_DIR / "reference" / "stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
 
+VALID_TIERS = [
+    "P0_trading_5min",
+    "P1_eod_daily",
+    "P2_financial_daily",
+    "P3_reference_daily",
+    "P4_macro_daily",
+    "P5_hk_us_daily",
+    "P6_other_daily",
+]
+
 
 def load_config(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as fh:
@@ -55,12 +77,7 @@ def load_stock_codes(path: Path) -> list[str]:
 
 
 def date_range(lookback_days: int) -> tuple[str, str, str]:
-    """Return (trade_date, start_date, end_date) for a lookback window.
-
-    trade_date = today
-    start_date = today - lookback_days
-    end_date   = today
-    """
+    """Return (trade_date, start_date, end_date) for a lookback window."""
     today = datetime.now()
     trade_date = today.strftime("%Y%m%d")
     start_date = (today - timedelta(days=lookback_days)).strftime("%Y%m%d")
@@ -68,47 +85,93 @@ def date_range(lookback_days: int) -> tuple[str, str, str]:
     return trade_date, start_date, end_date
 
 
-def fill_params(template: dict, ts_code: str, trade_date: str, start_date: str, end_date: str) -> dict:
+def fill_params(
+    template: dict,
+    ts_code: str | None,
+    trade_date: str,
+    start_date: str,
+    end_date: str,
+) -> dict:
     """Substitute placeholders in a params template dict."""
     raw = str(template)
-    raw = raw.replace("{ts_code}", ts_code)
+    if ts_code:
+        raw = raw.replace("{ts_code}", ts_code)
     raw = raw.replace("{trade_date}", trade_date)
     raw = raw.replace("{start_date}", start_date)
     raw = raw.replace("{end_date}", end_date)
-    # Round-trip through YAML-safe eval to get typed dict back
     return yaml.safe_load(raw)
 
 
-def sync_priority(
+# ---------------------------------------------------------------------------
+# sync_tier — core sync logic for a single tier
+# ---------------------------------------------------------------------------
+
+def sync_tier(
     collector: TushareCollector,
+    tier_name: str,
     apis: list[dict],
     stock_codes: list[str],
     trade_date: str,
     start_date: str,
     end_date: str,
-) -> dict[str, int]:
-    """Run all APIs in a priority tier for every stock.  Returns {api_name: total_rows}."""
-    stats: dict[str, int] = {}
-    total = len(stock_codes) * len(apis)
-    idx = 0
+) -> dict[str, dict]:
+    """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
+    stats: dict[str, dict] = {}
+    tier_start = time.time()
 
-    for api_def in apis:
+    # Split APIs by per_stock flag
+    per_stock_apis = [a for a in apis if a.get("per_stock", True)]
+    global_apis = [a for a in apis if not a.get("per_stock", True)]
+
+    total_calls = len(per_stock_apis) * len(stock_codes) + len(global_apis)
+    call_idx = 0
+
+    logger.info("[%s] %d APIs (%d per-stock, %d global) × %d stocks = %d calls",
+                tier_name, len(apis), len(per_stock_apis), len(global_apis),
+                len(stock_codes), total_calls)
+
+    # ── Per-stock APIs ──
+    for api_def in per_stock_apis:
         api_name = api_def["api_name"]
         template = api_def.get("params", {})
         fields = api_def.get("fields")
+        api_start = time.time()
         api_total = 0
 
         for ts_code in stock_codes:
-            idx += 1
+            call_idx += 1
             params = fill_params(template, ts_code, trade_date, start_date, end_date)
             rows = collector.collect(api_name, params, fields)
             api_total += len(rows)
             collector.save(api_name, rows, trade_date, filename=ts_code)
-            logger.info("[%d/%d] %s %s → %d rows", idx, total, api_name, ts_code, len(rows))
+            logger.info("[%s] [%d/%d] %s %s → %d rows",
+                        tier_name, call_idx, total_calls,
+                        api_name, ts_code, len(rows))
 
-        stats[api_name] = api_total
-        logger.info("%s: %d total rows across %d stocks", api_name, api_total, len(stock_codes))
+        duration = time.time() - api_start
+        stats[api_name] = {"rows": api_total, "duration_s": round(duration, 1)}
+        logger.info("[%s] %s: %d rows in %.1fs", tier_name, api_name, api_total, duration)
 
+    # ── Global (non-per-stock) APIs ──
+    for api_def in global_apis:
+        api_name = api_def["api_name"]
+        template = api_def.get("params", {})
+        fields = api_def.get("fields")
+        api_start = time.time()
+
+        call_idx += 1
+        params = fill_params(template, None, trade_date, start_date, end_date)
+        rows = collector.collect(api_name, params, fields)
+        collector.save(api_name, rows, trade_date)
+
+        duration = time.time() - api_start
+        stats[api_name] = {"rows": len(rows), "duration_s": round(duration, 1)}
+        logger.info("[%s] [%d/%d] %s (global) → %d rows in %.1fs",
+                    tier_name, call_idx, total_calls,
+                    api_name, len(rows), duration)
+
+    tier_duration = time.time() - tier_start
+    logger.info("[%s] COMPLETE: %d APIs, %.1fs total", tier_name, len(apis), tier_duration)
     return stats
 
 
@@ -117,90 +180,72 @@ def sync_priority(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="SharedSignals Tushare multi-tier sync")
+    parser.add_argument(
+        "--tier",
+        required=True,
+        choices=VALID_TIERS,
+        help="Which tier to sync",
+    )
+    parser.add_argument(
+        "--lookback",
+        type=int,
+        default=DEFAULT_LOOKBACK_DAYS,
+        help=f"Lookback window in days (default: {DEFAULT_LOOKBACK_DAYS})",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Limit to 3 stocks for speed testing",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
+    # Load config + stocks
     config = load_config(CONFIG_PATH)
     stock_codes = load_stock_codes(STOCK_MASTER_PATH)
 
     if not stock_codes:
-        logger.error("No stock codes found in %s — aborting", STOCK_MASTER_PATH)
+        logger.error("No stock codes in %s — aborting", STOCK_MASTER_PATH)
         sys.exit(1)
 
-    trade_date, start_date, end_date = date_range(DEFAULT_LOOKBACK_DAYS)
-    logger.info("Sync window: %s → %s (trade_date=%s)", start_date, end_date, trade_date)
-    logger.info("Stocks: %d  APIs P0: %d  P1: %d", len(stock_codes),
-                len(config["priorities"]["P0"]), len(config["priorities"]["P1"]))
+    tier_name = args.tier
+    if tier_name not in config.get("priorities", {}):
+        logger.error("Tier %s not found in config.yaml priorities", tier_name)
+        sys.exit(1)
+
+    apis = config["priorities"][tier_name]
+    if args.test:
+        stock_codes = stock_codes[:3]
+        logger.info("TEST MODE: using %d stocks", len(stock_codes))
+
+    trade_date, start_date, end_date = date_range(args.lookback)
+    logger.info("=" * 60)
+    logger.info("TIER: %s  |  Stocks: %d  |  APIs: %d", tier_name, len(stock_codes), len(apis))
+    logger.info("Window: %s → %s (trade_date=%s, lookback=%d days)",
+                start_date, end_date, trade_date, args.lookback)
+    logger.info("=" * 60)
 
     collector = TushareCollector()
+    start_time = time.time()
 
-    # P0 — daily OHLCV / moneyflow
-    logger.info("=== P0: daily price/volume/moneyflow ===")
-    p0_stats = sync_priority(
-        collector,
-        config["priorities"]["P0"],
-        stock_codes,
-        trade_date,
-        start_date,
-        end_date,
-    )
-
-    # P1 — financial statements
-    logger.info("=== P1: financial indicators / income / balance sheet ===")
-    p1_stats = sync_priority(
-        collector,
-        config["priorities"]["P1"],
-        stock_codes,
-        trade_date,
-        start_date,
-        end_date,
-    )
+    stats = sync_tier(collector, tier_name, apis, stock_codes, trade_date, start_date, end_date)
 
     # Summary
-    logger.info("=== SYNC SUMMARY ===")
-    for label, stats in [("P0", p0_stats), ("P1", p1_stats)]:
-        for api_name, total in stats.items():
-            logger.info("%s %s: %d rows", label, api_name, total)
+    elapsed = time.time() - start_time
+    logger.info("=" * 60)
+    logger.info("SYNC SUMMARY [%s] — %.1fs total", tier_name, elapsed)
+    total_rows = 0
+    for api_name, s in stats.items():
+        total_rows += s["rows"]
+        logger.info("  %-25s %6d rows  %6.1fs", api_name, s["rows"], s["duration_s"])
+    logger.info("  %-25s %6d rows", "TOTAL", total_rows)
+    logger.info("=" * 60)
 
-
-# ---------------------------------------------------------------------------
-# Self-test (limit to 3 stocks for speed)
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Quick self-test mode: override stock list to 3 stocks
-    if "--test" in sys.argv:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(message)s",
-        )
-        config = load_config(CONFIG_PATH)
-        all_stocks = load_stock_codes(STOCK_MASTER_PATH)
-        stock_codes = all_stocks[:3]
-        trade_date, start_date, end_date = date_range(DEFAULT_LOOKBACK_DAYS)
-
-        logger.info("SELF-TEST MODE: %d/%d stocks, window %s→%s",
-                    len(stock_codes), len(all_stocks), start_date, end_date)
-
-        collector = TushareCollector()
-
-        logger.info("=== P0 ===")
-        p0_stats = sync_priority(
-            collector, config["priorities"]["P0"], stock_codes,
-            trade_date, start_date, end_date,
-        )
-
-        logger.info("=== P1 ===")
-        p1_stats = sync_priority(
-            collector, config["priorities"]["P1"], stock_codes,
-            trade_date, start_date, end_date,
-        )
-
-        logger.info("=== SELF-TEST SUMMARY ===")
-        for label, stats in [("P0", p0_stats), ("P1", p1_stats)]:
-            for api_name, total in stats.items():
-                logger.info("%s %s: %d rows", label, api_name, total)
-    else:
-        main()
+    main()
