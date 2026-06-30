@@ -32,7 +32,7 @@ INVESTMENT_ROOT = Path(os.environ.get("INVESTMENT_ROOT", "/opt/investment"))
 
 # ---- Auto-load .env on import ----
 import os as _os
-_env_file = __import__("pathlib").Path(__file__).resolve().parent.parent / ".env"
+_env_file = __import__("pathlib").Path(__file__).resolve().parent / ".env"
 if _env_file.exists():
     with open(_env_file) as _f:
         for _line in _f:
