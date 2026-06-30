@@ -473,7 +473,22 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
 
 
 @lru_cache(maxsize=512)
-def _get_fundamentals_cached(ts_code: str) -> str:
+def _get_fundamentals_cached(ts_code: str, end_date: str = "") -> str:
+    ts_upper = ts_code.upper()
+    if ts_upper.endswith(('.SH', '.SZ', '.BJ')):
+        try:
+            import sys
+            ashare_tools = str(ASHARE_ROOT / "tools")
+            if ashare_tools not in sys.path:
+                sys.path.insert(0, ashare_tools)
+            from a_share_tushare_api import _call as tushare_call
+            ed = end_date or _now().strftime("%Y%m%d")
+            rows = tushare_call('fina_indicator', {'ts_code': ts_code, 'start_date': '20250101', 'end_date': ed})
+            lineage = {"reader": "get_fundamentals", "source": "tushare:fina_indicator", "filters": {"ts_code": ts_code, "start_date": "20250101", "end_date": ed}}
+            return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="tushare:fina_indicator", source_tier="tushare", lineage=lineage, stale_after_hours=168.0))
+        except Exception as exc:
+            lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
+            return _json_cached(lambda: _degraded_empty("tushare:fina_indicator", f"Tushare fina_indicator failed: {exc}", lineage=lineage))
     query = """
         SELECT * FROM market_factors
         WHERE symbol = ?
@@ -486,9 +501,10 @@ def _get_fundamentals_cached(ts_code: str) -> str:
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_factors", source_tier="marketdata", lineage=lineage, stale_after_hours=168.0))
 
 
-def get_fundamentals(ts_code: str) -> list[dict[str, Any]]:
+def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str, Any]]:
     lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
-    return _safe_public("sqlite:market_factors", lineage, lambda: _get_fundamentals_cached(str(ts_code)))
+    ed = end_date or _now().strftime("%Y%m%d")
+    return _safe_public("sqlite:market_factors", lineage, lambda: _get_fundamentals_cached(str(ts_code), ed))
 
 
 @lru_cache(maxsize=512)
