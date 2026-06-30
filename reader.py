@@ -21,7 +21,7 @@ import json
 import os
 import sqlite3
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -526,6 +526,13 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
         start = kwargs.get("date")
     if end is None:
         end = start
+    if "date" in kwargs:
+        path = MARKETGRAPH_ROOT / "data" / "all_weather_regime.csv"
+        lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}, "compat_mode": "all_weather_regime"}
+        rows, degraded = _safe_csv(path, "csv:all_weather_regime", lineage)
+        if degraded is not None:
+            return degraded
+        return _legacy_wrapped_rows(rows or [], source_id="csv:all_weather_regime", source_tier="macro", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=168.0)
     lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}}
     return _safe_public("csv:macro_factors", lineage, lambda: _get_macro_factors_cached(str(start), str(end)))
 

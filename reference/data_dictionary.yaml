@@ -1,0 +1,49 @@
+# Data Dictionary — field semantics for all data dimensions
+tushare_daily:
+  ts_code: {type: string, desc: 股票代码, format: 600519.SH}
+  trade_date: {type: string, desc: 交易日, format: YYYYMMDD}
+  open: {type: float, desc: 开盘价, unit: 元, adjustment: raw}
+  close: {type: float, desc: 收盘价, unit: 元, adjustment: raw, note: 集合竞价产生}
+  high: {type: float, desc: 最高价, unit: 元}
+  low: {type: float, desc: 最低价, unit: 元}
+  vol: {type: float, desc: 成交量, unit: 手}
+  amount: {type: float, desc: 成交额, unit: 千元}
+  pct_chg: {type: float, desc: 涨跌幅, unit: 百分比}
+
+tushare_moneyflow:
+  net_mf_amount: {type: float, desc: 主力净流入, unit: 元}
+  buy_lg_amount: {type: float, desc: 大单买入, unit: 元}
+  buy_elg_amount: {type: float, desc: 超大单买入, unit: 元}
+
+sentiment_signals:
+  signal_id: {type: string, desc: 信号ID}
+  title: {type: string, desc: 信号标题}
+  source_tier: {type: string, desc: 来源可信度, values: [S,A,B,C,R]}
+  confidence: {type: float, desc: 置信度, range: 0-1}
+  source_url: {type: string, desc: 来源URL}
+
+market_bars_daily:
+  symbol: {type: string, desc: 标的代码}
+  trade_date: {type: string, desc: 交易日期}
+  close: {type: float, desc: 收盘价}
+  volume: {type: float, desc: 成交量}
+  market: {type: string, desc: 市场标识}
+
+market_pm_markets:
+  question: {type: string, desc: 预测市场问题}
+  volume: {type: float, desc: 成交量}
+  end_date: {type: string, desc: 到期日期}
+
+macro_factors:
+  cpi_yoy: {type: float, desc: CPI同比, unit: 百分比}
+  pmi: {type: float, desc: PMI指数}
+  shibor_1y: {type: float, desc: 1年期SHIBOR, unit: 百分比}
+  usd_cnh: {type: float, desc: 美元兑人民币汇率}
+
+point_in_time:
+  available_at: {desc: 数据可用时间, note: 行情=交易日16:00, 事件=采集时间}
+  as_of: {desc: 查询时点, note: 只返回available_at <= as_of的数据}
+
+adjustment:
+  adj_factor: {desc: 复权因子, formula: 前复权价 = raw_close * adj_factor[date] / adj_factor[latest]}
+  adjusted_param: {desc: reader.py参数, values: [True(前复权), False(原始)]}
