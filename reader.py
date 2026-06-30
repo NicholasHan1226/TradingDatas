@@ -106,10 +106,10 @@ MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", SHAREDSIGNALS_ROOT
 MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", SHAREDSIGNALS_ROOT / "data" / "macro_factors.csv"))
 CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
-STOCK_INDUSTRY_MAP_PATH = Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH", MARKETGRAPH_ROOT / "data" / "association" / "stock_industry_map.csv"))
-EVENT_SIGNAL_ASSOC_PATH = Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH", MARKETGRAPH_ROOT / "data" / "association" / "event_signal_associations.csv"))
-IMPACT_RELATIONS_PATH = Path(os.environ.get("IMPACT_RELATIONS_PATH", MARKETGRAPH_ROOT / "data" / "association" / "impact_relations.csv"))
-TARGET_STOCK_MAP_PATH = Path(os.environ.get("TARGET_STOCK_MAP_PATH", MARKETGRAPH_ROOT / "data" / "association" / "target_stock_map.csv"))
+STOCK_INDUSTRY_MAP_PATH = Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "stock_industry_map.csv"))
+EVENT_SIGNAL_ASSOC_PATH = Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "event_signal_associations.csv"))
+IMPACT_RELATIONS_PATH = Path(os.environ.get("IMPACT_RELATIONS_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "impact_relations.csv"))
+TARGET_STOCK_MAP_PATH = Path(os.environ.get("TARGET_STOCK_MAP_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "target_stock_map.csv"))
 
 LEGACY_RECOMMENDATIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "recommendations.csv"  # LEGACY: migrate to SS-native
 LEGACY_REVIEWS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "reviews.csv"  # LEGACY
