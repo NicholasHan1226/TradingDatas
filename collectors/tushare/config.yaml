@@ -1,382 +1,320 @@
-# SharedSignals Tushare collector — 6-tier priority config
-# ZERO on-demand. ALL frequencies are explicit (5min or daily).
-# Placeholders: {ts_code}, {start_date}, {end_date}, {trade_date}
-#
-# Tier        | Freq      | Schedule        | Purpose
-# P0_trading  | 5min      | */5 9-15 1-5    | Live trading data (行情/资金流/因子/分钟)
-# P1_eod      | daily     | 35 16 * * 1-5   | EOD after close (basic/adj/margin/limit)
-# P2_financial| daily     | 30 18 * * 1-5   | Financial statements (after Tushare update)
-# P3_reference| daily     | 15 6 * * *      | Reference/master data (before market)
-# P4_macro    | daily     | 45 8 * * *      | Macro/economic indicators (morning)
-# P5_hk_us    | daily     | 15 7 * * *      | HK/US market data
-# P6_other    | daily     | 30 17 * * *     | Futures/funds/ETF/convertible/news
-
+P7_crypto_pm_5min:
+- api_name: crypto_klines
+  description: Crypto 24/7 klines
+  frequency: 5min
+- api_name: pm_prices
+  description: Polymarket prices
+  frequency: 5min
 priorities:
-  # ── P0: Live trading data — 5-min during market hours ──
   P0_trading_5min:
-    - api_name: daily
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-      fields: "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
-
-    - api_name: moneyflow
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        trade_date: "{trade_date}"
-
-    - api_name: stk_factor
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: index_daily
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: fund_daily
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: stk_mins
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        trade_date: "{trade_date}"
-        freq: "5min"
-
-    - api_name: rt_k
-      frequency: 5min
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-
-  # ── P1: EOD data — daily at 16:35 after close ──
+  - api_name: daily
+    fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
+    frequency: 5min
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: moneyflow
+    frequency: 5min
+    params:
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: stk_factor
+    frequency: 5min
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: index_daily
+    frequency: 5min
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: fund_daily
+    frequency: 5min
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: stk_mins
+    frequency: 5min
+    params:
+      freq: 5min
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: rt_k
+    frequency: 5min
+    params:
+      ts_code: '{ts_code}'
+    per_stock: true
   P1_eod_daily:
-    - api_name: daily_basic
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        trade_date: "{trade_date}"
-
-    - api_name: adj_factor
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: margin_detail
-      frequency: daily
-      per_stock: false
-      params:
-        trade_date: "{trade_date}"
-
-    - api_name: top_list
-      frequency: daily
-      per_stock: false
-      params:
-        trade_date: "{trade_date}"
-
-    - api_name: limit_list
-      frequency: daily
-      per_stock: false
-      params:
-        trade_date: "{trade_date}"
-
-    - api_name: moneyflow_hsgt
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: block_trade
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: stk_auction
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        trade_date: "{trade_date}"
-
-    - api_name: stk_limit
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        trade_date: "{trade_date}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-  # ── P2: Financial statements — daily at 18:30 after Tushare update ──
+  - api_name: daily_basic
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: adj_factor
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: margin_detail
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+  - api_name: top_list
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+  - api_name: limit_list
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+  - api_name: moneyflow_hsgt
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: block_trade
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: stk_auction
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: stk_limit
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
   P2_financial_daily:
-    - api_name: fina_indicator
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-
-    - api_name: income
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: balancesheet
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: cashflow
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: forecast
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: express
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: dividend
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-  # ── P3: Reference/master data — daily at 06:15 before market ──
+  - api_name: fina_indicator
+    frequency: daily
+    params:
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: income
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: balancesheet
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: cashflow
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: forecast
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: express
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: dividend
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
   P3_reference_daily:
-    - api_name: stock_basic
-      frequency: daily
-      per_stock: false
-      params:
-        exchange: ""
-
-    - api_name: stock_company
-      frequency: daily
-      per_stock: false
-      params:
-        exchange: ""
-
-    - api_name: stk_holdernumber
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: concept
-      frequency: daily
-      per_stock: false
-      params: {}
-
-    - api_name: concept_detail
-      frequency: daily
-      per_stock: false
-      params:
-        id: ""
-
-    - api_name: hs_const
-      frequency: daily
-      per_stock: false
-      params:
-        hs_type: ""
-        is_new: ""
-
-    - api_name: margin_secs
-      frequency: daily
-      per_stock: false
-      params:
-        exchange: ""
-
-    - api_name: index_basic
-      frequency: daily
-      per_stock: false
-      params:
-        market: ""
-
-    - api_name: index_weight
-      frequency: daily
-      per_stock: false
-      params:
-        index_code: ""
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-  # ── P4: Macro/economic indicators — daily at 08:45 morning ──
+  - api_name: stock_basic
+    frequency: daily
+    params:
+      exchange: ''
+    per_stock: false
+  - api_name: stock_company
+    frequency: daily
+    params:
+      exchange: ''
+    per_stock: false
+  - api_name: stk_holdernumber
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: concept
+    frequency: daily
+    params: {}
+    per_stock: false
+  - api_name: concept_detail
+    frequency: daily
+    params:
+      id: ''
+    per_stock: false
+  - api_name: hs_const
+    frequency: daily
+    params:
+      hs_type: ''
+      is_new: ''
+    per_stock: false
+  - api_name: margin_secs
+    frequency: daily
+    params:
+      exchange: ''
+    per_stock: false
+  - api_name: index_basic
+    frequency: daily
+    params:
+      market: ''
+    per_stock: false
+  - api_name: index_weight
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      index_code: ''
+      start_date: '{start_date}'
+    per_stock: false
   P4_macro_daily:
-    - api_name: cn_cpi
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: cn_pmi
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: cn_m
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: cn_ppi
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: shibor
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: shibor_lpr
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: cn_gdp
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: sf_month
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-  # ── P5: HK/US market data — daily at 07:15 ──
+  - api_name: cn_cpi
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: cn_pmi
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: cn_m
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: cn_ppi
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: shibor
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: shibor_lpr
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: cn_gdp
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: sf_month
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
   P5_hk_us_daily:
-    - api_name: hk_daily
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: us_daily
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: hk_basic
-      frequency: daily
-      per_stock: false
-      params:
-        ts_code: ""
-
-    - api_name: us_basic
-      frequency: daily
-      per_stock: false
-      params:
-        exchange: ""
-
-  # ── P6: Futures/funds/ETF/convertible bonds/news — daily at 17:30 ──
+  - api_name: hk_daily
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: us_daily
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: hk_basic
+    frequency: daily
+    params:
+      ts_code: ''
+    per_stock: false
+  - api_name: us_basic
+    frequency: daily
+    params:
+      exchange: ''
+    per_stock: false
   P6_other_daily:
-    - api_name: fut_daily
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: fund_basic
-      frequency: daily
-      per_stock: false
-      params:
-        market: ""
-
-    - api_name: etf_basic
-      frequency: daily
-      per_stock: false
-      params:
-        market: ""
-
-    - api_name: cb_daily
-      frequency: daily
-      per_stock: true
-      params:
-        ts_code: "{ts_code}"
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: news
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
-
-    - api_name: major_news
-      frequency: daily
-      per_stock: false
-      params:
-        start_date: "{start_date}"
-        end_date: "{end_date}"
+  - api_name: fut_daily
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: fund_basic
+    frequency: daily
+    params:
+      market: ''
+    per_stock: false
+  - api_name: etf_basic
+    frequency: daily
+    params:
+      market: ''
+    per_stock: false
+  - api_name: cb_daily
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: news
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: major_news
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
