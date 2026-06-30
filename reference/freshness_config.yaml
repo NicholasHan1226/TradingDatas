@@ -1,0 +1,91 @@
+# SharedSignals per-data-source freshness thresholds (hours).
+# When a source is not listed, reader._freshness() falls back to
+# the caller-supplied stale_after_hours parameter.
+#
+# Tiers:
+#   realtime   — sub-hour freshness for live feeds
+#   daily_eod  — T+1 plus buffer for A-share daily data
+#   events     — news / sentiment / event candidates
+#   financial  — quarterly / annual financial statements
+#   macro      — macro-economic indicators
+#   reference  — static reference data (symbol master, calendar, etc.)
+
+sources:
+  # A-share daily market data (T+1 plus buffer)
+  a_share_daily:
+    stale_after_hours: 24
+  tushare:sqlite:market_bars_daily:
+    stale_after_hours: 24
+
+  # Crypto — real-time
+  crypto:
+    stale_after_hours: 1
+  binance:
+    stale_after_hours: 1
+  csv:crypto_klines:
+    stale_after_hours: 1
+
+  # Polymarket prediction markets
+  polymarket:
+    stale_after_hours: 2
+  sqlite:market_pm_markets:
+    stale_after_hours: 2
+  sqlite:market_pm_prices:
+    stale_after_hours: 2
+
+  # Events / sentiment
+  csv:event_candidates:
+    stale_after_hours: 6
+  csv:sentiment_signals:
+    stale_after_hours: 6
+
+  # Financial statements (weekly threshold)
+  tushare:fina_indicator:
+    stale_after_hours: 168
+  sqlite:market_factors:
+    stale_after_hours: 168
+  income:
+    stale_after_hours: 168
+  balancesheet:
+    stale_after_hours: 168
+  cashflow:
+    stale_after_hours: 168
+
+  # Macro
+  csv:macro_factors:
+    stale_after_hours: 48
+  csv:all_weather_regime:
+    stale_after_hours: 48
+
+  # Moneyflow / trading (T+1)
+  csv:moneyflow:
+    stale_after_hours: 24
+
+  # Reference — essentially permanent
+  csv:reference:
+    stale_after_hours: 8760   # 1 year as sentinel; stale_after is irrelevant for reference
+  reference:market_calendar:
+    stale_after_hours: 24     # calendar cached but refreshed daily
+
+  # Realtime 5-min data
+  csv:rt_min_5m:
+    stale_after_hours: 1
+
+  # Legacy datasets
+  legacy:recommendations:
+    stale_after_hours: 24
+  legacy:reviews:
+    stale_after_hours: 24
+  legacy:direction_hit_reviews:
+    stale_after_hours: 24
+  legacy:shadow_sim_trades:
+    stale_after_hours: 24
+  legacy:latest_shadow_positions:
+    stale_after_hours: 24
+  legacy:paper_positions:
+    stale_after_hours: 24
+  legacy:simulated_execution_log:
+    stale_after_hours: 24
+
+# Fallback default when source_id not matched in sources map.
+fallback_default_hours: 24

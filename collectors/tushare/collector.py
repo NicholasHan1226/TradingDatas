@@ -15,6 +15,8 @@ import logging
 import os
 import sys
 from pathlib import Path
+import time
+from threading import Lock
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -55,6 +57,61 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class TushareCollector:
+    """Generic Tushare data collector backed by the Ashare API wrapper.
+
+    Includes API rate limiter for Tushare free tier (200 calls/min).
+
+    Usage::
+
+        collector = TushareCollector()
+        rows = collector.collect("daily", {"ts_code": "000001.SZ",
+                                           "start_date": "20250623",
+                                           "end_date": "20250630"})
+        collector.save("daily", rows, "20250630", filename="000001.SZ.csv")
+    """
+
+    # Rate limiter state (class-level)
+    _rate_window_sec = 60
+    _rate_limit_per_window = 200  # Tushare free tier
+    _rate_calls = {}  # api_name -> list of timestamps
+    _rate_lock = Lock()
+
+    @classmethod
+    def _rate_limit(cls, api_name: str):
+        """Enforce per-API calls/minute limit. Sleeps if approaching threshold.
+
+        Tushare free tier: 200 calls/min. This method tracks call timestamps
+        per api_name, discards stale entries outside the 60s window, and
+        sleeps when the count approaches the limit.
+        """
+        now = time.time()
+        window_start = now - cls._rate_window_sec
+        with cls._rate_lock:
+            stamps = cls._rate_calls.get(api_name, [])
+            stamps = [t for t in stamps if t > window_start]
+            count = len(stamps)
+            if count >= cls._rate_limit_per_window:
+                # At limit: sleep until the oldest call exits the window
+                oldest = stamps[0]
+                sleep_for = oldest + cls._rate_window_sec - now + 0.05
+                if sleep_for > 0:
+                    logger.warning(
+                        "rate_limit: %s at %d/%d calls/min, sleeping %.2fs",
+                        api_name, count, cls._rate_limit_per_window, sleep_for,
+                    )
+                    time.sleep(sleep_for)
+                # Recalculate after sleep
+                now = time.time()
+                window_start = now - cls._rate_window_sec
+                stamps = [t for t in stamps if t > window_start]
+            elif count >= cls._rate_limit_per_window * 0.9:
+                # Approaching limit (90%): log warning
+                logger.info(
+                    "rate_limit: %s approaching limit %d/%d calls/min",
+                    api_name, count, cls._rate_limit_per_window,
+                )
+            stamps.append(now)
+            cls._rate_calls[api_name] = stamps
 
     @staticmethod
     def _dedup_key(api_name: str, row: dict) -> tuple:
@@ -192,16 +249,6 @@ class TushareCollector:
     def validate(self, api_name: str, rows: list) -> list:
         """Add quality metadata to each row."""
         return [self._validate_row(api_name, r) for r in rows]
-    """Generic Tushare data collector backed by the Ashare API wrapper.
-
-    Usage::
-
-        collector = TushareCollector()
-        rows = collector.collect("daily", {"ts_code": "000001.SZ",
-                                           "start_date": "20250623",
-                                           "end_date": "20250630"})
-        collector.save("daily", rows, "20250630", filename="000001.SZ.csv")
-    """
 
     # Directory root for collected CSV output.
     DATA_ROOT = _BASE_DIR / "data" / "tushare"
@@ -227,6 +274,7 @@ class TushareCollector:
         Returns:
             List of row dicts; empty list on error or no results.
         """
+        self._rate_limit(api_name)
         logger.info("collect %s with params=%s", api_name, params)
         try:
             rows = _call(api_name, params, fields or "")
