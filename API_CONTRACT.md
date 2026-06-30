@@ -462,6 +462,97 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
 | 宏观因子 | macro_factors.csv (from MG) | Bridged: `reader.get_macro_factors()` |
 
+### 关联查询 (Association Queries)
+
+#### `get_industry(ts_code)`
+
+**NEW** — 查询股票的行业/产业链/板块/概念信息。
+
+读取 MarketGraph `stock_industry_map.csv`（5,611 只股票），返回申万行业分类、产业链、证监板块、概念等全维度信息。
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `ts_code` | `str` | 必填 | 股票代码，如 `600519.SH` |
+
+**返回**: `list[dict]` — 含 `sw_l1_name`, `sw_l2_name`, `sw_l3_name`, `chain_name`, `segment_name`, `csrc_name`, `cni_name`, `concept`, `gics_sector` 等字段
+
+**示例**:
+```python
+from reader import get_industry
+
+rows = get_industry("600519.SH")
+if rows and not rows[0].get("degraded"):
+    d = rows[0]["data"]
+    print(f"{d['name']}: {d['sw_l1_name']} / {d['chain_name']}")
+```
+
+**错误处理**: ts_code 未找到或文件缺失时返回 degraded 空包装。
+
+---
+
+#### `get_associations(ts_code=None, event_id=None)`
+
+**NEW** — 查询事件↔股票关联关系。
+
+读取 MarketGraph `event_signal_associations.csv`（1,374 条 event→stock 映射）和 `target_stock_map.csv`（71 条 target→stock 映射）。
+
+- 传入 `ts_code`：通过 target_stock_map 逆向查找哪些事件影响了该股票
+- 传入 `event_id`：查找事件影响了哪些股票（自动关联 target_stock_map 补全 ts_codes）
+- 两者都不传：返回全部关联记录
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `ts_code` | `str` | `None` | 股票代码，如 `600519.SH` |
+| `event_id` | `str` | `None` | 事件 ID，如 `evt:ee78c0c3ad7b4fbf` |
+
+**返回**: `list[dict]` — 含 `subject_type`, `subject_name`, `target_type`, `target_name`, `polarity`, `impact_strength`, `effective_confidence` 等字段。event_id 查询时额外含 `ts_codes` 字段
+
+**示例**:
+```python
+from reader import get_associations
+
+# 查询事件影响了哪些股票
+rows = get_associations(event_id="evt:ee78c0c3ad7b4fbf")
+for row in rows:
+    d = row["data"]
+    print(f"{d['target_name']}: {d.get('ts_codes', 'N/A')}")
+
+# 查询某股票受哪些事件影响
+rows = get_associations(ts_code="600519.SH")
+```
+
+---
+
+#### `get_impacts(event_type=None, target=None)`
+
+**NEW** — 查询影响关系边（31,206 条）。
+
+读取 MarketGraph `impact_relations.csv`，支持按事件类型和/或目标筛选。
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `event_type` | `str` | `None` | 影响类型，如 `liquidity`, `sentiment`, `policy` |
+| `target` | `str` | `None` | 目标，模糊匹配 `target_id` / `target_name` / `target_type` |
+
+**返回**: `list[dict]` — 含 `event_id`, `impact_type`, `target_type`, `target_id`, `target_name`, `polarity`, `strength`, `confidence`, `evidence` 等字段
+
+**示例**:
+```python
+from reader import get_impacts
+
+# 查询流动性相关影响
+rows = get_impacts(event_type="liquidity")
+
+# 查询影响有色金属的所有事件
+rows = get_impacts(target="有色金属")
+```
+
+---
+
+
 ## 错误处理指南
 
 ### 分级策略

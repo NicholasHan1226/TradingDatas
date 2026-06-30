@@ -254,6 +254,30 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
+        if path == "/industry":
+            ts_code = params.get("ts_code", "").strip()
+            if not ts_code:
+                raise ValueError("ts_code is required")
+            rows = reader.get_industry(ts_code=ts_code)
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/associations":
+            ts_code = params.get("ts_code", "").strip() or None
+            event_id = params.get("event_id", "").strip() or None
+            if not ts_code and not event_id:
+                raise ValueError("ts_code or event_id is required")
+            rows = reader.get_associations(ts_code=ts_code, event_id=event_id)
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/impacts":
+            event_type = params.get("event_type", "").strip() or None
+            target = params.get("target", "").strip() or None
+            rows = reader.get_impacts(event_type=event_type, target=target)
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
         if path == "/tushare":
             api_name = params.get("api_name", "").strip()
             if not api_name:

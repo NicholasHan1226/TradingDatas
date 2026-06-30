@@ -25,7 +25,13 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable, Iterable
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 
 INVESTMENT_ROOT = Path(os.environ.get("INVESTMENT_ROOT", "/opt/investment"))
@@ -43,6 +49,39 @@ if _env_file.exists():
                 _key, _, _val = _line.partition("=")
                 _os.environ[_key.strip()] = _val.strip().strip('"').strip("'")
 # ---- end env loader ----
+
+# ---- freshness config loader ----
+_freshness_config = None
+_freshness_config_lock = Lock()
+
+def _load_freshness_config():
+    cfg_path = REFERENCE_ROOT / "freshness_config.yaml"
+    global _freshness_config
+    if _freshness_config is not None:
+        return _freshness_config
+    with _freshness_config_lock:
+        if _freshness_config is not None:
+            return _freshness_config
+        if yaml is None or not cfg_path.exists():
+            _freshness_config = {"sources": {}, "fallback_default_hours": 24.0}
+        else:
+            try:
+                with open(cfg_path, "r") as f:
+                    cfg = yaml.safe_load(f) or {}
+                _freshness_config = {
+                    "sources": cfg.get("sources", {}),
+                    "fallback_default_hours": float(cfg.get("fallback_default_hours", 24.0)),
+                }
+            except Exception:
+                _freshness_config = {"sources": {}, "fallback_default_hours": 24.0}
+        return _freshness_config
+
+def _freshness_threshold(source_id):
+    cfg = _load_freshness_config()
+    if source_id and source_id in cfg["sources"]:
+        return float(cfg["sources"][source_id].get("stale_after_hours", cfg["fallback_default_hours"]))
+    return float(cfg["fallback_default_hours"])
+
 SHAREDSIGNALS_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", INVESTMENT_ROOT / "SharedSignals"))
 MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", INVESTMENT_ROOT / "MarketGraph"))
 RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", INVESTMENT_ROOT / "MarketGraphRuntime"))
@@ -67,6 +106,10 @@ MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", SHAREDSIGNALS_ROOT
 MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", SHAREDSIGNALS_ROOT / "data" / "macro_factors.csv"))
 CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
+STOCK_INDUSTRY_MAP_PATH = Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH", MARKETGRAPH_ROOT / "data" / "association" / "stock_industry_map.csv"))
+EVENT_SIGNAL_ASSOC_PATH = Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH", MARKETGRAPH_ROOT / "data" / "association" / "event_signal_associations.csv"))
+IMPACT_RELATIONS_PATH = Path(os.environ.get("IMPACT_RELATIONS_PATH", MARKETGRAPH_ROOT / "data" / "association" / "impact_relations.csv"))
+TARGET_STOCK_MAP_PATH = Path(os.environ.get("TARGET_STOCK_MAP_PATH", MARKETGRAPH_ROOT / "data" / "association" / "target_stock_map.csv"))
 
 LEGACY_RECOMMENDATIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "recommendations.csv"  # LEGACY: migrate to SS-native
 LEGACY_REVIEWS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "reviews.csv"  # LEGACY
@@ -142,19 +185,28 @@ def _age_hours(collected_at: Any) -> float | None:
     return max(0.0, (_now() - dt).total_seconds() / 3600.0)
 
 
-def _freshness(collected_at: Any, *, stale_after_hours: float = 24.0) -> dict[str, Any]:
+def _freshness(collected_at: Any, *, stale_after_hours: float = 24.0, source_id: str | None = None) -> dict[str, Any]:
     age = _age_hours(collected_at)
     if age is None:
         return {"score": 0.0, "stale": True, "age_hours": None}
-    if age <= stale_after_hours:
+    """Compute freshness score. Uses configurable threshold from freshness_config.yaml
+    when source_id is provided; otherwise falls back to stale_after_hours.
+    """
+    threshold = stale_after_hours
+    if source_id:
+        try:
+            threshold = _freshness_threshold(source_id)
+        except Exception:
+            pass
+    if age <= threshold:
         score = 1.0
-    elif age <= stale_after_hours * 3:
+    elif age <= threshold * 3:
         score = 0.7
-    elif age <= stale_after_hours * 7:
+    elif age <= threshold * 7:
         score = 0.4
     else:
         score = 0.1
-    return {"score": score, "stale": age > stale_after_hours, "age_hours": round(age, 4)}
+    return {"score": score, "stale": age > threshold, "age_hours": round(age, 4)}
 
 
 def _quality(data: dict[str, Any]) -> dict[str, Any]:
@@ -194,7 +246,7 @@ def _wrap(
             "source_tier": source_tier or "unknown",
             "collected_at": str(collected),
         },
-        "freshness": _freshness(collected, stale_after_hours=stale_after_hours),
+        "freshness": _freshness(collected, stale_after_hours=stale_after_hours, source_id=source_id),
         "quality": _quality(data),
         "degraded": bool(degraded),
         "lineage": lineage or {},
@@ -781,6 +833,113 @@ def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
     return _safe_public("csv:rt_min_5m", lineage, lambda: _get_realtime_5min_cached(str(ts_code), str(date)))
 
+@lru_cache(maxsize=512)
+def _get_industry_cached(ts_code: str) -> str:
+    path = STOCK_INDUSTRY_MAP_PATH
+    lineage = {"reader": "get_industry", "source_path": str(path), "filters": {"ts_code": ts_code}}
+    rows, degraded = _safe_csv(path, "csv:stock_industry_map", lineage)
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    matched = [row for row in (rows or []) if row.get("ts_code") == ts_code]
+    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:stock_industry_map", source_tier="reference", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+
+
+def get_industry(ts_code: str) -> list[dict[str, Any]]:
+    """Return stock industry / chain / sector / concept info for a given ts_code.
+
+    Reads from MarketGraph stock_industry_map.csv (5,611 stocks).
+    Returns degraded empty wrapper if ts_code not found or file missing.
+    """
+    lineage = {"reader": "get_industry", "filters": {"ts_code": ts_code}}
+    return _safe_public("csv:stock_industry_map", lineage, lambda: _get_industry_cached(str(ts_code)))
+
+
+@lru_cache(maxsize=512)
+def _get_associations_cached(ts_code: str, event_id: str) -> str:
+    """Build lookup: ts_code -> target_stock_map -> associations, or event_id -> associations."""
+    lineage_base = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
+
+    assoc_path = EVENT_SIGNAL_ASSOC_PATH
+    assoc_rows, assoc_degraded = _safe_csv(assoc_path, "csv:event_signal_associations", {**lineage_base, "source_path": str(assoc_path)})
+    if assoc_degraded is not None:
+        return _json_cached(lambda: assoc_degraded)
+
+    tsm_path = TARGET_STOCK_MAP_PATH
+    tsm_rows, tsm_degraded = _safe_csv(tsm_path, "csv:target_stock_map", {**lineage_base, "source_path": str(tsm_path)})
+    if tsm_degraded is not None:
+        return _json_cached(lambda: tsm_degraded)
+
+    if event_id:
+        # event_id -> associations where source_reference_id matches
+        matched_assoc = [row for row in (assoc_rows or []) if row.get("source_reference_id") == event_id]
+        if not matched_assoc:
+            return _json_cached(lambda: _degraded_empty("csv:event_signal_associations", f"no associations for event_id={event_id}", lineage=lineage_base))
+        # Enrich with ts_codes from target_stock_map
+        result: list[dict[str, Any]] = []
+        for assoc in matched_assoc:
+            target_id = assoc.get("target_id", "")
+            tsm_matches = [row for row in (tsm_rows or []) if row.get("target_id") == target_id]
+            if tsm_matches:
+                for tsm in tsm_matches:
+                    merged = dict(assoc)
+                    merged["ts_codes"] = tsm.get("ts_codes", "")
+                    merged["target_stock_source"] = tsm.get("source", "")
+                    result.append(merged)
+            else:
+                result.append(assoc)
+        return _json_cached(lambda: _rows_to_wrappers(result, source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
+
+    if ts_code:
+        # ts_code -> target_stock_map -> targets -> associations
+        tsm_matches = [row for row in (tsm_rows or []) if ts_code in str(row.get("ts_codes", "")).split("|")]
+        if not tsm_matches:
+            return _json_cached(lambda: _degraded_empty("csv:target_stock_map", f"ts_code {ts_code} not found in target_stock_map", lineage=lineage_base))
+        target_ids = set(row.get("target_id", "") for row in tsm_matches if row.get("target_id"))
+        matched_assoc = [row for row in (assoc_rows or []) if row.get("target_id") in target_ids or row.get("target_id") == ts_code or row.get("subject_id") == ts_code]
+        if not matched_assoc:
+            return _json_cached(lambda: _degraded_empty("csv:event_signal_associations", f"no associations for ts_code={ts_code}", lineage=lineage_base))
+        return _json_cached(lambda: _rows_to_wrappers(matched_assoc, source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
+
+    # Neither ts_code nor event_id provided -> return all associations
+    return _json_cached(lambda: _rows_to_wrappers(assoc_rows or [], source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
+
+
+def get_associations(ts_code: str | None = None, event_id: str | None = None) -> list[dict[str, Any]]:
+    """Return event<->stock associations.
+
+    If ts_code given: look up via target_stock_map which events affect this stock.
+    If event_id given: look up which stocks are affected by this event.
+    Returns degraded empty wrapper when nothing found or errors occur.
+    """
+    lineage = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
+    return _safe_public("csv:event_signal_associations", lineage, lambda: _get_associations_cached(str(ts_code or ""), str(event_id or "")))
+
+
+@lru_cache(maxsize=512)
+def _get_impacts_cached(event_type: str, target: str) -> str:
+    path = IMPACT_RELATIONS_PATH
+    lineage = {"reader": "get_impacts", "source_path": str(path), "filters": {"event_type": event_type, "target": target}}
+    rows, degraded = _safe_csv(path, "csv:impact_relations", lineage)
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    matched = rows or []
+    if event_type:
+        matched = [row for row in matched if str(row.get("impact_type", "")).lower() == event_type.lower()]
+    if target:
+        target_lower = target.lower()
+        matched = [row for row in matched if target_lower in str(row.get("target_id", "")).lower() or target_lower in str(row.get("target_name", "")).lower() or target_lower in str(row.get("target_type", "")).lower()]
+    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:impact_relations", source_tier="association", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+
+
+def get_impacts(event_type: str | None = None, target: str | None = None) -> list[dict[str, Any]]:
+    """Return impact relation edges (31,206 edges).
+
+    Filter by event_type (impact_type column) and/or target (target_id/name/type).
+    Returns degraded empty wrapper when nothing found or errors occur.
+    """
+    lineage = {"reader": "get_impacts", "filters": {"event_type": event_type, "target": target}}
+    return _safe_public("csv:impact_relations", lineage, lambda: _get_impacts_cached(str(event_type or ""), str(target or "")))
+
 
 def _summary(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     degraded = sum(1 for row in rows if row.get("degraded"))
@@ -808,6 +967,9 @@ def _self_test() -> list[dict[str, Any]]:
         ("reference", lambda: get_reference("stock_master")[:3]),
         ("is_trading_day", lambda: is_trading_day("20260629")),
         ("realtime_5min", lambda: get_realtime_5min("600276.SH", "20260629")[:3]),
+        ("industry", lambda: get_industry("600519.SH")),
+        ("associations", lambda: get_associations(event_id="evt:ee78c0c3ad7b4fbf")[:5]),
+        ("impacts", lambda: get_impacts(event_type="liquidity")[:5]),
     ]
     results = []
     for name, fn in checks:
@@ -815,10 +977,7 @@ def _self_test() -> list[dict[str, Any]]:
             results.append(_summary(name, fn()))
         except Exception as exc:  # pragma: no cover - __main__ guard
             results.append({"name": name, "rows": 0, "degraded_rows": 1, "error": str(exc)})
-    wrapped = results
-    if as_of and wrapped and not wrapped[0].get("degraded"):
-        wrapped = _as_of_filter(wrapped, as_of)
-    return wrapped
+    return results
 
 
 if __name__ == "__main__":
