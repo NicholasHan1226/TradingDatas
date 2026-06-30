@@ -62,19 +62,19 @@ INTAKE_ROOT = Path(
     )
 )
 REFERENCE_ROOT = Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT", SHAREDSIGNALS_ROOT / "reference"))
-MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", ASHARE_ROOT / "data" / "tushare_cache" / "moneyflow"))
+MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", SHAREDSIGNALS_ROOT / "data" / "moneyflow"))  # TODO: build native moneyflow collector
 # TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
 MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", SHAREDSIGNALS_ROOT / "data" / "macro_factors.csv"))
 CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
 
-LEGACY_RECOMMENDATIONS = ASHARE_ROOT / "data" / "recommendations" / "recommendations.csv"
-LEGACY_REVIEWS = ASHARE_ROOT / "data" / "recommendations" / "reviews.csv"
-LEGACY_DIRECTION_HITS = ASHARE_ROOT / "data" / "recommendations" / "direction_hit_reviews.csv"
-LEGACY_SHADOW_TRADES = ASHARE_ROOT / "data" / "shadow_sim" / "shadow_sim_trades.csv"
-LEGACY_SHADOW_POSITIONS = ASHARE_ROOT / "data" / "shadow_sim" / "latest_shadow_positions.csv"
-LEGACY_PAPER_POSITIONS = ASHARE_ROOT / "data" / "paper_portfolio" / "positions.csv"
-LEGACY_SIM_EXECUTION_LOG = ASHARE_ROOT / "data" / "tradebook" / "simulated_execution_log.jsonl"
+LEGACY_RECOMMENDATIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "recommendations.csv"  # LEGACY: migrate to SS-native
+LEGACY_REVIEWS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "reviews.csv"  # LEGACY
+LEGACY_DIRECTION_HITS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "direction_hit_reviews.csv"  # LEGACY
+LEGACY_SHADOW_TRADES = SHAREDSIGNALS_ROOT / "data" / "legacy" / "shadow_sim_trades.csv"  # LEGACY
+LEGACY_SHADOW_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "latest_shadow_positions.csv"  # LEGACY
+LEGACY_PAPER_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "paper_positions.csv"  # LEGACY
+LEGACY_SIM_EXECUTION_LOG = SHAREDSIGNALS_ROOT / "data" / "legacy" / "simulated_execution_log.jsonl"  # LEGACY
 
 
 def _json_cached(fn: Callable[..., list[dict[str, Any]]], *args: Any) -> str:

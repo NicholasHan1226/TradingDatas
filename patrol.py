@@ -37,7 +37,7 @@ RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_DIR", "/opt/investment/M
 
 DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
 SOURCE_REGISTRY = SHARED_ROOT / "data" / "source_registry.csv"
-INTAKE_DIR = MARKETGRAPH_ROOT / "data" / "intake"
+INTAKE_DIR = SHAREDSIGNALS_ROOT / "data" / "intake"  # fixed: was MARKETGRAPH_ROOT
 STAGING_ROOT = RUNTIME_ROOT / "staging"
 ARCHIVE_DIR = RUNTIME_ROOT / "archive"
 COLLECTION_RUNS_CSV = INTAKE_DIR / "collection_runs.csv"

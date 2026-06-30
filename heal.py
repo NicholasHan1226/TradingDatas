@@ -24,6 +24,8 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+INVESTMENT_ROOT = Path(os.environ.get("INVESTMENT_ROOT", "/opt/investment"))
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
