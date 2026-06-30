@@ -28,7 +28,7 @@ funcs = [
     ("fundamentals", get_fundamentals("600519.SH")),
     ("reference", get_reference("stock_master")),
     ("macro", get_macro_factors("20260601","20260629")),
-    ("capital_flow", get_capital_flow("20260628")),
+    ("capital_flow", get_capital_flow(datetime.now().strftime("%Y%m%d"), ts_code="600519.SH")),
     ("events", get_events("20260601","20260629")),
     ("sentiment", get_sentiment("20260601","20260629")),
     ("crypto", get_crypto_klines("BTCUSDT",5)),
