@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+
+# ---- Auto-load .env on import ----
+import os as _os
+_env_file = __import__("pathlib").Path(__file__).parent / ".env"
+if _env_file.exists():
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                if _line.startswith("export "): _line = _line[7:]
+                _key, _, _val = _line.partition("=")
+                _os.environ[_key.strip()] = _val.strip().strip("\"'").strip("'")
+# ---- end env loader ----
 """http.server based REST API for SharedSignals."""
 
 from __future__ import annotations
