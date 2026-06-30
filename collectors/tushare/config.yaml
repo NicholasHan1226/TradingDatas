@@ -1,0 +1,97 @@
+# SharedSignals Tushare collector — API priority config
+# Each entry: api_name, frequency, params_template
+# Placeholders: {ts_code}, {start_date}, {end_date}, {trade_date}
+
+priorities:
+  P0:   # daily — price / volume / moneyflow / basic
+    - api_name: daily
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+      fields: "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
+
+    - api_name: adj_factor
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+
+    - api_name: moneyflow
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        trade_date: "{trade_date}"
+
+    - api_name: daily_basic
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        trade_date: "{trade_date}"
+
+  P1:   # financial — indicators / income / balance sheet
+    - api_name: fina_indicator
+      frequency: on-demand
+      params:
+        ts_code: "{ts_code}"
+
+    - api_name: income
+      frequency: on-demand
+      params:
+        ts_code: "{ts_code}"
+
+    - api_name: balancesheet
+      frequency: on-demand
+      params:
+        ts_code: "{ts_code}"
+
+  P2:   # reference — stock list / margin / limit / factor
+    - api_name: stock_basic
+      frequency: on-demand
+      params:
+        exchange: ""
+
+    - api_name: margin_detail
+      frequency: daily
+      params:
+        trade_date: "{trade_date}"
+
+    - api_name: limit_list
+      frequency: daily
+      params:
+        trade_date: "{trade_date}"
+
+    - api_name: stk_factor
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+
+  P3:   # market-level — indices / funds / north-bound / top-list
+    - api_name: index_daily
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+
+    - api_name: fund_daily
+      frequency: daily
+      params:
+        ts_code: "{ts_code}"
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+
+    - api_name: moneyflow_hsgt
+      frequency: daily
+      params:
+        start_date: "{start_date}"
+        end_date: "{end_date}"
+
+    - api_name: top_list
+      frequency: daily
+      params:
+        trade_date: "{trade_date}"

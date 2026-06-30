@@ -20,3 +20,4 @@ tools/capability_changes.jsonl
 tools/capability_registry.json
 reference/__pycache__/
 tests/__pycache__/
+data/tushare/
