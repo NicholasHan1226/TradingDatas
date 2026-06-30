@@ -625,25 +625,14 @@ def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:moneyflow", source_tier="tushare", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=48.0))
 
 
-def get_capital_flow(date: Any = None, ts_code: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
-    if date is None and "trade_date" in kwargs:
-        date = kwargs.get("trade_date")
-    if ts_code is None and kwargs.get("symbol"):
-        ts_code = kwargs.get("symbol")
-    lookback_days = max(int(kwargs.get("lookback_days", kwargs.get("window", 1)) or 1), 1)
-    if lookback_days <= 1:
-        lineage = {"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code, **kwargs}}
-        return _safe_public("csv:moneyflow", lineage, lambda: _get_capital_flow_cached(str(date), ts_code))
-
-    merged: list[dict[str, Any]] = []
-    base = _parse_datetime(date)
-    if base is None:
-        return _degraded_empty("csv:moneyflow", f"invalid date: {date}", lineage={"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code, **kwargs}})
-    for offset in range(lookback_days):
-        day = (base - timedelta(days=offset)).strftime("%Y%m%d")
-        merged.extend(_safe_public("csv:moneyflow", {"reader": "get_capital_flow", "filters": {"date": day, "ts_code": ts_code, **kwargs}}, lambda day=day: _get_capital_flow_cached(day, ts_code)))
-    return merged
-
+def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    """Get A-share moneyflow data. Wraps Tushare moneyflow API."""
+    start = kwargs.get("start_date", date)
+    end = kwargs.get("end_date", date)
+    if not start and not ts_code:
+        from datetime import datetime
+        start = datetime.now().strftime("%Y%m%d")
+    return get_tushare("moneyflow", ts_code=ts_code, start_date=start, end_date=end or start)
 
 @lru_cache(maxsize=512)
 def _get_macro_factors_cached(start: str, end: str) -> str:
