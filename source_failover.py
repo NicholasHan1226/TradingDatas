@@ -26,7 +26,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 SHARED_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
 MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", "/opt/investment/MarketGraph"))
-SOURCE_REGISTRY = MARKETGRAPH_ROOT / "data" / "source_registry.csv"
+SOURCE_REGISTRY = SHARED_ROOT / "data" / "source_registry.csv"
 MEMORY_DIR = SHARED_ROOT / "memory"
 FAILOVER_HISTORY = MEMORY_DIR / "failover_history.jsonl"
 

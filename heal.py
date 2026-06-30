@@ -36,7 +36,7 @@ RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_DIR", "/opt/investment/M
 DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
 STAGING_ROOT = RUNTIME_ROOT / "staging"
 ARCHIVE_DIR = RUNTIME_ROOT / "archive"
-INTAKE_DIR = MARKETGRAPH_ROOT / "data" / "intake"
+INTAKE_DIR = SHARED_ROOT / "data" / "intake"
 
 BRIDGE_SCRIPT = SHARED_ROOT / "bridge" / "marketgraph_runtime_bridge.py"
 FAILOVER_SCRIPT = SHARED_ROOT / "source_failover.py"

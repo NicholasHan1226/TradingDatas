@@ -58,12 +58,13 @@ SQLITE_PATH = Path(
 INTAKE_ROOT = Path(
     os.environ.get(
         "SHAREDSIGNALS_INTAKE_ROOT",
-        MARKETGRAPH_ROOT / "data" / "intake",
+        SHAREDSIGNALS_ROOT / "data" / "intake",
     )
 )
 REFERENCE_ROOT = Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT", SHAREDSIGNALS_ROOT / "reference"))
 MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", ASHARE_ROOT / "data" / "tushare_cache" / "moneyflow"))
-MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", MARKETGRAPH_ROOT / "data" / "macro_factors.csv"))
+# TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
+MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", SHAREDSIGNALS_ROOT / "data" / "macro_factors.csv"))
 CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
 
@@ -590,7 +591,7 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
     if end is None:
         end = start
     if "date" in kwargs:
-        path = MARKETGRAPH_ROOT / "data" / "all_weather_regime.csv"
+        path = SHAREDSIGNALS_ROOT / "data" / "all_weather_regime.csv"
         lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}, "compat_mode": "all_weather_regime"}
         rows, degraded = _safe_csv(path, "csv:all_weather_regime", lineage)
         if degraded is not None:
