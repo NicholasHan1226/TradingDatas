@@ -541,6 +541,77 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
 
 
 @lru_cache(maxsize=512)
+
+@lru_cache(maxsize=512)
+def _get_tushare_cached(api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
+    """Route to Tushare API via a_share_tushare_api._call()."""
+    try:
+        import sys
+        ashare_tools = str(ASHARE_ROOT / "tools")
+        if ashare_tools not in sys.path:
+            sys.path.insert(0, ashare_tools)
+        from a_share_tushare_api import _call as tushare_call
+
+        params = json.loads(params_json) if params_json else {}
+        if ts_code:
+            params["ts_code"] = ts_code
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+
+        rows = tushare_call(api_name, params)
+        lineage = {
+            "reader": "get_tushare",
+            "source": f"tushare:{api_name}",
+            "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params},
+        }
+        return _json_cached(lambda: _rows_to_wrappers(
+            rows or [],
+            source_id=f"tushare:{api_name}",
+            source_tier="tushare",
+            lineage=lineage,
+            stale_after_hours=48.0,
+        ))
+    except Exception as exc:
+        lineage = {"reader": "get_tushare", "filters": {"api_name": api_name, "ts_code": ts_code}}
+        return _json_cached(lambda: _degraded_empty(
+            f"tushare:{api_name}",
+            f"Tushare {api_name} failed: {exc}",
+            lineage=lineage,
+        ))
+
+
+def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | None = None, end_date: str | None = None, **params: Any) -> list[dict[str, Any]]:
+    """Read Tushare API data through SharedSignals reader, returning metadata-wrapped rows.
+
+    Routes to Tushare API via a_share_tushare_api._call().  Returns the same
+    wrapped shape as every other reader function (data / provenance / freshness /
+    quality / degraded / lineage).  Results are LRU-cached (maxsize=512).
+
+    Args:
+        api_name: Tushare API name, e.g. "daily", "moneyflow", "fina_indicator",
+                  "income", "balancesheet", "adj_factor", "margin", "limit_list",
+                  "hk_hold", "stock_minutes", "news_list", etc.
+        ts_code: Optional stock code; auto-added to params as "ts_code".
+        start_date: Optional start date (YYYYMMDD); auto-added as "start_date".
+        end_date: Optional end date (YYYYMMDD); auto-added as "end_date".
+        **params: Additional Tushare API parameters passed through directly.
+
+    Returns:
+        list[dict]: Metadata-wrapped rows with source_id="tushare:{api_name}".
+    """
+    lineage = {
+        "reader": "get_tushare",
+        "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params},
+    }
+    extra = {k: v for k, v in params.items() if k not in ("ts_code", "start_date", "end_date")}
+    params_json = json.dumps(extra, sort_keys=True, default=str) if extra else ""
+    return _safe_public(
+        f"tushare:{api_name}",
+        lineage,
+        lambda: _get_tushare_cached(str(api_name), ts_code, start_date, end_date, params_json),
+    )
 def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
     date_key = _date_key(date_value)
     path = MONEYFLOW_ROOT / f"{date_key}.csv"
@@ -740,6 +811,7 @@ def _self_test() -> list[dict[str, Any]]:
         ("events", lambda: get_events("20260628", "20260629")[:3]),
         ("sentiment", lambda: get_sentiment("20260628", "20260629")[:3]),
         ("fundamentals", lambda: get_fundamentals("BTCUSDT")[:3]),
+        ("tushare", lambda: get_tushare("daily", ts_code="000001.SZ", start_date="20260626", end_date="20260629")[:3]),
         ("capital_flow", lambda: get_capital_flow("20260629", "000001.SZ")[:3]),
         ("macro_factors", lambda: get_macro_factors("20260601", "20260630")[:3]),
         ("crypto_klines", lambda: get_crypto_klines("BTCUSDT", 3)),

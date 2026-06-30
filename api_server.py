@@ -254,6 +254,21 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
+        if path == "/tushare":
+            api_name = params.get("api_name", "").strip()
+            if not api_name:
+                raise ValueError("api_name is required")
+            ts_code = params.get("ts_code", "").strip() or None
+            rows = reader.get_tushare(
+                api_name=api_name,
+                ts_code=ts_code,
+                start_date=params.get("start_date") or None,
+                end_date=params.get("end_date") or None,
+                **{k: v for k, v in params.items() if k not in ("api_name", "ts_code", "start_date", "end_date")},
+            )
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
         raise ValueError(f"unknown endpoint: {path}")
 
 

@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.0.0 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.0 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -56,7 +56,7 @@ marketdata.sqlite (11 表)
 
 | market | 含义 | 数据源 |
 |--------|------|--------|
-| `Ashare` | A 股 | Tushare (14 接口) |
+| `Ashare` | A 股 | Tushare (60+ 接口) — SharedSignals now has native Tushare collector via `reader.get_tushare()` |
 | `HK` | 港股 | A 股 ETF 代理 (6 ETF + HSI) |
 | `US` | 美股 | Tushare 美股接口 / Alpaca |
 | `Crypto` | 加密 | Binance (4 接口) |
@@ -391,6 +391,77 @@ if is_trading_day("20260630"):
 
 ---
 
+
+
+---
+
+### Tushare 原生读取
+
+#### `get_tushare(api_name, ts_code=None, start_date=None, end_date=None, **params)`
+
+**NEW** — 通过 SharedSignals reader 直接读取 Tushare API 数据。路由到 `a_share_tushare_api._call()`，返回与其他 reader 函数一致的 metadata-wrapped 格式。结果 LRU-cached（maxsize=512）。
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `api_name` | `str` | 必填 | Tushare API 名，如 `daily`、`moneyflow`、`fina_indicator`、`income`、`balancesheet`、`adj_factor`、`margin`、`limit_list`、`hk_hold`、`stock_minutes`、`news_list` 等 |
+| `ts_code` | `str` | `None` | 股票代码，自动注入到 params 中 |
+| `start_date` | `str` | `None` | 起始日期 YYYYMMDD，自动注入到 params 中 |
+| `end_date` | `str` | `None` | 截止日期 YYYYMMDD，自动注入到 params 中 |
+| `**params` | — | — | 透传的 Tushare API 额外参数 |
+
+**返回**: `list[dict]` — 每条含 `data` / `provenance` / `freshness` / `quality` / `degraded` / `lineage`
+
+**示例**:
+```python
+from reader import get_tushare
+
+# 读取贵州茅台日线行情
+rows = get_tushare("daily", ts_code="600519.SH", start_date="20260601", end_date="20260630")
+for row in rows:
+    d = row["data"]
+    print(f"{d['trade_date']}: O={d['open']} C={d['close']}")
+
+# 读取个股资金流向
+rows = get_tushare("moneyflow", ts_code="000001.SZ", start_date="20260629", end_date="20260629")
+
+# 读取财务指标
+rows = get_tushare("fina_indicator", ts_code="600519.SH", start_date="20250101")
+
+# 读取任意 Tushare API，传额外参数
+rows = get_tushare("income", ts_code="600519.SH", period="20251231")
+```
+
+**错误处理**: Tushare API 不可用时返回 degraded 空包装，不抛异常。
+
+**数据新鲜度**: Tushare 数据 `stale_after_hours=48.0`；日线数据通常盘后 EOD 级别。
+
+### 数据维度来源标注
+
+以下标注哪些数据维度由 SharedSignals **natively collected**（原生采集）vs **bridged**（桥接）：
+
+| 数据维度 | 来源 | 方式 |
+|---------|------|------|
+| A 股日线 OHLCV | Tushare `daily` | **Native: `reader.get_tushare("daily", ...)`** |
+| A 股资金流向 | Tushare `moneyflow` | **Native: `reader.get_tushare("moneyflow", ...)`** + CSV cache |
+| A 股财务指标 | Tushare `fina_indicator` | **Native: `reader.get_tushare("fina_indicator", ...)`** / `reader.get_fundamentals()` |
+| A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | **Native: `reader.get_tushare("income", ...)`** |
+| A 股复权因子 | Tushare `adj_factor` | **Native: `reader.get_tushare("adj_factor", ...)`** |
+| A 股融资融券 | Tushare `margin` | **Native: `reader.get_tushare("margin", ...)`** |
+| A 股涨跌停列表 | Tushare `limit_list` | **Native: `reader.get_tushare("limit_list", ...)`** |
+| A 股北向资金 | Tushare `hk_hold` | **Native: `reader.get_tushare("hk_hold", ...)`** |
+| A 股分钟线 | Tushare `stock_minutes` | **Native: `reader.get_tushare("stock_minutes", ...)`** / `reader.get_realtime_5min()` |
+| A 股新闻 | Tushare `news_list` | **Native: `reader.get_tushare("news_list", ...)`** |
+| Crypto klines | Binance → marketdata.sqlite | Bridged: `read_daily("Crypto", ...)` |
+| Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
+| US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
+| HK ETF 日线 | marketdata.sqlite | Bridged: `read_daily("HK", ...)` via `get_hk_etf` |
+| Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
+| 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()` |
+| 交易日历 | reference/market_calendar.py | Bridged: `reader.is_trading_day()` |
+| 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
+| 宏观因子 | macro_factors.csv (from MG) | Bridged: `reader.get_macro_factors()` |
+
 ## 错误处理指南
 
 ### 分级策略
@@ -499,4 +570,5 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
 | 2026-06-30 | 1.0.0 | 初始版本，文档化全部 reader 函数 |
