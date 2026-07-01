@@ -9,7 +9,7 @@ def fetch_adj_factor(ts_code, start_date="20200101", end_date=None):
         from a_share_tushare_api import _call
         rows = _call("adj_factor", {"ts_code": ts_code, "start_date": start_date, "end_date": end_date})
         return {r["trade_date"]: float(r["adj_factor"]) for r in rows} if rows else {}
-    except: return {}
+    except (ImportError, ValueError, KeyError, TypeError, OSError): return {}
 def get_adjusted_price(ts_code, date, raw_close):
     factors = fetch_adj_factor(ts_code)
     if not factors or date not in factors: return raw_close

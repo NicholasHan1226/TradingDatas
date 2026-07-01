@@ -11,9 +11,12 @@ Import chain:
 from __future__ import annotations
 
 import csv
+import hashlib
 import logging
 import os
+import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 import time
 from threading import Lock
@@ -49,6 +52,8 @@ if str(_ASHARE_TOOLS) not in sys.path:
 
 from a_share_tushare_api import _call  # noqa: E402
 
+from ..base import BaseCollector  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +61,7 @@ logger = logging.getLogger(__name__)
 # TushareCollector
 # ---------------------------------------------------------------------------
 
-class TushareCollector:
+class TushareCollector(BaseCollector):
     """Generic Tushare data collector backed by the Ashare API wrapper.
 
     Includes API rate limiter for Tushare free tier (200 calls/min).
@@ -73,8 +78,14 @@ class TushareCollector:
     # Rate limiter state (class-level)
     _rate_window_sec = 60
     _rate_limit_per_window = 200  # Tushare free tier
-    _rate_calls = {}  # api_name -> list of timestamps
+    _rate_calls: dict[str, list[float]] = {}  # api_name -> list of timestamps
     _rate_lock = Lock()
+
+    # Data root (class-level — set from module _BASE_DIR)
+    DATA_ROOT = _BASE_DIR / "data" / "tushare"
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config)
 
     @classmethod
     def _rate_limit(cls, api_name: str):
@@ -163,7 +174,7 @@ class TushareCollector:
                 if float(row.get("high", 0)) < float(row.get("low", 0)):
                     quality["issues"].append("high_less_than_low")
                     quality["score"] = 0.0
-            except: pass
+            except (ValueError, TypeError): pass
         # Missing key fields
         for f in ("ts_code", "trade_date"):
             if api_name in ("daily", "moneyflow", "stk_factor"):
@@ -250,9 +261,6 @@ class TushareCollector:
         """Add quality metadata to each row."""
         return [self._validate_row(api_name, r) for r in rows]
 
-    # Directory root for collected CSV output.
-    DATA_ROOT = _BASE_DIR / "data" / "tushare"
-
     # ------------------------------------------------------------------
     # collect
     # ------------------------------------------------------------------
@@ -332,6 +340,104 @@ class TushareCollector:
         except Exception:
             logger.exception("save %s failed", api_name)
             return None
+
+    # ------------------------------------------------------------------
+    # BaseCollector-compatible interface (orchestrator calls these)
+    # ------------------------------------------------------------------
+
+    name = "tushare"
+    provider = "tushare"
+    market = "Ashare"
+    target_tables = ["market_bars_daily", "market_events"]
+
+    def health_check(self) -> dict[str, Any]:
+        """Check if Tushare API wrapper is importable and functional."""
+        try:
+            from a_share_tushare_api import _call  # noqa: F811
+            return {"status": "available", "message": "tushare api wrapper loaded"}
+        except ImportError as exc:
+            return {"status": "unavailable", "message": str(exc)}
+
+    def plan(self, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Generate collection tasks by flattening priority groups from config."""
+        tasks: list[dict[str, Any]] = []
+
+        # Collect all API entries across priority groups
+        for key, value in self.config.items():
+            if key == "priorities":
+                for _prio_name, prio_tasks in value.items():
+                    if isinstance(prio_tasks, list):
+                        tasks.extend(prio_tasks)
+            elif isinstance(value, list):
+                tasks.extend(value)
+
+        return tasks
+
+    def run(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Orchestrator-compatible run() — executes full lifecycle via mixin hooks."""
+        run_id = self._make_run_id()
+        started_at = self._utc_now()
+
+        result: dict[str, Any] = {
+            "run_id": run_id, "collector": self.name, "started_at": started_at,
+            "finished_at": "", "status": "running", "rows_read": 0,
+            "rows_written": 0, "tables_written": [], "error": "", "notes": {},
+        }
+
+        try:
+            health = self.health_check()
+            if health.get("status") == "unavailable":
+                result["status"] = "skipped"
+                result["error"] = health.get("message", "collector unavailable")
+                return self._finish(result)
+
+            tasks = self.plan(context)
+            if not tasks:
+                result["status"] = "success"
+                result["notes"]["message"] = "no tasks planned"
+                return self._finish(result)
+
+            for task in tasks:
+                try:
+                    rows = self.collect(
+                        task["api_name"], task.get("params", {}), task.get("fields"),
+                    )
+                    if not rows:
+                        continue
+                    result["rows_read"] += len(rows)
+
+                    validated = self.validate_batch(task["api_name"], rows)
+                    deduped = self.deduplicate_batch(task["api_name"], validated)
+
+                    trade_date = task.get("trade_date") or datetime.now(timezone.utc).strftime("%Y%m%d")
+                    save_path = self.save(task["api_name"], deduped, trade_date)
+                    if save_path:
+                        result["rows_written"] += len(deduped)
+                        result["tables_written"].extend(self.target_tables)
+                except Exception:
+                    logger.exception("task failed: %s", task)
+                    result["notes"].setdefault("task_errors", []).append(str(task))
+
+            result["status"] = "success" if result["rows_written"] > 0 else "partial_success"
+        except Exception as exc:
+            logger.exception("collector run failed: %s", self.name)
+            result["status"] = "failed"
+            result["error"] = str(exc)
+
+        try:
+            self._write_audit({
+                "run_id": run_id,
+                "started_at": started_at,
+                "finished_at": self._utc_now(),
+                "status": result["status"],
+                "source": f"{self.name}:{self.provider}",
+                "rows_read": result["rows_read"],
+                "rows_written": result["rows_written"],
+                "notes": {"config_hash": str(hash(str(self.config))), "error": result["error"]},
+            })
+        except Exception:
+            logger.exception("audit write failed for %s", self.name)
+        return self._finish(result)
 
 
 # ---------------------------------------------------------------------------
