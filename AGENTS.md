@@ -60,3 +60,14 @@
 - heal.py — 自愈引擎 (failover/backfill/merge/checkpoint/cleanup/drift)
 - source_failover.py — 源故障切换映射
 - logs/ — 紧急告警 (emergency_alerts.log)
+
+## Projects 工作区同步补充
+
+本仓库位于 `/Users/nicholashan/Projects/SharedSignals` 时，按 Projects 工作区统一同步规则执行：
+
+- 仓库地址、remote 名称和默认分支以本仓库内 `git remote -v`、`git branch --show-current` 和项目文档为准，不从其它项目继承。
+- 开发前检查 `git status -sb`、`git remote -v`、当前分支和是否落后远端；发现采集、存储、桥接或其它 agent 的未提交改动时，先确认来源，不得覆盖。
+- 涉及采集源、SQLite/CSV/NDJSON staging、schema、API contract、bridge、patrol/heal、failover 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md`、`LOG.md` 或 `docs/` 下对应说明。
+- 提交时只暂存本次审计过的文件；数据库、缓存、日志、staging、密钥和本机运行产物默认不提交，除非项目文档明确要求并已审计。
+- 从旧 `Desktop/Works/02.AI_Projects` 或其它 iCloud 管理目录迁移时，优先使用当前 Projects 下真实 clone；旧目录只作为对照和补漏来源。
+
