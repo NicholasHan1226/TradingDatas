@@ -3,6 +3,12 @@
 ## 目标
 统一数据采集与存储, 供研究线和交易线共享读取。
 
+
+## 三系统协作边界
+
+- SharedSignals 是供数层，只负责采集、去重、缓存和健康巡查；不做投资分析、交易判断、执行路由或回执处理。
+- MarketGraph 和 Tradings 可以读取 SharedSignals 暴露的 SQLite/CSV/NDJSON 或未来服务接口；这种关系是数据契约消费，不是 MCP 强耦合互调。
+- 未来对外提供服务接口时，默认只暴露数据读取、健康状态和来源留痕；任何交易信号、下单、模拟执行或邮件通知都属于 Tradings/Hermes 边界。
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库
 - 不做什么: 不分析, 不分类, 不做交易决策
@@ -16,7 +22,7 @@
 
 ## 依赖
 - 读取: 外部API (Tushare/Binance/PM/RSS/Tavily/DeepSeek)
-- 输出: SQLite + CSV → MarketGraph和Tradings读取
+- 输出: SQLite + CSV + NDJSON/未来只读服务接口 → MarketGraph 和 Tradings 按契约读取
 
 ## 巡查自愈系统 (patrol + heal)
 
@@ -71,3 +77,10 @@
 - 提交时只暂存本次审计过的文件；数据库、缓存、日志、staging、密钥和本机运行产物默认不提交，除非项目文档明确要求并已审计。
 - 从旧 `Desktop/Works/02.AI_Projects` 或其它 iCloud 管理目录迁移时，优先使用当前 Projects 下真实 clone；旧目录只作为对照和补漏来源。
 
+## 2026-07-01 定时采集与 Tushare tier 口径修正
+
+- SharedSignals 到 Tradings 的关系是“定时采集沉淀 + reader/read model 按需读取”，不是 Tradings 每次判断时重新现场采集。
+- Tushare `sync_daily.py` 当前只支持：`P0_trading_5min`、`P1_eod_daily`、`P2_financial_daily`、`P3_reference_daily`、`P4_macro_daily`、`P5_hk_us_daily`、`P6_other_daily`。
+- A股盘中 P0 采集保持交易时段每 5 分钟；P1/P2/P3/P4 分别按盘后、晚间、盘前、早间日频维护。
+- HK/US Tushare daily 采集使用 `P5_hk_us_daily`，按港股收盘后和美股收盘后日频维护；期货/基金/ETF/新闻等使用 `P6_other_daily` 日频维护。
+- `collectors/tushare/config.yaml` 已删除无效 `P7_crypto_pm_5min` 顶层配置；Crypto/PM 不属于 Tushare tier，必须走各自 collector/reader，不得重新启用旧 `P7_crypto_pm` cron。
