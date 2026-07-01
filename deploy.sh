@@ -5,8 +5,9 @@ set -euo pipefail
 
 REPO_DIR="/opt/investment/SharedSignals"
 BACKUP_DIR="/opt/investment/SharedSignals/backups"
-SQLITE_DB="/opt/investment/SharedSignals/storage/marketdata.sqlite"
-VENV_PYTHON="/opt/marketgraph/venv/bin/python3"
+RUNTIME_DIR="${MARKETGRAPH_RUNTIME_ROOT:-/opt/investment/MarketGraphRuntime}"
+SQLITE_DB="${RUNTIME_DIR}/read_model/marketdata.sqlite"
+VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 TAG="deploy-${TIMESTAMP}"
 LOG_FILE="${REPO_DIR}/logs/deploy_${TIMESTAMP}.log"
@@ -66,8 +67,20 @@ else
     success "Pulled: $(git log --oneline -1)"
 fi
 
-# ---- Phase 3: Run migrations ----
-log "Phase 3: Run migrations"
+# ---- Phase 3: Install/update dependencies ----
+log "Phase 3: Dependencies"
+REQUIREMENTS="${REPO_DIR}/requirements.txt"
+if [ -f "$REQUIREMENTS" ]; then
+    $VENV_PYTHON -m pip install -r "$REQUIREMENTS" --quiet 2>&1 | tee -a "$LOG_FILE"
+    success "Dependencies installed"
+else
+    log "No requirements.txt found - checking core packages"
+    $VENV_PYTHON -m pip install duckdb pandas pyyaml requests --quiet 2>&1 | tee -a "$LOG_FILE"
+    success "Core packages verified"
+fi
+
+# ---- Phase 4: Run migrations ----
+log "Phase 4: Run migrations"
 MIGRATION_SCRIPT="${REPO_DIR}/storage/migrate.py"
 if [ -f "$MIGRATION_SCRIPT" ]; then
     $VENV_PYTHON "$MIGRATION_SCRIPT" 2>&1 | tee -a "$LOG_FILE"
@@ -76,8 +89,8 @@ else
     log "No migration script found - skipping"
 fi
 
-# ---- Phase 4: Smoke test ----
-log "Phase 4: Smoke test"
+# ---- Phase 5: Smoke test ----
+log "Phase 5: Smoke test"
 TEST_LOG="${BACKUP_DIR}/smoke_${TIMESTAMP}.log"
 
 # Run test suite
@@ -110,8 +123,8 @@ else
     false
 fi
 
-# ---- Phase 5: Switch ----
-log "Phase 5: Switch"
+# ---- Phase 6: Switch ----
+log "Phase 6: Switch"
 
 # Restart any services if needed
 SERVICE_FILE="/etc/systemd/system/sharedsignals.service"

@@ -22,7 +22,7 @@
 
 ## 概述
 
-SharedSignals 提供统一的只读数据访问层。所有消费者（Tradings、MarketGraph、研究工具）通过以下两个入口读取数据：
+SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAgent、MarketGraph、研究工具）通过以下两个入口读取数据：
 
 | 入口 | 实现文件 | 适用场景 |
 |------|---------|---------|

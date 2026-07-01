@@ -2,8 +2,8 @@
 # All sources, full frequency, production database
 
 environment: prod
-server: 8.138.181.177
-secondary_server: 47.82.153.58  # Singapore RSS mirror
+server: ${SHAREDSIGNALS_SERVER:-8.138.181.177}
+secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore RSS mirror
 
 # ---- Database ----
 database:

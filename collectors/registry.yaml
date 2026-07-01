@@ -1,0 +1,53 @@
+# SharedSignals Collector Registry
+# Maps collector names to their class paths, config files, and scheduling priorities.
+#
+# Priority tiers:
+#   P0 — Trading hot-path, 5min cycles (crypto intraday)
+#   P1 — EOD, daily bars after market close
+#   P2 — Financial statements, quarterly
+#   P3 — Reference data, weekly
+#   P4 — Macro data, monthly
+#   P5 — HK/US markets, daily
+#   P6 — Other daily data
+#   P7 — 24/7 streams (crypto daily, PM, RSS)
+
+collectors:
+  tushare:
+    module: collectors.tushare.collector
+    class: TushareCollector
+    config: collectors/tushare/config.yaml
+    priority: P1
+    enabled: true
+    schedule: "0 16 * * 1-5"  # after A-share market close
+
+  crypto_binance:
+    module: collectors.crypto.binance
+    class: CryptoCollector
+    config: collectors/crypto/config.yaml
+    priority: P0
+    enabled: true
+    schedule: "*/5 * * * *"  # every 5 minutes
+
+  polymarket:
+    module: collectors.polymarket.collector
+    class: PMCollector
+    config: collectors/polymarket/config.yaml
+    priority: P7
+    enabled: true
+    schedule: "*/30 * * * *"  # every 30 minutes
+
+  rss:
+    module: collectors.rss.collector
+    class: RSSCollector
+    config: {}
+    priority: P7
+    enabled: true
+    schedule: "*/15 * * * *"  # every 15 minutes
+
+# Global settings
+global:
+  log_level: INFO
+  staging_dir: data/staging
+  audit_dir: data/audit
+  max_parallel_collectors: 4
+  dry_run: false

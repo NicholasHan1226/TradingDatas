@@ -1,43 +1,72 @@
-# SharedSignals Status
+# SharedSignals 状态
 
-## 迁移进度 (2026-06-29)
-- [x] 文件夹结构 (collectors/storage/bridge/reference/memory/logs)
-- [x] bridge/ — 软链 MarketGraph runtime_bridge + marketdata_db
-- [x] reference/ — 软链 Tushare wrapper (a_share_tushare_api.py)
-- [x] reference/ — 软链 RSSCollector (bridge/filter/feed_store/collector/config.yaml)
-- [x] reference/market_calendar.py — 交易日历 (基于 Tushare trade_cal API)
-- [ ] collectors/ — 各数据源采集器 (待提取, 统一接口)
-- [ ] storage/ — DuckDB schema (当前 SQLite marketdata.sqlite 75MB, 11表)
+> **给所有 agent：** 读完 [AGENTS.md](AGENTS.md) 理解规则后，读本文件理解"现在在哪、要去哪、能做什么"。
+>
+> **⚠️ 变更后必须更新本文件。**
+>
+> 最后更新：2026-07-02
 
-## 当前接入 (软链方式, 零拷贝)
-| 模块 | 软链目标 | 用途 |
-|------|----------|------|
-| bridge/marketgraph_runtime_bridge.py | MarketGraph/tools/ | staging→CSV 归并桥 |
-| bridge/marketgraph_marketdata_db.py | MarketGraph/08-Market-Interfaces/tools/ | marketdata.sqlite 读写 |
-| reference/a_share_tushare_api.py | Ashare/tools/ | Tushare 14接口统一封装 (LRU缓存) |
-| reference/rss_bridge.py | RSSCollector/bridge.py | RSS 采集桥 |
-| reference/filter.py | RSSCollector/ | RSS 过滤 |
-| reference/feed_store.py | RSSCollector/ | RSS 存储 |
-| reference/collector.py | RSSCollector/ | RSS 采集器 |
-| reference/config.yaml | RSSCollector/ | RSS 配置 |
-| reference/market_calendar.py | 本仓原生 | A股交易日历 |
+---
 
-## 数据现状
-- 行情: Tushare(14接口)/Binance(4)/PM(3) → SQLite + CSV缓存
-- 事件: RSS(883源)+Tavily+agents → staging NDJSON → runtime_bridge → CSV
-- 基本面: Tushare财务接口 (按需实时调)
-- marketdata.sqlite: 75MB, 11表, 正常运行
-- staging: 6 streams, 活跃
+## 一、当前状态
 
-## 交易日历 API (reference/market_calendar.py)
-- is_trading_day(date=None) — 默认今天; 返回 bool
-- get_next_trading_day(date=None, include_today=False) — 下一个交易日; 无则 None
-- get_trading_days(start, end) — 闭区间 [start, end] 内所有交易日 (list[date])
-- 日期参数接受 date/datetime/str (YYYY-MM-DD / YYYY/MM/DD / YYYYMMDD)
-- 内置 (start,end) 范围缓存 + 复用 Tushare wrapper 的 LRU 缓存
-- 已通过实盘 Tushare API 验证 (2026-06-29: today=True, next=2026-06-30)
+- **行情采集**：稳定运行 — Tushare（14 接口）+ Binance（4）+ Polymarket（3）→ SQLite + CSV
+- **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV
+- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）
+- **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
+- **DuckDB 迁移**：SQLite 保持权威写模型 → NDJSON staging → DuckDB read model（StorageAdapter 双后端同步运行中）
+- **存储**：marketdata.sqlite（~81MB，11 表），staging 6 streams 活跃
+- **服务器**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS → rsync → 杭州）
 
-## 待办
-- 提取现有采集器到 collectors/, 统一采集接口
-- 引入 DuckDB (当前 SQLite, 计划迁移)
-- patrol.py / heal.py 巡查自愈
+## 二、已知问题
+
+- DuckDB 迁移未完成：SQLite 仍为权威写模型，DuckDB shadow read-model 在并行运行
+- 美国/全球宏观数据覆盖不足
+- 港股财务数据采集未接入（Tushare hk_income/hk_balance/hk_cashflow 接口已可用）
+
+## 三、下一步
+
+1. [ ] DuckDB 作为主存储完成切换（当前 SQLite 81MB，数据量持续增长）
+2. [ ] 完善美国/全球宏观数据采集覆盖
+3. [ ] 接入港股财务数据采集
+
+## 四、活跃任务
+
+- 暂无待办，系统稳定运行
+
+## 五、采集器架构
+
+| 采集器 | 数据源 | 输出表 | 状态 |
+|--------|--------|--------|------|
+| Tushare | Tushare Pro（21 API） | market_bars_daily 等 | 已有（参考实现） |
+| Binance | Binance REST API | market_bars_daily, market_bars_intraday | 新实现 |
+| Polymarket | Gamma API + CLOB API | market_pm_markets, market_pm_prices | 新实现 |
+| RSS | RSSCollector bridge（883 源） | market_events | 新实现 |
+
+### 运维基础设施
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| 巡查 | `patrol.py` | 6 项健康检查：source_health, data_freshness, staging_backpressure, sqlite_health, disk_usage, field_drift |
+| 自愈 | `heal.py` | 6 种策略：source failover, backfill, force bridge merge, WAL checkpoint, disk cleanup, field drift update |
+| 同步 | `duckdb_merge.py` | SQLite → DuckDB 定时同步 |
+| 调度 | `scheduler.py` | merge → patrol → heal 统一调度入口 |
+
+### Tushare 采集分层
+
+| Tier | 频次 | 内容 |
+|------|------|------|
+| P0 | 交易时段 5 分钟 | A 股盘中行情 |
+| P1 | 盘后日频 | 日线行情 |
+| P2 | 盘后日频 | 财务数据 |
+| P3 | 晚间日频 | 参考数据 |
+| P4 | 早间日频 | 宏观数据 |
+| P5 | 收盘后日频 | 港股/美股 |
+| P6 | 日频 | 期货/基金/ETF/新闻 |
+| P7 | 已删除 | Crypto/PM 不属于 Tushare tier，走各自 collector |
+
+## 六、关联系统状态
+
+- [TradingAgent STATUS](../TradingAgent/STATUS.md) — 交易执行与模拟盘状态
+- [MarketGraph STATUS](../MarketGraph/STATUS.md) — 研究图谱与因果状态
+- [Finance STATUS](../STATUS.md) — 根工作区总览

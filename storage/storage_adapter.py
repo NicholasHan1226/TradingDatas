@@ -1,0 +1,156 @@
+"""Storage adapter — bridges SQLite (authoritative) and DuckDB (analytics read-model).
+
+Provides:
+  - sqlite_connect() — connect to marketdata.sqlite
+  - duckdb_connect() — connect to marketdata.duckdb (or :memory: for tests)
+  - sync_to_duckdb() — batch-sync SQLite rows to DuckDB shadow
+  - query() — unified read across both backends (DuckDB-first for analytics)
+"""
+
+from __future__ import annotations
+
+import logging
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+import duckdb
+
+from .duckdb_schema import create_schema
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_SQLITE_PATH = "data/marketdata.sqlite"
+DEFAULT_DUCKDB_PATH = "data/marketdata.duckdb"
+
+
+class StorageAdapter:
+    """Unified read/write adapter for SQLite (authoritative) + DuckDB (analytics)."""
+
+    def __init__(
+        self,
+        sqlite_path: str = DEFAULT_SQLITE_PATH,
+        duckdb_path: str = DEFAULT_DUCKDB_PATH,
+    ):
+        self._sqlite_path = Path(sqlite_path)
+        self._duckdb_path = Path(duckdb_path)
+
+    # -- Connections ---------------------------------------------------------
+
+    def sqlite_connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._sqlite_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def duckdb_connect(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+        path = str(self._duckdb_path)
+        conn = duckdb.connect(path, read_only=read_only)
+        create_schema(conn)
+        # Install sqlite extension for direct ATTACH (Bug #1 fix — skip Python memory round-trip)
+        if not read_only:
+            conn.execute("INSTALL sqlite; LOAD sqlite;")
+        return conn
+
+    # -- Sync ----------------------------------------------------------------
+
+    def sync_sqlite_to_duckdb(self, table: str, where: str = "") -> int:
+        """Sync rows from SQLite to DuckDB for a single table. Returns row count.
+
+        Uses DuckDB's native sqlite_scan to ATTACH SQLite directly — no Python
+        memory round-trip, no temp NDJSON staging.  Scales to millions of rows
+        without OOM risk (Bug #1 fix).
+        """
+        conn_dk = self.duckdb_connect()
+        sqlite_path = str(self._sqlite_path.resolve())
+
+        try:
+            pk = _pk_for_table(table)
+            cols = _duckdb_table_columns(conn_dk, table)
+            if not cols:
+                logger.warning("sync_sqlite_to_duckdb: unknown table %s", table)
+                return 0
+
+            col_str = ", ".join(cols)
+            where_clause = f" WHERE {where}" if where else ""
+
+            if pk:
+                pk_str = ", ".join(pk)
+                non_pk_cols = [c for c in cols if c not in pk]
+                update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in non_pk_cols)
+                sql = (
+                    f"INSERT INTO {table} ({col_str}) "
+                    f"SELECT {col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
+                    f"{where_clause} "
+                    f"ON CONFLICT ({pk_str}) DO UPDATE SET {update_set}"
+                )
+            else:
+                sql = (
+                    f"INSERT OR IGNORE INTO {table} ({col_str}) "
+                    f"SELECT {col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
+                    f"{where_clause}"
+                )
+
+            result = conn_dk.execute(sql)
+            count = result.fetchall()[0][0] if result.description else 0
+            logger.info("duckdb merge: %s <- %d rows (direct sqlite_scan)", table, count)
+        finally:
+            conn_dk.close()
+
+        return count
+
+    def sync_all_to_duckdb(self) -> dict[str, int]:
+        """Sync all tables from SQLite to DuckDB. Returns {table: count} dict."""
+        from .duckdb_schema import TABLE_NAMES
+
+        results = {}
+        for table in TABLE_NAMES:
+            try:
+                count = self.sync_sqlite_to_duckdb(table)
+                results[table] = count
+                logger.info("sync %s: %d rows", table, count)
+            except Exception:
+                logger.exception("sync failed: %s", table)
+                results[table] = -1
+        return results
+
+    # -- Query (DuckDB-first for speed) --------------------------------------
+
+    def query(self, sql: str, params: tuple | None = None) -> list[dict[str, Any]]:
+        """Execute a read query against DuckDB. Fall back to SQLite on error."""
+        try:
+            conn = self.duckdb_connect(read_only=True)
+            result = conn.execute(sql, params or ()).fetchall()
+            cols = [desc[0] for desc in conn.description] if conn.description else []
+            conn.close()
+            return [dict(zip(cols, row)) for row in result]
+        except Exception:
+            logger.debug("duckdb query failed, trying sqlite", exc_info=True)
+            conn = self.sqlite_connect()
+            result = conn.execute(sql, params or ()).fetchall()
+            conn.close()
+            return [dict(row) for row in result]
+
+    def query_df(self, sql: str) -> Any:
+        """Execute query and return as pandas DataFrame (duckdb-native)."""
+        conn = self.duckdb_connect(read_only=True)
+        df = conn.execute(sql).df()
+        conn.close()
+        return df
+
+
+def _pk_for_table(table: str) -> list[str]:
+    from .duckdb_schema import TABLE_PRIMARY_KEYS
+    return TABLE_PRIMARY_KEYS.get(table, [])
+
+
+def _duckdb_table_columns(conn: Any, table: str) -> list[str]:
+    """Return column names for a DuckDB table."""
+    try:
+        result = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [table],
+        ).fetchall()
+        return [r[0] for r in result]
+    except Exception:
+        return []

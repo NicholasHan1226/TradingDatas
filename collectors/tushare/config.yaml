@@ -1,4 +1,11 @@
 priorities:
+  P7_crypto_pm_5min:
+  - api_name: crypto_klines
+    description: Crypto 24/7 klines
+    frequency: 5min
+  - api_name: pm_prices
+    description: Polymarket prices
+    frequency: 5min
   P0_trading_5min:
   - api_name: daily
     fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount

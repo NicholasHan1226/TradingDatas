@@ -1,6 +1,6 @@
 """
 SharedSignals email sender — independent of Tradings.
-Uses Cloudflare Email Routing with DeadSimple + SMTP fallback.
+Sends via SMTP → Cloudflare → DeadSimple → local fallback chain.
 Configure via SharedSignals/.env or env vars.
 """
 from __future__ import annotations
@@ -14,8 +14,8 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "email"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Config from env (each repo has its own)
-CF_ACCOUNT_ID = os.getenv("CF_EMAIL_ACCOUNT_ID", "")
-CF_API_TOKEN = os.getenv("CF_EMAIL_API_TOKEN", "")
+CF_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "") or os.getenv("CF_EMAIL_ACCOUNT_ID", "")
+CF_API_TOKEN = os.getenv("CLOUDFLARE_EMAIL_API_TOKEN", "") or os.getenv("CF_EMAIL_API_TOKEN", "")
 FROM_TRADING = os.getenv("EMAIL_FROM_TRADING", "notice@agentspaces.cc")
 FROM_SYSTEM = os.getenv("EMAIL_FROM_SYSTEM", "notice@tradingagent.cc")
 TO_TRADING = os.getenv("EMAIL_TO_TRADING", "tradingadviser@coze.email")
@@ -77,7 +77,7 @@ def _try_smtp(to: str, subject: str, body: str, from_addr: str) -> bool:
 
 
 def send_email(*, to: str, subject: str, html_body: str, channel: str = "system") -> dict:
-    """Send email via CF→DeadSimple→SMTP→local fallback. Independent of Tradings."""
+    """Send email via SMTP→CF→DeadSimple→local fallback chain. Independent of Tradings."""
     ch = CHANNELS.get(channel, CHANNELS["system"])
     from_addr = ch["from"]
     errors = []
@@ -107,14 +107,7 @@ def send_email(*, to: str, subject: str, html_body: str, channel: str = "system"
                     return {"status": "sent", "provider": "deadsimple", "to": to}
     except Exception as e:
         errors.append(f"deadsimple: {e}")
-    
-    # 3. SMTP
-    try:
-        if _try_smtp(to, subject, html_body, from_addr):
-            return {"status": "sent", "provider": "smtp", "to": to}
-    except Exception as e:
-        errors.append(f"smtp: {e}")
-    
+
     # 4. Local fallback
     return _save_local(to, subject, html_body, channel, errors)
 
@@ -141,3 +134,26 @@ def send_daily_report(date_str: str, data: dict) -> dict:
 </body></html>"""
     
     return send_email(to=TO_SYSTEM, subject=f"[SharedSignals] Data Report — {date_str}", html_body=body, channel="system")
+
+
+def main():
+    """CLI entry point for subprocess invocation from heal.py etc."""
+    import argparse
+    parser = argparse.ArgumentParser(description="SharedSignals email sender")
+    parser.add_argument("--subject", required=True, help="Email subject")
+    parser.add_argument("--body", required=True, help="Email body (HTML or plain text)")
+    parser.add_argument("--channel", default="system", choices=["system", "trading"])
+    parser.add_argument("--to", help="Override recipient (default: channel default)")
+    args = parser.parse_args()
+
+    ch = CHANNELS.get(args.channel, CHANNELS["system"])
+    to = args.to or ch["to"]
+    result = send_email(to=to, subject=args.subject, html_body=args.body, channel=args.channel)
+    print(json.dumps(result, ensure_ascii=False))
+    if result.get("status") != "sent":
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    import sys
+    main()

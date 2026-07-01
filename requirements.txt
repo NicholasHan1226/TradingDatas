@@ -1,0 +1,8 @@
+# SharedSignals — Python dependencies
+# Install: pip install -r requirements.txt
+
+duckdb>=1.1.0
+pyyaml>=6.0
+requests>=2.31.0
+pandas>=2.0.0
+pytest>=8.0.0

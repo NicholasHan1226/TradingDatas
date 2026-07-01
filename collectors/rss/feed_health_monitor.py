@@ -498,6 +498,34 @@ def _self_test() -> None:
     shutil.rmtree(tmpdir)
 
 
+# ─── BaseCollector wrapper ───────────────────────────────────────────────────
+
+
+class FeedHealthMonitor:
+    """Wrapper class exposing feed health for the BaseCollector interface.
+
+    Delegates to compute_feed_health() and returns per-feed status dicts.
+    """
+
+    def __init__(self, db_path: Path | None = None):
+        self._db_path = db_path or DEFAULT_DB
+
+    def check_all(self) -> dict[str, Any]:
+        """Return per-feed health dict {feed_name: {status, ...}}."""
+        try:
+            results = compute_feed_health(db_path=self._db_path, log_results=False)
+            return {
+                r.get("feed_name", r.get("feed_url", "")): {
+                    "status": "ok" if r.get("grade") in ("healthy", "intermittent") else "degraded",
+                    "grade": r.get("grade", "unknown"),
+                    "success_rate_7d": r.get("success_rate_7d", 0),
+                }
+                for r in results
+            }
+        except Exception:
+            return {}
+
+
 # ─── CLI ───────────────────────────────────────────────────────────────────
 
 

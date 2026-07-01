@@ -593,8 +593,6 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
 
 
 @lru_cache(maxsize=512)
-
-@lru_cache(maxsize=512)
 def _get_tushare_cached(api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
     """Route to Tushare API via a_share_tushare_api._call()."""
     try:

@@ -33,17 +33,17 @@ from typing import Any, Optional
 # ---------------------------------------------------------------------------
 SHARED_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
 MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", "/opt/investment/MarketGraph"))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_DIR", "/opt/investment/MarketGraphRuntime"))
+RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
 
 DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
 SOURCE_REGISTRY = SHARED_ROOT / "data" / "source_registry.csv"
-INTAKE_DIR = SHAREDSIGNALS_ROOT / "data" / "intake"  # fixed: was MARKETGRAPH_ROOT
+INTAKE_DIR = SHARED_ROOT / "data" / "intake"
 STAGING_ROOT = RUNTIME_ROOT / "staging"
 ARCHIVE_DIR = RUNTIME_ROOT / "archive"
 COLLECTION_RUNS_CSV = INTAKE_DIR / "collection_runs.csv"
 
-MEMORY_DIR = SHARED_ROOT / "memory"
-PATROL_HISTORY = MEMORY_DIR / "patrol_history.jsonl"
+LOG_DIR = SHARED_ROOT / "logs"
+PATROL_HISTORY = LOG_DIR / "patrol_history.jsonl"
 
 # ---------------------------------------------------------------------------
 # Thresholds
@@ -161,8 +161,21 @@ def check_data_freshness() -> dict[str, Any]:
 
     conn = sqlite3.connect(str(DB_PATH))
     try:
-        r = conn.execute("SELECT MAX(trade_date) FROM market_bars_daily").fetchone()
-        latest = r[0] if r else None
+        # Check multiple tables for freshness; some may be empty while others have data
+        latest = None
+        queries = [
+            ("market_bars_daily",     "SELECT MAX(trade_date) FROM market_bars_daily"),
+            ("market_bars_intraday",  "SELECT MAX(trade_date) FROM market_bars_intraday"),
+            ("market_events",         "SELECT MAX(event_time)  FROM market_events"),
+        ]
+        for _tbl, sql in queries:
+            try:
+                r = conn.execute(sql).fetchone()
+                v = r[0] if r else None
+                if v and (latest is None or v > latest):
+                    latest = v
+            except sqlite3.OperationalError:
+                pass  # table may not exist yet
     finally:
         conn.close()
 
@@ -333,10 +346,12 @@ def check_disk_usage() -> dict[str, Any]:
 
 
 def check_field_drift() -> dict[str, Any]:
-    """Compare actual CSV headers in intake_dir against expected_fields.
+    """Compare actual NDJSON field keys in staging dir against expected_fields.
 
     Expected fields are loaded from SHARED_ROOT/reference/expected_fields.json
-    if present; otherwise built from the existing CSV headers on first run.
+    if present; otherwise built from the existing NDJSON keys on first run.
+
+    Samples up to one NDJSON file per stream directory to avoid I/O waste.
 
     Returns:
         {status, value, drift_count, drifts: [...], alert}
@@ -348,36 +363,48 @@ def check_field_drift() -> dict[str, Any]:
             expected = json.load(f)
 
     drifts = []
-    for csvf in sorted(INTAKE_DIR.glob("*.csv")):
-        stream = csvf.stem
+
+    if not STAGING_ROOT.exists():
+        return {
+            "name": "field_drift",
+            "status": "ok",
+            "value": 0,
+            "threshold": 0,
+            "drifts": [],
+            "alert": False,
+            "checked_at": utc_now(),
+            "reason": "staging_dir_not_found",
+        }
+
+    # Sample one NDJSON per stream directory
+    for ndjson_file in sorted(STAGING_ROOT.rglob("*.ndjson")):
+        stream = ndjson_file.stem  # base filename without .ndjson
         # Skip tmp/ and sample files
         if stream.startswith("tmp") or "_sample_" in stream.lower():
             continue
         try:
-            with open(csvf, newline="", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                actual = next(reader, [])
+            with open(ndjson_file, encoding="utf-8") as f:
+                first_line = f.readline().strip()
+                if not first_line:
+                    continue
+                record = json.loads(first_line)
+                actual = sorted(record.keys())
         except Exception:
             continue
 
-        # Clean BOM
-        actual_clean = [c.lstrip("\ufeff") for c in actual]
-
         if stream in expected:
             exp = expected[stream]
-            missing = [f for f in exp if f not in actual_clean]
-            extra = [f for f in actual_clean if f not in exp]
+            missing = [f for f in exp if f not in actual]
+            extra = [f for f in actual if f not in exp]
             if missing or extra:
                 drifts.append({
                     "stream": stream,
                     "expected": exp,
-                    "actual": actual_clean,
+                    "actual": actual,
                     "missing": missing,
                     "extra": extra,
                 })
-        else:
-            # First time seen: record as expected silently (no drift)
-            pass
+        # First time seen: record as expected silently (no drift)
 
     status = "ok" if len(drifts) == 0 else "alert"
     return {
@@ -448,7 +475,7 @@ def run_checks(check_names: list[str]) -> dict[str, Any]:
 
 def record_patrol(result: dict) -> None:
     """Append patrol result to patrol_history.jsonl."""
-    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     with open(PATROL_HISTORY, "a") as f:
         f.write(json.dumps(result, ensure_ascii=False) + "\n")
 

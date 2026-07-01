@@ -29,7 +29,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-SHARED_SIGNALS = Path(os.environ.get("SHARED_SIGNALS_ROOT", "/opt/investment/SharedSignals"))
+SHARED_SIGNALS = Path(
+    os.environ.get("SHAREDSIGNALS_ROOT")
+    or os.environ.get("SHARED_SIGNALS_ROOT")
+    or "/opt/investment/SharedSignals"
+)
 REGISTRY_PATH = Path(os.environ.get("CAPABILITY_REGISTRY_PATH",
                                      str(SHARED_SIGNALS / "tools" / "capability_registry.json")))
 CONTRACT_PATH = SHARED_SIGNALS / "docs" / "API_CONTRACT.md"
@@ -193,8 +197,9 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="SharedSignals API Server")
-    parser.add_argument("--port", type=int, default=8900, help="Listen port (default: 8900)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    default_port = int(os.environ.get("SHAREDSIGNALS_API_PORT", "8900"))
+    parser.add_argument("--port", type=int, default=default_port, help=f"Listen port (default: {default_port})")
+    parser.add_argument("--host", type=str, default=os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0"), help="Bind address")
     args = parser.parse_args()
 
     server = ThreadedHTTPServer((args.host, args.port), SharedSignalsHandler)

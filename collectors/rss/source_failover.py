@@ -515,6 +515,33 @@ def _self_test() -> None:
     shutil.rmtree(tmpdir)
 
 
+# ─── BaseCollector wrapper ───────────────────────────────────────────────────
+
+
+class SourceFailover:
+    """Wrapper class exposing failover state for the BaseCollector interface.
+
+    Delegates to compute_failover() and reads FailoverState JSON.
+    """
+
+    def __init__(self, state_path: Path | None = None):
+        self._state_path = state_path or DEFAULT_OUTPUT
+
+    def get_source_status(self) -> dict[str, Any]:
+        """Return per-source status dict {source_name: {active, config, ...}}."""
+        try:
+            state = FailoverState(self._state_path)
+            return {
+                name: {
+                    "active": info.get("active_url") is not None,
+                    "config": info,
+                }
+                for name, info in state.all_sources.items()
+            }
+        except Exception:
+            return {}
+
+
 # ─── CLI ───────────────────────────────────────────────────────────────────
 
 

@@ -16,6 +16,8 @@ Healing strategies:
 """
 from __future__ import annotations
 
+from typing import Any, Optional
+
 import argparse
 import json
 import os
@@ -25,15 +27,12 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-INVESTMENT_ROOT = Path(os.environ.get("INVESTMENT_ROOT", "/opt/investment"))
-from typing import Any, Optional
-
 # ---------------------------------------------------------------------------
 # Path configuration
 # ---------------------------------------------------------------------------
 SHARED_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
 MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", "/opt/investment/MarketGraph"))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_DIR", "/opt/investment/MarketGraphRuntime"))
+RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
 
 DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
 STAGING_ROOT = RUNTIME_ROOT / "staging"
@@ -47,7 +46,29 @@ MEMORY_DIR = SHARED_ROOT / "memory"
 HEAL_ACTIONS_LOG = MEMORY_DIR / "heal_actions.jsonl"
 PATTERNS_LOG = MEMORY_DIR / "patterns.jsonl"
 
+ALERT_FILE = SHARED_ROOT / "logs" / "alerts.log"
 EMERGENCY_ALERT_FILE = SHARED_ROOT / "logs" / "emergency_alerts.log"
+COOLDOWN_FILE = MEMORY_DIR / "heal_cooldown.json"
+
+COOLDOWN_WINDOW_MINUTES = 10
+COOLDOWN_MAX_PER_DAY = 5
+
+# Severity levels and escalation rules
+SEVERITY = {
+    "critical": {"requires_human": True, "notify": "email+emergency", "retry": 0},
+    "high": {"requires_human": True, "notify": "email", "retry": 1},
+    "medium": {"requires_human": False, "notify": "log", "retry": 2},
+    "low": {"requires_human": False, "notify": "silent", "retry": 3},
+}
+
+ACTION_SEVERITY = {
+    "source_health": "high",
+    "data_freshness": "medium",
+    "staging_backpressure": "medium",
+    "sqlite_health": "critical",
+    "disk_usage": "high",
+    "field_drift": "low",
+}
 
 
 def utc_now() -> str:
@@ -56,6 +77,55 @@ def utc_now() -> str:
 
 def ts_now() -> float:
     return time.time()
+
+
+def _check_cooldown(action_type: str, dry_run: bool = False) -> bool:
+    """Return True if action is allowed (not rate-limited).
+
+    Rules:
+      - dry_run always returns True (preview mode is unlimited).
+      - Same action_type: at most 1 execution per COOLDOWN_WINDOW_MINUTES.
+      - Same action_type: at most COOLDOWN_MAX_PER_DAY executions per 24h.
+    """
+    if dry_run:
+        return True
+
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+    now_ts = time.time()
+    cooldowns: dict[str, list[float]] = {}
+
+    if COOLDOWN_FILE.exists():
+        try:
+            with open(COOLDOWN_FILE) as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                cooldowns = raw
+        except (json.JSONDecodeError, OSError):
+            cooldowns = {}
+
+    timestamps = cooldowns.get(action_type, [])
+
+    # Prune entries older than 24h
+    cutoff = now_ts - 86400
+    recent = [t for t in timestamps if t > cutoff]
+
+    # Check window limit (10 minutes)
+    if recent and (now_ts - recent[-1]) < (COOLDOWN_WINDOW_MINUTES * 60):
+        return False
+
+    # Check daily limit
+    if len(recent) >= COOLDOWN_MAX_PER_DAY:
+        return False
+
+    # Allowed: record this execution timestamp
+    recent.append(now_ts)
+    cooldowns[action_type] = recent
+
+    with open(COOLDOWN_FILE, "w") as f:
+        json.dump(cooldowns, f)
+
+    return True
 
 
 def record_action(action: dict) -> None:
@@ -72,20 +142,145 @@ def record_pattern(pattern: dict) -> None:
         f.write(json.dumps(pattern, ensure_ascii=False) + "\n")
 
 
-def emergency_alert(reason: str, details: dict) -> None:
-    """Log an emergency alert that heal could not self-resolve."""
+def alert(reason: str, details: dict, severity: str = "medium") -> None:
+    """Log an alert with appropriate severity and notify accordingly.
+
+    Escalation rules per severity:
+      critical → log + emergency log + send email (requires_human)
+      high     → log + send email (requires_human)
+      medium   → log only (self-healing, no human needed)
+      low      → silent (recorded in heal actions only)
+    """
     SHARED_ROOT.joinpath("logs").mkdir(parents=True, exist_ok=True)
-    alert = {
+    sev = SEVERITY.get(severity, SEVERITY["medium"])
+    entry = {
         "alert_at": utc_now(),
-        "level": "emergency",
+        "level": severity,
         "reason": reason,
         "details": details,
-        "requires_human": True,
+        "requires_human": sev["requires_human"],
+        "notify": sev["notify"],
     }
-    with open(EMERGENCY_ALERT_FILE, "a") as f:
-        f.write(json.dumps(alert, ensure_ascii=False) + "\n")
-    print(f"[EMERGENCY] {reason}", file=sys.stderr)
-    print(json.dumps(alert, ensure_ascii=False, indent=2))
+
+    # Always write to general alert log
+    with open(ALERT_FILE, "a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    prefix = severity.upper()
+    print(f"[{prefix}] {reason}", file=sys.stderr)
+
+    if severity in ("critical", "high"):
+        print(json.dumps(entry, ensure_ascii=False, indent=2))
+
+    # Critical → also write to emergency log
+    if severity == "critical":
+        with open(EMERGENCY_ALERT_FILE, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # Critical + high → send email
+    if severity in ("critical", "high"):
+        _send_alert_email(reason, entry, severity)
+
+
+def emergency_alert(reason: str, details: dict) -> None:
+    """Backward-compat: always maps to critical severity."""
+    alert(reason, details, severity="critical")
+
+
+def _send_alert_email(reason: str, alert_entry: dict, severity: str) -> None:
+    """Try to send alert via email_sender.py (best-effort)."""
+    email_script = SHARED_ROOT / "tools" / "email_sender.py"
+    if not email_script.exists():
+        return
+
+    try:
+        import html
+        sev_label = severity.upper()
+        body = (
+            '<html><body style="font-family:monospace">'
+            f"<h2>[SharedSignals {sev_label}] " + html.escape(reason) + "</h2>"
+            "<pre>" + html.escape(json.dumps(alert_entry, ensure_ascii=False, indent=2)) + "</pre>"
+            "<p><em>Auto-generated by SharedSignals heal.py</em></p>"
+            "</body></html>"
+        )
+        subprocess.run(
+            [sys.executable, str(email_script), "--subject",
+             f"[{sev_label}] SharedSignals: {reason}",
+             "--body", body, "--channel", "system"],
+            capture_output=True, timeout=15, cwd=str(SHARED_ROOT)
+        )
+    except Exception:
+        pass  # never let email failure block alert logging
+
+
+def _verify_heal(action_name: str, action: dict) -> dict:
+    """Post-heal verification: check that the issue is actually resolved.
+
+    Returns a dict with verification status. Only runs non-destructive
+    checks — never triggers side effects.
+    """
+    verify = {"verified": False, "verified_at": utc_now(), "details": ""}
+
+    if action_name == "sqlite_health":
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(DB_PATH), timeout=5)
+            r = conn.execute("PRAGMA integrity_check").fetchone()
+            ok = r and r[0] == "ok"
+            conn.close()
+            wal_path = Path(str(DB_PATH) + "-wal")
+            wal_ok = not wal_path.exists() or wal_path.stat().st_size < 10 * 1024 * 1024
+            verify["verified"] = ok and wal_ok
+            verify["details"] = f"integrity={ok} wal_ok={wal_ok}"
+        except Exception as e:
+            verify["details"] = f"verification_error: {e}"
+
+    elif action_name == "staging_backpressure":
+        remaining = 0
+        if STAGING_ROOT.exists():
+            for d in STAGING_ROOT.iterdir():
+                if d.is_dir():
+                    remaining += len(list(d.glob("*.ndjson")))
+        verify["verified"] = remaining < action.get("remaining_after", 100)
+        verify["details"] = f"staging_files_remaining={remaining}"
+
+    elif action_name == "disk_usage":
+        try:
+            usage = os.statvfs(str(ARCHIVE_DIR) if ARCHIVE_DIR.exists() else str(SHARED_ROOT))
+            pct = round((1 - usage.f_bavail / usage.f_blocks) * 100, 1)
+            verify["verified"] = pct < 85
+            verify["details"] = f"disk_usage_after={pct}%"
+        except Exception as e:
+            verify["details"] = f"verification_error: {e}"
+
+    elif action_name == "data_freshness":
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(DB_PATH), timeout=5)
+            r = conn.execute(
+                "SELECT MAX(trade_date) FROM market_bars_daily WHERE market='Ashare'"
+            ).fetchone()
+            conn.close()
+            if r and r[0]:
+                latest = datetime.strptime(r[0], "%Y%m%d")
+                days = (datetime.now() - latest).days
+                verify["verified"] = days <= 2
+                verify["details"] = f"latest_date={r[0]} days_behind={days}"
+            else:
+                verify["details"] = "no_data_found"
+        except Exception as e:
+            verify["details"] = f"verification_error: {e}"
+
+    elif action_name == "field_drift":
+        expected_path = SHARED_ROOT / "reference" / "expected_fields.json"
+        verify["verified"] = expected_path.exists()
+        verify["details"] = f"expected_fields_exists={expected_path.exists()}"
+
+    elif action_name == "source_health":
+        verify["verified"] = action.get("healed", False)
+        verify["details"] = "source_failover_rc=" + str(action.get("failover_rc", "N/A"))
+
+    return verify
 
 
 # ============================================================
@@ -116,6 +311,13 @@ def heal_source_health(check_result: dict, dry_run: bool = False) -> dict:
         action["dry_run"] = True
         return action
 
+    if not _check_cooldown("failover", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
+        return action
+
     # Run source_failover.py if it exists
     if FAILOVER_SCRIPT.exists():
         stale_ids = ",".join(s["source_id"] for s in stale)
@@ -140,8 +342,10 @@ def heal_source_health(check_result: dict, dry_run: bool = False) -> dict:
 
     record_action(action)
     if not action.get("healed"):
-        emergency_alert("source_failover_failed", action)
+        sev = ACTION_SEVERITY.get("source_health", "high")
+        alert("source_failover_failed", action, severity=sev)
 
+    action["_verify"] = _verify_heal("source_health", action)
     return action
 
 
@@ -165,6 +369,13 @@ def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
 
     if dry_run:
         action["dry_run"] = True
+        return action
+
+    if not _check_cooldown("backfill", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
         return action
 
     # Try to run the marketdata_db backfill
@@ -192,8 +403,10 @@ def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
 
     record_action(action)
     if not action.get("healed"):
-        emergency_alert("data_backfill_failed", action)
+        sev = ACTION_SEVERITY.get("data_freshness", "medium")
+        alert("data_backfill_failed", action, severity=sev)
 
+    action["_verify"] = _verify_heal("data_freshness", action)
     return action
 
 
@@ -213,6 +426,13 @@ def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict
 
     if dry_run:
         action["dry_run"] = True
+        return action
+
+    if not _check_cooldown("bridge_merge", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
         return action
 
     if not BRIDGE_SCRIPT.exists():
@@ -251,8 +471,10 @@ def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict
 
     record_action(action)
     if not action.get("healed"):
-        emergency_alert("staging_merge_failed", action)
+        sev = ACTION_SEVERITY.get("staging_backpressure", "medium")
+        alert("staging_merge_failed", action, severity=sev)
 
+    action["_verify"] = _verify_heal("staging_backpressure", action)
     return action
 
 
@@ -279,6 +501,13 @@ def heal_sqlite_health(check_result: dict, dry_run: bool = False) -> dict:
 
     if dry_run:
         action["dry_run"] = True
+        return action
+
+    if not _check_cooldown("repair", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
         return action
 
     healed = True
@@ -337,8 +566,10 @@ def heal_sqlite_health(check_result: dict, dry_run: bool = False) -> dict:
 
     record_action(action)
     if not healed:
-        emergency_alert("sqlite_repair_failed", action)
+        sev = ACTION_SEVERITY.get("sqlite_health", "critical")
+        alert("sqlite_repair_failed", action, severity=sev)
 
+    action["_verify"] = _verify_heal("sqlite_health", action)
     return action
 
 
@@ -361,6 +592,13 @@ def heal_disk_usage(check_result: dict, dry_run: bool = False) -> dict:
 
     if dry_run:
         action["dry_run"] = True
+        return action
+
+    if not _check_cooldown("cleanup", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
         return action
 
     cleaned = 0
@@ -391,6 +629,11 @@ def heal_disk_usage(check_result: dict, dry_run: bool = False) -> dict:
         action["collectors_stopped"] = True
 
     record_action(action)
+    if not action.get("healed"):
+        sev = ACTION_SEVERITY.get("disk_usage", "high")
+        alert("disk_cleanup_failed", action, severity=sev)
+
+    action["_verify"] = _verify_heal("disk_usage", action)
     return action
 
 
@@ -416,6 +659,13 @@ def heal_field_drift(check_result: dict, dry_run: bool = False) -> dict:
         action["dry_run"] = True
         return action
 
+    if not _check_cooldown("update_expected", dry_run=dry_run):
+        action["cooldown_skipped"] = True
+        action["healed"] = False
+        action["error"] = "rate_limited"
+        record_action(action)
+        return action
+
     expected_path = SHARED_ROOT / "reference" / "expected_fields.json"
     expected: dict[str, list[str]] = {}
 
@@ -424,7 +674,32 @@ def heal_field_drift(check_result: dict, dry_run: bool = False) -> dict:
         with open(expected_path) as f:
             expected = json.load(f)
 
-    # Update drifted streams with actual fields
+    # Validate actual field names before accepting them as expected.
+    # A valid field name: starts with letter/underscore, only contains
+    # alphanumeric + underscore, no control characters, at least 1 char.
+    import re
+    valid_field = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    for drift in drifts:
+        actual_fields = drift.get("actual", [])
+        bad_fields = [
+            f for f in actual_fields
+            if not f or not isinstance(f, str) or not valid_field.match(str(f))
+        ]
+        if bad_fields:
+            action["healed"] = False
+            action["error"] = "field_name_validation_failed"
+            action["invalid_fields"] = bad_fields
+            action["stream"] = drift["stream"]
+            record_action(action)
+            alert(
+                "field_name_validation_failed",
+                {"stream": drift["stream"], "bad_fields": bad_fields, "all_actual": actual_fields},
+                severity="low",
+            )
+            return action
+
+    # Update drifted streams with actual fields (validated)
     for drift in drifts:
         expected[drift["stream"]] = drift["actual"]
 
@@ -437,6 +712,7 @@ def heal_field_drift(check_result: dict, dry_run: bool = False) -> dict:
     action["healed"] = True
 
     record_action(action)
+    action["_verify"] = _verify_heal("field_drift", action)
     return action
 
 

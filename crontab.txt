@@ -1,0 +1,37 @@
+# SharedSignals crontab — recommended schedule
+# Install: crontab crontab.txt   or   crontab -e and paste entries
+#
+# All scripts support env var overrides:
+#   SHAREDSIGNALS_ROOT         — repo root (default: script dir)
+#   SHAREDSIGNALS_VENV_PYTHON  — python binary (default: python3)
+#   PATROL_SCORE_THRESHOLD     — heal trigger (default: 60)
+#
+# Logs: SharedSignals/logs/
+#   duckdb_merge_cron.log      — merge run history
+#   heal_cron.log              — patrol + heal run history
+#   duckdb_merge.jsonl         — per-merge detail (table, rows, elapsed)
+#   patrol_history.jsonl       — per-patrol detail (checks, scores)
+
+# ---- Production (Linux server) ----
+# Uncomment and adjust paths for server deployment:
+
+# DuckDB merge — every 5 minutes
+# */5 * * * * /opt/investment/SharedSignals/duckdb_merge_cron.sh
+
+# Patrol + conditional heal — every 10 minutes
+# */10 * * * * /opt/investment/SharedSignals/patrol_heal_cron.sh
+
+# Collector orchestration — every minute (self-regulating via run_loop)
+# * * * * * /opt/investment/SharedSignals/collectors/run_collectors.sh
+
+
+# ---- Development (macOS) ----
+# For local testing, run scripts manually or use scheduler.py:
+
+# One-shot:
+#   cd SharedSignals && python3 duckdb_merge.py --json
+#   cd SharedSignals && python3 patrol.py --json --check all
+#   cd SharedSignals && python3 heal.py --patrol-result logs/patrol_last.json --dry-run
+
+# Continuous scheduler (all-in-one):
+#   cd SharedSignals && python3 scheduler.py --interval 300

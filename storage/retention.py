@@ -293,23 +293,23 @@ def main():
     else:
         mode = "DRY RUN" if dry_run else "EXECUTE"
         print(f"SharedSignals Retention Report ({mode})")
-        print(f"  Scan time: {report[scan_time]}")
-        print(f"  Expired dirs: {report[total_expired_dirs]}")
-        print(f"  To delete: {report[total_deleted]}")
-        print(f"  To archive: {report[total_archived]}")
+        print(f"  Scan time: {report['scan_time']}")
+        print(f"  Expired dirs: {report['total_expired_dirs']}")
+        print(f"  To delete: {report['total_deleted']}")
+        print(f"  To archive: {report['total_archived']}")
         if report.get("errors"):
-            print(f"  Errors: {len(report[errors])}")
+            print(f"  Errors: {len(report['errors'])}")
             for err in report["errors"][:10]:
                 print(f"    - {err}")
         print()
         for cat, info in sorted(report.get("categories", {}).items()):
-            keep = f"{info[keep_years]}y" if info["keep_years"] else "forever"
+            keep = f"{info['keep_years']}y" if info["keep_years"] else "forever"
             print(
-                f"  {cat:12s} keep={keep:8s} apis={info[api_count]:2d} "
-                f"expired={info[expired_dirs]:3d} "
-                f"deleted={info[deleted]:3d} "
-                f"archived={info[archived]:3d} "
-                f"kept={info[kept]:3d}"
+                f"  {cat:12s} keep={keep:8s} apis={info['api_count']:2d} "
+                f"expired={info['expired_dirs']:3d} "
+                f"deleted={info['deleted']:3d} "
+                f"archived={info['archived']:3d} "
+                f"kept={info['kept']:3d}"
             )
 
 

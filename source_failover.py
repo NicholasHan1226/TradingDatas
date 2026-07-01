@@ -161,13 +161,43 @@ def failover(sources: list[str]) -> list[dict]:
 
         actions.append(action)
 
-    # Record history
+    # Record history + update source registry
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
     for action in actions:
         with open(FAILOVER_HISTORY, "a") as f:
             f.write(json.dumps(action, ensure_ascii=False) + "\n")
 
+    # Update source_registry.csv: deactivate stale sources, activate backups
+    _update_registry(actions)
+
     return actions
+
+
+def _update_registry(actions: list[dict]) -> None:
+    """Deactivate stale sources and activate backup sources in source_registry.csv."""
+    if not SOURCE_REGISTRY.exists():
+        return
+
+    rows: list[dict] = []
+    with open(SOURCE_REGISTRY, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+
+    stale_ids = {a["source_id"] for a in actions if a["status"] == "failed_over"}
+    backup_ids = {a["backup_source_id"] for a in actions if a["status"] == "failed_over"}
+
+    for row in rows:
+        sid = row.get("source_id", "").strip()
+        if sid in stale_ids:
+            row["status"] = "failover"
+        elif sid in backup_ids:
+            row["status"] = "active"
+
+    with open(SOURCE_REGISTRY, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def list_backups() -> dict:

@@ -39,7 +39,34 @@ HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", "8082"))
 VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
+HEALTH_CACHE_SECONDS = 60
 
+# ---- Health check (lazy import to avoid pulling in health_check at startup) ----
+_health_cache: dict[str, Any] | None = None
+_health_cache_time: float = 0.0
+
+
+
+def _get_health() -> dict[str, Any]:
+    """Return cached health status, refreshing if older than HEALTH_CACHE_SECONDS."""
+    global _health_cache, _health_cache_time
+    now = datetime.now(timezone.utc).timestamp()
+    if _health_cache is not None and (now - _health_cache_time) < HEALTH_CACHE_SECONDS:
+        return _health_cache
+
+    try:
+        from tools.health_check import get_health_status
+        result = get_health_status(
+            check_functions=True, check_data_freshness=True,
+            check_cron=True, check_arch=False, check_compile=False,
+        )
+    except Exception:
+        result = {"status": "error", "message": "health check failed", "timestamp": utc_now_iso()}
+
+    result.setdefault("version", VERSION)
+    _health_cache = result
+    _health_cache_time = now
+    return result
 
 
 def utc_now_iso() -> str:
@@ -134,6 +161,11 @@ def wrap_response(payload: Any, metadata: dict[str, Any], source: str | None) ->
 
 
 
+class NotFoundError(ValueError):
+    """Raised when an endpoint or resource is not found (maps to 404)."""
+    pass
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"SharedSignalsAPI/{VERSION}"
 
@@ -154,13 +186,22 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         return
 
+    def do_OPTIONS(self) -> None:
+        """Handle CORS preflight requests."""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         params = {key: values[-1] for key, values in parse_qs(parsed.query, keep_blank_values=True).items()}
 
         if path == "/health":
-            return self._send_json({"status": "ok", "version": VERSION})
+            return self._send_json(_get_health())
 
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
@@ -179,6 +220,8 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             response = self._dispatch(path, params)
+        except NotFoundError as exc:
+            return self._error(404, str(exc))
         except ValueError as exc:
             return self._error(400, str(exc))
         except FileNotFoundError as exc:
@@ -293,7 +336,7 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
-        raise ValueError(f"unknown endpoint: {path}")
+        raise NotFoundError(f"unknown endpoint: {path}")
 
 
 
