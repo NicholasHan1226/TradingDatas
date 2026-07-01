@@ -67,6 +67,6 @@
 
 ## 六、关联系统状态
 
-- [TradingAgent STATUS](../TradingAgent/STATUS.md) — 交易执行与模拟盘状态
+- [TradingAgent STATUS](../tradingagent/STATUS.md) — 交易执行与模拟盘状态
 - [MarketGraph STATUS](../MarketGraph/STATUS.md) — 研究图谱与因果状态
 - [Finance STATUS](../STATUS.md) — 根工作区总览

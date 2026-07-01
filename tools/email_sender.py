@@ -1,5 +1,5 @@
 """
-SharedSignals email sender — independent of Tradings.
+SharedSignals email sender — independent of tradingagent.
 Sends via SMTP → Cloudflare → DeadSimple → local fallback chain.
 Configure via SharedSignals/.env or env vars.
 """
@@ -77,7 +77,7 @@ def _try_smtp(to: str, subject: str, body: str, from_addr: str) -> bool:
 
 
 def send_email(*, to: str, subject: str, html_body: str, channel: str = "system") -> dict:
-    """Send email via SMTP→CF→DeadSimple→local fallback chain. Independent of Tradings."""
+    """Send email via SMTP→CF→DeadSimple→local fallback chain. Independent of tradingagent."""
     ch = CHANNELS.get(channel, CHANNELS["system"])
     from_addr = ch["from"]
     errors = []
