@@ -1,5 +1,6 @@
 #!/bin/bash
 # Run SharedSignals patrol and trigger heal when the score is below threshold.
+TIMEOUT="${SHAREDSIGNALS_CRON_TIMEOUT:-3600}"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,13 +32,13 @@ fi
 
 {
   echo "[$(date -Iseconds)] START patrol threshold=${THRESHOLD}"
-  PYTHONPATH="${ROOT}" "${PYTHON_BIN}" patrol.py --json --check all > "${PATROL_OUTPUT}"
-  SCORE="$(PYTHONPATH="${ROOT}" "${PYTHON_BIN}" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("overall_score", 0))' "${PATROL_OUTPUT}")"
-  SHOULD_HEAL="$(PYTHONPATH="${ROOT}" "${PYTHON_BIN}" -c 'import sys; print("1" if float(sys.argv[1]) < float(sys.argv[2]) else "0")' "${SCORE}" "${THRESHOLD}")"
+  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" patrol.py --json --check all > "${PATROL_OUTPUT}"
+  SCORE="$(PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("overall_score", 0))' "${PATROL_OUTPUT}")"
+  SHOULD_HEAL="$(PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" -c 'import sys; print("1" if float(sys.argv[1]) < float(sys.argv[2]) else "0")' "${SCORE}" "${THRESHOLD}")"
   echo "[$(date -Iseconds)] patrol_score=${SCORE}"
   if [ "${SHOULD_HEAL}" = "1" ]; then
     echo "[$(date -Iseconds)] RUN heal"
-    PYTHONPATH="${ROOT}" "${PYTHON_BIN}" heal.py --patrol-result "${PATROL_OUTPUT}"
+    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" heal.py --patrol-result "${PATROL_OUTPUT}"
   fi
   echo "[$(date -Iseconds)] OK patrol"
 } >> "${LOG_FILE}" 2>&1

@@ -1,5 +1,6 @@
 #!/bin/bash
 # Run all SharedSignals Tushare sync_daily tiers.
+TIMEOUT="${SHAREDSIGNALS_CRON_TIMEOUT:-3600}"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +41,7 @@ fi
   echo "[$(date -Iseconds)] START collectors"
   for tier in "${TIERS[@]}"; do
     echo "[$(date -Iseconds)] RUN sync_daily tier=${tier}"
-    PYTHONPATH="${ROOT}" "${PYTHON_BIN}" collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure
+    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure
   done
   echo "[$(date -Iseconds)] OK collectors"
 } >> "${LOG_FILE}" 2>&1

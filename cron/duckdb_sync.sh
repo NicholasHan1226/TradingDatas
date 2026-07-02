@@ -1,5 +1,6 @@
 #!/bin/bash
 # Sync SharedSignals SQLite read model into DuckDB.
+TIMEOUT="${SHAREDSIGNALS_CRON_TIMEOUT:-3600}"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +30,6 @@ fi
 
 {
   echo "[$(date -Iseconds)] START duckdb_sync"
-  PYTHONPATH="${ROOT}" "${PYTHON_BIN}" duckdb_merge.py --json
+  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" duckdb_merge.py --json
   echo "[$(date -Iseconds)] OK duckdb_sync"
 } >> "${LOG_FILE}" 2>&1
