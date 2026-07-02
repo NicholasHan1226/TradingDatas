@@ -354,7 +354,12 @@ class Handler(BaseHTTPRequestHandler):
             ts_code = params.get("ts_code", "").strip()
             if not ts_code:
                 raise ValueError("ts_code is required")
-            rows = reader.get_market_data(ts_code=ts_code, start=params.get("start"), end=params.get("end"))
+            rows = reader.get_market_data(
+                ts_code=ts_code,
+                start=params.get("start"),
+                end=params.get("end"),
+                freq=params.get("freq") or "daily",
+            )
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
@@ -378,9 +383,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/capital_flow":
             date = params.get("date", "").strip()
-            if not date:
-                raise ValueError("date is required")
-            rows = reader.get_capital_flow(date=date)
+            start = params.get("start", "").strip()
+            end = params.get("end", "").strip()
+            ts_code = params.get("ts_code", "").strip() or None
+            if not date and not start and not ts_code:
+                raise ValueError("date, start, or ts_code is required")
+            call_kwargs: dict[str, Any] = {}
+            if start:
+                call_kwargs["start_date"] = start
+            if end:
+                call_kwargs["end_date"] = end
+            rows = reader.get_capital_flow(date=date or start or None, ts_code=ts_code, **call_kwargs)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

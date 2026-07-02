@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-02 (final deep audit CRITICAL/HIGH 清零修复：JWT 验签、save failure、typed env)
+> 最后更新：2026-07-03 (final Codex review HIGH/MEDIUM API 契约与密钥追踪修复)
 
 ---
 
@@ -18,6 +18,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：marketdata.sqlite（~116MB），marketdata.duckdb（~54MB），11 表 145K+ 行，staging 6 streams 活跃
+- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **服务器**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS → rsync → 杭州）
 
 ## 二、已知问题
@@ -49,6 +50,7 @@
 
 - 健康检查覆盖：10 → 17 函数（health_check.py 已更新）
 - API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 15 接口 HTTP 封装
+- 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
 ## 四、下一步
 
@@ -65,6 +67,14 @@
 11. [ ] **P2：SharedSignals API 作为唯一消费入口** — 推动 TradingAgent/MarketGraph 通过 HTTP API 而非直接 SQLite 读取
 
 ## 五、最近完成
+
+### 2026-07-03 final Codex review HIGH/MEDIUM 修复
+
+- [x] `api_server.py`：`/market_data` 透传 `freq`；`/capital_flow` 支持 `date` 或 `ts_code/start/end` 参数，修复 TradingAgent 客户端与服务器契约不一致。
+- [x] `config/api_tokens.json`：已 `git rm --cached` 退出仓库追踪；新增 `config/api_tokens.example.json` 作为模板；`.gitignore` 已确认覆盖真实 token 文件。
+- [x] `tools/api_server.py`：标记为 deprecated capability server；默认端口改为 `8083`，避免与主数据 API `8082` 冲突。
+- [x] 新增 API handler 回归测试覆盖 `market_data.freq` 和 `capital_flow` range 参数传递。
+- [x] 验证：`python3 -m pytest tests/ -q --tb=line` 通过（205 passed；5 个既有 `SHAREDSIGNALS_TOKEN_SALT` 未配置 warning）。
 
 ### 2026-07-02 final deep audit CRITICAL/HIGH 清零修复
 

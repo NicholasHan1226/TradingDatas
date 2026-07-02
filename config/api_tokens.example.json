@@ -1,0 +1,17 @@
+{
+  "_comment": "Template only. Do not put real token hashes in tracked files.",
+  "tokens": [
+    {
+      "tenant_id": "tradingagent",
+      "tier": "internal",
+      "scopes": ["read"],
+      "pbkdf2_sha256": "iterations:salt_hex:hash_hex"
+    },
+    {
+      "tenant_id": "marketgraph",
+      "tier": "internal",
+      "scopes": ["health", "market_data", "macro", "fundamentals", "read"],
+      "pbkdf2_sha256": "iterations:salt_hex:hash_hex"
+    }
+  ]
+}

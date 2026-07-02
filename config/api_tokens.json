@@ -1,4 +1,0 @@
-{
-  "_comment": "API token hashes for SharedSignals. Set SHAREDSIGNALS_TOKEN_HASH_FILE env var to override path.",
-  "tokens": []
-}

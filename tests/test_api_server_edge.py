@@ -52,8 +52,28 @@ class _FakeReader:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self.clear_count = 0
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
     def get_events(self, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
+        return []
+
+    def get_market_data(
+        self,
+        ts_code: str,
+        start: str | None = None,
+        end: str | None = None,
+        freq: str = "daily",
+    ) -> list[dict[str, Any]]:
+        self.calls.append(("get_market_data", {"ts_code": ts_code, "start": start, "end": end, "freq": freq}))
+        return []
+
+    def get_capital_flow(
+        self,
+        date: str | None = None,
+        ts_code: str | None = None,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        self.calls.append(("get_capital_flow", {"date": date, "ts_code": ts_code, **kwargs}))
         return []
 
     def clear_caches(self) -> None:
@@ -149,3 +169,28 @@ def test_api_oversize_query_is_handled_gracefully(api_edge_server) -> None:
 
     assert status == 200
     assert payload["data"] == []
+
+
+def test_api_passes_market_data_freq_and_capital_flow_range_params(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/market_data?ts_code=000001.SZ&start=20260701&end=20260702&freq=5m")
+    assert status == 200
+    assert payload["data"] == []
+
+    status, payload = _get_json(base_url, "/capital_flow?ts_code=000001.SZ&start=20260701&end=20260702")
+    assert status == 200
+    assert payload["data"] == []
+
+    assert reader.calls == [
+        ("get_market_data", {"ts_code": "000001.SZ", "start": "20260701", "end": "20260702", "freq": "5m"}),
+        (
+            "get_capital_flow",
+            {
+                "date": "20260701",
+                "ts_code": "000001.SZ",
+                "start_date": "20260701",
+                "end_date": "20260702",
+            },
+        ),
+    ]
