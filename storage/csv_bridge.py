@@ -7,10 +7,12 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from storage.schema_contract import table_primary_keys
 
 logger = logging.getLogger(__name__)
+CHUNK_SIZE = 1000
 
 DEFAULT_SQLITE_PATH = (
     Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
@@ -136,6 +138,41 @@ def _insert_sql(table, columns, pk_columns):
     return f"INSERT OR IGNORE INTO {quoted_table} ({col_sql}) VALUES ({placeholders})"
 
 
+def _required_columns(table, target_columns):
+    return [
+        col
+        for col in table_primary_keys().get(table, [])
+        if col in target_columns
+    ]
+
+
+def _row_values(row, columns, required_columns, csv_path, row_number):
+    missing = [col for col in required_columns if row.get(col) in (None, "")]
+    if missing:
+        logger.warning(
+            "csv bridge skipped bad row: file=%s row=%s missing required columns=%s",
+            csv_path,
+            row_number,
+            ",".join(missing),
+        )
+        return None
+    return [row.get(col) for col in columns]
+
+
+def _flush_chunk(conn, sql, chunk):
+    if not chunk:
+        return 0
+    before = conn.total_changes
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.executemany(sql, chunk)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return conn.total_changes - before
+
+
 def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
     """Ingest one CSV file into an existing SQLite table.
 
@@ -186,19 +223,24 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
                 for col in table_primary_keys().get(table, [])
                 if col in target_columns
             ]
+            for pk_col in pk_columns:
+                if pk_col not in columns:
+                    columns.append(pk_col)
+            required_columns = _required_columns(table, target_columns)
             sql = _insert_sql(table, columns, pk_columns)
+            chunk: list[list[Any]] = []
 
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                for row in reader:
-                    row = _canonical_row(table, row, api_name, csv_path)
-                    values = [row.get(col) for col in columns]
-                    cur = conn.execute(sql, values)
-                    rows_written += cur.rowcount if cur.rowcount > 0 else 0
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
+            for row_number, row in enumerate(reader, start=2):
+                row = _canonical_row(table, row, api_name, csv_path)
+                values = _row_values(row, columns, required_columns, csv_path, row_number)
+                if values is None:
+                    continue
+                chunk.append(values)
+                if len(chunk) >= CHUNK_SIZE:
+                    rows_written += _flush_chunk(conn, sql, chunk)
+                    chunk.clear()
+
+            rows_written += _flush_chunk(conn, sql, chunk)
     finally:
         conn.close()
 

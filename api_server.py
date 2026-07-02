@@ -25,13 +25,15 @@ _runtime_load_lock = threading.Lock()
 HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", "8082"))
 VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
+REQUEST_TIMEOUT = float(os.environ.get("SHAREDSIGNALS_REQUEST_TIMEOUT", "30"))
+MAX_THREADS = int(os.environ.get("SHAREDSIGNALS_MAX_THREADS", "20"))
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_CACHE_SECONDS = 60
 
 
 def _ensure_runtime_loaded() -> None:
     """Bootstrap process env, then load modules that read os.environ."""
-    global auth, reader, HOST, PORT, VERSION
+    global auth, reader, HOST, PORT, VERSION, REQUEST_TIMEOUT, MAX_THREADS
     if auth is not None and reader is not None:
         return
 
@@ -45,6 +47,8 @@ def _ensure_runtime_loaded() -> None:
         HOST = os.environ.get("SHAREDSIGNALS_API_HOST", HOST)
         PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", str(PORT)))
         VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", VERSION)
+        REQUEST_TIMEOUT = float(os.environ.get("SHAREDSIGNALS_REQUEST_TIMEOUT", str(REQUEST_TIMEOUT)))
+        MAX_THREADS = int(os.environ.get("SHAREDSIGNALS_MAX_THREADS", str(MAX_THREADS)))
 
         import auth as auth_module  # noqa: WPS433
         import reader as reader_module  # noqa: WPS433
@@ -435,11 +439,61 @@ class SharedSignalsHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        RequestHandlerClass: type[BaseHTTPRequestHandler],
+        *,
+        request_timeout: float = 30.0,
+        max_threads: int = 20,
+    ) -> None:
+        super().__init__(server_address, RequestHandlerClass)
+        self.request_timeout = max(float(request_timeout), 1.0)
+        self.max_threads = max(int(max_threads), 1)
+        self._thread_limiter = threading.BoundedSemaphore(self.max_threads)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._thread_limiter.acquire(blocking=False):
+            self._send_capacity_response(request)
+            return
+        request.settimeout(self.request_timeout)
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._thread_limiter.release()
+
+    def _send_capacity_response(self, request: Any) -> None:
+        payload = json.dumps(
+            {"error": "server at capacity", "timestamp": utc_now_iso()},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        response = (
+            b"HTTP/1.1 503 Service Unavailable\r\n"
+            b"Content-Type: application/json; charset=utf-8\r\n"
+            + f"Content-Length: {len(payload)}\r\n".encode("ascii")
+            + b"Cache-Control: no-store\r\n"
+            + b"Connection: close\r\n"
+            + f"Date: {formatdate(usegmt=True)}\r\n\r\n".encode("ascii")
+            + payload
+        )
+        try:
+            request.sendall(response)
+        finally:
+            request.close()
+
 
 
 def main() -> None:
     _ensure_runtime_loaded()
-    httpd = SharedSignalsHTTPServer((HOST, PORT), Handler)
+    httpd = SharedSignalsHTTPServer(
+        (HOST, PORT),
+        Handler,
+        request_timeout=REQUEST_TIMEOUT,
+        max_threads=MAX_THREADS,
+    )
     print(f"SharedSignals API listening on {HOST}:{PORT}", flush=True)
     httpd.serve_forever()
 

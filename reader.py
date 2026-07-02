@@ -187,7 +187,7 @@ def _files_changed(last_reset: float) -> bool:
 
 def _maybe_invalidate() -> bool:
     """Invalidate caches if TTL expired or underlying files changed. Returns True if cleared."""
-    now = time.monotonic()
+    now = time.time()
     with _CACHE_LOCK:
         last_reset = _CACHE_LAST_RESET
         if last_reset > 0 and now - last_reset < CACHE_TTL_SECONDS and not _files_changed(last_reset):
@@ -205,7 +205,7 @@ def _clear_caches_locked(reset_time: float | None = None) -> None:
         except Exception:
             pass
     _CACHE_GENERATION += 1
-    _CACHE_LAST_RESET = reset_time if reset_time is not None else time.monotonic()
+    _CACHE_LAST_RESET = reset_time if reset_time is not None else time.time()
 
 
 def clear_caches() -> None:
@@ -368,6 +368,7 @@ def _degraded_empty(source_id: str, reason: str, *, lineage: dict[str, Any] | No
 
 
 def _safe_public(source_id: str, lineage: dict[str, Any], producer: Callable[[], str]) -> list[dict[str, Any]]:
+    _maybe_invalidate()
     try:
         return _clone_cached(producer())
     except Exception as exc:  # pragma: no cover - final public boundary

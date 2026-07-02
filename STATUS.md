@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-02 (P0 architecture debt Step 5/6 完成：schema contract + provider PK migration script)
+> 最后更新：2026-07-02 (Phase 1 HIGH findings 修复：CSV 批量入库、reader cache 失效、API timeout/thread bound)
 
 ---
 
@@ -59,12 +59,20 @@
 5. [ ] **P0：CSV→SQLite 接入桥** — sync_daily.py CSV 输出接入 SQLite→DuckDB 管线
 6. [x] **P0：schema 漂移检测** — schema.py 与 duckdb_schema.py 11 表自动一致性校验
 7. [x] **P0：provider 从 market_bars_daily 主键移除** — 已生成安全迁移脚本，尚未执行实际数据库迁移
-8. [ ] **P1：API 服务器线程化** — HTTPServer → ThreadedHTTPServer 或 WSGI
+8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [ ] **P1：auth.py 内存治理** — `_DEDUP_CACHE`/`_REQUEST_LOG` 加 LRU 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
 11. [ ] **P2：SharedSignals API 作为唯一消费入口** — 推动 TradingAgent/MarketGraph 通过 HTTP API 而非直接 SQLite 读取
 
 ## 五、最近完成
+
+### 2026-07-02 Phase 1 HIGH findings 修复
+
+- [x] `storage/csv_bridge.py`：CSV→SQLite 桥改为 1000 行分块 `executemany()`，每个 chunk 独立事务；按目标表主键验证必填列，坏行记录日志后跳过；行数以 `conn.total_changes` 差值统计
+- [x] `reader.py`：公共读取边界接入 `_maybe_invalidate()`，缓存 TTL 和文件变更检测统一生效
+- [x] `reader.py`：缓存时间源统一为 `time.time()`，避免 `time.monotonic()` 与文件 `st_mtime` epoch 时间域混用
+- [x] `api_server.py`：新增 `SHAREDSIGNALS_REQUEST_TIMEOUT`（默认 30s）和 `SHAREDSIGNALS_MAX_THREADS`（默认 20）；达到并发上限时返回 503
+- [x] 验证：`py_compile`、指定 `pytest`、`tools/check_schema_drift.py` 均通过
 
 ### 2026-07-02 P0 architecture debt Step 5/6
 
