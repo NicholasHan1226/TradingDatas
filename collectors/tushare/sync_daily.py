@@ -26,16 +26,21 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-# Bootstrap: ensure collector is importable
+# Bootstrap: add SharedSignals root to sys.path so package imports work
 _BASE_DIR = Path(__file__).resolve().parents[2]  # SharedSignals root
-_COLLECTOR_DIR = _BASE_DIR / "collectors" / "tushare"
-if str(_COLLECTOR_DIR) not in sys.path:
-    sys.path.insert(0, str(_COLLECTOR_DIR))
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
 
-from collector import TushareCollector  # noqa: E402
+from collectors.tushare.collector import TushareCollector  # noqa: E402
+from storage.csv_bridge import (  # noqa: E402
+    CSV_TO_TABLE_MAP,
+    DEFAULT_SQLITE_PATH,
+    ingest_csv_to_sqlite,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +48,9 @@ logger = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 
-CONFIG_PATH = _COLLECTOR_DIR / "config.yaml"
+CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
 STOCK_MASTER_PATH = _BASE_DIR / "reference" / "stock_master.csv"
+HK_STOCK_MASTER_PATH = _BASE_DIR / "reference" / "hk_stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
 
 VALID_TIERS = [
@@ -92,14 +98,29 @@ def fill_params(
     start_date: str,
     end_date: str,
 ) -> dict:
-    """Substitute placeholders in a params template dict."""
-    raw = str(template)
-    if ts_code:
-        raw = raw.replace("{ts_code}", ts_code)
-    raw = raw.replace("{trade_date}", trade_date)
-    raw = raw.replace("{start_date}", start_date)
-    raw = raw.replace("{end_date}", end_date)
-    return yaml.safe_load(raw)
+    """Substitute placeholders in a params template dict.
+
+    Uses data-level key-value substitution to avoid YAML injection via
+    unescaped placeholder values (no string → YAML re-parse round-trip).
+    """
+    import copy
+    result = copy.deepcopy(template)
+
+    def _replace(val: Any) -> Any:
+        if isinstance(val, str):
+            if ts_code:
+                val = val.replace("{ts_code}", ts_code)
+            val = val.replace("{trade_date}", trade_date)
+            val = val.replace("{start_date}", start_date)
+            val = val.replace("{end_date}", end_date)
+            return val
+        if isinstance(val, dict):
+            return {k: _replace(v) for k, v in val.items()}
+        if isinstance(val, list):
+            return [_replace(item) for item in val]
+        return val
+
+    return _replace(result)
 
 
 # ---------------------------------------------------------------------------
@@ -114,43 +135,82 @@ def sync_tier(
     trade_date: str,
     start_date: str,
     end_date: str,
+    hk_stock_codes: list[str] | None = None,
+    sqlite_bridge_enabled: bool = True,
+    sqlite_db_path: Path = DEFAULT_SQLITE_PATH,
 ) -> dict[str, dict]:
     """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
     stats: dict[str, dict] = {}
     tier_start = time.time()
 
-    # Split APIs by per_stock flag
-    per_stock_apis = [a for a in apis if a.get("per_stock", True)]
+    # Split APIs: global, A-share per-stock, HK per-stock
+    per_stock_ashare = [a for a in apis if a.get("per_stock", True) and a.get("stock_list") != "hk"]
+    per_stock_hk = [a for a in apis if a.get("per_stock", True) and a.get("stock_list") == "hk"]
     global_apis = [a for a in apis if not a.get("per_stock", True)]
 
-    total_calls = len(per_stock_apis) * len(stock_codes) + len(global_apis)
+    # Resolve HK stock codes
+    hk_codes = hk_stock_codes or []
+
+    total_calls = (
+        len(per_stock_ashare) * len(stock_codes)
+        + len(per_stock_hk) * len(hk_codes)
+        + len(global_apis)
+    )
     call_idx = 0
 
-    logger.info("[%s] %d APIs (%d per-stock, %d global) × %d stocks = %d calls",
-                tier_name, len(apis), len(per_stock_apis), len(global_apis),
-                len(stock_codes), total_calls)
+    logger.info("[%s] %d APIs (%d A-share per-stock, %d HK per-stock, %d global) x (%d A / %d HK stocks) = %d calls",
+                tier_name, len(apis), len(per_stock_ashare), len(per_stock_hk), len(global_apis),
+                len(stock_codes), len(hk_codes), total_calls)
 
-    # ── Per-stock APIs ──
-    for api_def in per_stock_apis:
-        api_name = api_def["api_name"]
-        template = api_def.get("params", {})
-        fields = api_def.get("fields")
-        api_start = time.time()
-        api_total = 0
+    def _bridge_csv(api_name: str, path: Path | None) -> int:
+        if not sqlite_bridge_enabled or path is None:
+            return 0
+        table = CSV_TO_TABLE_MAP.get(api_name)
+        if not table:
+            return 0
+        try:
+            rows = ingest_csv_to_sqlite(sqlite_db_path, table, path)
+            logger.info("sqlite bridge %s -> %s: %d rows from %s", api_name, table, rows, path)
+            return rows
+        except Exception:
+            logger.exception("sqlite bridge failed for %s from %s", api_name, path)
+            return 0
 
-        for ts_code in stock_codes:
-            call_idx += 1
-            params = fill_params(template, ts_code, trade_date, start_date, end_date)
-            rows = collector.collect(api_name, params, fields)
-            api_total += len(rows)
-            collector.save(api_name, rows, trade_date, filename=ts_code)
-            logger.info("[%s] [%d/%d] %s %s → %d rows",
-                        tier_name, call_idx, total_calls,
-                        api_name, ts_code, len(rows))
+    def _run_per_stock(api_defs: list[dict], codes: list[str], label: str) -> None:
+        nonlocal call_idx
+        for api_def in api_defs:
+            api_name = api_def["api_name"]
+            template = api_def.get("params", {})
+            fields = api_def.get("fields")
+            api_start = time.time()
+            api_total = 0
+            bridge_total = 0
 
-        duration = time.time() - api_start
-        stats[api_name] = {"rows": api_total, "duration_s": round(duration, 1)}
-        logger.info("[%s] %s: %d rows in %.1fs", tier_name, api_name, api_total, duration)
+            for ts_code in codes:
+                call_idx += 1
+                params = fill_params(template, ts_code, trade_date, start_date, end_date)
+                rows = collector.collect(api_name, params, fields)
+                api_total += len(rows)
+                save_path = collector.save(api_name, rows, trade_date, filename=ts_code)
+                bridge_total += _bridge_csv(api_name, save_path)
+                logger.info("[%s] [%d/%d] %s %s → %d rows",
+                            tier_name, call_idx, total_calls,
+                            api_name, ts_code, len(rows))
+
+            duration = time.time() - api_start
+            stats[api_name] = {
+                "rows": api_total,
+                "duration_s": round(duration, 1),
+                "sqlite_bridge_rows": bridge_total,
+            }
+            logger.info("[%s] %s (%s): %d rows, bridge=%d rows in %.1fs",
+                        tier_name, api_name, label, api_total, bridge_total, duration)
+
+    # ── Per-stock: A-share ──
+    _run_per_stock(per_stock_ashare, stock_codes, "A-share")
+
+    # ── Per-stock: HK ──
+    _run_per_stock(per_stock_hk, hk_codes, "HK")
 
     # ── Global (non-per-stock) APIs ──
     for api_def in global_apis:
@@ -162,13 +222,18 @@ def sync_tier(
         call_idx += 1
         params = fill_params(template, None, trade_date, start_date, end_date)
         rows = collector.collect(api_name, params, fields)
-        collector.save(api_name, rows, trade_date)
+        save_path = collector.save(api_name, rows, trade_date)
+        bridge_total = _bridge_csv(api_name, save_path)
 
         duration = time.time() - api_start
-        stats[api_name] = {"rows": len(rows), "duration_s": round(duration, 1)}
-        logger.info("[%s] [%d/%d] %s (global) → %d rows in %.1fs",
+        stats[api_name] = {
+            "rows": len(rows),
+            "duration_s": round(duration, 1),
+            "sqlite_bridge_rows": bridge_total,
+        }
+        logger.info("[%s] [%d/%d] %s (global) → %d rows, bridge=%d rows in %.1fs",
                     tier_name, call_idx, total_calls,
-                    api_name, len(rows), duration)
+                    api_name, len(rows), bridge_total, duration)
 
     tier_duration = time.time() - tier_start
     logger.info("[%s] COMPLETE: %d APIs, %.1fs total", tier_name, len(apis), tier_duration)
@@ -198,6 +263,11 @@ def main() -> None:
         action="store_true",
         help="Limit to 3 stocks for speed testing",
     )
+    parser.add_argument(
+        "--no-sqlite-bridge",
+        action="store_true",
+        help="Disable additive CSV-to-SQLite bridge and keep CSV-only mode",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -219,13 +289,27 @@ def main() -> None:
         sys.exit(1)
 
     apis = config["priorities"][tier_name]
+
+    # Detect if any API in this tier needs HK stock codes
+    needs_hk = any(a.get("stock_list") == "hk" for a in apis)
+    hk_stock_codes: list[str] = []
+    if needs_hk:
+        if HK_STOCK_MASTER_PATH.exists():
+            hk_stock_codes = load_stock_codes(HK_STOCK_MASTER_PATH)
+            if not hk_stock_codes:
+                logger.warning("HK stock master file exists but is empty: %s", HK_STOCK_MASTER_PATH)
+        else:
+            logger.warning("HK stock master file not found: %s — HK per-stock APIs will be skipped", HK_STOCK_MASTER_PATH)
+
     if args.test:
         stock_codes = stock_codes[:3]
-        logger.info("TEST MODE: using %d stocks", len(stock_codes))
+        hk_stock_codes = hk_stock_codes[:3] if hk_stock_codes else []
+        logger.info("TEST MODE: using %d A-share / %d HK stocks", len(stock_codes), len(hk_stock_codes))
 
     trade_date, start_date, end_date = date_range(args.lookback)
     logger.info("=" * 60)
-    logger.info("TIER: %s  |  Stocks: %d  |  APIs: %d", tier_name, len(stock_codes), len(apis))
+    logger.info("TIER: %s  |  A-Stocks: %d  |  HK-Stocks: %d  |  APIs: %d",
+                tier_name, len(stock_codes), len(hk_stock_codes), len(apis))
     logger.info("Window: %s → %s (trade_date=%s, lookback=%d days)",
                 start_date, end_date, trade_date, args.lookback)
     logger.info("=" * 60)
@@ -233,17 +317,26 @@ def main() -> None:
     collector = TushareCollector()
     start_time = time.time()
 
-    stats = sync_tier(collector, tier_name, apis, stock_codes, trade_date, start_date, end_date)
+    stats = sync_tier(
+        collector, tier_name, apis, stock_codes,
+        trade_date, start_date, end_date,
+        hk_stock_codes=hk_stock_codes,
+        sqlite_bridge_enabled=not args.no_sqlite_bridge,
+    )
 
     # Summary
     elapsed = time.time() - start_time
     logger.info("=" * 60)
     logger.info("SYNC SUMMARY [%s] — %.1fs total", tier_name, elapsed)
     total_rows = 0
+    total_bridge_rows = 0
     for api_name, s in stats.items():
         total_rows += s["rows"]
-        logger.info("  %-25s %6d rows  %6.1fs", api_name, s["rows"], s["duration_s"])
+        total_bridge_rows += s.get("sqlite_bridge_rows", 0)
+        logger.info("  %-25s %6d rows  bridge=%6d  %6.1fs",
+                    api_name, s["rows"], s.get("sqlite_bridge_rows", 0), s["duration_s"])
     logger.info("  %-25s %6d rows", "TOTAL", total_rows)
+    logger.info("  %-25s %6d rows", "SQLITE_BRIDGE_TOTAL", total_bridge_rows)
     logger.info("=" * 60)
 
 

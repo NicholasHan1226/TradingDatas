@@ -11,7 +11,7 @@ import json
 import os
 import threading
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Any
 
@@ -24,12 +24,39 @@ RATE_LIMITS = {
     "internal": None,
 }
 LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
+LOCALHOST_BYPASS = os.environ.get("SHAREDSIGNALS_LOCALHOST_BYPASS", "0") == "1"
+_SALT_RAW = os.environ.get("SHAREDSIGNALS_TOKEN_SALT", "")
+if not _SALT_RAW:
+    import warnings
+    warnings.warn("SHAREDSIGNALS_TOKEN_SALT is empty — token hashing disabled; set SHAREDSIGNALS_TOKEN_SALT in environment", RuntimeWarning)
+TOKEN_SALT = _SALT_RAW.encode("utf-8")
 DEDUP_TTL_SECONDS = 60
 RATE_WINDOW_SECONDS = 3600
+DEDUP_MAX_ENTRIES = int(os.environ.get("SHAREDSIGNALS_DEDUP_MAX_ENTRIES", "2048"))
+RATE_MAX_TENANTS = int(os.environ.get("SHAREDSIGNALS_RATE_MAX_TENANTS", "1024"))
+RATE_MAX_EVENTS_PER_TENANT = int(os.environ.get("SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", "1000"))
+
+# Scope presets — which endpoints each scope grants access to
+SCOPE_ENDPOINTS: dict[str, set[str]] = {
+    "health": {"/health", "/capabilities", "/cache/invalidate", "/cache/status"},
+    "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
+    "fundamentals": {"/fundamentals", "/reference", "/industry"},
+    "macro": {"/macro", "/capital_flow"},
+    "events": {"/events", "/sentiment"},
+    "crypto": {"/crypto"},
+    "pm": {"/pm_markets"},
+    "associations": {"/associations", "/impacts"},
+    "tushare": {"/tushare"},
+    "full": {"*"},
+}
+# "read" scope grants access to all read endpoints
+SCOPE_ENDPOINTS["read"] = set().union(
+    *(v for k, v in SCOPE_ENDPOINTS.items() if k not in ("full",))
+)
 
 _STATE_LOCK = threading.Lock()
-_REQUEST_LOG: dict[str, deque[float]] = defaultdict(deque)
-_DEDUP_CACHE: dict[str, dict[str, Any]] = {}
+_REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
+_DEDUP_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _TOKEN_HASHES: dict[str, dict[str, str]] | None = None
 
 
@@ -47,9 +74,57 @@ def _now() -> float:
 
 
 
+def _cleanup_dedup_locked(now: float) -> None:
+    """Remove expired dedup entries and evict oldest when over DEDUP_MAX_ENTRIES.
+
+    Must be called while _STATE_LOCK is held.
+    """
+    # Remove expired entries
+    expired = [
+        key for key, item in _DEDUP_CACHE.items()
+        if now - float(item.get("stored_at", 0.0)) > DEDUP_TTL_SECONDS
+    ]
+    for key in expired:
+        _DEDUP_CACHE.pop(key, None)
+
+    # Evict oldest (LRU) entries when over capacity
+    while len(_DEDUP_CACHE) > DEDUP_MAX_ENTRIES:
+        _DEDUP_CACHE.popitem(last=False)
+
+
+def _cleanup_rate_log_locked(now: float) -> None:
+    """Remove expired timestamps, empty tenant buckets, and evict oldest tenants.
+
+    Must be called while _STATE_LOCK is held.
+    """
+    # Remove expired timestamps from each tenant bucket
+    empty_tenants: list[str] = []
+    for tenant_id, bucket in _REQUEST_LOG.items():
+        while bucket and now - bucket[0] > RATE_WINDOW_SECONDS:
+            bucket.popleft()
+        if not bucket:
+            empty_tenants.append(tenant_id)
+
+    # Remove empty tenant buckets
+    for tenant_id in empty_tenants:
+        _REQUEST_LOG.pop(tenant_id, None)
+
+    # Evict oldest (LRU) tenants when over capacity
+    while len(_REQUEST_LOG) > RATE_MAX_TENANTS:
+        _REQUEST_LOG.popitem(last=False)
+
+
 def _b64url_decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
+
+
+def _hash_token(token: str) -> str:
+    """Hash a bearer token for lookup. Uses HMAC-SHA256 when TOKEN_SALT is configured,
+    falling back to plain SHA256 for backward compatibility."""
+    if TOKEN_SALT:
+        return hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), TOKEN_SALT, 100000).hex().lower()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest().lower()
 
 
 
@@ -90,7 +165,17 @@ def _load_token_hashes() -> dict[str, dict[str, str]]:
             continue
         tenant_id = str(item.get("tenant_id") or item.get("tenant") or token_hash[:12]).strip() or token_hash[:12]
         tier = str(item.get("tier") or "free").strip().lower() or "free"
-        items[token_hash] = {"tenant_id": tenant_id, "tier": tier, "auth_method": "token_hash"}
+        scopes = item.get("scopes", ["read"])
+        if isinstance(scopes, str):
+            scopes = [s.strip() for s in scopes.split(",") if s.strip()]
+        if not isinstance(scopes, list) or not scopes:
+            scopes = ["read"]
+        items[token_hash] = {
+            "tenant_id": tenant_id,
+            "tier": tier,
+            "scopes": scopes,
+            "auth_method": "token_hash",
+        }
 
     _TOKEN_HASHES = items
     return _TOKEN_HASHES
@@ -125,21 +210,42 @@ def _extract_bearer_token(headers: Any) -> str:
 
 
 
-def authenticate(headers: Any, client_host: str) -> dict[str, str]:
+def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
     host = (client_host or "").strip()
-    if host in LOCALHOSTS:
-        return {"tenant_id": "internal", "tier": "internal", "auth_method": "localhost"}
+    if host in LOCALHOSTS and LOCALHOST_BYPASS:
+        return {
+            "tenant_id": "internal",
+            "tier": "internal",
+            "scopes": ["full"],
+            "auth_method": "localhost",
+        }
 
     token = _extract_bearer_token(headers)
     jwt_claims = _parse_jwt(token)
     if jwt_claims is not None:
+        jwt_claims.setdefault("scopes", ["full"])
         return jwt_claims
 
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest().lower()
+    token_hash = _hash_token(token)
     token_hashes = _load_token_hashes()
     if token_hash in token_hashes:
         return token_hashes[token_hash]
     raise AuthError("invalid token")
+
+
+def check_endpoint_scope(account: dict[str, Any], path: str) -> bool:
+    """Check if the account's scopes allow access to the given endpoint path."""
+    scopes: list[str] = account.get("scopes", ["full"])
+    if "full" in scopes or "*" in scopes:
+        return True
+
+    allowed: set[str] = set()
+    for scope in scopes:
+        allowed.update(SCOPE_ENDPOINTS.get(scope, set()))
+
+    if "*" in allowed:
+        return True
+    return path in allowed
 
 
 
@@ -150,12 +256,28 @@ def enforce_rate_limit(tenant_id: str, tier: str) -> None:
 
     now = _now()
     with _STATE_LOCK:
+        if tenant_id not in _REQUEST_LOG:
+            _REQUEST_LOG[tenant_id] = deque()
         bucket = _REQUEST_LOG[tenant_id]
+
+        # Remove expired timestamps from this tenant's bucket
         while bucket and now - bucket[0] > RATE_WINDOW_SECONDS:
             bucket.popleft()
+
         if len(bucket) >= limit:
             raise RateLimitError(f"rate limit exceeded for tier={tier}")
+
+        # Enforce per-tenant event cap
+        while len(bucket) >= RATE_MAX_EVENTS_PER_TENANT:
+            bucket.popleft()
+
         bucket.append(now)
+
+        # LRU tracking: mark this tenant as recently used
+        _REQUEST_LOG.move_to_end(tenant_id)
+
+        # Periodic cleanup
+        _cleanup_rate_log_locked(now)
 
 
 
@@ -174,6 +296,8 @@ def get_cached_response(fingerprint: str) -> dict[str, Any] | None:
         if now - float(item.get("stored_at", 0.0)) > DEDUP_TTL_SECONDS:
             _DEDUP_CACHE.pop(fingerprint, None)
             return None
+        # LRU tracking: mark as recently accessed
+        _DEDUP_CACHE.move_to_end(fingerprint)
         response = copy.deepcopy(item.get("response"))
     return response
 
@@ -182,7 +306,22 @@ def get_cached_response(fingerprint: str) -> dict[str, Any] | None:
 def store_cached_response(fingerprint: str, response: dict[str, Any]) -> None:
     now = _now()
     with _STATE_LOCK:
-        expired = [key for key, item in _DEDUP_CACHE.items() if now - float(item.get("stored_at", 0.0)) > DEDUP_TTL_SECONDS]
-        for key in expired:
-            _DEDUP_CACHE.pop(key, None)
+        _cleanup_dedup_locked(now)
         _DEDUP_CACHE[fingerprint] = {"stored_at": now, "response": copy.deepcopy(response)}
+        # LRU tracking: mark as most recently stored
+        _DEDUP_CACHE.move_to_end(fingerprint)
+
+
+
+def cache_stats() -> dict[str, Any]:
+    """Return cache and rate-limit statistics for monitoring."""
+    with _STATE_LOCK:
+        return {
+            "dedup_entries": len(_DEDUP_CACHE),
+            "request_log_tenants": len(_REQUEST_LOG),
+            "dedup_max_entries": DEDUP_MAX_ENTRIES,
+            "rate_max_tenants": RATE_MAX_TENANTS,
+            "rate_max_events_per_tenant": RATE_MAX_EVENTS_PER_TENANT,
+            "dedup_ttl_seconds": DEDUP_TTL_SECONDS,
+            "rate_window_seconds": RATE_WINDOW_SECONDS,
+        }

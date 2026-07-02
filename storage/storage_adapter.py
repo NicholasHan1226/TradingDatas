@@ -20,8 +20,8 @@ from .duckdb_schema import create_schema
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SQLITE_PATH = "data/marketdata.sqlite"
-DEFAULT_DUCKDB_PATH = "data/marketdata.duckdb"
+DEFAULT_SQLITE_PATH = "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+DEFAULT_DUCKDB_PATH = "/opt/investment/SharedSignals/data/marketdata.duckdb"
 
 
 class StorageAdapter:
@@ -140,8 +140,9 @@ class StorageAdapter:
 
 
 def _pk_for_table(table: str) -> list[str]:
-    from .duckdb_schema import TABLE_PRIMARY_KEYS
-    return TABLE_PRIMARY_KEYS.get(table, [])
+    from .schema_contract import table_primary_keys
+
+    return table_primary_keys().get(table, [])
 
 
 def _duckdb_table_columns(conn: Any, table: str) -> list[str]:

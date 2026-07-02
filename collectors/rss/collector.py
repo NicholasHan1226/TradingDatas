@@ -148,7 +148,7 @@ class RSSCollector(BaseCollector):
     def _hash_event(url: str, title: str, source: str) -> str:
         import hashlib
         key = f"{url}|{title}|{source}".encode("utf-8")
-        return hashlib.sha256(key).hexdigest()[:16]
+        return hashlib.sha256(key).hexdigest()[:32]
 
     # ------------------------------------------------------------------
     # Save

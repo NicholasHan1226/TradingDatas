@@ -21,6 +21,7 @@ import csv
 import json
 import os
 import sqlite3
+import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -33,22 +34,46 @@ try:
 except ImportError:
     yaml = None
 
+import warnings as _warnings
 
-INVESTMENT_ROOT = Path(os.environ.get("INVESTMENT_ROOT", "/opt/investment"))
 
-# ---- Auto-load .env on import ----
-import os as _os
-_env_file = __import__("pathlib").Path(__file__).resolve().parent / ".env"
+class _LazyPath:
+    """Resolve an environment-backed path only when it is first used."""
+
+    def __init__(self, resolver: Callable[[], Path]):
+        self._resolver = resolver
+        self._path: Path | None = None
+
+    def get(self) -> Path:
+        if self._path is None:
+            self._path = Path(self._resolver()).expanduser()
+        return self._path
+
+    def __fspath__(self) -> str:
+        return os.fspath(self.get())
+
+    def __str__(self) -> str:
+        return str(self.get())
+
+    def __repr__(self) -> str:
+        return repr(self.get())
+
+    def __truediv__(self, key: str) -> "_LazyPath":
+        return _LazyPath(lambda: self.get() / key)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.get(), name)
+
+
+_env_file = Path(__file__).resolve().parent / ".env"
 if _env_file.exists():
-    with open(_env_file) as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                if _line.startswith("export "):
-                    _line = _line[7:]
-                _key, _, _val = _line.partition("=")
-                _os.environ[_key.strip()] = _val.strip().strip('"').strip("'")
-# ---- end env loader ----
+    _warnings.warn(
+        f"reader.py: .env exists at {_env_file}, but reader no longer loads it "
+        "at import time. Call bootstrap_sharedsignals_env() before importing "
+        "reader when process-local .env values are required.",
+        FutureWarning,
+        stacklevel=2,
+    )
 
 # ---- freshness config loader ----
 _freshness_config = None
@@ -82,34 +107,25 @@ def _freshness_threshold(source_id):
         return float(cfg["sources"][source_id].get("stale_after_hours", cfg["fallback_default_hours"]))
     return float(cfg["fallback_default_hours"])
 
-SHAREDSIGNALS_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", INVESTMENT_ROOT / "SharedSignals"))
-MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", INVESTMENT_ROOT / "MarketGraph"))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", INVESTMENT_ROOT / "MarketGraphRuntime"))
-ASHARE_ROOT = Path(os.environ.get("ASHARE_ROOT", INVESTMENT_ROOT / "Ashare"))
-CRYPTO_ROOT = Path(os.environ.get("CRYPTO_ROOT", INVESTMENT_ROOT / "Crypto"))
+INVESTMENT_ROOT = _LazyPath(lambda: Path(os.environ.get("INVESTMENT_ROOT") or "/opt/investment"))
+SHAREDSIGNALS_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_ROOT") or INVESTMENT_ROOT.get() / "SharedSignals"))
+MARKETGRAPH_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_ROOT") or INVESTMENT_ROOT.get() / "MarketGraph"))
+RUNTIME_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT") or INVESTMENT_ROOT.get() / "MarketGraphRuntime"))
+ASHARE_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_ROOT") or SHAREDSIGNALS_ROOT.get() / "collectors" / "tushare"))
+CRYPTO_ROOT = _LazyPath(lambda: Path(os.environ.get("CRYPTO_ROOT") or INVESTMENT_ROOT.get() / "Crypto"))
 
-SQLITE_PATH = Path(
-    os.environ.get(
-        "MARKETDATA_SQLITE",
-        RUNTIME_ROOT / "read_model" / "marketdata.sqlite",
-    )
-)
-INTAKE_ROOT = Path(
-    os.environ.get(
-        "SHAREDSIGNALS_INTAKE_ROOT",
-        SHAREDSIGNALS_ROOT / "data" / "intake",
-    )
-)
-REFERENCE_ROOT = Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT", SHAREDSIGNALS_ROOT / "reference"))
-MONEYFLOW_ROOT = Path(os.environ.get("ASHARE_MONEYFLOW_ROOT", SHAREDSIGNALS_ROOT / "data" / "moneyflow"))  # TODO: build native moneyflow collector
+SQLITE_PATH = _LazyPath(lambda: Path(os.environ.get("MARKETDATA_SQLITE") or RUNTIME_ROOT.get() / "read_model" / "marketdata.sqlite"))
+INTAKE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_INTAKE_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "intake"))
+REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT") or SHAREDSIGNALS_ROOT.get() / "reference"))
+MONEYFLOW_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_MONEYFLOW_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "moneyflow"))  # TODO: build native moneyflow collector
 # TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
-MACRO_FACTORS_PATH = Path(os.environ.get("MACRO_FACTORS_PATH", SHAREDSIGNALS_ROOT / "data" / "macro_factors.csv"))
-CRYPTO_KLINES_PATH = Path(os.environ.get("CRYPTO_KLINES_PATH", CRYPTO_ROOT / "data" / "market" / "klines.csv"))
-REALTIME_5M_ROOT = Path(os.environ.get("REALTIME_5M_ROOT", RUNTIME_ROOT / "staging" / "tushare_rt_min_5m"))
-STOCK_INDUSTRY_MAP_PATH = Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "stock_industry_map.csv"))
-EVENT_SIGNAL_ASSOC_PATH = Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "event_signal_associations.csv"))
-IMPACT_RELATIONS_PATH = Path(os.environ.get("IMPACT_RELATIONS_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "impact_relations.csv"))
-TARGET_STOCK_MAP_PATH = Path(os.environ.get("TARGET_STOCK_MAP_PATH", SHAREDSIGNALS_ROOT / "data" / "association" / "target_stock_map.csv"))
+MACRO_FACTORS_PATH = _LazyPath(lambda: Path(os.environ.get("MACRO_FACTORS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "macro_factors.csv"))
+CRYPTO_KLINES_PATH = _LazyPath(lambda: Path(os.environ.get("CRYPTO_KLINES_PATH") or CRYPTO_ROOT.get() / "data" / "market" / "klines.csv"))
+REALTIME_5M_ROOT = _LazyPath(lambda: Path(os.environ.get("REALTIME_5M_ROOT") or RUNTIME_ROOT.get() / "staging" / "tushare_rt_min_5m"))
+STOCK_INDUSTRY_MAP_PATH = _LazyPath(lambda: Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "stock_industry_map.csv"))
+EVENT_SIGNAL_ASSOC_PATH = _LazyPath(lambda: Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "event_signal_associations.csv"))
+IMPACT_RELATIONS_PATH = _LazyPath(lambda: Path(os.environ.get("IMPACT_RELATIONS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "impact_relations.csv"))
+TARGET_STOCK_MAP_PATH = _LazyPath(lambda: Path(os.environ.get("TARGET_STOCK_MAP_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "target_stock_map.csv"))
 
 LEGACY_RECOMMENDATIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "recommendations.csv"  # LEGACY: migrate to SS-native
 LEGACY_REVIEWS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "reviews.csv"  # LEGACY
@@ -118,6 +134,84 @@ LEGACY_SHADOW_TRADES = SHAREDSIGNALS_ROOT / "data" / "legacy" / "shadow_sim_trad
 LEGACY_SHADOW_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "latest_shadow_positions.csv"  # LEGACY
 LEGACY_PAPER_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "paper_positions.csv"  # LEGACY
 LEGACY_SIM_EXECUTION_LOG = SHAREDSIGNALS_ROOT / "data" / "legacy" / "simulated_execution_log.jsonl"  # LEGACY
+
+# -- Cache invalidation --------------------------------------------------------
+
+CACHE_TTL_SECONDS = float(os.environ.get("SHAREDSIGNALS_CACHE_TTL", "300"))  # 5 min default
+_CACHE_GENERATION = 0
+_CACHE_LAST_RESET = 0.0
+# Guards _CACHE_GENERATION, _CACHE_LAST_RESET, and bulk cache_clear operations.
+_CACHE_LOCK = Lock()
+
+_WATCHED_PATHS: list[Path] = [
+    SQLITE_PATH,
+    INTAKE_ROOT / "event_candidates.csv",
+    INTAKE_ROOT / "sentiment_signals.csv",
+    MACRO_FACTORS_PATH,
+    CRYPTO_KLINES_PATH,
+    STOCK_INDUSTRY_MAP_PATH,
+    EVENT_SIGNAL_ASSOC_PATH,
+    IMPACT_RELATIONS_PATH,
+    TARGET_STOCK_MAP_PATH,
+]
+
+# All @lru_cache-decorated functions that should be cleared together
+_CACHED_FUNCTIONS: list[Callable[..., Any]] = []
+
+
+def _register_cached(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Register a function for bulk cache clearing."""
+    _CACHED_FUNCTIONS.append(fn)
+    return fn
+
+
+def _files_changed(last_reset: float) -> bool:
+    """Check if any watched path has been modified since last cache reset."""
+    # last_reset is a caller-owned snapshot read while holding _CACHE_LOCK.
+    if last_reset == 0.0:
+        return False
+    for path in _WATCHED_PATHS:
+        try:
+            if path.exists() and path.stat().st_mtime > last_reset:
+                return True
+        except OSError:
+            continue
+    for p in REALTIME_5M_ROOT.glob("**/*.csv") if REALTIME_5M_ROOT.exists() else []:
+        try:
+            if p.stat().st_mtime > last_reset:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _maybe_invalidate() -> bool:
+    """Invalidate caches if TTL expired or underlying files changed. Returns True if cleared."""
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        last_reset = _CACHE_LAST_RESET
+        if last_reset > 0 and now - last_reset < CACHE_TTL_SECONDS and not _files_changed(last_reset):
+            return False
+        _clear_caches_locked(reset_time=now)
+        return True
+
+
+def _clear_caches_locked(reset_time: float | None = None) -> None:
+    """Clear caches while _CACHE_LOCK is already held."""
+    global _CACHE_GENERATION, _CACHE_LAST_RESET
+    for fn in _CACHED_FUNCTIONS:
+        try:
+            fn.cache_clear()
+        except Exception:
+            pass
+    _CACHE_GENERATION += 1
+    _CACHE_LAST_RESET = reset_time if reset_time is not None else time.monotonic()
+
+
+def clear_caches() -> None:
+    """Clear all LRU caches and reset the cache generation counter."""
+    with _CACHE_LOCK:
+        _clear_caches_locked()
 
 
 def _json_cached(fn: Callable[..., list[dict[str, Any]]], *args: Any) -> str:
@@ -173,7 +267,12 @@ def _date_key(value: Any) -> str:
 
 def _file_collected_at(path: Path) -> str | None:
     try:
-        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
+        st = path.stat()
+        # Reject empty files — st_mtime is set at open() time, so a still-writing
+        # file could report a stale timestamp while containing only partial data.
+        if st.st_size == 0:
+            return None
+        return datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(timespec="seconds")
     except OSError:
         return None
 
@@ -365,6 +464,7 @@ def _sqlite_rows(query: str, params: tuple[Any, ...], table: str) -> tuple[list[
         if not SQLITE_PATH.exists():
             return None, _degraded_empty(f"sqlite:{table}", f"missing sqlite db: {SQLITE_PATH}", lineage=lineage)
         conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
+        conn.execute("PRAGMA busy_timeout = 5000")
         conn.row_factory = sqlite3.Row
         try:
             rows = [_clean_row(dict(row)) for row in conn.execute(query, params).fetchall()]
@@ -430,6 +530,7 @@ def _rows_to_wrappers(
     return wrapped
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjusted: bool) -> str:
     if freq != "daily":
@@ -443,12 +544,13 @@ def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjus
     start_key, end_key = _date_key(start), _date_key(end)
     if start_key > end_key:
         start_key, end_key = end_key, start_key
+    market = "Ashare" if ts_code.endswith((".SH", ".SZ", ".BJ")) else "HK" if ts_code.endswith(".HK") else "US" if "." not in ts_code or ts_code.endswith(".US") else "Crypto"
     query = """
         SELECT * FROM market_bars_daily
-        WHERE symbol = ? AND trade_date >= ? AND trade_date <= ?
+        WHERE market = ? AND symbol = ? AND trade_date >= ? AND trade_date <= ?
         ORDER BY trade_date ASC
     """
-    rows, degraded = _sqlite_rows(query, (ts_code, start_key, end_key), "market_bars_daily")
+    rows, degraded = _sqlite_rows(query, (market, ts_code, start_key, end_key), "market_bars_daily")
     if degraded is not None:
         return _json_cached(lambda: degraded)
     lineage = {
@@ -490,7 +592,7 @@ def _as_of_filter(rows: list[dict[str, Any]], as_of: str) -> list[dict[str, Any]
                 filtered.append(row)
         else:
             filtered.append(row)
-    return filtered if filtered else rows  # don't return empty if all filtered
+    return filtered  # return empty if all filtered — avoid look-ahead bias in backtests
 
 
 def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str = "daily", adjusted: bool = True, **kwargs: Any) -> list[dict[str, Any]]:
@@ -502,6 +604,7 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
     return _safe_public("sqlite:market_bars_daily", lineage, lambda: _get_market_data_cached(str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_events_cached(start: str, end: str, event_type: str | None) -> str:
     path = INTAKE_ROOT / "event_candidates.csv"
@@ -531,6 +634,7 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
     return rows
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_sentiment_cached(start: str, end: str, tier: str | None) -> str:
     path = INTAKE_ROOT / "sentiment_signals.csv"
@@ -557,13 +661,14 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
     return rows
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_fundamentals_cached(ts_code: str, end_date: str = "") -> str:
     ts_upper = ts_code.upper()
     if ts_upper.endswith(('.SH', '.SZ', '.BJ')):
         try:
             import sys
-            ashare_tools = str(ASHARE_ROOT / "tools")
+            ashare_tools = str(ASHARE_ROOT)
             if ashare_tools not in sys.path:
                 sys.path.insert(0, ashare_tools)
             from a_share_tushare_api import _call as tushare_call
@@ -592,14 +697,15 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
     return _safe_public("sqlite:market_factors", lineage, lambda: _get_fundamentals_cached(str(ts_code), ed))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_tushare_cached(api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
     """Route to Tushare API via a_share_tushare_api._call()."""
     try:
         import sys
-        ashare_tools = str(ASHARE_ROOT / "tools")
-        if ashare_tools not in sys.path:
-            sys.path.insert(0, ashare_tools)
+        ashare_root_str = str(ASHARE_ROOT)
+        if ashare_root_str not in sys.path:
+            sys.path.insert(0, ashare_root_str)
         from a_share_tushare_api import _call as tushare_call
 
         params = json.loads(params_json) if params_json else {}
@@ -662,6 +768,9 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
         lineage,
         lambda: _get_tushare_cached(str(api_name), ts_code, start_date, end_date, params_json),
     )
+# NOTE: _get_capital_flow_cached is intentionally unused — get_capital_flow()
+# delegates to get_tushare("moneyflow") instead. Kept as reference for future
+# native moneyflow collector (see TODO at MONEYFLOW_ROOT definition).
 def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
     date_key = _date_key(date_value)
     path = MONEYFLOW_ROOT / f"{date_key}.csv"
@@ -684,6 +793,7 @@ def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwar
         start = datetime.now().strftime("%Y%m%d")
     return get_tushare("moneyflow", ts_code=ts_code, start_date=start, end_date=end or start)
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_macro_factors_cached(start: str, end: str) -> str:
     path = MACRO_FACTORS_PATH
@@ -711,6 +821,7 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
     return _safe_public("csv:macro_factors", lineage, lambda: _get_macro_factors_cached(str(start), str(end)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_crypto_klines_cached(symbol: str, limit: int) -> str:
     path = CRYPTO_KLINES_PATH
@@ -730,6 +841,7 @@ def get_crypto_klines(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     return _safe_public("csv:crypto_klines", lineage, lambda: _get_crypto_klines_cached(str(symbol), int(limit)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_pm_markets_cached(limit: int) -> str:
     query = """
@@ -765,6 +877,7 @@ def _safe_reference_path(table: str) -> Path | None:
     return path
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_reference_cached(table: str) -> str:
     path = _safe_reference_path(table)
@@ -783,6 +896,7 @@ def get_reference(table: str) -> list[dict[str, Any]]:
     return _safe_public("csv:reference", lineage, lambda: _get_reference_cached(str(table)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _is_trading_day_cached(date_value: str) -> str:
     lineage = {"reader": "is_trading_day", "source_path": str(REFERENCE_ROOT / "market_calendar.py"), "filters": {"date": date_value}}
@@ -792,6 +906,13 @@ def _is_trading_day_cached(date_value: str) -> str:
         ref = str(REFERENCE_ROOT)
         if ref not in sys.path:
             sys.path.insert(0, ref)
+        try:
+            ref_index = sys.path.index(ref)
+            if ref_index != 0:
+                sys.path.pop(ref_index)
+                sys.path.insert(0, ref)
+        except (ValueError, IndexError):
+            pass
         from market_calendar import is_trading_day as calendar_is_trading_day  # type: ignore
 
         result = bool(calendar_is_trading_day(date_value))
@@ -806,6 +927,7 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
     return _safe_public("reference:market_calendar", lineage, lambda: _is_trading_day_cached(str(date)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_realtime_5min_cached(ts_code: str, date_value: str) -> str:
     date_key = _date_key(date_value)
@@ -831,6 +953,7 @@ def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
     return _safe_public("csv:rt_min_5m", lineage, lambda: _get_realtime_5min_cached(str(ts_code), str(date)))
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_industry_cached(ts_code: str) -> str:
     path = STOCK_INDUSTRY_MAP_PATH
@@ -852,6 +975,7 @@ def get_industry(ts_code: str) -> list[dict[str, Any]]:
     return _safe_public("csv:stock_industry_map", lineage, lambda: _get_industry_cached(str(ts_code)))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_associations_cached(ts_code: str, event_id: str) -> str:
     """Build lookup: ts_code -> target_stock_map -> associations, or event_id -> associations."""
@@ -913,6 +1037,7 @@ def get_associations(ts_code: str | None = None, event_id: str | None = None) ->
     return _safe_public("csv:event_signal_associations", lineage, lambda: _get_associations_cached(str(ts_code or ""), str(event_id or "")))
 
 
+@_register_cached
 @lru_cache(maxsize=512)
 def _get_impacts_cached(event_type: str, target: str) -> str:
     path = IMPACT_RELATIONS_PATH

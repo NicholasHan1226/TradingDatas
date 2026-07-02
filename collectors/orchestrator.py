@@ -37,6 +37,8 @@ class Orchestrator:
         self._dry_run = dry_run
         self._semaphore = threading.Semaphore(max_parallel)
         self._registry: dict[str, Any] = {}
+        self._running_collectors: set[str] = set()
+        self._lock = threading.Lock()
         self._load_registry()
 
     def _load_registry(self) -> None:
@@ -94,6 +96,9 @@ class Orchestrator:
                     "collector": name,
                 }
                 logger.exception("orchestrator: %s failed", name)
+            finally:
+                with self._lock:
+                    self._running_collectors.discard(name)
 
     # ------------------------------------------------------------------
     # Run loop (continuous)
@@ -109,7 +114,8 @@ class Orchestrator:
             except Exception:
                 logger.exception("orchestrator tick failed")
             elapsed = time.monotonic() - cycle_started
-            time.sleep(max(0, interval_sec - elapsed))
+            # Minimum 1s sleep to avoid tightloop on zero-duration ticks
+            time.sleep(max(1.0, interval_sec - elapsed))
 
     def _tick(self) -> None:
         """Check which collectors are due and run them."""
@@ -117,8 +123,11 @@ class Orchestrator:
         for name, cfg in self.collectors.items():
             if not cfg.get("enabled", True):
                 continue
+            if name in self._running_collectors:
+                continue  # skip if already running from a previous tick
             if self._is_due(cfg.get("schedule", ""), now):
                 logger.info("orchestrator: triggering %s", name)
+                self._running_collectors.add(name)
                 results: dict[str, Any] = {}
                 self._run_one(name, results)
                 if results.get(name):

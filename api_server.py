@@ -7,43 +7,56 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 from email.utils import formatdate
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-
-# ---- Auto-load .env on import ----
-import os as _os
-_env_file = __import__("pathlib").Path(__file__).resolve().parent / ".env"
-if _env_file.exists():
-    with open(_env_file) as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                if _line.startswith("export "):
-                    _line = _line[7:]
-                _key, _, _val = _line.partition("=")
-                _os.environ[_key.strip()] = _val.strip().strip('"').strip("'")
-# ---- end env loader ----
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import auth  # noqa: E402
-import reader  # noqa: E402
-
+auth: Any | None = None
+reader: Any | None = None
+_runtime_load_lock = threading.Lock()
 HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", "8082"))
 VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_CACHE_SECONDS = 60
 
+
+def _ensure_runtime_loaded() -> None:
+    """Bootstrap process env, then load modules that read os.environ."""
+    global auth, reader, HOST, PORT, VERSION
+    if auth is not None and reader is not None:
+        return
+
+    with _runtime_load_lock:
+        if auth is not None and reader is not None:
+            return
+
+        from env_bootstrap import bootstrap_sharedsignals_env
+
+        bootstrap_sharedsignals_env()
+        HOST = os.environ.get("SHAREDSIGNALS_API_HOST", HOST)
+        PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", str(PORT)))
+        VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", VERSION)
+
+        import auth as auth_module  # noqa: WPS433
+        import reader as reader_module  # noqa: WPS433
+
+        auth = auth_module
+        reader = reader_module
+        Handler.server_version = f"SharedSignalsAPI/{VERSION}"
+
 # ---- Health check (lazy import to avoid pulling in health_check at startup) ----
 _health_cache: dict[str, Any] | None = None
 _health_cache_time: float = 0.0
+_health_cache_lock = threading.Lock()
 
 
 
@@ -51,8 +64,9 @@ def _get_health() -> dict[str, Any]:
     """Return cached health status, refreshing if older than HEALTH_CACHE_SECONDS."""
     global _health_cache, _health_cache_time
     now = datetime.now(timezone.utc).timestamp()
-    if _health_cache is not None and (now - _health_cache_time) < HEALTH_CACHE_SECONDS:
-        return _health_cache
+    with _health_cache_lock:
+        if _health_cache is not None and (now - _health_cache_time) < HEALTH_CACHE_SECONDS:
+            return _health_cache
 
     try:
         from tools.health_check import get_health_status
@@ -64,9 +78,10 @@ def _get_health() -> dict[str, Any]:
         result = {"status": "error", "message": "health check failed", "timestamp": utc_now_iso()}
 
     result.setdefault("version", VERSION)
-    _health_cache = result
-    _health_cache_time = now
-    return result
+    with _health_cache_lock:
+        _health_cache = result
+        _health_cache_time = now
+        return _health_cache
 
 
 def utc_now_iso() -> str:
@@ -74,9 +89,14 @@ def utc_now_iso() -> str:
 
 
 
-def to_int(value: Any, default: int) -> int:
+def to_int(value: Any, default: int, *, min_val: int = 1, max_val: int = 10000) -> int:
     try:
-        return int(value)
+        v = int(value)
+        if v < min_val:
+            return min_val
+        if v > max_val:
+            return max_val
+        return v
     except (TypeError, ValueError):
         return default
 
@@ -166,6 +186,31 @@ class NotFoundError(ValueError):
     pass
 
 
+ALLOWED_TUSHARE_APIS = frozenset({
+    "daily", "weekly", "monthly", "adj_factor", "daily_basic",
+    "trade_cal", "namechange", "income", "balancesheet", "cashflow",
+    "forecast", "express", "fina_indicator", "fina_audit", "fina_mainbz",
+    "dividend", "margin", "margin_detail", "block_trade",
+    "moneyflow", "stk_limit", "suspend_d", "top10_holders",
+    "top10_floatholders", "stk_holdernumber", "stk_holdertrade",
+    "share_float", "repurchase", "pledge_stat", "pledge_detail",
+    "index_daily", "index_dailybasic", "index_weekly", "index_monthly",
+    "index_classify", "index_member", "index_member_all",
+    "ths_daily", "ths_index", "ths_member", "ths_hot",
+    "dc_index", "dc_daily", "dc_member",
+    "limit_list", "limit_list_d", "limit_step", "broker_recommend",
+    "stk_factor", "stk_factor_pro", "cyq_perf", "cyq_chips",
+    "stk_surv", "fund_daily", "fund_basic", "fund_nav", "fund_adj",
+    "fund_portfolio", "fund_share", "fund_div",
+    "fut_basic", "fut_daily", "fut_holding", "ft_limit",
+    "cb_basic", "cb_daily", "cb_issue", "opt_basic", "opt_daily",
+    "stock_basic", "stock_company", "bak_basic", "stk_managers",
+    "top_inst", "top_list", "hk_daily", "hk_basic", "index_global",
+    "us_daily", "us_basic", "major_news", "news", "cctv_news",
+    "fx_daily", "repo_daily", "margin_secs",
+})
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"SharedSignalsAPI/{VERSION}"
 
@@ -184,7 +229,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"error": message, "timestamp": utc_now_iso()}, status)
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        return
+        import logging
+        logger = logging.getLogger("sharedsignals.api")
+        logger.info(fmt % args)
 
     def do_OPTIONS(self) -> None:
         """Handle CORS preflight requests."""
@@ -196,17 +243,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        _ensure_runtime_loaded()
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         params = {key: values[-1] for key, values in parse_qs(parsed.query, keep_blank_values=True).items()}
 
         if path == "/health":
+            try:
+                account = auth.authenticate(self.headers, self.client_address[0])
+                if not auth.check_endpoint_scope(account, path):
+                    return self._error(403, "scope does not grant access to /health")
+            except auth.AuthError:
+                return self._send_json({"status": "ok", "version": VERSION, "detail": "authenticate for full health report"})
             return self._send_json(_get_health())
 
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
         except auth.AuthError as exc:
             return self._error(401, str(exc))
+
+        if not auth.check_endpoint_scope(account, path):
+            return self._error(403, f"scope does not grant access to {path}")
 
         fingerprint = auth.request_fingerprint(path, params)
         cached = auth.get_cached_response(fingerprint)
@@ -227,7 +284,10 @@ class Handler(BaseHTTPRequestHandler):
         except FileNotFoundError as exc:
             return self._error(404, str(exc))
         except Exception as exc:  # noqa: BLE001
-            return self._error(500, f"internal error: {exc}")
+            import logging
+            logger = logging.getLogger("sharedsignals.api")
+            logger.error("Unhandled error on %s: %s", path, exc, exc_info=True)
+            return self._error(500, "internal error")
 
         auth.store_cached_response(fingerprint, response)
         self._send_json(response)
@@ -325,6 +385,8 @@ class Handler(BaseHTTPRequestHandler):
             api_name = params.get("api_name", "").strip()
             if not api_name:
                 raise ValueError("api_name is required")
+            if api_name not in ALLOWED_TUSHARE_APIS:
+                raise ValueError(f"api_name '{api_name}' is not in the allowed list")
             ts_code = params.get("ts_code", "").strip() or None
             rows = reader.get_tushare(
                 api_name=api_name,
@@ -336,12 +398,48 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
+        if path == "/is_trading_day":
+            date = params.get("date", "").strip()
+            if not date:
+                raise ValueError("date is required")
+            rows = reader.is_trading_day(date)
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/realtime_5min":
+            ts_code = params.get("ts_code", "").strip()
+            if not ts_code:
+                raise ValueError("ts_code is required")
+            date = params.get("date", "").strip()
+            rows = reader.get_realtime_5min(ts_code=ts_code, date=date)
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/cache/invalidate":
+            reader.clear_caches()
+            return {"status": "ok", "message": "all caches cleared", "timestamp": utc_now_iso()}
+
+        if path == "/cache/status":
+            return {
+                "generation": reader._CACHE_GENERATION,
+                "ttl_seconds": reader.CACHE_TTL_SECONDS,
+                "functions_registered": len(reader._CACHED_FUNCTIONS),
+                "auth": auth.cache_stats(),
+                "timestamp": utc_now_iso(),
+            }
+
         raise NotFoundError(f"unknown endpoint: {path}")
+
+
+class SharedSignalsHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
 
 
 
 def main() -> None:
-    httpd = HTTPServer((HOST, PORT), Handler)
+    _ensure_runtime_loaded()
+    httpd = SharedSignalsHTTPServer((HOST, PORT), Handler)
     print(f"SharedSignals API listening on {HOST}:{PORT}", flush=True)
     httpd.serve_forever()
 

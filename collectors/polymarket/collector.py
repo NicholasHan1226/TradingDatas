@@ -106,8 +106,11 @@ class PMCollector(BaseCollector):
             resp.raise_for_status()
             return resp.json()
 
+        max_iterations = max(self._max_markets // params.get("limit", 500) + 5, 50)
         offset = 0
-        while True:
+        iteration = 0
+        while iteration < max_iterations:
+            iteration += 1
             try:
                 page = self._retry_call(lambda: _call_page(offset), key=f"markets_{offset}")
                 if not page:
@@ -121,6 +124,8 @@ class PMCollector(BaseCollector):
             except Exception:
                 logger.exception("pm markets fetch failed at offset=%d", offset)
                 break
+        if iteration >= max_iterations:
+            logger.error("pm markets: pagination hit max_iterations=%d — possible infinite loop", max_iterations)
 
         return self._normalize_markets(all_markets)
 

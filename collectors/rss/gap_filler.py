@@ -340,7 +340,7 @@ def fill_gap(
 
         item_hash = hashlib.sha256(
             f"{url}|{title}".encode("utf-8")
-        ).hexdigest()[:16]
+        ).hexdigest()[:32]
 
         filled_item = {
             "event_hash": f"gapfill_{item_hash}",

@@ -42,6 +42,20 @@ INTAKE_DIR = SHARED_ROOT / "data" / "intake"
 BRIDGE_SCRIPT = SHARED_ROOT / "bridge" / "marketgraph_runtime_bridge.py"
 FAILOVER_SCRIPT = SHARED_ROOT / "source_failover.py"
 
+# Validate script existence at module load — self-healing is dead on arrival
+# if these don't exist, so warn loudly.
+for _script_path, _script_name in [
+    (BRIDGE_SCRIPT, "bridge/marketgraph_runtime_bridge.py"),
+    (FAILOVER_SCRIPT, "source_failover.py"),
+]:
+    if not _script_path.exists():
+        import warnings
+        warnings.warn(
+            f"heal.py: {_script_name} not found at {_script_path!s} — "
+            f"self-healing operations will fail. Set SHAREDSIGNALS_ROOT to correct path.",
+            RuntimeWarning,
+        )
+
 MEMORY_DIR = SHARED_ROOT / "memory"
 HEAL_ACTIONS_LOG = MEMORY_DIR / "heal_actions.jsonl"
 PATTERNS_LOG = MEMORY_DIR / "patterns.jsonl"

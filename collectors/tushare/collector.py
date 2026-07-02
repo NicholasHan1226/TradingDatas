@@ -5,7 +5,7 @@ Uses the Ashare Tushare wrapper (_call) to fetch ANY Tushare API and persist
 results as date-partitioned CSV under data/tushare/.
 
 Import chain:
-  .env (QUICKSYNC_URL) → a_share_common (token) → a_share_tushare_api (_call)
+  collect() -> env bootstrap -> tushare_common (token) -> tushare_api (_call)
 """
 
 from __future__ import annotations
@@ -15,46 +15,34 @@ import hashlib
 import logging
 import os
 import re
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 import time
 from threading import Lock
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Bootstrap: load .env before importing Ashare modules so a_share_common can
-#               pick up QUICKSYNC_URL for token resolution.
-# ---------------------------------------------------------------------------
-
 _BASE_DIR = Path(__file__).resolve().parents[2]  # SharedSignals root
-_ENV_FILE = _BASE_DIR / ".env"
-
-if _ENV_FILE.is_file():
-    for _line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
-        _line = _line.strip()
-        if not _line or _line.startswith("#") or "=" not in _line:
-            continue
-        _key, _, _val = _line.partition("=")
-        _key, _val = _key.strip(), _val.strip().strip("\"'")
-        if _key and _key not in os.environ:
-            os.environ[_key] = _val
-
-# ---------------------------------------------------------------------------
-# Ensure a_share_common sees INVESTMENT_ROOT correctly even though we are in
-# SharedSignals, not Ashare.  The module derives ROOT from __file__ → parents[1],
-# which is Ashare/ — that is fine.  We just need to add Ashare/tools to sys.path.
-# ---------------------------------------------------------------------------
-
-_ASHARE_TOOLS = _BASE_DIR.parent / "Ashare" / "tools"  # /opt/investment/Ashare/tools
-if str(_ASHARE_TOOLS) not in sys.path:
-    sys.path.insert(0, str(_ASHARE_TOOLS))
-
-from a_share_tushare_api import _call  # noqa: E402
 
 from ..base import BaseCollector  # noqa: E402
 
 logger = logging.getLogger(__name__)
+_TUSHARE_CALL: Any | None = None
+_TUSHARE_CALL_LOCK = Lock()
+
+
+def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> list[dict[str, Any]]:
+    """Load env and Tushare wrapper lazily, only for real API calls."""
+    global _TUSHARE_CALL
+    if _TUSHARE_CALL is None:
+        with _TUSHARE_CALL_LOCK:
+            if _TUSHARE_CALL is None:
+                from env_bootstrap import bootstrap_sharedsignals_env
+
+                bootstrap_sharedsignals_env()
+                from .tushare_api import _call
+
+                _TUSHARE_CALL = _call
+    return _TUSHARE_CALL(api_name, params, fields)
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +273,7 @@ class TushareCollector(BaseCollector):
         self._rate_limit(api_name)
         logger.info("collect %s with params=%s", api_name, params)
         try:
-            rows = _call(api_name, params, fields or "")
+            rows = _call_tushare(api_name, params, fields or "")
             logger.info("collect %s → %d rows", api_name, len(rows))
             return rows
         except Exception:
@@ -330,11 +318,25 @@ class TushareCollector(BaseCollector):
         path = dir_path / fname
 
         try:
+            import tempfile
             fields = list(rows[0].keys())
-            with path.open("w", encoding="utf-8-sig", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=fields)
-                writer.writeheader()
-                writer.writerows(rows)
+            # Write to temp file then atomically rename to avoid truncation races
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".csv", prefix=".tmp_", dir=str(dir_path)
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8-sig", newline="") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=fields)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                os.replace(tmp_path, str(path))
+            except Exception:
+                # Clean up temp file on failure
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
             logger.info("save %s → %s (%d rows)", api_name, path, len(rows))
             return path
         except Exception:
@@ -353,13 +355,21 @@ class TushareCollector(BaseCollector):
     def health_check(self) -> dict[str, Any]:
         """Check if Tushare API wrapper is importable and functional."""
         try:
-            from a_share_tushare_api import _call  # noqa: F811
+            import importlib.util
+
+            if importlib.util.find_spec(".tushare_api", package=__package__) is None:
+                return {"status": "unavailable", "message": "tushare api wrapper not found"}
             return {"status": "available", "message": "tushare api wrapper loaded"}
         except ImportError as exc:
             return {"status": "unavailable", "message": str(exc)}
 
     def plan(self, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        """Generate collection tasks by flattening priority groups from config."""
+        """Generate collection tasks by flattening priority groups from config.
+
+        Resolves {ts_code} placeholders from stock_master.csv so that per-stock
+        Tushare collectors produce real API calls instead of silent no-ops.
+        """
+        import re
         tasks: list[dict[str, Any]] = []
 
         # Collect all API entries across priority groups
@@ -371,7 +381,46 @@ class TushareCollector(BaseCollector):
             elif isinstance(value, list):
                 tasks.extend(value)
 
-        return tasks
+        # Resolve {ts_code} placeholders against stock_master.csv
+        resolved: list[dict[str, Any]] = []
+        _placeholder_re = re.compile(r"\{ts_code\}")
+        _stock_codes: list[str] | None = None
+
+        for task in tasks:
+            raw = str(task)
+            if "{ts_code}" not in raw:
+                resolved.append(task)
+                continue
+            # Lazy-load stock codes from reference CSV
+            if _stock_codes is None:
+                _stock_codes = self._load_stock_codes()
+            if not _stock_codes:
+                logger.warning("plan: {ts_code} placeholder found but no stock codes loaded — skipping %s", task.get("api_name", task))
+                continue
+            for code in _stock_codes:
+                import json
+                # Use json round-trip for safe placeholder substitution
+                raw_resolved = json.loads(json.dumps(task).replace("{ts_code}", code))
+                resolved.append(raw_resolved)
+
+        return resolved
+
+    def _load_stock_codes(self) -> list[str]:
+        """Load ts_code list from stock_master.csv reference file."""
+        import csv
+        master = self.REFERENCE_ROOT / "stock_master.csv"
+        if not master.exists():
+            logger.warning("_load_stock_codes: %s not found", master)
+            return []
+        try:
+            with open(master, "r", encoding="utf-8-sig", newline="") as f:
+                rows = list(csv.DictReader(f))
+            codes = [r["ts_code"] for r in rows if r.get("ts_code")]
+            logger.info("_load_stock_codes: loaded %d codes from %s", len(codes), master)
+            return codes
+        except Exception:
+            logger.exception("_load_stock_codes: failed to read %s", master)
+            return []
 
     def run(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Orchestrator-compatible run() — executes full lifecycle via mixin hooks."""

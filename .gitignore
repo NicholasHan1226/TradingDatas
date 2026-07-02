@@ -3,7 +3,9 @@ __pycache__/
 *.sqlite
 *.db
 .env
+.env.*
 logs/
+config/api_tokens.json
 *.log
 node_modules/
 .DS_Store
