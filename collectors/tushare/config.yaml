@@ -1,11 +1,4 @@
 priorities:
-  P7_crypto_pm_5min:
-  - api_name: crypto_klines
-    description: Crypto 24/7 klines
-    frequency: 5min
-  - api_name: pm_prices
-    description: Polymarket prices
-    frequency: 5min
   P0_trading_5min:
   - api_name: daily
     fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
@@ -256,6 +249,42 @@ priorities:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+  - api_name: us_tycr
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: us_tbr
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: us_tltr
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: fx_daily
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      exchange: FXCM
+      start_date: '{start_date}'
+    per_stock: false
+  - api_name: hibor
+    frequency: daily
+    params:
+      date: '{trade_date}'
+    per_stock: false
+  - api_name: libor
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
   P5_hk_us_daily:
   - api_name: hk_daily
     frequency: daily
@@ -264,13 +293,13 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     per_stock: true
+    stock_list: hk
   - api_name: us_daily
     frequency: daily
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
+    per_stock: false
   - api_name: hk_basic
     frequency: daily
     params:
@@ -281,6 +310,30 @@ priorities:
     params:
       exchange: ''
     per_stock: false
+  - api_name: hk_income
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    stock_list: hk
+  - api_name: hk_balancesheet
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    stock_list: hk
+  - api_name: hk_cashflow
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    stock_list: hk
   P6_other_daily:
   - api_name: fut_daily
     frequency: daily

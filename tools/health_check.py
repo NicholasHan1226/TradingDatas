@@ -136,17 +136,23 @@ def _check_reader_functions() -> dict[str, Any]:
     # Use explicit imports instead of wildcard
     import reader  # noqa: E402
 
+    today = datetime.now().strftime("%Y%m%d")
     funcs: list[tuple[str, Any]] = [
-        ("is_trading_day", reader.is_trading_day("20260629")),
-        ("market_data", reader.get_market_data("600519.SH", "20260601", "20260630")),
-        ("fundamentals", reader.get_fundamentals("600519.SH")),
+        ("is_trading_day", reader.is_trading_day(today)),
+        ("market_data", reader.get_market_data("000001.SZ", "20260601", "20260630")),
+        ("fundamentals", reader.get_fundamentals("000001.SZ")),
         ("reference", reader.get_reference("stock_master")),
         ("macro", reader.get_macro_factors("20260601", "20260629")),
-        ("capital_flow", reader.get_capital_flow(datetime.now().strftime("%Y%m%d"), ts_code="600519.SH")),
+        ("capital_flow", reader.get_capital_flow(today, ts_code="000001.SZ")),
         ("events", reader.get_events("20260601", "20260629")),
         ("sentiment", reader.get_sentiment("20260601", "20260629")),
         ("crypto", reader.get_crypto_klines("BTCUSDT", 5)),
         ("pm_markets", reader.get_pm_markets(5)),
+        ("associations", reader.get_associations(ts_code="000001.SZ")),
+        ("impacts", reader.get_impacts(event_type="policy")),
+        ("industry", reader.get_industry("000001.SZ")),
+        ("realtime_5min", reader.get_realtime_5min(ts_code="000001.SZ", date=today)),
+        ("tushare", reader.get_tushare(api_name="stock_basic")),
     ]
 
     ok: list[str] = []

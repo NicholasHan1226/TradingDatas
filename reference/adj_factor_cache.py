@@ -4,7 +4,7 @@ from datetime import datetime
 CACHE_PATH = Path("/opt/investment/SharedSignals/reference/adj_factor_cache.csv")
 def fetch_adj_factor(ts_code, start_date="20200101", end_date=None):
     if end_date is None: end_date = datetime.now().strftime("%Y%m%d")
-    sys.path.insert(0, "/opt/investment/Ashare/tools")
+    sys.path.insert(0, "/opt/investment/SharedSignals/collectors/tushare")
     try:
         from a_share_tushare_api import _call
         rows = _call("adj_factor", {"ts_code": ts_code, "start_date": start_date, "end_date": end_date})

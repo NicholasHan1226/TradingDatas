@@ -36,7 +36,7 @@ REGISTRY_PATH = TOOLS_DIR / "capability_registry.json"
 CHANGES_PATH = TOOLS_DIR / "capability_changes.jsonl"
 DOC_PATH = DOCS_DIR / "API_CONTRACT.md"
 
-for _d in (str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECTORS_DIR)):
+for _d in (str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECTORS_DIR), str(COLLECTORS_DIR / "tushare")):
     if _d not in sys.path:
         sys.path.insert(0, _d)
 
@@ -73,11 +73,11 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "sla_hours": 24,
     },
 
-    # --- a_share_tushare_api.py (reference/, symlinked) ---
+    # --- a_share_tushare_api.py (collectors/tushare/, migrated from Ashare/tools/) ---
     "get_market_data": {
         "module": "a_share_tushare_api",
         "func": "get_daily",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "market_data",
         "description": "Get A-share daily OHLCV data for one or more stocks",
         "smoke_args": ["601698.SH", "2026-06-26", "2026-06-26"],
@@ -88,7 +88,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_moneyflow": {
         "module": "a_share_tushare_api",
         "func": "get_moneyflow",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "market_depth",
         "description": "Get A-share money flow data for a trading day",
         "smoke_args": ["20260626"],
@@ -99,7 +99,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_margin": {
         "module": "a_share_tushare_api",
         "func": "get_margin",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "market_depth",
         "description": "Get margin trading summary for a trading day",
         "smoke_args": ["20260626"],
@@ -110,7 +110,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_limit_list": {
         "module": "a_share_tushare_api",
         "func": "get_limit_list_d",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "market_depth",
         "description": "Get limit-up/limit-down list for a trading day",
         "smoke_args": ["20260626"],
@@ -121,7 +121,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_hk_hold": {
         "module": "a_share_tushare_api",
         "func": "get_hk_hold",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "cross_border",
         "description": "Get northbound (HK->A) holdings for a trading day",
         "smoke_args": ["20260626"],
@@ -132,7 +132,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_stock_minutes": {
         "module": "a_share_tushare_api",
         "func": "get_stk_mins",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "intraday",
         "description": "Get intraday minute-level bars for a stock",
         "smoke_args": ["000001.SZ", "20260626"],
@@ -143,7 +143,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
     "get_news_list": {
         "module": "a_share_tushare_api",
         "func": "get_news",
-        "path": "reference/a_share_tushare_api.py",
+        "path": "collectors/tushare/a_share_tushare_api.py",
         "category": "events",
         "description": "Get news headlines for a date range",
         "smoke_args": ["20260626", "20260626"],
