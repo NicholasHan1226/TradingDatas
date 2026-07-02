@@ -105,3 +105,100 @@ def test_missing_csv_raises(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError):
         ingest_csv_to_sqlite(db_path, "market_bars_daily", tmp_path / "missing.csv")
+
+
+def test_empty_csv_header_only_returns_zero(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "daily.csv",
+        "market,symbol,trade_date,open,high,low,close,volume\n",
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 0
+    assert _count_rows(db_path, "market_bars_daily") == 0
+
+
+def test_bom_only_csv_returns_zero(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = tmp_path / "bom-only.csv"
+    csv_path.write_bytes(b"\xef\xbb\xbf")
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 0
+    assert _count_rows(db_path, "market_bars_daily") == 0
+
+
+def test_all_unknown_columns_skips_all_rows(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "unknown-only.csv",
+        "\n".join(
+            [
+                "unknown_a,unknown_b",
+                "one,two",
+                "three,four",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 0
+    assert _count_rows(db_path, "market_bars_daily") == 0
+
+
+def test_csv_with_null_bytes_does_not_crash(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = tmp_path / "null-byte.csv"
+    csv_path.write_bytes(
+        b"market,symbol,name,asset_type\n"
+        b"Ashare,000001.SZ,Name\x00WithNull,stock\n"
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_assets", csv_path)
+
+    assert rows == 1
+    assert _count_rows(db_path, "market_assets") == 1
+
+
+def test_large_csv_crosses_chunk_boundaries(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = tmp_path / "large-100k.csv"
+    with csv_path.open("w", encoding="utf-8", newline="") as fh:
+        fh.write("market,symbol,trade_date,open,high,low,close,volume,amount,provider\n")
+        for idx in range(100_000):
+            fh.write(
+                f"Ashare,{idx:06d}.SZ,20260701,10,11,9,10.5,{idx},10500,tushare\n"
+            )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 100_000
+    assert _count_rows(db_path, "market_bars_daily") == 100_000
+
+
+def test_csv_path_with_special_characters(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data with spaces" / "daily @#%" / "20260701" / "000001.SZ sample.csv",
+        "\n".join(
+            [
+                "market,symbol,trade_date,open,high,low,close,volume,amount",
+                "Ashare,000001.SZ,20260701,10,11,9,10.5,1000,10500",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 1
+    assert _count_rows(db_path, "market_bars_daily") == 1

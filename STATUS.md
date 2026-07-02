@@ -66,6 +66,15 @@
 
 ## 五、最近完成
 
+### 2026-07-02 TEST ROUND 3：Phase 1 边界条件验证
+
+- [x] CSV→SQLite bridge 边界测试：空 CSV、BOM-only、全未知列、NULL byte、10 万行 chunk、特殊字符路径均通过
+- [x] env_bootstrap 边界测试：空值、comment-only、`export` 前缀、缺失 `.env`、重复 bootstrap 均通过
+- [x] API server 边界测试：无 query、malformed JSON query、未知 endpoint、并发 cache invalidate、超长 query 均通过
+- [x] schema contract 边界测试：未知 dialect、未知 table、无主键表渲染均通过
+- [x] `api_server.py` 增加显式 JSON 查询参数校验：`params`/`filters`/`payload`/`*_json` 解析失败返回 400
+- [x] 验证：`python3 -m pytest tests/ -v -k "edge or test_csv or test_env" --tb=short`（23 passed, 173 deselected）和 `py_compile` 均通过
+
 ### 2026-07-02 Phase 1 HIGH findings 修复
 
 - [x] `storage/csv_bridge.py`：CSV→SQLite 桥改为 1000 行分块 `executemany()`，每个 chunk 独立事务；按目标表主键验证必填列，坏行记录日志后跳过；行数以 `conn.total_changes` 差值统计

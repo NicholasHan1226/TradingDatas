@@ -105,6 +105,20 @@ def to_int(value: Any, default: int, *, min_val: int = 1, max_val: int = 10000) 
         return default
 
 
+def validate_json_query_params(params: dict[str, str]) -> None:
+    """Reject malformed JSON in query params that explicitly declare JSON content."""
+    json_param_names = {"params", "filters", "payload"}
+    for key, value in params.items():
+        if key not in json_param_names and not key.endswith("_json"):
+            continue
+        if not value:
+            continue
+        try:
+            json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"malformed JSON in query parameter '{key}': {exc.msg}") from exc
+
+
 
 def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
     if not isinstance(rows, list):
@@ -251,6 +265,10 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         params = {key: values[-1] for key, values in parse_qs(parsed.query, keep_blank_values=True).items()}
+        try:
+            validate_json_query_params(params)
+        except ValueError as exc:
+            return self._error(400, str(exc))
 
         if path == "/health":
             try:

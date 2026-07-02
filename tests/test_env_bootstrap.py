@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import env_bootstrap
+
 
 def test_no_import_time_env_mutation() -> None:
     root = Path(__file__).resolve().parents[1]
@@ -68,3 +70,46 @@ print(json.dumps({"root": str(reader.SHAREDSIGNALS_ROOT)}, sort_keys=True))
     )
     payload = json.loads(result.stdout)
     assert payload["root"] == "/tmp/sharedsignals-lazy-check"
+
+
+def test_parse_env_file_empty_values_comments_and_export(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "# comment only",
+                "   # indented comment",
+                "EMPTY_VALUE=",
+                "export EXPORTED_KEY=exported",
+                "QUOTED='quoted value'",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = env_bootstrap.parse_env_file(env_path)
+
+    assert parsed == {
+        "EMPTY_VALUE": "",
+        "EXPORTED_KEY": "exported",
+        "QUOTED": "quoted value",
+    }
+
+
+def test_parse_missing_env_file_returns_empty_dict(tmp_path: Path) -> None:
+    assert env_bootstrap.parse_env_file(tmp_path / "missing.env") == {}
+
+
+def test_repeated_bootstrap_calls_return_empty_second_time(tmp_path: Path, monkeypatch) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text("KEY=value\n", encoding="utf-8")
+    target: dict[str, str] = {}
+    monkeypatch.setattr(env_bootstrap, "_LOADED", False)
+
+    first = env_bootstrap.bootstrap_sharedsignals_env(env_path, environ=target)
+    second = env_bootstrap.bootstrap_sharedsignals_env(env_path, environ=target)
+
+    assert first == {"KEY": "value"}
+    assert second == {}
+    assert target == {"KEY": "value"}
