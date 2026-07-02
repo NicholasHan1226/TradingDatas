@@ -35,7 +35,7 @@ _BASE_DIR = Path(__file__).resolve().parents[2]  # SharedSignals root
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from collectors.tushare.collector import TushareCollector  # noqa: E402
+from collectors.tushare.collector import SaveError, TushareCollector  # noqa: E402
 from storage.csv_bridge import (  # noqa: E402
     CSV_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
@@ -141,6 +141,8 @@ def sync_tier(
 ) -> dict[str, dict]:
     """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
     stats: dict[str, dict] = {}
+    bridge_errors: list[str] = []
+    save_errors: list[str] = []
     tier_start = time.time()
 
     # Split APIs: global, A-share per-stock, HK per-stock
@@ -162,19 +164,53 @@ def sync_tier(
                 tier_name, len(apis), len(per_stock_ashare), len(per_stock_hk), len(global_apis),
                 len(stock_codes), len(hk_codes), total_calls)
 
-    def _bridge_csv(api_name: str, path: Path | None) -> int:
+    def _bridge_csv(api_name: str, path: Path | None) -> dict[str, Any]:
         if not sqlite_bridge_enabled or path is None:
-            return 0
+            return {
+                "rows": 0,
+                "status": "disabled" if not sqlite_bridge_enabled else "empty",
+                "error": "",
+            }
         table = CSV_TO_TABLE_MAP.get(api_name)
         if not table:
-            return 0
+            return {"rows": 0, "status": "unmapped", "error": ""}
         try:
             rows = ingest_csv_to_sqlite(sqlite_db_path, table, path)
             logger.info("sqlite bridge %s -> %s: %d rows from %s", api_name, table, rows, path)
-            return rows
-        except Exception:
-            logger.exception("sqlite bridge failed for %s from %s", api_name, path)
-            return 0
+            return {"rows": rows, "status": "ok", "error": ""}
+        except Exception as exc:
+            error = f"{api_name}:{path}:{exc}"
+            bridge_errors.append(error)
+            logger.warning("sqlite bridge failed for %s from %s: %s", api_name, path, exc, exc_info=True)
+            return {"rows": 0, "status": "failed", "error": error}
+
+    def _bridge_status(statuses: list[str]) -> str:
+        if not sqlite_bridge_enabled:
+            return "disabled"
+        if not statuses:
+            return "empty"
+        for status in ("failed", "ok", "empty", "unmapped", "disabled"):
+            if status in statuses:
+                return status
+        return "empty"
+
+    def _save_csv(
+        api_name: str,
+        rows: list[dict[str, Any]],
+        filename: str | None = None,
+    ) -> tuple[Path | None, str]:
+        if not rows:
+            return None, ""
+        try:
+            return collector.save(api_name, rows, trade_date, filename=filename), ""
+        except SaveError as exc:
+            error = str(exc)
+            logger.warning("csv save failed for %s: %s", api_name, error, exc_info=True)
+        except Exception as exc:
+            error = f"save failed for {api_name}: {exc}"
+            logger.warning("csv save failed for %s: %s", api_name, error, exc_info=True)
+        save_errors.append(error)
+        return None, error
 
     def _run_per_stock(api_defs: list[dict], codes: list[str], label: str) -> None:
         nonlocal call_idx
@@ -184,15 +220,31 @@ def sync_tier(
             fields = api_def.get("fields")
             api_start = time.time()
             api_total = 0
+            api_calls = 0
+            api_failures = 0
+            save_failures = 0
             bridge_total = 0
+            bridge_statuses: list[str] = []
+            api_bridge_errors: list[str] = []
+            api_save_errors: list[str] = []
 
             for ts_code in codes:
                 call_idx += 1
+                api_calls += 1
                 params = fill_params(template, ts_code, trade_date, start_date, end_date)
                 rows = collector.collect(api_name, params, fields)
+                if getattr(collector, "last_collect_failed", False):
+                    api_failures += 1
                 api_total += len(rows)
-                save_path = collector.save(api_name, rows, trade_date, filename=ts_code)
-                bridge_total += _bridge_csv(api_name, save_path)
+                save_path, save_error = _save_csv(api_name, rows, filename=ts_code)
+                if save_error:
+                    save_failures += 1
+                    api_save_errors.append(save_error)
+                bridge_result = _bridge_csv(api_name, save_path)
+                bridge_total += int(bridge_result["rows"])
+                bridge_statuses.append(str(bridge_result["status"]))
+                if bridge_result.get("error"):
+                    api_bridge_errors.append(str(bridge_result["error"]))
                 logger.info("[%s] [%d/%d] %s %s → %d rows",
                             tier_name, call_idx, total_calls,
                             api_name, ts_code, len(rows))
@@ -200,11 +252,18 @@ def sync_tier(
             duration = time.time() - api_start
             stats[api_name] = {
                 "rows": api_total,
+                "calls": api_calls,
+                "failure_count": api_failures,
+                "save_failure_count": save_failures,
                 "duration_s": round(duration, 1),
                 "sqlite_bridge_rows": bridge_total,
+                "bridge_status": _bridge_status(bridge_statuses),
+                "bridge_errors": api_bridge_errors,
+                "save_errors": api_save_errors,
             }
-            logger.info("[%s] %s (%s): %d rows, bridge=%d rows in %.1fs",
-                        tier_name, api_name, label, api_total, bridge_total, duration)
+            logger.info("[%s] %s (%s): %d rows, api_failures=%d/%d, save_failures=%d, bridge=%s/%d rows in %.1fs",
+                        tier_name, api_name, label, api_total, api_failures, api_calls, save_failures,
+                        stats[api_name]["bridge_status"], bridge_total, duration)
 
     # ── Per-stock: A-share ──
     _run_per_stock(per_stock_ashare, stock_codes, "A-share")
@@ -222,22 +281,61 @@ def sync_tier(
         call_idx += 1
         params = fill_params(template, None, trade_date, start_date, end_date)
         rows = collector.collect(api_name, params, fields)
-        save_path = collector.save(api_name, rows, trade_date)
-        bridge_total = _bridge_csv(api_name, save_path)
+        api_failures = 1 if getattr(collector, "last_collect_failed", False) else 0
+        save_path, save_error = _save_csv(api_name, rows)
+        save_failures = 1 if save_error else 0
+        bridge_result = _bridge_csv(api_name, save_path)
+        bridge_total = int(bridge_result["rows"])
 
         duration = time.time() - api_start
         stats[api_name] = {
             "rows": len(rows),
+            "calls": 1,
+            "failure_count": api_failures,
+            "save_failure_count": save_failures,
             "duration_s": round(duration, 1),
             "sqlite_bridge_rows": bridge_total,
+            "bridge_status": str(bridge_result["status"]),
+            "bridge_errors": [str(bridge_result["error"])] if bridge_result.get("error") else [],
+            "save_errors": [save_error] if save_error else [],
         }
-        logger.info("[%s] [%d/%d] %s (global) → %d rows, bridge=%d rows in %.1fs",
+        logger.info("[%s] [%d/%d] %s (global) → %d rows, api_failures=%d/1, save_failures=%d, bridge=%s/%d rows in %.1fs",
                     tier_name, call_idx, total_calls,
-                    api_name, len(rows), bridge_total, duration)
+                    api_name, len(rows), api_failures, save_failures, stats[api_name]["bridge_status"], bridge_total, duration)
 
     tier_duration = time.time() - tier_start
-    logger.info("[%s] COMPLETE: %d APIs, %.1fs total", tier_name, len(apis), tier_duration)
+    total_failures = sum(int(s.get("failure_count", 0)) for s in stats.values())
+    total_save_failures = sum(int(s.get("save_failure_count", 0)) for s in stats.values())
+    counted_calls = sum(int(s.get("calls", 0)) for s in stats.values())
+    stats["_tier_summary"] = {
+        "tier": tier_name,
+        "apis": len(apis),
+        "calls": counted_calls,
+        "failure_count": total_failures,
+        "save_failure_count": total_save_failures,
+        "bridge_failure_count": len(bridge_errors),
+        "failure_ratio": round(total_failures / counted_calls, 4) if counted_calls else 0.0,
+        "duration_s": round(tier_duration, 1),
+        "bridge_errors": bridge_errors,
+        "save_errors": save_errors,
+    }
+    logger.info("[%s] COMPLETE: %d APIs, api_failures=%d/%d, save_failures=%d, bridge_errors=%d, %.1fs total",
+                tier_name, len(apis), total_failures, counted_calls, total_save_failures, len(bridge_errors), tier_duration)
     return stats
+
+
+def _failure_exit_code(summary: dict[str, Any], *, threshold: float, exit_on_failure: bool) -> int:
+    if not exit_on_failure:
+        return 0
+    failure_count = int(summary.get("failure_count", 0))
+    save_failure_count = int(summary.get("save_failure_count", 0))
+    bridge_failure_count = int(summary.get("bridge_failure_count", 0))
+    calls = int(summary.get("calls", 0))
+    combined_failure_count = failure_count + save_failure_count
+    failure_ratio = (combined_failure_count / calls) if calls else 0.0
+    if bridge_failure_count > 0 or save_failure_count > 0 or (calls and failure_ratio > threshold):
+        return 2
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +365,17 @@ def main() -> None:
         "--no-sqlite-bridge",
         action="store_true",
         help="Disable additive CSV-to-SQLite bridge and keep CSV-only mode",
+    )
+    parser.add_argument(
+        "--exit-on-failure",
+        action="store_true",
+        help="Exit non-zero when failed Tushare calls exceed --failure-threshold",
+    )
+    parser.add_argument(
+        "--failure-threshold",
+        type=float,
+        default=0.5,
+        help="Failed-call ratio threshold for --exit-on-failure (default: 0.5)",
     )
     args = parser.parse_args()
 
@@ -330,14 +439,50 @@ def main() -> None:
     logger.info("SYNC SUMMARY [%s] — %.1fs total", tier_name, elapsed)
     total_rows = 0
     total_bridge_rows = 0
+    bridge_errors: list[str] = []
+    save_errors: list[str] = []
     for api_name, s in stats.items():
+        if api_name.startswith("_"):
+            continue
         total_rows += s["rows"]
         total_bridge_rows += s.get("sqlite_bridge_rows", 0)
-        logger.info("  %-25s %6d rows  bridge=%6d  %6.1fs",
-                    api_name, s["rows"], s.get("sqlite_bridge_rows", 0), s["duration_s"])
+        bridge_errors.extend(s.get("bridge_errors", []))
+        save_errors.extend(s.get("save_errors", []))
+        logger.info("  %-25s %6d rows  api_failures=%4d/%-4d  save_failures=%4d  bridge=%-8s %6d  %6.1fs",
+                    api_name, s["rows"], s.get("failure_count", 0), s.get("calls", 0), s.get("save_failure_count", 0),
+                    s.get("bridge_status", "empty"), s.get("sqlite_bridge_rows", 0), s["duration_s"])
+    tier_summary = stats.get("_tier_summary", {})
     logger.info("  %-25s %6d rows", "TOTAL", total_rows)
     logger.info("  %-25s %6d rows", "SQLITE_BRIDGE_TOTAL", total_bridge_rows)
+    logger.info("  %-25s %6d/%-6d", "TUSHARE_FAILURES", tier_summary.get("failure_count", 0), tier_summary.get("calls", 0))
+    logger.info("  %-25s %6d", "SAVE_FAILURES", tier_summary.get("save_failure_count", 0))
+    if bridge_errors:
+        logger.warning("SQLITE_BRIDGE_ERRORS: %s", bridge_errors)
+    if save_errors:
+        logger.warning("SAVE_ERRORS: %s", save_errors)
     logger.info("=" * 60)
+
+    exit_code = _failure_exit_code(
+        tier_summary,
+        threshold=args.failure_threshold,
+        exit_on_failure=args.exit_on_failure,
+    )
+    if exit_code:
+        failure_count = int(tier_summary.get("failure_count", 0))
+        save_failure_count = int(tier_summary.get("save_failure_count", 0))
+        bridge_failure_count = int(tier_summary.get("bridge_failure_count", 0))
+        calls = int(tier_summary.get("calls", 0))
+        failure_ratio = ((failure_count + save_failure_count) / calls) if calls else 0.0
+        logger.error(
+            "Tushare sync failed threshold: api_failures=%d save_failures=%d bridge_failures=%d calls=%d ratio=%.2f threshold=%.2f",
+            failure_count,
+            save_failure_count,
+            bridge_failure_count,
+            calls,
+            failure_ratio,
+            args.failure_threshold,
+        )
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

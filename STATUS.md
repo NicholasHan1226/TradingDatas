@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-02 (Phase 1 HIGH findings 修复：CSV 批量入库、reader cache 失效、API timeout/thread bound)
+> 最后更新：2026-07-02 (final deep audit CRITICAL/HIGH 清零修复：JWT 验签、save failure、typed env)
 
 ---
 
@@ -23,7 +23,7 @@
 ## 二、已知问题
 
 - shibor_lpr 返回 0 行（待调查，libor 已停更属正常）
-- sync_daily.py CSV 输出与 SQLite→DuckDB 管线之间无自动接入桥（当前 MarketGraph 采集器直接写 SQLite，SharedSignals CSV 为补充路径）
+- sync_daily.py CSV→SQLite bridge 已接入本地代码并补事务/错误状态；仍需后续生产部署后观察 crontab 日志与 DuckDB 同步链路
 
 ## 三、API 接口状态（17/17 覆盖）
 
@@ -60,11 +60,29 @@
 6. [x] **P0：schema 漂移检测** — schema.py 与 duckdb_schema.py 11 表自动一致性校验
 7. [x] **P0：provider 从 market_bars_daily 主键移除** — 已生成安全迁移脚本，尚未执行实际数据库迁移
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
-9. [ ] **P1：auth.py 内存治理** — `_DEDUP_CACHE`/`_REQUEST_LOG` 加 LRU 上限 + TTL
+9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
 11. [ ] **P2：SharedSignals API 作为唯一消费入口** — 推动 TradingAgent/MarketGraph 通过 HTTP API 而非直接 SQLite 读取
 
 ## 五、最近完成
+
+### 2026-07-02 final deep audit CRITICAL/HIGH 清零修复
+
+- [x] `auth.py`：JWT 默认禁用；未配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY` + `SHAREDSIGNALS_JWT_ISSUER` 时只允许 token-hash 认证；配置后验证签名、`exp`、`iss`，JWT scope 不再默认 `full`
+- [x] `collectors/tushare/collector.py` + `sync_daily.py`：非空 rows 保存失败改为 `SaveError`；sync summary 区分 API failure、save failure、bridge failure；`--exit-on-failure` 覆盖三类失败
+- [x] `env_bootstrap.py`：新增 `env_int` / `env_float` / `env_bool`，并接入 `api_server.py`、`reader.py`、`auth.py`、`storage/csv_bridge.py` 的 import-time 数字 env 读取
+- [x] 新增回归测试：伪造 JWT 拒绝、issuer/exp 验证、JWT 最小 scope、保存失败计数、失败退出判定、malformed env fallback
+
+### 2026-07-02 R7-R9 final deep audit：7 个 HIGH findings 修复
+
+- [x] `reader.py`：缓存 key 纳入 `_CACHE_GENERATION` 快照，避免 clear 与并发 populate 竞态；新增 `SHAREDSIGNALS_CACHE_MAX_BYTES`（默认 50MB）和 `/cache/status` 字节估算；`get_associations`/`get_impacts` 大结果缓存降载
+- [x] `storage/csv_bridge.py`：CSV→SQLite 默认整文件 `BEGIN IMMEDIATE` 事务，chunk 仍用于 `executemany()`；任一 chunk 失败会 rollback，避免半文件落库
+- [x] `api_server.py`：`aggregate_metadata()` / `wrap_response()` 保留 reader 的 `degraded_reasons` 和 `lineage`
+- [x] `collectors/tushare/collector.py` + `sync_daily.py`：采集异常显式打标，tier summary 统计每 API 失败数；新增 `--exit-on-failure` 和失败比例阈值
+- [x] `collectors/tushare/sync_daily.py`：bridge 结果区分 `ok` / `failed` / `disabled` / `unmapped` / `empty`，summary 暴露 `bridge_errors`
+- [x] `auth.py`：dedup 响应缓存增加 `SHAREDSIGNALS_DEDUP_MAX_BYTES`（默认 10MB）与 `SHAREDSIGNALS_DEDUP_MAX_ENTRY_BYTES`（默认 1MB），超限跳过或 LRU 驱逐
+- [x] `bridge/__init__.py`：为本地 Projects 工作区补充 sibling `../MarketGraph` 模块搜索路径，避免 `/opt/investment/MarketGraph` 不存在时测试导入断链
+- [x] 验证：`tests/test_api_server_edge.py` + `tests/test_csv_bridge.py` 已通过；全量验证见本轮最终回执
 
 ### 2026-07-02 TEST ROUND 3：Phase 1 边界条件验证
 

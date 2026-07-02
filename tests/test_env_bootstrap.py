@@ -113,3 +113,17 @@ def test_repeated_bootstrap_calls_return_empty_second_time(tmp_path: Path, monke
     assert first == {"KEY": "value"}
     assert second == {}
     assert target == {"KEY": "value"}
+
+
+def test_typed_env_helpers_fall_back_on_malformed_values(monkeypatch) -> None:
+    monkeypatch.setenv("BAD_INT", "not-an-int")
+    monkeypatch.setenv("TOO_HIGH_INT", "999")
+    monkeypatch.setenv("BAD_FLOAT", "nan")
+    monkeypatch.setenv("BOOL_TRUE", "yes")
+    monkeypatch.setenv("BOOL_FALSE", "0")
+
+    assert env_bootstrap.env_int("BAD_INT", 7) == 7
+    assert env_bootstrap.env_int("TOO_HIGH_INT", 7, min_value=1, max_value=20) == 20
+    assert env_bootstrap.env_float("BAD_FLOAT", 2.5, min_value=1.0, max_value=5.0) == 2.5
+    assert env_bootstrap.env_bool("BOOL_TRUE", False) is True
+    assert env_bootstrap.env_bool("BOOL_FALSE", True) is False

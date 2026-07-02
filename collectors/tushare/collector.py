@@ -30,6 +30,16 @@ _TUSHARE_CALL: Any | None = None
 _TUSHARE_CALL_LOCK = Lock()
 
 
+class SaveError(Exception):
+    """Raised when non-empty collected rows cannot be persisted."""
+
+    def __init__(self, api_name: str, path: Path, reason: str):
+        self.api_name = api_name
+        self.path = path
+        self.reason = reason
+        super().__init__(f"save failed for {api_name} at {path}: {reason}")
+
+
 def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> list[dict[str, Any]]:
     """Load env and Tushare wrapper lazily, only for real API calls."""
     global _TUSHARE_CALL
@@ -74,6 +84,13 @@ class TushareCollector(BaseCollector):
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
+        self.last_collect_failed = False
+        self.last_collect_error = ""
+        self.collect_call_count = 0
+        self.collect_failure_count = 0
+        self.last_save_failed = False
+        self.last_save_error = ""
+        self.save_failure_count = 0
 
     @classmethod
     def _rate_limit(cls, api_name: str):
@@ -270,13 +287,19 @@ class TushareCollector(BaseCollector):
         Returns:
             List of row dicts; empty list on error or no results.
         """
+        self.collect_call_count += 1
+        self.last_collect_failed = False
+        self.last_collect_error = ""
         self._rate_limit(api_name)
         logger.info("collect %s with params=%s", api_name, params)
         try:
             rows = _call_tushare(api_name, params, fields or "")
             logger.info("collect %s → %d rows", api_name, len(rows))
             return rows
-        except Exception:
+        except Exception as exc:
+            self.last_collect_failed = True
+            self.last_collect_error = str(exc)
+            self.collect_failure_count += 1
             logger.exception("collect %s failed", api_name)
             return []
 
@@ -307,17 +330,18 @@ class TushareCollector(BaseCollector):
         Returns:
             Path to the written CSV file, or None if rows is empty.
         """
+        self.last_save_failed = False
+        self.last_save_error = ""
         if not rows:
             logger.info("save %s/%s: no rows, skipping", api_name, trade_date)
             return None
 
         dir_path = self.DATA_ROOT / api_name / trade_date
-        dir_path.mkdir(parents=True, exist_ok=True)
-
         fname = (filename or f"{api_name}_{trade_date}") + ".csv"
         path = dir_path / fname
 
         try:
+            dir_path.mkdir(parents=True, exist_ok=True)
             import tempfile
             fields = list(rows[0].keys())
             # Write to temp file then atomically rename to avoid truncation races
@@ -339,9 +363,12 @@ class TushareCollector(BaseCollector):
                 raise
             logger.info("save %s → %s (%d rows)", api_name, path, len(rows))
             return path
-        except Exception:
+        except Exception as exc:
+            self.last_save_failed = True
+            self.last_save_error = str(exc)
+            self.save_failure_count += 1
             logger.exception("save %s failed", api_name)
-            return None
+            raise SaveError(api_name, path, str(exc)) from exc
 
     # ------------------------------------------------------------------
     # BaseCollector-compatible interface (orchestrator calls these)

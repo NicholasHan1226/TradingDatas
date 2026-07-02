@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import os
 import threading
+import logging
+import math
 from pathlib import Path
 from typing import MutableMapping
 
 _LOADED = False
 _LOAD_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 def parse_env_file(path: str | Path) -> dict[str, str]:
@@ -57,3 +60,76 @@ def bootstrap_sharedsignals_env(
 
         _LOADED = True
         return applied
+
+
+def env_int(
+    name: str,
+    default: int,
+    *,
+    min_value: int | None = None,
+    max_value: int | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> int:
+    """Read an integer env var with fallback and optional bounds."""
+    source = os.environ if environ is None else environ
+    raw = source.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        logger.warning("Invalid integer env %s=%r; using default %r", name, raw, default)
+        return default
+    if min_value is not None and value < min_value:
+        return min_value
+    if max_value is not None and value > max_value:
+        return max_value
+    return value
+
+
+def env_float(
+    name: str,
+    default: float,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> float:
+    """Read a finite float env var with fallback and optional bounds."""
+    source = os.environ if environ is None else environ
+    raw = source.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        logger.warning("Invalid float env %s=%r; using default %r", name, raw, default)
+        return default
+    if not math.isfinite(value):
+        logger.warning("Non-finite float env %s=%r; using default %r", name, raw, default)
+        return default
+    if min_value is not None and value < min_value:
+        return min_value
+    if max_value is not None and value > max_value:
+        return max_value
+    return value
+
+
+def env_bool(
+    name: str,
+    default: bool,
+    *,
+    environ: MutableMapping[str, str] | None = None,
+) -> bool:
+    """Read a boolean env var with common true/false spellings."""
+    source = os.environ if environ is None else environ
+    raw = source.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    logger.warning("Invalid boolean env %s=%r; using default %r", name, raw, default)
+    return default

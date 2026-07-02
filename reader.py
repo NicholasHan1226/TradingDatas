@@ -23,10 +23,10 @@ import os
 import sqlite3
 import time
 from copy import deepcopy
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from typing import Any, Callable, Iterable
 
 try:
@@ -35,6 +35,7 @@ except ImportError:
     yaml = None
 
 import warnings as _warnings
+from env_bootstrap import env_float, env_int
 
 
 class _LazyPath:
@@ -137,11 +138,13 @@ LEGACY_SIM_EXECUTION_LOG = SHAREDSIGNALS_ROOT / "data" / "legacy" / "simulated_e
 
 # -- Cache invalidation --------------------------------------------------------
 
-CACHE_TTL_SECONDS = float(os.environ.get("SHAREDSIGNALS_CACHE_TTL", "300"))  # 5 min default
+CACHE_TTL_SECONDS = env_float("SHAREDSIGNALS_CACHE_TTL", 300.0, min_value=1.0, max_value=86400.0)
+CACHE_MAX_BYTES = env_int("SHAREDSIGNALS_CACHE_MAX_BYTES", 50 * 1024 * 1024, min_value=0)
 _CACHE_GENERATION = 0
 _CACHE_LAST_RESET = 0.0
-# Guards _CACHE_GENERATION, _CACHE_LAST_RESET, and bulk cache_clear operations.
-_CACHE_LOCK = Lock()
+_CACHE_TOTAL_BYTES = 0
+# Guards cache generation, byte accounting, and per-function cache dictionaries.
+_CACHE_LOCK = RLock()
 
 _WATCHED_PATHS: list[Path] = [
     SQLITE_PATH,
@@ -155,7 +158,7 @@ _WATCHED_PATHS: list[Path] = [
     TARGET_STOCK_MAP_PATH,
 ]
 
-# All @lru_cache-decorated functions that should be cleared together
+# All cached functions that should be cleared together
 _CACHED_FUNCTIONS: list[Callable[..., Any]] = []
 
 
@@ -163,6 +166,126 @@ def _register_cached(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Register a function for bulk cache clearing."""
     _CACHED_FUNCTIONS.append(fn)
     return fn
+
+
+def _cache_key(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
+    if not kwargs:
+        return args
+    return args + tuple(sorted(kwargs.items()))
+
+
+def _payload_size_bytes(payload: Any) -> int:
+    if isinstance(payload, str):
+        return len(payload.encode("utf-8", errors="replace"))
+    try:
+        return len(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8"))
+    except Exception:
+        return len(str(payload).encode("utf-8", errors="replace"))
+
+
+def cache_byte_estimate() -> int:
+    """Return the current estimated byte size for all reader caches."""
+    with _CACHE_LOCK:
+        return int(_CACHE_TOTAL_BYTES)
+
+
+def _cache_entry_count() -> int:
+    with _CACHE_LOCK:
+        total = 0
+        for fn in _CACHED_FUNCTIONS:
+            cache = getattr(fn, "_cache", None)
+            if isinstance(cache, OrderedDict):
+                total += len(cache)
+        return total
+
+
+def _evict_global_cache_locked() -> None:
+    """Evict cached payloads until the shared byte budget is back under limit."""
+    global _CACHE_TOTAL_BYTES
+    if CACHE_MAX_BYTES <= 0:
+        return
+    while _CACHE_TOTAL_BYTES > CACHE_MAX_BYTES:
+        evicted = False
+        for fn in _CACHED_FUNCTIONS:
+            cache = getattr(fn, "_cache", None)
+            if not isinstance(cache, OrderedDict) or not cache:
+                continue
+            _, (_, evicted_size) = cache.popitem(last=False)
+            _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - evicted_size)
+            evicted = True
+            break
+        if not evicted:
+            _CACHE_TOTAL_BYTES = 0
+            break
+
+
+def _bounded_lru_cache(
+    *,
+    maxsize: int = 512,
+    should_cache: Callable[[tuple[Any, ...], str], bool] | None = None,
+) -> Callable[[Callable[..., str]], Callable[..., str]]:
+    """LRU cache for JSON payload strings with shared byte accounting."""
+
+    def decorate(fn: Callable[..., str]) -> Callable[..., str]:
+        cache: OrderedDict[tuple[Any, ...], tuple[str, int]] = OrderedDict()
+
+        def cache_clear() -> None:
+            global _CACHE_TOTAL_BYTES
+            with _CACHE_LOCK:
+                for _, size in cache.values():
+                    _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - size)
+                cache.clear()
+
+        def wrapper(*args: Any, **kwargs: Any) -> str:
+            global _CACHE_TOTAL_BYTES
+            key = _cache_key(args, kwargs)
+            with _CACHE_LOCK:
+                cached = cache.get(key)
+                if cached is not None:
+                    value, size = cached
+                    cache.move_to_end(key)
+                    return value
+
+            value = fn(*args, **kwargs)
+            size = _payload_size_bytes(value)
+            if maxsize <= 0 or CACHE_MAX_BYTES <= 0 or size > CACHE_MAX_BYTES:
+                with _CACHE_LOCK:
+                    previous = cache.pop(key, None)
+                    if previous is not None:
+                        _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - previous[1])
+                return value
+            if should_cache is not None and not should_cache(args, value):
+                with _CACHE_LOCK:
+                    previous = cache.pop(key, None)
+                    if previous is not None:
+                        _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - previous[1])
+                return value
+
+            with _CACHE_LOCK:
+                previous = cache.pop(key, None)
+                if previous is not None:
+                    _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - previous[1])
+                cache[key] = (value, size)
+                _CACHE_TOTAL_BYTES += size
+
+                while len(cache) > maxsize:
+                    _, (_, evicted_size) = cache.popitem(last=False)
+                    _CACHE_TOTAL_BYTES = max(0, _CACHE_TOTAL_BYTES - evicted_size)
+                _evict_global_cache_locked()
+            return value
+
+        def cache_info() -> dict[str, Any]:
+            with _CACHE_LOCK:
+                return {"maxsize": maxsize, "currsize": len(cache)}
+
+        wrapper.cache_clear = cache_clear  # type: ignore[attr-defined]
+        wrapper.cache_info = cache_info  # type: ignore[attr-defined]
+        wrapper._cache = cache  # type: ignore[attr-defined]
+        wrapper.__name__ = fn.__name__
+        wrapper.__doc__ = fn.__doc__
+        return wrapper
+
+    return decorate
 
 
 def _files_changed(last_reset: float) -> bool:
@@ -212,6 +335,11 @@ def clear_caches() -> None:
     """Clear all LRU caches and reset the cache generation counter."""
     with _CACHE_LOCK:
         _clear_caches_locked()
+
+
+def _cache_generation_snapshot() -> int:
+    with _CACHE_LOCK:
+        return _CACHE_GENERATION
 
 
 def _json_cached(fn: Callable[..., list[dict[str, Any]]], *args: Any) -> str:
@@ -367,10 +495,11 @@ def _degraded_empty(source_id: str, reason: str, *, lineage: dict[str, Any] | No
     ]
 
 
-def _safe_public(source_id: str, lineage: dict[str, Any], producer: Callable[[], str]) -> list[dict[str, Any]]:
+def _safe_public(source_id: str, lineage: dict[str, Any], producer: Callable[[int], str]) -> list[dict[str, Any]]:
     _maybe_invalidate()
+    generation_snapshot = _cache_generation_snapshot()
     try:
-        return _clone_cached(producer())
+        return _clone_cached(producer(generation_snapshot))
     except Exception as exc:  # pragma: no cover - final public boundary
         return _degraded_empty(source_id, f"reader failed: {exc}", lineage=lineage)
 
@@ -532,8 +661,8 @@ def _rows_to_wrappers(
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_market_data_cached(ts_code: str, start: str, end: str, freq: str, adjusted: bool) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_market_data_cached(_generation: int, ts_code: str, start: str, end: str, freq: str, adjusted: bool) -> str:
     if freq != "daily":
         return _json_cached(
             lambda: _degraded_empty(
@@ -602,12 +731,12 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
         if legacy_rows is not None:
             return legacy_rows
     lineage = {"reader": "get_market_data", "filters": {"ts_code": ts_code, "start": start, "end": end, "freq": freq, "adjusted": adjusted}}
-    return _safe_public("sqlite:market_bars_daily", lineage, lambda: _get_market_data_cached(str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
+    return _safe_public("sqlite:market_bars_daily", lineage, lambda generation: _get_market_data_cached(generation, str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_events_cached(start: str, end: str, event_type: str | None) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_events_cached(_generation: int, start: str, end: str, event_type: str | None) -> str:
     path = INTAKE_ROOT / "event_candidates.csv"
     lineage = {"reader": "get_events", "source_path": str(path), "filters": {"start": start, "end": end, "event_type": event_type}}
     rows, degraded = _safe_csv(path, "csv:event_candidates", lineage)
@@ -625,7 +754,7 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
     if end is None:
         end = start
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
-    rows = _safe_public("csv:event_candidates", lineage, lambda: _get_events_cached(str(start), str(end), event_type))
+    rows = _safe_public("csv:event_candidates", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
     subject_code = kwargs.get("subject_code")
     subject_type = kwargs.get("subject_type")
     if subject_code:
@@ -636,8 +765,8 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_sentiment_cached(start: str, end: str, tier: str | None) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_sentiment_cached(_generation: int, start: str, end: str, tier: str | None) -> str:
     path = INTAKE_ROOT / "sentiment_signals.csv"
     lineage = {"reader": "get_sentiment", "source_path": str(path), "filters": {"start": start, "end": end, "tier": tier}}
     rows, degraded = _safe_csv(path, "csv:sentiment_signals", lineage)
@@ -655,7 +784,7 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
     if end is None:
         end = start
     lineage = {"reader": "get_sentiment", "filters": {"start": start, "end": end, "tier": tier, **kwargs}}
-    rows = _safe_public("csv:sentiment_signals", lineage, lambda: _get_sentiment_cached(str(start), str(end), tier))
+    rows = _safe_public("csv:sentiment_signals", lineage, lambda generation: _get_sentiment_cached(generation, str(start), str(end), tier))
     subject_code = kwargs.get("subject_code")
     if subject_code:
         rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_code") == subject_code]
@@ -663,8 +792,8 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_fundamentals_cached(ts_code: str, end_date: str = "") -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "") -> str:
     ts_upper = ts_code.upper()
     if ts_upper.endswith(('.SH', '.SZ', '.BJ')):
         try:
@@ -695,12 +824,12 @@ def _get_fundamentals_cached(ts_code: str, end_date: str = "") -> str:
 def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str, Any]]:
     lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
     ed = end_date or _now().strftime("%Y%m%d")
-    return _safe_public("sqlite:market_factors", lineage, lambda: _get_fundamentals_cached(str(ts_code), ed))
+    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_fundamentals_cached(generation, str(ts_code), ed))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_tushare_cached(api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
     """Route to Tushare API via a_share_tushare_api._call()."""
     try:
         import sys
@@ -767,7 +896,7 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
     return _safe_public(
         f"tushare:{api_name}",
         lineage,
-        lambda: _get_tushare_cached(str(api_name), ts_code, start_date, end_date, params_json),
+        lambda generation: _get_tushare_cached(generation, str(api_name), ts_code, start_date, end_date, params_json),
     )
 # NOTE: _get_capital_flow_cached is intentionally unused — get_capital_flow()
 # delegates to get_tushare("moneyflow") instead. Kept as reference for future
@@ -795,8 +924,8 @@ def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwar
     return get_tushare("moneyflow", ts_code=ts_code, start_date=start, end_date=end or start)
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_macro_factors_cached(start: str, end: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_macro_factors_cached(_generation: int, start: str, end: str) -> str:
     path = MACRO_FACTORS_PATH
     lineage = {"reader": "get_macro_factors", "source_path": str(path), "filters": {"start": start, "end": end}}
     rows, degraded = _safe_csv(path, "csv:macro_factors", lineage)
@@ -819,12 +948,12 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
             return degraded
         return _legacy_wrapped_rows(rows or [], source_id="csv:all_weather_regime", source_tier="macro", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=168.0)
     lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}}
-    return _safe_public("csv:macro_factors", lineage, lambda: _get_macro_factors_cached(str(start), str(end)))
+    return _safe_public("csv:macro_factors", lineage, lambda generation: _get_macro_factors_cached(generation, str(start), str(end)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_crypto_klines_cached(symbol: str, limit: int) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_crypto_klines_cached(_generation: int, symbol: str, limit: int) -> str:
     path = CRYPTO_KLINES_PATH
     lineage = {"reader": "get_crypto_klines", "source_path": str(path), "filters": {"symbol": symbol, "limit": limit}}
     rows, degraded = _safe_csv(path, "csv:crypto_klines", lineage)
@@ -839,12 +968,12 @@ def _get_crypto_klines_cached(symbol: str, limit: int) -> str:
 
 def get_crypto_klines(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     lineage = {"reader": "get_crypto_klines", "filters": {"symbol": symbol, "limit": limit}}
-    return _safe_public("csv:crypto_klines", lineage, lambda: _get_crypto_klines_cached(str(symbol), int(limit)))
+    return _safe_public("csv:crypto_klines", lineage, lambda generation: _get_crypto_klines_cached(generation, str(symbol), int(limit)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_pm_markets_cached(limit: int) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_pm_markets_cached(_generation: int, limit: int) -> str:
     query = """
         SELECT * FROM market_pm_markets
         ORDER BY collected_at DESC, volume DESC
@@ -859,7 +988,7 @@ def _get_pm_markets_cached(limit: int) -> str:
 
 def get_pm_markets(limit: int = 100) -> list[dict[str, Any]]:
     lineage = {"reader": "get_pm_markets", "filters": {"limit": limit}}
-    return _safe_public("sqlite:market_pm_markets", lineage, lambda: _get_pm_markets_cached(int(limit)))
+    return _safe_public("sqlite:market_pm_markets", lineage, lambda generation: _get_pm_markets_cached(generation, int(limit)))
 
 
 def _safe_reference_path(table: str) -> Path | None:
@@ -879,8 +1008,8 @@ def _safe_reference_path(table: str) -> Path | None:
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_reference_cached(table: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_reference_cached(_generation: int, table: str) -> str:
     path = _safe_reference_path(table)
     lineage = {"reader": "get_reference", "reference_root": str(REFERENCE_ROOT), "filters": {"table": table}}
     if path is None:
@@ -894,12 +1023,12 @@ def _get_reference_cached(table: str) -> str:
 
 def get_reference(table: str) -> list[dict[str, Any]]:
     lineage = {"reader": "get_reference", "filters": {"table": table}}
-    return _safe_public("csv:reference", lineage, lambda: _get_reference_cached(str(table)))
+    return _safe_public("csv:reference", lineage, lambda generation: _get_reference_cached(generation, str(table)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _is_trading_day_cached(date_value: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _is_trading_day_cached(_generation: int, date_value: str) -> str:
     lineage = {"reader": "is_trading_day", "source_path": str(REFERENCE_ROOT / "market_calendar.py"), "filters": {"date": date_value}}
     try:
         import sys
@@ -925,12 +1054,12 @@ def _is_trading_day_cached(date_value: str) -> str:
 
 def is_trading_day(date: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "is_trading_day", "filters": {"date": date}}
-    return _safe_public("reference:market_calendar", lineage, lambda: _is_trading_day_cached(str(date)))
+    return _safe_public("reference:market_calendar", lineage, lambda generation: _is_trading_day_cached(generation, str(date)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_realtime_5min_cached(ts_code: str, date_value: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -> str:
     date_key = _date_key(date_value)
     day_dir = REALTIME_5M_ROOT / date_key
     lineage = {"reader": "get_realtime_5min", "source_path": str(day_dir), "filters": {"ts_code": ts_code, "date": date_key}}
@@ -952,11 +1081,11 @@ def _get_realtime_5min_cached(ts_code: str, date_value: str) -> str:
 
 def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
-    return _safe_public("csv:rt_min_5m", lineage, lambda: _get_realtime_5min_cached(str(ts_code), str(date)))
+    return _safe_public("csv:rt_min_5m", lineage, lambda generation: _get_realtime_5min_cached(generation, str(ts_code), str(date)))
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_industry_cached(ts_code: str) -> str:
+@_bounded_lru_cache(maxsize=512)
+def _get_industry_cached(_generation: int, ts_code: str) -> str:
     path = STOCK_INDUSTRY_MAP_PATH
     lineage = {"reader": "get_industry", "source_path": str(path), "filters": {"ts_code": ts_code}}
     rows, degraded = _safe_csv(path, "csv:stock_industry_map", lineage)
@@ -973,12 +1102,12 @@ def get_industry(ts_code: str) -> list[dict[str, Any]]:
     Returns degraded empty wrapper if ts_code not found or file missing.
     """
     lineage = {"reader": "get_industry", "filters": {"ts_code": ts_code}}
-    return _safe_public("csv:stock_industry_map", lineage, lambda: _get_industry_cached(str(ts_code)))
+    return _safe_public("csv:stock_industry_map", lineage, lambda generation: _get_industry_cached(generation, str(ts_code)))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_associations_cached(ts_code: str, event_id: str) -> str:
+@_bounded_lru_cache(maxsize=64, should_cache=lambda args, _value: bool(args[1] or args[2]))
+def _get_associations_cached(_generation: int, ts_code: str, event_id: str) -> str:
     """Build lookup: ts_code -> target_stock_map -> associations, or event_id -> associations."""
     lineage_base = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
 
@@ -1035,12 +1164,12 @@ def get_associations(ts_code: str | None = None, event_id: str | None = None) ->
     Returns degraded empty wrapper when nothing found or errors occur.
     """
     lineage = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
-    return _safe_public("csv:event_signal_associations", lineage, lambda: _get_associations_cached(str(ts_code or ""), str(event_id or "")))
+    return _safe_public("csv:event_signal_associations", lineage, lambda generation: _get_associations_cached(generation, str(ts_code or ""), str(event_id or "")))
 
 
 @_register_cached
-@lru_cache(maxsize=512)
-def _get_impacts_cached(event_type: str, target: str) -> str:
+@_bounded_lru_cache(maxsize=64, should_cache=lambda args, _value: bool(args[1] or args[2]))
+def _get_impacts_cached(_generation: int, event_type: str, target: str) -> str:
     path = IMPACT_RELATIONS_PATH
     lineage = {"reader": "get_impacts", "source_path": str(path), "filters": {"event_type": event_type, "target": target}}
     rows, degraded = _safe_csv(path, "csv:impact_relations", lineage)
@@ -1062,7 +1191,7 @@ def get_impacts(event_type: str | None = None, target: str | None = None) -> lis
     Returns degraded empty wrapper when nothing found or errors occur.
     """
     lineage = {"reader": "get_impacts", "filters": {"event_type": event_type, "target": target}}
-    return _safe_public("csv:impact_relations", lineage, lambda: _get_impacts_cached(str(event_type or ""), str(target or "")))
+    return _safe_public("csv:impact_relations", lineage, lambda generation: _get_impacts_cached(generation, str(event_type or ""), str(target or "")))
 
 
 def _summary(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:

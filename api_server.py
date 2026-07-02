@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from env_bootstrap import env_float, env_int
+
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -23,10 +25,10 @@ auth: Any | None = None
 reader: Any | None = None
 _runtime_load_lock = threading.Lock()
 HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0")
-PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", "8082"))
+PORT = env_int("SHAREDSIGNALS_API_PORT", 8082, min_value=1, max_value=65535)
 VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
-REQUEST_TIMEOUT = float(os.environ.get("SHAREDSIGNALS_REQUEST_TIMEOUT", "30"))
-MAX_THREADS = int(os.environ.get("SHAREDSIGNALS_MAX_THREADS", "20"))
+REQUEST_TIMEOUT = env_float("SHAREDSIGNALS_REQUEST_TIMEOUT", 30.0, min_value=1.0, max_value=300.0)
+MAX_THREADS = env_int("SHAREDSIGNALS_MAX_THREADS", 20, min_value=1, max_value=512)
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_CACHE_SECONDS = 60
 
@@ -45,10 +47,10 @@ def _ensure_runtime_loaded() -> None:
 
         bootstrap_sharedsignals_env()
         HOST = os.environ.get("SHAREDSIGNALS_API_HOST", HOST)
-        PORT = int(os.environ.get("SHAREDSIGNALS_API_PORT", str(PORT)))
+        PORT = env_int("SHAREDSIGNALS_API_PORT", PORT, min_value=1, max_value=65535)
         VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", VERSION)
-        REQUEST_TIMEOUT = float(os.environ.get("SHAREDSIGNALS_REQUEST_TIMEOUT", str(REQUEST_TIMEOUT)))
-        MAX_THREADS = int(os.environ.get("SHAREDSIGNALS_MAX_THREADS", str(MAX_THREADS)))
+        REQUEST_TIMEOUT = env_float("SHAREDSIGNALS_REQUEST_TIMEOUT", REQUEST_TIMEOUT, min_value=1.0, max_value=300.0)
+        MAX_THREADS = env_int("SHAREDSIGNALS_MAX_THREADS", MAX_THREADS, min_value=1, max_value=512)
 
         import auth as auth_module  # noqa: WPS433
         import reader as reader_module  # noqa: WPS433
@@ -122,23 +124,36 @@ def validate_json_query_params(params: dict[str, str]) -> None:
 
 def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
     if not isinstance(rows, list):
-        return rows, {"freshness": None, "quality": None, "degraded": False}, None
+        return rows, {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
 
     if not rows:
-        return [], {"freshness": None, "quality": None, "degraded": False}, None
+        return [], {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
 
     if not all(isinstance(row, dict) and "data" in row for row in rows):
-        return rows, {"freshness": None, "quality": None, "degraded": False}, None
+        return rows, {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
 
     data_rows = [row.get("data") for row in rows]
     degraded = any(bool(row.get("degraded")) for row in rows)
     freshness_rows = [row.get("freshness") for row in rows if isinstance(row.get("freshness"), dict)]
     quality_rows = [row.get("quality") for row in rows if isinstance(row.get("quality"), dict)]
+    degraded_reasons: list[str] = []
+    lineages: list[dict[str, Any]] = []
     sources = []
     for row in rows:
         provenance = row.get("provenance") if isinstance(row, dict) else None
         if isinstance(provenance, dict) and provenance.get("source_id"):
             sources.append(str(provenance["source_id"]))
+        lineage = row.get("lineage") if isinstance(row, dict) else None
+        if isinstance(lineage, dict) and lineage:
+            lineages.append(lineage)
+            reason = lineage.get("reason")
+            if reason:
+                degraded_reasons.append(str(reason))
+        row_reasons = row.get("degraded_reasons") if isinstance(row, dict) else None
+        if isinstance(row_reasons, list):
+            degraded_reasons.extend(str(reason) for reason in row_reasons if reason)
+        elif row_reasons:
+            degraded_reasons.append(str(row_reasons))
     source = sources[0] if sources else None
 
     freshness: dict[str, Any] | None = None
@@ -167,7 +182,20 @@ def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
         if len(quality_rows) == 1:
             quality = quality_rows[0]
 
-    return data_rows, {"freshness": freshness, "quality": quality, "degraded": degraded}, source
+    seen_reasons: set[str] = set()
+    unique_reasons = []
+    for reason in degraded_reasons:
+        if reason not in seen_reasons:
+            seen_reasons.add(reason)
+            unique_reasons.append(reason)
+
+    return data_rows, {
+        "freshness": freshness,
+        "quality": quality,
+        "degraded": degraded,
+        "degraded_reasons": unique_reasons,
+        "lineage": lineages[0] if len(lineages) == 1 else lineages,
+    }, source
 
 
 
@@ -190,6 +218,9 @@ def file_payload(path: Path) -> tuple[Any, dict[str, Any], str | None]:
 
 
 def wrap_response(payload: Any, metadata: dict[str, Any], source: str | None) -> dict[str, Any]:
+    metadata = dict(metadata or {})
+    metadata.setdefault("degraded_reasons", [])
+    metadata.setdefault("lineage", [])
     return {
         "data": payload,
         "metadata": metadata,
@@ -443,9 +474,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/cache/status":
             return {
-                "generation": reader._CACHE_GENERATION,
-                "ttl_seconds": reader.CACHE_TTL_SECONDS,
-                "functions_registered": len(reader._CACHED_FUNCTIONS),
+                "generation": getattr(reader, "_CACHE_GENERATION", 0),
+                "ttl_seconds": getattr(reader, "CACHE_TTL_SECONDS", None),
+                "estimated_bytes": reader.cache_byte_estimate() if hasattr(reader, "cache_byte_estimate") else 0,
+                "max_bytes": getattr(reader, "CACHE_MAX_BYTES", None),
+                "entry_count": reader._cache_entry_count() if hasattr(reader, "_cache_entry_count") else 0,
+                "functions_registered": len(getattr(reader, "_CACHED_FUNCTIONS", ())),
                 "auth": auth.cache_stats(),
                 "timestamp": utc_now_iso(),
             }

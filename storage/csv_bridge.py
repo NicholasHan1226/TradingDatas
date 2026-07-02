@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from storage.schema_contract import table_primary_keys
+from env_bootstrap import env_int
 
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
+MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_CSV_BRIDGE_MAX_TRANSACTION_ROWS", 0, min_value=0)
 
 DEFAULT_SQLITE_PATH = (
     Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
@@ -163,17 +165,11 @@ def _flush_chunk(conn, sql, chunk):
     if not chunk:
         return 0
     before = conn.total_changes
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        conn.executemany(sql, chunk)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+    conn.executemany(sql, chunk)
     return conn.total_changes - before
 
 
-def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
+def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
     """Ingest one CSV file into an existing SQLite table.
 
     The bridge is defensive: it never creates target tables. If the database or
@@ -191,6 +187,9 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
         return 0
 
     rows_written = 0
+    transaction_open = False
+    transaction_rows = 0
+    max_rows_per_transaction = MAX_TRANSACTION_ROWS if max_transaction_rows is None else int(max_transaction_rows)
     conn = sqlite3.connect(str(db_path), timeout=30)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -229,6 +228,8 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
             required_columns = _required_columns(table, target_columns)
             sql = _insert_sql(table, columns, pk_columns)
             chunk: list[list[Any]] = []
+            conn.execute("BEGIN IMMEDIATE")
+            transaction_open = True
 
             for row_number, row in enumerate(reader, start=2):
                 row = _canonical_row(table, row, api_name, csv_path)
@@ -237,10 +238,27 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig"):
                     continue
                 chunk.append(values)
                 if len(chunk) >= CHUNK_SIZE:
-                    rows_written += _flush_chunk(conn, sql, chunk)
+                    chunk_written = _flush_chunk(conn, sql, chunk)
+                    rows_written += chunk_written
+                    transaction_rows += len(chunk)
                     chunk.clear()
+                    if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
+                        conn.commit()
+                        transaction_open = False
+                        conn.execute("BEGIN IMMEDIATE")
+                        transaction_open = True
+                        transaction_rows = 0
 
-            rows_written += _flush_chunk(conn, sql, chunk)
+            if chunk:
+                chunk_written = _flush_chunk(conn, sql, chunk)
+                rows_written += chunk_written
+                transaction_rows += len(chunk)
+            conn.commit()
+            transaction_open = False
+    except Exception:
+        if transaction_open:
+            conn.rollback()
+        raise
     finally:
         conn.close()
 
