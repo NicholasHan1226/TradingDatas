@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-03 (P0 架构债务清零与 API 迁移状态对齐)
+> 最后更新：2026-07-03 (P0 架构债务清零与 cron 解耦入口)
 
 ---
 
@@ -15,6 +15,7 @@
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh` 已新增，分别负责全 tier 采集、DuckDB 同步和 patrol/heal，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：marketdata.sqlite（~116MB），marketdata.duckdb（~54MB），11 表 145K+ 行，staging 6 streams 活跃
@@ -70,6 +71,14 @@
 11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader 已 API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
 
 ## 五、最近完成
+
+### 2026-07-03 cron 解耦入口补齐
+
+- [x] 新增 `cron/collectors.sh`：按当前有效 Tushare tier 逐项运行 `sync_daily.py --exit-on-failure`。
+- [x] 新增 `cron/duckdb_sync.sh`：独立运行 `duckdb_merge.py --json`，与旧根层 wrapper 解耦。
+- [x] 新增 `cron/patrol.sh`：运行 patrol，低于阈值时触发 heal。
+- [x] 新增 `cron/AGENTS.md`：约束 cron wrapper 只做调度、不内嵌业务逻辑和密钥。
+- [ ] 待服务器部署验证：脚本尚未写入生产 crontab。
 
 ### 2026-07-03 P0 架构债务清零与 API 迁移状态对齐
 
