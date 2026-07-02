@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-03 (final Codex review HIGH/MEDIUM API 契约与密钥追踪修复)
+> 最后更新：2026-07-03 (P0 架构债务清零与 API 迁移状态对齐)
 
 ---
 
@@ -24,7 +24,10 @@
 ## 二、已知问题
 
 - shibor_lpr 返回 0 行（待调查，libor 已停更属正常）
-- sync_daily.py CSV→SQLite bridge 已接入本地代码并补事务/错误状态；仍需后续生产部署后观察 crontab 日志与 DuckDB 同步链路
+- sync_daily.py CSV→SQLite bridge 已完成并接入 `storage/csv_bridge.py`；后续只保留生产 crontab 日志与 DuckDB 同步链路观察
+- `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
+- R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
+- R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
 
 ## 三、API 接口状态（17/17 覆盖）
 
@@ -58,15 +61,28 @@
 2. [x] API 安全加固：Bearer token 认证 + scope-based 端点访问控制 + key-based 账户隔离
 3. [x] fx_daily/hibor 参数调优（2026-07-02 修复：fx_daily 加 exchange=FXCM，hibor 改用 date 参数）
 4. [x] hk_daily 全局查询修复（2026-07-02 修复：改为 per_stock + stock_list=hk）
-5. [ ] **P0：CSV→SQLite 接入桥** — sync_daily.py CSV 输出接入 SQLite→DuckDB 管线
+5. [x] **P0：CSV→SQLite 接入桥** — `storage/csv_bridge.py` 已建成，sync_daily.py CSV 输出已接入 SQLite→DuckDB 管线
 6. [x] **P0：schema 漂移检测** — schema.py 与 duckdb_schema.py 11 表自动一致性校验
-7. [x] **P0：provider 从 market_bars_daily 主键移除** — 已生成安全迁移脚本，尚未执行实际数据库迁移
+7. [x] **P0：provider 从 market_bars_daily 主键移除** — 迁移脚本已执行到服务器，provider 保留为普通来源字段
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
-11. [ ] **P2：SharedSignals API 作为唯一消费入口** — 推动 TradingAgent/MarketGraph 通过 HTTP API 而非直接 SQLite 读取
+11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader 已 API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
 
 ## 五、最近完成
+
+### 2026-07-03 P0 架构债务清零与 API 迁移状态对齐
+
+- [x] CSV→SQLite 桥接闭环完成：`storage/csv_bridge.py` 已建成，sync_daily.py 已能把 CSV 输出接入 SQLite→DuckDB 管线。
+- [x] `market_bars_daily` provider-PK 迁移已在服务器执行；provider 不再参与主键，只作为来源字段保留。
+- [x] API 服务器线程化、auth 内存治理、env 启动引导统一均已完成，P0 6 项架构债务全部清零。
+- [ ] P2 API 消费迁移仍在推进：TradingAgent 侧 15/15 客户端和核心 reader API-first 已完成；MarketGraph 侧仍待切换。
+
+### 2026-07-03 R15 故障注入与恢复路径审计
+
+- [x] 本地完成 14 个故障/恢复 probe，报告路径：`/tmp/audit_r15_fault.md`。
+- [x] 通过项：API 中断/超时客户端受控失败，TradingAgent SQLite fallback，坏 JSON 返回 400，线程池耗尽返回 503，SaveError 传播，API 重启缓存重建，部分 CSV 下次原子覆盖，全后端缺失时 endpoint 返回 degraded。
+- [ ] 待补闭环：SQLite 主文件损坏后的自动恢复/备份切换；运行中配置变更热加载或明确 restart-only 文档。
 
 ### 2026-07-03 final Codex review HIGH/MEDIUM 修复
 
