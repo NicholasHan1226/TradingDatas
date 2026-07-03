@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-03 (P0 架构债务清零与 cron 解耦入口)
+> 最后更新：2026-07-03 (生产部署完成，旧系统退役，零 CRITICAL/HIGH bug)
 
 ---
 
@@ -20,6 +20,11 @@
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：marketdata.sqlite（~116MB），marketdata.duckdb（~54MB），11 表 145K+ 行，staging 6 streams 活跃
 - **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
+- **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
+- **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
+- **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + `--exit-on-failure`
+- **生产部署**：服务器 `8.138.181.177:8082` 运行中，CPU 4.5%，旧 `tools/api_server.py` 已退役
 - **服务器**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS → rsync → 杭州）
 
 ## 二、已知问题
@@ -68,7 +73,8 @@
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
-11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader 已 API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
+11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
+12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
 
 ## 五、最近完成
 
