@@ -33,7 +33,7 @@ cd "${ROOT}"
 if [ -f "${ROOT}/.env" ]; then
   set -a
   # shellcheck disable=SC1091
-  source "${ROOT}/.env"
+  python3 -c "from env_bootstrap import bootstrap_sharedsignals_env; bootstrap_sharedsignals_env()"
   set +a
 fi
 
