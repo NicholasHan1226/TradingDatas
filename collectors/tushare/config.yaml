@@ -47,6 +47,24 @@ priorities:
     params:
       ts_code: '{ts_code}'
     per_stock: true
+  - api_name: margin
+    per_stock: false
+    fields: trade_date,ts_code,rzye,rqye,rzmre,rqmcl
+  - api_name: margin_detail
+    per_stock: false
+    fields: trade_date,ts_code,rzye,rqye,rqmcl
+  - api_name: block_trade
+    per_stock: false
+    fields: trade_date,ts_code,price,vol,amount
+  - api_name: limit_list_d
+    per_stock: false
+    fields: trade_date,ts_code,limit_times,limit
+  - api_name: limit_step
+    per_stock: false
+    fields: trade_date,ts_code,pre_close,up_limit,down_limit
+  - api_name: stk_factor_pro
+    per_stock: true
+    fields: ts_code,trade_date,pe,pb,turnover_rate,mv
   P1_eod_daily:
   - api_name: daily_basic
     frequency: daily
@@ -102,6 +120,15 @@ priorities:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
     per_stock: true
+  - api_name: repurchase
+    per_stock: true
+    fields: ts_code,ann_date,vol,amount,high_limit
+  - api_name: pledge_stat
+    per_stock: true
+    fields: ts_code,end_date,pledge_amount,pledge_ratio
+  - api_name: pledge_detail
+    per_stock: true
+    fields: ts_code,holder_name,pledge_amount
   P2_financial_daily:
   - api_name: fina_indicator
     frequency: daily
@@ -150,6 +177,21 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     per_stock: true
+  - api_name: dividend
+    per_stock: true
+    fields: ts_code,div_year,cash_div,record_date,ex_date
+  - api_name: top10_holders
+    per_stock: true
+    fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
+  - api_name: top10_floatholders
+    per_stock: true
+    fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
+  - api_name: stk_holdertrade
+    per_stock: true
+    fields: ts_code,ann_date,holder_name,in_de,change_vol
+  - api_name: top_inst
+    per_stock: true
+    fields: ts_code,ann_date,inst_name,hold_amount,hold_ratio
   P3_reference_daily:
   - api_name: stock_basic
     frequency: daily
@@ -200,6 +242,21 @@ priorities:
       index_code: ''
       start_date: '{start_date}'
     per_stock: false
+  - api_name: share_float
+    per_stock: true
+    fields: ts_code,ann_date,float_share,float_ratio
+  - api_name: stk_surv
+    per_stock: false
+    fields: ts_code,trade_date,pe,pb,roe,total_mv,circ_mv
+  - api_name: trade_cal
+    per_stock: false
+    fields: cal_date,is_open,pretrade_date
+  - api_name: stk_holdernumber
+    per_stock: true
+    fields: ts_code,ann_date,end_date,holder_num
+  - api_name: stk_managers
+    per_stock: true
+    fields: ts_code,name,gender,position,edu
   P4_macro_daily:
   - api_name: cn_cpi
     frequency: daily
@@ -285,6 +342,15 @@ priorities:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+  - api_name: index_global
+    per_stock: false
+    fields: ts_code,trade_date,open,close,high,low,pct_chg
+  - api_name: index_dailybasic
+    per_stock: false
+    fields: ts_code,trade_date,pe,pe_ttm,pb,total_mv,turnover_rate
+  - api_name: repo_daily
+    per_stock: false
+    fields: trade_date,repo_maturity,amount,rate
   P5_hk_us_daily:
   - api_name: hk_daily
     frequency: daily
@@ -371,3 +437,30 @@ priorities:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+  - api_name: broker_recommend
+    per_stock: false
+    fields: month,broker,ts_code,name,stk_rating
+  - api_name: major_news
+    per_stock: false
+    fields: title,content,pub_time,src,subject
+  - api_name: margin_secs
+    per_stock: false
+    fields: ts_code,name,rzye,rqye,exchange
+  - api_name: limit_list
+    per_stock: false
+    fields: trade_date,ts_code,limit_times,close,pct_chg
+  - api_name: fut_basic
+    per_stock: false
+    fields: ts_code,name,exchange,list_date
+  - api_name: fund_nav
+    per_stock: false
+    fields: ts_code,ann_date,nav_value,accum_nav
+  - api_name: cb_daily
+    per_stock: false
+    fields: ts_code,trade_date,open,high,low,close,vol
+  - api_name: news
+    per_stock: false
+    fields: datetime,content,title,src,channels
+  - api_name: cctv_news
+    per_stock: false
+    fields: date,title,content,broadcast_time

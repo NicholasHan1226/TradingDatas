@@ -830,42 +830,46 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
-    """Route to Tushare API via a_share_tushare_api._call()."""
+    """Read Tushare data from DB first, fallback to live Tushare API."""
+    from storage.csv_bridge import CSV_TO_TABLE_MAP
+    table = CSV_TO_TABLE_MAP.get(api_name)
+    if table and SQLITE_PATH.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
+            conn.execute("PRAGMA busy_timeout = 5000")
+            params = json.loads(params_json) if params_json else {}
+            code = ts_code or params.get("ts_code", "")
+            start = start_date or params.get("start_date", "")
+            end = end_date or params.get("end_date", "")
+            where = []; vals = []
+            if code: where.append("symbol = ?"); vals.append(code)
+            if start: where.append("trade_date >= ?"); vals.append(start)
+            if end: where.append("trade_date <= ?"); vals.append(end)
+            where_sql = " AND ".join(where) if where else "1=1"
+            sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY trade_date DESC LIMIT 5000"
+            rows_raw = conn.execute(sql, vals).fetchall()
+            cols = [d[0] for d in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            conn.close()
+            if rows_raw:
+                rows = [dict(zip(cols, row)) for row in rows_raw]
+                lineage = {"reader": "get_tushare", "source": f"db:{table}", "filters": {"api_name": api_name}}
+                return _json_cached(lambda: _rows_to_wrappers(rows, source_id=f"db:{table}", source_tier="collector", lineage=lineage, stale_after_hours=48.0))
+        except Exception: pass
     try:
-        import sys
-        ashare_root_str = str(ASHARE_ROOT)
-        if ashare_root_str not in sys.path:
-            sys.path.insert(0, ashare_root_str)
+        import sys; ashare_root_str = str(ASHARE_ROOT)
+        if ashare_root_str not in sys.path: sys.path.insert(0, ashare_root_str)
         from a_share_tushare_api import _call as tushare_call
-
         params = json.loads(params_json) if params_json else {}
-        if ts_code:
-            params["ts_code"] = ts_code
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
-
+        if ts_code: params["ts_code"] = ts_code
+        if start_date: params["start_date"] = start_date
+        if end_date: params["end_date"] = end_date
         rows = tushare_call(api_name, params)
-        lineage = {
-            "reader": "get_tushare",
-            "source": f"tushare:{api_name}",
-            "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params},
-        }
-        return _json_cached(lambda: _rows_to_wrappers(
-            rows or [],
-            source_id=f"tushare:{api_name}",
-            source_tier="tushare",
-            lineage=lineage,
-            stale_after_hours=48.0,
-        ))
+        lineage = {"reader": "get_tushare", "source": f"tushare:{api_name}", "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params}}
+        return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id=f"tushare:{api_name}", source_tier="tushare", lineage=lineage, stale_after_hours=48.0))
     except Exception as exc:
         lineage = {"reader": "get_tushare", "filters": {"api_name": api_name, "ts_code": ts_code}}
-        return _json_cached(lambda: _degraded_empty(
-            f"tushare:{api_name}",
-            f"Tushare {api_name} failed: {exc}",
-            lineage=lineage,
-        ))
+        return _json_cached(lambda: _degraded_empty(f"tushare:{api_name}", f"Tushare {api_name} failed: {exc}", lineage=lineage))
 
 
 def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | None = None, end_date: str | None = None, **params: Any) -> list[dict[str, Any]]:
