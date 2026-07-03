@@ -1,37 +1,25 @@
-# SharedSignals crontab — recommended schedule
-# Install: crontab crontab.txt   or   crontab -e and paste entries
-#
-# All scripts support env var overrides:
-#   SHAREDSIGNALS_ROOT         — repo root (default: script dir)
-#   SHAREDSIGNALS_VENV_PYTHON  — python binary (default: python3)
-#   PATROL_SCORE_THRESHOLD     — heal trigger (default: 60)
-#
-# Logs: SharedSignals/logs/
-#   duckdb_merge_cron.log      — merge run history
-#   heal_cron.log              — patrol + heal run history
-#   duckdb_merge.jsonl         — per-merge detail (table, rows, elapsed)
-#   patrol_history.jsonl       — per-patrol detail (checks, scores)
-
-# ---- Production (Linux server) ----
-# Uncomment and adjust paths for server deployment:
-
-# DuckDB merge — every 5 minutes
-# */5 * * * * /opt/investment/SharedSignals/duckdb_merge_cron.sh
-
-# Patrol + conditional heal — every 10 minutes
-# */10 * * * * /opt/investment/SharedSignals/patrol_heal_cron.sh
-
-# Collector orchestration — every minute (self-regulating via run_loop)
-# * * * * * /opt/investment/SharedSignals/collectors/run_collectors.sh
-
-
-# ---- Development (macOS) ----
-# For local testing, run scripts manually or use scheduler.py:
-
-# One-shot:
-#   cd SharedSignals && python3 duckdb_merge.py --json
-#   cd SharedSignals && python3 patrol.py --json --check all
-#   cd SharedSignals && python3 heal.py --patrol-result logs/patrol_last.json --dry-run
-
-# Continuous scheduler (all-in-one):
-#   cd SharedSignals && python3 scheduler.py --interval 300
+# SharedSignals subsystem crontab - 2026-07-03
+*/5 * * * * /opt/marketgraph/venv/bin/python3 /opt/investment/RSSCollector/collector.py --tier hot >> /opt/investment/MarketGraphRuntime/collector.log 2>&1
+5 * * * * /opt/marketgraph/venv/bin/python3 /opt/investment/RSSCollector/collector.py --tier warm >> /opt/investment/MarketGraphRuntime/collector.log 2>&1
+3,13,23,33,43,53 * * * * /opt/investment/SharedSignals/patrol_heal_cron.sh
+@reboot /opt/marketgraph/venv/bin/python3 /opt/investment/SharedSignals/api_server.py >> /opt/investment/SharedSignals/logs/api_server.log 2>&1 &
+3 */2 * * * /opt/marketgraph/venv/bin/python3 /opt/investment/SharedSignals/tools/health_check.py >> /opt/investment/SharedSignals/logs/health_check.log 2>&1
+# DISABLED_20260701_missing_tier: 45 17 * * 1-5 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py >> logs/tushare_collect.log 2>&1
+# === SharedSignals Tushare 6-tier collection (2026-06-30) ===
+*/5 9-15 * * 1-5 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P0_trading_5min >> logs/tushare_collect.log 2>&1
+35 16 * * 1-5 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P1_eod_daily >> logs/tushare_collect.log 2>&1
+30 18 * * 1-5 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P2_financial_daily >> logs/tushare_collect.log 2>&1
+15 6 * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P3_reference_daily >> logs/tushare_collect.log 2>&1
+45 8 * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P4_macro_daily >> logs/tushare_collect.log 2>&1
+50 16 * * 1-5 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P6_other_daily >> logs/tushare_collect.log 2>&1
+30 6 * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/tushare/sync_daily.py --tier P6_other_daily >> logs/tushare_collect.log 2>&1
+# SharedSignals data retention — weekly Sun 03:00
+0 3 * * 0 cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 storage/retention.py --execute --json >> logs/retention.log 2>&1
+10 9,11,13,15 * * 1-5 /opt/investment/tradingagent/shared/wrappers/job_ashare_health_check.sh >> /opt/investment/tradingagent/shared/logs/cron/ashare_health.log 2>&1
+10 8,16 * * 1-5 /opt/investment/tradingagent/shared/wrappers/job_ashare_health_check.sh >> /opt/investment/tradingagent/shared/logs/cron/ashare_health.log 2>&1
+@reboot bash /opt/investment/RSSCollector/start_rsshub.sh >> /opt/investment/MarketGraphRuntime/rsshub.log 2>&1
+# SharedSignals subsystem crons
+*/5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh
+*/5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+*/10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
+*/5 * * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/crypto/binance.py >> logs/binance_collect.log 2>&1
