@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (PM 最新价 API + email STARTTLS TLS context)
+> 最后更新：2026-07-04 (P1 reader batch query)
 
 ---
 
@@ -81,6 +81,12 @@
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 
 ## 五、最近完成
+
+### 2026-07-04 P1 reader batch query
+
+- [x] `reader.py` 的 `legacy_market_dataset(market_bars_daily)` 已从逐股票循环 `_sqlite_rows()` 改为单次 `WHERE symbol IN (...)` 批量查询，并按每个 symbol 保留最近 N 行。
+- [x] 保持原有降级语义：SQLite 缺失或查询失败仍返回 degraded；多个 symbol 时仍按请求顺序返回首个有数据的 symbol。
+- [x] 验证：本地目标 `py_compile` 与 pytest 结果见本轮回执。
 
 ### 2026-07-04 email STARTTLS TLS context
 

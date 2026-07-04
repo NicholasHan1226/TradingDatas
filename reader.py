@@ -539,17 +539,13 @@ def _legacy_market_dataset(dataset: str, **kwargs: Any) -> list[dict[str, Any]] 
 
     if name == "market_bars_daily":
         symbols = [str(s) for s in kwargs.get("symbols", []) if s] or [str(kwargs.get("symbol") or "")]
+        symbols = [s for s in symbols if s]
         limit = int(kwargs.get("limit", 60))
-        for symbol in [s for s in symbols if s]:
-            query = """
-                SELECT * FROM market_bars_daily
-                WHERE symbol = ?
-                ORDER BY trade_date DESC
-                LIMIT ?
-            """
-            rows, degraded = _sqlite_rows(query, (symbol, limit), "market_bars_daily")
-            if degraded is not None:
-                return degraded
+        rows_by_symbol, degraded = _sqlite_rows_by_symbols("market_bars_daily", symbols, limit)
+        if degraded is not None:
+            return degraded
+        for symbol in symbols:
+            rows = rows_by_symbol.get(symbol, [])
             if rows:
                 rows = list(reversed(rows))
                 lineage = {"reader": "legacy_market_dataset", "dataset": name, "filters": {**kwargs, "symbol": symbol}}
@@ -603,6 +599,43 @@ def _sqlite_rows(query: str, params: tuple[Any, ...], table: str) -> tuple[list[
         return rows, None
     except Exception as exc:  # pragma: no cover - defensive reader boundary
         return None, _degraded_empty(f"sqlite:{table}", f"sqlite read failed: {exc}", lineage=lineage)
+
+
+def _sqlite_rows_by_symbols(table: str, symbols: list[str], limit: int) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]] | None]:
+    lineage = {"reader": "sqlite", "db_path": str(SQLITE_PATH), "table": table}
+    if not symbols:
+        return {}, None
+    if table != "market_bars_daily":
+        return {}, _degraded_empty(f"sqlite:{table}", f"unsupported batch table: {table}", lineage=lineage)
+
+    deduped_symbols = list(dict.fromkeys(str(symbol).strip() for symbol in symbols if str(symbol).strip()))
+    if not deduped_symbols:
+        return {}, None
+    per_symbol_limit = max(1, int(limit))
+    placeholders = ",".join("?" for _ in deduped_symbols)
+    query = f"""
+        SELECT * FROM (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trade_date DESC) AS _row_num
+            FROM market_bars_daily
+            WHERE symbol IN ({placeholders})
+        )
+        WHERE _row_num <= ?
+        ORDER BY symbol, trade_date DESC
+    """
+    params: tuple[Any, ...] = (*deduped_symbols, per_symbol_limit)
+
+    rows, degraded = _sqlite_rows(query, params, table)
+    if degraded is not None:
+        return {}, degraded
+
+    grouped: dict[str, list[dict[str, Any]]] = {symbol: [] for symbol in deduped_symbols}
+    for row in rows or []:
+        row.pop("_row_num", None)
+        symbol = str(row.get("symbol") or "")
+        grouped.setdefault(symbol, []).append(row)
+    return grouped, None
 
 
 def _filter_date_range(rows: Iterable[dict[str, Any]], start: Any, end: Any, fields: tuple[str, ...]) -> list[dict[str, Any]]:
