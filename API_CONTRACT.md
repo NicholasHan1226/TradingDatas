@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.4 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.6 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -68,9 +68,9 @@ marketdata.sqlite (11 表)
 | `PredictionMarkets` | 预测市场 | Polymarket (3 接口) |
 | `Global` | 全球指数 | Tushare `index_global` |
 | `ETF` | ETF 基础信息 | Tushare `etf_basic` |
-| `Futures` | 期货基础信息 | Tushare `fut_basic` / `fut_daily` |
+| `Futures` | 期货基础信息、日线和分钟线 | Tushare `fut_basic` / `fut_daily` / `rt_fut_min` |
 
-### CNFutures 日线采集合同
+### CNFutures 行情采集合同
 
 SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号。
 
@@ -79,6 +79,8 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 | 单日采集 | `python3 tools/collect_cn_futures_daily.py --trade-date YYYYMMDD` | `data/tushare/fut_daily/YYYYMMDD/fut_daily_YYYYMMDD.csv` + SQLite `market_bars_daily` |
 | cron wrapper | `bash cron/cn_futures_daily.sh --trade-date YYYYMMDD` | `logs/cron/cn_futures_daily.log` + 同上 |
 | 历史回补 | `python3 collectors/tushare/backfill_fut_daily.py --start-date YYYYMMDD --end-date YYYYMMDD` | 逐日 CSV + SQLite bridge，失败汇总 JSON |
+| 5 分钟采集 | `python3 tools/collect_cn_futures_5min.py --trade-date YYYYMMDD` | `data/tushare/rt_fut_min/YYYYMMDD/rt_fut_min_YYYYMMDD_5min.csv` + SQLite `market_bars_intraday` |
+| 5 分钟 cron wrapper | `bash cron/cn_futures_5min.sh` | `logs/cron/cn_futures_5min.log` + 同上 |
 
 `fut_daily` 固定使用 `P6_other_daily` tier 的 global API，参数为 `trade_date`。SQLite bridge 写入：
 
@@ -88,9 +90,18 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - `trade_date` 使用 `YYYYMMDD`
 - `open/high/low/close/volume/amount` 来自 Tushare 日线字段映射
 
+`rt_fut_min` 使用独立的 CNFutures 5 分钟采集入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。默认从最新 Futures 日线合约池选择 `rb/cu/i/m` 重点品种，也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。SQLite bridge 写入：
+
+- `market="Futures"`
+- `provider="tushare_rt_fut_min"`
+- `interval="5min"`
+- `symbol` 兼容 Tushare 返回的 `ts_code`、`symbol` 或 `code`
+- `trade_date` 从 `time`/`trade_time` 派生，`bar_time` 保留分钟时间戳
+
 消费者边界：
 
 - TradingAgent/CNFutures 可按 `market="Futures"` 从 `market_bars_daily` 读取日线做模拟盘。
+- TradingAgent/CNFutures 可按 `market="Futures"`、`interval="5min"` 从 `market_bars_intraday` 读取盘中数据做 5 分钟模拟/影子盘研究。
 - MarketGraph 可只读同一份 Futures 行情做商品、宏观和跨市场研究证据。
 - SharedSignals 不写 TradingAgent signal queue，不生成买卖方向，不改变实盘或模拟盘权限。
 
@@ -511,6 +522,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
+| 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
 | 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
@@ -717,6 +729,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-04 | 1.1.6 | 新增 CNFutures 5 分钟采集入口 `rt_fut_min`，写入 `market_bars_intraday`，并以独立 cron 支持日盘、夜盘和跨午夜夜盘采集。 |
 | 2026-07-04 | 1.1.5 | `fut_daily` 改为按交易日全品种采集并写入 `market_bars_daily`，market=`Futures`；`sync_daily.py` 支持 `--trade-date` 与 `--only-api` 定向补采。 |
 | 2026-07-04 | 1.1.4 | 低频宏观接口支持 API 级回看窗口并补齐去重键/SQLite 映射；Tushare 新闻自动生成 `event_hash`；`index_global`/`etf_basic`/`fut_basic` 进入 read model；`/cache/invalidate` 支持 POST。 |
 | 2026-07-04 | 1.1.3 | 行业映射每日自动刷新并修复原子写入权限；`auto_restart.sh --force` 支持部署后显式 reload；`get_sentiment()`/`get_realtime_5min()` 修复空日期默认行为；HTTP `/sentiment` 与 `/realtime_5min` 支持 `limit`。 |

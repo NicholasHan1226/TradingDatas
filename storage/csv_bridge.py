@@ -118,6 +118,7 @@ CSV_TO_TABLE_MAP = {
     "stk_factor_pro": "market_bars_daily",
     "stk_mins": "market_bars_intraday",
     "rt_k": "market_bars_intraday",
+    "rt_fut_min": "market_bars_intraday",
     "stk_holdernumber": "market_assets",
     "stk_holdertrade": "market_assets",
     "stk_managers": "market_assets",
@@ -157,7 +158,7 @@ def _market_for(api_name, symbol):
         return "US"
     if api_name == "index_global":
         return "Global"
-    if api_name in ("fut_basic", "fut_daily"):
+    if api_name in ("fut_basic", "fut_daily", "rt_fut_min"):
         return "Futures"
     if api_name == "etf_basic":
         return "ETF"
@@ -278,7 +279,7 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
     csv_column_set = set(csv_columns)
 
     derived_columns = []
-    if "ts_code" in csv_column_set and "symbol" in target_columns:
+    if {"ts_code", "symbol", "code"} & csv_column_set and "symbol" in target_columns:
         derived_columns.append("symbol")
     if "vol" in csv_column_set and "volume" in target_columns:
         derived_columns.append("volume")
@@ -294,7 +295,12 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
                 derived_columns.append("trade_date")
-        if api_name in ("weekly", "monthly", "stk_mins", "rt_k") and "interval" in target_columns:
+        if "time" in csv_column_set:
+            if "bar_time" in target_columns:
+                derived_columns.append("bar_time")
+            if "trade_date" in target_columns:
+                derived_columns.append("trade_date")
+        if api_name in ("weekly", "monthly", "stk_mins", "rt_k", "rt_fut_min") and "interval" in target_columns:
             derived_columns.append("interval")
     if table == "market_assets":
         for col in ("name", "asset_type", "status", "updated_at", "raw_json"):
@@ -371,9 +377,11 @@ def _event_hash(provider, event_type, event_time, row):
 
 
 def _canonical_row(table, row, api_name, csv_path):
-    symbol = row.get("ts_code") or row.get("symbol")
+    symbol = row.get("ts_code") or row.get("symbol") or row.get("code")
     if symbol:
         row["symbol"] = symbol
+        if not row.get("ts_code") and api_name == "rt_fut_min":
+            row["ts_code"] = symbol
 
     if "vol" in row and "volume" not in row:
         row["volume"] = row.get("vol")
@@ -389,9 +397,13 @@ def _canonical_row(table, row, api_name, csv_path):
             row["bar_time"] = row.get("trade_time")
             if not row.get("trade_date"):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("trade_time"))
+        if row.get("time"):
+            row["bar_time"] = row.get("time")
+            if not row.get("trade_date"):
+                row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
         if api_name in ("weekly", "monthly"):
             row["interval"] = api_name
-        elif api_name in ("stk_mins", "rt_k"):
+        elif api_name in ("stk_mins", "rt_k", "rt_fut_min"):
             row["interval"] = "5min"
 
     if table == "market_assets":

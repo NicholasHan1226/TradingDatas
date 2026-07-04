@@ -119,6 +119,43 @@ def test_stk_mins_ingests_intraday_with_metadata(tmp_path: Path):
     assert row[7]
 
 
+def test_rt_fut_min_ingests_futures_intraday_with_code_time_fields(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "rt_fut_min" / "20260703" / "rt_fut_min_20260703_5min.csv",
+        "\n".join(
+            [
+                "code,time,open,close,high,low,vol,amount",
+                "RB2609.SHF,2026-07-03 14:55:00,3500,3520,3530,3490,1000,3520000",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_intraday", csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT market, symbol, trade_date, bar_time, interval, provider, close, volume, amount "
+            "FROM market_bars_intraday"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (
+        "Futures",
+        "RB2609.SHF",
+        "20260703",
+        "2026-07-03 14:55:00",
+        "5min",
+        "tushare_rt_fut_min",
+        3520.0,
+        1000.0,
+        3520000.0,
+    )
+
+
 def test_factor_csv_expands_numeric_metrics(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

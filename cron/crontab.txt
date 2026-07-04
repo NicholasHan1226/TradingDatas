@@ -11,6 +11,12 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # daily/reference tiers so 5-minute data is not blocked by longer daily jobs.
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min
 
+# CN futures 5-minute bars use a dedicated Futures universe and must not run
+# through the A-share per-stock P0 loop. The post-midnight night session runs
+# Tuesday-Saturday because it belongs to the prior trading night's session.
+*/5 9-15,21-23 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
+*/5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
+
 # Daily/reference tiers run in their natural windows instead of every 2 hours.
 35 16 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P1_eod_daily
 30 18 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P2_financial_daily
