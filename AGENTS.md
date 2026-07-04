@@ -5,6 +5,12 @@
 > 2. **[STATUS.md](STATUS.md)** — 理解当前状态、已知问题、下一步任务
 > 3. 跨系统协作前，读 [根目录 AGENTS.md](../AGENTS.md) 和 [根 STATUS.md](../STATUS.md) 了解三系统架构和全局状态
 
+## 层级披露
+
+- 上层 `~/Projects/Finance/AGENTS.md` 只定义 Finance 工作区三项目边界和跨项目协作规则。
+- 本文件只定义 SharedSignals 的数据采集、存储、staging、桥接、patrol/heal 和输出契约。
+- 进入具体采集器、storage、bridge、reference 或 docs 后，继续读取最近层级文档；采集命令、schema 和运行边界以本仓库文档为准。
+
 ## 目标
 统一数据采集与存储，供研究线和交易线共享读取。
 
@@ -21,7 +27,7 @@
 - 存储: SQLite (marketdata.sqlite 81MB) + CSV + NDJSON staging
 
 ## 现状
-- 行情: Tushare(14接口)/Binance(4)/PM(3) → SQLite + CSV缓存
+- 行情: Tushare(14接口)/Binance(4)/PM(markets/prices) → SQLite + CSV/NDJSON缓存
 - 事件: RSS(883源)+Tavily+agents → staging NDJSON → runtime_bridge → CSV
 - 基本面: Tushare 财务/分红/融资融券等由 P0/P2 定时采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
 - staging: 8 streams (collection_runs/sentiment_signals/event_candidates/...)
