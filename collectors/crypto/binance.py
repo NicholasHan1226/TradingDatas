@@ -159,7 +159,7 @@ class CryptoCollector(BaseCollector):
 
     def _collect_ticker(self, symbols: list[str] | None = None) -> list[dict[str, Any]]:
         symbols = symbols or self._symbols
-        params = {"symbols": json.dumps(symbols)} if len(symbols) > 1 else {"symbol": symbols[0]}
+        params = {"symbols": json.dumps(symbols, separators=(",", ":"))} if len(symbols) > 1 else {"symbol": symbols[0]}
 
         def _call() -> list[dict[str, Any]]:
             resp = self._session.get(

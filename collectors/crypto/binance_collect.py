@@ -68,7 +68,8 @@ def main() -> int:
         )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
 
-    if any(run.get("status") not in {"success", "partial_success"} for run in runs):
+    rows_written = sum(int(run.get("rows_written") or 0) for run in runs)
+    if rows_written <= 0 or any(run.get("status") not in {"success", "partial_success"} for run in runs):
         return 1
     return 0
 
