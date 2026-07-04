@@ -13,6 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "legacy ghost tests use local RSS health/fallback helpers instead of "
+        "SharedSignals production modules; replace with production-bound RSS tests before enabling"
+    )
+)
+
 _SHARED = Path(__file__).resolve().parents[1]
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))

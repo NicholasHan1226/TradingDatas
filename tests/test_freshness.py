@@ -9,6 +9,13 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "legacy ghost tests use local freshness helpers instead of SharedSignals "
+        "production modules; replace with production-bound reader/API tests before enabling"
+    )
+)
+
 _SHARED = Path(__file__).resolve().parents[1]
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))

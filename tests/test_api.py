@@ -13,6 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "legacy ghost tests exercise a local mock client instead of the SharedSignals "
+        "production API server/client; replace with production-bound API tests before enabling"
+    )
+)
+
 
 # ===========================================================================
 # Mock API client (simulates what SharedSignals consumers use)

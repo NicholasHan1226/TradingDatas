@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (Tushare 调度 + watchdog 日志失败扫描)
+> 最后更新：2026-07-04 (ghost 测试显式跳过)
 
 ---
 
@@ -81,6 +81,12 @@
 13. [ ] **P3：watchdog 生产接入验证** — 本地文件与测试已完成，仍需服务器 crontab 安装、一次 dry-run、一次健康恢复演练和邮件通道实发验证
 
 ## 五、最近完成
+
+### 2026-07-04 ghost 测试显式跳过
+
+- [x] `tests/test_dedup.py`、`test_freshness.py`、`test_quality.py`、`test_rss_health.py`、`test_api.py` 已加模块级 skip，原因是这些文件测试本地复制 helper 或 mock client，没有绑定 SharedSignals 生产模块。
+- [x] 当前处理方式是防止伪覆盖；后续如果需要恢复这些场景，应改写为直接导入 `reader.py`、`api_server.py`、RSS collector/failover 或 storage/collector mixin 的生产入口。
+- [x] 验证：`python3 -m pytest tests/test_dedup.py tests/test_freshness.py tests/test_quality.py tests/test_rss_health.py tests/test_api.py -q` 结果为 147 skipped。
 
 ### 2026-07-04 Tushare 5分钟调度与 read model 桥接修复
 

@@ -17,6 +17,13 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "legacy ghost tests use local quality helpers instead of SharedSignals "
+        "production modules; replace with production-bound validation tests before enabling"
+    )
+)
+
 
 NOW = datetime(2026, 6, 29, 18, 0, 0, tzinfo=timezone.utc)
 
