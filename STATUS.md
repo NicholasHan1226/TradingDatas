@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (Polymarket 采集闭环与生产 cron 修复)
+> 最后更新：2026-07-04 (SharedSignals-only producer boundary + production cron/doc alignment)
 
 ---
 
@@ -29,6 +29,7 @@
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 绑定 `127.0.0.1:8082` 运行；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
+- **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
 
 ## 二、已知问题
 
@@ -89,6 +90,13 @@
 - [x] 每次采集写入 `market_ingest_runs`，source 固定为 `polymarket_gamma`，便于 freshness、失败和回放审计。
 - [x] 新增 `cron/pm_collect.sh`，带 `flock`、生产 venv、proxy、`.env` bootstrap 和独立日志 `logs/cron/pm_collect.log`；生产 crontab 每 5 分钟运行。
 - [x] 边界：PM 上游 API 只允许在 SharedSignals collector 层调用；TradingAgent PM 模拟/影子盘只读 `/pm_markets` 或 read model，不直接访问 Polymarket。
+
+### 2026-07-04 production cron and consumer-boundary audit
+
+- [x] 主服务器 `/opt/investment/SharedSignals` 已确认 API health OK、functions 15/15、A股/加密/美股 freshness OK；A股最新交易日为 20260703，当前 2026-07-04 为周六，属合理状态。
+- [x] 统一 read model 已确认写入：Ashare daily/intraday、Crypto daily、US daily、Futures daily、Global daily、Events、Factors、PM markets/prices；PM prices 最新 `price_time` 为 2026-07-04T14:30:02+00:00。
+- [x] 生产 crontab 已确认 SharedSignals 负责数据采集与同步：Tushare P0 5 分钟、P1-P6 分层、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。
+- [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
 

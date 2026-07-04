@@ -1,8 +1,11 @@
+# SharedSignals cron template - verified against production on 2026-07-04.
+#
+# Install under the marketgraph production user's crontab only after checking
+# the live server state. Production source of truth is:
+#   sudo -u marketgraph crontab -l
+
 SHELL=/bin/bash
 PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-
-# SharedSignals cron template - install under the production crontab when ready.
-# Paths intentionally target /opt/investment/SharedSignals production runtime.
 
 # Tushare P0 must support the trading cadence directly. Keep it separate from
 # daily/reference tiers so 5-minute data is not blocked by longer daily jobs.
@@ -14,18 +17,14 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 15 6 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P3_reference_daily
 30 6 * * * /opt/investment/SharedSignals/cron/refresh_industry_map.sh
 45 8 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P4_macro_daily
-
-# HK/US daily data is Tushare-backed. Run after the US and HK close windows.
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
-
-# Event/other tier is lighter than P0 but should stay fresher than daily.
 */30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
-# Sync SQLite read model into DuckDB every 5 minutes.
+# Crypto and PM market freshness.
+2-59/5 * * * * cd /opt/investment/SharedSignals && BINANCE_HTTP_PROXY=http://127.0.0.1:7890 /opt/marketgraph/venv/bin/python3 collectors/crypto/binance_collect.py >> /opt/investment/SharedSignals/logs/binance_collect.log 2>&1
+*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
+
+# Read model sync, patrol, and SLA watchdog.
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
-
-# Run patrol health checks and heal when score falls below threshold.
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
-
-# Run watchdog SLA checks, auto-restart path, and halt escalation loop.
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
