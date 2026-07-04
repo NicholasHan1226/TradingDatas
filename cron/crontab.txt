@@ -1,0 +1,17 @@
+SHELL=/bin/bash
+PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# SharedSignals cron template - install under the production crontab when ready.
+# Paths intentionally target /opt/investment/SharedSignals production runtime.
+
+# Run all Tushare collection tiers through the SharedSignals cron wrapper.
+0 */2 * * * /opt/investment/SharedSignals/cron/collectors.sh
+
+# Sync SQLite read model into DuckDB every 5 minutes.
+*/5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+
+# Run patrol health checks and heal when score falls below threshold.
+*/10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
+
+# Run watchdog SLA checks, auto-restart path, and halt escalation loop.
+*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
