@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (API open-stress hardening)
+> 最后更新：2026-07-05 (capability read-model alignment)
 
 ---
 
@@ -21,7 +21,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 256 accept backlog + 503 at capacity；客户端高压断连降级为 debug 日志，避免 BrokenPipe 噪音污染 systemd 日志
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
@@ -42,9 +42,9 @@
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 
-## 三、API 接口状态（HTTP 17/17；capability smoke 15/15）
+## 三、API 接口状态（HTTP 17/17；capability smoke 12 OK / 3 skipped）
 
-生产 HTTP API 暴露 17 个只读端点；`tools/capability_scan.py` 和 `/health` 的 reader smoke 当前覆盖 15 个核心读取函数。这两个数字口径不同：前者是 HTTP surface，后者是 reader health sample，不应混用。
+生产 HTTP API 暴露 17 个只读端点；`tools/capability_scan.py` 当前覆盖 15 个核心读取函数，其中 A 股日线样例通过 `reader.get_market_data()` 从 read model 动态取样，港股/跨境持仓延期端点按当前生产范围标记为 `skipped` 而不是误报 degraded。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|
@@ -66,7 +66,7 @@
 | clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
-- 健康检查覆盖：`/health` 当前生产验证为 reader functions `15/15`；HTTP surface 仍为 17 个端点。
+- 健康检查覆盖：`/health` 当前生产验证为 reader functions `15/15`；HTTP surface 仍为 17 个端点；capability smoke 的延期端点会计入 `skipped`。
 - API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 15 接口 HTTP 封装
 - 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
@@ -93,6 +93,7 @@
 19. [x] **API 能力清单生产化** — `/capabilities` 缺 registry 时返回 auth scope 兜底；`cron/capability_scan.sh` 每小时刷新 registry，若存在 degraded endpoint 但 registry 已写出则记录 WARN 不阻断 cron。
 20. [x] **P0 5 分钟采集节奏保护** — `sync_daily.py` 支持 P0 rotating stock batch，`cron/collectors.sh` 默认每轮 100 只，保障 5 分钟采集不因全量 per-stock 调用重叠。
 21. [x] **API 开盘高压稳定性** — 2026-07-05 生产开盘模拟读压测覆盖 `/health`、`/market_data`、`/realtime_5min`、`/capital_flow`、`/crypto`、`/pm_markets` 等端点；修复后 160/160 正常峰值请求与 640/640 尖峰请求均 200，0 超时、0 交易队列副作用。
+22. [x] **Capability smoke 与 read model 对齐** — `tools/capability_scan.py` 的现役能力 smoke 已收口到 `reader.py` / `reference.market_calendar`，不再现场调用 Tushare wrapper；当前暂停的 HK/cross-border 端点显式标记 skipped，避免把架构延期误判成数据故障。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
@@ -117,6 +118,13 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-05 capability read-model alignment
+
+- [x] `tools/capability_scan.py` 已把现役能力 smoke 收口为 DB-first reader 调用，动态从生产 read model 选择最新 A 股、美股、分钟线和事件样例；本地缺生产 DB 时只使用兜底样例，不现场调用 provider。
+- [x] HK/cross-border 持仓与港股 lane 当前暂缓，`get_hk_hold`、`get_hk_etf`、`get_hk_index` 在 capability registry 中标记为 `skipped`，不会继续污染 degraded 计数。
+- [x] `capability_scan` 输出 summary 增加 `skipped`，API 合同生成也能展示 skipped 状态。
+- [x] 边界：该改动只影响 SharedSignals 能力自检和 `/capabilities` registry，不生成交易信号、不写 TradingAgent 队列。
 
 ### 2026-07-04 CNFutures 5 分钟数据新鲜度与下节交易时段校验
 

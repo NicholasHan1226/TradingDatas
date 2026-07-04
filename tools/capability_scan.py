@@ -19,6 +19,7 @@ import argparse
 import importlib
 import json
 import os
+import sqlite3
 import sys
 import time
 from datetime import datetime, timezone, timedelta
@@ -37,7 +38,7 @@ REGISTRY_PATH = TOOLS_DIR / "capability_registry.json"
 CHANGES_PATH = TOOLS_DIR / "capability_changes.jsonl"
 DOC_PATH = DOCS_DIR / "API_CONTRACT.md"
 
-for _d in (str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECTORS_DIR), str(COLLECTORS_DIR / "tushare")):
+for _d in (str(SHARED_SIGNALS), str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECTORS_DIR), str(COLLECTORS_DIR / "tushare")):
     if _d not in sys.path:
         sys.path.insert(0, _d)
 
@@ -74,80 +75,84 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "sla_hours": 24,
     },
 
-    # --- a_share_tushare_api.py (collectors/tushare/, migrated from Ashare/tools/) ---
+    # --- DB-first reader smoke checks. Provider calls belong only in collectors. ---
     "get_market_data": {
-        "module": "a_share_tushare_api",
-        "func": "get_daily",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_market_data",
+        "path": "reader.py",
         "category": "market_data",
-        "description": "Get A-share daily OHLCV data for one or more stocks",
-        "smoke_args": ["601698.SH", "2026-06-26", "2026-06-26"],
+        "description": "Read A-share daily OHLCV data from the SharedSignals read model",
+        "smoke_args": ["__LATEST_ASHARE_SYMBOL__", "__LATEST_ASHARE_DATE__", "__LATEST_ASHARE_DATE__"],
         "version": "2.0.0",
         "fields": ["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount"],
         "sla_hours": 24,
     },
     "get_moneyflow": {
-        "module": "a_share_tushare_api",
-        "func": "get_moneyflow",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_capital_flow",
+        "path": "reader.py",
         "category": "market_depth",
-        "description": "Get A-share money flow data for a trading day",
-        "smoke_args": ["20260626"],
+        "description": "Read A-share money flow data from the SharedSignals read model",
+        "smoke_kwargs": {"date": "__LATEST_ASHARE_DATE__"},
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "buy_sm_vol", "sell_sm_vol", "net_mf_vol"],
         "sla_hours": 24,
     },
     "get_margin": {
-        "module": "a_share_tushare_api",
-        "func": "get_margin",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_tushare",
+        "path": "reader.py",
         "category": "market_depth",
-        "description": "Get margin trading summary for a trading day",
-        "smoke_args": ["20260626"],
+        "description": "Read margin trading summary from the SharedSignals read model",
+        "smoke_args": ["margin"],
+        "smoke_kwargs": {"trade_date": "__LATEST_ASHARE_DATE__"},
         "version": "1.0.0",
         "fields": ["trade_date", "rzye", "rzmre", "rqye", "rqmcl"],
         "sla_hours": 24,
     },
     "get_limit_list": {
-        "module": "a_share_tushare_api",
-        "func": "get_limit_list_d",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_tushare",
+        "path": "reader.py",
         "category": "market_depth",
-        "description": "Get limit-up/limit-down list for a trading day",
-        "smoke_args": ["20260626"],
+        "description": "Read limit-up/limit-down list from the SharedSignals read model",
+        "smoke_args": ["limit_list_d"],
+        "smoke_kwargs": {"trade_date": "__LATEST_ASHARE_DATE__"},
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "limit", "pct_chg", "close"],
         "sla_hours": 24,
     },
     "get_hk_hold": {
-        "module": "a_share_tushare_api",
-        "func": "get_hk_hold",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_tushare",
+        "path": "reader.py",
         "category": "cross_border",
         "description": "Get northbound (HK->A) holdings for a trading day",
         "smoke_args": ["20260626"],
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "vol", "hold_vol", "hold_ratio"],
         "sla_hours": 24,
+        "status_override": "skipped",
+        "skip_reason": "HK/cross-border holdings are deferred for the current production trading scope",
     },
     "get_stock_minutes": {
-        "module": "a_share_tushare_api",
-        "func": "get_stk_mins",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_realtime_5min",
+        "path": "reader.py",
         "category": "intraday",
-        "description": "Get intraday minute-level bars for a stock",
-        "smoke_args": ["000001.SZ", "20260626"],
+        "description": "Read intraday minute-level bars from the SharedSignals read model",
+        "smoke_args": ["__LATEST_INTRADAY_SYMBOL__", "__LATEST_INTRADAY_DATE__"],
         "version": "1.0.0",
         "fields": ["ts_code", "trade_time", "open", "high", "low", "close", "vol"],
         "sla_hours": 6,
     },
     "get_news_list": {
-        "module": "a_share_tushare_api",
-        "func": "get_news",
-        "path": "collectors/tushare/a_share_tushare_api.py",
+        "module": "reader",
+        "func": "get_events",
+        "path": "reader.py",
         "category": "events",
-        "description": "Get news headlines for a date range",
-        "smoke_args": ["20260626", "20260626"],
+        "description": "Read event/news candidates from the SharedSignals read model",
+        "smoke_args": ["__LATEST_EVENT_DATE__", "__LATEST_EVENT_DATE__"],
         "version": "1.0.0",
         "fields": ["datetime", "content", "source", "title"],
         "sla_hours": 6,
@@ -155,53 +160,57 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
 
     # --- bridge/ (marketgraph unified marketdata DB) ---
     "get_crypto_klines": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_daily",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_crypto_klines",
+        "path": "reader.py",
         "category": "crypto",
-        "description": "Read Crypto daily OHLCV from unified marketdata DB",
-        "smoke_args": ["Crypto", "BTCUSDT", "", "", 10],
+        "description": "Read Crypto OHLCV from the SharedSignals read model",
+        "smoke_args": ["BTCUSDT", 10],
         "version": "1.0.0",
         "fields": ["symbol", "trade_date", "open", "high", "low", "close", "volume"],
         "sla_hours": 6,
     },
     "get_us_daily": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_daily",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_market_data",
+        "path": "reader.py",
         "category": "us_market",
-        "description": "Read US stock daily data from unified marketdata DB",
-        "smoke_args": ["US", "AAPL", "", "", 10],
+        "description": "Read US stock daily data from the SharedSignals read model",
+        "smoke_args": ["__LATEST_US_SYMBOL__", "__LATEST_US_DATE__", "__LATEST_US_DATE__"],
         "version": "1.0.0",
         "fields": ["symbol", "trade_date", "open", "high", "low", "close", "volume"],
         "sla_hours": 24,
     },
     "get_hk_etf": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_daily",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_market_data",
+        "path": "reader.py",
         "category": "hk_market",
         "description": "Read HK ETF daily data from unified marketdata DB",
         "smoke_args": ["HK", "159920.SZ", "", "", 10],
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "open", "high", "low", "close", "vol"],
         "sla_hours": 24,
+        "status_override": "skipped",
+        "skip_reason": "HK market lane is deferred",
     },
     "get_hk_index": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_daily",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_market_data",
+        "path": "reader.py",
         "category": "hk_market",
         "description": "Read HSI index data from unified marketdata DB",
         "smoke_args": ["HK", "", "", "", 10],
         "version": "1.0.0",
         "fields": ["symbol", "trade_date", "open", "high", "low", "close", "volume"],
         "sla_hours": 24,
+        "status_override": "skipped",
+        "skip_reason": "HK market lane is deferred",
     },
     "get_pm_markets": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_pm_markets",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_pm_markets",
+        "path": "reader.py",
         "category": "prediction_markets",
         "description": "Read Polymarket market list from unified marketdata DB",
         "smoke_args": [50],
@@ -212,12 +221,12 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
 
     # --- reference/ (coverage & registry) ---
     "get_reference": {
-        "module": "marketgraph_marketdata_db",
-        "func": "read_coverage_status",
-        "path": "bridge/marketgraph_marketdata_db.py",
+        "module": "reader",
+        "func": "get_reference",
+        "path": "reader.py",
         "category": "reference",
         "description": "Read data coverage status from unified marketdata DB",
-        "smoke_args": [],
+        "smoke_args": ["stock_master"],
         "version": "1.0.0",
         "fields": ["market", "symbol_count", "earliest_date", "latest_date", "status"],
         "sla_hours": 24,
@@ -244,11 +253,118 @@ def _import_module(mod_name: str) -> Optional[Any]:
         return None
 
 
-def _call_func(mod: Any, func_name: str, args: list) -> dict[str, Any]:
+def _read_latest_sample(
+    *,
+    market: str,
+    table: str = "market_bars_daily",
+    fallback_symbol: str,
+    fallback_date: str,
+    provider: str = "",
+    interval: str = "",
+) -> dict[str, str]:
+    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    fallback = {"symbol": fallback_symbol, "trade_date": fallback_date}
+    if not db_path.exists():
+        return fallback
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        where = ["market = ?"]
+        values: list[Any] = [market]
+        if provider:
+            where.append("provider = ?")
+            values.append(provider)
+        if interval:
+            where.append("(interval = ? OR interval = ?)")
+            values.extend([interval, interval.replace("min", "m")])
+        row = con.execute(
+            f"SELECT symbol, trade_date FROM {table} "
+            f"WHERE {' AND '.join(where)} ORDER BY trade_date DESC, collected_at DESC LIMIT 1",
+            values,
+        ).fetchone()
+        con.close()
+    except Exception:
+        return fallback
+    if not row:
+        return fallback
+    return {"symbol": str(row[0] or fallback["symbol"]), "trade_date": str(row[1] or fallback["trade_date"])}
+
+
+def _latest_event_date() -> str:
+    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    fallback = "20260629"
+    if not db_path.exists():
+        return fallback
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        row = con.execute(
+            "SELECT COALESCE(trade_date, substr(event_time, 1, 10)) FROM market_events "
+            "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT 1"
+        ).fetchone()
+        con.close()
+    except Exception:
+        return fallback
+    if not row or not row[0]:
+        return fallback
+    return str(row[0]).replace("-", "")[:8]
+
+
+def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
+    ashare = _read_latest_sample(
+        market="Ashare",
+        fallback_symbol="000001.SZ",
+        fallback_date="20260629",
+    )
+    us = _read_latest_sample(
+        market="US",
+        fallback_symbol="AAPL",
+        fallback_date="20260629",
+    )
+    intraday = _read_latest_sample(
+        market="Ashare",
+        table="market_bars_intraday",
+        fallback_symbol=ashare["symbol"],
+        fallback_date=ashare["trade_date"],
+        interval="5min",
+    )
+    event_date = _latest_event_date()
+
+    def resolve(value: Any) -> Any:
+        if value == "__LATEST_ASHARE_SYMBOL__":
+            return ashare["symbol"]
+        if value == "__LATEST_ASHARE_DATE__":
+            return ashare["trade_date"]
+        if value == "__LATEST_US_SYMBOL__":
+            return us["symbol"]
+        if value == "__LATEST_US_DATE__":
+            return us["trade_date"]
+        if value == "__LATEST_INTRADAY_SYMBOL__":
+            return intraday["symbol"]
+        if value == "__LATEST_INTRADAY_DATE__":
+            return intraday["trade_date"]
+        if value == "__LATEST_EVENT_DATE__":
+            return event_date
+        return value
+
+    args = [resolve(value) for value in meta.get("smoke_args", [])]
+    kwargs = {key: resolve(value) for key, value in dict(meta.get("smoke_kwargs", {})).items()}
+    return args, kwargs
+
+
+def _result_degraded_reason(result: Any) -> str:
+    rows = result if isinstance(result, list) else []
+    if rows and isinstance(rows[0], dict) and rows[0].get("degraded"):
+        lineage = rows[0].get("lineage") if isinstance(rows[0].get("lineage"), dict) else {}
+        return str(lineage.get("reason") or rows[0].get("reason") or "reader returned degraded row")
+    return ""
+
+
+def _call_func(mod: Any, func_name: str, args: list, kwargs: dict[str, Any] | None = None) -> dict[str, Any]:
     start = time.perf_counter()
     result = None
     rows = 0
     error = None
+    degraded_reason = ""
+    kwargs = kwargs or {}
     try:
         fn = getattr(mod, func_name, None)
         if fn is None:
@@ -256,9 +372,10 @@ def _call_func(mod: Any, func_name: str, args: list) -> dict[str, Any]:
         elif not callable(fn):
             error = f"'{func_name}' is not callable (type={type(fn).__name__})"
         else:
-            result = fn(*args)
+            result = fn(*args, **kwargs)
             if isinstance(result, list):
                 rows = len(result)
+                degraded_reason = _result_degraded_reason(result)
             elif isinstance(result, dict):
                 for v in result.values():
                     if isinstance(v, list):
@@ -270,16 +387,18 @@ def _call_func(mod: Any, func_name: str, args: list) -> dict[str, Any]:
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
     elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
-    return {"result": result, "rows": rows, "error": error, "latency_ms": elapsed_ms}
+    return {"result": result, "rows": rows, "error": error, "latency_ms": elapsed_ms, "degraded_reason": degraded_reason}
 
 
-def _determine_status(error: Optional[str], rows: int) -> str:
+def _determine_status(error: Optional[str], rows: int, degraded_reason: str = "", status_override: str = "") -> str:
     """Determine endpoint status: ok / degraded / down.
 
     - down: hard failures — missing module, function not found, network unreachable
     - degraded: soft failures — auth/config missing, empty result, partial errors
     - ok: function returned data successfully
     """
+    if status_override == "skipped":
+        return "skipped"
     if error:
         err_lower = error.lower()
         # Hard failures → down
@@ -291,7 +410,7 @@ def _determine_status(error: Optional[str], rows: int) -> str:
             return "down"
         # Soft failures → degraded (auth/config/empty results)
         return "degraded"
-    if rows == 0:
+    if rows == 0 or degraded_reason:
         return "degraded"
     return "ok"
 
@@ -311,7 +430,8 @@ def _compute_summary(endpoints: list[dict]) -> dict[str, int]:
     ok = sum(1 for ep in endpoints if ep["status"] == "ok")
     degraded = sum(1 for ep in endpoints if ep["status"] == "degraded")
     down = sum(1 for ep in endpoints if ep["status"] == "down")
-    return {"total": total, "ok": ok, "degraded": degraded, "down": down}
+    skipped = sum(1 for ep in endpoints if ep["status"] == "skipped")
+    return {"total": total, "ok": ok, "degraded": degraded, "down": down, "skipped": skipped}
 
 
 # ============================================================================
@@ -404,6 +524,7 @@ def _generate_api_contract_md(endpoints: list[dict], scan_time: str, summary: di
     lines.append(f"| OK | {summary['ok']} |")
     lines.append(f"| Degraded | {summary['degraded']} |")
     lines.append(f"| Down | {summary['down']} |")
+    lines.append(f"| Skipped | {summary.get('skipped', 0)} |")
     if summary.get("new_this_week"):
         lines.append(f"| New this week | {summary['new_this_week']} |")
     if summary.get("deprecated"):
@@ -421,7 +542,7 @@ def _generate_api_contract_md(endpoints: list[dict], scan_time: str, summary: di
         lines.append(f"## {cat.replace('_', ' ').title()}")
         lines.append("")
         for ep in eps:
-            status_icon = {"ok": "[OK]", "degraded": "[DEGRADED]", "down": "[DOWN]"}.get(ep["status"], "[?]")
+            status_icon = {"ok": "[OK]", "degraded": "[DEGRADED]", "down": "[DOWN]", "skipped": "[SKIPPED]"}.get(ep["status"], "[?]")
             lines.append(f"### {status_icon} `{ep['name']}`")
             lines.append("")
             lines.append(f"- **Status**: `{ep['status']}`")
@@ -489,7 +610,24 @@ def run_scan(dry_run: bool = False, test_only: bool = False, write_doc: bool = T
         mod = module_cache.get(meta["module"])
         prev_ep = prev_ep_map.get(name, {})
 
-        if mod is None:
+        if meta.get("status_override") == "skipped":
+            result = {
+                "name": name,
+                "path": meta["path"],
+                "status": "skipped",
+                "latency_ms": 0,
+                "rows": 0,
+                "error": None,
+                "last_success": prev_ep.get("last_success", ""),
+                "timestamp": scan_time,
+                "version": meta.get("version", "1.0.0"),
+                "fields": meta.get("fields", []),
+                "freshness": meta.get("sla_hours", 24),
+                "degraded": str(meta.get("skip_reason") or "Endpoint intentionally skipped"),
+                "category": meta.get("category", ""),
+                "description": meta.get("description", ""),
+            }
+        elif mod is None:
             result = {
                 "name": name,
                 "path": meta["path"],
@@ -507,8 +645,14 @@ def run_scan(dry_run: bool = False, test_only: bool = False, write_doc: bool = T
                 "description": meta.get("description", ""),
             }
         else:
-            call_result = _call_func(mod, meta["func"], meta.get("smoke_args", []))
-            status = _determine_status(call_result["error"], call_result["rows"])
+            smoke_args, smoke_kwargs = _resolve_smoke_args(meta)
+            call_result = _call_func(mod, meta["func"], smoke_args, smoke_kwargs)
+            status = _determine_status(
+                call_result["error"],
+                call_result["rows"],
+                call_result.get("degraded_reason", ""),
+                str(meta.get("status_override") or ""),
+            )
 
             last_success = prev_ep.get("last_success", "")
             if status == "ok":
@@ -528,6 +672,10 @@ def run_scan(dry_run: bool = False, test_only: bool = False, write_doc: bool = T
                         degraded = f"Partial error: {err[:200]}"
                 elif call_result["rows"] == 0:
                     degraded = "Returned 0 rows (possibly stale or empty)"
+                elif call_result.get("degraded_reason"):
+                    degraded = call_result["degraded_reason"]
+            elif status == "skipped":
+                degraded = str(meta.get("skip_reason") or "Endpoint intentionally skipped")
 
             result = {
                 "name": name,
@@ -615,7 +763,7 @@ def main() -> None:
     endpoints = registry["endpoints"]
 
     print(f"Capability Scan @ {scan_time}")
-    print(f"  Total: {summary['total']}  OK: {summary['ok']}  Degraded: {summary['degraded']}  Down: {summary['down']}")
+    print(f"  Total: {summary['total']}  OK: {summary['ok']}  Degraded: {summary['degraded']}  Down: {summary['down']}  Skipped: {summary.get('skipped', 0)}")
     if summary.get("new_this_week"):
         print(f"  New this week: {summary['new_this_week']}")
     if summary.get("deprecated"):
@@ -623,7 +771,7 @@ def main() -> None:
     print()
 
     for ep in endpoints:
-        icon = {"ok": "+", "degraded": "~", "down": "X"}.get(ep["status"], "?")
+        icon = {"ok": "+", "degraded": "~", "down": "X", "skipped": "-"}.get(ep["status"], "?")
         extra = ""
         if ep.get("error"):
             extra = f"  ERR: {ep['error'][:120]}"

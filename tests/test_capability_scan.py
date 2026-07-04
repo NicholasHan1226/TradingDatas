@@ -19,7 +19,7 @@ def test_run_scan_can_refresh_registry_without_rewriting_doc(tmp_path, monkeypat
     monkeypatch.setattr(
         capability_scan,
         "_call_func",
-        lambda _mod, _func, _args: {"latency_ms": 1.0, "rows": 1, "error": ""},
+        lambda _mod, _func, _args, _kwargs=None: {"latency_ms": 1.0, "rows": 1, "error": "", "degraded_reason": ""},
     )
 
     result = capability_scan.run_scan(test_only=True, write_doc=False)
