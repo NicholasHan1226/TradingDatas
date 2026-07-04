@@ -4,14 +4,14 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (SharedSignals-only producer boundary + production cron/doc alignment)
+> 最后更新：2026-07-04 (RSS ownership + system email smoke verification)
 
 ---
 
 ## 一、当前状态
 
 - **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（markets+prices，经 proxy）→ SQLite + CSV/NDJSON 缓存
-- **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV
+- **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV；RSS 代码归 SharedSignals，但主服务器旧 RSSCollector cron 当前保持禁用，RSSHub node 仍是待迁移残留基础设施
 - **5 条数据管线**：Tushare、Binance、Polymarket、RSS、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
@@ -39,6 +39,7 @@
 - R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
 - Crypto 生产 5 分钟行情当前仍由 `collectors/crypto/binance_collect.py` 直接写 SQLite 保障 24/7 新鲜度，尚未切到 `BaseCollector → save/staging → bridge` 的统一生命周期；切换前必须完成回放验证，避免影响模拟盘。
+- RSS/RSSHub 归属仍在迁移期：`/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 与 `/opt/investment/MarketGraphRuntime/rss_collector.db` 仍存在；生产 crontab 已禁用 RSSCollector hot/warm/@reboot，但 RSSHub node 进程仍在运行，删除或迁移前必须先做依赖清点与回滚方案。
 
 ## 三、API 接口状态（17/17 覆盖）
 
@@ -84,6 +85,7 @@
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集。
+17. [ ] **RSS/RSSHub 迁移收口** — 旧 RSSCollector cron 已禁用；下一步需要确认 RSSHub 依赖、`rss_collector.db` 归属、SharedSignals collector 入口和恢复 runbook 后再迁移或退役旧目录。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
@@ -108,6 +110,12 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-04 RSS ownership and system email smoke verification
+
+- [x] 主服务器实测系统邮件链路：SharedSignals 通过 Cloudflare Email Service 从 `notice@tradingagent.cc` 发往 `soc@coze.email` 成功；本次 smoke 邮件主题含 `[SMOKE][SharedSignals][系统]`。
+- [x] 主服务器 crontab 已确认旧 RSSCollector hot/warm/@reboot 条目均为 `DISABLED_20260704_sharedsignals_only`；MarketGraph `auto_maintain.sh` 也在 live crontab 中禁用。
+- [x] 已纠正文档边界：RSS 采集归 SharedSignals；旧 RSSHub node 进程仍可能运行，不再写成“已停止”。迁移前不得删除 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 或 `rss_collector.db`。
 
 ### 2026-07-04 CNFutures 期货日线自动化入口
 
@@ -166,7 +174,7 @@
 - [x] `reader.get_tushare()` 与 `reader.get_fundamentals()` 已改为 DB-first：只读 read model/缓存；无映射或无数据返回 degraded，不现场调用 Tushare。
 - [x] A 股 P2 财务采集已手动跑通并同步：`tushare_fina_indicator` 76,159 行、`tushare_dividend` 4,474 行进入 `market_factors`；`/fundamentals?symbol=000858.SZ` 返回 200。
 - [x] 生产 API 已重启加载新代码，监听 `127.0.0.1:8082`；TradingAgent 健康回执已从 SharedSignals API 401 恢复为 ok。
-- [x] MarketGraph 旧 RSSCollector/RSSHub 进程已停止；旧 provider cron 已禁用；`/tushare/provider` passthrough 已禁用。
+- [x] MarketGraph 旧 RSSCollector cron 已禁用；旧 provider cron 已禁用；`/tushare/provider` passthrough 已禁用。RSSHub node 进程仍是待迁移残留基础设施，不作为 MarketGraph 数据采集所有权。
 - [x] crontab 回滚备份保留在 `logs/cron/crontab_before_sharedsignals_only_20260704T074002Z.txt` 和 `logs/cron/crontab_before_sharedsignals_only_pass2_20260704T074047Z.txt`。
 
 ### 2026-07-04 ghost 测试显式跳过

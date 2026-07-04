@@ -30,6 +30,11 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 2-59/5 * * * * cd /opt/investment/SharedSignals && BINANCE_HTTP_PROXY=http://127.0.0.1:7890 /opt/marketgraph/venv/bin/python3 collectors/crypto/binance_collect.py >> /opt/investment/SharedSignals/logs/binance_collect.log 2>&1
 */5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
 
+# RSS ownership is pending cleanup. Production currently keeps legacy
+# /opt/investment/RSSCollector hot/warm and RSSHub @reboot entries disabled;
+# do not add them back through MarketGraph. A future migration must move RSS
+# collection under SharedSignals with an explicit DB/runbook plan.
+
 # Read model sync, patrol, and SLA watchdog.
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh

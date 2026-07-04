@@ -104,3 +104,4 @@
 - 生产 API 默认绑定 `127.0.0.1:8082`；本机消费者可通过 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 访问，外部账号接入必须配置 token/JWT 和账号并发限制。
 - Tushare 无积分消耗但有并发/频率约束；P0 交易时段每 5 分钟采集，P1-P6 按交易/研究需要分层调度，所有结果先落库再供 MarketGraph/TradingAgent 读取。
 - DuckDB/SQLite 同步和 watchdog 必须以 `marketgraph` 运行用户执行；若手工维护导致数据或日志文件变成 root 属主，应恢复为 `marketgraph:marketgraph` 后再验证 cron。
+- RSS/RSSHub 边界：RSS 采集代码和数据消费契约归 SharedSignals；主服务器仍存在旧 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 和 `/opt/investment/MarketGraphRuntime/rss_collector.db` 残留运行资产。旧 RSSCollector cron 已禁用，RSSHub node 进程仍可能作为残留基础设施运行；迁移或删除前必须单独做依赖清点、DB 归属迁移和回滚方案。
