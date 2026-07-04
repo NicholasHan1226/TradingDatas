@@ -34,7 +34,7 @@ fi
 
 {
   echo "[$(date -Iseconds)] START capability_scan"
-  if PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" tools/capability_scan.py; then
+  if PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" tools/capability_scan.py --no-doc; then
     echo "[$(date -Iseconds)] OK capability_scan"
   else
     rc=$?

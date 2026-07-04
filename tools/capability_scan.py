@@ -11,6 +11,7 @@ Usage:
     python3 capability_scan.py --json           # full scan, print JSON to stdout
     python3 capability_scan.py --test-only      # self-test: get_market_data, is_trading_day, get_reference
     python3 capability_scan.py --dry-run        # scan but don't write files
+    python3 capability_scan.py --no-doc         # refresh registry without rewriting API_CONTRACT.md
 """
 from __future__ import annotations
 
@@ -463,7 +464,7 @@ def _generate_api_contract_md(endpoints: list[dict], scan_time: str, summary: di
 # Main scan entry point
 # ============================================================================
 
-def run_scan(dry_run: bool = False, test_only: bool = False) -> dict[str, Any]:
+def run_scan(dry_run: bool = False, test_only: bool = False, write_doc: bool = True) -> dict[str, Any]:
     scan_time = _to_cst()
     prev_registry = _load_previous_registry()
 
@@ -572,13 +573,21 @@ def run_scan(dry_run: bool = False, test_only: bool = False) -> dict[str, Any]:
         with REGISTRY_PATH.open("w", encoding="utf-8") as fh:
             json.dump(registry, fh, ensure_ascii=False, indent=2)
 
-    # Generate and write API_CONTRACT.md
-    doc_md = _generate_api_contract_md(endpoints, scan_time, summary)
-    if not dry_run:
+    # Generate API_CONTRACT.md only for explicit documentation refreshes. The
+    # production cron should not dirty the Git worktree every hour.
+    if write_doc:
+        doc_md = _generate_api_contract_md(endpoints, scan_time, summary)
+    if write_doc and not dry_run:
         DOCS_DIR.mkdir(parents=True, exist_ok=True)
         DOC_PATH.write_text(doc_md, encoding="utf-8")
 
-    return {"registry": registry, "changes": changes, "doc_path": str(DOC_PATH) if not dry_run else "(dry-run)"}
+    if dry_run:
+        doc_path = "(dry-run)"
+    elif write_doc:
+        doc_path = str(DOC_PATH)
+    else:
+        doc_path = "(suppressed)"
+    return {"registry": registry, "changes": changes, "doc_path": doc_path}
 
 
 # ============================================================================
@@ -589,11 +598,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="SharedSignals Capability Scanner")
     ap.add_argument("--json", action="store_true", help="Print registry as JSON to stdout")
     ap.add_argument("--dry-run", action="store_true", help="Scan but do not write files")
+    ap.add_argument("--no-doc", action="store_true", help="Do not rewrite docs/API_CONTRACT.md")
     ap.add_argument("--test-only", action="store_true",
                     help="Self-test: scan only get_market_data, is_trading_day, get_reference")
     args = ap.parse_args()
 
-    result = run_scan(dry_run=args.dry_run, test_only=args.test_only)
+    result = run_scan(dry_run=args.dry_run, test_only=args.test_only, write_doc=not args.no_doc)
     registry = result["registry"]
 
     if args.json:
@@ -623,7 +633,10 @@ def main() -> None:
 
     if not args.dry_run:
         print(f"\nRegistry written to: {REGISTRY_PATH}")
-        print(f"Contract doc written to: {DOC_PATH}")
+        if args.no_doc:
+            print("Contract doc write suppressed (--no-doc).")
+        else:
+            print(f"Contract doc written to: {DOC_PATH}")
         if result["changes"]:
             print(f"Changes appended to: {CHANGES_PATH} ({len(result['changes'])} events)")
         else:
