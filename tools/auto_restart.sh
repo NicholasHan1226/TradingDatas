@@ -9,6 +9,11 @@ API_PORT="${SHAREDSIGNALS_API_PORT:-8082}"
 LOCALHOST_BYPASS="${SHAREDSIGNALS_LOCALHOST_BYPASS:-1}"
 API_SCRIPT="${SHAREDSIGNALS_API_SCRIPT:-${ROOT}/api_server.py}"
 PREVIOUS_BINARY="${SHAREDSIGNALS_API_PREVIOUS_BINARY:-/opt/investment/SharedSignals/releases/previous/api_server.py}"
+# Validate previous binary exists before relying on rollback
+if [[ -n "${SHAREDSIGNALS_API_PREVIOUS_BINARY:-}" ]] && [[ ! -f "${PREVIOUS_BINARY}" ]]; then
+  echo "[WARN] PREVIOUS_BINARY ${PREVIOUS_BINARY} does not exist — rollback disabled" >&2
+  PREVIOUS_BINARY=""
+fi
 LOG_DIR="${ROOT}/logs"
 PID_FILE="${LOG_DIR}/api_server.pid"
 RESTART_LOG="${LOG_DIR}/auto_restart.jsonl"
