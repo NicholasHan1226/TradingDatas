@@ -17,7 +17,7 @@
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh` 已新增，分别负责全 tier 采集、A 股基础行业映射刷新、DuckDB 同步、patrol/heal 和 5 分钟 watchdog，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责全 tier 采集、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog 和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
@@ -79,8 +79,16 @@
 11. [x] **P2：SharedSignals API/read model 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
 12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
+14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
 
 ## 五、最近完成
+
+### 2026-07-04 CNFutures 期货日线自动化入口
+
+- [x] 新增 `tools/collect_cn_futures_daily.py`：单日运行 `P6_other_daily/fut_daily`，支持 `--trade-date YYYYMMDD`、`--no-sqlite-bridge`、`--dry-run`，失败时透传非零退出码。
+- [x] 新增 `cron/cn_futures_daily.sh`：带 `flock`、日志、生产 venv Python 和可选降权执行的 cron wrapper；只调用 SharedSignals 采集入口，不写交易信号。
+- [x] 新增 `collectors/tushare/backfill_fut_daily.py`：支持 `--start-date/--end-date`、默认跳过周末、`--dry-run`、`--fail-fast` 和失败汇总，用于 6-12 个月历史期货日线回补。
+- [x] 边界：`fut_daily` 输出仍只进入 CSV 与 SQLite `market_bars_daily`，`market=Futures`；TradingAgent/CNFutures 只读这些数据做模拟盘，SharedSignals 不生成买卖判断。
 
 ### 2026-07-04 低频宏观、事件/资产桥接与 watchdog 误报修复
 

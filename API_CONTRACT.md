@@ -70,6 +70,30 @@ marketdata.sqlite (11 表)
 | `ETF` | ETF 基础信息 | Tushare `etf_basic` |
 | `Futures` | 期货基础信息 | Tushare `fut_basic` / `fut_daily` |
 
+### CNFutures 日线采集合同
+
+SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号。
+
+| 能力 | 入口 | 输出 |
+| --- | --- | --- |
+| 单日采集 | `python3 tools/collect_cn_futures_daily.py --trade-date YYYYMMDD` | `data/tushare/fut_daily/YYYYMMDD/fut_daily_YYYYMMDD.csv` + SQLite `market_bars_daily` |
+| cron wrapper | `bash cron/cn_futures_daily.sh --trade-date YYYYMMDD` | `logs/cron/cn_futures_daily.log` + 同上 |
+| 历史回补 | `python3 collectors/tushare/backfill_fut_daily.py --start-date YYYYMMDD --end-date YYYYMMDD` | 逐日 CSV + SQLite bridge，失败汇总 JSON |
+
+`fut_daily` 固定使用 `P6_other_daily` tier 的 global API，参数为 `trade_date`。SQLite bridge 写入：
+
+- `market="Futures"`
+- `provider="tushare_fut_daily"`
+- `symbol` 使用 Tushare 期货合约代码
+- `trade_date` 使用 `YYYYMMDD`
+- `open/high/low/close/volume/amount` 来自 Tushare 日线字段映射
+
+消费者边界：
+
+- TradingAgent/CNFutures 可按 `market="Futures"` 从 `market_bars_daily` 读取日线做模拟盘。
+- MarketGraph 可只读同一份 Futures 行情做商品、宏观和跨市场研究证据。
+- SharedSignals 不写 TradingAgent signal queue，不生成买卖方向，不改变实盘或模拟盘权限。
+
 ### 核心表字段
 
 #### market_bars_daily (日线)
