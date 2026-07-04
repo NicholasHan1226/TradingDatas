@@ -53,6 +53,71 @@ def test_ingest_csv_to_sqlite_creates_rows(tmp_path: Path):
     assert _count_rows(db_path, "market_bars_daily") == 2
 
 
+def test_us_daily_adds_tushare_lineage_metadata(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "us_daily" / "20260704" / "us_daily_20260704.csv",
+        "\n".join(
+            [
+                "ts_code,trade_date,open,high,low,close,vol,amount",
+                "AAPL,20260702,200,205,199,204,1000,204000",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT market, symbol, provider, collected_at, source_file FROM market_bars_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[:3] == ("US", "AAPL", "tushare_us_daily")
+    assert row[3]
+    assert row[4] == "us_daily_20260704.csv"
+
+
+def test_stk_mins_ingests_intraday_with_metadata(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "stk_mins" / "20260703" / "000001.SZ.csv",
+        "\n".join(
+            [
+                "ts_code,trade_time,open,close,high,low,vol,amount",
+                "000001.SZ,2026-07-03 14:55:00,10.1,10.2,10.3,10.0,1000,10200",
+                "000001.SZ,2026-07-03 15:00:00,10.2,10.3,10.4,10.1,2000,20600",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_intraday", csv_path)
+
+    assert rows == 2
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT market, symbol, trade_date, bar_time, interval, provider, source_file, collected_at "
+            "FROM market_bars_intraday ORDER BY bar_time LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[:7] == (
+        "Ashare",
+        "000001.SZ",
+        "20260703",
+        "2026-07-03 14:55:00",
+        "5min",
+        "tushare_stk_mins",
+        "000001.SZ.csv",
+    )
+    assert row[7]
+
+
 def test_ingest_idempotent(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

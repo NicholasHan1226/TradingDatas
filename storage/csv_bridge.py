@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import os
+from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -76,6 +77,8 @@ CSV_TO_TABLE_MAP = {
     "shibor_lpr": "market_factors",
     "stk_factor": "market_bars_daily",
     "stk_factor_pro": "market_bars_daily",
+    "stk_mins": "market_bars_intraday",
+    "rt_k": "market_bars_intraday",
     "stk_holdernumber": "market_assets",
     "stk_holdertrade": "market_assets",
     "stk_managers": "market_assets",
@@ -107,7 +110,7 @@ def _api_name_from_path(csv_path):
 
 
 def _market_for(api_name, symbol):
-    if api_name in ("daily", "stock_basic", "weekly", "monthly"):
+    if api_name in ("daily", "stock_basic", "weekly", "monthly", "stk_mins", "rt_k"):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
         return "HK"
@@ -138,8 +141,17 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
     if table == "market_bars_intraday":
         if "trade_date" in csv_column_set and "bar_time" in target_columns:
             derived_columns.append("bar_time")
-        if api_name in ("weekly", "monthly") and "interval" in target_columns:
+        if "trade_time" in csv_column_set:
+            if "bar_time" in target_columns:
+                derived_columns.append("bar_time")
+            if "trade_date" in target_columns:
+                derived_columns.append("trade_date")
+        if api_name in ("weekly", "monthly", "stk_mins", "rt_k") and "interval" in target_columns:
             derived_columns.append("interval")
+    if api_name and "provider" in target_columns:
+        derived_columns.append("provider")
+    if "collected_at" in target_columns:
+        derived_columns.append("collected_at")
     if "source_file" in target_columns:
         derived_columns.append("source_file")
 
@@ -147,6 +159,20 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
         if col not in columns:
             columns.append(col)
     return columns
+
+
+def _csv_collected_at(csv_path):
+    try:
+        return datetime.fromtimestamp(Path(csv_path).stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
+    except OSError:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _trade_date_from_trade_time(trade_time):
+    value = str(trade_time or "").strip()
+    if len(value) >= 10:
+        return value[:10].replace("-", "")
+    return ""
 
 
 def _canonical_row(table, row, api_name, csv_path):
@@ -164,9 +190,19 @@ def _canonical_row(table, row, api_name, csv_path):
     if table == "market_bars_intraday":
         if row.get("trade_date") and not row.get("bar_time"):
             row["bar_time"] = row.get("trade_date")
+        if row.get("trade_time"):
+            row["bar_time"] = row.get("trade_time")
+            if not row.get("trade_date"):
+                row["trade_date"] = _trade_date_from_trade_time(row.get("trade_time"))
         if api_name in ("weekly", "monthly"):
             row["interval"] = api_name
+        elif api_name in ("stk_mins", "rt_k"):
+            row["interval"] = "5min"
 
+    if api_name and not row.get("provider"):
+        row["provider"] = f"tushare_{api_name}"
+    if not row.get("collected_at"):
+        row["collected_at"] = _csv_collected_at(csv_path)
     if not row.get("source_file"):
         row["source_file"] = csv_path.name
 

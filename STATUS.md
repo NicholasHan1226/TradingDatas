@@ -82,6 +82,15 @@
 
 ## 五、最近完成
 
+### 2026-07-04 Tushare 5分钟调度与 read model 桥接修复
+
+- [x] `cron/collectors.sh` 支持按 `--tier` 单独运行，P0 可与日频层拆开调度；cron wrapper 默认使用 `/opt/marketgraph/venv/bin/python3`，避免 DuckDB 同步误用系统 Python。
+- [x] `cron/crontab.txt` 已改为 P0 工作日 9-15 点每 5 分钟，P1/P2/P3/P4/P5/P6 按自然时间窗口运行，不再每 2 小时全 tier 捆绑。
+- [x] `storage/csv_bridge.py` 已将 `stk_mins`/`rt_k` 映射到 `market_bars_intraday`，并为 Tushare CSV 写入补齐 `provider`、`collected_at`、`trade_date`、`interval` 等 lineage 字段。
+- [x] 验证：SharedSignals 全量测试 207 项通过；DuckDB wrapper 用生产 venv 实跑通过，`duckdb_merge.py` 状态 `ok`。
+- [ ] 待生产观察：下一个 A股交易时段确认 P0 每 5 分钟写入最新 `market_bars_intraday`；本轮会先补桥接已存在的 2026-07-03 `stk_mins` CSV。
+
+
 ### 2026-07-04 30 天无人值守 watchdog 闭环
 
 - [x] 新增 `tools/watchdog.py`：每轮检查 API `/health`、SQLite 最新 `trade_date`、cron log age、磁盘和内存，计算 0-100 分；`<60` 触发 heal，`<30` 调用自动重启，重启失败后升级邮件，连续 0 分写 halt 文件。

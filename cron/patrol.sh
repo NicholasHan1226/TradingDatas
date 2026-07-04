@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-python3}"
+PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
 THRESHOLD="${PATROL_SCORE_THRESHOLD:-60}"
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"
