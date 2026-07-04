@@ -126,7 +126,7 @@ notifications:
   enabled: true
   email:
     system: "notice@tradingagent.cc"
-    trading: "notice@agentspaces.cc"
+    trading: "notice@tradingagent.cc"
   lark:
     enabled: false
 
