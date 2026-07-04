@@ -307,7 +307,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not auth.check_endpoint_scope(account, path):
                     return self._error(403, "scope does not grant access to /health")
             except auth.AuthError:
-                return self._send_json({"status": "ok", "version": VERSION, "detail": "authenticate for full health report"})
+                return self._error(401, "authentication required")
             return self._send_json(_get_health())
 
         try:

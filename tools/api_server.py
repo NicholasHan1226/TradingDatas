@@ -203,7 +203,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Deprecated SharedSignals capability API server")
     default_port = int(os.environ.get("SHAREDSIGNALS_LEGACY_API_PORT", str(DEFAULT_LEGACY_PORT)))
     parser.add_argument("--port", type=int, default=default_port, help=f"Listen port (default: {default_port})")
-    parser.add_argument("--host", type=str, default=os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0"), help="Bind address")
+    parser.add_argument("--host", type=str, default=os.environ.get("SHAREDSIGNALS_API_HOST", "127.0.0.1"), help="Bind address (security: default localhost-only, legacy server)")
     args = parser.parse_args()
 
     server = ThreadedHTTPServer((args.host, args.port), SharedSignalsHandler)
