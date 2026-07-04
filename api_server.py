@@ -226,6 +226,58 @@ def file_payload(path: Path) -> tuple[Any, dict[str, Any], str | None]:
     return payload, metadata, path.name
 
 
+def capability_fallback_payload() -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Return a deterministic capability summary when the generated registry is absent."""
+
+    scope_map = getattr(auth, "SCOPE_ENDPOINTS", {}) if auth is not None else {}
+    unique_endpoints = sorted(
+        {
+            endpoint
+            for endpoints_for_scope in scope_map.values()
+            for endpoint in endpoints_for_scope
+            if endpoint != "*"
+        }
+    )
+    payload = {
+        "status": "degraded",
+        "reason": f"missing generated registry: {CAPABILITY_PATH}",
+        "next_action": "run tools/capability_scan.py; cron/capability_scan.sh keeps this file refreshed in production",
+        "summary": {
+            "total": len(unique_endpoints),
+            "ok": 0,
+            "degraded": len(unique_endpoints),
+            "down": 0,
+        },
+        "endpoints": [
+            {
+                "name": endpoint.strip("/") or "root",
+                "path": endpoint,
+                "status": "degraded",
+                "category": _endpoint_category(endpoint, scope_map),
+                "description": "Generated registry missing; endpoint is listed from auth scope map.",
+            }
+            for endpoint in unique_endpoints
+        ],
+    }
+    metadata = {
+        "freshness": None,
+        "quality": {"score": 0.5, "completeness": 0.5},
+        "degraded": True,
+        "degraded_reasons": [payload["reason"]],
+        "lineage": {"source": "auth.SCOPE_ENDPOINTS", "registry_path": str(CAPABILITY_PATH)},
+    }
+    return payload, metadata, "capability_fallback"
+
+
+def _endpoint_category(endpoint: str, scope_map: dict[str, set[str]]) -> str:
+    for scope, endpoints in scope_map.items():
+        if scope == "read":
+            continue
+        if endpoint in endpoints:
+            return scope
+    return "unknown"
+
+
 
 def wrap_response(payload: Any, metadata: dict[str, Any], source: str | None) -> dict[str, Any]:
     metadata = dict(metadata or {})
@@ -409,7 +461,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, path: str, params: dict[str, str]) -> dict[str, Any]:
         if path == "/capabilities":
-            payload, metadata, source = file_payload(CAPABILITY_PATH)
+            if CAPABILITY_PATH.exists():
+                payload, metadata, source = file_payload(CAPABILITY_PATH)
+            else:
+                payload, metadata, source = capability_fallback_payload()
             return wrap_response(payload, metadata, source)
 
         if path == "/market_data":

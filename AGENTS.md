@@ -24,16 +24,16 @@
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库
 - 不做什么: 不分析, 不分类, 不做交易决策
-- 存储: SQLite (marketdata.sqlite 81MB) + CSV + NDJSON staging
+- 存储: SQLite read model + DuckDB mirror + CSV + NDJSON staging
 
 ## 现状
-- 行情: Tushare(14接口)/Binance(4)/PM(markets/prices) → SQLite + CSV/NDJSON缓存
-- 事件: RSS(883源)+Tavily+agents → staging NDJSON → runtime_bridge → CSV
-- 基本面: Tushare 财务/分红/融资融券等由 P0/P2 定时采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
-- staging: 8 streams (collection_runs/sentiment_signals/event_candidates/...)
+- 行情: Tushare/Binance/PM(markets/prices) → SQLite + DuckDB + CSV/NDJSON 缓存；具体接口数以 `collectors/tushare/config.yaml` 和 `STATUS.md` 当前记录为准
+- 事件: RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；恢复前必须走 SharedSignals collector + staging/bridge 契约
+- 基本面: Tushare 财务/分红/融资融券等由分层定时任务采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
+- staging: 6 streams (collection_runs/sentiment_signals/event_candidates/...)
 
 ## 依赖
-- 采集输入: 外部 API (Tushare/Binance/PM/RSS/Tavily/DeepSeek) 只允许在 SharedSignals collector 层调用
+- 采集输入: 外部 API (Tushare/Binance/PM/RSS/Tavily/DeepSeek) 只允许在 SharedSignals collector 层调用；未启用的数据源不得被 MarketGraph/TradingAgent 绕过 SharedSignals 直接调用
 - 输出: SQLite + DuckDB + CSV + NDJSON/只读服务接口 → MarketGraph 和 TradingAgent 按契约读取
 
 ## 巡查自愈系统 (patrol + heal)
@@ -104,4 +104,4 @@
 - 生产 API 默认绑定 `127.0.0.1:8082`；本机消费者可通过 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 访问，外部账号接入必须配置 token/JWT 和账号并发限制。
 - Tushare 无积分消耗但有并发/频率约束；P0 交易时段每 5 分钟采集，P1-P6 按交易/研究需要分层调度，所有结果先落库再供 MarketGraph/TradingAgent 读取。
 - DuckDB/SQLite 同步和 watchdog 必须以 `marketgraph` 运行用户执行；若手工维护导致数据或日志文件变成 root 属主，应恢复为 `marketgraph:marketgraph` 后再验证 cron。
-- RSS/RSSHub 边界：RSS 采集代码和数据消费契约归 SharedSignals；主服务器仍存在旧 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 和 `/opt/investment/MarketGraphRuntime/rss_collector.db` 残留运行资产。旧 RSSCollector cron 已禁用，RSSHub node 进程仍可能作为残留基础设施运行；迁移或删除前必须单独做依赖清点、DB 归属迁移和回滚方案。
+- RSS/RSSHub 边界：RSS 采集代码和数据消费契约归 SharedSignals；旧 RSSCollector cron 已禁用，旧 RSSHub/RSSCollector 顶层运行资产应退出现役层。`/opt/investment/MarketGraphRuntime/rss_collector.db` 仅作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector、staging/bridge、健康检查和回滚方案。

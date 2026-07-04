@@ -9,7 +9,7 @@
 #   P4 — Macro data, monthly
 #   P5 — HK/US markets, daily
 #   P6 — Other daily data
-#   P7 — 24/7 streams (crypto daily, PM, RSS)
+#   P7 — 24/7 streams (crypto daily, PM)
 
 collectors:
   tushare:
@@ -34,15 +34,15 @@ collectors:
     config: collectors/polymarket/config.yaml
     priority: P7
     enabled: true
-    schedule: "*/30 * * * *"  # every 30 minutes
+    schedule: "*/5 * * * *"  # every 5 minutes
 
   rss:
     module: collectors.rss.collector
     class: RSSCollector
     config: {}
     priority: P7
-    enabled: true
-    schedule: "*/15 * * * *"  # every 15 minutes
+    enabled: false
+    schedule: ""  # deferred: legacy RSS/RSSHub assets are not current production collectors
 
 # Global settings
 global:

@@ -72,9 +72,14 @@ cd "${ROOT}"
 if [ -f "${ROOT}/.env" ]; then
   set -a
   # shellcheck disable=SC1091
-  python3 -c "from env_bootstrap import bootstrap_sharedsignals_env; bootstrap_sharedsignals_env()"
+  source "${ROOT}/.env"
   set +a
 fi
+
+# P0 contains several per-stock Tushare APIs. Rotating batches keep the
+# 5-minute production cadence from overlapping itself while full coverage rolls
+# forward through the day.
+export SHAREDSIGNALS_P0_STOCK_BATCH_SIZE="${SHAREDSIGNALS_P0_STOCK_BATCH_SIZE:-100}"
 
 {
   echo "[$(date -Iseconds)] START collectors tiers=${TIERS[*]} python=${PYTHON_BIN}"

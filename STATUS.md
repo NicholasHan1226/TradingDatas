@@ -4,29 +4,29 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (RSS ownership + system email smoke verification)
+> 最后更新：2026-07-05 (capability scan + P0 batch guard + RSS retirement)
 
 ---
 
 ## 一、当前状态
 
 - **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（markets+prices，经 proxy）→ SQLite + CSV/NDJSON 缓存
-- **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV；RSS 代码归 SharedSignals，但主服务器旧 RSSCollector cron 当前保持禁用，RSSHub node 仍是待迁移残留基础设施
-- **5 条数据管线**：Tushare、Binance、Polymarket、RSS、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
+- **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走 SharedSignals collector + staging/bridge 契约
+- **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog 和期货日线单独采集，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射
-- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 绑定 `127.0.0.1:8082` 运行；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
+- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
@@ -39,7 +39,8 @@
 - R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
 - Crypto 生产 5 分钟行情当前仍由 `collectors/crypto/binance_collect.py` 直接写 SQLite 保障 24/7 新鲜度，尚未切到 `BaseCollector → save/staging → bridge` 的统一生命周期；切换前必须完成回放验证，避免影响模拟盘。
-- RSS/RSSHub 归属仍在迁移期：`/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 与 `/opt/investment/MarketGraphRuntime/rss_collector.db` 仍存在；生产 crontab 已禁用 RSSCollector hot/warm/@reboot，但 RSSHub node 进程仍在运行，删除或迁移前必须先做依赖清点与回滚方案。
+- P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
+- RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 
 ## 三、API 接口状态（17/17 覆盖）
 
@@ -86,7 +87,9 @@
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集。
 17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
-18. [ ] **RSS/RSSHub 迁移收口** — 旧 RSSCollector cron 已禁用；下一步需要确认 RSSHub 依赖、`rss_collector.db` 归属、SharedSignals collector 入口和恢复 runbook 后再迁移或退役旧目录。
+18. [x] **RSS/RSSHub 退役收口** — 旧 RSSCollector cron 已禁用；RSSHub 残留进程已停止，旧顶层目录已移入 `_archive/retired_residuals_20260704T172705Z`；`rss_collector.db` 仅保留历史/迁移审计。
+19. [x] **API 能力清单生产化** — `/capabilities` 缺 registry 时返回 auth scope 兜底；`cron/capability_scan.sh` 每小时刷新 registry，若存在 degraded endpoint 但 registry 已写出则记录 WARN 不阻断 cron。
+20. [x] **P0 5 分钟采集节奏保护** — `sync_daily.py` 支持 P0 rotating stock batch，`cron/collectors.sh` 默认每轮 100 只，保障 5 分钟采集不因全量 per-stock 调用重叠。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
@@ -123,7 +126,7 @@
 
 - [x] 主服务器实测系统邮件链路：SharedSignals 通过 Cloudflare Email Service 从 `notice@tradingagent.cc` 发往 `soc@coze.email` 成功；本次 smoke 邮件主题含 `[SMOKE][SharedSignals][系统]`。
 - [x] 主服务器 crontab 已确认旧 RSSCollector hot/warm/@reboot 条目均为 `DISABLED_20260704_sharedsignals_only`；MarketGraph `auto_maintain.sh` 也在 live crontab 中禁用。
-- [x] 已纠正文档边界：RSS 采集归 SharedSignals；旧 RSSHub node 进程仍可能运行，不再写成“已停止”。迁移前不得删除 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 或 `rss_collector.db`。
+- [x] 已纠正文档边界：RSS 采集归 SharedSignals；旧 RSSHub node 进程已停止，旧 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 已归档，`rss_collector.db` 仅保留历史/迁移审计。
 
 ### 2026-07-04 CNFutures 期货日线自动化入口
 
@@ -182,7 +185,7 @@
 - [x] `reader.get_tushare()` 与 `reader.get_fundamentals()` 已改为 DB-first：只读 read model/缓存；无映射或无数据返回 degraded，不现场调用 Tushare。
 - [x] A 股 P2 财务采集已手动跑通并同步：`tushare_fina_indicator` 76,159 行、`tushare_dividend` 4,474 行进入 `market_factors`；`/fundamentals?symbol=000858.SZ` 返回 200。
 - [x] 生产 API 已重启加载新代码，监听 `127.0.0.1:8082`；TradingAgent 健康回执已从 SharedSignals API 401 恢复为 ok。
-- [x] MarketGraph 旧 RSSCollector cron 已禁用；旧 provider cron 已禁用；`/tushare/provider` passthrough 已禁用。RSSHub node 进程仍是待迁移残留基础设施，不作为 MarketGraph 数据采集所有权。
+- [x] MarketGraph 旧 RSSCollector cron 已禁用；旧 provider cron 已禁用；`/tushare/provider` passthrough 已禁用。RSSHub node 残留进程已停止并从现役层归档，不作为 MarketGraph 数据采集所有权。
 - [x] crontab 回滚备份保留在 `logs/cron/crontab_before_sharedsignals_only_20260704T074002Z.txt` 和 `logs/cron/crontab_before_sharedsignals_only_pass2_20260704T074047Z.txt`。
 
 ### 2026-07-04 ghost 测试显式跳过
@@ -482,10 +485,10 @@
 
 | 采集器 | 数据源 | 输出表 | 状态 |
 |--------|--------|--------|------|
-| Tushare | Tushare Pro（21 API） | market_bars_daily 等 | 已有（参考实现） |
+| Tushare | Tushare Pro（按 `collectors/tushare/config.yaml` 分层配置） | market_bars_daily 等 | 已有（参考实现） |
 | Binance | Binance REST API | market_bars_daily, market_bars_intraday | 新实现 |
 | Polymarket | Gamma API + CLOB API | market_pm_markets, market_pm_prices | 新实现 |
-| RSS | RSSCollector bridge（883 源） | market_events | 新实现 |
+| RSS | RSS collector（deferred） | market_events / sentiment_signals | 退役旧顶层资产，恢复前需重接 SharedSignals collector |
 
 ### 运维基础设施
 

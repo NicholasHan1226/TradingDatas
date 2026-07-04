@@ -20,7 +20,8 @@ collectors:
     - tushare_full      # A-share: all symbols (14 interfaces)
     - binance_full      # Crypto: 9 symbols (4 intervals)
     - polymarket_full   # Prediction Markets: all tags
-    - rss_full          # RSS: 883 feeds (495 Singapore + 388 local)
+    # RSS/RSSHub is deferred. Legacy assets remain on disk for migration audit,
+    # but current production cron must not treat them as live collectors.
 
   tushare:
     enabled: true
@@ -55,11 +56,11 @@ collectors:
     enabled: true
     tags: ["politics", "crypto", "sports", "technology", "world",
            "science", "economics", "entertainment", "business", "health"]
-    frequency: "10min"
+    frequency: "5min"
     proxy: "http://127.0.0.1:7890"
 
   rss:
-    enabled: true
+    enabled: false
     feeds_count: 883
     feeds_local: 388
     feeds_singapore: 495
@@ -71,12 +72,12 @@ collectors:
     timeout_seconds: 30
 
   tavily:
-    enabled: true
+    enabled: false
     frequency: "15min"
     max_queries_per_run: 100
 
   deepseek:
-    enabled: true
+    enabled: false
     frequency: "15min"
     max_tokens_per_run: 50000
 
@@ -104,7 +105,7 @@ bridge:
 
 # ---- Health ----
 health:
-  patrol_interval_minutes: 5
+  patrol_interval_minutes: 10
   freshness_max_age_hours: 2
   dedup_enabled: true
   dedup_url_normalize: true

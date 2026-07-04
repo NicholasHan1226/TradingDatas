@@ -24,6 +24,12 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # Tushare tier split owned by SharedSignals.
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min
+
+# CN futures: 5-minute intraday/night bars plus daily settlement bars.
+*/5 9-15,21-23 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
+*/5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
+25 16 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_daily.sh
+
 35 16 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P1_eod_daily
 30 18 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P2_financial_daily
 15 6 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P3_reference_daily
@@ -36,6 +42,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
+17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh
 
 # Polymarket markets/prices collection belongs here, not in TradingAgent or
 # MarketGraph.

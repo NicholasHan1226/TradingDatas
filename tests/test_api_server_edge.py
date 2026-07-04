@@ -14,6 +14,12 @@ import api_server
 
 
 class _FakeAuth:
+    SCOPE_ENDPOINTS = {
+        "health": {"/health", "/capabilities", "/cache/status", "/cache/invalidate"},
+        "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
+        "full": {"*"},
+    }
+
     def __init__(self) -> None:
         self._cache: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -240,3 +246,16 @@ def test_api_limit_applies_to_sentiment_and_realtime(api_edge_server) -> None:
         ("get_sentiment", {"start": None, "end": None}),
         ("get_realtime_5min", {"ts_code": "000001.SZ", "date": None}),
     ]
+
+
+def test_capabilities_falls_back_when_registry_missing(api_edge_server, monkeypatch) -> None:
+    base_url, _reader = api_edge_server
+    monkeypatch.setattr(api_server, "CAPABILITY_PATH", api_server.ROOT / "tools" / "__missing_capability_registry__.json")
+
+    status, payload = _get_json(base_url, "/capabilities")
+
+    assert status == 200
+    assert payload["source"] == "capability_fallback"
+    assert payload["metadata"]["degraded"] is True
+    assert payload["data"]["status"] == "degraded"
+    assert any(item["path"] == "/market_data" for item in payload["data"]["endpoints"])

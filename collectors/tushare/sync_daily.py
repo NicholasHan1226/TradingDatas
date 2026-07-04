@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import os
 import sys
@@ -52,6 +53,8 @@ CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
 STOCK_MASTER_PATH = _BASE_DIR / "reference" / "stock_master.csv"
 HK_STOCK_MASTER_PATH = _BASE_DIR / "reference" / "hk_stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
+DEFAULT_P0_STOCK_BATCH_SIZE = 100
+DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
 
 VALID_TIERS = [
     "P0_trading_5min",
@@ -161,6 +164,83 @@ def filter_apis(apis: list[dict[str, Any]], only_api: str | None) -> list[dict[s
     if not names:
         return apis
     return [api for api in apis if str(api.get("api_name") or "") in names]
+
+
+def parse_positive_int(value: str | int | None, default: int = 0) -> int:
+    """Parse an optional positive integer setting."""
+
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        logger.warning("invalid positive integer setting: %r; using %d", value, default)
+        return default
+    return parsed if parsed > 0 else default
+
+
+def select_rotating_stock_batch(
+    stock_codes: list[str],
+    *,
+    batch_size: int,
+    state_path: Path,
+) -> tuple[list[str], dict[str, Any]]:
+    """Return a stable rotating slice of stock codes and persist the next cursor."""
+
+    total = len(stock_codes)
+    if total == 0 or batch_size <= 0 or batch_size >= total:
+        return stock_codes, {
+            "enabled": False,
+            "batch_size": batch_size,
+            "total": total,
+            "start_index": 0,
+            "next_index": 0,
+            "selected": total,
+            "state_path": str(state_path),
+        }
+
+    start_index = 0
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            start_index = int(state.get("next_index", 0)) % total
+        except Exception as exc:
+            logger.warning("failed to read P0 stock batch state %s: %s", state_path, exc)
+            start_index = 0
+
+    end_index = start_index + batch_size
+    if end_index <= total:
+        selected = stock_codes[start_index:end_index]
+    else:
+        selected = stock_codes[start_index:] + stock_codes[: end_index % total]
+    next_index = end_index % total
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(
+        json.dumps(
+            {
+                "next_index": next_index,
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "batch_size": batch_size,
+                "total": total,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    tmp_path.replace(state_path)
+
+    return selected, {
+        "enabled": True,
+        "batch_size": batch_size,
+        "total": total,
+        "start_index": start_index,
+        "next_index": next_index,
+        "selected": len(selected),
+        "state_path": str(state_path),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +513,20 @@ def main() -> None:
         default=0.5,
         help="Failed-call ratio threshold for --exit-on-failure (default: 0.5)",
     )
+    parser.add_argument(
+        "--stock-batch-size",
+        type=int,
+        default=0,
+        help=(
+            "Limit P0 per-stock A-share calls to a rotating batch. "
+            "Defaults to SHAREDSIGNALS_P0_STOCK_BATCH_SIZE or 100 for P0 production runs."
+        ),
+    )
+    parser.add_argument(
+        "--stock-batch-state",
+        default="",
+        help="Cursor file for P0 rotating stock batches",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -474,10 +568,39 @@ def main() -> None:
         hk_stock_codes = hk_stock_codes[:3] if hk_stock_codes else []
         logger.info("TEST MODE: using %d A-share / %d HK stocks", len(stock_codes), len(hk_stock_codes))
 
+    batch_meta: dict[str, Any] = {"enabled": False}
+    if tier_name == "P0_trading_5min" and not args.test:
+        batch_size = args.stock_batch_size or parse_positive_int(
+            os.environ.get("SHAREDSIGNALS_P0_STOCK_BATCH_SIZE"),
+            DEFAULT_P0_STOCK_BATCH_SIZE,
+        )
+        state_path = Path(
+            args.stock_batch_state
+            or os.environ.get("SHAREDSIGNALS_P0_STOCK_BATCH_STATE")
+            or DEFAULT_P0_STOCK_BATCH_STATE
+        )
+        stock_codes, batch_meta = select_rotating_stock_batch(
+            stock_codes,
+            batch_size=batch_size,
+            state_path=state_path,
+        )
+        if batch_meta.get("enabled"):
+            logger.info(
+                "P0 rotating stock batch: selected %d/%d stocks, batch_size=%d, cursor %d→%d, state=%s",
+                batch_meta["selected"],
+                batch_meta["total"],
+                batch_meta["batch_size"],
+                batch_meta["start_index"],
+                batch_meta["next_index"],
+                batch_meta["state_path"],
+            )
+
     trade_date, start_date, end_date = date_range(args.lookback, args.trade_date or None)
     logger.info("=" * 60)
     logger.info("TIER: %s  |  A-Stocks: %d  |  HK-Stocks: %d  |  APIs: %d",
                 tier_name, len(stock_codes), len(hk_stock_codes), len(apis))
+    if batch_meta.get("enabled"):
+        logger.info("P0 batch mode: %s", batch_meta)
     logger.info("Window: %s → %s (trade_date=%s, lookback=%d days)",
                 start_date, end_date, trade_date, args.lookback)
     logger.info("=" * 60)

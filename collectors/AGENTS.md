@@ -38,17 +38,17 @@ run_collectors.sh
 | `tushare/` | A股/港股/美股/期货/汇率 | Tushare API | `collector.py`, `sync_daily.py`, `config.yaml` |
 | `crypto/` | Crypto | Binance Public API | `binance.py`, `config.yaml` |
 | `polymarket/` | 预测市场 | Polymarket API | `collector.py`, `parquet_loader.py`, `config.yaml` |
-| `rss/` | 新闻/事件 | RSSHub + 直接 RSS | `collector.py`, `feed_health_monitor.py`, `gap_filler.py`, `rsshub_route_healer.py`, `source_failover.py` |
+| `rss/` | 新闻/事件 | RSSHub + 直接 RSS（生产 deferred） | `collector.py`, `feed_health_monitor.py`, `gap_filler.py`, `rsshub_route_healer.py`, `source_failover.py` |
 
-### RSS 自愈子系统
+### RSS 自愈子系统（当前 deferred）
 
-`rss/` 目录包含完整的 RSS 采集健康管理：
+`rss/` 目录包含 RSS 采集健康管理代码，但当前主服务器不把 RSS/RSSHub 当作现役 collector。恢复前必须补齐生产调度、数据库归属、staging/bridge、健康检查和回滚方案：
 - `feed_health_monitor.py` — 883 源健康状态追踪
 - `gap_filler.py` — 采集缺口自动回补
 - `rsshub_route_healer.py` — RSSHub 路由故障自动切换
 - `source_failover.py` — 源失效自动降级/替换
 
-当前主服务器 RSS/RSSHub 仍在迁移期：旧 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 和 `/opt/investment/MarketGraphRuntime/rss_collector.db` 可能存在，生产 crontab 已禁用旧 RSSCollector hot/warm/@reboot。修改 `rss/` 前先确认 live crontab、DB 归属和回滚方案，不得从 MarketGraph 恢复旧采集。
+当前主服务器 RSS/RSSHub 旧顶层资产应退出 `/opt/investment` 现役目录；`/opt/investment/MarketGraphRuntime/rss_collector.db` 仅保留历史/迁移审计价值。修改 `rss/` 前先确认 live crontab、DB 归属和回滚方案，不得从 MarketGraph 恢复旧采集。
 
 ## 修改规则
 

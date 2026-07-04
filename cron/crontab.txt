@@ -16,6 +16,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Tuesday-Saturday because it belongs to the prior trading night's session.
 */5 9-15,21-23 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
 */5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh
+25 16 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_daily.sh
 
 # Daily/reference tiers run in their natural windows instead of every 2 hours.
 35 16 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P1_eod_daily
@@ -39,3 +40,4 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
+17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh

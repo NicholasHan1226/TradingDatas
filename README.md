@@ -15,16 +15,16 @@
 ## 架构
 ```
 采集层 → staging NDJSON (无锁缓冲) → bridge归并 → 存储
-  Tushare(14接口) → marketdata.sqlite
+  Tushare(25接口) → marketdata.sqlite
   Binance(4接口)  → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
-  RSS(883源)      → staging → sentiment_signals.csv (RSSHub/旧DB迁移中)
-  Tavily/agents   → staging → event_candidates.csv
-  基本面           → 按需实时调
+  RSS/RSSHub      → deferred（旧顶层资产已归档，恢复前需重接 collector）
+  Tavily/DeepSeek → disabled（不属于当前生产采集）
+  基本面           → 预计算落库后只读
 ```
 
 ## 存储
-- 行情: marketdata.sqlite (75MB, 11表) — MCP工具读此处
+- 行情: marketdata.sqlite + marketdata.duckdb（体积以生产 `/opt/investment/MarketGraphRuntime/read_model/` 实测为准）— API/reader 只读此处
 - 事件: SQLite (URL去重) — 原始事件, 不做分类
 - 参考: CSV (stock_master, source_registry, entity_map, market_calendar)
 
@@ -40,7 +40,7 @@
 
 ## 采集频率
 - 行情: A股盘中 5min / Crypto 与 Polymarket 5min / 日级（盘后）
-- 事件: RSS/agents 分层维护；旧 RSSCollector cron 迁移期保持禁用
+- 事件: RSS/RSSHub/Tavily 当前不作为现役生产采集；恢复前必须走 SharedSignals collector 与 staging/bridge 契约
 - 基本面: 日级预计算
 - 宏观: 日级
 
