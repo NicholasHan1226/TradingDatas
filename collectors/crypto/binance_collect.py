@@ -1,54 +1,77 @@
 #!/usr/bin/env python3
-"""Binance collector via Singapore relay — one source for all crypto data."""
-import json, sqlite3, os, urllib.request
-from datetime import datetime, timezone
+"""Run the Binance collector through the SharedSignals lifecycle."""
 
-DB = '/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite'
-SYMBOLS = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT']
-# Try direct first, fallback to proxy
-URLS = ['https://api.binance.com/api/v3/ticker/24hr']
-PROXIES = [
-    os.getenv('BINANCE_HTTP_PROXY', 'http://127.0.0.1:7890'),
-    '',
-]
+from __future__ import annotations
 
-def _open_json(url):
-    last_error = None
-    for proxy in [p for p in PROXIES if p is not None]:
-        try:
-            handler = urllib.request.ProxyHandler({'http': proxy, 'https': proxy}) if proxy else urllib.request.ProxyHandler({})
-            opener = urllib.request.build_opener(handler)
-            req = urllib.request.Request(url, headers={'User-Agent': 'SharedSignals/1.0'})
-            return json.loads(opener.open(req, timeout=10).read())
-        except Exception as exc:
-            last_error = exc
-            continue
-    raise RuntimeError(f'binance fetch failed: {last_error}')
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
 
-def fetch_price(symbol):
-    for url in URLS:
-        try:
-            params = f'?symbol={symbol}'
-            resp = _open_json(url + params)
-            return float(resp['lastPrice']), float(resp['volume']), float(resp['highPrice']), float(resp['lowPrice'])
-        except Exception as exc:
-            print(f'WARN {symbol}: {exc}')
-            continue
-    return None, None, None, None
+try:
+    import yaml
+except ImportError:  # pragma: no cover - production venv has PyYAML
+    yaml = None
 
-conn = sqlite3.connect(DB)
-conn.execute('PRAGMA journal_mode=WAL')
-conn.execute('PRAGMA busy_timeout=30000')
-count = 0
-for sym in SYMBOLS:
-    price, vol, high, low = fetch_price(sym)
-    if price:
-        conn.execute('''INSERT OR REPLACE INTO market_bars_daily
-            (market, symbol, trade_date, open, high, low, close, volume, amount, provider, collected_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
-            ('Crypto', sym, datetime.now(timezone.utc).strftime('%Y%m%d'),
-             price, high or price, low or price, price, vol or 0, (price*(vol or 1)), 'binance_sharedsignals',
-             datetime.now(timezone.utc).isoformat()))
-        count += 1
-conn.commit(); conn.close()
-print(f'Binance: {count}/{len(SYMBOLS)} symbols collected')
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from collectors.crypto.binance import CryptoCollector
+from storage.ndjson_bridge import DEFAULT_SQLITE_PATH, ingest_crypto_ndjson_to_sqlite
+
+
+def _load_config(path: Path) -> dict[str, Any]:
+    if not path.exists() or yaml is None:
+        return {
+            "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"],
+            "intervals": ["1d", "4h", "1h", "15m"],
+        }
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Collect Binance crypto data into SharedSignals.")
+    parser.add_argument("--mode", choices=("ticker", "klines", "all"), default="ticker")
+    parser.add_argument("--interval", action="append", dest="intervals", help="Kline interval to collect. Repeatable.")
+    parser.add_argument("--symbol", action="append", dest="symbols", help="Symbol to collect. Repeatable.")
+    parser.add_argument("--config", default=str(Path(__file__).resolve().parent / "config.yaml"))
+    parser.add_argument("--db", default=str(DEFAULT_SQLITE_PATH))
+    parser.add_argument("--bridge-since-minutes", type=int, default=180)
+    parser.add_argument("--no-bridge", action="store_true")
+    args = parser.parse_args()
+
+    config = _load_config(Path(args.config))
+    if args.symbols:
+        config["symbols"] = [symbol.upper() for symbol in args.symbols]
+    if args.intervals:
+        config["intervals"] = args.intervals
+    proxy = os.getenv("BINANCE_HTTP_PROXY") or config.get("proxy", "")
+
+    collector = CryptoCollector(config=config, proxy=proxy)
+    contexts: list[dict[str, Any]] = []
+    if args.mode in ("ticker", "all"):
+        contexts.append({"mode": "ticker", "symbols": config.get("symbols")})
+    if args.mode in ("klines", "all"):
+        contexts.append({"mode": "klines", "symbols": config.get("symbols"), "intervals": config.get("intervals")})
+
+    runs = [collector.run(context) for context in contexts]
+    result: dict[str, Any] = {"collector": "crypto_binance", "runs": runs}
+    if not args.no_bridge:
+        result["bridge"] = ingest_crypto_ndjson_to_sqlite(
+            Path(args.db),
+            ROOT / "data" / "crypto" / "binance",
+            since_minutes=args.bridge_since_minutes,
+        )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+
+    if any(run.get("status") not in {"success", "partial_success"} for run in runs):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

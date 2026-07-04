@@ -7,18 +7,18 @@ secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore R
 
 # ---- Database ----
 database:
-  marketdata: "/opt/investment/SharedSignals/storage/marketdata.sqlite"
-  reference_index: "/opt/investment/SharedSignals/storage/reference_index.sqlite"
-  # Legacy migration path: old RSSCollector DB still lives under MarketGraphRuntime
-  # until RSSHub/RSSCollector ownership is fully moved into SharedSignals.
-  rss_collector: "/opt/investment/MarketGraphRuntime/rss_collector.db"
+  marketdata: "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+  duckdb: "/opt/investment/SharedSignals/data/marketdata.duckdb"
+  reference_index: "/opt/investment/MarketGraphRuntime/read_model/reference_index.sqlite"
+  # Historical audit only. RSS/RSSHub is retired from production collectors.
+  rss_collector_archive: "/opt/investment/MarketGraphRuntime/rss_collector.db"
   max_size_mb: 500
 
 # ---- Collectors ----
 collectors:
   enabled:
-    - tushare_full      # A-share: all symbols (14 interfaces)
-    - binance_full      # Crypto: 9 symbols (4 intervals)
+    - tushare_full      # A-share: P0-P6 tiers from collectors/tushare/config.yaml
+    - binance_full      # Crypto: 9 symbols; ticker every 5min, klines on demand
     - polymarket_full   # Prediction Markets: all tags
     # RSS/RSSHub is deferred. Legacy assets remain on disk for migration audit,
     # but current production cron must not treat them as live collectors.
@@ -26,21 +26,8 @@ collectors:
   tushare:
     enabled: true
     symbols: "all"
-    interfaces:
-      - daily
-      - daily_basic
-      - moneyflow
-      - moneyflow_industry
-      - margin
-      - margin_detail
-      - limit_list
-      - hk_hold
-      - hk_daily
-      - index_daily
-      - index_global
-      - news
-      - stk_mins
-      - trade_cal
+    config_source: "collectors/tushare/config.yaml"
+    tiers: ["P0_trading_5min", "P1_eod_daily", "P2_financial_daily", "P3_reference_daily", "P4_macro_daily", "P5_hk_us_daily", "P6_other_daily"]
     frequency: "5min"     # intraday
     postclose_frequency: "daily"
 
@@ -48,7 +35,7 @@ collectors:
     enabled: true
     symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
               "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT"]
-    intervals: ["1d", "4h", "1h", "15m"]
+    intervals: ["1d", "4h", "1h", "5m", "15m"]
     frequency: "5min"
     proxy: "http://127.0.0.1:7890"
 
@@ -61,12 +48,8 @@ collectors:
 
   rss:
     enabled: false
-    feeds_count: 883
-    feeds_local: 388
-    feeds_singapore: 495
-    singapore_rsync_interval_minutes: 5
-    interval_minutes: 10
-    fallback_enabled: true
+    status: "retired"
+    note: "Historical RSSHub/RSSCollector assets are archived; do not restore as production collectors without a new SharedSignals staging/bridge plan."
     proxy: "http://127.0.0.1:7890"
     max_retries: 4
     timeout_seconds: 30
@@ -98,8 +81,9 @@ staging:
 
 # ---- Bridge ----
 bridge:
-  runtime_bridge_script: "bridge/marketgraph_runtime_bridge.py"
-  marketdata_db_script: "bridge/marketgraph_marketdata_db.py"
+  csv_bridge_script: "storage/csv_bridge.py"
+  ndjson_bridge_script: "storage/ndjson_bridge.py"
+  duckdb_sync_script: "storage/duckdb_merge.py"
   batch_size: 10000
   lock_timeout_seconds: 1800
 

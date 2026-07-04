@@ -73,10 +73,24 @@ class CryptoCollector(BaseCollector):
     # ------------------------------------------------------------------
 
     def plan(self, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        context = context or {}
+        if context.get("mode") == "ticker":
+            symbols = context.get("symbols") or self._symbols
+            return [{
+                "api_name": "klines",
+                "type": "ticker",
+                "symbols": symbols,
+                "symbol": "ticker",
+                "interval": "24h_ticker",
+            }]
+
         tasks = []
-        for interval in self._intervals:
-            for symbol in self._symbols:
+        intervals = context.get("intervals") or self._intervals
+        symbols = context.get("symbols") or self._symbols
+        for interval in intervals:
+            for symbol in symbols:
                 tasks.append({
+                    "api_name": "klines",
                     "type": "klines",
                     "symbol": symbol,
                     "interval": interval,
@@ -98,6 +112,18 @@ class CryptoCollector(BaseCollector):
         if task_type == "ticker":
             return self._collect_ticker(task.get("symbols", self._symbols))
         return []
+
+    def deduplicate_batch(self, api_name: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Crypto bars are keyed by symbol, bar time and interval."""
+        seen: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for row in rows:
+            key = (
+                str(row.get("symbol") or ""),
+                str(row.get("bar_time") or row.get("trade_date") or ""),
+                str(row.get("interval") or ""),
+            )
+            seen[key] = row
+        return list(seen.values())
 
     def _collect_klines(
         self,
@@ -237,7 +263,10 @@ class CryptoCollector(BaseCollector):
         path = dir_path / fname
 
         try:
-            source_file = str(path.relative_to(Path.cwd()))
+            try:
+                source_file = str(path.relative_to(Path.cwd()))
+            except ValueError:
+                source_file = str(path)
             with path.open("w", encoding="utf-8") as f:
                 for row in rows:
                     row["source_file"] = source_file

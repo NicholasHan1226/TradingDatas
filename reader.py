@@ -113,8 +113,6 @@ SHAREDSIGNALS_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_ROOT")
 MARKETGRAPH_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_ROOT") or INVESTMENT_ROOT.get() / "MarketGraph"))
 RUNTIME_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT") or INVESTMENT_ROOT.get() / "MarketGraphRuntime"))
 ASHARE_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_ROOT") or SHAREDSIGNALS_ROOT.get() / "collectors" / "tushare"))
-CRYPTO_ROOT = _LazyPath(lambda: Path(os.environ.get("CRYPTO_ROOT") or INVESTMENT_ROOT.get() / "Crypto"))
-
 SQLITE_PATH = _LazyPath(lambda: Path(os.environ.get("MARKETDATA_SQLITE") or RUNTIME_ROOT.get() / "read_model" / "marketdata.sqlite"))
 INTAKE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_INTAKE_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "intake"))
 SENTIMENT_SIGNALS_PATH = _LazyPath(lambda: Path(os.environ.get("SENTIMENT_SIGNALS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "sentiment_signals.csv"))
@@ -122,7 +120,6 @@ REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_
 MONEYFLOW_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_MONEYFLOW_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "moneyflow"))  # TODO: build native moneyflow collector
 # TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
 MACRO_FACTORS_PATH = _LazyPath(lambda: Path(os.environ.get("MACRO_FACTORS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "macro_factors.csv"))
-CRYPTO_KLINES_PATH = _LazyPath(lambda: Path(os.environ.get("CRYPTO_KLINES_PATH") or CRYPTO_ROOT.get() / "data" / "market" / "klines.csv"))
 REALTIME_5M_ROOT = _LazyPath(lambda: Path(os.environ.get("REALTIME_5M_ROOT") or RUNTIME_ROOT.get() / "staging" / "tushare_rt_min_5m"))
 STOCK_INDUSTRY_MAP_PATH = _LazyPath(lambda: Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "stock_industry_map.csv"))
 EVENT_SIGNAL_ASSOC_PATH = _LazyPath(lambda: Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "event_signal_associations.csv"))
@@ -153,7 +150,6 @@ _WATCHED_PATHS: list[Path] = [
     INTAKE_ROOT / "sentiment_signals.csv",
     SENTIMENT_SIGNALS_PATH,
     MACRO_FACTORS_PATH,
-    CRYPTO_KLINES_PATH,
     STOCK_INDUSTRY_MAP_PATH,
     EVENT_SIGNAL_ASSOC_PATH,
     IMPACT_RELATIONS_PATH,
@@ -1026,21 +1022,37 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_crypto_klines_cached(_generation: int, symbol: str, limit: int) -> str:
-    path = CRYPTO_KLINES_PATH
-    lineage = {"reader": "get_crypto_klines", "source_path": str(path), "filters": {"symbol": symbol, "limit": limit}}
-    rows, degraded = _safe_csv(path, "csv:crypto_klines", lineage)
+    query = """
+        SELECT * FROM market_bars_intraday
+        WHERE market = 'Crypto' AND symbol = ?
+        ORDER BY bar_time DESC, collected_at DESC
+        LIMIT ?
+    """
+    lineage = {"reader": "get_crypto_klines", "source": "sqlite:market_bars_intraday", "filters": {"symbol": symbol, "limit": limit}}
+    rows, degraded = _sqlite_rows(query, (symbol.upper(), max(1, int(limit))), "market_bars_intraday")
     if degraded is not None:
         return _json_cached(lambda: degraded)
-    matched = [row for row in (rows or []) if str(row.get("symbol", "")).upper() == symbol.upper()]
-    matched.sort(key=lambda row: str(row.get("open_time") or ""))
-    if limit > 0:
-        matched = matched[-limit:]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:crypto_klines", source_tier="binance", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
+    if rows:
+        rows = list(reversed(rows))
+        return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="binance", lineage=lineage, stale_after_hours=1.0))
+
+    daily_query = """
+        SELECT * FROM market_bars_daily
+        WHERE market = 'Crypto' AND symbol = ?
+        ORDER BY trade_date DESC, collected_at DESC
+        LIMIT ?
+    """
+    daily_lineage = {"reader": "get_crypto_klines", "source": "sqlite:market_bars_daily", "filters": {"symbol": symbol, "limit": limit}}
+    daily_rows, daily_degraded = _sqlite_rows(daily_query, (symbol.upper(), max(1, int(limit))), "market_bars_daily")
+    if daily_degraded is not None:
+        return _json_cached(lambda: daily_degraded)
+    daily_rows = list(reversed(daily_rows or []))
+    return _json_cached(lambda: _rows_to_wrappers(daily_rows, source_id="sqlite:market_bars_daily", source_tier="binance", lineage=daily_lineage, stale_after_hours=24.0))
 
 
 def get_crypto_klines(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     lineage = {"reader": "get_crypto_klines", "filters": {"symbol": symbol, "limit": limit}}
-    return _safe_public("csv:crypto_klines", lineage, lambda generation: _get_crypto_klines_cached(generation, str(symbol), int(limit)))
+    return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_crypto_klines_cached(generation, str(symbol), int(limit)))
 
 
 @_register_cached

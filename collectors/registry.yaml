@@ -2,7 +2,7 @@
 # Maps collector names to their class paths, config files, and scheduling priorities.
 #
 # Priority tiers:
-#   P0 — Trading hot-path, 5min cycles (crypto intraday)
+#   P0 — Trading hot-path, 5min cycles
 #   P1 — EOD, daily bars after market close
 #   P2 — Financial statements, quarterly
 #   P3 — Reference data, weekly
@@ -16,9 +16,9 @@ collectors:
     module: collectors.tushare.collector
     class: TushareCollector
     config: collectors/tushare/config.yaml
-    priority: P1
+    priority: P0-P6
     enabled: true
-    schedule: "0 16 * * 1-5"  # after A-share market close
+    schedule: "tiered"  # see cron/collectors.sh and collectors/tushare/config.yaml
 
   crypto_binance:
     module: collectors.crypto.binance

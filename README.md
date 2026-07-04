@@ -15,8 +15,8 @@
 ## 架构
 ```
 采集层 → staging NDJSON (无锁缓冲) → bridge归并 → 存储
-  Tushare(25接口) → marketdata.sqlite
-  Binance(4接口)  → marketdata.sqlite
+  Tushare(P0-P6分层接口) → marketdata.sqlite
+  Binance(9 symbols, ticker 5min + klines) → NDJSON staging → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
   RSS/RSSHub      → deferred（旧顶层资产已归档，恢复前需重接 collector）
   Tavily/DeepSeek → disabled（不属于当前生产采集）

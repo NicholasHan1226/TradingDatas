@@ -10,9 +10,9 @@
 SHELL=/bin/bash
 PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-# Crypto 24/7 freshness. Legacy collector still writes SQLite directly and is
-# tracked in STATUS.md as the remaining lifecycle migration risk.
-2-59/5 * * * * cd /opt/investment/SharedSignals && BINANCE_HTTP_PROXY=http://127.0.0.1:7890 /opt/marketgraph/venv/bin/python3 collectors/crypto/binance_collect.py >> /opt/investment/SharedSignals/logs/binance_collect.log 2>&1
+# Crypto 24/7 freshness. Collector saves NDJSON staging, then bridges into the
+# SharedSignals SQLite read model; no old /opt/investment/Crypto dependency.
+2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
 
 # Disabled provider jobs that must not be re-enabled outside SharedSignals.
 # DISABLED_20260704_tushare_us_owner: */5 * * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/us_alpaca_market_data.py >> logs/us_alpaca.log 2>&1

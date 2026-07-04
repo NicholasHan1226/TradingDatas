@@ -16,6 +16,7 @@ intervals:
   - 1d      # daily bars
   - 4h      # 4-hour bars
   - 1h      # hourly bars
+  - 5m      # 5-min bars for trading/replay when kline mode is enabled
   - 15m     # 15-min bars
 
 # Binance API limits:

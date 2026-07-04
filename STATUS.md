@@ -4,20 +4,20 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (capability scan + P0 batch guard + RSS retirement)
+> 最后更新：2026-07-05 (Crypto lifecycle bridge + reader cleanup)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（markets+prices，经 proxy）→ SQLite + CSV/NDJSON 缓存
+- **行情采集**：稳定运行 — Tushare（P0-P6 分层接口）+ Binance（9 symbols，ticker 5min + klines）+ Polymarket（markets+prices，经 proxy）→ SQLite + CSV/NDJSON 缓存
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走 SharedSignals collector + staging/bridge 契约
 - **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
@@ -38,7 +38,7 @@
 - `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
 - R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
-- Crypto 生产 5 分钟行情当前仍由 `collectors/crypto/binance_collect.py` 直接写 SQLite 保障 24/7 新鲜度，尚未切到 `BaseCollector → save/staging → bridge` 的统一生命周期；切换前必须完成回放验证，避免影响模拟盘。
+- Crypto 生产 5 分钟行情已切到 `CryptoCollector → NDJSON staging → storage/ndjson_bridge.py → SQLite`；`/crypto` reader 改为 SQLite-first，不再读取旧 `/opt/investment/Crypto/data/market/klines.csv`。
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 

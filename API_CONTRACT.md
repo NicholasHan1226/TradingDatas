@@ -432,9 +432,9 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 
 | 数据类型 | 采集频率 | 预期延迟 | fresh 阈值 |
 |---------|--------|---------|-----------|
-| Crypto 行情 | 15min | ~5min DB sync | ≤ 30min |
-| Polymarket 价格 | 15min | ~5min DB sync | ≤ 30min |
-| Crypto 因子 | 15min | ~5min DB sync | ≤ 60min |
+| Crypto 行情 | 5min | ~5min DB sync | ≤ 30min |
+| Polymarket 价格 | 5min | ~5min DB sync | ≤ 30min |
+| Crypto 因子 | 按需/低频 | ~5min DB sync | ≤ 60min |
 | A 股日线 | 盘后 EOD | 日级 | 最新交易日 |
 | 美股日线 | 盘后 EOD | 日级 | 最新交易日 |
 | RSS 事件 | 10-15min | staging → bridge 延迟 | 最新 collected_at |
@@ -517,7 +517,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
 | A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min()` DB-first，未传日期时使用该股票最新 intraday 日期，旧 CSV 目录仅作回退 |
 | A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
-| Crypto klines | Binance → marketdata.sqlite | Bridged: `read_daily("Crypto", ...)` |
+| Crypto klines/ticker | Binance → NDJSON staging → marketdata.sqlite | Bridged: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
 | HK ETF 日线 | marketdata.sqlite | Bridged: `read_daily("HK", ...)` via `get_hk_etf` |
