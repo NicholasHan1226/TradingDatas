@@ -59,6 +59,9 @@ SOC_EMAIL = os.environ.get("WATCHDOG_SOC_EMAIL", "soc@coze.email")
 TRADING_EMAIL = os.environ.get("WATCHDOG_TRADING_EMAIL", "tradingadviser@coze.email")
 COLLECTOR_FAILURE_PATTERNS = ("Traceback", "ModuleNotFoundError", "Error", "FAILED")
 COLLECTOR_FAILURE_RE = re.compile("|".join(re.escape(pattern) for pattern in COLLECTOR_FAILURE_PATTERNS))
+COLLECTOR_LOG_EXCLUDE = {"watchdog.log"}
+CRON_RUN_START_RE = re.compile(r"^\[[^\]]+\] START ", re.MULTILINE)
+CRON_RUN_OK_RE = re.compile(r"^\[[^\]]+\] OK ", re.MULTILINE)
 
 
 def utc_now() -> str:
@@ -231,7 +234,12 @@ def check_collector_status(
             "alert": True,
             "reason": "log_dir_not_found",
         }
-    files = [path for path in directory.glob("*.log") if path.is_file()]
+    exclude_names = {
+        name.strip()
+        for name in os.environ.get("WATCHDOG_COLLECTOR_LOG_EXCLUDE", ",".join(sorted(COLLECTOR_LOG_EXCLUDE))).split(",")
+        if name.strip()
+    }
+    files = [path for path in directory.glob("*.log") if path.is_file() and path.name not in exclude_names]
     if not files:
         return {
             "name": "collector_status",
@@ -294,7 +302,8 @@ def _scan_recent_collector_failures(
                 text = handle.read(scan_bytes).decode("utf-8", errors="replace")
         except OSError:
             continue
-        matches = sorted({match.group(0) for match in COLLECTOR_FAILURE_RE.finditer(text)})
+        text_to_scan = _latest_cron_run_segment(text)
+        matches = sorted({match.group(0) for match in COLLECTOR_FAILURE_RE.finditer(text_to_scan)})
         if matches:
             failures.append(
                 {
@@ -304,6 +313,19 @@ def _scan_recent_collector_failures(
                 }
             )
     return failures
+
+
+def _latest_cron_run_segment(text: str) -> str:
+    """Return the latest cron run block so recovered older errors do not keep alerting."""
+    starts = list(CRON_RUN_START_RE.finditer(text))
+    if not starts:
+        return text
+    segment = text[starts[-1].start() :]
+    ok_matches = list(CRON_RUN_OK_RE.finditer(segment))
+    failure_matches = list(COLLECTOR_FAILURE_RE.finditer(segment))
+    if ok_matches and (not failure_matches or ok_matches[-1].start() > failure_matches[-1].start()):
+        return ""
+    return segment
 
 
 def check_disk(root: Path = ROOT) -> dict[str, Any]:

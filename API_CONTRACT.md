@@ -24,6 +24,11 @@
 
 SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAgent、MarketGraph、研究工具）通过以下两个入口读取数据：
 
+**生产数据边界（2026-07-04）**：外部 provider 调用只允许发生在 SharedSignals collector 层。`reader.py`、HTTP API 和消费者系统必须读取已采集的 SQLite/DuckDB/CSV read model；没有映射或没有缓存数据时返回 degraded 包装，不再现场调用 Tushare/DashScope/其它 provider。
+
+**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`。本机 MarketGraph/TradingAgent 可使用 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
+
+
 | 入口 | 实现文件 | 适用场景 |
 |------|---------|---------|
 | **SQLite Read Model** | `bridge/marketgraph_marketdata_db.py` | 直接 Python import，用于 cron 任务 / 批处理 / 本地脚本 |
@@ -399,7 +404,7 @@ if is_trading_day("20260630"):
 
 #### `get_tushare(api_name, ts_code=None, start_date=None, end_date=None, **params)`
 
-**NEW** — 通过 SharedSignals reader 直接读取 Tushare API 数据。路由到 `a_share_tushare_api._call()`，返回与其他 reader 函数一致的 metadata-wrapped 格式。结果 LRU-cached（maxsize=512）。
+**DB-first** — 通过 SharedSignals reader 读取已采集 Tushare 数据。该接口只查询 read model 映射表；不再路由到 `a_share_tushare_api._call()` 做现场 provider 调用。无映射或无缓存数据时返回 degraded 包装。
 
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
@@ -408,7 +413,7 @@ if is_trading_day("20260630"):
 | `ts_code` | `str` | `None` | 股票代码，自动注入到 params 中 |
 | `start_date` | `str` | `None` | 起始日期 YYYYMMDD，自动注入到 params 中 |
 | `end_date` | `str` | `None` | 截止日期 YYYYMMDD，自动注入到 params 中 |
-| `**params` | — | — | 透传的 Tushare API 额外参数 |
+| `**params` | — | — | 查询 read model 的过滤参数；不透传现场 provider 调用 |
 
 **返回**: `list[dict]` — 每条含 `data` / `provenance` / `freshness` / `quality` / `degraded` / `lineage`
 
@@ -432,9 +437,9 @@ rows = get_tushare("fina_indicator", ts_code="600519.SH", start_date="20250101")
 rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 ```
 
-**错误处理**: Tushare API 不可用时返回 degraded 空包装，不抛异常。
+**错误处理**: read model 未映射、无缓存、DB 不可用或数据为空时返回 degraded 包装，不抛异常，不现场补采。
 
-**数据新鲜度**: Tushare 数据 `stale_after_hours=48.0`；日线数据通常盘后 EOD 级别。
+**数据新鲜度**: Tushare 数据由 P0-P6 定时 collector 维护；A 股 P0 交易时段 5 分钟级，P1-P6 按日频/研究频率维护。
 
 ### 数据维度来源标注
 
@@ -442,16 +447,16 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 | 数据维度 | 来源 | 方式 |
 |---------|------|------|
-| A 股日线 OHLCV | Tushare `daily` | **Native: `reader.get_tushare("daily", ...)`** |
-| A 股资金流向 | Tushare `moneyflow` | **Native: `reader.get_tushare("moneyflow", ...)`** + CSV cache |
-| A 股财务指标 | Tushare `fina_indicator` | **Native: `reader.get_tushare("fina_indicator", ...)`** / `reader.get_fundamentals()` |
-| A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | **Native: `reader.get_tushare("income", ...)`** |
-| A 股复权因子 | Tushare `adj_factor` | **Native: `reader.get_tushare("adj_factor", ...)`** |
-| A 股融资融券 | Tushare `margin` | **Native: `reader.get_tushare("margin", ...)`** |
-| A 股涨跌停列表 | Tushare `limit_list` | **Native: `reader.get_tushare("limit_list", ...)`** |
-| A 股北向资金 | Tushare `hk_hold` | **Native: `reader.get_tushare("hk_hold", ...)`** |
-| A 股分钟线 | Tushare `stock_minutes` | **Native: `reader.get_tushare("stock_minutes", ...)`** / `reader.get_realtime_5min()` |
-| A 股新闻 | Tushare `news_list` | **Native: `reader.get_tushare("news_list", ...)`** |
+| A 股日线 OHLCV | Tushare `daily` | DB-first: `reader.get_tushare("daily", ...)` / HTTP `/tushare` |
+| A 股资金流向 | Tushare `moneyflow` | DB-first: `reader.get_tushare("moneyflow", ...)` + CSV/read-model cache |
+| A 股财务指标 | Tushare `fina_indicator` | P2 collector → `market_factors`; `reader.get_fundamentals(ts_code=...)`（HTTP 也兼容 `symbol`） |
+| A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | P2 collector → read model / degraded if no recent rows |
+| A 股复权因子 | Tushare `adj_factor` | P0/P1 collector → read model |
+| A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
+| A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
+| A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
+| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min()` |
+| A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
 | Crypto klines | Binance → marketdata.sqlite | Bridged: `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
@@ -662,4 +667,5 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-04 | 1.1.1 | `reader.get_tushare()`/`get_fundamentals()` 改为 DB-first；移除现场 provider fallback；HTTP `/fundamentals` 兼容 `symbol`；记录账号并发限制与本机 API 运行边界 |
 | 2026-06-30 | 1.0.0 | 初始版本，文档化全部 reader 函数 |

@@ -22,12 +22,12 @@
 ## 现状
 - 行情: Tushare(14接口)/Binance(4)/PM(3) → SQLite + CSV缓存
 - 事件: RSS(883源)+Tavily+agents → staging NDJSON → runtime_bridge → CSV
-- 基本面: Tushare财务接口 (按需实时调)
+- 基本面: Tushare 财务/分红/融资融券等由 P0/P2 定时采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
 - staging: 8 streams (collection_runs/sentiment_signals/event_candidates/...)
 
 ## 依赖
-- 读取: 外部API (Tushare/Binance/PM/RSS/Tavily/DeepSeek)
-- 输出: SQLite + CSV + NDJSON/未来只读服务接口 → MarketGraph 和 TradingAgent 按契约读取
+- 采集输入: 外部 API (Tushare/Binance/PM/RSS/Tavily/DeepSeek) 只允许在 SharedSignals collector 层调用
+- 输出: SQLite + DuckDB + CSV + NDJSON/只读服务接口 → MarketGraph 和 TradingAgent 按契约读取
 
 ## 巡查自愈系统 (patrol + heal)
 
@@ -89,3 +89,11 @@
 - A股盘中 P0 采集保持交易时段每 5 分钟；P1/P2/P3/P4 分别按盘后、晚间、盘前、早间日频维护。
 - HK/US Tushare daily 采集使用 `P5_hk_us_daily`，按港股收盘后和美股收盘后日频维护；期货/基金/ETF/新闻等使用 `P6_other_daily` 日频维护。
 - `collectors/tushare/config.yaml` 已删除无效 `P7_crypto_pm_5min` 顶层配置；Crypto/PM 不属于 Tushare tier，必须走各自 collector/reader，不得重新启用旧 `P7_crypto_pm` cron。
+
+## 2026-07-04 SharedSignals-only 数据边界
+
+- SharedSignals 是三系统唯一外部数据采集入口；MarketGraph 和 TradingAgent 不得重新启用独立 Tushare/RSS/PM/Crypto provider 采集任务。
+- `reader.py` 和 HTTP API 必须优先读取 `/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` 与本仓库 DuckDB/CSV 产物；无缓存、无映射或无数据时返回 degraded，不现场调用 Tushare。
+- 生产 API 默认绑定 `127.0.0.1:8082`；本机消费者可通过 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 访问，外部账号接入必须配置 token/JWT 和账号并发限制。
+- Tushare 无积分消耗但有并发/频率约束；P0 交易时段每 5 分钟采集，P1-P6 按交易/研究需要分层调度，所有结果先落库再供 MarketGraph/TradingAgent 读取。
+- DuckDB/SQLite 同步和 watchdog 必须以 `marketgraph` 运行用户执行；若手工维护导致数据或日志文件变成 root 属主，应恢复为 `marketgraph:marketgraph` 后再验证 cron。

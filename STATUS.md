@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (ghost 测试显式跳过)
+> 最后更新：2026-07-04 (SharedSignals-only 生产边界 + DB-first API + watchdog 生产验证 + ghost 测试显式跳过)
 
 ---
 
@@ -20,13 +20,13 @@
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh` 已新增，分别负责全 tier 采集、DuckDB 同步、patrol/heal 和 5 分钟 watchdog，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
-- **存储**：marketdata.sqlite（~116MB），marketdata.duckdb（~54MB），11 表 145K+ 行，staging 6 streams 活跃
+- **存储**：marketdata.sqlite + marketdata.duckdb，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
 - **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + `--exit-on-failure`
-- **生产部署**：服务器 `8.138.181.177:8082` 运行中，CPU 4.5%，旧 `tools/api_server.py` 已退役
+- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 绑定 `127.0.0.1:8082` 运行；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
 
@@ -76,11 +76,19 @@
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
-11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
+11. [x] **P2：SharedSignals API/read model 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
 12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
-13. [ ] **P3：watchdog 生产接入验证** — 本地文件与测试已完成，仍需服务器 crontab 安装、一次 dry-run、一次健康恢复演练和邮件通道实发验证
+13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 
 ## 五、最近完成
+
+### 2026-07-04 SharedSignals-only provider 边界落地
+
+- [x] `reader.get_tushare()` 与 `reader.get_fundamentals()` 已改为 DB-first：只读 read model/缓存；无映射或无数据返回 degraded，不现场调用 Tushare。
+- [x] A 股 P2 财务采集已手动跑通并同步：`tushare_fina_indicator` 76,159 行、`tushare_dividend` 4,474 行进入 `market_factors`；`/fundamentals?symbol=000858.SZ` 返回 200。
+- [x] 生产 API 已重启加载新代码，监听 `127.0.0.1:8082`；TradingAgent 健康回执已从 SharedSignals API 401 恢复为 ok。
+- [x] MarketGraph 旧 RSSCollector/RSSHub 进程已停止；旧 provider cron 已禁用；`/tushare/provider` passthrough 已禁用。
+- [x] crontab 回滚备份保留在 `logs/cron/crontab_before_sharedsignals_only_20260704T074002Z.txt` 和 `logs/cron/crontab_before_sharedsignals_only_pass2_20260704T074047Z.txt`。
 
 ### 2026-07-04 ghost 测试显式跳过
 
@@ -101,7 +109,7 @@
 - [x] `tools/watchdog.py` 的 collector cron log 检查已从只看新鲜度扩展为扫描最近日志内容；命中 `Traceback`、`ModuleNotFoundError`、`Error`、`FAILED` 时将 `collector_status` 判为 critical，并把该项 `score_factor` 降为 0。
 - [x] `cron/duckdb_sync.sh` 已新增 Python 解释器优先级：`SHAREDSIGNALS_VENV_PYTHON` → `VENV_PYTHON`（默认 `/opt/marketgraph/venv/bin/python3`）→ `/opt/marketgraph/venv/bin/python` → 系统 `python3`，避免 DuckDB 依赖落到系统 Python 缺包。
 - [x] 验证：`py_compile tools/watchdog.py`、`bash -n cron/duckdb_sync.sh` 通过；本地 smoke 确认新日志内 `Traceback/ModuleNotFoundError` 会触发 collector critical。
-- [ ] 待服务器部署验证：本次只完成本地仓库修复，未声明生产 crontab 已更新。
+- [x] 生产验证：主服务器已用 `marketgraph` 用户运行 DuckDB sync 成功；watchdog 误报修复后 score=100，collector_status 无 failure_patterns。
 
 ### 2026-07-04 30 天无人值守 watchdog 闭环
 
@@ -110,7 +118,7 @@
 - [x] 新增 `cron/watchdog.sh`：5 分钟 cron wrapper，带 `flock`、`.env` bootstrap、独立 cron log。
 - [x] watchdog 读取 TradingAgent 跨系统健康输入目录 `logs/watchdog_inputs/`，用于统一日志留痕；不改变 SharedSignals 供数边界。
 - [x] 验证：`py_compile` 通过；`bash -n` 通过；`tests/test_watchdog.py` 4 项通过。
-- [ ] 待服务器部署验证：生产 crontab 尚未安装 watchdog，本轮未执行真实 kill/restart，也未发送真实邮件。
+- [x] 生产验证：`cron/watchdog.sh` 已在主服务器以 `marketgraph` 用户运行；`tools/auto_restart.sh` 已完成一次真实 API 重启恢复演练。邮件通道实发仍按系统邮件专项单独验证。
 
 ### 2026-07-03 系统类邮件模板补齐
 

@@ -109,3 +109,45 @@ def test_signed_jwt_expired_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -
 
     with pytest.raises(auth_module.AuthError):
         auth_module.authenticate({"Authorization": f"Bearer {token}"}, "203.0.113.10")
+
+
+def test_token_account_max_concurrent_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    token = "tenant-token"
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {
+                "tokens": [
+                    {
+                        "sha256": token_hash,
+                        "tenant_id": "tenant-concurrent",
+                        "tier": "pro",
+                        "scopes": ["read"],
+                        "max_concurrent": 1,
+                    }
+                ]
+            }
+        ),
+    )
+
+    account = auth_module.authenticate({"Authorization": f"Bearer {token}"}, "203.0.113.10")
+
+    auth_module.claim_concurrency(account)
+    with pytest.raises(auth_module.ConcurrencyLimitError):
+        auth_module.claim_concurrency(account)
+    auth_module.release_concurrency(account["tenant_id"])
+    auth_module.claim_concurrency(account)
+    auth_module.release_concurrency(account["tenant_id"])
+
+
+def test_default_free_concurrency_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    account = {"tenant_id": "tenant-free", "tier": "free", "scopes": ["read"]}
+
+    auth_module.claim_concurrency(account)
+    auth_module.claim_concurrency(account)
+    with pytest.raises(auth_module.ConcurrencyLimitError):
+        auth_module.claim_concurrency(account)
+    auth_module.release_concurrency(account["tenant_id"])
+    auth_module.release_concurrency(account["tenant_id"])

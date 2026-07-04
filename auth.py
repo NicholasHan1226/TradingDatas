@@ -26,6 +26,12 @@ RATE_LIMITS = {
     "enterprise": None,
     "internal": None,
 }
+CONCURRENCY_LIMITS = {
+    "free": 2,
+    "pro": 8,
+    "enterprise": None,
+    "internal": None,
+}
 LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 LOCALHOST_BYPASS = env_bool("SHAREDSIGNALS_LOCALHOST_BYPASS", False)
 JWT_VERIFY_KEY = os.environ.get("SHAREDSIGNALS_JWT_PUBLIC_KEY", "").strip()
@@ -64,9 +70,10 @@ SCOPE_ENDPOINTS["read"] = set().union(
 
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
+_ACTIVE_REQUESTS: dict[str, int] = {}
 _DEDUP_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _DEDUP_CACHE_BYTES = 0
-_TOKEN_HASHES: dict[str, dict[str, str]] | None = None
+_TOKEN_HASHES: dict[str, dict[str, Any]] | None = None
 
 
 class AuthError(Exception):
@@ -75,6 +82,10 @@ class AuthError(Exception):
 
 class RateLimitError(Exception):
     """Raised when rate limit is exceeded."""
+
+
+class ConcurrencyLimitError(Exception):
+    """Raised when per-tenant concurrency is exceeded."""
 
 
 
@@ -250,12 +261,12 @@ def _hash_token(token: str) -> str:
 
 
 
-def _load_token_hashes() -> dict[str, dict[str, str]]:
+def _load_token_hashes() -> dict[str, dict[str, Any]]:
     global _TOKEN_HASHES
     if _TOKEN_HASHES is not None:
         return _TOKEN_HASHES
 
-    items: dict[str, dict[str, str]] = {}
+    items: dict[str, dict[str, Any]] = {}
     raw_json = os.environ.get("SHAREDSIGNALS_TOKEN_HASHES_JSON", "").strip()
     if raw_json:
         try:
@@ -292,12 +303,19 @@ def _load_token_hashes() -> dict[str, dict[str, str]]:
             scopes = [s.strip() for s in scopes.split(",") if s.strip()]
         if not isinstance(scopes, list) or not scopes:
             scopes = ["read"]
+        raw_max_concurrent = item.get("max_concurrent")
+        try:
+            max_concurrent = int(raw_max_concurrent) if raw_max_concurrent is not None else None
+        except (TypeError, ValueError):
+            max_concurrent = None
         items[token_hash] = {
             "tenant_id": tenant_id,
             "tier": tier,
             "scopes": scopes,
             "auth_method": "token_hash",
         }
+        if max_concurrent is not None and max_concurrent >= 0:
+            items[token_hash]["max_concurrent"] = max_concurrent
 
     _TOKEN_HASHES = items
     return _TOKEN_HASHES
@@ -440,6 +458,43 @@ def enforce_rate_limit(tenant_id: str, tier: str) -> None:
         _cleanup_rate_log_locked(now)
 
 
+def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
+    raw_limit = account.get("max_concurrent")
+    if raw_limit is not None:
+        try:
+            value = int(raw_limit)
+        except (TypeError, ValueError):
+            value = 0
+        return None if value <= 0 else value
+    return CONCURRENCY_LIMITS.get(str(account.get("tier") or "free").lower(), CONCURRENCY_LIMITS["free"])
+
+
+def claim_concurrency(account: dict[str, Any]) -> None:
+    tenant_id = str(account.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise ConcurrencyLimitError("missing tenant id")
+    limit = _account_concurrency_limit(account)
+    if limit is None:
+        return
+    with _STATE_LOCK:
+        active = int(_ACTIVE_REQUESTS.get(tenant_id, 0))
+        if active >= limit:
+            raise ConcurrencyLimitError(f"concurrency limit exceeded for tenant={tenant_id}")
+        _ACTIVE_REQUESTS[tenant_id] = active + 1
+
+
+def release_concurrency(tenant_id: str) -> None:
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id:
+        return
+    with _STATE_LOCK:
+        active = int(_ACTIVE_REQUESTS.get(tenant_id, 0))
+        if active <= 1:
+            _ACTIVE_REQUESTS.pop(tenant_id, None)
+        else:
+            _ACTIVE_REQUESTS[tenant_id] = active - 1
+
+
 
 def request_fingerprint(path: str, params: dict[str, Any]) -> str:
     normalized = json.dumps({"path": path, "params": params}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -495,6 +550,9 @@ def cache_stats() -> dict[str, Any]:
             "dedup_entries": len(_DEDUP_CACHE),
             "dedup_bytes": _DEDUP_CACHE_BYTES,
             "request_log_tenants": len(_REQUEST_LOG),
+            "active_request_tenants": len(_ACTIVE_REQUESTS),
+            "active_requests": sum(_ACTIVE_REQUESTS.values()),
+            "concurrency_limits": dict(CONCURRENCY_LIMITS),
             "dedup_max_entries": DEDUP_MAX_ENTRIES,
             "dedup_max_bytes": DEDUP_MAX_BYTES,
             "dedup_max_entry_bytes": DEDUP_MAX_ENTRY_BYTES,

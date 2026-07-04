@@ -118,6 +118,37 @@ def test_stk_mins_ingests_intraday_with_metadata(tmp_path: Path):
     assert row[7]
 
 
+def test_factor_csv_expands_numeric_metrics(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "fina_indicator" / "20260704" / "600519.SH.csv",
+        "\n".join(
+            [
+                "ts_code,end_date,roe,roa,update_flag,report_type",
+                "600519.SH,20260331,28.5,18.2,1,Q1",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_factors", csv_path)
+
+    assert rows == 2
+    conn = sqlite3.connect(str(db_path))
+    try:
+        records = conn.execute(
+            "SELECT market, symbol, factor_name, event_time, value, provider, source_file, raw_json "
+            "FROM market_factors ORDER BY factor_name"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in records] == [
+        ("Ashare", "600519.SH", "fina_indicator:roa", "20260331", 18.2, "tushare_fina_indicator", "600519.SH.csv"),
+        ("Ashare", "600519.SH", "fina_indicator:roe", "20260331", 28.5, "tushare_fina_indicator", "600519.SH.csv"),
+    ]
+    assert "report_type" in records[0][7]
+
+
 def test_ingest_idempotent(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

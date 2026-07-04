@@ -6,6 +6,7 @@ ROOT="${SHAREDSIGNALS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-python3}"
 API_HOST="${SHAREDSIGNALS_API_HOST:-127.0.0.1}"
 API_PORT="${SHAREDSIGNALS_API_PORT:-8082}"
+LOCALHOST_BYPASS="${SHAREDSIGNALS_LOCALHOST_BYPASS:-1}"
 API_SCRIPT="${SHAREDSIGNALS_API_SCRIPT:-${ROOT}/api_server.py}"
 PREVIOUS_BINARY="${SHAREDSIGNALS_API_PREVIOUS_BINARY:-/opt/investment/SharedSignals/releases/previous/api_server.py}"
 LOG_DIR="${ROOT}/logs"
@@ -93,7 +94,12 @@ start_api() {
     source "${ROOT}/.env"
     set +a
   fi
-  SHAREDSIGNALS_ROOT="${ROOT}" PYTHONPATH="${ROOT}" nohup "${PYTHON_BIN}" "${script}" >> "${API_LOG}" 2>&1 &
+  export SHAREDSIGNALS_ROOT="${ROOT}"
+  export SHAREDSIGNALS_API_HOST="${SHAREDSIGNALS_API_HOST:-${API_HOST}}"
+  export SHAREDSIGNALS_API_PORT="${SHAREDSIGNALS_API_PORT:-${API_PORT}}"
+  export SHAREDSIGNALS_LOCALHOST_BYPASS="${SHAREDSIGNALS_LOCALHOST_BYPASS:-${LOCALHOST_BYPASS}}"
+  export PYTHONPATH="${ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+  nohup "${PYTHON_BIN}" "${script}" >> "${API_LOG}" 2>&1 &
   echo "$!" > "${PID_FILE}"
   json_log "started" "{\"script\":\"${script}\",\"pid\":$(cat "${PID_FILE}")}"
 }

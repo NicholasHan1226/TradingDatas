@@ -45,5 +45,5 @@ point_in_time:
   as_of: {desc: 查询时点, note: 只返回available_at <= as_of的数据}
 
 adjustment:
-  adj_factor: {desc: 复权因子, formula: 前复权价 = raw_close * adj_factor[date] / adj_factor[latest]}
-  adjusted_param: {desc: reader.py参数, values: [True(前复权), False(原始)]}
+  adj_factor: {desc: 复权因子, formula: "前复权价 = raw_close * adj_factor[date] / adj_factor[latest]"}
+  adjusted_param: {desc: reader.py参数, values: ["True(前复权)", "False(原始)"]}

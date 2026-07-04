@@ -328,19 +328,34 @@ class Handler(BaseHTTPRequestHandler):
         except auth.RateLimitError as exc:
             return self._error(429, str(exc))
 
+        claim_concurrency = getattr(auth, "claim_concurrency", None)
+        release_concurrency = getattr(auth, "release_concurrency", None)
+        concurrency_error = getattr(auth, "ConcurrencyLimitError", Exception)
+        concurrency_claimed = False
+        if claim_concurrency is not None:
+            try:
+                claim_concurrency(account)
+                concurrency_claimed = True
+            except concurrency_error as exc:
+                return self._error(429, str(exc))
+
         try:
-            response = self._dispatch(path, params)
-        except NotFoundError as exc:
-            return self._error(404, str(exc))
-        except ValueError as exc:
-            return self._error(400, str(exc))
-        except FileNotFoundError as exc:
-            return self._error(404, str(exc))
-        except Exception as exc:  # noqa: BLE001
-            import logging
-            logger = logging.getLogger("sharedsignals.api")
-            logger.error("Unhandled error on %s: %s", path, exc, exc_info=True)
-            return self._error(500, "internal error")
+            try:
+                response = self._dispatch(path, params)
+            except NotFoundError as exc:
+                return self._error(404, str(exc))
+            except ValueError as exc:
+                return self._error(400, str(exc))
+            except FileNotFoundError as exc:
+                return self._error(404, str(exc))
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logger = logging.getLogger("sharedsignals.api")
+                logger.error("Unhandled error on %s: %s", path, exc, exc_info=True)
+                return self._error(500, "internal error")
+        finally:
+            if concurrency_claimed and release_concurrency is not None:
+                release_concurrency(account["tenant_id"])
 
         auth.store_cached_response(fingerprint, response)
         self._send_json(response)
@@ -374,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
             return wrap_response(payload, metadata, source)
 
         if path == "/fundamentals":
-            ts_code = params.get("ts_code", "").strip()
+            ts_code = (params.get("ts_code", "") or params.get("symbol", "")).strip()
             if not ts_code:
                 raise ValueError("ts_code is required")
             rows = reader.get_fundamentals(ts_code=ts_code)

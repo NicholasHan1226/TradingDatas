@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -123,6 +125,106 @@ def _market_for(api_name, symbol):
     if symbol.endswith(".HK"):
         return "HK"
     return ""
+
+
+
+_FACTOR_BASE_COLUMNS = {
+    "ts_code",
+    "symbol",
+    "market",
+    "trade_date",
+    "ann_date",
+    "end_date",
+    "report_date",
+    "date",
+    "period",
+    "update_flag",
+    "provider",
+    "source_file",
+    "collected_at",
+    "raw_json",
+}
+_FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period")
+_FACTOR_INSERT_COLUMNS = (
+    "factor_hash",
+    "market",
+    "symbol",
+    "factor_name",
+    "event_time",
+    "value",
+    "provider",
+    "source_file",
+    "collected_at",
+    "raw_json",
+)
+
+
+def _coerce_float(value):
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace(",", "")
+    if not text or text in {"--", "None", "nan", "NaN", "null"}:
+        return None
+    if text.endswith("%"):
+        text = text[:-1]
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _factor_event_time(row):
+    for col in _FACTOR_DATE_COLUMNS:
+        value = str(row.get(col) or "").strip()
+        if value:
+            return value
+    return str(row.get("collected_at") or "").strip()
+
+
+def _factor_hash(api_name, symbol, event_time, factor_name, raw_json):
+    payload = "|".join(str(part or "") for part in (api_name, symbol, event_time, factor_name, raw_json))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _factor_rows(row, api_name, csv_path):
+    row = _canonical_row("market_factors", dict(row), api_name, csv_path)
+    raw_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    symbol = row.get("symbol") or row.get("ts_code") or ""
+    event_time = _factor_event_time(row) or _csv_collected_at(csv_path)
+    collected_at = row.get("collected_at") or _csv_collected_at(csv_path)
+    provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+    source_file = row.get("source_file") or Path(csv_path).name
+    market = row.get("market") or _market_for(api_name, symbol)
+
+    metrics = []
+    for key, value in row.items():
+        if key in _FACTOR_BASE_COLUMNS or key.startswith("_"):
+            continue
+        numeric = _coerce_float(value)
+        if numeric is not None:
+            metrics.append((key, numeric))
+
+    if not metrics:
+        metrics = [(api_name or "row", None)]
+
+    expanded = []
+    for metric, numeric in metrics:
+        factor_name = f"{api_name}:{metric}" if api_name else str(metric)
+        expanded.append(
+            {
+                "factor_hash": _factor_hash(api_name, symbol, event_time, factor_name, raw_json),
+                "market": market,
+                "symbol": symbol,
+                "factor_name": factor_name,
+                "event_time": event_time,
+                "value": numeric,
+                "provider": provider,
+                "source_file": source_file,
+                "collected_at": collected_at,
+                "raw_json": raw_json,
+            }
+        )
+    return expanded
 
 
 def _columns_for_insert(table, csv_columns, target_columns, api_name):
@@ -299,8 +401,12 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_tra
             reader = csv.DictReader(fh)
             csv_columns = reader.fieldnames or []
             api_name = _api_name_from_path(csv_path)
-            columns = _columns_for_insert(table, csv_columns, target_columns, api_name)
-            skipped = [col for col in csv_columns if col not in target_columns]
+            if table == "market_factors":
+                columns = [col for col in _FACTOR_INSERT_COLUMNS if col in target_columns]
+                skipped = [col for col in csv_columns if col in _FACTOR_BASE_COLUMNS]
+            else:
+                columns = _columns_for_insert(table, csv_columns, target_columns, api_name)
+                skipped = [col for col in csv_columns if col not in target_columns]
             if skipped:
                 logger.debug(
                     "csv bridge skipped unknown columns for %s: %s",
@@ -326,22 +432,23 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_tra
             transaction_open = True
 
             for row_number, row in enumerate(reader, start=2):
-                row = _canonical_row(table, row, api_name, csv_path)
-                values = _row_values(row, columns, required_columns, csv_path, row_number)
-                if values is None:
-                    continue
-                chunk.append(values)
-                if len(chunk) >= CHUNK_SIZE:
-                    chunk_written = _flush_chunk(conn, sql, chunk)
-                    rows_written += chunk_written
-                    transaction_rows += len(chunk)
-                    chunk.clear()
-                    if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
-                        conn.commit()
-                        transaction_open = False
-                        conn.execute("BEGIN IMMEDIATE")
-                        transaction_open = True
-                        transaction_rows = 0
+                canonical_rows = _factor_rows(row, api_name, csv_path) if table == "market_factors" else [_canonical_row(table, row, api_name, csv_path)]
+                for canonical_row in canonical_rows:
+                    values = _row_values(canonical_row, columns, required_columns, csv_path, row_number)
+                    if values is None:
+                        continue
+                    chunk.append(values)
+                    if len(chunk) >= CHUNK_SIZE:
+                        chunk_written = _flush_chunk(conn, sql, chunk)
+                        rows_written += chunk_written
+                        transaction_rows += len(chunk)
+                        chunk.clear()
+                        if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
+                            conn.commit()
+                            transaction_open = False
+                            conn.execute("BEGIN IMMEDIATE")
+                            transaction_open = True
+                            transaction_rows = 0
 
             if chunk:
                 chunk_written = _flush_chunk(conn, sql, chunk)

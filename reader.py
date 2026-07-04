@@ -794,30 +794,22 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "") -> str:
-    ts_upper = ts_code.upper()
-    if ts_upper.endswith(('.SH', '.SZ', '.BJ')):
-        try:
-            import sys
-            ashare_tools = str(ASHARE_ROOT)
-            if ashare_tools not in sys.path:
-                sys.path.insert(0, ashare_tools)
-            from a_share_tushare_api import _call as tushare_call
-            ed = end_date or _now().strftime("%Y%m%d")
-            rows = tushare_call('fina_indicator', {'ts_code': ts_code, 'start_date': '20250101', 'end_date': ed})
-            lineage = {"reader": "get_fundamentals", "source": "tushare:fina_indicator", "filters": {"ts_code": ts_code, "start_date": "20250101", "end_date": ed}}
-            return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="tushare:fina_indicator", source_tier="tushare", lineage=lineage, stale_after_hours=168.0))
-        except Exception as exc:
-            lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
-            return _json_cached(lambda: _degraded_empty("tushare:fina_indicator", f"Tushare fina_indicator failed: {exc}", lineage=lineage))
-    query = """
-        SELECT * FROM market_factors
-        WHERE symbol = ?
-        ORDER BY event_time DESC, collected_at DESC
-    """
-    rows, degraded = _sqlite_rows(query, (ts_code,), "market_factors")
+    clauses = ["symbol = ?"]
+    values: list[Any] = [ts_code]
+    if end_date:
+        clauses.append("event_time <= ?")
+        values.append(end_date)
+    query = (
+        "SELECT * FROM market_factors "
+        f"WHERE {' AND '.join(clauses)} "
+        "ORDER BY event_time DESC, collected_at DESC"
+    )
+    rows, degraded = _sqlite_rows(query, tuple(values), "market_factors")
     if degraded is not None:
         return _json_cached(lambda: degraded)
-    lineage = {"reader": "get_fundamentals", "db_path": str(SQLITE_PATH), "table": "market_factors", "filters": {"ts_code": ts_code}}
+    lineage = {"reader": "get_fundamentals", "db_path": str(SQLITE_PATH), "table": "market_factors", "filters": {"ts_code": ts_code, "end_date": end_date}}
+    if not rows:
+        return _json_cached(lambda: _degraded_empty("sqlite:market_factors", f"no fundamentals in SharedSignals read model for {ts_code}", lineage=lineage))
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_factors", source_tier="marketdata", lineage=lineage, stale_after_hours=168.0))
 
 
@@ -830,54 +822,57 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
-    """Read Tushare data from DB first, fallback to live Tushare API."""
+    """Read Tushare-backed data from the SharedSignals read model only."""
     from storage.csv_bridge import CSV_TO_TABLE_MAP
     table = CSV_TO_TABLE_MAP.get(api_name)
-    if table and SQLITE_PATH.exists():
-        try:
-            import sqlite3
-            conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
-            conn.execute("PRAGMA busy_timeout = 5000")
-            params = json.loads(params_json) if params_json else {}
-            code = ts_code or params.get("ts_code", "")
-            start = start_date or params.get("start_date", "")
-            end = end_date or params.get("end_date", "")
-            where = []; vals = []
-            if code: where.append("symbol = ?"); vals.append(code)
-            if start: where.append("trade_date >= ?"); vals.append(start)
-            if end: where.append("trade_date <= ?"); vals.append(end)
-            where_sql = " AND ".join(where) if where else "1=1"
-            sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY trade_date DESC LIMIT 5000"
-            rows_raw = conn.execute(sql, vals).fetchall()
-            cols = [d[0] for d in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-            conn.close()
-            if rows_raw:
-                rows = [dict(zip(cols, row)) for row in rows_raw]
-                lineage = {"reader": "get_tushare", "source": f"db:{table}", "filters": {"api_name": api_name}}
-                return _json_cached(lambda: _rows_to_wrappers(rows, source_id=f"db:{table}", source_tier="collector", lineage=lineage, stale_after_hours=48.0))
-        except Exception: pass
+    params = json.loads(params_json) if params_json else {}
+    lineage = {"reader": "get_tushare", "source": f"db:{table or 'unmapped'}", "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params}}
+    if not table:
+        return _json_cached(lambda: _degraded_empty(f"db:tushare:{api_name}", f"Tushare api_name={api_name} is not mapped to a SharedSignals read-model table", lineage=lineage))
+    if not SQLITE_PATH.exists():
+        return _json_cached(lambda: _degraded_empty(f"db:{table}", f"missing sqlite db: {SQLITE_PATH}", lineage=lineage))
     try:
-        import sys; ashare_root_str = str(ASHARE_ROOT)
-        if ashare_root_str not in sys.path: sys.path.insert(0, ashare_root_str)
-        from a_share_tushare_api import _call as tushare_call
-        params = json.loads(params_json) if params_json else {}
-        if ts_code: params["ts_code"] = ts_code
-        if start_date: params["start_date"] = start_date
-        if end_date: params["end_date"] = end_date
-        rows = tushare_call(api_name, params)
-        lineage = {"reader": "get_tushare", "source": f"tushare:{api_name}", "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params}}
-        return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id=f"tushare:{api_name}", source_tier="tushare", lineage=lineage, stale_after_hours=48.0))
+        import sqlite3
+        conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
+        conn.execute("PRAGMA busy_timeout = 5000")
+        cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        code = ts_code or params.get("ts_code", "") or params.get("symbol", "")
+        start = start_date or params.get("start_date", "") or params.get("trade_date", "")
+        end = end_date or params.get("end_date", "")
+        where: list[str] = []
+        vals: list[Any] = []
+        if code and "symbol" in cols:
+            where.append("symbol = ?")
+            vals.append(code)
+        date_col = "trade_date" if "trade_date" in cols else "event_time" if "event_time" in cols else "updated_at" if "updated_at" in cols else "collected_at" if "collected_at" in cols else ""
+        if start and date_col:
+            where.append(f"{date_col} >= ?")
+            vals.append(start)
+        if end and date_col:
+            where.append(f"{date_col} <= ?")
+            vals.append(end)
+        if "provider" in cols:
+            where.append("provider = ?")
+            vals.append(f"tushare_{api_name}")
+        where_sql = " AND ".join(where) if where else "1=1"
+        order_col = date_col or cols[0]
+        sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_col} DESC LIMIT 5000"
+        rows_raw = conn.execute(sql, vals).fetchall()
+        conn.close()
+        if rows_raw:
+            rows = [dict(zip(cols, row)) for row in rows_raw]
+            return _json_cached(lambda: _rows_to_wrappers(rows, source_id=f"db:{table}", source_tier="collector", lineage=lineage, stale_after_hours=48.0))
+        return _json_cached(lambda: _degraded_empty(f"db:{table}", f"no rows in SharedSignals read model for Tushare api_name={api_name}", lineage=lineage))
     except Exception as exc:
-        lineage = {"reader": "get_tushare", "filters": {"api_name": api_name, "ts_code": ts_code}}
-        return _json_cached(lambda: _degraded_empty(f"tushare:{api_name}", f"Tushare {api_name} failed: {exc}", lineage=lineage))
+        return _json_cached(lambda: _degraded_empty(f"db:{table}", f"read-model lookup failed for Tushare api_name={api_name}: {exc}", lineage=lineage))
 
 
 def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | None = None, end_date: str | None = None, **params: Any) -> list[dict[str, Any]]:
     """Read Tushare API data through SharedSignals reader, returning metadata-wrapped rows.
 
-    Routes to Tushare API via a_share_tushare_api._call().  Returns the same
-    wrapped shape as every other reader function (data / provenance / freshness /
-    quality / degraded / lineage).  Results are LRU-cached (maxsize=512).
+    Reads from the SharedSignals read-model tables populated by collectors. It
+    never calls the live Tushare provider path from the API/reader layer. Results
+    are LRU-cached (maxsize=512).
 
     Args:
         api_name: Tushare API name, e.g. "daily", "moneyflow", "fina_indicator",
@@ -886,10 +881,10 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
         ts_code: Optional stock code; auto-added to params as "ts_code".
         start_date: Optional start date (YYYYMMDD); auto-added as "start_date".
         end_date: Optional end date (YYYYMMDD); auto-added as "end_date".
-        **params: Additional Tushare API parameters passed through directly.
+        **params: Additional filters used only for read-model lookup.
 
     Returns:
-        list[dict]: Metadata-wrapped rows with source_id="tushare:{api_name}".
+        list[dict]: Metadata-wrapped rows with source_id="db:{table}" or a degraded wrapper if the collector has not populated the table.
     """
     lineage = {
         "reader": "get_tushare",
