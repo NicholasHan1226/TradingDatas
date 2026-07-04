@@ -64,7 +64,9 @@ def test_crypto_ndjson_bridge_routes_daily_and_intraday(tmp_path: Path):
     result = ingest_crypto_ndjson_to_sqlite(db_path, source_root)
 
     assert result["rows_written"] == 2
+    assert result["files_deleted"] == 2
     assert result["tables"] == {"market_bars_daily": 1, "market_bars_intraday": 1}
+    assert not any(source_root.glob("*/*/*.ndjson"))
 
     conn = sqlite3.connect(db_path)
     daily = conn.execute("SELECT symbol, close FROM market_bars_daily").fetchone()

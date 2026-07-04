@@ -156,10 +156,19 @@ def ingest_crypto_ndjson_to_sqlite(
         finally:
             conn.close()
 
+    deleted = 0
+    for path in paths:
+        try:
+            path.unlink()
+            deleted += 1
+        except FileNotFoundError:
+            continue
+
     row_count = len(daily_rows) + len(intraday_rows)
     return {
         "status": "ok",
         "files": len(paths),
+        "files_deleted": deleted,
         "rows_read": row_count,
         "rows_written": row_count,
         "tables": {"market_bars_daily": len(daily_rows), "market_bars_intraday": len(intraday_rows)},
