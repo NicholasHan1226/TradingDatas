@@ -3,7 +3,14 @@
 set -euo pipefail
 
 ROOT="${SHAREDSIGNALS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-python3}"
+DEFAULT_PYTHON_BIN="/opt/marketgraph/venv/bin/python3"
+if [ -n "${SHAREDSIGNALS_VENV_PYTHON:-}" ]; then
+  PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON}"
+elif [ -x "${DEFAULT_PYTHON_BIN}" ]; then
+  PYTHON_BIN="${DEFAULT_PYTHON_BIN}"
+else
+  PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
 API_HOST="${SHAREDSIGNALS_API_HOST:-127.0.0.1}"
 API_PORT="${SHAREDSIGNALS_API_PORT:-8082}"
 LOCALHOST_BYPASS="${SHAREDSIGNALS_LOCALHOST_BYPASS:-1}"
@@ -23,6 +30,34 @@ HEALTH_URL="${SHAREDSIGNALS_API_HEALTH_URL:-http://127.0.0.1:${API_PORT}/health}
 GRACE_SECONDS="${SHAREDSIGNALS_RESTART_GRACE_SECONDS:-10}"
 VERIFY_RETRIES="${SHAREDSIGNALS_RESTART_VERIFY_RETRIES:-12}"
 VERIFY_SLEEP="${SHAREDSIGNALS_RESTART_VERIFY_SLEEP:-2}"
+FORCE_RELOAD=0
+
+usage() {
+  cat <<'EOF'
+Usage: auto_restart.sh [--force|--force-reload]
+
+Without --force, the helper only restarts when /health is not reachable.
+With --force, it restarts even when the API is healthy so a deployed code change
+is loaded by the running process.
+EOF
+}
+
+for arg in "$@"; do
+  case "${arg}" in
+    --force|--force-reload)
+      FORCE_RELOAD=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: ${arg}" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
 
 mkdir -p "${LOG_DIR}"
 
@@ -124,12 +159,16 @@ verify_api() {
 }
 
 main() {
-  json_log "begin" "{\"port\":${API_PORT},\"script\":\"${API_SCRIPT}\"}"
+  json_log "begin" "{\"port\":${API_PORT},\"script\":\"${API_SCRIPT}\",\"force_reload\":${FORCE_RELOAD},\"python\":\"${PYTHON_BIN}\"}"
 
-  if health_ok; then
+  if [ "${FORCE_RELOAD}" -ne 1 ] && health_ok; then
     json_log "already_healthy" "{\"url\":\"${HEALTH_URL}\"}"
     write_fail_count 0
     exit 0
+  fi
+
+  if [ "${FORCE_RELOAD}" -eq 1 ]; then
+    json_log "force_reload" "{\"url\":\"${HEALTH_URL}\"}"
   fi
 
   graceful_stop

@@ -395,6 +395,19 @@ def _date_key(value: Any) -> str:
     return dt.strftime("%Y%m%d")
 
 
+def _blank_date_value(value: Any) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip()
+    return not text or text.lower() in {"none", "null"}
+
+
+def _optional_date_key(value: Any) -> str | None:
+    if _blank_date_value(value):
+        return None
+    return _date_key(value)
+
+
 def _file_collected_at(path: Path) -> str | None:
     try:
         st = path.stat()
@@ -641,11 +654,19 @@ def _sqlite_rows_by_symbols(table: str, symbols: list[str], limit: int) -> tuple
 
 
 def _filter_date_range(rows: Iterable[dict[str, Any]], start: Any, end: Any, fields: tuple[str, ...]) -> list[dict[str, Any]]:
-    start_key = _date_key(start)
-    end_key = _date_key(end)
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key is None and end_key is None:
+        return list(rows)
+    if start_key is None:
+        start_key = end_key
+    if end_key is None:
+        end_key = start_key
+    if start_key is None or end_key is None:
+        return []
     if start_key > end_key:
         start_key, end_key = end_key, start_key
-    matched = []
+    matched: list[dict[str, Any]] = []
     for row in rows:
         row_key = None
         for field in fields:
@@ -1137,7 +1158,20 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -> str:
-    date_key = _date_key(date_value)
+    date_key = _optional_date_key(date_value)
+    if date_key is None:
+        latest_rows, latest_degraded = _sqlite_rows(
+            "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ? AND symbol = ?",
+            ("Ashare", ts_code),
+            "market_bars_intraday",
+        )
+        if latest_degraded is not None:
+            return _json_cached(lambda: latest_degraded)
+        latest = latest_rows[0].get("trade_date") if latest_rows else None
+        date_key = _optional_date_key(latest)
+        if date_key is None:
+            lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"ts_code": ts_code, "date": None}}
+            return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", f"no intraday trade_date for ts_code={ts_code}", lineage=lineage))
     lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"ts_code": ts_code, "date": date_key}}
     rows, degraded = _sqlite_rows(
         "SELECT * FROM market_bars_intraday "

@@ -455,14 +455,14 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
 | A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
-| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min()` DB-first，旧 CSV 目录仅作回退 |
+| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min()` DB-first，未传日期时使用该股票最新 intraday 日期，旧 CSV 目录仅作回退 |
 | A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
 | Crypto klines | Binance → marketdata.sqlite | Bridged: `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
 | HK ETF 日线 | marketdata.sqlite | Bridged: `read_daily("HK", ...)` via `get_hk_etf` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
-| 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance |
+| 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
 | 宏观因子 | macro_factors.csv (from MG) | Bridged: `reader.get_macro_factors()` |
@@ -473,7 +473,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 **NEW** — 查询股票的行业/产业链/板块/概念信息。
 
-优先读取 `stock_industry_map.csv`；当该文件为空壳或无匹配时，回退 `market_assets` 中的 `sector/industry` 基础行业字段。返回申万/产业链字段取决于 `stock_industry_map.csv` 覆盖度，回退路径会在 provenance 中标记为 `sqlite:market_assets`。
+优先读取 `stock_industry_map.csv`。该文件由 `tools/refresh_stock_industry_map.py` / `cron/refresh_industry_map.sh` 在生产上每日 06:30 从 `market_assets.sector` 生成基础行业映射；当前基础映射覆盖 5,521 条 A 股。若文件缺失、权限异常或无匹配，则回退 `market_assets` 中的 `sector/industry` 基础行业字段，并在 provenance/lineage 中标记为 `sqlite:market_assets`。
 
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
@@ -667,6 +667,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-04 | 1.1.3 | 行业映射每日自动刷新并修复原子写入权限；`auto_restart.sh --force` 支持部署后显式 reload；`get_sentiment()`/`get_realtime_5min()` 修复空日期默认行为；HTTP `/sentiment` 与 `/realtime_5min` 支持 `limit`。 |
 | 2026-07-04 | 1.1.2 | `reader.is_trading_day()`、`get_realtime_5min()`、`get_industry()`、`get_sentiment()` 改为 read-model/真实 CSV 优先；`/health` 改为动态样例并放宽权益市场周末 freshness 阈值；moneyflow CSV 桥接进 `market_factors`。 |
 | 2026-07-04 | 1.1.1 | `reader.get_tushare()`/`get_fundamentals()` 改为 DB-first；移除现场 provider fallback；HTTP `/fundamentals` 兼容 `symbol`；记录账号并发限制与本机 API 运行边界 |
 | 2026-06-30 | 1.0.0 | 初始版本，文档化全部 reader 函数 |

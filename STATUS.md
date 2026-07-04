@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (reader 健康样例与 moneyflow 桥接修复)
+> 最后更新：2026-07-04 (行业映射自动刷新、force reload、默认日期与 limit 修复)
 
 ---
 
@@ -17,11 +17,11 @@
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh` 已新增，分别负责全 tier 采集、DuckDB 同步、patrol/heal 和 5 分钟 watchdog，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh` 已新增，分别负责全 tier 采集、A 股基础行业映射刷新、DuckDB 同步、patrol/heal 和 5 分钟 watchdog，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
@@ -82,10 +82,18 @@
 
 ## 五、最近完成
 
+### 2026-07-04 行业映射自动刷新、force reload 与默认日期修复
+
+- [x] 新增 `tools/refresh_stock_industry_map.py` 与 `cron/refresh_industry_map.sh`，每天 06:30 在 P3 reference 采集后从 `market_assets.sector` 生成 `stock_industry_map.csv`；生产已写出 5,521 条 A 股基础行业映射。
+- [x] 修复行业映射原子写入权限：生成文件与备份固定为目录 owner/group + `664`；root cron 入口会自动降权为 `marketgraph` 执行，避免 API 因 root:root 600 文件回退 SQLite。
+- [x] `tools/auto_restart.sh` 新增 `--force/--force-reload`，健康时也可显式重启加载部署后的新代码；默认 watchdog 行为仍保持“异常才重启”。
+- [x] `reader.get_sentiment()` 与 `reader.get_realtime_5min()` 修复空日期处理；`/sentiment?limit=1`、`/realtime_5min?...&limit=1` 已按 limit 输出限流。
+- [x] 生产验证：API PID 已强制重启至最新进程；`/health` OK，`/industry?ts_code=000001.SZ` 从 `stock_industry_map.csv` 读取且不降级，默认 realtime/sentiment 均不降级。
+
 ### 2026-07-04 reader 健康样例与 moneyflow 桥接修复
 
 - [x] `reader.is_trading_day()` 已改为优先读取 `market_bars_daily`，周末或未来日期使用最近交易日 + weekday fallback，不再依赖旧 `reference/market_calendar.py` wrapper。
-- [x] `reader.get_realtime_5min()` 已优先读取 `market_bars_intraday`；`reader.get_industry()` 在 `stock_industry_map.csv` 空壳时回退 `market_assets`；`reader.get_sentiment()` 在 intake 空壳时回退 `data/sentiment_signals.csv`。
+- [x] `reader.get_realtime_5min()` 已优先读取 `market_bars_intraday`，未传日期时自动使用该股票最新 intraday 日期；`reader.get_industry()` 已由 `stock_industry_map.csv` 优先读取，CSV 由 `cron/refresh_industry_map.sh` 每日 06:30 从 `market_assets.sector` 自动生成，`market_assets` 仅作为降级回退；`reader.get_sentiment()` 在 intake 空壳时回退 `data/sentiment_signals.csv`，未传日期时返回已有信号而不降级。
 - [x] `reader.get_tushare("stock_basic")` 对 `market_assets` 使用 `Ashare + tushare` provider 过滤，避免 `tushare_stock_basic` 误过滤。
 - [x] 已将已采集的 `data/tushare/moneyflow/20260703/*.csv` 桥接进 SQLite/DuckDB `market_factors`：3 只股票、54 条 moneyflow 指标，最新日期 `20260703`。回滚备份：`/opt/investment/MarketGraphRuntime/read_model/backups/marketdata_before_moneyflow_bridge_retry_20260704T093136Z.sqlite`。
 - [x] `/health` 生产验证：SharedSignals API 进程 `marketgraph` 用户运行，`127.0.0.1:8082/health` 返回 `status=ok`、functions `15/15`、Ashare/Crypto/US freshness 均 OK。

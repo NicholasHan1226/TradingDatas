@@ -107,6 +107,16 @@ def to_int(value: Any, default: int, *, min_val: int = 1, max_val: int = 10000) 
         return default
 
 
+def apply_row_limit(rows: Any, params: dict[str, str], *, default: int | None = None) -> Any:
+    if not isinstance(rows, list):
+        return rows
+    raw_limit = params.get("limit")
+    if raw_limit in (None, "") and default is None:
+        return rows
+    fallback = default if default is not None else len(rows)
+    return rows[:to_int(raw_limit, fallback, min_val=1, max_val=10000)]
+
+
 def validate_json_query_params(params: dict[str, str]) -> None:
     """Reject malformed JSON in query params that explicitly declare JSON content."""
     json_param_names = {"params", "filters", "payload"}
@@ -385,6 +395,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/sentiment":
             rows = reader.get_sentiment(start=params.get("start"), end=params.get("end"))
+            rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
@@ -491,8 +502,9 @@ class Handler(BaseHTTPRequestHandler):
             ts_code = params.get("ts_code", "").strip()
             if not ts_code:
                 raise ValueError("ts_code is required")
-            date = params.get("date", "").strip()
+            date = params.get("date", "").strip() or None
             rows = reader.get_realtime_5min(ts_code=ts_code, date=date)
+            rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
