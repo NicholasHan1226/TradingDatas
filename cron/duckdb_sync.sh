@@ -5,7 +5,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
+VENV_PYTHON="${VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
+if [ -n "${SHAREDSIGNALS_VENV_PYTHON:-}" ]; then
+  PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON}"
+elif [ -x "${VENV_PYTHON}" ]; then
+  PYTHON_BIN="${VENV_PYTHON}"
+elif [ -x "/opt/marketgraph/venv/bin/python" ]; then
+  PYTHON_BIN="/opt/marketgraph/venv/bin/python"
+else
+  PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"
 LOG_FILE="${LOG_DIR}/duckdb_sync.log"
@@ -24,7 +33,7 @@ cd "${ROOT}"
 if [ -f "${ROOT}/.env" ]; then
   set -a
   # shellcheck disable=SC1091
-  python3 -c "from env_bootstrap import bootstrap_sharedsignals_env; bootstrap_sharedsignals_env()"
+  "${PYTHON_BIN}" -c "from env_bootstrap import bootstrap_sharedsignals_env; bootstrap_sharedsignals_env()"
   set +a
 fi
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -56,6 +57,8 @@ RESTART_FAILURE_HALT_COUNT = int(os.environ.get("WATCHDOG_RESTART_FAILURE_HALT_C
 
 SOC_EMAIL = os.environ.get("WATCHDOG_SOC_EMAIL", "soc@coze.email")
 TRADING_EMAIL = os.environ.get("WATCHDOG_TRADING_EMAIL", "tradingadviser@coze.email")
+COLLECTOR_FAILURE_PATTERNS = ("Traceback", "ModuleNotFoundError", "Error", "FAILED")
+COLLECTOR_FAILURE_RE = re.compile("|".join(re.escape(pattern) for pattern in COLLECTOR_FAILURE_PATTERNS))
 
 
 def utc_now() -> str:
@@ -238,13 +241,17 @@ def check_collector_status(
             "alert": True,
             "reason": "no_log_files",
         }
+    now = time.time()
     newest = max(files, key=lambda item: item.stat().st_mtime)
-    age_minutes = max(0.0, (time.time() - newest.stat().st_mtime) / 60.0)
+    age_minutes = max(0.0, (now - newest.stat().st_mtime) / 60.0)
     if age_minutes <= max_age:
         status, factor = "ok", 1.0
     elif age_minutes <= max_age * 4:
         status, factor = "degraded", 0.5
     else:
+        status, factor = "critical", 0.0
+    recent_failures = _scan_recent_collector_failures(files, now=now, max_age_minutes=max_age)
+    if recent_failures:
         status, factor = "critical", 0.0
     return {
         "name": "collector_status",
@@ -255,7 +262,48 @@ def check_collector_status(
         "age_minutes": round(age_minutes, 2),
         "max_age_minutes": max_age,
         "alert": status != "ok",
+        "failure_patterns": recent_failures,
     }
+
+
+def _scan_recent_collector_failures(
+    files: list[Path],
+    *,
+    now: float,
+    max_age_minutes: int,
+) -> list[dict[str, Any]]:
+    scan_bytes = int(os.environ.get("WATCHDOG_COLLECTOR_LOG_SCAN_BYTES", "65536"))
+    scan_limit = int(os.environ.get("WATCHDOG_COLLECTOR_LOG_SCAN_LIMIT", "10"))
+    candidates: list[tuple[Path, float, float]] = []
+    for path in files:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        age_minutes = max(0.0, (now - mtime) / 60.0)
+        if age_minutes <= max_age_minutes:
+            candidates.append((path, mtime, age_minutes))
+    recent_files = sorted(candidates, key=lambda item: item[1], reverse=True)[:scan_limit]
+    failures: list[dict[str, Any]] = []
+    for path, _, age_minutes in recent_files:
+        try:
+            with path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                handle.seek(max(0, size - scan_bytes))
+                text = handle.read(scan_bytes).decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        matches = sorted({match.group(0) for match in COLLECTOR_FAILURE_RE.finditer(text)})
+        if matches:
+            failures.append(
+                {
+                    "log": str(path),
+                    "patterns": matches,
+                    "age_minutes": round(age_minutes, 2),
+                }
+            )
+    return failures
 
 
 def check_disk(root: Path = ROOT) -> dict[str, Any]:

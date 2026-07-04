@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (DB-first API 与五管线现状)
+> 最后更新：2026-07-04 (Tushare 调度 + watchdog 日志失败扫描)
 
 ---
 
@@ -90,6 +90,12 @@
 - [x] 验证：SharedSignals 全量测试 207 项通过；DuckDB wrapper 用生产 venv 实跑通过，`duckdb_merge.py` 状态 `ok`。
 - [ ] 待生产观察：下一个 A股交易时段确认 P0 每 5 分钟写入最新 `market_bars_intraday`；本轮会先补桥接已存在的 2026-07-03 `stk_mins` CSV。
 
+### 2026-07-04 watchdog 日志失败扫描与 DuckDB venv Python
+
+- [x] `tools/watchdog.py` 的 collector cron log 检查已从只看新鲜度扩展为扫描最近日志内容；命中 `Traceback`、`ModuleNotFoundError`、`Error`、`FAILED` 时将 `collector_status` 判为 critical，并把该项 `score_factor` 降为 0。
+- [x] `cron/duckdb_sync.sh` 已新增 Python 解释器优先级：`SHAREDSIGNALS_VENV_PYTHON` → `VENV_PYTHON`（默认 `/opt/marketgraph/venv/bin/python3`）→ `/opt/marketgraph/venv/bin/python` → 系统 `python3`，避免 DuckDB 依赖落到系统 Python 缺包。
+- [x] 验证：`py_compile tools/watchdog.py`、`bash -n cron/duckdb_sync.sh` 通过；本地 smoke 确认新日志内 `Traceback/ModuleNotFoundError` 会触发 collector critical。
+- [ ] 待服务器部署验证：本次只完成本地仓库修复，未声明生产 crontab 已更新。
 
 ### 2026-07-04 30 天无人值守 watchdog 闭环
 
