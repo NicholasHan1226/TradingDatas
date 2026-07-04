@@ -95,7 +95,7 @@ def load_recent_futures_symbols(
             (),
         )
 
-    selected: list[str] = []
+    grouped: dict[str, list[str]] = {}
     seen: set[str] = set()
     for symbol in symbols:
         key = symbol.lower()
@@ -104,10 +104,24 @@ def load_recent_futures_symbols(
         product = normalize_product(symbol)
         if products and product not in products:
             continue
-        selected.append(symbol)
         seen.add(key)
-        if len(selected) >= max_symbols:
+        grouped.setdefault(product, []).append(symbol)
+
+    selected: list[str] = []
+    product_order = sorted(grouped)
+    cursor = 0
+    while len(selected) < max_symbols and product_order:
+        added = False
+        for product in product_order:
+            candidates = grouped.get(product) or []
+            if cursor < len(candidates):
+                selected.append(candidates[cursor])
+                added = True
+                if len(selected) >= max_symbols:
+                    break
+        if not added:
             break
+        cursor += 1
     return selected
 
 

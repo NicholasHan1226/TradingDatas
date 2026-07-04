@@ -95,6 +95,47 @@ def test_load_recent_futures_symbols_default_products_include_stock_index_future
     assert "IF2609.CFFEX" in symbols
 
 
+def test_load_recent_futures_symbols_round_robins_products_before_truncating(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE market_bars_daily (
+                market TEXT,
+                symbol TEXT,
+                trade_date TEXT
+            )
+            """
+        )
+        rows = []
+        for product in ("CU", "I"):
+            for month in range(1, 13):
+                rows.append(("Futures", f"{product}26{month:02d}.SHF", "20260703"))
+        rows.extend(
+            [
+                ("Futures", "IF2609.CFFEX", "20260703"),
+                ("Futures", "IH2609.CFFEX", "20260703"),
+                ("Futures", "IC2609.CFX", "20260703"),
+                ("Futures", "IM2609.CFFEX", "20260703"),
+            ]
+        )
+        conn.executemany("INSERT INTO market_bars_daily VALUES (?, ?, ?)", rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+    symbols = load_recent_futures_symbols(
+        db_path,
+        trade_date="20260704",
+        products=set(DEFAULT_PRODUCTS),
+        max_symbols=8,
+    )
+
+    products = {normalize_product(symbol) for symbol in symbols}
+    assert {"if", "ih", "ic", "im"}.issubset(products)
+
+
 def test_build_params_uses_comma_separated_symbols() -> None:
     assert build_params(["CU2609.SHF", "RB2609.SHF"], freq="5MIN") == {
         "ts_code": "CU2609.SHF,RB2609.SHF",
