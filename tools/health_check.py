@@ -7,6 +7,7 @@ Public API:
 
 from __future__ import annotations
 
+import csv
 import os
 import sqlite3
 import subprocess
@@ -129,6 +130,77 @@ def get_health_status(
 # Individual check helpers
 # ---------------------------------------------------------------------------
 
+def _latest_csv_date(path: Path, column: str) -> str | None:
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return None
+        latest = ""
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                value = str(row.get(column) or row.get("candidate_date") or row.get("collected_at_dt") or row.get("collected_at") or "").strip()
+                if value.isdigit() and len(value) == 8:
+                    try:
+                        parsed = datetime.strptime(value, "%Y%m%d")
+                    except ValueError:
+                        continue
+                    if parsed.year < 2020 or value > datetime.now().strftime("%Y%m%d"):
+                        continue
+                    latest = max(latest, value)
+        return latest or None
+    except Exception:
+        return None
+
+
+def _reader_samples() -> dict[str, str]:
+    samples = {
+        "calendar_date": datetime.now().strftime("%Y%m%d"),
+        "daily_symbol": "000001.SZ",
+        "daily_date": "20260629",
+        "moneyflow_symbol": "000001.SZ",
+        "moneyflow_date": "20260629",
+        "event_date": "20260629",
+        "sentiment_date": "20260628",
+        "industry_symbol": "000001.SZ",
+        "intraday_symbol": "000001.SZ",
+        "intraday_date": "20260629",
+    }
+    db_path = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
+    if db_path.exists():
+        con = sqlite3.connect(str(db_path), timeout=5)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT symbol, trade_date FROM market_bars_daily WHERE market='Ashare' ORDER BY trade_date DESC LIMIT 1").fetchone()
+            if row:
+                samples["daily_symbol"] = str(row["symbol"] or samples["daily_symbol"])
+                samples["daily_date"] = str(row["trade_date"] or samples["daily_date"])
+            row = con.execute("SELECT symbol, event_time FROM market_factors WHERE market='Ashare' AND factor_name LIKE 'moneyflow:%' ORDER BY event_time DESC, collected_at DESC LIMIT 1").fetchone()
+            if row:
+                samples["moneyflow_symbol"] = str(row["symbol"] or samples["moneyflow_symbol"])
+                samples["moneyflow_date"] = str(row["event_time"] or samples["moneyflow_date"])
+            row = con.execute("SELECT trade_date FROM market_events WHERE COALESCE(trade_date, '') != '' ORDER BY trade_date DESC LIMIT 1").fetchone()
+            if row:
+                samples["event_date"] = str(row["trade_date"] or samples["event_date"])
+            row = con.execute("SELECT symbol FROM market_assets WHERE market='Ashare' AND COALESCE(sector, '') != '' ORDER BY symbol LIMIT 1").fetchone()
+            if row:
+                samples["industry_symbol"] = str(row["symbol"] or samples["industry_symbol"])
+            row = con.execute("SELECT symbol, trade_date FROM market_bars_intraday WHERE market='Ashare' ORDER BY trade_date DESC, bar_time DESC LIMIT 1").fetchone()
+            if row:
+                samples["intraday_symbol"] = str(row["symbol"] or samples["intraday_symbol"])
+                samples["intraday_date"] = str(row["trade_date"] or samples["intraday_date"])
+        finally:
+            con.close()
+    event_date = _latest_csv_date(SS / "data" / "intake" / "event_candidates.csv", "candidate_date")
+    if event_date:
+        samples["event_date"] = event_date
+    sentiment_date = (
+        _latest_csv_date(SS / "data" / "intake" / "sentiment_signals.csv", "source_date")
+        or _latest_csv_date(SS / "data" / "sentiment_signals.csv", "source_date")
+    )
+    if sentiment_date:
+        samples["sentiment_date"] = sentiment_date
+    return samples
+
+
 def _check_reader_functions() -> dict[str, Any]:
     if str(SS) not in sys.path:
         sys.path.insert(0, str(SS))
@@ -136,23 +208,23 @@ def _check_reader_functions() -> dict[str, Any]:
     # Use explicit imports instead of wildcard
     import reader  # noqa: E402
 
-    today = datetime.now().strftime("%Y%m%d")
+    samples = _reader_samples()
     funcs: list[tuple[str, Any]] = [
-        ("is_trading_day", reader.is_trading_day(today)),
-        ("market_data", reader.get_market_data("000001.SZ", "20260601", "20260630")),
-        ("fundamentals", reader.get_fundamentals("000001.SZ")),
+        ("is_trading_day", reader.is_trading_day(samples["calendar_date"])),
+        ("market_data", reader.get_market_data(samples["daily_symbol"], samples["daily_date"], samples["daily_date"])),
+        ("fundamentals", reader.get_fundamentals(samples["daily_symbol"])),
         ("reference", reader.get_reference("stock_master")),
         ("macro", reader.get_macro_factors("20260601", "20260629")),
-        ("capital_flow", reader.get_capital_flow(today, ts_code="000001.SZ")),
-        ("events", reader.get_events("20260601", "20260629")),
-        ("sentiment", reader.get_sentiment("20260601", "20260629")),
+        ("capital_flow", reader.get_capital_flow(samples["moneyflow_date"], ts_code=samples["moneyflow_symbol"])),
+        ("events", reader.get_events(samples["event_date"], samples["event_date"])),
+        ("sentiment", reader.get_sentiment(samples["sentiment_date"], samples["sentiment_date"])),
         ("crypto", reader.get_crypto_klines("BTCUSDT", 5)),
         ("pm_markets", reader.get_pm_markets(5)),
-        ("associations", reader.get_associations(ts_code="000001.SZ")),
+        ("associations", reader.get_associations(ts_code=samples["industry_symbol"])),
         ("impacts", reader.get_impacts(event_type="policy")),
-        ("industry", reader.get_industry("000001.SZ")),
-        ("realtime_5min", reader.get_realtime_5min(ts_code="000001.SZ", date=today)),
-        ("tushare", reader.get_tushare(api_name="stock_basic")),
+        ("industry", reader.get_industry(samples["industry_symbol"])),
+        ("realtime_5min", reader.get_realtime_5min(ts_code=samples["intraday_symbol"], date=samples["intraday_date"])),
+        ("tushare", reader.get_tushare(api_name="stock_basic", ts_code=samples["industry_symbol"])),
     ]
 
     ok: list[str] = []
@@ -169,6 +241,7 @@ def _check_reader_functions() -> dict[str, Any]:
         "ok": len(ok),
         "total": len(funcs),
         "degraded": degraded,
+        "samples": samples,
     }
 
 
@@ -181,7 +254,7 @@ def _check_data_freshness() -> dict[str, Any]:
     try:
         markets: dict[str, Any] = {}
         degraded: list[str] = []
-        today = datetime.now().strftime("%Y%m%d")
+        today_dt = datetime.now()
         for market in ["Ashare", "Crypto", "US"]:
             cur = con.execute(
                 "SELECT MAX(trade_date) FROM market_bars_daily WHERE market=?",
@@ -192,11 +265,17 @@ def _check_data_freshness() -> dict[str, Any]:
             if latest == "?":
                 days = 999
             else:
-                days = (datetime.now() - datetime.strptime(latest, "%Y%m%d")).days
-            status = "ok" if days <= 1 else "degraded"
-            if days > 1:
+                days = (today_dt - datetime.strptime(latest, "%Y%m%d")).days
+            if market == "Crypto":
+                max_age_days = 1
+            elif today_dt.weekday() in (5, 6, 0):
+                max_age_days = 3
+            else:
+                max_age_days = 1
+            status = "ok" if days <= max_age_days else "degraded"
+            if days > max_age_days:
                 degraded.append(f"{market}({latest})")
-            markets[market] = {"latest": latest, "age_days": days, "status": status}
+            markets[market] = {"latest": latest, "age_days": days, "max_age_days": max_age_days, "status": status}
 
         return {
             "status": "degraded" if degraded else "ok",

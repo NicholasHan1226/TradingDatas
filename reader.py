@@ -117,6 +117,7 @@ CRYPTO_ROOT = _LazyPath(lambda: Path(os.environ.get("CRYPTO_ROOT") or INVESTMENT
 
 SQLITE_PATH = _LazyPath(lambda: Path(os.environ.get("MARKETDATA_SQLITE") or RUNTIME_ROOT.get() / "read_model" / "marketdata.sqlite"))
 INTAKE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_INTAKE_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "intake"))
+SENTIMENT_SIGNALS_PATH = _LazyPath(lambda: Path(os.environ.get("SENTIMENT_SIGNALS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "sentiment_signals.csv"))
 REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT") or SHAREDSIGNALS_ROOT.get() / "reference"))
 MONEYFLOW_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_MONEYFLOW_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "moneyflow"))  # TODO: build native moneyflow collector
 # TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
@@ -150,6 +151,7 @@ _WATCHED_PATHS: list[Path] = [
     SQLITE_PATH,
     INTAKE_ROOT / "event_candidates.csv",
     INTAKE_ROOT / "sentiment_signals.csv",
+    SENTIMENT_SIGNALS_PATH,
     MACRO_FACTORS_PATH,
     CRYPTO_KLINES_PATH,
     STOCK_INDUSTRY_MAP_PATH,
@@ -800,15 +802,25 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_sentiment_cached(_generation: int, start: str, end: str, tier: str | None) -> str:
-    path = INTAKE_ROOT / "sentiment_signals.csv"
-    lineage = {"reader": "get_sentiment", "source_path": str(path), "filters": {"start": start, "end": end, "tier": tier}}
-    rows, degraded = _safe_csv(path, "csv:sentiment_signals", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    matched = _filter_date_range(rows or [], start, end, ("source_date", "collected_at_dt", "collected_at"))
-    if tier:
-        matched = [row for row in matched if str(row.get("source_tier") or row.get("evidence_tier") or "").lower() == tier.lower()]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:sentiment_signals", source_tier="sentiment", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
+    primary_path = INTAKE_ROOT / "sentiment_signals.csv"
+    paths = [primary_path, SENTIMENT_SIGNALS_PATH]
+    last_degraded: list[dict[str, Any]] | None = None
+    for path in paths:
+        source_id = "csv:sentiment_signals" if path is primary_path else "csv:sentiment_signals:archive"
+        lineage = {"reader": "get_sentiment", "source_path": str(path), "filters": {"start": start, "end": end, "tier": tier}}
+        rows, degraded = _safe_csv(path, source_id, lineage)
+        if degraded is not None:
+            last_degraded = degraded
+            continue
+        matched = _filter_date_range(rows or [], start, end, ("source_date", "candidate_date", "collected_at_dt", "collected_at"))
+        if tier:
+            matched = [row for row in matched if str(row.get("source_tier") or row.get("evidence_tier") or "").lower() == tier.lower()]
+        if matched:
+            return _json_cached(lambda: _rows_to_wrappers(matched, source_id=source_id, source_tier="sentiment", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=48.0))
+    if last_degraded is not None:
+        return _json_cached(lambda: last_degraded)
+    lineage = {"reader": "get_sentiment", "source_paths": [str(p) for p in paths], "filters": {"start": start, "end": end, "tier": tier}}
+    return _json_cached(lambda: _degraded_empty("csv:sentiment_signals", "no rows matched in sentiment signal sources", lineage=lineage))
 
 
 def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
@@ -884,9 +896,16 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
         if end and date_col:
             where.append(f"{date_col} <= ?")
             vals.append(end)
+        if table == "market_assets" and "market" in cols:
+            where.append("market = ?")
+            vals.append("Ashare")
         if "provider" in cols:
-            where.append("provider = ?")
-            vals.append(f"tushare_{api_name}")
+            if table == "market_assets":
+                where.append("(provider = ? OR provider = ?)")
+                vals.extend(["tushare", f"tushare_{api_name}"])
+            else:
+                where.append("provider = ?")
+                vals.append(f"tushare_{api_name}")
         where_sql = " AND ".join(where) if where else "1=1"
         order_col = date_col or cols[0]
         sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_col} DESC LIMIT 5000"
@@ -1078,27 +1097,36 @@ def get_reference(table: str) -> list[dict[str, Any]]:
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _is_trading_day_cached(_generation: int, date_value: str) -> str:
-    lineage = {"reader": "is_trading_day", "source_path": str(REFERENCE_ROOT / "market_calendar.py"), "filters": {"date": date_value}}
-    try:
-        import sys
+    date_key = _date_key(date_value)
+    lineage = {"reader": "is_trading_day", "source": "sqlite:market_bars_daily", "filters": {"date": date_key}}
+    rows, degraded = _sqlite_rows(
+        "SELECT 1 AS is_trading_day FROM market_bars_daily WHERE market = ? AND trade_date = ? LIMIT 1",
+        ("Ashare", date_key),
+        "market_bars_daily",
+    )
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    if rows:
+        data = {"date": date_key, "is_trading_day": True, "calendar_method": "read_model_daily_bar"}
+        return _json_cached(lambda: [_wrap(data, source_id="sqlite:market_bars_daily", source_tier="calendar", collected_at=_now_iso(), lineage=lineage, stale_after_hours=24.0)])
 
-        ref = str(REFERENCE_ROOT)
-        if ref not in sys.path:
-            sys.path.insert(0, ref)
-        try:
-            ref_index = sys.path.index(ref)
-            if ref_index != 0:
-                sys.path.pop(ref_index)
-                sys.path.insert(0, ref)
-        except (ValueError, IndexError):
-            pass
-        from market_calendar import is_trading_day as calendar_is_trading_day  # type: ignore
-
-        result = bool(calendar_is_trading_day(date_value))
-        data = {"date": _date_key(date_value), "is_trading_day": result}
-        return _json_cached(lambda: [_wrap(data, source_id="reference:market_calendar", source_tier="calendar", collected_at=_now_iso(), lineage=lineage, stale_after_hours=24.0)])
-    except Exception as exc:  # pragma: no cover - defensive reader boundary
-        return _json_cached(lambda: _degraded_empty("reference:market_calendar", f"calendar read failed: {exc}", lineage=lineage))
+    latest_rows, latest_degraded = _sqlite_rows(
+        "SELECT MAX(trade_date) AS latest_trade_date FROM market_bars_daily WHERE market = ?",
+        ("Ashare",),
+        "market_bars_daily",
+    )
+    latest = ""
+    if latest_degraded is None and latest_rows:
+        latest = str(latest_rows[0].get("latest_trade_date") or "")
+    weekday = datetime.strptime(date_key, "%Y%m%d").weekday()
+    if latest and date_key <= latest:
+        result = False
+        method = "read_model_gap_before_latest"
+    else:
+        result = weekday < 5
+        method = "weekday_fallback_after_latest_read_model"
+    data = {"date": date_key, "is_trading_day": result, "calendar_method": method, "latest_trade_date": latest}
+    return _json_cached(lambda: [_wrap(data, source_id="sqlite:market_bars_daily", source_tier="calendar", collected_at=_now_iso(), lineage=lineage, stale_after_hours=24.0)])
 
 
 def is_trading_day(date: Any) -> list[dict[str, Any]]:
@@ -1110,27 +1138,44 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -> str:
     date_key = _date_key(date_value)
+    lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"ts_code": ts_code, "date": date_key}}
+    rows, degraded = _sqlite_rows(
+        "SELECT * FROM market_bars_intraday "
+        "WHERE market = ? AND symbol = ? AND trade_date = ? "
+        "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '') "
+        "ORDER BY bar_time ASC LIMIT 5000",
+        ("Ashare", ts_code, date_key, "5min", "5m"),
+        "market_bars_intraday",
+    )
+    if degraded is None and rows:
+        collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
+        return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="marketdata", collected_at=collected_at, lineage=lineage, stale_after_hours=48.0))
+
     day_dir = REALTIME_5M_ROOT / date_key
-    lineage = {"reader": "get_realtime_5min", "source_path": str(day_dir), "filters": {"ts_code": ts_code, "date": date_key}}
+    fallback_lineage = {"reader": "get_realtime_5min", "source_path": str(day_dir), "filters": {"ts_code": ts_code, "date": date_key}}
     try:
         if not day_dir.exists():
-            return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"missing directory: {day_dir}", lineage=lineage))
+            reason = f"no rows in sqlite market_bars_intraday and missing directory: {day_dir}"
+            if degraded is not None:
+                reason = f"sqlite degraded and missing directory: {day_dir}"
+            return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
         matched: list[dict[str, Any]] = []
         for path in sorted(day_dir.glob("*.csv")):
-            rows = _read_csv(path)
-            for row in rows:
+            for row in _read_csv(path):
                 if row.get("ts_code") == ts_code:
                     row["_source_file"] = str(path)
                     matched.append(row)
-        matched.sort(key=lambda row: str(row.get("time") or ""))
-        return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:rt_min_5m", source_tier="tushare", collected_at=_file_collected_at(day_dir), lineage=lineage, stale_after_hours=2.0))
+        matched.sort(key=lambda row: str(row.get("time") or row.get("bar_time") or ""))
+        if not matched:
+            return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"no rows matched in {day_dir}", lineage=fallback_lineage))
+        return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:rt_min_5m", source_tier="tushare", collected_at=_file_collected_at(day_dir), lineage=fallback_lineage, stale_after_hours=2.0))
     except Exception as exc:  # pragma: no cover - defensive reader boundary
-        return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"realtime read failed: {exc}", lineage=lineage))
+        return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"realtime read failed: {exc}", lineage=fallback_lineage))
 
 
 def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
-    return _safe_public("csv:rt_min_5m", lineage, lambda generation: _get_realtime_5min_cached(generation, str(ts_code), str(date)))
+    return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, str(ts_code), str(date)))
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
@@ -1138,10 +1183,26 @@ def _get_industry_cached(_generation: int, ts_code: str) -> str:
     path = STOCK_INDUSTRY_MAP_PATH
     lineage = {"reader": "get_industry", "source_path": str(path), "filters": {"ts_code": ts_code}}
     rows, degraded = _safe_csv(path, "csv:stock_industry_map", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    matched = [row for row in (rows or []) if row.get("ts_code") == ts_code]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:stock_industry_map", source_tier="reference", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+    if degraded is None:
+        matched = [row for row in (rows or []) if row.get("ts_code") == ts_code]
+        if matched:
+            return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:stock_industry_map", source_tier="reference", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+
+    db_lineage = {"reader": "get_industry", "source": "sqlite:market_assets", "filters": {"ts_code": ts_code}}
+    asset_rows, asset_degraded = _sqlite_rows(
+        "SELECT market, symbol, symbol AS ts_code, name, asset_type, exchange, "
+        "sector, sector AS industry, sector AS sw_l1_name, "
+        "list_date, status, provider, source_file, updated_at, raw_json "
+        "FROM market_assets WHERE market = ? AND symbol = ? LIMIT 1",
+        ("Ashare", ts_code),
+        "market_assets",
+    )
+    if asset_degraded is not None:
+        return _json_cached(lambda: asset_degraded)
+    if asset_rows:
+        collected_at = max((str(row.get("updated_at") or row.get("collected_at") or "") for row in asset_rows), default="") or None
+        return _json_cached(lambda: _rows_to_wrappers(asset_rows, source_id="sqlite:market_assets", source_tier="reference", collected_at=collected_at, lineage=db_lineage, stale_after_hours=720.0))
+    return _json_cached(lambda: _degraded_empty("sqlite:market_assets", f"no industry rows matched for {ts_code}", lineage=db_lineage))
 
 
 def get_industry(ts_code: str) -> list[dict[str, Any]]:
