@@ -22,7 +22,7 @@ from collectors.tushare.collector import TushareCollector  # noqa: E402
 from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_csv_to_sqlite  # noqa: E402
 
 API_NAME = "rt_fut_min"
-DEFAULT_PRODUCTS = ("rb", "cu", "i", "m")
+DEFAULT_PRODUCTS = ("rb", "cu", "i", "m", "if", "ih", "ic", "im")
 DEFAULT_FREQ = "5MIN"
 _DATE_RE = re.compile(r"^\d{8}$")
 

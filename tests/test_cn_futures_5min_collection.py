@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tools.collect_cn_futures_5min import (
+    DEFAULT_PRODUCTS,
     build_params,
     load_recent_futures_symbols,
     main,
@@ -40,6 +41,7 @@ def _create_universe_db(path: Path) -> None:
                 ("Futures", "CU0001.SHF"),
                 ("Futures", "CU2609.SHF"),
                 ("Futures", "RB2609.SHF"),
+                ("Futures", "IF2609.CFFEX"),
                 ("Futures", "AU2609.SHF"),
             ],
         )
@@ -48,6 +50,7 @@ def _create_universe_db(path: Path) -> None:
             [
                 ("Futures", "CU2609.SHF", "20260703"),
                 ("Futures", "RB2609.SHF", "20260703"),
+                ("Futures", "IF2609.CFFEX", "20260703"),
                 ("Futures", "AU2609.SHF", "20260703"),
             ],
         )
@@ -59,6 +62,9 @@ def _create_universe_db(path: Path) -> None:
 def test_normalize_product_handles_exchange_suffix() -> None:
     assert normalize_product("RB2609.SHF") == "rb"
     assert normalize_product("I2509.DCE") == "i"
+    assert normalize_product("IF2609.CFFEX") == "if"
+    assert "if" in DEFAULT_PRODUCTS
+    assert "im" in DEFAULT_PRODUCTS
 
 
 def test_load_recent_futures_symbols_prefers_daily_bars_and_filters_products(tmp_path: Path) -> None:
@@ -73,6 +79,20 @@ def test_load_recent_futures_symbols_prefers_daily_bars_and_filters_products(tmp
     )
 
     assert symbols == ["CU2609.SHF", "RB2609.SHF"]
+
+
+def test_load_recent_futures_symbols_default_products_include_stock_index_futures(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_universe_db(db_path)
+
+    symbols = load_recent_futures_symbols(
+        db_path,
+        trade_date="20260704",
+        products=set(DEFAULT_PRODUCTS),
+        max_symbols=10,
+    )
+
+    assert "IF2609.CFFEX" in symbols
 
 
 def test_build_params_uses_comma_separated_symbols() -> None:

@@ -91,7 +91,7 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - `trade_date` 使用 `YYYYMMDD`
 - `open/high/low/close/volume/amount` 来自 Tushare 日线字段映射
 
-`rt_fut_min` 使用独立的 CNFutures 5 分钟采集入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。默认从最新 Futures 日线合约池选择 `rb/cu/i/m` 重点品种，也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。SQLite bridge 写入：
+`rt_fut_min` 使用独立的 CNFutures 5 分钟采集入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。默认从最新 Futures 日线合约池选择 `rb/cu/i/m/if/ih/ic/im` 重点品种，其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证；也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。SQLite bridge 写入：
 
 - `market="Futures"`
 - `provider="tushare_rt_fut_min"`
@@ -731,7 +731,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-05 | 1.1.8 | CNFutures 5 分钟默认合约池加入股指期货 `IF/IH/IC/IM`，供 TradingAgent 股指日内方向风格读取同一 SharedSignals 数据层。 |
 | 2026-07-04 | 1.1.7 | 新增 CNFutures 5 分钟数据新鲜度验收工具，只读检查 `market_bars_intraday` Futures 5 分钟 bar 的 stale/no_data/error 状态。 |
 | 2026-07-04 | 1.1.6 | 新增 CNFutures 5 分钟采集入口 `rt_fut_min`，写入 `market_bars_intraday`，并以独立 cron 支持日盘、夜盘和跨午夜夜盘采集。 |
 | 2026-07-04 | 1.1.5 | `fut_daily` 改为按交易日全品种采集并写入 `market_bars_daily`，market=`Futures`；`sync_daily.py` 支持 `--trade-date` 与 `--only-api` 定向补采。 |
@@ -739,4 +739,5 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 2026-07-04 | 1.1.3 | 行业映射每日自动刷新并修复原子写入权限；`auto_restart.sh --force` 支持部署后显式 reload；`get_sentiment()`/`get_realtime_5min()` 修复空日期默认行为；HTTP `/sentiment` 与 `/realtime_5min` 支持 `limit`。 |
 | 2026-07-04 | 1.1.2 | `reader.is_trading_day()`、`get_realtime_5min()`、`get_industry()`、`get_sentiment()` 改为 read-model/真实 CSV 优先；`/health` 改为动态样例并放宽权益市场周末 freshness 阈值；moneyflow CSV 桥接进 `market_factors`。 |
 | 2026-07-04 | 1.1.1 | `reader.get_tushare()`/`get_fundamentals()` 改为 DB-first；移除现场 provider fallback；HTTP `/fundamentals` 兼容 `symbol`；记录账号并发限制与本机 API 运行边界 |
+| 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
 | 2026-06-30 | 1.0.0 | 初始版本，文档化全部 reader 函数 |

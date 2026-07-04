@@ -87,7 +87,7 @@
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
-16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集。
+16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；默认合约池覆盖 `rb/cu/i/m/if/ih/ic/im`，生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集。
 17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
 18. [x] **RSS/RSSHub 退役收口** — 旧 RSSCollector cron 已禁用；RSSHub 残留进程已停止，旧顶层目录已移入 `_archive/retired_residuals_20260704T172705Z`；`rss_collector.db` 仅保留历史/迁移审计。
 19. [x] **API 能力清单生产化** — `/capabilities` 缺 registry 时返回 auth scope 兜底；`cron/capability_scan.sh` 每小时刷新 registry，若存在 degraded endpoint 但 registry 已写出则记录 WARN 不阻断 cron。
@@ -96,7 +96,7 @@
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
-- [x] 新增 `tools/collect_cn_futures_5min.py`：调用 Tushare `rt_fut_min`，默认 `freq=5MIN`；支持从最新 Futures 日线合约池自动选择 `rb/cu/i/m`，也支持 `--symbols` 或 `CN_FUTURES_5MIN_SYMBOLS` 指定合约。
+- [x] 新增 `tools/collect_cn_futures_5min.py`：调用 Tushare `rt_fut_min`，默认 `freq=5MIN`；支持从最新 Futures 日线合约池自动选择 `rb/cu/i/m/if/ih/ic/im`，其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证；也支持 `--symbols` 或 `CN_FUTURES_5MIN_SYMBOLS` 指定合约。
 - [x] 新增 `cron/cn_futures_5min.sh`：带 `flock`、超时、日志、生产 venv Python 和可选降权执行；只采集/桥接行情，不写交易信号、不触发模拟或实盘执行。
 - [x] CSV→SQLite bridge 已将 `rt_fut_min` 映射到 `market_bars_intraday`，兼容 `code/time` 和 `ts_code/trade_time` 字段，写入 `market=Futures`、`provider=tushare_rt_fut_min`、`interval=5min`。
 - [x] 排期边界：`P6_other_daily` 保持 30 分钟杂项/日频刷新；期货 5 分钟采集走独立 cron，日盘/夜盘每 5 分钟运行，跨午夜段按周二到周六凌晨覆盖。
