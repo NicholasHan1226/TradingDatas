@@ -296,10 +296,47 @@ class Handler(BaseHTTPRequestHandler):
         """Handle CORS preflight requests."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key")
         self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
+
+    def _discard_request_body(self) -> None:
+        raw_length = self.headers.get("Content-Length", "0") or "0"
+        try:
+            length = int(raw_length)
+        except ValueError:
+            length = 0
+        if length > 0:
+            self.rfile.read(min(length, 1_000_000))
+
+    def _cache_invalidate_response(self) -> dict[str, Any]:
+        reader.clear_caches()
+        return {"status": "ok", "message": "all caches cleared", "timestamp": utc_now_iso()}
+
+    def do_POST(self) -> None:
+        _ensure_runtime_loaded()
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        params = {key: values[-1] for key, values in parse_qs(parsed.query, keep_blank_values=True).items()}
+        self._discard_request_body()
+        try:
+            validate_json_query_params(params)
+        except ValueError as exc:
+            return self._error(400, str(exc))
+        if path != "/cache/invalidate":
+            return self._error(404, f"unknown endpoint: {path}")
+        try:
+            account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.AuthError as exc:
+            return self._error(401, str(exc))
+        if not auth.check_endpoint_scope(account, path):
+            return self._error(403, f"scope does not grant access to {path}")
+        try:
+            auth.enforce_rate_limit(account["tenant_id"], account["tier"])
+        except auth.RateLimitError as exc:
+            return self._error(429, str(exc))
+        return self._send_json(self._cache_invalidate_response())
 
     def do_GET(self) -> None:
         _ensure_runtime_loaded()
@@ -509,8 +546,7 @@ class Handler(BaseHTTPRequestHandler):
             return wrap_response(payload, metadata, source)
 
         if path == "/cache/invalidate":
-            reader.clear_caches()
-            return {"status": "ok", "message": "all caches cleared", "timestamp": utc_now_iso()}
+            return self._cache_invalidate_response()
 
         if path == "/cache/status":
             return {

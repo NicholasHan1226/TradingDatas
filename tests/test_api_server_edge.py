@@ -121,8 +121,13 @@ def api_edge_server(monkeypatch):
 
 
 def _get_json(base_url: str, path: str) -> tuple[int, dict[str, Any]]:
+    return _request_json(base_url, path)
+
+
+def _request_json(base_url: str, path: str, *, method: str = "GET") -> tuple[int, dict[str, Any]]:
+    request = urllib.request.Request(base_url + path, method=method)
     try:
-        with urllib.request.urlopen(base_url + path, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode("utf-8"))
@@ -173,6 +178,16 @@ def test_api_concurrent_cache_invalidate_calls_do_not_corrupt_state(api_edge_ser
     assert status == 200
     assert payload["generation"] >= 1
     assert reader.clear_count >= 1
+
+
+def test_api_cache_invalidate_accepts_post(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _request_json(base_url, "/cache/invalidate", method="POST")
+
+    assert status == 200
+    assert payload["status"] == "ok"
+    assert reader.clear_count == 1
 
 
 def test_api_oversize_query_is_handled_gracefully(api_edge_server) -> None:

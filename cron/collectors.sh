@@ -5,6 +5,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+RUN_AS_USER="${SHAREDSIGNALS_CRON_USER:-marketgraph}"
+if [ "$(id -u)" -eq 0 ] && id -u "${RUN_AS_USER}" >/dev/null 2>&1; then
+  exec runuser -u "${RUN_AS_USER}" -- "$0" "$@"
+fi
 PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"

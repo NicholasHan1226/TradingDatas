@@ -153,7 +153,18 @@ class TushareCollector(BaseCollector):
             "us_daily": ("ts_code", "trade_date"),
             "cn_cpi": ("month",),
             "cn_pmi": ("month",),
+            "cn_m": ("month",),
+            "cn_ppi": ("month",),
+            "cn_gdp": ("quarter",),
+            "sf_month": ("month",),
             "shibor": ("date",),
+            "shibor_lpr": ("date",),
+            "us_tycr": ("date",),
+            "us_tbr": ("date",),
+            "us_tltr": ("date",),
+            "hibor": ("date",),
+            "libor": ("date",),
+            "repo_daily": ("trade_date", "repo_maturity"),
         }
         key_fields = keys.get(api_name, ("ts_code", "trade_date"))
         return tuple(str(row.get(f, "")) for f in key_fields)

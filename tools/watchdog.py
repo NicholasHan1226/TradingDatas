@@ -57,8 +57,19 @@ RESTART_FAILURE_HALT_COUNT = int(os.environ.get("WATCHDOG_RESTART_FAILURE_HALT_C
 
 SOC_EMAIL = os.environ.get("WATCHDOG_SOC_EMAIL", "soc@coze.email")
 TRADING_EMAIL = os.environ.get("WATCHDOG_TRADING_EMAIL", "tradingadviser@coze.email")
-COLLECTOR_FAILURE_PATTERNS = ("Traceback", "ModuleNotFoundError", "Error", "FAILED")
-COLLECTOR_FAILURE_RE = re.compile("|".join(re.escape(pattern) for pattern in COLLECTOR_FAILURE_PATTERNS))
+COLLECTOR_FAILURE_PATTERNS = (
+    ("Traceback", r"\bTraceback\b"),
+    ("ModuleNotFoundError", r"\bModuleNotFoundError\b"),
+    ("ERROR", r"\bERROR\b"),
+    ("FAILED", r"\bFAILED\b"),
+    ("SQLITE_BRIDGE_ERRORS", r"\bSQLITE_BRIDGE_ERRORS\b"),
+    ("bridge_failures", r"\bbridge_failures=([1-9][0-9]*)\b"),
+    ("database is locked", r"database is locked"),
+)
+COLLECTOR_FAILURE_RE = re.compile(
+    "|".join(f"(?P<P{idx}>{pattern})" for idx, (_label, pattern) in enumerate(COLLECTOR_FAILURE_PATTERNS)),
+    re.IGNORECASE,
+)
 COLLECTOR_LOG_EXCLUDE = {"watchdog.log"}
 CRON_RUN_START_RE = re.compile(r"^\[[^\]]+\] START ", re.MULTILINE)
 CRON_RUN_OK_RE = re.compile(r"^\[[^\]]+\] OK ", re.MULTILINE)
@@ -303,7 +314,7 @@ def _scan_recent_collector_failures(
         except OSError:
             continue
         text_to_scan = _latest_cron_run_segment(text)
-        matches = sorted({match.group(0) for match in COLLECTOR_FAILURE_RE.finditer(text_to_scan)})
+        matches = _collector_failure_labels(text_to_scan)
         if matches:
             failures.append(
                 {
@@ -313,6 +324,16 @@ def _scan_recent_collector_failures(
                 }
             )
     return failures
+
+
+def _collector_failure_labels(text: str) -> list[str]:
+    labels = set()
+    for match in COLLECTOR_FAILURE_RE.finditer(text):
+        for idx, (label, _pattern) in enumerate(COLLECTOR_FAILURE_PATTERNS):
+            if match.group(f"P{idx}") is not None:
+                labels.add(label)
+                break
+    return sorted(labels)
 
 
 def _latest_cron_run_segment(text: str) -> str:

@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (行业映射自动刷新、force reload、默认日期与 limit 修复)
+> 最后更新：2026-07-04 (低频宏观/事件/资产桥接与 watchdog 误报修复)
 
 ---
 
@@ -25,14 +25,14 @@
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
-- **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + `--exit-on-failure`
+- **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 绑定 `127.0.0.1:8082` 运行；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
 
 ## 二、已知问题
 
-- shibor_lpr 返回 0 行（待调查，libor 已停更属正常）
+- libor/hibor 当前可为空返回；libor 属历史停更类接口，hibor 取决于当日源数据。`shibor_lpr` 已恢复：2026-07-04 生产 P4 回看 180 天采集 3 行，写入 `market_factors` 6 条。
 - sync_daily.py CSV→SQLite bridge 已完成并接入 `storage/csv_bridge.py`；后续只保留生产 crontab 日志与 DuckDB 同步链路观察
 - `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
 - R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
@@ -57,7 +57,7 @@
 | get_industry | /industry | OK |
 | get_realtime_5min | /realtime_5min | OK |
 | get_tushare | /tushare | OK |
-| clear_caches | /cache/invalidate | OK |
+| clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
 - 健康检查覆盖：10 → 17 函数（health_check.py 已更新）
@@ -81,6 +81,16 @@
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 
 ## 五、最近完成
+
+### 2026-07-04 低频宏观、事件/资产桥接与 watchdog 误报修复
+
+- [x] `collectors/tushare/sync_daily.py` 支持 API 级 `lookback_days`；P4 低频宏观默认回看 180 天，避免 LPR/月度/季度数据被 7 天窗口误判为空。
+- [x] 补齐 Tushare 低频宏观去重键：`shibor_lpr`/`cn_m`/`cn_ppi`/`cn_gdp`/`sf_month`/美国利率曲线/`repo_daily` 等不再 fallback 到 `ts_code,trade_date`。
+- [x] 补齐 CSV→SQLite 映射：`cn_gdp`、`sf_month`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily` 写入 `market_factors`；`cctv_news`/`news` 自动生成 `event_hash` 写入 `market_events`；`index_global` 写入 `Global` 日线，`etf_basic`/`fut_basic` 写入资产表。
+- [x] 生产验证：P4 宏观 17/17 API 成功，`shibor_lpr` 3 行→6 条因子，P4 SQLite bridge 33,160 行；`cctv_news` 379 条事件，`index_global` 182 条，ETF 3,347 条，期货基础 10,000 条已补桥接；DuckDB sync 状态 `ok`。
+- [x] `/cache/invalidate` 增加 POST 支持并保留 GET 兼容；API 已 force reload，POST 返回 200。
+- [x] watchdog collector 日志扫描改为标签化失败匹配，只抓真实 `ERROR`/`FAILED`/`SQLITE_BRIDGE_ERRORS`/`bridge_failures>0`/`database is locked`，不再把 `bridge_errors=0` 误判；生产 `--no-email` 巡检恢复 `collector_status=ok`。
+- [x] 验证：`pytest -q` 通过（79 passed, 147 skipped）；`py_compile` 与 cron wrapper `bash -n` 通过。
 
 ### 2026-07-04 行业映射自动刷新、force reload 与默认日期修复
 

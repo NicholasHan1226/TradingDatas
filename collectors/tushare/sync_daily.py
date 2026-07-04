@@ -91,6 +91,32 @@ def date_range(lookback_days: int) -> tuple[str, str, str]:
     return trade_date, start_date, end_date
 
 
+def resolve_api_window(
+    api_def: dict[str, Any],
+    trade_date: str,
+    start_date: str,
+    end_date: str,
+) -> tuple[str, str, str]:
+    """Return per-API date window, honoring optional lookback_days."""
+    raw_lookback = api_def.get("lookback_days")
+    if raw_lookback in (None, ""):
+        return trade_date, start_date, end_date
+    try:
+        lookback_days = int(raw_lookback)
+    except (TypeError, ValueError):
+        logger.warning("invalid lookback_days for %s: %r", api_def.get("api_name"), raw_lookback)
+        return trade_date, start_date, end_date
+    if lookback_days <= 0:
+        return trade_date, start_date, end_date
+    try:
+        end_dt = datetime.strptime(end_date, "%Y%m%d")
+    except ValueError:
+        logger.warning("invalid end_date for %s: %s", api_def.get("api_name"), end_date)
+        return trade_date, start_date, end_date
+    api_start_date = (end_dt - timedelta(days=lookback_days)).strftime("%Y%m%d")
+    return trade_date, api_start_date, end_date
+
+
 def fill_params(
     template: dict,
     ts_code: str | None,
@@ -218,6 +244,9 @@ def sync_tier(
             api_name = api_def["api_name"]
             template = api_def.get("params", {})
             fields = api_def.get("fields")
+            _api_trade_date, api_start_date, api_end_date = resolve_api_window(
+                api_def, trade_date, start_date, end_date
+            )
             api_start = time.time()
             api_total = 0
             api_calls = 0
@@ -231,7 +260,7 @@ def sync_tier(
             for ts_code in codes:
                 call_idx += 1
                 api_calls += 1
-                params = fill_params(template, ts_code, trade_date, start_date, end_date)
+                params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
                 rows = collector.collect(api_name, params, fields)
                 if getattr(collector, "last_collect_failed", False):
                     api_failures += 1
@@ -276,10 +305,13 @@ def sync_tier(
         api_name = api_def["api_name"]
         template = api_def.get("params", {})
         fields = api_def.get("fields")
+        _api_trade_date, api_start_date, api_end_date = resolve_api_window(
+            api_def, trade_date, start_date, end_date
+        )
         api_start = time.time()
 
         call_idx += 1
-        params = fill_params(template, None, trade_date, start_date, end_date)
+        params = fill_params(template, None, trade_date, api_start_date, api_end_date)
         rows = collector.collect(api_name, params, fields)
         api_failures = 1 if getattr(collector, "last_collect_failed", False) else 0
         save_path, save_error = _save_csv(api_name, rows)

@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.0 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.4 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -66,6 +66,9 @@ marketdata.sqlite (11 表)
 | `US` | 美股 | Tushare 美股接口 / Alpaca |
 | `Crypto` | 加密 | Binance (4 接口) |
 | `PredictionMarkets` | 预测市场 | Polymarket (3 接口) |
+| `Global` | 全球指数 | Tushare `index_global` |
+| `ETF` | ETF 基础信息 | Tushare `etf_basic` |
+| `Futures` | 期货基础信息 | Tushare `fut_basic` / `fut_daily` |
 
 ### 核心表字段
 
@@ -99,6 +102,25 @@ marketdata.sqlite (11 表)
 | `url` | TEXT | 来源 URL |
 | `source` | TEXT | 源名称 |
 | `collected_at` | TEXT | 采集时间 |
+
+Tushare `news` / `major_news` / `cctv_news` 进入 `market_events` 时由 bridge 自动补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。
+
+#### market_factors (因子/宏观/资金)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `factor_hash` | TEXT PK | 因子唯一哈希 |
+| `market` | TEXT | 市场代码，可为空 |
+| `symbol` | TEXT | 品种代码，可为空 |
+| `factor_name` | TEXT | `api_name:metric` 格式 |
+| `event_time` | TEXT | 指标对应期，优先取 `trade_date/ann_date/end_date/report_date/date/period/month/quarter/year` |
+| `value` | REAL | 数值化指标 |
+| `provider` | TEXT | 例如 `tushare_shibor_lpr` |
+| `source_file` | TEXT | 来源 CSV 文件 |
+| `collected_at` | TEXT | 采集时间 |
+| `raw_json` | TEXT | 原始行 JSON |
+
+低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）先按 P4/P6 定时采集落 CSV，再展开为 `market_factors`。月度/季度字段只作为 `event_time`，不作为数值因子。
 
 #### market_coverage_status (覆盖状态)
 
@@ -461,11 +483,14 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
 | HK ETF 日线 | marketdata.sqlite | Bridged: `read_daily("HK", ...)` via `get_hk_etf` |
+| 全球指数日线 | Tushare `index_global` | collector → `market_bars_daily`，market=`Global` |
+| ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
+| 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
 | 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
-| 宏观因子 | macro_factors.csv (from MG) | Bridged: `reader.get_macro_factors()` |
+| 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |
 
 ### 关联查询 (Association Queries)
 
@@ -667,6 +692,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-04 | 1.1.4 | 低频宏观接口支持 API 级回看窗口并补齐去重键/SQLite 映射；Tushare 新闻自动生成 `event_hash`；`index_global`/`etf_basic`/`fut_basic` 进入 read model；`/cache/invalidate` 支持 POST。 |
 | 2026-07-04 | 1.1.3 | 行业映射每日自动刷新并修复原子写入权限；`auto_restart.sh --force` 支持部署后显式 reload；`get_sentiment()`/`get_realtime_5min()` 修复空日期默认行为；HTTP `/sentiment` 与 `/realtime_5min` 支持 `limit`。 |
 | 2026-07-04 | 1.1.2 | `reader.is_trading_day()`、`get_realtime_5min()`、`get_industry()`、`get_sentiment()` 改为 read-model/真实 CSV 优先；`/health` 改为动态样例并放宽权益市场周末 freshness 阈值；moneyflow CSV 桥接进 `market_factors`。 |
 | 2026-07-04 | 1.1.1 | `reader.get_tushare()`/`get_fundamentals()` 改为 DB-first；移除现场 provider fallback；HTTP `/fundamentals` 兼容 `symbol`；记录账号并发限制与本机 API 运行边界 |

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import hashlib
 import json
 import logging
 import os
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
@@ -25,6 +28,32 @@ DEFAULT_SQLITE_PATH = (
     / "marketdata.sqlite"
 )
 
+
+def _bridge_lock_path(db_path: Path) -> Path:
+    return db_path.parent / f".{db_path.name}.csv_bridge.lock"
+
+
+@contextmanager
+def _sqlite_bridge_lock(db_path: Path):
+    timeout = env_int("SHAREDSIGNALS_CSV_BRIDGE_LOCK_TIMEOUT", 180, min_value=0)
+    lock_path = _bridge_lock_path(db_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    with lock_path.open("a+") as handle:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if timeout <= 0 or time.monotonic() >= deadline:
+                    raise TimeoutError(f"timed out waiting for csv bridge lock: {lock_path}") from exc
+                time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 CSV_TO_TABLE_MAP = {
     "adj_factor": "market_bars_daily",
     "balancesheet": "market_factors",
@@ -37,12 +66,20 @@ CSV_TO_TABLE_MAP = {
     "cn_m": "market_factors",
     "cn_pmi": "market_factors",
     "cn_ppi": "market_factors",
+    "libor": "market_factors",
+    "hibor": "market_factors",
+    "us_tltr": "market_factors",
+    "us_tbr": "market_factors",
+    "us_tycr": "market_factors",
+    "sf_month": "market_factors",
+    "cn_gdp": "market_factors",
     "daily": "market_bars_daily",
     "daily_basic": "market_bars_daily",
     "dividend": "market_factors",
     "express": "market_factors",
     "fina_indicator": "market_factors",
     "forecast": "market_factors",
+    "etf_basic": "market_assets",
     "fund_basic": "market_assets",
     "fund_daily": "market_bars_daily",
     "fund_nav": "market_assets",
@@ -72,7 +109,7 @@ CSV_TO_TABLE_MAP = {
     "news": "market_events",
     "pledge_detail": "market_factors",
     "pledge_stat": "market_factors",
-    "repo_daily": "market_bars_daily",
+    "repo_daily": "market_factors",
     "repurchase": "market_factors",
     "share_float": "market_assets",
     "shibor": "market_factors",
@@ -118,6 +155,12 @@ def _market_for(api_name, symbol):
         return "HK"
     if api_name in ("us_daily", "us_basic"):
         return "US"
+    if api_name == "index_global":
+        return "Global"
+    if api_name in ("fut_basic", "fut_daily"):
+        return "Futures"
+    if api_name == "etf_basic":
+        return "ETF"
 
     symbol = str(symbol or "")
     if symbol.endswith((".SZ", ".SH", ".BJ")):
@@ -138,13 +181,16 @@ _FACTOR_BASE_COLUMNS = {
     "report_date",
     "date",
     "period",
+    "month",
+    "quarter",
+    "year",
     "update_flag",
     "provider",
     "source_file",
     "collected_at",
     "raw_json",
 }
-_FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period")
+_FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period", "month", "quarter", "year")
 _FACTOR_INSERT_COLUMNS = (
     "factor_hash",
     "market",
@@ -250,6 +296,14 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append("trade_date")
         if api_name in ("weekly", "monthly", "stk_mins", "rt_k") and "interval" in target_columns:
             derived_columns.append("interval")
+    if table == "market_assets":
+        for col in ("name", "asset_type", "status", "updated_at", "raw_json"):
+            if col in target_columns:
+                derived_columns.append(col)
+    if table == "market_events":
+        for col in ("event_hash", "event_type", "event_time", "trade_date", "source", "raw_json"):
+            if col in target_columns:
+                derived_columns.append(col)
     if api_name and "provider" in target_columns:
         derived_columns.append("provider")
     if "collected_at" in target_columns:
@@ -277,6 +331,45 @@ def _trade_date_from_trade_time(trade_time):
     return ""
 
 
+_EVENT_TIME_COLUMNS = ("event_time", "datetime", "pub_time", "date", "trade_date", "ann_date")
+
+
+def _event_time_from_row(row):
+    for col in _EVENT_TIME_COLUMNS:
+        value = str(row.get(col) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _trade_date_from_event_time(event_time):
+    value = str(event_time or "").strip()
+    if not value:
+        return ""
+    first_part = value[:10]
+    digits = "".join(ch for ch in first_part if ch.isdigit())
+    if len(digits) >= 8:
+        return digits[:8]
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else ""
+
+
+def _event_hash(provider, event_type, event_time, row):
+    payload = "|".join(
+        str(part or "")
+        for part in (
+            provider,
+            event_type,
+            event_time,
+            row.get("title"),
+            row.get("content"),
+            row.get("url"),
+            row.get("source") or row.get("src"),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _canonical_row(table, row, api_name, csv_path):
     symbol = row.get("ts_code") or row.get("symbol")
     if symbol:
@@ -300,6 +393,52 @@ def _canonical_row(table, row, api_name, csv_path):
             row["interval"] = api_name
         elif api_name in ("stk_mins", "rt_k"):
             row["interval"] = "5min"
+
+    if table == "market_assets":
+        if not row.get("name"):
+            for name_col in ("name", "csname", "cname", "extname", "index_name"):
+                if row.get(name_col):
+                    row["name"] = row.get(name_col)
+                    break
+        if not row.get("asset_type"):
+            asset_type_map = {
+                "etf_basic": "etf",
+                "fut_basic": "future",
+                "fund_basic": "fund",
+                "hk_basic": "stock",
+                "stock_basic": "stock",
+                "us_basic": "stock",
+            }
+            if api_name in asset_type_map:
+                row["asset_type"] = asset_type_map[api_name]
+        if not row.get("status") and row.get("list_status"):
+            row["status"] = row.get("list_status")
+        if not row.get("updated_at"):
+            row["updated_at"] = _csv_collected_at(csv_path)
+        if not row.get("raw_json"):
+            row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
+
+    if table == "market_events":
+        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        event_type = row.get("event_type") or api_name or "event"
+        event_time = row.get("event_time") or _event_time_from_row(row)
+        trade_date = row.get("trade_date") or _trade_date_from_event_time(event_time)
+        if provider and not row.get("provider"):
+            row["provider"] = provider
+        if event_type and not row.get("event_type"):
+            row["event_type"] = event_type
+        if event_time and not row.get("event_time"):
+            row["event_time"] = event_time
+        if trade_date and not row.get("trade_date"):
+            row["trade_date"] = trade_date
+        if row.get("src") and not row.get("source"):
+            row["source"] = row.get("src")
+        if not row.get("source") and provider:
+            row["source"] = provider
+        if not row.get("raw_json"):
+            row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
+        if not row.get("event_hash"):
+            row["event_hash"] = _event_hash(provider, event_type, event_time, row)
 
     if api_name and not row.get("provider"):
         row["provider"] = f"tushare_{api_name}"
@@ -365,7 +504,7 @@ def _flush_chunk(conn, sql, chunk):
     return conn.total_changes - before
 
 
-def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
+def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
     """Ingest one CSV file into an existing SQLite table.
 
     The bridge is defensive: it never creates target tables. If the database or
@@ -464,6 +603,12 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_tra
         conn.close()
 
     return rows_written
+
+
+def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
+    db_path_obj = Path(db_path)
+    with _sqlite_bridge_lock(db_path_obj):
+        return _ingest_csv_to_sqlite_unlocked(db_path_obj, table, csv_path, encoding=encoding, max_transaction_rows=max_transaction_rows)
 
 
 def ingest_date_partition(db_path, api_name, trade_date, data_dir):

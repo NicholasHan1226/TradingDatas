@@ -260,24 +260,28 @@ priorities:
   P4_macro_daily:
   - api_name: cn_cpi
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
   - api_name: cn_pmi
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
   - api_name: cn_m
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
   - api_name: cn_ppi
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -290,18 +294,21 @@ priorities:
     per_stock: false
   - api_name: shibor_lpr
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
   - api_name: cn_gdp
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
   - api_name: sf_month
     frequency: daily
+    lookback_days: 180
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
