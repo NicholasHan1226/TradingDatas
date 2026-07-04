@@ -286,19 +286,50 @@ def _check_data_freshness() -> dict[str, Any]:
 
 
 def _check_cron_activity() -> dict[str, Any]:
-    log_dir = RUNTIME_ROOT / "staging" / "logs"
-    if not log_dir.exists():
-        return {"status": "degraded", "message": "log directory not found", "active_logs": 0}
+    log_dirs = [
+        Path(os.environ["SHAREDSIGNALS_CRON_LOG_DIR"])
+        if os.environ.get("SHAREDSIGNALS_CRON_LOG_DIR")
+        else None,
+        SS / "logs" / "cron",
+        SS / "logs",
+        RUNTIME_ROOT / "staging" / "logs",
+    ]
+    existing = [path for path in log_dirs if path is not None and path.exists()]
+    if not existing:
+        return {
+            "status": "degraded",
+            "message": "log directory not found",
+            "active_logs": 0,
+            "checked_dirs": [str(path) for path in log_dirs if path is not None],
+        }
 
-    r = subprocess.run(
-        ["find", str(log_dir), "-name", "*.log", "-mmin", "-15"],
-        capture_output=True, text=True, timeout=10,
-    )
-    active = len([l for l in r.stdout.splitlines() if l.strip()])
-    return {
+    active_files: set[str] = set()
+    errors: list[str] = []
+    for log_dir in existing:
+        try:
+            r = subprocess.run(
+                ["find", str(log_dir), "-name", "*.log", "-mmin", "-15"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if r.returncode != 0:
+                errors.append(f"{log_dir}: {r.stderr.strip() or r.returncode}")
+                continue
+            active_files.update(l.strip() for l in r.stdout.splitlines() if l.strip())
+        except Exception as exc:
+            errors.append(f"{log_dir}: {exc}")
+
+    active = len(active_files)
+    result = {
         "status": "ok" if active > 0 else "degraded",
         "active_logs": active,
+        "checked_dirs": [str(path) for path in existing],
     }
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 def _check_architecture() -> dict[str, Any]:

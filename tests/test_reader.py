@@ -191,88 +191,80 @@ class TestRuntimeBridge:
 # ============================================================================
 
 class TestMarketCalendar:
-    """Test market calendar functions with mocked Tushare."""
+    """Test market calendar functions with a SharedSignals read-model cache."""
 
     @pytest.fixture(autouse=True)
-    def clear_cache(self):
+    def calendar_db(self, tmp_path, monkeypatch):
         """Clear cache before each test."""
-        try:
-            from reference.market_calendar import clear_cache
-            clear_cache()
-        except Exception:
-            pass
-        yield
-
-    @pytest.fixture
-    def mock_tushare_call(self):
-        """Mock the _call function to return controlled data."""
-        with patch("reference.market_calendar._call") as mock:
-            yield mock
-
-    def test_is_trading_day_true_for_weekday(self, mock_tushare_call):
-        """Weekday with is_open=1 should return True."""
-        from reference.market_calendar import is_trading_day, clear_cache
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            CREATE TABLE market_bars_daily (
+                market TEXT,
+                symbol TEXT,
+                trade_date TEXT,
+                close REAL
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO market_bars_daily VALUES (?, ?, ?, ?)",
+            [
+                ("Ashare", "000001.SZ", "20260629", 10.0),
+                ("Ashare", "000001.SZ", "20260630", 10.1),
+                ("Ashare", "000001.SZ", "20260701", 10.2),
+            ],
+        )
+        conn.commit()
+        conn.close()
+        monkeypatch.setenv("SHARED_SIGNALS_DB", str(db_path))
+        from reference.market_calendar import clear_cache
         clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260629", "is_open": "1", "exchange": "SSE"}
-        ]
+        yield
+        clear_cache()
+
+    def test_is_trading_day_true_for_cached_day(self):
+        """Cached A-share daily bar date should return True."""
+        from reference.market_calendar import is_trading_day
+
         result = is_trading_day(date(2026, 6, 29))
         assert result is True
 
-    def test_is_trading_day_false_for_weekend(self, mock_tushare_call):
-        """Weekend with is_open=0 should return False."""
-        from reference.market_calendar import is_trading_day, clear_cache
-        clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260628", "is_open": "0", "exchange": "SSE"}
-        ]
+    def test_is_trading_day_false_for_weekend(self):
+        """Weekend without cached rows should return False."""
+        from reference.market_calendar import is_trading_day
+
         result = is_trading_day(date(2026, 6, 28))
         assert result is False
 
-    def test_get_trading_days_returns_list(self, mock_tushare_call):
+    def test_get_trading_days_returns_list(self):
         """Should return sorted list of date objects."""
-        from reference.market_calendar import get_trading_days, clear_cache
-        clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260629", "is_open": "1"},
-            {"cal_date": "20260630", "is_open": "1"},
-            {"cal_date": "20260701", "is_open": "1"},
-        ]
+        from reference.market_calendar import get_trading_days
+
         result = get_trading_days(date(2026, 6, 29), date(2026, 7, 1))
         assert isinstance(result, list)
         assert len(result) == 3
         assert all(isinstance(d, date) for d in result)
 
-    def test_get_trading_days_swaps_reversed_range(self, mock_tushare_call):
+    def test_get_trading_days_swaps_reversed_range(self):
         """Start > end should be swapped."""
-        from reference.market_calendar import get_trading_days, clear_cache
-        clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260629", "is_open": "1"},
-            {"cal_date": "20260630", "is_open": "1"},
-        ]
+        from reference.market_calendar import get_trading_days
+
         result = get_trading_days(date(2026, 6, 30), date(2026, 6, 29))
         assert len(result) == 2
 
-    def test_get_next_trading_day_returns_date_or_none(self, mock_tushare_call):
+    def test_get_next_trading_day_returns_date_or_none(self):
         """Should return next trading day or None."""
-        from reference.market_calendar import get_next_trading_day, clear_cache
-        clear_cache()
-        mock_tushare_call.return_value = [
-            {"cal_date": "20260630", "is_open": "1"},
-            {"cal_date": "20260701", "is_open": "1"},
-        ]
-        result = get_next_trading_day(date(2026, 6, 29))
-        assert result == date(2026, 6, 30) or result is None
+        from reference.market_calendar import get_next_trading_day
 
-    def test_get_next_trading_day_include_today(self, mock_tushare_call):
+        result = get_next_trading_day(date(2026, 6, 29))
+        assert result == date(2026, 6, 30)
+
+    def test_get_next_trading_day_include_today(self):
         """include_today=True on trading day should return today."""
-        from reference.market_calendar import get_next_trading_day, clear_cache
-        clear_cache()
-        mock_tushare_call.side_effect = [
-            [{"cal_date": "20260629", "is_open": "1"}],
-            [{"cal_date": "20260629", "is_open": "1"}],
-        ]
+        from reference.market_calendar import get_next_trading_day
+
         result = get_next_trading_day(date(2026, 6, 29), include_today=True)
         assert result == date(2026, 6, 29)
 
@@ -290,28 +282,11 @@ class TestMarketCalendar:
         with pytest.raises(ValueError):
             _to_date("2026-13-01")
 
-    def test_raises_when_tushare_unavailable(self):
-        """When _call is None, should raise RuntimeError."""
-        import reference.market_calendar as mc
-        saved = mc._call
-        mc._call = None
-        mc.clear_cache()
-        try:
-            with pytest.raises(RuntimeError, match="unavailable"):
-                mc.is_trading_day(date(2026, 6, 29))
-        finally:
-            mc._call = saved
-            mc.clear_cache()
-
-    def test_raises_on_empty_response(self, mock_tushare_call):
-        """Empty API response for a weekday range should raise."""
+    def test_raises_on_uncached_weekday_range(self):
+        """Empty cache for a weekday range should raise instead of calling providers."""
         from reference.market_calendar import (
             TradingCalendarUnavailableError, get_trading_days, clear_cache,
         )
         clear_cache()
-        mock_tushare_call.return_value = []
         with pytest.raises(TradingCalendarUnavailableError):
-            get_trading_days(date(2026, 6, 29), date(2026, 7, 1))
-
-
-from unittest.mock import patch
+            get_trading_days(date(2026, 7, 2), date(2026, 7, 3))

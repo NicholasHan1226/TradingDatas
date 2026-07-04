@@ -1,17 +1,19 @@
 {
-  "_comment": "Template only. Do not put real token hashes in tracked files.",
+  "_comment": "Template only. Do not put real token hashes in tracked files. token_hash is the 64-char hex digest produced by auth._hash_token(token).",
   "tokens": [
     {
       "tenant_id": "tradingagent",
       "tier": "internal",
       "scopes": ["read"],
-      "pbkdf2_sha256": "iterations:salt_hex:hash_hex"
+      "max_concurrent": 16,
+      "token_hash": "0000000000000000000000000000000000000000000000000000000000000000"
     },
     {
       "tenant_id": "marketgraph",
       "tier": "internal",
       "scopes": ["health", "market_data", "macro", "fundamentals", "read"],
-      "pbkdf2_sha256": "iterations:salt_hex:hash_hex"
+      "max_concurrent": 16,
+      "token_hash": "1111111111111111111111111111111111111111111111111111111111111111"
     }
   ]
 }

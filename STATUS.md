@@ -22,7 +22,7 @@
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
 - **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
-- **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；token-hash + PBKDF2-HMAC-SHA256 认证；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
+- **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射
@@ -42,7 +42,9 @@
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 
-## 三、API 接口状态（17/17 覆盖）
+## 三、API 接口状态（HTTP 17/17；capability smoke 15/15）
+
+生产 HTTP API 暴露 17 个只读端点；`tools/capability_scan.py` 和 `/health` 的 reader smoke 当前覆盖 15 个核心读取函数。这两个数字口径不同：前者是 HTTP surface，后者是 reader health sample，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|
@@ -64,7 +66,7 @@
 | clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
-- 健康检查覆盖：10 → 17 函数（health_check.py 已更新）
+- 健康检查覆盖：`/health` 当前生产验证为 reader functions `15/15`；HTTP surface 仍为 17 个端点。
 - API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 15 接口 HTTP 封装
 - 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
@@ -157,6 +159,9 @@
 ### 2026-07-04 reader 健康样例与 moneyflow 桥接修复
 
 - [x] `reader.is_trading_day()` 已改为优先读取 `market_bars_daily`，周末或未来日期使用最近交易日 + weekday fallback，不再依赖旧 `reference/market_calendar.py` wrapper。
+- [x] `reference/market_calendar.py` 已收口为 SharedSignals read-model 只读辅助工具，只读 `market_bars_daily`，不再导入旧 A 股 Tushare wrapper；未缓存的工作日区间明确降级。
+- [x] `reference/adj_factor_cache.py` 已改为只读 `market_factors`/CSV cache，不再现场调用 Tushare；`update_daily()` 仅返回 read-side no-op，采集责任保留在 collector 层。
+- [x] 已删除 `reference/` 下旧 `a_share_tushare_api.py`、RSSCollector collector/config/feed/filter/bridge 软链，避免后续 agent 误把历史兼容入口恢复成现役采集链路。
 - [x] `reader.get_realtime_5min()` 已优先读取 `market_bars_intraday`，未传日期时自动使用该股票最新 intraday 日期；`reader.get_industry()` 已由 `stock_industry_map.csv` 优先读取，CSV 由 `cron/refresh_industry_map.sh` 每日 06:30 从 `market_assets.sector` 自动生成，`market_assets` 仅作为降级回退；`reader.get_sentiment()` 在 intake 空壳时回退 `data/sentiment_signals.csv`，未传日期时返回已有信号而不降级。
 - [x] `reader.get_tushare("stock_basic")` 对 `market_assets` 使用 `Ashare + tushare` provider 过滤，避免 `tushare_stock_basic` 误过滤。
 - [x] 已将已采集的 `data/tushare/moneyflow/20260703/*.csv` 桥接进 SQLite/DuckDB `market_factors`：3 只股票、54 条 moneyflow 指标，最新日期 `20260703`。回滚备份：`/opt/investment/MarketGraphRuntime/read_model/backups/marketdata_before_moneyflow_bridge_retry_20260704T093136Z.sqlite`。
@@ -231,14 +236,14 @@
 - [x] 新增 `cron/duckdb_sync.sh`：独立运行 `duckdb_merge.py --json`，与旧根层 wrapper 解耦。
 - [x] 新增 `cron/patrol.sh`：运行 patrol，低于阈值时触发 heal。
 - [x] 新增 `cron/AGENTS.md`：约束 cron wrapper 只做调度、不内嵌业务逻辑和密钥。
-- [ ] 待服务器部署验证：脚本尚未写入生产 crontab。
+- [x] 服务器部署验证：patrol/watchdog/collectors/DuckDB sync/capability scan 已写入主服务器 `marketgraph` 用户 crontab。
 
 ### 2026-07-03 P0 架构债务清零与 API 迁移状态对齐
 
 - [x] CSV→SQLite 桥接闭环完成：`storage/csv_bridge.py` 已建成，sync_daily.py 已能把 CSV 输出接入 SQLite→DuckDB 管线。
 - [x] `market_bars_daily` provider-PK 迁移已在服务器执行；provider 不再参与主键，只作为来源字段保留。
 - [x] API 服务器线程化、auth 内存治理、env 启动引导统一均已完成，P0 6 项架构债务全部清零。
-- [ ] P2 API 消费迁移仍在推进：TradingAgent 侧 15/15 客户端和核心 reader API-first 已完成；MarketGraph 侧仍待切换。
+- [x] P2 API 消费迁移已完成当前生产边界：TradingAgent 侧客户端和核心 reader API-first 已完成；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，保留 read-model 只读消费。
 
 ### 2026-07-03 R15 故障注入与恢复路径审计
 
@@ -249,7 +254,7 @@
 ### 2026-07-03 final Codex review HIGH/MEDIUM 修复
 
 - [x] `api_server.py`：`/market_data` 透传 `freq`；`/capital_flow` 支持 `date` 或 `ts_code/start/end` 参数，修复 TradingAgent 客户端与服务器契约不一致。
-- [x] `config/api_tokens.json`：已 `git rm --cached` 退出仓库追踪；新增 `config/api_tokens.example.json` 作为模板；`.gitignore` 已确认覆盖真实 token 文件。
+- [x] `config/api_tokens.json`：已 `git rm --cached` 退出仓库追踪；`config/api_tokens.example.json` 只保留 `token_hash`/`sha256` 兼容字段模板；`.gitignore` 已确认覆盖真实 token 文件。
 - [x] `tools/api_server.py`：标记为 deprecated capability server；默认端口改为 `8083`，避免与主数据 API `8082` 冲突。
 - [x] 新增 API handler 回归测试覆盖 `market_data.freq` 和 `capital_flow` range 参数传递。
 - [x] 验证：`python3 -m pytest tests/ -q --tb=line` 通过（205 passed；5 个既有 `SHAREDSIGNALS_TOKEN_SALT` 未配置 warning）。
@@ -310,11 +315,11 @@
 ### 2026-07-02 Tushare API 包装器迁移
 
 - [x] `tushare_api.py`（843 行，40+ 函数）+ `tushare_common.py`（657 行）从 `/opt/investment/Ashare/tools/` 迁移到本目录
-- [x] 兼容性包装器 `a_share_tushare_api.py` + `a_share_common.py` 放在同目录（re-export + `os.path.realpath` 解析，PYTHONPATH 兼容）
+- [x] 历史兼容性包装器 `a_share_tushare_api.py` + `a_share_common.py` 已仅保留在 collector 边界；`reference/` 不再保留旧兼容软链。
 - [x] `collector.py` 移除旧 sys.path bootstrap，改用 `from .tushare_api import _call`
 - [x] `reader.py` ASHARE_ROOT 默认值指向 `collectors/tushare/`
 - [x] `capability_scan.py` 路径引用更新
-- [x] `reference/adj_factor_cache.py` sys.path 更新
+- [x] `reference/adj_factor_cache.py` 已改为 read-model/CSV cache 只读，不再修改 `sys.path` 调用 provider。
 - [x] 服务器部署 + 全路径导入验证通过（4 种导入方式）
 
 ### 2026-07-02 SharedSignals Bug 修复
@@ -422,7 +427,7 @@
   - `_get_capital_flow_cached` 死代码 — `get_capital_flow()` 直接调用 `get_tushare("moneyflow")`
   - reader.py 热路径中 `sys.path.insert`（每次调用修改导入系统）
   - schema.py 和 duckdb_schema.py 11 表定义重复无漂移防护
-  - `adj_factor_cache.py` 硬编码路径 `/opt/investment/...`
+  - `adj_factor_cache.py` 硬编码路径 `/opt/investment/...` — 已修复为环境变量 + SharedSignals read-model/CSV cache 只读
 
 **已应用修复（Round 4，8 项）：**
 10. [x] `reader.py`：SQLite 连接添加 `PRAGMA busy_timeout = 5000`（防止写锁期间读失败）
@@ -478,8 +483,8 @@
 ### 2026-07-02 Goal 1 退役清理
 
 - [x] 服务器 `/opt/investment/Crypto/` 过期数据归档
-- [x] `capability_registry.json` 中的 Ashare 引用识别为元数据残留（symlink 在服务器端仍正常解析）
-- [x] `/opt/investment/Ashare/` 退役目录待删除（TradingAgent 已完成 `a_share_simulated_trade_executor` 依赖迁移至 `tradingagent/Ashare/sim_executor.py`）
+- [x] `capability_registry.json` 中的 Ashare 引用识别为历史元数据残留；当前生产能力以 `tools/capability_registry.json`、`/capabilities` 和 `/health` 的 live 输出为准。
+- [x] `/opt/investment/Ashare/` 不再作为 TradingAgent active dev/runtime root；TradingAgent 已完成 A 股模拟执行依赖迁移至 `tradingagent/Ashare/sim_executor.py`，生产剩余历史路径不得被恢复为数据入口。
 
 ## 六、采集器架构
 

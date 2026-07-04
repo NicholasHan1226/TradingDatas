@@ -8,9 +8,11 @@
 
 | 文件 | 用途 |
 |------|------|
-| [API_CONTRACT.md](API_CONTRACT.md) | SharedSignals 对外 API 契约（reader 函数、数据格式、MCP 工具映射） |
+| [../API_CONTRACT.md](../API_CONTRACT.md) | SharedSignals 当前对外 API 契约（reader 函数、数据格式、生产边界） |
 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | 基础设施说明 |
 | [repo_structure.md](repo_structure.md) | 仓库结构说明 |
+
+`docs/API_CONTRACT.md` 是 `tools/capability_scan.py` 生成的历史能力快照；如需刷新，运行 capability scan 生成新快照。当前生产 API 边界以根层 `API_CONTRACT.md`、`STATUS.md`、`/health` 和 `/capabilities` live 输出为准。
 
 ## 规则优先级
 

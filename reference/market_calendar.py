@@ -1,55 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""A-share trading calendar helper backed by the Tushare trade_cal API.
+"""A-share trading calendar helper backed by the SharedSignals read model.
 
-Wraps the existing Ashare Tushare wrapper (symlinked at
-reference/a_share_tushare_api.py) so all consumers in SharedSignals share a
-single, cached definition of "trading day".  Results are LRU-cached by the
-underlying wrapper and additionally memoised in-process per (start, end) range.
-
-Public API
-----------
-- is_trading_day(date)  -> bool
-- get_next_trading_day(date) -> date | None
-- get_trading_days(start, end) -> list[date]
-
-Dates may be datetime.date, datetime.datetime, or str in
-YYYYMMDD / YYYY-MM-DD / YYYY/MM/DD form; return values are
-datetime.date.
+This module intentionally does not call Tushare or any other live provider.
+Collectors populate the SharedSignals database first; read-side consumers use
+the cached `market_bars_daily` dates here.
 """
+
 from __future__ import annotations
 
-import logging
+import os
+import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional, Union
 
-logger = logging.getLogger(__name__)
-
-_ASHARE_TOOLS = Path(__file__).resolve().parent
-_ASHARE_REAL_TOOLS = (_ASHARE_TOOLS / "a_share_tushare_api.py").resolve().parent
-import sys as _sys
-for _p in (_ASHARE_TOOLS, _ASHARE_REAL_TOOLS):
-    if str(_p) not in _sys.path:
-        _sys.path.insert(0, str(_p))
-
-try:
-    from a_share_tushare_api import _call  # type: ignore
-except Exception as _import_err:  # pragma: no cover - import guard
-    _call = None  # type: ignore
-    logger.warning(
-        "market_calendar: a_share_tushare_api unavailable (%s); "
-        "calendar calls will raise on use", _import_err
-    )
-
 
 DateLike = Union[date, datetime, str]
 
-_range_cache: dict[tuple[str, str], list[date]] = {}
+RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
+DEFAULT_DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
+
+_range_cache: dict[tuple[str, str, str], list[date]] = {}
 
 
 class TradingCalendarUnavailableError(RuntimeError):
-    """Raised when the trading calendar API returns an unusable response."""
+    """Raised when the cached trading calendar cannot answer a request."""
+
+
+def _db_path() -> Path:
+    return Path(os.environ.get("SHARED_SIGNALS_DB", str(DEFAULT_DB_PATH)))
 
 
 def _to_date(d: DateLike) -> date:
@@ -68,21 +48,18 @@ def _to_date(d: DateLike) -> date:
     raise ValueError(f"Cannot parse date: {d!r}")
 
 
-def _to_tushare_date(d: DateLike) -> str:
-    """Return YYYYMMDD string expected by the trade_cal API."""
-    return _to_date(d).strftime("%Y%m%d")
-
-
-def _from_tushare_date(s: str) -> date:
-    """Parse YYYYMMDD (or YYYY-MM-DD) from Tushare into date."""
+def _from_db_date(s: str) -> date:
     s = str(s).strip()
     if "-" in s:
         return datetime.strptime(s, "%Y-%m-%d").date()
     return datetime.strptime(s, "%Y%m%d").date()
 
 
+def _to_db_date(d: DateLike) -> str:
+    return _to_date(d).strftime("%Y%m%d")
+
+
 def _range_contains_weekday(start: date, end: date) -> bool:
-    """Return True if the inclusive range contains at least one weekday."""
     cursor = start
     while cursor <= end:
         if cursor.weekday() < 5:
@@ -92,42 +69,50 @@ def _range_contains_weekday(start: date, end: date) -> bool:
 
 
 def _fetch_trading_days(start: date, end: date) -> list[date]:
-    """Fetch trading days in [start, end] from Tushare, with caching."""
-    key = (start.isoformat(), end.isoformat())
+    """Fetch trading days in [start, end] from SharedSignals cache."""
+    path = _db_path()
+    key = (str(path), start.isoformat(), end.isoformat())
     if key in _range_cache:
         return _range_cache[key]
+    if not path.exists():
+        raise TradingCalendarUnavailableError(f"market calendar database not found: {path}")
 
-    if _call is None:
-        raise RuntimeError(
-            "market_calendar: Tushare wrapper unavailable (a_share_tushare_api "
-            "import failed); cannot resolve trading days"
-        )
-
-    rows = _call("trade_cal", {
-        "exchange": "SSE",
-        "start_date": _to_tushare_date(start),
-        "end_date": _to_tushare_date(end),
-    })
-    if not rows:
-        weekday_hint = _range_contains_weekday(start, end)
-        raise TradingCalendarUnavailableError(
-            "market_calendar: trade_cal returned no rows for "
-            f"{start.isoformat()}..{end.isoformat()}"
-            + (" (range includes weekdays; treating as API failure)" if weekday_hint else " (cannot distinguish closure from API failure)")
-        )
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        rows = conn.execute(
+            """
+            SELECT DISTINCT trade_date
+            FROM market_bars_daily
+            WHERE market='Ashare'
+              AND trade_date BETWEEN ? AND ?
+            ORDER BY trade_date ASC
+            """,
+            (_to_db_date(start), _to_db_date(end)),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        raise TradingCalendarUnavailableError(f"market calendar database query failed: {exc}") from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
     days: list[date] = []
-    for row in rows:
-        if str(row.get("is_open", "")) in ("1", "1.0"):
-            cal = row.get("cal_date")
-            if cal:
-                try:
-                    days.append(_from_tushare_date(str(cal)))
-                except ValueError:
-                    continue
-    days.sort()
-    _range_cache[key] = days
-    return days
+    for (trade_date,) in rows:
+        try:
+            days.append(_from_db_date(str(trade_date)))
+        except ValueError:
+            continue
+    if days:
+        _range_cache[key] = days
+        return days
+
+    if _range_contains_weekday(start, end):
+        raise TradingCalendarUnavailableError(
+            f"no cached Ashare trading days for {start.isoformat()}..{end.isoformat()}"
+        )
+    _range_cache[key] = []
+    return []
 
 
 def is_trading_day(d: DateLike = None) -> bool:
@@ -146,18 +131,16 @@ def get_trading_days(start: DateLike, end: DateLike) -> list[date]:
 
 
 def get_next_trading_day(d: DateLike = None, *, include_today: bool = False) -> Optional[date]:
-    """Return the next trading day strictly after d (default: today).
-
-    If include_today=True and d is itself a trading day, return d.
-    Returns None if no trading day is found within the search horizon
-    (looks ahead up to ~30 calendar days).
-    """
+    """Return the next cached trading day after d, or None if not cached."""
     target = _to_date(d) if d is not None else date.today()
     if include_today and is_trading_day(target):
         return target
 
     horizon = target + timedelta(days=30)
-    days = _fetch_trading_days(target, horizon)
+    try:
+        days = _fetch_trading_days(target, horizon)
+    except TradingCalendarUnavailableError:
+        return None
     for day in days:
         if day > target:
             return day
@@ -165,12 +148,13 @@ def get_next_trading_day(d: DateLike = None, *, include_today: bool = False) -> 
 
 
 def clear_cache() -> None:
-    """Clear the in-process range cache (useful for tests / forced refresh)."""
+    """Clear the in-process range cache."""
     _range_cache.clear()
 
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser(description="A-share trading calendar helper")
     p.add_argument("--is-trading-day", metavar="DATE", help="check if DATE is a trading day")
     p.add_argument("--next", metavar="DATE", help="next trading day after DATE")

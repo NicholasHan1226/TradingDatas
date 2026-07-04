@@ -6,11 +6,14 @@ import hmac
 import importlib
 import json
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 import auth
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _b64url(payload: bytes) -> str:
@@ -139,6 +142,19 @@ def test_token_account_max_concurrent_is_enforced(monkeypatch: pytest.MonkeyPatc
     auth_module.release_concurrency(account["tenant_id"])
     auth_module.claim_concurrency(account)
     auth_module.release_concurrency(account["tenant_id"])
+
+
+def test_api_tokens_example_matches_loader_schema() -> None:
+    payload = json.loads((ROOT / "config" / "api_tokens.example.json").read_text(encoding="utf-8"))
+    tokens = payload.get("tokens")
+
+    assert isinstance(tokens, list)
+    assert tokens
+    for item in tokens:
+        token_hash = str(item.get("token_hash") or item.get("sha256") or "")
+        assert len(token_hash) == 64
+        assert "pbkdf2_sha256" not in item
+        int(token_hash, 16)
 
 
 def test_default_free_concurrency_limit(monkeypatch: pytest.MonkeyPatch) -> None:

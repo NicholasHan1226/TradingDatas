@@ -1,1 +1,0 @@
-/opt/investment/RSSCollector/bridge.py

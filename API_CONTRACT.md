@@ -174,7 +174,7 @@ Tushare `news` / `major_news` / `cctv_news` 进入 `market_events` 时由 bridge
 
 ## Reader 函数
 
-所有 reader 函数位于 `bridge/marketgraph_marketdata_db.py`，以及辅助的 `reference/market_calendar.py`。
+所有 reader 函数位于 `bridge/marketgraph_marketdata_db.py`，以及辅助的 `reference/market_calendar.py`。`reference/market_calendar.py` 只读 SharedSignals read model，不再导入旧 A 股 Tushare wrapper 或现场调用 provider。
 
 ### 市场数据读取
 

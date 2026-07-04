@@ -68,10 +68,10 @@
 预配置FAILOVER_MAP: 主源↔备用源映射, 覆盖A股/港股/美股/Crypto/PM/全球新闻/宏观等源。
 
 ## 文件结构
-- collectors/ — 各数据源采集器(软链)
+- collectors/ — 各数据源采集器
 - storage/ — schema文档 (当前SQLite, 计划DuckDB)
-- bridge/ — staging→CSV归并桥(软链)
-- reference/ — 参考数据 + expected_fields.json
+- bridge/ — staging→CSV/SQLite 归并桥
+- reference/ — 参考数据、expected_fields.json 与只读缓存辅助工具；不得放回旧 Ashare/RSSCollector 软链入口
 - memory/ — 采集层记忆 + 巡查/自愈历史
 - staging/ — 本层staging缓冲
 - patrol.py — 10min巡查 (6维度健康检查)
