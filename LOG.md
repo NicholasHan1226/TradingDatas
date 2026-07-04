@@ -1,6 +1,7 @@
 # SharedSignals Log
 | 时间 | 动作 | 结果 |
 |------|------|------|
+| 2026-07-05 | API 开盘高压稳定性修复 | SharedSignals API 增加 256 accept backlog，客户端断连降级 debug；生产复压 160/160 正常峰值与 640/640 尖峰请求均 200，TradingAgent 队列无新增副作用 |
 | 2026-07-04 | 记录 RSS/RSSHub 迁移期边界与系统邮件 smoke | 旧 RSSCollector cron 禁用；RSSHub/旧 DB 标记为残留资产；系统邮件 `notice@tradingagent.cc -> soc@coze.email` 实发成功 |
 | 2026-07-04 | 修复低频宏观/事件/资产桥接与 watchdog 误报 | P4 宏观 17/17 成功；shibor_lpr、cctv_news、index_global、etf_basic、fut_basic 已进入 read model；完整测试 79 passed |
 | 2026-06-29 | 创建文件夹结构 | 初始化 |

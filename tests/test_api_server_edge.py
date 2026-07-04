@@ -259,3 +259,26 @@ def test_capabilities_falls_back_when_registry_missing(api_edge_server, monkeypa
     assert payload["metadata"]["degraded"] is True
     assert payload["data"]["status"] == "degraded"
     assert any(item["path"] == "/market_data" for item in payload["data"]["endpoints"])
+
+
+def test_sharedsignals_server_uses_large_accept_backlog() -> None:
+    assert api_server.SharedSignalsHTTPServer.request_queue_size >= 256
+
+
+def test_send_json_tolerates_client_disconnect() -> None:
+    handler = api_server.Handler.__new__(api_server.Handler)
+    calls: list[tuple[str, object]] = []
+
+    handler.send_response = lambda status: calls.append(("status", status))  # type: ignore[method-assign]
+    handler.send_header = lambda key, value: calls.append((key, value))  # type: ignore[method-assign]
+    handler.end_headers = lambda: calls.append(("end_headers", True))  # type: ignore[method-assign]
+
+    class DisconnectingWriter:
+        def write(self, _body: bytes) -> None:
+            raise BrokenPipeError("client closed")
+
+    handler.wfile = DisconnectingWriter()
+
+    handler._send_json({"status": "ok"})
+
+    assert ("status", 200) in calls

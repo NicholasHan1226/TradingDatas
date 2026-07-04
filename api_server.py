@@ -334,7 +334,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Date", formatdate(usegmt=True))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            import logging
+
+            logging.getLogger("sharedsignals.api").debug(
+                "client disconnected before response body was written"
+            )
 
     def _error(self, status: int, message: str) -> None:
         self._send_json({"error": message, "timestamp": utc_now_iso()}, status)
@@ -621,6 +628,7 @@ class Handler(BaseHTTPRequestHandler):
 class SharedSignalsHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    request_queue_size = 256
 
     def __init__(
         self,

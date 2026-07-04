@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (Crypto lifecycle bridge + reader cleanup)
+> 最后更新：2026-07-05 (API open-stress hardening)
 
 ---
 
@@ -23,7 +23,7 @@
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
 - **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
-- **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 503 at capacity
+- **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 256 accept backlog + 503 at capacity；客户端高压断连降级为 debug 日志，避免 BrokenPipe 噪音污染 systemd 日志
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
@@ -92,6 +92,7 @@
 18. [x] **RSS/RSSHub 退役收口** — 旧 RSSCollector cron 已禁用；RSSHub 残留进程已停止，旧顶层目录已移入 `_archive/retired_residuals_20260704T172705Z`；`rss_collector.db` 仅保留历史/迁移审计。
 19. [x] **API 能力清单生产化** — `/capabilities` 缺 registry 时返回 auth scope 兜底；`cron/capability_scan.sh` 每小时刷新 registry，若存在 degraded endpoint 但 registry 已写出则记录 WARN 不阻断 cron。
 20. [x] **P0 5 分钟采集节奏保护** — `sync_daily.py` 支持 P0 rotating stock batch，`cron/collectors.sh` 默认每轮 100 只，保障 5 分钟采集不因全量 per-stock 调用重叠。
+21. [x] **API 开盘高压稳定性** — 2026-07-05 生产开盘模拟读压测覆盖 `/health`、`/market_data`、`/realtime_5min`、`/capital_flow`、`/crypto`、`/pm_markets` 等端点；修复后 160/160 正常峰值请求与 640/640 尖峰请求均 200，0 超时、0 交易队列副作用。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
