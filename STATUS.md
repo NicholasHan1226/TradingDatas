@@ -85,7 +85,8 @@
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集。
-17. [ ] **RSS/RSSHub 迁移收口** — 旧 RSSCollector cron 已禁用；下一步需要确认 RSSHub 依赖、`rss_collector.db` 归属、SharedSignals collector 入口和恢复 runbook 后再迁移或退役旧目录。
+17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
+18. [ ] **RSS/RSSHub 迁移收口** — 旧 RSSCollector cron 已禁用；下一步需要确认 RSSHub 依赖、`rss_collector.db` 归属、SharedSignals collector 入口和恢复 runbook 后再迁移或退役旧目录。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
 
@@ -110,6 +111,13 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-04 CNFutures 5 分钟数据新鲜度与下节交易时段校验
+
+- [x] 新增 `tools/check_cn_futures_5min_freshness.py`：只读 `market_bars_intraday` 中 `market=Futures`、`interval=5min`、`provider=tushare_rt_fut_min` 的最新 bar，默认 10 分钟 stale 阈值，支持 `--sqlite-db`、`--now`、`--max-age-minutes`、`--json`；exit 码 0/1/2 对应 fresh、stale/no_data、error。
+- [x] 新增 next-session verification：按中国期货市场日盘（09:00-15:00）和夜盘（21:00-02:30）判断当前/下一交易时段，若处于交易时段但尚无该时段 5 分钟 bar，则判为 stale。
+- [x] 新增 `tests/test_cn_futures_5min_freshness.py`：覆盖 fresh/stale/no_data/error、日盘/夜盘/跨午夜/收盘间时段、human 与 `--json` 输出、命令行参数解析。
+- [x] 边界：仅做数据健康检查，不生成交易信号、不触发模拟/实盘执行；不改动生产 crontab、不读取密钥或 `.env` 配置。
 
 ### 2026-07-04 RSS ownership and system email smoke verification
 

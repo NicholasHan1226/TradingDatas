@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.6 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.7 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -81,6 +81,7 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 | 历史回补 | `python3 collectors/tushare/backfill_fut_daily.py --start-date YYYYMMDD --end-date YYYYMMDD` | 逐日 CSV + SQLite bridge，失败汇总 JSON |
 | 5 分钟采集 | `python3 tools/collect_cn_futures_5min.py --trade-date YYYYMMDD` | `data/tushare/rt_fut_min/YYYYMMDD/rt_fut_min_YYYYMMDD_5min.csv` + SQLite `market_bars_intraday` |
 | 5 分钟 cron wrapper | `bash cron/cn_futures_5min.sh` | `logs/cron/cn_futures_5min.log` + 同上 |
+| 5 分钟新鲜度验收 | `python3 tools/check_cn_futures_5min_freshness.py --json` | 只读检查 `market_bars_intraday` 最新 Futures 5 分钟 bar，返回 `fresh/stale/no_data/error` |
 
 `fut_daily` 固定使用 `P6_other_daily` tier 的 global API，参数为 `trade_date`。SQLite bridge 写入：
 
@@ -97,6 +98,8 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - `interval="5min"`
 - `symbol` 兼容 Tushare 返回的 `ts_code`、`symbol` 或 `code`
 - `trade_date` 从 `time`/`trade_time` 派生，`bar_time` 保留分钟时间戳
+
+`tools/check_cn_futures_5min_freshness.py` 是只读数据健康检查，默认 10 分钟阈值，可通过 `--sqlite-db`、`--now`、`--max-age-minutes` 和 `--json` 调整。它只报告数据是否新鲜、当前/下一交易时段是否已有 5 分钟 bar，不生成交易信号、不触发补采、不写 TradingAgent 队列。
 
 消费者边界：
 
@@ -729,6 +732,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-06-30 | 1.1.0 | 新增 `reader.get_tushare()` + `/tushare` endpoint + 数据维度来源标注 |
+| 2026-07-04 | 1.1.7 | 新增 CNFutures 5 分钟数据新鲜度验收工具，只读检查 `market_bars_intraday` Futures 5 分钟 bar 的 stale/no_data/error 状态。 |
 | 2026-07-04 | 1.1.6 | 新增 CNFutures 5 分钟采集入口 `rt_fut_min`，写入 `market_bars_intraday`，并以独立 cron 支持日盘、夜盘和跨午夜夜盘采集。 |
 | 2026-07-04 | 1.1.5 | `fut_daily` 改为按交易日全品种采集并写入 `market_bars_daily`，market=`Futures`；`sync_daily.py` 支持 `--trade-date` 与 `--only-api` 定向补采。 |
 | 2026-07-04 | 1.1.4 | 低频宏观接口支持 API 级回看窗口并补齐去重键/SQLite 映射；Tushare 新闻自动生成 `event_hash`；`index_global`/`etf_basic`/`fut_basic` 进入 read model；`/cache/invalidate` 支持 POST。 |
