@@ -35,6 +35,17 @@ NIGHT_SESSION_END = time(2, 30)
 DEFAULT_MAX_AGE_MINUTES = 10
 
 
+def _next_weekday_on_or_after(day):
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day
+
+
+def _next_day_session_start_after(day):
+    next_day = day + timedelta(days=1)
+    return datetime.combine(_next_weekday_on_or_after(next_day), DAY_SESSION_START, tzinfo=CN_TZ)
+
+
 def _parse_datetime(value: str | None) -> datetime | None:
     """Parse a bar/collected timestamp and normalise to CN timezone."""
     if not value:
@@ -65,6 +76,21 @@ def _session_info(now_cn: datetime) -> dict[str, Any]:
     """Determine current/next CN futures trading session in China local time."""
     t = now_cn.time()
     today = now_cn.date()
+    weekday = today.weekday()
+
+    if weekday >= 5:
+        if weekday == 5 and t <= NIGHT_SESSION_END:
+            yesterday = today - timedelta(days=1)
+            return {
+                "current": "night",
+                "next_session_start": datetime.combine(yesterday, NIGHT_SESSION_START, tzinfo=CN_TZ),
+                "in_session": True,
+            }
+        return {
+            "current": "closed",
+            "next_session_start": datetime.combine(_next_weekday_on_or_after(today), DAY_SESSION_START, tzinfo=CN_TZ),
+            "in_session": False,
+        }
 
     if DAY_SESSION_START <= t <= DAY_SESSION_END:
         return {
@@ -89,9 +115,14 @@ def _session_info(now_cn: datetime) -> dict[str, Any]:
         }
 
     if time(15, 0) < t < time(21, 0):
+        next_start = (
+            datetime.combine(today, NIGHT_SESSION_START, tzinfo=CN_TZ)
+            if weekday <= 4
+            else _next_day_session_start_after(today)
+        )
         return {
             "current": "closed",
-            "next_session_start": datetime.combine(today, NIGHT_SESSION_START, tzinfo=CN_TZ),
+            "next_session_start": next_start,
             "in_session": False,
         }
 

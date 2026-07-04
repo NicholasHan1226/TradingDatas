@@ -69,54 +69,70 @@ def test_parse_datetime_handles_iso_with_timezone() -> None:
 
 
 def test_session_info_day_session() -> None:
-    now = datetime(2026, 7, 4, 10, 5, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 10, 5, tzinfo=CN_TZ)
     info = _session_info(now)
     assert info["current"] == "day"
     assert info["in_session"] is True
-    assert info["next_session_start"] == datetime(2026, 7, 4, 9, 0, tzinfo=CN_TZ)
+    assert info["next_session_start"] == datetime(2026, 7, 3, 9, 0, tzinfo=CN_TZ)
 
 
 def test_session_info_night_session_same_day() -> None:
-    now = datetime(2026, 7, 4, 21, 5, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 21, 5, tzinfo=CN_TZ)
     info = _session_info(now)
     assert info["current"] == "night"
     assert info["in_session"] is True
-    assert info["next_session_start"] == datetime(2026, 7, 4, 21, 0, tzinfo=CN_TZ)
+    assert info["next_session_start"] == datetime(2026, 7, 3, 21, 0, tzinfo=CN_TZ)
 
 
 def test_session_info_night_session_after_midnight() -> None:
-    now = datetime(2026, 7, 5, 1, 30, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 4, 1, 30, tzinfo=CN_TZ)
     info = _session_info(now)
     assert info["current"] == "night"
     assert info["in_session"] is True
-    assert info["next_session_start"] == datetime(2026, 7, 4, 21, 0, tzinfo=CN_TZ)
+    assert info["next_session_start"] == datetime(2026, 7, 3, 21, 0, tzinfo=CN_TZ)
 
 
 def test_session_info_closed_between_sessions() -> None:
+    now = datetime(2026, 7, 3, 18, 0, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "closed"
+    assert info["in_session"] is False
+    assert info["next_session_start"] == datetime(2026, 7, 3, 21, 0, tzinfo=CN_TZ)
+
+
+def test_session_info_closed_before_day_session() -> None:
+    now = datetime(2026, 7, 3, 8, 0, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "closed"
+    assert info["in_session"] is False
+    assert info["next_session_start"] == datetime(2026, 7, 3, 9, 0, tzinfo=CN_TZ)
+
+
+def test_session_info_sunday_points_to_next_weekday_day_session() -> None:
+    now = datetime(2026, 7, 5, 2, 53, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "closed"
+    assert info["in_session"] is False
+    assert info["next_session_start"] == datetime(2026, 7, 6, 9, 0, tzinfo=CN_TZ)
+
+
+def test_session_info_saturday_evening_points_to_next_weekday_day_session() -> None:
     now = datetime(2026, 7, 4, 18, 0, tzinfo=CN_TZ)
     info = _session_info(now)
     assert info["current"] == "closed"
     assert info["in_session"] is False
-    assert info["next_session_start"] == datetime(2026, 7, 4, 21, 0, tzinfo=CN_TZ)
-
-
-def test_session_info_closed_before_day_session() -> None:
-    now = datetime(2026, 7, 4, 8, 0, tzinfo=CN_TZ)
-    info = _session_info(now)
-    assert info["current"] == "closed"
-    assert info["in_session"] is False
-    assert info["next_session_start"] == datetime(2026, 7, 4, 9, 0, tzinfo=CN_TZ)
+    assert info["next_session_start"] == datetime(2026, 7, 6, 9, 0, tzinfo=CN_TZ)
 
 
 def test_check_freshness_reports_fresh_during_day_session(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-04 09:05:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:05:00")])
 
-    now = datetime(2026, 7, 4, 9, 8, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 9, 8, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=10)
 
     assert report["status"] == "fresh"
-    assert report["latest_bar_time"] == "2026-07-04T09:05:00+08:00"
+    assert report["latest_bar_time"] == "2026-07-03T09:05:00+08:00"
     assert report["latest_bar_age_minutes"] == 3.0
     assert report["session"]["current"] == "day"
     assert report["session"]["next_session_has_data"] is True
@@ -124,9 +140,9 @@ def test_check_freshness_reports_fresh_during_day_session(tmp_path: Path) -> Non
 
 def test_check_freshness_reports_stale_when_aged_out(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-04 09:00:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:00:00")])
 
-    now = datetime(2026, 7, 4, 9, 15, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 9, 15, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=10)
 
     assert report["status"] == "stale"
@@ -137,9 +153,9 @@ def test_check_freshness_reports_stale_when_aged_out(tmp_path: Path) -> None:
 def test_check_freshness_reports_stale_when_session_has_no_data(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     # Only yesterday's night session data, nothing for the current day session.
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 22:00:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-02 22:00:00")])
 
-    now = datetime(2026, 7, 4, 10, 0, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 10, 0, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=60)
 
     assert report["status"] == "stale"
@@ -152,7 +168,7 @@ def test_check_freshness_reports_no_data_for_empty_table(tmp_path: Path) -> None
     db_path = tmp_path / "marketdata.sqlite"
     _create_test_db(db_path, [])
 
-    now = datetime(2026, 7, 4, 9, 5, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 9, 5, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=10)
 
     assert report["status"] == "no_data"
@@ -162,7 +178,7 @@ def test_check_freshness_reports_no_data_for_empty_table(tmp_path: Path) -> None
 def test_check_freshness_reports_error_for_missing_database(tmp_path: Path) -> None:
     db_path = tmp_path / "does_not_exist.sqlite"
 
-    now = datetime(2026, 7, 4, 9, 5, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 9, 5, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=10)
 
     assert report["status"] == "error"
@@ -172,13 +188,13 @@ def test_check_freshness_reports_error_for_missing_database(tmp_path: Path) -> N
 def test_check_freshness_counts_symbols_and_bars(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     rows = [
-        ("Futures", "RB2609.SHF", "2026-07-04 09:05:00"),
-        ("Futures", "CU2609.SHF", "2026-07-04 09:05:00"),
-        ("Futures", "RB2609.SHF", "2026-07-04 09:00:00"),
+        ("Futures", "RB2609.SHF", "2026-07-03 09:05:00"),
+        ("Futures", "CU2609.SHF", "2026-07-03 09:05:00"),
+        ("Futures", "RB2609.SHF", "2026-07-03 09:00:00"),
     ]
     _create_test_db(db_path, rows)
 
-    now = datetime(2026, 7, 4, 9, 6, tzinfo=CN_TZ)
+    now = datetime(2026, 7, 3, 9, 6, tzinfo=CN_TZ)
     report = check_freshness(db_path, now=now, max_age_minutes=10)
 
     assert report["status"] == "fresh"
@@ -188,11 +204,11 @@ def test_check_freshness_counts_symbols_and_bars(tmp_path: Path) -> None:
 
 def test_main_returns_zero_for_fresh_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-04 09:05:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:05:00")])
 
     code = main([
         "--sqlite-db", str(db_path),
-        "--now", "2026-07-04T09:08:00+08:00",
+        "--now", "2026-07-03T09:08:00+08:00",
         "--max-age-minutes", "10",
     ])
     out = capsys.readouterr().out
@@ -204,11 +220,11 @@ def test_main_returns_zero_for_fresh_data(tmp_path: Path, capsys: pytest.Capture
 
 def test_main_returns_one_for_stale_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-04 09:00:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:00:00")])
 
     code = main([
         "--sqlite-db", str(db_path),
-        "--now", "2026-07-04T09:15:00+08:00",
+        "--now", "2026-07-03T09:15:00+08:00",
         "--max-age-minutes", "10",
     ])
 
@@ -222,7 +238,7 @@ def test_main_returns_one_for_no_data(tmp_path: Path, capsys: pytest.CaptureFixt
 
     code = main([
         "--sqlite-db", str(db_path),
-        "--now", "2026-07-04T09:15:00+08:00",
+        "--now", "2026-07-03T09:15:00+08:00",
         "--max-age-minutes", "10",
     ])
 
@@ -232,11 +248,11 @@ def test_main_returns_one_for_no_data(tmp_path: Path, capsys: pytest.CaptureFixt
 
 def test_main_emits_json_when_requested(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-04 09:05:00")])
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:05:00")])
 
     code = main([
         "--sqlite-db", str(db_path),
-        "--now", "2026-07-04T09:08:00+08:00",
+        "--now", "2026-07-03T09:08:00+08:00",
         "--json",
     ])
     out = capsys.readouterr().out
