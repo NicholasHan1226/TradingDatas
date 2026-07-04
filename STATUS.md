@@ -4,20 +4,20 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (低频宏观/事件/资产桥接与 watchdog 误报修复)
+> 最后更新：2026-07-04 (Polymarket 采集闭环与生产 cron 修复)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（3，经 proxy）→ SQLite + CSV
+- **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（markets+prices，经 proxy）→ SQLite + CSV/NDJSON 缓存
 - **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV
 - **5 条数据管线**：Tushare、Binance、Polymarket、RSS、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责全 tier 采集、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog 和期货日线单独采集，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog 和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
@@ -37,6 +37,7 @@
 - `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
 - R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
+- Crypto 生产 5 分钟行情当前仍由 `collectors/crypto/binance_collect.py` 直接写 SQLite 保障 24/7 新鲜度，尚未切到 `BaseCollector → save/staging → bridge` 的统一生命周期；切换前必须完成回放验证，避免影响模拟盘。
 
 ## 三、API 接口状态（17/17 覆盖）
 
@@ -80,6 +81,14 @@
 12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
+15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
+
+### 2026-07-04 Polymarket markets/prices 生产采集闭环
+
+- [x] `collectors/polymarket_collect.py` 从 Polymarket Gamma 拉取 active markets，并从 `outcomePrices`/`bestBid`/`bestAsk`/`lastTradePrice` 派生价格快照，写入统一 read model 的 `market_pm_markets` 与 `market_pm_prices`。
+- [x] 每次采集写入 `market_ingest_runs`，source 固定为 `polymarket_gamma`，便于 freshness、失败和回放审计。
+- [x] 新增 `cron/pm_collect.sh`，带 `flock`、生产 venv、proxy、`.env` bootstrap 和独立日志 `logs/cron/pm_collect.log`；生产 crontab 每 5 分钟运行。
+- [x] 边界：PM 上游 API 只允许在 SharedSignals collector 层调用；TradingAgent PM 模拟/影子盘只读 `/pm_markets` 或 read model，不直接访问 Polymarket。
 
 ## 五、最近完成
 

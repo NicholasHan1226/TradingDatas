@@ -20,6 +20,7 @@
 @reboot bash /opt/investment/RSSCollector/start_rsshub.sh >> /opt/investment/MarketGraphRuntime/rsshub.log 2>&1
 # SharedSignals subsystem crons
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh
+*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 */5 * * * * cd /opt/investment/SharedSignals && source .env && /opt/marketgraph/venv/bin/python3 collectors/crypto/binance.py >> logs/binance_collect.log 2>&1

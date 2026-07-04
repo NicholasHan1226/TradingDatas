@@ -17,7 +17,7 @@
 采集层 → staging NDJSON (无锁缓冲) → bridge归并 → 存储
   Tushare(14接口) → marketdata.sqlite
   Binance(4接口)  → marketdata.sqlite
-  Polymarket(3接口) → marketdata.sqlite
+  Polymarket(markets/prices) → marketdata.sqlite
   RSS(883源)      → staging → sentiment_signals.csv
   Tavily/agents   → staging → event_candidates.csv
   基本面           → 按需实时调
@@ -39,7 +39,7 @@
 - ← 不接收: 不接收研究结论或交易结果（单向输出）
 
 ## 采集频率
-- 行情: 5min全市场（盘中）/ 日级（盘后）
+- 行情: A股盘中 5min / Crypto 与 Polymarket 5min / 日级（盘后）
 - 事件: 10-15min（RSS/agents）
 - 基本面: 日级预计算
 - 宏观: 日级
