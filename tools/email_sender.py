@@ -4,7 +4,7 @@ Sends via SMTP → Cloudflare → DeadSimple → local fallback chain.
 Configure via SharedSignals/.env or env vars.
 """
 from __future__ import annotations
-import hashlib, json, os, smtplib, time, urllib.error, urllib.request
+import hashlib, json, os, smtplib, ssl, time, urllib.error, urllib.request
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -69,7 +69,7 @@ def _try_smtp(to: str, subject: str, body: str, from_addr: str) -> bool:
     msg["To"] = to
     msg["Subject"] = subject
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as s:
-        s.starttls()
+        s.starttls(context=ssl.create_default_context())
         if SMTP_USER:
             s.login(SMTP_USER, SMTP_PASS)
         s.send_message(msg)

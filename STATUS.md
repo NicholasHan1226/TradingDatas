@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-04 (SharedSignals-only 生产边界 + PM 最新价 API + watchdog 生产验证 + ghost 测试显式跳过)
+> 最后更新：2026-07-04 (PM 最新价 API + email STARTTLS TLS context)
 
 ---
 
@@ -81,6 +81,11 @@
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 
 ## 五、最近完成
+
+### 2026-07-04 email STARTTLS TLS context
+
+- [x] `tools/email_sender.py` 的 SMTP `starttls()` 已改为 `starttls(context=ssl.create_default_context())`，使用系统默认 CA 与安全 TLS 参数。
+- [x] 验证：`python3 -m py_compile tools/email_sender.py` 通过；本仓当前没有直接覆盖该 sender 的 pytest 文件。
 
 ### 2026-07-04 SharedSignals-only provider 边界落地
 
