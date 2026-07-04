@@ -974,14 +974,31 @@ def get_crypto_klines(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
 @_bounded_lru_cache(maxsize=512)
 def _get_pm_markets_cached(_generation: int, limit: int) -> str:
     query = """
-        SELECT * FROM market_pm_markets
-        ORDER BY collected_at DESC, volume DESC
+        SELECT
+            m.*,
+            lp.price AS latest_price,
+            lp.price AS price,
+            lp.price_time AS latest_price_time,
+            lp.token_id AS latest_token_id
+        FROM market_pm_markets m
+        LEFT JOIN market_pm_prices lp ON lp.price_hash = (
+            SELECT p.price_hash
+            FROM market_pm_prices p
+            WHERE p.market_id = m.market_id
+            ORDER BY p.price_time DESC, p.collected_at DESC, p.price DESC
+            LIMIT 1
+        )
+        ORDER BY
+            CASE WHEN lp.price IS NULL THEN 1 ELSE 0 END,
+            lp.price_time DESC,
+            m.collected_at DESC,
+            m.volume DESC
         LIMIT ?
     """
     rows, degraded = _sqlite_rows(query, (int(limit),), "market_pm_markets")
     if degraded is not None:
         return _json_cached(lambda: degraded)
-    lineage = {"reader": "get_pm_markets", "db_path": str(SQLITE_PATH), "table": "market_pm_markets", "filters": {"limit": limit}}
+    lineage = {"reader": "get_pm_markets", "db_path": str(SQLITE_PATH), "table": "market_pm_markets+market_pm_prices", "filters": {"limit": limit}}
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_pm_markets", source_tier="polymarket", lineage=lineage, stale_after_hours=24.0))
 
 

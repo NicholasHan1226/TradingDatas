@@ -207,8 +207,8 @@
 - **Latency**: 0.9ms
 - **Rows returned**: 50
 - **SLA**: 24h freshness
-- **Fields**: market_name, outcome, price, volume, updated_at
-- **Description**: Read Polymarket market list from unified marketdata DB
+- **Fields**: market_id, question, slug, end_date, volume, liquidity, active, closed, price/latest_price, latest_price_time, latest_token_id, collected_at
+- **Description**: Read Polymarket market list from unified marketdata DB; priced markets are returned first and include the latest price from market_pm_prices when available
 - **Last success**: 2026-06-30T02:33:14+08:00
 
 ---
