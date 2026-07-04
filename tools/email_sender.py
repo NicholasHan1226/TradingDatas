@@ -1,7 +1,7 @@
 """
 SharedSignals email sender — independent of tradingagent.
-Sends via SMTP → Cloudflare → DeadSimple → local fallback chain.
-Configure via SharedSignals/.env or env vars.
+Sends via Cloudflare Email Service REST endpoint, then saves a local fallback record.
+Configure via /opt/marketgraph/.env, repo .env, or process env vars.
 """
 from __future__ import annotations
 import hashlib, json, os, smtplib, ssl, time, urllib.error, urllib.request
@@ -10,16 +10,46 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
+def _normalize_env_value(raw: str) -> str:
+    value = raw.strip()
+    if value and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def _load_email_env_files() -> None:
+    env_files = (
+        Path(os.environ.get("MARKETGRAPH_ENV_FILE", "/opt/marketgraph/.env")),
+        Path("/opt/investment/MarketGraph/deploy/marketgraph_cron.env"),
+        Path(__file__).resolve().parent.parent / ".env",
+    )
+    for env_path in dict.fromkeys(env_files):
+        if not env_path.exists():
+            continue
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[7:].strip()
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = _normalize_env_value(value)
+
+
+_load_email_env_files()
+
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "email"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Config from env (each repo has its own)
 CF_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "") or os.getenv("CF_EMAIL_ACCOUNT_ID", "")
 CF_API_TOKEN = os.getenv("CLOUDFLARE_EMAIL_API_TOKEN", "") or os.getenv("CF_EMAIL_API_TOKEN", "")
-FROM_TRADING = os.getenv("EMAIL_FROM_TRADING", "notice@tradingagent.cc")
-FROM_SYSTEM = os.getenv("EMAIL_FROM_SYSTEM", "notice@tradingagent.cc")
-TO_TRADING = os.getenv("EMAIL_TO_TRADING", "tradingadviser@coze.email")
-TO_SYSTEM = os.getenv("EMAIL_TO_SYSTEM", "soc@coze.email")
+FROM_TRADING = os.getenv("EMAIL_FROM_TRADING") or os.getenv("EMAIL_TRADING_FROM") or "notice@tradingagent.cc"
+FROM_SYSTEM = os.getenv("EMAIL_FROM_SYSTEM") or os.getenv("EMAIL_SYSTEM_FROM") or "notice@tradingagent.cc"
+TO_TRADING = os.getenv("EMAIL_TO_TRADING") or os.getenv("EMAIL_TRADING_TO") or "tradingadviser@coze.email"
+TO_SYSTEM = os.getenv("EMAIL_TO_SYSTEM") or os.getenv("EMAIL_SYSTEM_TO") or "soc@coze.email"
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -42,17 +72,16 @@ def _save_local(to: str, subject: str, body: str, channel: str, errors: list) ->
 
 def _try_cloudflare(to: str, subject: str, body: str, from_addr: str) -> bool:
     if not CF_ACCOUNT_ID or not CF_API_TOKEN:
-        raise Exception("CF credentials not configured")
+        raise Exception("Cloudflare credentials not configured")
     data = json.dumps({
         "from": from_addr,
         "to": [to],
         "subject": subject,
-        "text_body": body[:10000],
-        "html_body": body[:50000] if "<" in body else "",
-        "priority": "normal",
+        "text": body[:10000],
+        "html": body[:50000] if "<" in body else body[:10000],
     }).encode()
     req = urllib.request.Request(
-        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/email/routing/messages",
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/email/sending/send",
         data=data,
         headers={"Authorization": f"Bearer {CF_API_TOKEN}", "Content-Type": "application/json"},
     )
@@ -77,40 +106,18 @@ def _try_smtp(to: str, subject: str, body: str, from_addr: str) -> bool:
 
 
 def send_email(*, to: str, subject: str, html_body: str, channel: str = "system") -> dict:
-    """Send email via SMTP→CF→DeadSimple→local fallback chain. Independent of tradingagent."""
+    """Send email via Cloudflare; save locally when delivery is unavailable."""
     ch = CHANNELS.get(channel, CHANNELS["system"])
     from_addr = ch["from"]
     errors = []
-    
-    # 1. SMTP (primary — always available once configured)
-    try:
-        if _try_smtp(to, subject, html_body, from_addr):
-            return {"status": "sent", "provider": "smtp", "to": to}
-    except Exception as e:
-        errors.append(f"smtp: {e}")
-    
-    # 2. Cloudflare (requires Account ID + API token)
     try:
         if _try_cloudflare(to, subject, html_body, from_addr):
             return {"status": "sent", "provider": "cloudflare", "to": to, "from": from_addr, "subject": subject}
     except Exception as e:
         errors.append(f"cloudflare: {e}")
-    
-    # 3. DeadSimple (generic HTTP mail API)
-    try:
-        ds_url = os.getenv("DEADSIMPLE_URL", "")
-        if ds_url:
-            data = json.dumps({"from": from_addr, "to": to, "subject": subject, "html": html_body}).encode()
-            req = urllib.request.Request(ds_url, data=data, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                if resp.status == 200:
-                    return {"status": "sent", "provider": "deadsimple", "to": to}
-    except Exception as e:
-        errors.append(f"deadsimple: {e}")
-
-    # 4. Local fallback
+    errors.append("smtp: removed from delivery chain")
+    errors.append("deadsimple: removed from delivery chain")
     return _save_local(to, subject, html_body, channel, errors)
-
 
 def send_daily_report(date_str: str, data: dict) -> dict:
     """Send SharedSignals daily data report."""

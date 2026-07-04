@@ -13,6 +13,7 @@
 
 - SharedSignals 是供数层，只负责采集、去重、缓存和健康巡查；不做投资分析、交易判断、执行路由或回执处理。
 - MarketGraph 和 TradingAgent 可以读取 SharedSignals 暴露的 SQLite/CSV/NDJSON 或未来服务接口；这种关系是数据契约消费，不是 MCP 强耦合互调。
+- 对 TradingAgent 而言，SharedSignals/ShareChannel API 是默认消费入口；SQLite/CSV/NDJSON 只保留为兼容和故障降级，不能重新引入 TradingAgent/MarketGraph 独立采集。
 - 未来对外提供服务接口时，默认只暴露数据读取、健康状态和来源留痕；任何交易信号、下单、模拟执行或邮件通知都属于 tradingagent/Hermes 边界。
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库

@@ -87,6 +87,12 @@
 - [x] `tools/email_sender.py` 的 SMTP `starttls()` 已改为 `starttls(context=ssl.create_default_context())`，使用系统默认 CA 与安全 TLS 参数。
 - [x] 验证：`python3 -m py_compile tools/email_sender.py` 通过；本仓当前没有直接覆盖该 sender 的 pytest 文件。
 
+### 2026-07-04 SharedSignals API 与系统邮件运行时对齐
+
+- [x] TradingAgent 生产 loader 已默认设置 `SHAREDSIGNALS_API_URL=http://127.0.0.1:8082`，A股读取链路以 SharedSignals/ShareChannel API 为第一入口，SQLite 仅保留只读回退。
+- [x] SharedSignals 系统邮件发送器已改为 Cloudflare Email Service REST endpoint `/email/sending/send`，不再尝试 DeadSimple/SMTP；失败时只保存本地 fallback 证据。
+- [x] 邮件配置入口统一到 `/opt/marketgraph/.env`，规范通道为交易 `notice@tradingagent.cc -> tradingadviser@coze.email`、系统 `notice@tradingagent.cc -> soc@coze.email`。
+
 ### 2026-07-04 SharedSignals-only provider 边界落地
 
 - [x] `reader.get_tushare()` 与 `reader.get_fundamentals()` 已改为 DB-first：只读 read model/缓存；无映射或无数据返回 degraded，不现场调用 Tushare。
