@@ -121,7 +121,7 @@
 
 ### 2026-07-05 capability read-model alignment
 
-- [x] `tools/capability_scan.py` 已把现役能力 smoke 收口为 DB-first reader 调用，动态从生产 read model 选择最新 A 股、美股、分钟线和事件样例；本地缺生产 DB 时只使用兜底样例，不现场调用 provider。
+- [x] `tools/capability_scan.py` 已把现役能力 smoke 收口为 DB-first reader 调用，动态从生产 read model 选择最新 A 股、美股、分钟线和 Tushare news 样例；本地缺生产 DB 时只使用兜底样例，不现场调用 provider。
 - [x] HK/cross-border 持仓与港股 lane 当前暂缓，`get_hk_hold`、`get_hk_etf`、`get_hk_index` 在 capability registry 中标记为 `skipped`，不会继续污染 degraded 计数。
 - [x] `capability_scan` 输出 summary 增加 `skipped`，API 合同生成也能展示 skipped 状态。
 - [x] 边界：该改动只影响 SharedSignals 能力自检和 `/capabilities` registry，不生成交易信号、不写 TradingAgent 队列。
