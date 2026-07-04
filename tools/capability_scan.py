@@ -105,7 +105,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "category": "market_depth",
         "description": "Read margin trading summary from the SharedSignals read model",
         "smoke_args": ["margin"],
-        "smoke_kwargs": {"trade_date": "__LATEST_ASHARE_DATE__"},
+        "smoke_kwargs": {"trade_date": "__LATEST_MARGIN_DATE__"},
         "version": "1.0.0",
         "fields": ["trade_date", "rzye", "rzmre", "rqye", "rqmcl"],
         "sla_hours": 24,
@@ -309,6 +309,25 @@ def _latest_event_date() -> str:
     return str(row[0]).replace("-", "")[:8]
 
 
+def _latest_provider_date(table: str, provider: str, fallback: str) -> str:
+    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    if not db_path.exists():
+        return fallback
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        date_expr = "trade_date" if table in {"market_bars_daily", "market_bars_intraday", "market_events"} else "event_time"
+        row = con.execute(
+            f"SELECT MAX({date_expr}) FROM {table} WHERE provider = ?",
+            (provider,),
+        ).fetchone()
+        con.close()
+    except Exception:
+        return fallback
+    if not row or not row[0]:
+        return fallback
+    return str(row[0]).replace("-", "")[:8]
+
+
 def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
     ashare = _read_latest_sample(
         market="Ashare",
@@ -328,6 +347,7 @@ def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
         interval="5min",
     )
     event_date = _latest_event_date()
+    margin_date = _latest_provider_date("market_factors", "tushare_margin", ashare["trade_date"])
 
     def resolve(value: Any) -> Any:
         if value == "__LATEST_ASHARE_SYMBOL__":
@@ -344,6 +364,8 @@ def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
             return intraday["trade_date"]
         if value == "__LATEST_EVENT_DATE__":
             return event_date
+        if value == "__LATEST_MARGIN_DATE__":
+            return margin_date
         return value
 
     args = [resolve(value) for value in meta.get("smoke_args", [])]
