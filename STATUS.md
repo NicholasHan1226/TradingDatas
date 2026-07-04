@@ -4,18 +4,20 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-03 (生产部署完成，旧系统退役，零 CRITICAL/HIGH bug)
+> 最后更新：2026-07-04 (DB-first API 与五管线现状)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4）+ Polymarket（3）→ SQLite + CSV
+- **行情采集**：稳定运行 — Tushare（25 接口）+ Binance（4，经新加坡 relay）+ Polymarket（3，经 proxy）→ SQLite + CSV
 - **事件采集**：RSS（883 源）+ Tavily → NDJSON staging → runtime_bridge → CSV
-- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）
+- **5 条数据管线**：Tushare、Binance、Polymarket、RSS、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护
+- **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
+- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh` 已新增，分别负责全 tier 采集、DuckDB 同步和 patrol/heal，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh` 已新增，分别负责全 tier 采集、DuckDB 同步、patrol/heal 和 5 分钟 watchdog，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：marketdata.sqlite（~116MB），marketdata.duckdb（~54MB），11 表 145K+ 行，staging 6 streams 活跃
@@ -25,7 +27,8 @@
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + `--exit-on-failure`
 - **生产部署**：服务器 `8.138.181.177:8082` 运行中，CPU 4.5%，旧 `tools/api_server.py` 已退役
-- **服务器**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS → rsync → 杭州）
+- **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
+- **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
 
 ## 二、已知问题
 
@@ -75,8 +78,25 @@
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
 11. [ ] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 15/15 API 客户端已完成，核心 reader API-first；MarketGraph 仍待迁移，SQLite 只读回退保留
 12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
+13. [ ] **P3：watchdog 生产接入验证** — 本地文件与测试已完成，仍需服务器 crontab 安装、一次 dry-run、一次健康恢复演练和邮件通道实发验证
 
 ## 五、最近完成
+
+### 2026-07-04 30 天无人值守 watchdog 闭环
+
+- [x] 新增 `tools/watchdog.py`：每轮检查 API `/health`、SQLite 最新 `trade_date`、cron log age、磁盘和内存，计算 0-100 分；`<60` 触发 heal，`<30` 调用自动重启，重启失败后升级邮件，连续 0 分写 halt 文件。
+- [x] 新增 `tools/auto_restart.sh`：检查 API 端口、优雅终止、nohup 重启、健康验证，连续 3 次失败时尝试 previous binary rollback。
+- [x] 新增 `cron/watchdog.sh`：5 分钟 cron wrapper，带 `flock`、`.env` bootstrap、独立 cron log。
+- [x] watchdog 读取 TradingAgent 跨系统健康输入目录 `logs/watchdog_inputs/`，用于统一日志留痕；不改变 SharedSignals 供数边界。
+- [x] 验证：`py_compile` 通过；`bash -n` 通过；`tests/test_watchdog.py` 4 项通过。
+- [ ] 待服务器部署验证：生产 crontab 尚未安装 watchdog，本轮未执行真实 kill/restart，也未发送真实邮件。
+
+### 2026-07-03 系统类邮件模板补齐
+
+- [x] 新增 `tools/email_templates/`：`system_health`、`data_freshness_alert`、`collection_error`、`emergency_alert` 四个 HTML 模板，统一使用系统通道 `soc@coze.email`。
+- [x] 模板包含统一深色 header、680px 白色正文、summary metrics、table sections、状态 badge、HTML5 `<figure>/<figcaption>` 和纯 inline SVG 图表；仅提供渲染层，未改动发送链路或生产 crontab。
+- [x] 已补图表：健康状态 donut、检查进度条、预期/实际新鲜度柱状图、stale sparkline、采集失败横条、成功/失败 donut、紧急告警 pulse 指示器和告警 timeline。
+- [x] 验证：新增模板与 helper 均已 `py_compile` 通过，并完成 4 模板最小 render smoke（均生成 2 个 figure / 2 个 svg）。
 
 ### 2026-07-03 cron 解耦入口补齐
 
