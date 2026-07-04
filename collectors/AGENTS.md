@@ -48,6 +48,8 @@ run_collectors.sh
 - `rsshub_route_healer.py` — RSSHub 路由故障自动切换
 - `source_failover.py` — 源失效自动降级/替换
 
+当前主服务器 RSS/RSSHub 仍在迁移期：旧 `/opt/investment/RSSCollector`、`/opt/investment/RSSHub` 和 `/opt/investment/MarketGraphRuntime/rss_collector.db` 可能存在，生产 crontab 已禁用旧 RSSCollector hot/warm/@reboot。修改 `rss/` 前先确认 live crontab、DB 归属和回滚方案，不得从 MarketGraph 恢复旧采集。
+
 ## 修改规则
 
 1. **新增 Collector**：

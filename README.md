@@ -18,7 +18,7 @@
   Tushare(14接口) → marketdata.sqlite
   Binance(4接口)  → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
-  RSS(883源)      → staging → sentiment_signals.csv
+  RSS(883源)      → staging → sentiment_signals.csv (RSSHub/旧DB迁移中)
   Tavily/agents   → staging → event_candidates.csv
   基本面           → 按需实时调
 ```
@@ -40,7 +40,7 @@
 
 ## 采集频率
 - 行情: A股盘中 5min / Crypto 与 Polymarket 5min / 日级（盘后）
-- 事件: 10-15min（RSS/agents）
+- 事件: RSS/agents 分层维护；旧 RSSCollector cron 迁移期保持禁用
 - 基本面: 日级预计算
 - 宏观: 日级
 

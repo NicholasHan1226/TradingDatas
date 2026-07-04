@@ -9,6 +9,8 @@ secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore R
 database:
   marketdata: "/opt/investment/SharedSignals/storage/marketdata.sqlite"
   reference_index: "/opt/investment/SharedSignals/storage/reference_index.sqlite"
+  # Legacy migration path: old RSSCollector DB still lives under MarketGraphRuntime
+  # until RSSHub/RSSCollector ownership is fully moved into SharedSignals.
   rss_collector: "/opt/investment/MarketGraphRuntime/rss_collector.db"
   max_size_mb: 500
 
