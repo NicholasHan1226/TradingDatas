@@ -410,11 +410,10 @@ priorities:
   P6_other_daily:
   - api_name: fut_daily
     frequency: daily
+    fields: ts_code,trade_date,open,high,low,close,vol,amount
     params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
+      trade_date: '{trade_date}'
+    per_stock: false
   - api_name: fund_basic
     frequency: daily
     params:

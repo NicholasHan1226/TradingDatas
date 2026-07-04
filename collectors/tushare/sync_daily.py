@@ -82,9 +82,12 @@ def load_stock_codes(path: Path) -> list[str]:
     return codes
 
 
-def date_range(lookback_days: int) -> tuple[str, str, str]:
+def date_range(lookback_days: int, end_date_override: str | None = None) -> tuple[str, str, str]:
     """Return (trade_date, start_date, end_date) for a lookback window."""
-    today = datetime.now()
+    if end_date_override:
+        today = datetime.strptime(end_date_override, "%Y%m%d")
+    else:
+        today = datetime.now()
     trade_date = today.strftime("%Y%m%d")
     start_date = (today - timedelta(days=lookback_days)).strftime("%Y%m%d")
     end_date = trade_date
@@ -147,6 +150,17 @@ def fill_params(
         return val
 
     return _replace(result)
+
+
+def filter_apis(apis: list[dict[str, Any]], only_api: str | None) -> list[dict[str, Any]]:
+    """Return APIs filtered by name when requested."""
+
+    if not only_api:
+        return apis
+    names = {item.strip() for item in only_api.split(",") if item.strip()}
+    if not names:
+        return apis
+    return [api for api in apis if str(api.get("api_name") or "") in names]
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +408,16 @@ def main() -> None:
         help="Limit to 3 stocks for speed testing",
     )
     parser.add_argument(
+        "--trade-date",
+        default="",
+        help="Override trade_date/end_date as YYYYMMDD for targeted backfill",
+    )
+    parser.add_argument(
+        "--only-api",
+        default="",
+        help="Comma-separated API names to run within the selected tier",
+    )
+    parser.add_argument(
         "--no-sqlite-bridge",
         action="store_true",
         help="Disable additive CSV-to-SQLite bridge and keep CSV-only mode",
@@ -429,7 +453,10 @@ def main() -> None:
         logger.error("Tier %s not found in config.yaml priorities", tier_name)
         sys.exit(1)
 
-    apis = config["priorities"][tier_name]
+    apis = filter_apis(config["priorities"][tier_name], args.only_api)
+    if not apis:
+        logger.error("No APIs selected for tier=%s only_api=%s", tier_name, args.only_api)
+        sys.exit(1)
 
     # Detect if any API in this tier needs HK stock codes
     needs_hk = any(a.get("stock_list") == "hk" for a in apis)
@@ -447,7 +474,7 @@ def main() -> None:
         hk_stock_codes = hk_stock_codes[:3] if hk_stock_codes else []
         logger.info("TEST MODE: using %d A-share / %d HK stocks", len(stock_codes), len(hk_stock_codes))
 
-    trade_date, start_date, end_date = date_range(args.lookback)
+    trade_date, start_date, end_date = date_range(args.lookback, args.trade_date or None)
     logger.info("=" * 60)
     logger.info("TIER: %s  |  A-Stocks: %d  |  HK-Stocks: %d  |  APIs: %d",
                 tier_name, len(stock_codes), len(hk_stock_codes), len(apis))

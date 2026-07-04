@@ -537,7 +537,7 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
             return 0
 
         with csv_path.open("r", encoding=encoding, newline="") as fh:
-            reader = csv.DictReader(fh)
+            reader = csv.DictReader(line.replace("\0", "") for line in fh)
             csv_columns = reader.fieldnames or []
             api_name = _api_name_from_path(csv_path)
             if table == "market_factors":

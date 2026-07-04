@@ -176,6 +176,32 @@ def test_index_global_derives_global_market_for_daily_bars(tmp_path: Path):
     assert record == ("Global", "CKLSE", "20260703", 1679.05, "tushare_index_global")
 
 
+def test_fut_daily_derives_futures_market_for_daily_bars(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "fut_daily" / "20260703" / "fut_daily_20260703.csv",
+        "\n".join(
+            [
+                "ts_code,trade_date,open,high,low,close,vol,amount",
+                "RB2601.SHF,20260703,3500,3550,3480,3520,1000,3520000",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_daily", csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        record = conn.execute(
+            "SELECT market, symbol, trade_date, close, volume, amount, provider FROM market_bars_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert record == ("Futures", "RB2601.SHF", "20260703", 3520.0, 1000.0, 3520000.0, "tushare_fut_daily")
+
+
 def test_etf_basic_maps_to_market_assets_with_name(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

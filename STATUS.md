@@ -87,6 +87,7 @@
 - [x] `collectors/tushare/sync_daily.py` 支持 API 级 `lookback_days`；P4 低频宏观默认回看 180 天，避免 LPR/月度/季度数据被 7 天窗口误判为空。
 - [x] 补齐 Tushare 低频宏观去重键：`shibor_lpr`/`cn_m`/`cn_ppi`/`cn_gdp`/`sf_month`/美国利率曲线/`repo_daily` 等不再 fallback 到 `ts_code,trade_date`。
 - [x] 补齐 CSV→SQLite 映射：`cn_gdp`、`sf_month`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily` 写入 `market_factors`；`cctv_news`/`news` 自动生成 `event_hash` 写入 `market_events`；`index_global` 写入 `Global` 日线，`etf_basic`/`fut_basic` 写入资产表。
+- [x] `fut_daily` 期货日线改为按 `trade_date` 全品种采集，写入 `market_bars_daily` 且 `market=Futures`；定向补采可用 `sync_daily.py --tier P6_other_daily --only-api fut_daily --trade-date YYYYMMDD`。
 - [x] 生产验证：P4 宏观 17/17 API 成功，`shibor_lpr` 3 行→6 条因子，P4 SQLite bridge 33,160 行；`cctv_news` 379 条事件，`index_global` 182 条，ETF 3,347 条，期货基础 10,000 条已补桥接；DuckDB sync 状态 `ok`。
 - [x] `/cache/invalidate` 增加 POST 支持并保留 GET 兼容；API 已 force reload，POST 返回 200。
 - [x] watchdog collector 日志扫描改为标签化失败匹配，只抓真实 `ERROR`/`FAILED`/`SQLITE_BRIDGE_ERRORS`/`bridge_failures>0`/`database is locked`，不再把 `bridge_errors=0` 误判；生产 `--no-email` 巡检恢复 `collector_status=ok`。
