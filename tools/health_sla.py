@@ -11,6 +11,12 @@ SLA_THRESHOLDS = {
     'market_pm_prices': {'max_age_hours': 6, 'market': 'PM', 'lane': 'trading', 'severity': 'critical'},
     'market_events': {'max_age_hours': 36, 'market': 'all', 'lane': 'research', 'severity': 'notice'},
 }
+SLA_DATE_COLUMNS = {
+    'market_bars_daily': ['trade_date', 'updated_at', 'collected_at'],
+    'market_factors': ['collected_at', 'updated_at', 'event_time', 'trade_date'],
+    'market_pm_prices': ['updated_at', 'collected_at'],
+    'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
+}
 
 def _table_violation(table: str, sla: dict, *, status: str, message: str, now: datetime) -> dict:
     return {
@@ -63,7 +69,7 @@ def check_sla(now: datetime | None = None):
         for table, sla in SLA_THRESHOLDS.items():
             try:
                 cols = [r[1] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
-                date_col = next((c for c in ['trade_date','event_time','collected_at','updated_at'] if c in cols), None)
+                date_col = next((c for c in SLA_DATE_COLUMNS.get(table, ['trade_date','event_time','collected_at','updated_at']) if c in cols), None)
                 if not date_col:
                     violations.append(_table_violation(table, sla, status='error', message='freshness date column not found', now=now))
                     continue

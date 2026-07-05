@@ -78,3 +78,25 @@ def test_table_query_errors_are_reported_not_silently_ok(tmp_path, monkeypatch):
     assert report["status"] == "critical"
     assert report["summary"]["critical"] >= 1
     assert any(item["status"] == "error" for item in report["violations"])
+
+
+def test_market_factors_uses_collected_at_before_period_event_time(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-05T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (event_time TEXT, collected_at TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.execute("INSERT INTO market_bars_daily VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?, ?)", ("2026Q1", (now - timedelta(hours=1)).isoformat()))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not report["violations"]
