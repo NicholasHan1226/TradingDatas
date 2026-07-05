@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from storage.schema_contract import table_primary_keys
+from storage.schema_contract import get_table, table_primary_keys
 from env_bootstrap import env_int
 
 logger = logging.getLogger(__name__)
@@ -491,7 +491,30 @@ def _canonical_row(table, row, api_name, csv_path):
     if not row.get("source_file"):
         row["source_file"] = csv_path.name
 
-    return row
+    return _normalize_numeric_values(table, row)
+
+
+def _normalize_numeric_values(table, row):
+    column_types = {col.name: col.logical_type for col in get_table(table).columns}
+    normalized = dict(row)
+    for col, logical_type in column_types.items():
+        if logical_type not in {"float", "integer"}:
+            continue
+        value = normalized.get(col)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text == "":
+            normalized[col] = None
+        elif logical_type == "float":
+            coerced = _coerce_float(text)
+            if coerced is not None:
+                normalized[col] = coerced
+        elif logical_type == "integer":
+            coerced = _coerce_float(text)
+            if coerced is not None:
+                normalized[col] = int(coerced)
+    return normalized
 
 
 def _insert_sql(table, columns, pk_columns):

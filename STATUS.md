@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (asset merge coverage fix)
+> 最后更新：2026-07-05 (asset merge and DuckDB sync fix)
 
 ---
 
@@ -16,7 +16,7 @@
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
-- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步
+- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
@@ -25,7 +25,7 @@
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 256 accept backlog + 503 at capacity；客户端高压断连降级为 debug 日志，避免 BrokenPipe 噪音污染 systemd 日志
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
-- **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`
+- **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入

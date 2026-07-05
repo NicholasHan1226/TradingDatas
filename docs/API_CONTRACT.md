@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> Auto-generated from `capability_registry.json` at 2026-06-30T02:33:14+08:00
+> Auto-generated from `capability_registry.json` at 2026-07-05T15:40:54+08:00
 > Service: SharedSignals v1.0.0
 
 ## Summary
@@ -8,57 +8,54 @@
 | Metric | Count |
 |--------|-------|
 | Total endpoints | 15 |
-| OK | 7 |
-| Degraded | 8 |
+| OK | 12 |
+| Degraded | 0 |
 | Down | 0 |
-| New this week | 12 |
+| Skipped | 3 |
 
 ---
 
 ## Calendar
 
-### [DEGRADED] `is_trading_day`
+### [OK] `is_trading_day`
 
-- **Status**: `degraded`
+- **Status**: `ok`
 - **Path**: `reference/market_calendar.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.1ms
-- **Rows returned**: 0
+- **Latency**: 3.0ms
+- **Rows returned**: 1
 - **SLA**: 24h freshness
 - **Fields**: date, result
 - **Description**: Check if a given date is an A-share trading day
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Last success**: 2026-07-05T15:40:54+08:00
 
-### [DEGRADED] `get_trading_days`
+### [OK] `get_trading_days`
 
-- **Status**: `degraded`
+- **Status**: `ok`
 - **Path**: `reference/market_calendar.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.8ms
-- **Rows returned**: 0
+- **Latency**: 9.7ms
+- **Rows returned**: 4
 - **SLA**: 24h freshness
 - **Fields**: start, end, trading_days
 - **Description**: Return all A-share trading days in a date range
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
 ## Cross Border
 
-### [DEGRADED] `get_hk_hold`
+### [SKIPPED] `get_hk_hold`
 
-- **Status**: `degraded`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Status**: `skipped`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.0ms
+- **Latency**: 0ms
 - **Rows returned**: 0
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, vol, hold_vol, hold_ratio
 - **Description**: Get northbound (HK->A) holdings for a trading day
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Degraded reason**: HK/cross-border holdings are deferred for the current production trading scope
 
 ---
 
@@ -67,93 +64,90 @@
 ### [OK] `get_crypto_klines`
 
 - **Status**: `ok`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.8ms
-- **Rows returned**: 8
+- **Latency**: 2.9ms
+- **Rows returned**: 10
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
-- **Description**: Read Crypto daily OHLCV from unified marketdata DB
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Description**: Read Crypto OHLCV from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
 ## Events
 
-### [DEGRADED] `get_news_list`
+### [OK] `get_news_list`
 
-- **Status**: `degraded`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Status**: `ok`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.0ms
-- **Rows returned**: 0
+- **Latency**: 14.5ms
+- **Rows returned**: 233
 - **SLA**: 24h freshness
 - **Fields**: datetime, content, source, title
-- **Description**: Get news headlines for a date range
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Description**: Read Tushare news from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
 ## Hk Market
 
-### [DEGRADED] `get_hk_etf`
+### [SKIPPED] `get_hk_etf`
 
-- **Status**: `degraded`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Status**: `skipped`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.5ms
+- **Latency**: 0ms
 - **Rows returned**: 0
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, open, high, low, close, vol
 - **Description**: Read HK ETF daily data from unified marketdata DB
-- **Degraded reason**: Returned 0 rows (possibly stale or empty)
+- **Degraded reason**: HK market lane is deferred
 
-### [DEGRADED] `get_hk_index`
+### [SKIPPED] `get_hk_index`
 
-- **Status**: `degraded`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Status**: `skipped`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.5ms
+- **Latency**: 0ms
 - **Rows returned**: 0
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
 - **Description**: Read HSI index data from unified marketdata DB
-- **Degraded reason**: Returned 0 rows (possibly stale or empty)
+- **Degraded reason**: HK market lane is deferred
 
 ---
 
 ## Intraday
 
-### [DEGRADED] `get_stock_minutes`
+### [OK] `get_stock_minutes`
 
-- **Status**: `degraded`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Status**: `ok`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.0ms
-- **Rows returned**: 0
+- **Latency**: 4.2ms
+- **Rows returned**: 49
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_time, open, high, low, close, vol
-- **Description**: Get intraday minute-level bars for a stock
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Description**: Read intraday minute-level bars from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
 ## Market Data
 
-### [DEGRADED] `get_market_data`
+### [OK] `get_market_data`
 
-- **Status**: `degraded`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Status**: `ok`
+- **Path**: `reader.py`
 - **Version**: `2.0.0`
-- **Latency**: 0.0ms
-- **Rows returned**: 0
+- **Latency**: 5.0ms
+- **Rows returned**: 1
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, open, high, low, close, vol, amount
-- **Description**: Get A-share daily OHLCV data for one or more stocks
-- **Last error**: `KeyError: 'token'`
-- **Degraded reason**: Auth/config missing: KeyError: 'token'
+- **Description**: Read A-share daily OHLCV data from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
@@ -162,38 +156,38 @@
 ### [OK] `get_moneyflow`
 
 - **Status**: `ok`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 16.1ms
-- **Rows returned**: 5193
+- **Latency**: 195.2ms
+- **Rows returned**: 54
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, buy_sm_vol, sell_sm_vol, net_mf_vol
-- **Description**: Get A-share money flow data for a trading day
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Description**: Read A-share money flow data from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ### [OK] `get_margin`
 
 - **Status**: `ok`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.6ms
-- **Rows returned**: 2
+- **Latency**: 181.2ms
+- **Rows returned**: 12
 - **SLA**: 24h freshness
 - **Fields**: trade_date, rzye, rzmre, rqye, rqmcl
-- **Description**: Get margin trading summary for a trading day
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Description**: Read margin trading summary from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ### [OK] `get_limit_list`
 
 - **Status**: `ok`
-- **Path**: `reference/a_share_tushare_api.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.7ms
-- **Rows returned**: 60
+- **Latency**: 2.7ms
+- **Rows returned**: 1
 - **SLA**: 24h freshness
 - **Fields**: ts_code, trade_date, limit, pct_chg, close
-- **Description**: Get limit-up/limit-down list for a trading day
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Description**: Read limit-up/limit-down list from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
@@ -202,14 +196,14 @@
 ### [OK] `get_pm_markets`
 
 - **Status**: `ok`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.9ms
+- **Latency**: 8.5ms
 - **Rows returned**: 50
 - **SLA**: 24h freshness
-- **Fields**: market_id, question, slug, end_date, volume, liquidity, active, closed, price/latest_price, latest_price_time, latest_token_id, collected_at
-- **Description**: Read Polymarket market list from unified marketdata DB; priced markets are returned first and include the latest price from market_pm_prices when available
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Fields**: market_name, outcome, price, volume, updated_at
+- **Description**: Read Polymarket market list from unified marketdata DB
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
@@ -218,14 +212,14 @@
 ### [OK] `get_reference`
 
 - **Status**: `ok`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 8.3ms
-- **Rows returned**: 200
+- **Latency**: 2.8ms
+- **Rows returned**: 12
 - **SLA**: 24h freshness
 - **Fields**: market, symbol_count, earliest_date, latest_date, status
 - **Description**: Read data coverage status from unified marketdata DB
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
@@ -234,14 +228,14 @@
 ### [OK] `get_us_daily`
 
 - **Status**: `ok`
-- **Path**: `bridge/marketgraph_marketdata_db.py`
+- **Path**: `reader.py`
 - **Version**: `1.0.0`
-- **Latency**: 0.5ms
+- **Latency**: 2.5ms
 - **Rows returned**: 1
 - **SLA**: 24h freshness
 - **Fields**: symbol, trade_date, open, high, low, close, volume
-- **Description**: Read US stock daily data from unified marketdata DB
-- **Last success**: 2026-06-30T02:33:14+08:00
+- **Description**: Read US stock daily data from the SharedSignals read model
+- **Last success**: 2026-07-05T15:40:54+08:00
 
 ---
 
@@ -249,18 +243,18 @@
 
 | Name | Status | Latency (ms) | Rows | SLA (h) | Category | Path |
 |------|--------|-------------|------|---------|----------|------|
-| `is_trading_day` | `degraded` | 0.1 | 0 | - | calendar | `reference/market_calendar.py` |
-| `get_trading_days` | `degraded` | 0.8 | 0 | - | calendar | `reference/market_calendar.py` |
-| `get_market_data` | `degraded` | 0.0 | 0 | - | market_data | `reference/a_share_tushare_api.py` |
-| `get_moneyflow` | `ok` | 16.1 | 5193 | - | market_depth | `reference/a_share_tushare_api.py` |
-| `get_margin` | `ok` | 0.6 | 2 | - | market_depth | `reference/a_share_tushare_api.py` |
-| `get_limit_list` | `ok` | 0.7 | 60 | - | market_depth | `reference/a_share_tushare_api.py` |
-| `get_hk_hold` | `degraded` | 0.0 | 0 | - | cross_border | `reference/a_share_tushare_api.py` |
-| `get_stock_minutes` | `degraded` | 0.0 | 0 | - | intraday | `reference/a_share_tushare_api.py` |
-| `get_news_list` | `degraded` | 0.0 | 0 | - | events | `reference/a_share_tushare_api.py` |
-| `get_crypto_klines` | `ok` | 0.8 | 8 | - | crypto | `bridge/marketgraph_marketdata_db.py` |
-| `get_us_daily` | `ok` | 0.5 | 1 | - | us_market | `bridge/marketgraph_marketdata_db.py` |
-| `get_hk_etf` | `degraded` | 0.5 | 0 | - | hk_market | `bridge/marketgraph_marketdata_db.py` |
-| `get_hk_index` | `degraded` | 0.5 | 0 | - | hk_market | `bridge/marketgraph_marketdata_db.py` |
-| `get_pm_markets` | `ok` | 0.9 | 50 | - | prediction_markets | `bridge/marketgraph_marketdata_db.py` |
-| `get_reference` | `ok` | 8.3 | 200 | - | reference | `bridge/marketgraph_marketdata_db.py` |
+| `is_trading_day` | `ok` | 3.0 | 1 | - | calendar | `reference/market_calendar.py` |
+| `get_trading_days` | `ok` | 9.7 | 4 | - | calendar | `reference/market_calendar.py` |
+| `get_market_data` | `ok` | 5.0 | 1 | - | market_data | `reader.py` |
+| `get_moneyflow` | `ok` | 195.2 | 54 | - | market_depth | `reader.py` |
+| `get_margin` | `ok` | 181.2 | 12 | - | market_depth | `reader.py` |
+| `get_limit_list` | `ok` | 2.7 | 1 | - | market_depth | `reader.py` |
+| `get_hk_hold` | `skipped` | 0 | 0 | - | cross_border | `reader.py` |
+| `get_stock_minutes` | `ok` | 4.2 | 49 | - | intraday | `reader.py` |
+| `get_news_list` | `ok` | 14.5 | 233 | - | events | `reader.py` |
+| `get_crypto_klines` | `ok` | 2.9 | 10 | - | crypto | `reader.py` |
+| `get_us_daily` | `ok` | 2.5 | 1 | - | us_market | `reader.py` |
+| `get_hk_etf` | `skipped` | 0 | 0 | - | hk_market | `reader.py` |
+| `get_hk_index` | `skipped` | 0 | 0 | - | hk_market | `reader.py` |
+| `get_pm_markets` | `ok` | 8.5 | 50 | - | prediction_markets | `reader.py` |
+| `get_reference` | `ok` | 2.8 | 12 | - | reference | `reader.py` |

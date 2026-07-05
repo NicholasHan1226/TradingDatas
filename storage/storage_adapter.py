@@ -17,6 +17,7 @@ from typing import Any
 import duckdb
 
 from .duckdb_schema import create_schema
+from .schema_contract import get_table
 
 logger = logging.getLogger(__name__)
 
@@ -71,23 +72,27 @@ class StorageAdapter:
                 logger.warning("sync_sqlite_to_duckdb: unknown table %s", table)
                 return 0
 
-            col_str = ", ".join(cols)
+            col_str = ", ".join(_quote_identifier(col) for col in cols)
+            select_col_str = ", ".join(_sqlite_scan_select_expr(table, col) for col in cols)
             where_clause = f" WHERE {where}" if where else ""
 
             if pk:
-                pk_str = ", ".join(pk)
+                pk_str = ", ".join(_quote_identifier(col) for col in pk)
                 non_pk_cols = [c for c in cols if c not in pk]
-                update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in non_pk_cols)
+                update_set = ", ".join(
+                    f"{_quote_identifier(col)} = EXCLUDED.{_quote_identifier(col)}"
+                    for col in non_pk_cols
+                )
                 sql = (
                     f"INSERT INTO {table} ({col_str}) "
-                    f"SELECT {col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
+                    f"SELECT {select_col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
                     f"{where_clause} "
                     f"ON CONFLICT ({pk_str}) DO UPDATE SET {update_set}"
                 )
             else:
                 sql = (
                     f"INSERT OR IGNORE INTO {table} ({col_str}) "
-                    f"SELECT {col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
+                    f"SELECT {select_col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
                     f"{where_clause}"
                 )
 
@@ -143,6 +148,21 @@ def _pk_for_table(table: str) -> list[str]:
     from .schema_contract import table_primary_keys
 
     return table_primary_keys().get(table, [])
+
+
+def _quote_identifier(identifier: str) -> str:
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _sqlite_scan_select_expr(table: str, column: str) -> str:
+    column_types = {col.name: col.logical_type for col in get_table(table).columns}
+    logical_type = column_types.get(column, "text")
+    quoted = _quote_identifier(column)
+    if logical_type == "float":
+        return f"TRY_CAST(NULLIF(CAST({quoted} AS VARCHAR), '') AS DOUBLE) AS {quoted}"
+    if logical_type == "integer":
+        return f"TRY_CAST(NULLIF(CAST({quoted} AS VARCHAR), '') AS BIGINT) AS {quoted}"
+    return quoted
 
 
 def _duckdb_table_columns(conn: Any, table: str) -> list[str]:
