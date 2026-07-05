@@ -457,7 +457,7 @@ priorities:
     fields: trade_date,ts_code,limit_times,close,pct_chg
   - api_name: fut_basic
     per_stock: false
-    fields: ts_code,name,exchange,list_date
+    fields: ts_code,name,exchange,list_date,last_ddate,delist_date
   - api_name: fund_nav
     per_stock: false
     fields: ts_code,ann_date,nav_value,accum_nav

@@ -101,7 +101,7 @@
 - [x] 新增 `tools/collect_cn_futures_5min.py`：调用 Tushare `rt_fut_min`，默认 `freq=5MIN`；支持从最新 Futures 日线合约池按产品轮询自动选择 `rb/cu/i/m/if/ih/ic/im`，其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证；也支持 `--symbols` 或 `CN_FUTURES_5MIN_SYMBOLS` 指定合约。
 - [x] 新增 `cron/cn_futures_5min.sh`：带 `flock`、超时、日志、生产 venv Python 和可选降权执行；只采集/桥接行情，不写交易信号、不触发模拟或实盘执行。
 - [x] CSV→SQLite bridge 已将 `rt_fut_min` 映射到 `market_bars_intraday`，兼容 `code/time` 和 `ts_code/trade_time` 字段，写入 `market=Futures`、`provider=tushare_rt_fut_min`、`interval=5min`。
-- [x] `market_bars_intraday` 新增可空 `bid_price/ask_price/bid_size/ask_size/last_trade_date/expiry_date`；`rt_fut_min` CSV bridge 兼容 `bid1/ask1/bid1_volume/ask1_volume` 等字段，并可从 `market_assets` 回填合约到期字段。
+- [x] `market_bars_intraday` 新增可空 `bid_price/ask_price/bid_size/ask_size/last_trade_date/expiry_date`；`rt_fut_min` CSV bridge 兼容 `bid1/ask1/bid1_volume/ask1_volume` 等字段，并可从 `market_assets` 回填合约到期字段；`fut_basic` 配置已补采 `last_ddate/delist_date` 作为回填源。
 - [x] `/realtime_5min?market=Futures&ts_code=...` 已可读取 Futures 5 分钟 read model；reader 层会透传可空 L1 盘口字段，API 层仍只读、不生成交易判断。
 - [x] 排期边界：`P6_other_daily` 保持 30 分钟杂项/日频刷新；期货 5 分钟采集走独立 cron，日盘/夜盘每 5 分钟运行，跨午夜段按周二到周六凌晨覆盖。
 - [x] 消费边界：TradingAgent/CNFutures 和 MarketGraph 只能读取 SharedSignals read model；SharedSignals 不生成买卖方向，不写 signal queue，不改变模拟盘或实盘权限。

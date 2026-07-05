@@ -53,6 +53,17 @@ def test_p6_fut_daily_is_global_trade_date_collection() -> None:
     assert fut_daily["params"] == {"trade_date": "{trade_date}"}
 
 
+def test_p6_fut_basic_collects_expiry_fields() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    fut_basic = [
+        api for api in config["priorities"]["P6_other_daily"]
+        if api.get("api_name") == "fut_basic"
+    ][0]
+
+    fields = {field.strip() for field in fut_basic["fields"].split(",")}
+    assert {"ts_code", "name", "exchange", "list_date", "last_ddate", "delist_date"}.issubset(fields)
+
+
 def test_shibor_lpr_dedup_key_keeps_distinct_dates() -> None:
     collector = TushareCollector()
 

@@ -527,7 +527,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | HK ETF 日线 | marketdata.sqlite | Bridged: `read_daily("HK", ...)` via `get_hk_etf` |
 | 全球指数日线 | Tushare `index_global` | collector → `market_bars_daily`，market=`Global` |
 | ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
-| 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures` |
+| 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures`；需采集 `last_ddate` 与 `delist_date`，分别映射到 `last_trade_date` 与 `expiry_date` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
@@ -736,7 +736,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-07-05 | 1.1.10 | `/realtime_5min` 增加 `market` 参数，默认兼容 A股，同时支持 `market=Futures` 等非 A股 5 分钟 read model 输出；reader 会透传新增 L1 盘口字段。 |
-| 2026-07-05 | 1.1.9 | CNFutures `market_bars_intraday` 增加可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段；CSV bridge 支持 `rt_fut_min` 盘口字段透传，并可从 `market_assets` 补合约到期字段；`/realtime_5min` 支持 `market=Futures` 读取期货分钟线。 |
+| 2026-07-05 | 1.1.9 | CNFutures `market_bars_intraday` 增加可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段；CSV bridge 支持 `rt_fut_min` 盘口字段透传，并可从 `market_assets` 补合约到期字段；`fut_basic` 配置补采 `last_ddate/delist_date`；`/realtime_5min` 支持 `market=Futures` 读取期货分钟线。 |
 | 2026-07-05 | 1.1.8 | CNFutures 5 分钟默认合约池加入股指期货 `IF/IH/IC/IM`，并按产品轮询自动选合约，供 TradingAgent 股指日内方向风格读取同一 SharedSignals 数据层。 |
 | 2026-07-04 | 1.1.7 | 新增 CNFutures 5 分钟数据新鲜度验收工具，只读检查 `market_bars_intraday` Futures 5 分钟 bar 的 stale/no_data/error 状态。 |
 | 2026-07-04 | 1.1.6 | 新增 CNFutures 5 分钟采集入口 `rt_fut_min`，写入 `market_bars_intraday`，并以独立 cron 支持日盘、夜盘和跨午夜夜盘采集。 |
