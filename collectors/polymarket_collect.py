@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -52,23 +53,66 @@ def json_list(value: Any) -> list[Any]:
     return []
 
 
-def open_json(url: str, *, proxy: str, timeout: int = 25) -> Any:
-    proxies = [proxy, ""] if proxy else [""]
-    last_error: Exception | None = None
-    for item in proxies:
-        try:
-            handler = urllib.request.ProxyHandler({"http": item, "https": item}) if item else urllib.request.ProxyHandler({})
-            opener = urllib.request.build_opener(handler)
-            req = urllib.request.Request(url, headers={"User-Agent": "SharedSignals/1.0"})
-            return json.loads(opener.open(req, timeout=timeout).read())
-        except Exception as exc:  # pragma: no cover - exercised by production smoke
-            last_error = exc
-            continue
-    raise RuntimeError(f"polymarket fetch failed: {last_error}")
+def _env_flag(name: str, default: str = "0") -> bool:
+    return str(os.getenv(name, default)).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def fetch_markets(limit: int, *, proxy: str) -> list[dict[str, Any]]:
-    data = open_json(f"{GAMMA}/markets?closed=false&limit={int(limit)}", proxy=proxy)
+def open_json(
+    url: str,
+    *,
+    proxy: str,
+    timeout: int = 25,
+    retries: int = 2,
+    direct_fallback: bool = False,
+    retry_sleep: float = 1.0,
+) -> Any:
+    routes: list[tuple[str, str]] = []
+    if proxy:
+        routes.append(("proxy", proxy))
+    if direct_fallback or not proxy:
+        routes.append(("direct", ""))
+
+    errors: list[str] = []
+    attempts = max(1, int(retries))
+    for attempt in range(1, attempts + 1):
+        for route_name, route_proxy in routes:
+            try:
+                handler = (
+                    urllib.request.ProxyHandler({"http": route_proxy, "https": route_proxy})
+                    if route_proxy
+                    else urllib.request.ProxyHandler({})
+                )
+                opener = urllib.request.build_opener(handler)
+                req = urllib.request.Request(url, headers={"User-Agent": "SharedSignals/1.0"})
+                return json.loads(opener.open(req, timeout=timeout).read())
+            except Exception as exc:  # pragma: no cover - exercised by production smoke
+                errors.append(f"attempt={attempt} route={route_name} error={exc.__class__.__name__}: {exc}")
+                continue
+        if attempt < attempts and retry_sleep > 0:
+            time.sleep(retry_sleep)
+    route_desc = ", ".join(name for name, _ in routes) or "none"
+    raise RuntimeError(
+        "polymarket fetch failed "
+        f"routes={route_desc} proxy={proxy or 'none'} retries={attempts} "
+        f"errors={errors[-min(len(errors), 4):]}"
+    )
+
+
+def fetch_markets(
+    limit: int,
+    *,
+    proxy: str,
+    timeout: int = 25,
+    retries: int = 2,
+    direct_fallback: bool = False,
+) -> list[dict[str, Any]]:
+    data = open_json(
+        f"{GAMMA}/markets?closed=false&limit={int(limit)}",
+        proxy=proxy,
+        timeout=timeout,
+        retries=retries,
+        direct_fallback=direct_fallback,
+    )
     if not isinstance(data, list):
         raise RuntimeError("polymarket gamma returned non-list payload")
     return [row for row in data if isinstance(row, dict)]
@@ -199,12 +243,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default=os.getenv("SHAREDSIGNALS_MARKETDATA_DB", DEFAULT_DB))
     parser.add_argument("--limit", type=int, default=int(os.getenv("POLYMARKET_MAX_MARKETS", "200")))
     parser.add_argument("--proxy", default=os.getenv("POLYMARKET_HTTP_PROXY", DEFAULT_PROXY))
+    parser.add_argument("--request-timeout", type=int, default=int(os.getenv("POLYMARKET_REQUEST_TIMEOUT", "25")))
+    parser.add_argument("--retries", type=int, default=int(os.getenv("POLYMARKET_FETCH_RETRIES", "2")))
+    parser.add_argument("--allow-direct-fallback", action="store_true", default=_env_flag("POLYMARKET_DIRECT_FALLBACK_ENABLED", "0"))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     collected_at = utc_now()
     try:
-        markets = fetch_markets(args.limit, proxy=args.proxy)
+        markets = fetch_markets(
+            args.limit,
+            proxy=args.proxy,
+            timeout=args.request_timeout,
+            retries=args.retries,
+            direct_fallback=args.allow_direct_fallback,
+        )
         result = write_rows(args.db, markets, collected_at=collected_at, dry_run=args.dry_run)
     except Exception as exc:
         print(f"PM: failed at {collected_at}: {exc}", file=sys.stderr)

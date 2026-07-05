@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from collectors import polymarket_collect as pm
 
@@ -31,3 +32,67 @@ def test_price_rows_fallback_to_midpoint():
     rows = list(pm.price_rows(market, "2026-07-04T00:00:00+00:00"))
 
     assert [row[4] for row in rows] == [0.52, 0.48]
+
+
+class _Response:
+    def __init__(self, payload: Any):
+        self.payload = payload
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def test_open_json_uses_proxy_without_direct_fallback_by_default(monkeypatch):
+    routes: list[dict[str, str]] = []
+
+    def fake_proxy_handler(proxies):
+        return proxies
+
+    class FakeOpener:
+        def __init__(self, proxies):
+            self.proxies = proxies
+
+        def open(self, req, timeout=25):  # noqa: ANN001
+            routes.append(self.proxies)
+            return _Response([{"id": "m1"}])
+
+    monkeypatch.setattr(pm.urllib.request, "ProxyHandler", fake_proxy_handler)
+    monkeypatch.setattr(pm.urllib.request, "build_opener", lambda handler: FakeOpener(handler))
+
+    payload = pm.open_json("https://example.test", proxy="http://127.0.0.1:7890", retries=1)
+
+    assert payload == [{"id": "m1"}]
+    assert routes == [{"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}]
+
+
+def test_open_json_direct_fallback_requires_explicit_flag(monkeypatch):
+    routes: list[dict[str, str]] = []
+
+    def fake_proxy_handler(proxies):
+        return proxies
+
+    class FakeOpener:
+        def __init__(self, proxies):
+            self.proxies = proxies
+
+        def open(self, req, timeout=25):  # noqa: ANN001
+            routes.append(self.proxies)
+            if self.proxies:
+                raise OSError("proxy route unavailable")
+            return _Response([{"id": "direct"}])
+
+    monkeypatch.setattr(pm.urllib.request, "ProxyHandler", fake_proxy_handler)
+    monkeypatch.setattr(pm.urllib.request, "build_opener", lambda handler: FakeOpener(handler))
+
+    payload = pm.open_json(
+        "https://example.test",
+        proxy="http://127.0.0.1:7890",
+        retries=1,
+        direct_fallback=True,
+    )
+
+    assert payload == [{"id": "direct"}]
+    assert routes == [
+        {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"},
+        {},
+    ]
