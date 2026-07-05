@@ -46,9 +46,9 @@
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 
-## 三、API 接口状态（HTTP 17/17；capability smoke 12 OK / 3 skipped）
+## 三、API 接口状态（HTTP 17/17；health core 12 OK / 3 delegated skipped）
 
-生产 HTTP API 暴露 17 个只读端点；`tools/capability_scan.py` 当前覆盖 15 个核心读取函数，其中 A 股日线样例通过 `reader.get_market_data()` 从 read model 动态取样，港股/跨境持仓延期端点按当前生产范围标记为 `skipped` 而不是误报 degraded。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
+生产 HTTP API 暴露 17 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，MarketGraph 研究图谱类端点 `events`、`associations`、`impacts` 标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|
@@ -58,19 +58,19 @@
 | get_reference | /reference | OK |
 | get_macro_factors | /macro | OK |
 | get_capital_flow | /capital_flow | OK |
-| get_events | /events | OK |
+| get_events | /events | delegated |
 | get_sentiment | /sentiment | OK |
 | get_crypto_klines | /crypto | OK |
 | get_pm_markets | /pm_markets | OK |
-| get_associations | /associations | OK |
-| get_impacts | /impacts | OK |
+| get_associations | /associations | delegated |
+| get_impacts | /impacts | delegated |
 | get_industry | /industry | OK |
 | get_realtime_5min | /realtime_5min | OK |
 | get_tushare | /tushare | OK |
 | clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
-- 健康检查覆盖：`/health` 当前生产验证为 reader functions `15/15`；HTTP surface 仍为 17 个端点；capability smoke 的延期端点会计入 `skipped`。
+- 健康检查覆盖：`/health` 当前生产验证为 SharedSignals core reader functions `12/12`，另有 3 个 MarketGraph delegated endpoint 标记 skipped；HTTP surface 仍为 17 个端点；capability smoke 的延期端点会计入 `skipped`。
 - API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 15 接口 HTTP 封装
 - 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
@@ -132,6 +132,7 @@
 - [x] 删除无引用旧目录 `collectors/tushare_old/`；该目录是旧 Ashare/Tushare 副本，已被现役 `collectors/tushare/` 取代。
 - [x] 删除断链 MarketGraph symlink：`bridge/marketgraph_marketdata_db.py` 改为本仓库兼容模块；`data/association`、`data/intake` 改成本地目录。
 - [x] 删除退役旧代码：`collectors/rss/`、`collectors/us_alpaca_*.py`、`tools/api_server.py`；RSS 恢复必须重新按 SharedSignals collector 契约设计，US 行情由 Tushare/现役 read model 负责。
+- [x] `/health` 不再把 MarketGraph 研究图谱类 `events`/`associations`/`impacts` 作为 SharedSignals 核心供数健康项；三者标记 delegated/skipped，避免通过软链或文件复制重新耦合。
 - [x] 主服务器 `marketgraph` 用户 crontab 已恢复为 Finance combined crontab：同时包含 SharedSignals 采集/同步/patrol/watchdog/capability 任务，以及 TradingAgent 模拟/复盘/健康任务。
 - [x] 修复前 live crontab 只有 TradingAgent 任务，导致 SharedSignals `cn_futures_5min.sh`、P0 5分钟采集、DuckDB sync、patrol/watchdog 等调度没有安装；修复后 `SharedSignals /health` 从 `degraded` 恢复为 `ok`，cron `active_logs=2`。
 - [x] 回退备份：`/opt/investment/SharedSignals/logs/cron/marketgraph_crontab_before_combined_sharedsignals_20260705T192844.bak`。

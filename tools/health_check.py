@@ -216,16 +216,18 @@ def _check_reader_functions() -> dict[str, Any]:
         ("reference", reader.get_reference("stock_master")),
         ("macro", reader.get_macro_factors("20260601", "20260629")),
         ("capital_flow", reader.get_capital_flow(samples["moneyflow_date"], ts_code=samples["moneyflow_symbol"])),
-        ("events", reader.get_events(samples["event_date"], samples["event_date"])),
         ("sentiment", reader.get_sentiment(samples["sentiment_date"], samples["sentiment_date"])),
         ("crypto", reader.get_crypto_klines("BTCUSDT", 5)),
         ("pm_markets", reader.get_pm_markets(5)),
-        ("associations", reader.get_associations(ts_code=samples["industry_symbol"])),
-        ("impacts", reader.get_impacts(event_type="policy")),
         ("industry", reader.get_industry(samples["industry_symbol"])),
         ("realtime_5min", reader.get_realtime_5min(ts_code=samples["intraday_symbol"], date=samples["intraday_date"])),
         ("tushare", reader.get_tushare(api_name="stock_basic", ts_code=samples["industry_symbol"])),
     ]
+    skipped = {
+        "events": "delegated_to_marketgraph_or_future_sharedsignals_event_collector",
+        "associations": "marketgraph_research_graph_endpoint",
+        "impacts": "marketgraph_research_graph_endpoint",
+    }
 
     ok: list[str] = []
     degraded: list[str] = []
@@ -239,8 +241,9 @@ def _check_reader_functions() -> dict[str, Any]:
     return {
         "status": "degraded" if degraded else "ok",
         "ok": len(ok),
-        "total": len(funcs),
+        "total": len(funcs) + len(skipped),
         "degraded": degraded,
+        "skipped": skipped,
         "samples": samples,
     }
 
