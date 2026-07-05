@@ -113,6 +113,7 @@
 - [x] `tools/watchdog.py` 的 API health 探针增加 3 次短重试，避免 SharedSignals API 单次慢响应把 watchdog 分数误打低；连续失败仍按 critical 处理。
 - [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走新加坡 RSS mirror。
 - [x] PM/Crypto 采集支持 `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES` 逗号分隔代理优先级列表；未来新加坡 relay 验证后可配置为 `Singapore relay -> local Clash/Mihomo`，当前默认仍只启用本机 Clash，避免把不存在的 relay 写入生产。
+- [x] 新增 `deploy/install_singapore_proxy_relay.sh` 与 `deploy/configure_overseas_proxy_priority.sh`，用于在拿到新加坡 SSH 后安装只允许主服务器访问的受限 tinyproxy relay，并在杭州主服务器验证后切换为“新加坡优先、本机 Clash 备选”；操作说明见 `docs/singapore_proxy_relay.md`。
 
 ### 2026-07-05 health SLA research notice split
 
