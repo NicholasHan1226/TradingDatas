@@ -2,6 +2,9 @@
 #
 # Source of truth: on 8.138.181.177, inspect with:
 #   sudo -u marketgraph crontab -l
+# Production uses one combined marketgraph user crontab for SharedSignals,
+# TradingAgent, and MarketGraph. Do not install this single-system file directly
+# over live crontab; merge it with the other two system crontab references.
 #
 # SharedSignals owns market data collection. TradingAgent and MarketGraph must
 # consume SharedSignals API/read model and must not re-enable their old direct
