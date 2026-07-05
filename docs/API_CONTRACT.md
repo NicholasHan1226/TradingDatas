@@ -1,5 +1,7 @@
 # SharedSignals API Contract
 
+> **Note**: This is an auto-generated capability snapshot. The authoritative API contract is `../API_CONTRACT.md`.
+>
 > Auto-generated from `capability_registry.json` at 2026-07-05T15:40:54+08:00
 > Service: SharedSignals v1.0.0
 

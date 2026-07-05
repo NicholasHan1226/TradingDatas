@@ -41,6 +41,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
+23 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh
 
 # Polymarket markets/prices collection belongs here, not in TradingAgent or

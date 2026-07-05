@@ -66,3 +66,15 @@ def test_weekend_daily_sla_expands_without_relaxing_pm_prices(tmp_path, monkeypa
     assert "market_bars_daily" not in tables
     assert "market_pm_prices" in tables
     assert report["status"] == "critical"
+
+
+def test_table_query_errors_are_reported_not_silently_ok(tmp_path, monkeypatch):
+    path = tmp_path / "marketdata.sqlite"
+    sqlite3.connect(path).close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=datetime.fromisoformat("2026-07-01T04:00:00+00:00"))
+
+    assert report["status"] == "critical"
+    assert report["summary"]["critical"] >= 1
+    assert any(item["status"] == "error" for item in report["violations"])

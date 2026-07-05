@@ -1,7 +1,7 @@
 # SharedSignals cron template - verified against production on 2026-07-04.
 #
-# Install under the marketgraph production user's crontab only after checking
-# the live server state. Production source of truth is:
+# This file is an install template. The repository root crontab.txt is the
+# production snapshot; the live server state remains the final source of truth:
 #   sudo -u marketgraph crontab -l
 
 SHELL=/bin/bash
@@ -38,4 +38,5 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
+23 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh

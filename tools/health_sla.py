@@ -12,6 +12,18 @@ SLA_THRESHOLDS = {
     'market_events': {'max_age_hours': 36, 'market': 'all', 'lane': 'research', 'severity': 'notice'},
 }
 
+def _table_violation(table: str, sla: dict, *, status: str, message: str, now: datetime) -> dict:
+    return {
+        'table': table,
+        'status': status,
+        'message': message,
+        'checked_at': now.isoformat(),
+        'lane': sla.get('lane', 'unknown'),
+        'severity': sla.get('severity', 'warning'),
+        'threshold_hours': sla.get('max_age_hours'),
+    }
+
+
 def _effective_max_age_hours(sla: dict, now: datetime) -> int:
     threshold = int(sla['max_age_hours'])
     cn_now = now.astimezone(timezone(timedelta(hours=8)))
@@ -45,37 +57,42 @@ def check_sla(now: datetime | None = None):
         return {'status': 'critical', 'reason': 'DB not found', 'db': db, 'violations': []}
     
     violations = []
-    conn = sqlite3.connect(db)
     now = now or datetime.now(timezone.utc)
-    
-    for table, sla in SLA_THRESHOLDS.items():
-        try:
-            cols = [r[1] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
-            date_col = next((c for c in ['trade_date','event_time','collected_at','updated_at'] if c in cols), None)
-            if not date_col: continue
-            
-            row = conn.execute(f'SELECT MAX({date_col}) FROM {table}').fetchone()
-            if not row or not row[0]: continue
-            
-            latest = row[0]
-            if isinstance(latest, str):
-                latest = datetime.fromisoformat(latest.replace('Z', '+00:00'))
-            latest = _as_utc(latest)
-            
-            effective_max_age = _effective_max_age_hours(sla, now)
-            age_hours = (now - latest).total_seconds() / 3600
-            if age_hours > effective_max_age:
-                violations.append({
-                    'table': table, 'age_hours': round(age_hours, 1),
-                    'threshold_hours': effective_max_age,
-                    'base_threshold_hours': sla['max_age_hours'], 'latest': str(latest)[:19],
-                    'status': 'breached',
-                    'lane': sla.get('lane', 'unknown'),
-                    'severity': sla.get('severity', 'warning'),
-                })
-        except: pass
-    
-    conn.close()
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        for table, sla in SLA_THRESHOLDS.items():
+            try:
+                cols = [r[1] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
+                date_col = next((c for c in ['trade_date','event_time','collected_at','updated_at'] if c in cols), None)
+                if not date_col:
+                    violations.append(_table_violation(table, sla, status='error', message='freshness date column not found', now=now))
+                    continue
+
+                row = conn.execute(f'SELECT MAX({date_col}) FROM {table}').fetchone()
+                if not row or not row[0]:
+                    violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
+                    continue
+
+                latest = row[0]
+                if isinstance(latest, str):
+                    latest = datetime.fromisoformat(latest.replace('Z', '+00:00'))
+                latest = _as_utc(latest)
+
+                effective_max_age = _effective_max_age_hours(sla, now)
+                age_hours = (now - latest).total_seconds() / 3600
+                if age_hours > effective_max_age:
+                    violations.append({
+                        'table': table, 'age_hours': round(age_hours, 1),
+                        'threshold_hours': effective_max_age,
+                        'base_threshold_hours': sla['max_age_hours'], 'latest': str(latest)[:19],
+                        'status': 'breached',
+                        'lane': sla.get('lane', 'unknown'),
+                        'severity': sla.get('severity', 'warning'),
+                    })
+            except Exception as exc:
+                violations.append(_table_violation(table, sla, status='error', message=f'{exc.__class__.__name__}: {exc}', now=now))
+    finally:
+        conn.close()
     critical_count = sum(1 for item in violations if item.get('severity') == 'critical')
     warning_count = sum(1 for item in violations if item.get('severity') == 'warning')
     status = 'critical' if critical_count else ('degraded' if warning_count else 'ok')
