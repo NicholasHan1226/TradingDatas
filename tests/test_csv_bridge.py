@@ -627,3 +627,23 @@ def test_ingest_csv_to_sqlite_honors_global_bridge_lock(tmp_path: Path, monkeypa
 
     assert rows == 1
     assert _count_rows(db_path, "market_bars_daily") == 1
+
+
+def test_csv_bridge_retries_sqlite_busy(monkeypatch: pytest.MonkeyPatch):
+    from storage import csv_bridge
+
+    calls = {"count": 0}
+
+    def fake_ingest_once(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return 7
+
+    monkeypatch.setattr(csv_bridge, "_ingest_csv_to_sqlite_once", fake_ingest_once)
+    monkeypatch.setattr(csv_bridge.time, "sleep", lambda _seconds: None)
+
+    rows = csv_bridge._ingest_csv_to_sqlite_unlocked("/tmp/marketdata.sqlite", "market_assets", "/tmp/fund_basic.csv")
+
+    assert rows == 7
+    assert calls["count"] == 2

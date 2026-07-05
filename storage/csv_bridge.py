@@ -21,6 +21,7 @@ from env_bootstrap import env_int
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
 MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_CSV_BRIDGE_MAX_TRANSACTION_ROWS", 0, min_value=0)
+DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES", 3, min_value=1)
 
 DEFAULT_SQLITE_PATH = (
     Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
@@ -625,7 +626,25 @@ def _flush_chunk(conn, sql, chunk):
     return conn.total_changes - before
 
 
-def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
+def _sqlite_lock_error(exc: Exception) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        marker in str(exc).lower() for marker in ("locked", "busy")
+    )
+
+
+def _prepare_sqlite_connection(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        mode = conn.execute("PRAGMA journal_mode").fetchone()
+        if mode and str(mode[0]).lower() != "wal":
+            conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as exc:
+        if not _sqlite_lock_error(exc):
+            raise
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+
+def _ingest_csv_to_sqlite_once(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
     """Ingest one CSV file into an existing SQLite table.
 
     The bridge is defensive: it never creates target tables. If the database or
@@ -648,9 +667,7 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
     max_rows_per_transaction = MAX_TRANSACTION_ROWS if max_transaction_rows is None else int(max_transaction_rows)
     conn = sqlite3.connect(str(db_path), timeout=30)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=30000")
+        _prepare_sqlite_connection(conn)
 
         target_columns = _table_columns(conn, table)
         if not target_columns:
@@ -726,6 +743,26 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
         conn.close()
 
     return rows_written
+
+
+def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
+    last_error: Exception | None = None
+    for attempt in range(1, DB_BUSY_RETRIES + 1):
+        try:
+            return _ingest_csv_to_sqlite_once(
+                db_path,
+                table,
+                csv_path,
+                encoding=encoding,
+                max_transaction_rows=max_transaction_rows,
+            )
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            if attempt < DB_BUSY_RETRIES and _sqlite_lock_error(exc):
+                time.sleep(min(2.0 * attempt, 5.0))
+                continue
+            raise
+    raise RuntimeError(f"csv bridge sqlite write failed after {DB_BUSY_RETRIES} attempts: {last_error}") from last_error
 
 
 def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
