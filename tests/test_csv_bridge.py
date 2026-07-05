@@ -336,6 +336,42 @@ def test_etf_basic_maps_to_market_assets_with_name(tmp_path: Path):
     )
 
 
+def test_stock_company_does_not_blank_stock_basic_asset_fields(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    stock_basic = _write_csv(
+        tmp_path / "data" / "tushare" / "stock_basic" / "20260705" / "stock_basic_20260705.csv",
+        "\n".join(
+            [
+                "ts_code,name,industry,list_date",
+                "000001.SZ,平安银行,银行,19910403",
+            ]
+        ),
+    )
+    stock_company = _write_csv(
+        tmp_path / "data" / "tushare" / "stock_company" / "20260705" / "stock_company_20260705.csv",
+        "\n".join(
+            [
+                "ts_code,chairman,manager,list_date",
+                "000001.SZ,,,19910403",
+            ]
+        ),
+    )
+
+    assert ingest_csv_to_sqlite(db_path, CSV_TO_TABLE_MAP["stock_basic"], stock_basic) == 1
+    assert ingest_csv_to_sqlite(db_path, CSV_TO_TABLE_MAP["stock_company"], stock_company) == 1
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        record = conn.execute(
+            "SELECT symbol, name, sector, list_date, provider FROM market_assets WHERE symbol = ?",
+            ("000001.SZ",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert record == ("000001.SZ", "平安银行", "银行", "19910403", "tushare_stock_company")
+
+
 def test_low_frequency_macro_bridge_map_covers_p4_macro_apis() -> None:
     assert CSV_TO_TABLE_MAP["cn_gdp"] == "market_factors"
     assert CSV_TO_TABLE_MAP["sf_month"] == "market_factors"

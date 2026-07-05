@@ -1,6 +1,7 @@
 # SharedSignals Log
 | 时间 | 动作 | 结果 |
 |------|------|------|
+| 2026-07-05 | 修复 A股资产合并覆盖问题 | `stock_company` 后写入不再用空字段覆盖 `stock_basic` 名称、行业、上市日期等字段；`industry` 规范化进入 `sector`；`get_tushare(stock_basic, ts_code=...)` 可读取合并后的 A股资产视图 |
 | 2026-07-05 | 修复 5 分钟 read API 市场参数与迁移补列保护 | `/realtime_5min` 支持 `market` 参数并默认兼容 A股；非 A股市场可通过同一 API 读取 `market_bars_intraday`；schema hash 已最新但旧表缺可空列时仍会自动补齐 |
 | 2026-07-05 | 扩展 CNFutures 5 分钟盘口与到期字段 | `market_bars_intraday` 增加可空 bid/ask、盘口量、last_trade_date/expiry_date；CSV bridge 可透传 `rt_fut_min` 盘口字段并从 `market_assets` 补合约到期字段 |
 | 2026-07-05 | API 开盘高压稳定性修复 | SharedSignals API 增加 256 accept backlog，客户端断连降级 debug；生产复压 160/160 正常峰值与 640/640 尖峰请求均 200，TradingAgent 队列无新增副作用 |

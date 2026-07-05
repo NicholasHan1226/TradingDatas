@@ -918,8 +918,12 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
             vals.append("Ashare")
         if "provider" in cols:
             if table == "market_assets":
-                where.append("(provider = ? OR provider = ?)")
-                vals.extend(["tushare", f"tushare_{api_name}"])
+                providers = ["tushare", f"tushare_{api_name}"]
+                if api_name == "stock_basic":
+                    providers.append("tushare_stock_company")
+                placeholders = " OR ".join("provider = ?" for _ in providers)
+                where.append(f"({placeholders})")
+                vals.extend(providers)
             else:
                 where.append("provider = ?")
                 vals.append(f"tushare_{api_name}")

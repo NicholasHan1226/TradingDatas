@@ -324,7 +324,7 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 if canonical in target_columns and (set(aliases) & csv_column_set or canonical in {"last_trade_date", "expiry_date"}):
                     derived_columns.append(canonical)
     if table == "market_assets":
-        for col in ("name", "asset_type", "status", "updated_at", "raw_json", "last_trade_date", "expiry_date"):
+        for col in ("name", "asset_type", "sector", "status", "updated_at", "raw_json", "last_trade_date", "expiry_date"):
             if col in target_columns:
                 derived_columns.append(col)
     if table == "market_events":
@@ -438,6 +438,8 @@ def _canonical_row(table, row, api_name, csv_path):
                 if row.get(name_col):
                     row["name"] = row.get(name_col)
                     break
+        if not row.get("sector") and row.get("industry"):
+            row["sector"] = row.get("industry")
         if not row.get("asset_type"):
             asset_type_map = {
                 "etf_basic": "etf",
@@ -501,6 +503,31 @@ def _insert_sql(table, columns, pk_columns):
         conflict_sql = ", ".join(_quote_identifier(col) for col in pk_columns)
         update_columns = [col for col in columns if col not in pk_columns]
         if update_columns:
+            if table == "market_assets":
+                preserve_existing_when_empty = {
+                    "name",
+                    "asset_type",
+                    "exchange",
+                    "sector",
+                    "list_date",
+                    "last_trade_date",
+                    "expiry_date",
+                    "status",
+                }
+                assignments = []
+                for col in update_columns:
+                    quoted_col = _quote_identifier(col)
+                    if col in preserve_existing_when_empty:
+                        assignments.append(
+                            f"{quoted_col} = COALESCE(NULLIF(excluded.{quoted_col}, ''), {quoted_table}.{quoted_col})"
+                        )
+                    else:
+                        assignments.append(f"{quoted_col} = excluded.{quoted_col}")
+                update_sql = ", ".join(assignments)
+                return (
+                    f"INSERT INTO {quoted_table} ({col_sql}) VALUES ({placeholders}) "
+                    f"ON CONFLICT ({conflict_sql}) DO UPDATE SET {update_sql}"
+                )
             update_sql = ", ".join(
                 f"{_quote_identifier(col)} = excluded.{_quote_identifier(col)}"
                 for col in update_columns
