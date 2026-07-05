@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (DuckDB pytest venv baseline)
+> 最后更新：2026-07-05 (combined production crontab restored)
 
 ---
 
@@ -124,6 +124,12 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-05 combined production crontab restored
+
+- [x] 主服务器 `marketgraph` 用户 crontab 已恢复为 Finance combined crontab：同时包含 SharedSignals 采集/同步/patrol/watchdog/capability 任务，以及 TradingAgent 模拟/复盘/健康任务。
+- [x] 修复前 live crontab 只有 TradingAgent 任务，导致 SharedSignals `cn_futures_5min.sh`、P0 5分钟采集、DuckDB sync、patrol/watchdog 等调度没有安装；修复后 `SharedSignals /health` 从 `degraded` 恢复为 `ok`，cron `active_logs=2`。
+- [x] 回退备份：`/opt/investment/SharedSignals/logs/cron/marketgraph_crontab_before_combined_sharedsignals_20260705T192844.bak`。
 
 ### 2026-07-05 DuckDB pytest venv baseline
 
