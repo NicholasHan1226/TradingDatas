@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (SQLite recovery + DuckDB readonly query fix)
+> 最后更新：2026-07-05 (DuckDB pytest venv baseline)
 
 ---
 
@@ -18,6 +18,7 @@
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
+- **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/marketgraph/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
@@ -123,6 +124,12 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-05 DuckDB pytest venv baseline
+
+- [x] 复核 DuckDB 依赖：`requirements.txt` 已声明 `duckdb>=1.1.0`，本地项目 `.venv` 已安装 DuckDB，可跑 DuckDB 同步/恢复相关测试。
+- [x] 全量测试口径固定为项目 venv：`.venv/bin/python -m pytest tests/ -q --tb=short`。系统 Python 缺包只代表解释器选择错误，不代表生产采集或 DuckDB mirror 故障。
+- [x] 当前全量测试基线：160 passed, 147 skipped；147 skipped 为已文档化 ghost/legacy 测试，不属于现役生产模块失败。
 
 ### 2026-07-05 SQLite 主库损坏自动恢复/备份切换
 
