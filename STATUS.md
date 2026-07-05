@@ -107,8 +107,8 @@
 
 ### 2026-07-05 PM proxy hardening
 
-- [x] `cron/pm_collect.sh` 显式导出 `POLYMARKET_HTTP_PROXY=http://127.0.0.1:7890`、请求超时和短重试配置，并把 proxy 通过 `--proxy` 传入 collector；不再只依赖 Python 内部默认值。
-- [x] `collectors/polymarket_collect.py` 默认禁用 direct fallback，避免本地 proxy 短故障后又直连并把错误误写成 `Network is unreachable`；如确需直连审计，必须显式设置 `POLYMARKET_DIRECT_FALLBACK_ENABLED=1` 或传 `--allow-direct-fallback`。
+- [x] `cron/pm_collect.sh` 显式导出 `POLYMARKET_HTTP_PROXY=http://127.0.0.1:7890`、请求超时、网络短重试和 SQLite 写库短重试配置，并把 proxy 通过 `--proxy` 传入 collector；不再只依赖 Python 内部默认值。
+- [x] `collectors/polymarket_collect.py` 默认禁用 direct fallback，避免本地 proxy 短故障后又直连并把错误误写成 `Network is unreachable`；如确需直连审计，必须显式设置 `POLYMARKET_DIRECT_FALLBACK_ENABLED=1` 或传 `--allow-direct-fallback`。写入 read model 时先设置 busy timeout，并对 `database is locked` 做有限短重试，减少 5 分钟多任务撞库导致的漏采。
 - [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走新加坡 RSS mirror。
 
 ### 2026-07-05 health SLA research notice split

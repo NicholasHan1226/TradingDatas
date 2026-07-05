@@ -184,57 +184,93 @@ def price_rows(market: dict[str, Any], collected_at: str) -> Iterable[tuple[Any,
         )
 
 
-def write_rows(db_path: str, markets: list[dict[str, Any]], *, collected_at: str, dry_run: bool = False) -> dict[str, Any]:
+def _sqlite_lock_error(exc: Exception) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        marker in str(exc).lower() for marker in ("locked", "busy")
+    )
+
+
+def _prepare_sqlite_connection(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        mode = conn.execute("PRAGMA journal_mode").fetchone()
+        if mode and str(mode[0]).lower() != "wal":
+            conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as exc:
+        if not _sqlite_lock_error(exc):
+            raise
+
+
+def write_rows(
+    db_path: str,
+    markets: list[dict[str, Any]],
+    *,
+    collected_at: str,
+    dry_run: bool = False,
+    db_retries: int = 3,
+) -> dict[str, Any]:
     market_rows = [market_row(row, collected_at) for row in markets]
     price_rows_list = [price for row in markets for price in price_rows(row, collected_at)]
     if dry_run:
         return {"markets": len(market_rows), "prices": len(price_rows_list), "status": "dry_run"}
 
     run_id = f"polymarket_gamma_{collected_at.replace(':', '').replace('-', '').replace('+', 'Z')}"
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.executemany(
-            """
-            INSERT OR REPLACE INTO market_pm_markets
-            (market_id, question, slug, end_date, volume, liquidity, active, closed, provider, source_file, collected_at, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            market_rows,
-        )
-        conn.executemany(
-            """
-            INSERT OR REPLACE INTO market_pm_prices
-            (price_hash, market_id, token_id, price_time, price, provider, source_file, collected_at, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            price_rows_list,
-        )
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO market_ingest_runs
-            (run_id, started_at, finished_at, status, source, rows_read, rows_written, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                collected_at,
-                utc_now(),
-                "success" if market_rows else "empty",
-                SOURCE,
-                len(markets),
-                len(market_rows) + len(price_rows_list),
-                json.dumps({"markets": len(market_rows), "prices": len(price_rows_list)}, ensure_ascii=False),
-            ),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    attempts = max(1, db_retries)
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        conn: sqlite3.Connection | None = None
+        try:
+            conn = sqlite3.connect(db_path, timeout=30)
+            _prepare_sqlite_connection(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO market_pm_markets
+                (market_id, question, slug, end_date, volume, liquidity, active, closed, provider, source_file, collected_at, raw_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                market_rows,
+            )
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO market_pm_prices
+                (price_hash, market_id, token_id, price_time, price, provider, source_file, collected_at, raw_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                price_rows_list,
+            )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO market_ingest_runs
+                (run_id, started_at, finished_at, status, source, rows_read, rows_written, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    collected_at,
+                    utc_now(),
+                    "success" if market_rows else "empty",
+                    SOURCE,
+                    len(markets),
+                    len(market_rows) + len(price_rows_list),
+                    json.dumps({"markets": len(market_rows), "prices": len(price_rows_list)}, ensure_ascii=False),
+                ),
+            )
+            conn.commit()
+            break
+        except Exception as exc:
+            if conn is not None:
+                conn.rollback()
+            last_error = exc
+            if attempt < attempts and _sqlite_lock_error(exc):
+                time.sleep(min(2.0 * attempt, 5.0))
+                continue
+            raise
+        finally:
+            if conn is not None:
+                conn.close()
+    else:
+        raise RuntimeError(f"polymarket sqlite write failed after {attempts} attempts: {last_error}") from last_error
     return {"markets": len(market_rows), "prices": len(price_rows_list), "status": "success" if market_rows else "empty"}
 
 
@@ -245,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--proxy", default=os.getenv("POLYMARKET_HTTP_PROXY", DEFAULT_PROXY))
     parser.add_argument("--request-timeout", type=int, default=int(os.getenv("POLYMARKET_REQUEST_TIMEOUT", "25")))
     parser.add_argument("--retries", type=int, default=int(os.getenv("POLYMARKET_FETCH_RETRIES", "2")))
+    parser.add_argument("--db-retries", type=int, default=int(os.getenv("POLYMARKET_DB_RETRIES", "3")))
     parser.add_argument("--allow-direct-fallback", action="store_true", default=_env_flag("POLYMARKET_DIRECT_FALLBACK_ENABLED", "0"))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
@@ -258,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
             retries=args.retries,
             direct_fallback=args.allow_direct_fallback,
         )
-        result = write_rows(args.db, markets, collected_at=collected_at, dry_run=args.dry_run)
+        result = write_rows(args.db, markets, collected_at=collected_at, dry_run=args.dry_run, db_retries=args.db_retries)
     except Exception as exc:
         print(f"PM: failed at {collected_at}: {exc}", file=sys.stderr)
         return 1
