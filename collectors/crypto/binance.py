@@ -53,18 +53,28 @@ class CryptoCollector(BaseCollector):
             self._session.proxies = {"https": self._proxy}
         self.retry_max = self.config.get("retry", {}).get("max_attempts", 3)
 
+    def _should_retry(self, exc: BaseException) -> bool:
+        if isinstance(exc, requests.RequestException):
+            return True
+        return super()._should_retry(exc)
+
     # ------------------------------------------------------------------
     # Health check
     # ------------------------------------------------------------------
 
     def health_check(self) -> dict[str, Any]:
         try:
-            resp = self._session.get(
-                f"{self.BASE_URL}/api/v3/ping", timeout=10
-            )
-            if resp.status_code == 200:
-                return {"status": "available", "message": "binance api reachable"}
-            return {"status": "degraded", "message": f"ping returned {resp.status_code}"}
+            def _ping() -> dict[str, Any]:
+                resp = self._session.get(
+                    f"{self.BASE_URL}/api/v3/ping", timeout=10
+                )
+                if resp.status_code == 200:
+                    return {"status": "available", "message": "binance api reachable"}
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    resp.raise_for_status()
+                return {"status": "degraded", "message": f"ping returned {resp.status_code}"}
+
+            return self._retry_call(_ping, key="binance_health")
         except Exception as exc:
             return {"status": "unavailable", "message": str(exc)}
 
