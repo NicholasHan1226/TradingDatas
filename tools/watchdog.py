@@ -48,6 +48,7 @@ WEIGHTS = {
     "collector_status": 20,
     "disk": 15,
     "memory": 10,
+    "external_health_sla": 0,
 }
 
 HEAL_THRESHOLD = int(os.environ.get("WATCHDOG_HEAL_THRESHOLD", "60"))
@@ -447,12 +448,26 @@ def load_external_reports(input_dir: Path = WATCHDOG_INPUT_DIR) -> list[dict[str
     return reports
 
 
-def compute_health_score(checks: list[dict[str, Any]]) -> int:
+def _external_report_penalty(external_reports: list[dict[str, Any]] | None) -> int:
+    penalty = 0
+    for report in external_reports or []:
+        if report.get("_stale"):
+            continue
+        status = str(report.get("status", "")).lower()
+        if status == "critical":
+            penalty += 15
+        elif status == "degraded":
+            penalty += 5
+    return penalty
+
+
+def compute_health_score(checks: list[dict[str, Any]], external_reports: list[dict[str, Any]] | None = None) -> int:
     score = 0.0
     for check in checks:
         weight = WEIGHTS.get(str(check.get("name")), 0)
         factor = max(0.0, min(1.0, _safe_float(check.get("score_factor"), 0.0)))
         score += weight * factor
+    score -= _external_report_penalty(external_reports)
     return int(round(max(0.0, min(100.0, score))))
 
 
@@ -465,7 +480,7 @@ def run_all_checks() -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
         check_memory(),
     ]
     external_reports = load_external_reports()
-    return checks, external_reports, compute_health_score(checks)
+    return checks, external_reports, compute_health_score(checks, external_reports)
 
 
 def _patrol_like_result(checks: list[dict[str, Any]], score: int) -> dict[str, Any]:

@@ -24,10 +24,11 @@ import shutil
 import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from env_bootstrap import env_float, env_int
 from tools import sqlite_recovery
 
 # ---------------------------------------------------------------------------
@@ -50,12 +51,12 @@ PATROL_HISTORY = LOG_DIR / "patrol_history.jsonl"
 # ---------------------------------------------------------------------------
 # Thresholds
 # ---------------------------------------------------------------------------
-STALE_SOURCE_HOURS = 6          # source considered stale if no collection in N hours
-DATA_FRESHNESS_MAX_DAYS = 1     # trade_date older than N days → stale
-MAX_STAGING_FILES = 100         # pending NDJSON count > N → backpressure
-WAL_SIZE_WARN_MB = 100          # WAL file size > N MB → checkpoint
-DISK_WARN_PCT = 80              # disk usage > N% → warning
-DISK_STOP_PCT = 90              # disk usage > N% → stop collection
+STALE_SOURCE_HOURS = env_int("PATROL_STALE_SOURCE_HOURS", 6, min_value=1, max_value=168)
+DATA_FRESHNESS_MAX_DAYS = env_int("PATROL_DATA_FRESHNESS_MAX_DAYS", 1, min_value=0, max_value=30)
+MAX_STAGING_FILES = env_int("PATROL_MAX_STAGING_FILES", 100, min_value=10, max_value=10000)
+WAL_SIZE_WARN_MB = env_int("PATROL_WAL_SIZE_WARN_MB", 100, min_value=1, max_value=10240)
+DISK_WARN_PCT = env_float("PATROL_DISK_WARN_PCT", 80.0, min_value=10.0, max_value=99.0)
+DISK_STOP_PCT = env_float("PATROL_DISK_STOP_PCT", 90.0, min_value=11.0, max_value=99.0)
 
 
 def utc_now() -> str:
@@ -64,6 +65,26 @@ def utc_now() -> str:
 
 def ts_now() -> float:
     return time.time()
+
+
+def _freshness_date(value: Any) -> tuple[date, str] | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y%m%d").date(), text
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date(), text
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d").date(), text
+    except ValueError:
+        return None
 
 
 # ============================================================
@@ -164,18 +185,22 @@ def check_data_freshness() -> dict[str, Any]:
     conn = sqlite3.connect(str(DB_PATH))
     try:
         # Check multiple tables for freshness; some may be empty while others have data
+        latest_date = None
         latest = None
         queries = [
             ("market_bars_daily",     "SELECT MAX(trade_date) FROM market_bars_daily"),
             ("market_bars_intraday",  "SELECT MAX(trade_date) FROM market_bars_intraday"),
             ("market_events",         "SELECT MAX(event_time)  FROM market_events"),
+            ("market_factors",        "SELECT MAX(collected_at) FROM market_factors"),
+            ("market_pm_prices",      "SELECT MAX(updated_at) FROM market_pm_prices"),
         ]
         for _tbl, sql in queries:
             try:
                 r = conn.execute(sql).fetchone()
                 v = r[0] if r else None
-                if v and (latest is None or v > latest):
-                    latest = v
+                parsed = _freshness_date(v)
+                if parsed and (latest_date is None or parsed[0] > latest_date):
+                    latest_date, latest = parsed
             except sqlite3.OperationalError:
                 pass  # table may not exist yet
     finally:
@@ -196,11 +221,6 @@ def check_data_freshness() -> dict[str, Any]:
         }
 
     now = datetime.now(timezone.utc).date()
-    try:
-        latest_date = datetime.strptime(latest, "%Y%m%d").date()
-    except ValueError:
-        latest_date = now  # assume ok if unparseable
-
     days_behind = (now - latest_date).days
     status = "ok" if days_behind <= DATA_FRESHNESS_MAX_DAYS else "stale"
     return {

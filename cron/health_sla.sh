@@ -19,6 +19,7 @@ OUTPUT_FILE="${WATCHDOG_INPUT_DIR}/health_sla.json"
 TMP_FILE="${OUTPUT_FILE}.$$"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}" "${WATCHDOG_INPUT_DIR}"
+exec 2>>"${LOG_FILE}"
 
 exec 200>"${LOCK_FILE}"
 if ! flock -n 200; then
