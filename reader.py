@@ -144,18 +144,6 @@ _CACHE_TOTAL_BYTES = 0
 # Guards cache generation, byte accounting, and per-function cache dictionaries.
 _CACHE_LOCK = RLock()
 
-_WATCHED_PATHS: list[Path] = [
-    SQLITE_PATH,
-    INTAKE_ROOT / "event_candidates.csv",
-    INTAKE_ROOT / "sentiment_signals.csv",
-    SENTIMENT_SIGNALS_PATH,
-    MACRO_FACTORS_PATH,
-    STOCK_INDUSTRY_MAP_PATH,
-    EVENT_SIGNAL_ASSOC_PATH,
-    IMPACT_RELATIONS_PATH,
-    TARGET_STOCK_MAP_PATH,
-]
-
 # All cached functions that should be cleared together
 _CACHED_FUNCTIONS: list[Callable[..., Any]] = []
 
@@ -286,18 +274,48 @@ def _bounded_lru_cache(
     return decorate
 
 
+def _resolved_path(pathlike: Any) -> Path:
+    return Path(os.fspath(pathlike))
+
+
+def _sqlite_watch_paths(pathlike: Any) -> list[Path]:
+    base = _resolved_path(pathlike)
+    return [base, Path(str(base) + "-wal"), Path(str(base) + "-shm")]
+
+
+def _watched_paths() -> list[Path]:
+    """Return paths whose writes invalidate read-side caches.
+
+    SQLite WAL mode can keep fresh writes in ``marketdata.sqlite-wal`` before the
+    main database file mtime changes, so the sidecar files are part of the
+    fingerprint for 5-minute trading reads.
+    """
+    return [
+        *_sqlite_watch_paths(SQLITE_PATH),
+        _resolved_path(INTAKE_ROOT / "event_candidates.csv"),
+        _resolved_path(INTAKE_ROOT / "sentiment_signals.csv"),
+        _resolved_path(SENTIMENT_SIGNALS_PATH),
+        _resolved_path(MACRO_FACTORS_PATH),
+        _resolved_path(STOCK_INDUSTRY_MAP_PATH),
+        _resolved_path(EVENT_SIGNAL_ASSOC_PATH),
+        _resolved_path(IMPACT_RELATIONS_PATH),
+        _resolved_path(TARGET_STOCK_MAP_PATH),
+    ]
+
+
 def _files_changed(last_reset: float) -> bool:
     """Check if any watched path has been modified since last cache reset."""
     # last_reset is a caller-owned snapshot read while holding _CACHE_LOCK.
     if last_reset == 0.0:
         return False
-    for path in _WATCHED_PATHS:
+    for path in _watched_paths():
         try:
             if path.exists() and path.stat().st_mtime > last_reset:
                 return True
         except OSError:
             continue
-    for p in REALTIME_5M_ROOT.glob("**/*.csv") if REALTIME_5M_ROOT.exists() else []:
+    realtime_root = _resolved_path(REALTIME_5M_ROOT)
+    for p in realtime_root.glob("**/*.csv") if realtime_root.exists() else []:
         try:
             if p.stat().st_mtime > last_reset:
                 return True

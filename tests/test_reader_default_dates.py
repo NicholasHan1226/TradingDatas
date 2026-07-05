@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import csv
+import os
 import sqlite3
+import time
 from pathlib import Path
 
 
@@ -146,3 +148,19 @@ def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Pa
     assert rows[0]["data"]["bid_price"] == 3519.0
     assert rows[0]["data"]["ask_price"] == 3521.0
     assert rows[0]["lineage"]["filters"]["market"] == "Futures"
+
+
+def test_cache_invalidation_watches_sqlite_wal_sidecar(tmp_path: Path) -> None:
+    import reader
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+
+    reset_time = time.time()
+    wal_path = Path(str(db_path) + "-wal")
+    wal_path.write_text("pending sqlite writes\n", encoding="utf-8")
+    os.utime(wal_path, (reset_time + 10, reset_time + 10))
+
+    assert wal_path in reader._watched_paths()
+    assert reader._files_changed(reset_time) is True
