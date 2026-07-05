@@ -6,13 +6,36 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 SLA_THRESHOLDS = {
-    'market_bars_daily': {'max_age_hours': 24, 'market': 'all'},
-    'market_events': {'max_age_hours': 12, 'market': 'all'},
-    'market_factors': {'max_age_hours': 24, 'market': 'all'},
-    'market_pm_prices': {'max_age_hours': 6, 'market': 'PM'},
+    'market_bars_daily': {'max_age_hours': 72, 'market': 'all', 'lane': 'trading', 'severity': 'critical'},
+    'market_factors': {'max_age_hours': 72, 'market': 'all', 'lane': 'trading', 'severity': 'warning'},
+    'market_pm_prices': {'max_age_hours': 6, 'market': 'PM', 'lane': 'trading', 'severity': 'critical'},
+    'market_events': {'max_age_hours': 36, 'market': 'all', 'lane': 'research', 'severity': 'notice'},
 }
 
-def check_sla():
+def _effective_max_age_hours(sla: dict, now: datetime) -> int:
+    threshold = int(sla['max_age_hours'])
+    cn_now = now.astimezone(timezone(timedelta(hours=8)))
+    market = str(sla.get('market') or '').lower()
+    lane = str(sla.get('lane') or '').lower()
+    if market in {'crypto', 'pm'}:
+        return threshold
+    is_weekend = cn_now.weekday() >= 5
+    is_monday_pre_open = cn_now.weekday() == 0 and cn_now.hour < 10
+    if is_weekend or is_monday_pre_open:
+        if lane == 'trading':
+            return max(threshold, 96)
+        if lane == 'research':
+            return max(threshold, 72)
+    return threshold
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def check_sla(now: datetime | None = None):
     db = (
         os.getenv("MARKETDATA_SQLITE")
         or os.getenv("SHAREDSIGNALS_MARKETDATA_DB")
@@ -23,7 +46,7 @@ def check_sla():
     
     violations = []
     conn = sqlite3.connect(db)
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     
     for table, sla in SLA_THRESHOLDS.items():
         try:
@@ -37,19 +60,35 @@ def check_sla():
             latest = row[0]
             if isinstance(latest, str):
                 latest = datetime.fromisoformat(latest.replace('Z', '+00:00'))
+            latest = _as_utc(latest)
             
-            age_hours = (now - latest.replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age_hours > sla['max_age_hours']:
+            effective_max_age = _effective_max_age_hours(sla, now)
+            age_hours = (now - latest).total_seconds() / 3600
+            if age_hours > effective_max_age:
                 violations.append({
                     'table': table, 'age_hours': round(age_hours, 1),
-                    'threshold_hours': sla['max_age_hours'], 'latest': str(latest)[:19],
-                    'status': 'breached'
+                    'threshold_hours': effective_max_age,
+                    'base_threshold_hours': sla['max_age_hours'], 'latest': str(latest)[:19],
+                    'status': 'breached',
+                    'lane': sla.get('lane', 'unknown'),
+                    'severity': sla.get('severity', 'warning'),
                 })
         except: pass
     
     conn.close()
-    status = 'critical' if len(violations) > 2 else ('degraded' if violations else 'ok')
-    return {'status': status, 'checked_at': now.isoformat(), 'violations': violations}
+    critical_count = sum(1 for item in violations if item.get('severity') == 'critical')
+    warning_count = sum(1 for item in violations if item.get('severity') == 'warning')
+    status = 'critical' if critical_count else ('degraded' if warning_count else 'ok')
+    return {
+        'status': status,
+        'checked_at': now.isoformat(),
+        'violations': violations,
+        'summary': {
+            'critical': critical_count,
+            'warning': warning_count,
+            'notice': sum(1 for item in violations if item.get('severity') == 'notice'),
+        },
+    }
 
 if __name__ == '__main__':
     result = check_sla()
