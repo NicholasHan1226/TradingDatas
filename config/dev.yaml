@@ -2,7 +2,7 @@
 # Few sources, low frequency, test database
 
 environment: dev
-server: ${SHAREDSIGNALS_SERVER:-8.138.181.177}
+server: ${SHAREDSIGNALS_SERVER:-127.0.0.1}
 
 # ---- Database ----
 database:

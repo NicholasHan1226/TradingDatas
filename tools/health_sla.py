@@ -13,8 +13,13 @@ SLA_THRESHOLDS = {
 }
 
 def check_sla():
-    db = '/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite'
-    if not os.path.exists(db): return {'status': 'critical', 'reason': 'DB not found'}
+    db = (
+        os.getenv("MARKETDATA_SQLITE")
+        or os.getenv("SHAREDSIGNALS_MARKETDATA_DB")
+        or str(Path(os.getenv("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite")
+    )
+    if not os.path.exists(db):
+        return {'status': 'critical', 'reason': 'DB not found', 'db': db, 'violations': []}
     
     violations = []
     conn = sqlite3.connect(db)
@@ -53,6 +58,7 @@ if __name__ == '__main__':
     # Send email if critical
     if result['status'] == 'critical':
         import subprocess, sys
+        violation_count = len(result.get("violations") or [])
         subprocess.run([sys.executable, str(Path(__file__).parent / 'email_sender.py'),
-            '--subject', f'[CRITICAL] Data health SLA breached — {len(result["violations"])} violations',
+            '--subject', f'[CRITICAL] Data health SLA breached — {violation_count} violations',
             '--body', json.dumps(result, indent=2), '--channel', 'system'], timeout=15)

@@ -19,8 +19,8 @@
 ## 环境
 - Python: 3.12.3 (venv /opt/marketgraph/venv)
 - OS: Ubuntu 24.04
-- 无DuckDB/Redis (3.4GB RAM限制, 未来扩展)
-- SQLite: marketdata.sqlite(75MB) + reference_index.sqlite(5MB)；`rss_collector.db` 仍在旧 `/opt/investment/MarketGraphRuntime/` 路径，迁移前只按残留资产处理
+- SQLite + DuckDB mirror：`marketdata.sqlite` 是生产 read model，`/opt/investment/SharedSignals/data/marketdata.duckdb` 每 5 分钟同步用于只读分析加速；Redis 未启用。
+- `reference_index.sqlite` 保留为引用索引；`rss_collector.db` 仍在旧 `/opt/investment/MarketGraphRuntime/` 路径，迁移前只按历史/审计残留资产处理。
 
 ## 网络
 - Nginx :80 → 127.0.0.1:8080 (API server)
