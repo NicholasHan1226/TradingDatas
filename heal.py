@@ -10,7 +10,7 @@ Healing strategies:
     source_health   → source_failover.py (switch to backup source)
     data_freshness  → trigger backfill collector re-run
     staging_backpressure → force runtime_bridge merge
-    sqlite_health    → WAL checkpoint, lock retry, integrity repair
+    sqlite_health    → backup-switch / DuckDB rebuild for corrupt DB, WAL checkpoint, lock retry
     disk_usage       → clean old archive (>30d Parquet), stop collectors
     field_drift      → update expected_fields.json + alert
 """
@@ -26,6 +26,8 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from tools import sqlite_recovery
 
 # ---------------------------------------------------------------------------
 # Path configuration
@@ -493,8 +495,10 @@ def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict
 
 
 def heal_sqlite_health(check_result: dict, dry_run: bool = False) -> dict:
-    """Handle SQLite issues: WAL checkpoint, lock retry.
+    """Handle SQLite issues: corruption recovery, WAL checkpoint, lock retry.
 
+    - Corrupt / missing DB → quarantine + restore from latest valid backup
+      or rebuild from DuckDB mirror (fail-safe, dry-run by default)
     - WAL too large → PRAGMA wal_checkpoint(TRUNCATE)
     - Lock contention → wait 5s and retry, then force checkpoint
     """
@@ -502,16 +506,54 @@ def heal_sqlite_health(check_result: dict, dry_run: bool = False) -> dict:
     lock_wait = check_result.get("lock_wait", False)
     integrity_ok = check_result.get("integrity_ok", True)
 
+    # Detect severe corruption / total loss signalled by patrol.py.
+    issues = check_result.get("issues", [])
+    is_corrupt_or_missing = (
+        check_result.get("corrupt", False)
+        or check_result.get("missing", False)
+        or any(i.startswith(("corrupt:", "missing:")) for i in issues)
+    )
+
     action = {
         "action": "sqlite_health",
-        "action_type": "repair",
+        "action_type": "recovery" if is_corrupt_or_missing else "repair",
         "target": str(DB_PATH),
-        "from_val": f"wal_{wal_size}MB_lock_{lock_wait}",
+        "from_val": "corrupt_or_missing" if is_corrupt_or_missing else f"wal_{wal_size}MB_lock_{lock_wait}",
         "to_val": "healthy",
-        "reason": ", ".join(check_result.get("issues", [])),
+        "reason": ", ".join(issues),
         "reversible": False,
         "healed_at": utc_now(),
     }
+
+    if is_corrupt_or_missing:
+        if dry_run:
+            action["dry_run"] = True
+            action["recovery_plan"] = sqlite_recovery.recover(DB_PATH, dry_run=True)
+            return action
+
+        if not _check_cooldown("sqlite_recovery", dry_run=dry_run):
+            action["cooldown_skipped"] = True
+            action["healed"] = False
+            action["error"] = "rate_limited"
+            record_action(action)
+            return action
+
+        recovery = sqlite_recovery.recover(DB_PATH, dry_run=False)
+        action["recovery"] = recovery
+        action["healed"] = recovery.get("recovered", False)
+        action["reason"] = recovery.get("reason", action["reason"])
+        if recovery.get("quarantine_path"):
+            action["quarantine_path"] = recovery["quarantine_path"]
+        if recovery.get("source"):
+            action["recovery_source"] = recovery["source"]
+
+        record_action(action)
+        if not action["healed"]:
+            sev = ACTION_SEVERITY.get("sqlite_health", "critical")
+            alert("sqlite_recovery_failed", action, severity=sev)
+
+        action["_verify"] = _verify_heal("sqlite_health", action)
+        return action
 
     if dry_run:
         action["dry_run"] = True

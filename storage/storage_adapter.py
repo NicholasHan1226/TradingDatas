@@ -47,7 +47,8 @@ class StorageAdapter:
     def duckdb_connect(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         path = str(self._duckdb_path)
         conn = duckdb.connect(path, read_only=read_only)
-        create_schema(conn)
+        if not read_only:
+            create_schema(conn)
         # Install sqlite extension for direct ATTACH (Bug #1 fix — skip Python memory round-trip)
         if not read_only:
             conn.execute("INSTALL sqlite; LOAD sqlite;")

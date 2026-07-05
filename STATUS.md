@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (reader WAL cache invalidation fix)
+> 最后更新：2026-07-05 (SQLite recovery + DuckDB readonly query fix)
 
 ---
 
@@ -17,7 +17,7 @@
 - **reader/API 缓存失效**：读取缓存同时监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm` 和 CSV/分钟线文件变更；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
-- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败
+- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
@@ -37,7 +37,7 @@
 - libor/hibor 当前可为空返回；libor 属历史停更类接口，hibor 取决于当日源数据。`shibor_lpr` 已恢复：2026-07-04 生产 P4 回看 180 天采集 3 行，写入 `market_factors` 6 条。
 - sync_daily.py CSV→SQLite bridge 已完成并接入 `storage/csv_bridge.py`；后续只保留生产 crontab 日志与 DuckDB 同步链路观察
 - `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
-- R15 故障注入新增：主 `marketdata.sqlite` 文件被破坏时 reader/API 能降级返回，但缺少自动恢复、备份切换或明确人工恢复 runbook；普通 WAL crash recovery 只覆盖主 DB 完整场景。
+- [x] R15 故障注入新增：主 `marketdata.sqlite` 损坏/丢失后，`tools/sqlite_recovery.py` + `patrol.py`/`heal.py` 已实现只读检测、备份切换或 DuckDB mirror 重建，默认 dry-run/fail-safe；详见 `docs/sqlite_recovery_runbook.md`。普通 WAL crash recovery 仍覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
 - Crypto 生产 5 分钟行情已切到 `CryptoCollector → NDJSON staging → storage/ndjson_bridge.py → SQLite`；`/crypto` reader 改为 SQLite-first，不再读取旧 `/opt/investment/Crypto/data/market/klines.csv`。
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
@@ -84,7 +84,7 @@
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
 11. [x] **P2：SharedSignals API/read model 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
-12. [ ] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换流程；env 运行中热加载
+12. [x] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换/ DuckDB 重建流程已实现，默认 dry-run/fail-safe，详见 `docs/sqlite_recovery_runbook.md`；env 运行中热加载仍待后续迭代。
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
@@ -123,6 +123,15 @@
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成
+
+### 2026-07-05 SQLite 主库损坏自动恢复/备份切换
+
+- [x] 新增 `tools/sqlite_recovery.py`：只读检测 `marketdata.sqlite` 是否损坏/缺失；支持从最近有效 `*.sqlite` 备份或 DuckDB mirror 恢复/重建；默认 dry-run，只有显式 `--apply` 才执行写操作。
+- [x] `patrol.py` 的 `sqlite_health` 检查增加损坏/缺失探测，返回 `corrupt`/`missing`/`corruption_reason` 字段，供 `heal.py` 消费。
+- [x] `heal.py` 的 `sqlite_health` 自愈策略增加恢复分支：检测到 corrupt/missing 时自动隔离坏库并切换/重建；无可用源时返回 `blocked_no_valid_recovery_source` 并升级 critical 告警。
+- [x] 新增 `docs/sqlite_recovery_runbook.md`：覆盖触发条件、恢复源优先级、CLI 用法、apply 流程、无源可恢复时的手工步骤、验证清单与限制风险。
+- [x] 新增 `tests/test_sqlite_recovery.py`：覆盖损坏检测、dry-run 不写、apply 隔离坏库并恢复/切换、无备份时 blocked、从 DuckDB 重建等场景。
+- [x] 边界：只恢复 SharedSignals 数据存储层，不生成交易信号、不触发模拟/实盘执行；所有测试使用临时路径，不触碰生产 DB/mirror/备份。
 
 ### 2026-07-05 capability read-model alignment
 

@@ -9,6 +9,7 @@ config/api_tokens.json
 *.log
 node_modules/
 .DS_Store
+.venv/
 
 # Runtime patrol/heal artifacts (keep dir structure)
 memory/*.json

@@ -28,6 +28,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from tools import sqlite_recovery
+
 # ---------------------------------------------------------------------------
 # Path configuration (mirrors SharedSignals convention)
 # ---------------------------------------------------------------------------
@@ -248,11 +250,46 @@ def check_staging_backpressure() -> dict[str, Any]:
 
 
 def check_sqlite_health() -> dict[str, Any]:
-    """Check SQLite health: WAL size, lock contention, integrity.
+    """Check SQLite health: corruption/missing, WAL size, lock contention, integrity.
 
     Returns:
-        {status, value_in_mb, threshold, wal_size_mb, lock_wait, integrity, alert}
+        {status, value_in_mb, threshold, wal_size_mb, lock_wait, integrity, alert,
+         corrupt, missing, corruption_reason}
     """
+    # First: fail-fast corruption / missing detection.  This is the gate that
+    # triggers backup-switch / DuckDB rebuild in heal.py.
+    try:
+        corruption = sqlite_recovery.check_sqlite_corruption(DB_PATH)
+    except Exception as e:
+        corruption = {
+            "status": "unknown",
+            "corrupt": False,
+            "missing": False,
+            "reason": f"corruption_probe_error: {e}",
+            "integrity_ok": None,
+            "integrity_msg": str(e),
+            "size": 0,
+        }
+
+    if corruption.get("status") in ("corrupt", "missing"):
+        return {
+            "name": "sqlite_health",
+            "status": "alert",
+            "value": corruption.get("size", 0),
+            "threshold": WAL_SIZE_WARN_MB,
+            "threshold_unit": "MB",
+            "wal_size_mb": 0.0,
+            "lock_wait": False,
+            "integrity_ok": corruption.get("integrity_ok", False),
+            "integrity_msg": corruption.get("integrity_msg", ""),
+            "issues": [f"{corruption['status']}:{corruption.get('reason', '')}"],
+            "corrupt": corruption.get("corrupt", False),
+            "missing": corruption.get("missing", False),
+            "corruption_reason": corruption.get("reason", ""),
+            "alert": True,
+            "checked_at": utc_now(),
+        }
+
     wal_path = Path(str(DB_PATH) + "-wal")
     shm_path = Path(str(DB_PATH) + "-shm")
 
@@ -306,6 +343,9 @@ def check_sqlite_health() -> dict[str, Any]:
         "integrity_ok": integrity_ok,
         "integrity_msg": integrity_msg,
         "issues": issues,
+        "corrupt": False,
+        "missing": False,
+        "corruption_reason": "",
         "alert": status != "ok",
         "checked_at": utc_now(),
     }
