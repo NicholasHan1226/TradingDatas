@@ -1169,12 +1169,13 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -> str:
+def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_value: str) -> str:
+    market_key = str(market or "Ashare")
     date_key = _optional_date_key(date_value)
     if date_key is None:
         latest_rows, latest_degraded = _sqlite_rows(
             "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ? AND symbol = ?",
-            ("Ashare", ts_code),
+            (market_key, ts_code),
             "market_bars_intraday",
         )
         if latest_degraded is not None:
@@ -1182,20 +1183,26 @@ def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -
         latest = latest_rows[0].get("trade_date") if latest_rows else None
         date_key = _optional_date_key(latest)
         if date_key is None:
-            lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"ts_code": ts_code, "date": None}}
+            lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": ts_code, "date": None}}
             return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", f"no intraday trade_date for ts_code={ts_code}", lineage=lineage))
-    lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"ts_code": ts_code, "date": date_key}}
+    lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": ts_code, "date": date_key}}
     rows, degraded = _sqlite_rows(
         "SELECT * FROM market_bars_intraday "
         "WHERE market = ? AND symbol = ? AND trade_date = ? "
         "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '') "
         "ORDER BY bar_time ASC LIMIT 5000",
-        ("Ashare", ts_code, date_key, "5min", "5m"),
+        (market_key, ts_code, date_key, "5min", "5m"),
         "market_bars_intraday",
     )
     if degraded is None and rows:
         collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
         return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="marketdata", collected_at=collected_at, lineage=lineage, stale_after_hours=48.0))
+
+    if market_key != "Ashare":
+        reason = f"no rows in sqlite market_bars_intraday for market={market_key} ts_code={ts_code}"
+        if degraded is not None:
+            reason = f"sqlite degraded for market={market_key} ts_code={ts_code}"
+        return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
 
     day_dir = REALTIME_5M_ROOT / date_key
     fallback_lineage = {"reader": "get_realtime_5min", "source_path": str(day_dir), "filters": {"ts_code": ts_code, "date": date_key}}
@@ -1219,9 +1226,10 @@ def _get_realtime_5min_cached(_generation: int, ts_code: str, date_value: str) -
         return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"realtime read failed: {exc}", lineage=fallback_lineage))
 
 
-def get_realtime_5min(ts_code: str, date: Any) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_realtime_5min", "filters": {"ts_code": ts_code, "date": date}}
-    return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, str(ts_code), str(date)))
+def get_realtime_5min(ts_code: str, date: Any, market: str = "Ashare") -> list[dict[str, Any]]:
+    market_key = str(market or "Ashare")
+    lineage = {"reader": "get_realtime_5min", "filters": {"market": market_key, "ts_code": ts_code, "date": date}}
+    return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, market_key, str(ts_code), str(date)))
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)

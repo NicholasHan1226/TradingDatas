@@ -70,8 +70,8 @@ class _FakeReader:
             {"data": {"signal_id": "s002"}, "degraded": False},
         ]
 
-    def get_realtime_5min(self, ts_code: str, date: str | None = None) -> list[dict[str, Any]]:
-        self.calls.append(("get_realtime_5min", {"ts_code": ts_code, "date": date}))
+    def get_realtime_5min(self, ts_code: str, date: str | None = None, market: str = "Ashare") -> list[dict[str, Any]]:
+        self.calls.append(("get_realtime_5min", {"ts_code": ts_code, "date": date, "market": market}))
         return [
             {"data": {"bar_time": "09:30"}, "degraded": False},
             {"data": {"bar_time": "09:35"}, "degraded": False},
@@ -244,8 +244,16 @@ def test_api_limit_applies_to_sentiment_and_realtime(api_edge_server) -> None:
 
     assert reader.calls[-2:] == [
         ("get_sentiment", {"start": None, "end": None}),
-        ("get_realtime_5min", {"ts_code": "000001.SZ", "date": None}),
+        ("get_realtime_5min", {"ts_code": "000001.SZ", "date": None, "market": "Ashare"}),
     ]
+
+    status, payload = _get_json(base_url, "/realtime_5min?market=Futures&ts_code=RB2609.SHF&date=20260703&limit=1")
+    assert status == 200
+    assert payload["data"] == [{"bar_time": "09:30"}]
+    assert reader.calls[-1] == (
+        "get_realtime_5min",
+        {"ts_code": "RB2609.SHF", "date": "20260703", "market": "Futures"},
+    )
 
 
 def test_capabilities_falls_back_when_registry_missing(api_edge_server, monkeypatch) -> None:

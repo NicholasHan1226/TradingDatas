@@ -1,6 +1,8 @@
 # SharedSignals Log
 | 时间 | 动作 | 结果 |
 |------|------|------|
+| 2026-07-05 | 修复 5 分钟 read API 市场参数与迁移补列保护 | `/realtime_5min` 支持 `market` 参数并默认兼容 A股；非 A股市场可通过同一 API 读取 `market_bars_intraday`；schema hash 已最新但旧表缺可空列时仍会自动补齐 |
+| 2026-07-05 | 扩展 CNFutures 5 分钟盘口与到期字段 | `market_bars_intraday` 增加可空 bid/ask、盘口量、last_trade_date/expiry_date；CSV bridge 可透传 `rt_fut_min` 盘口字段并从 `market_assets` 补合约到期字段 |
 | 2026-07-05 | API 开盘高压稳定性修复 | SharedSignals API 增加 256 accept backlog，客户端断连降级 debug；生产复压 160/160 正常峰值与 640/640 尖峰请求均 200，TradingAgent 队列无新增副作用 |
 | 2026-07-04 | 记录 RSS/RSSHub 迁移期边界与系统邮件 smoke | 旧 RSSCollector cron 禁用；RSSHub/旧 DB 标记为残留资产；系统邮件 `notice@tradingagent.cc -> soc@coze.email` 实发成功 |
 | 2026-07-04 | 修复低频宏观/事件/资产桥接与 watchdog 误报 | P4 宏观 17/17 成功；shibor_lpr、cctv_news、index_global、etf_basic、fut_basic 已进入 read model；完整测试 79 passed |

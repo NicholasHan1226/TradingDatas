@@ -156,6 +156,69 @@ def test_rt_fut_min_ingests_futures_intraday_with_code_time_fields(tmp_path: Pat
     )
 
 
+def test_rt_fut_min_ingests_quote_and_expiry_fields(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "rt_fut_min" / "20260703" / "rt_fut_min_20260703_5min.csv",
+        "\n".join(
+            [
+                "code,time,open,close,high,low,vol,amount,bid1,ask1,bid1_volume,ask1_volume,last_trade_date,expiry_date",
+                "RB2609.SHF,2026-07-03 14:55:00,3500,3520,3530,3490,1000,3520000,3519,3521,12,9,20260915,20260930",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_intraday", csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT bid_price, ask_price, bid_size, ask_size, last_trade_date, expiry_date "
+            "FROM market_bars_intraday"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (3519.0, 3521.0, 12.0, 9.0, "20260915", "20260930")
+
+
+def test_rt_fut_min_backfills_expiry_from_market_assets(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    asset_csv = _write_csv(
+        tmp_path / "data" / "tushare" / "fut_basic" / "20260703" / "fut_basic_20260703.csv",
+        "\n".join(
+            [
+                "ts_code,name,exchange,list_date,last_trade_date,delist_date",
+                "RB2609.SHF,螺纹钢2609,SHFE,20260101,20260915,20260930",
+            ]
+        ),
+    )
+    bar_csv = _write_csv(
+        tmp_path / "data" / "tushare" / "rt_fut_min" / "20260703" / "rt_fut_min_20260703_5min.csv",
+        "\n".join(
+            [
+                "code,time,open,close,high,low,vol,amount",
+                "RB2609.SHF,2026-07-03 14:55:00,3500,3520,3530,3490,1000,3520000",
+            ]
+        ),
+    )
+
+    ingest_csv_to_sqlite(db_path, "market_assets", asset_csv)
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_intraday", bar_csv)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT last_trade_date, expiry_date FROM market_bars_intraday WHERE symbol='RB2609.SHF'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("20260915", "20260930")
+
+
 def test_factor_csv_expands_numeric_metrics(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

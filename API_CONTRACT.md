@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.7 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.10 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -98,6 +98,10 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - `interval="5min"`
 - `symbol` 兼容 Tushare 返回的 `ts_code`、`symbol` 或 `code`
 - `trade_date` 从 `time`/`trade_time` 派生，`bar_time` 保留分钟时间戳
+- `/realtime_5min` 默认仍读取 A 股分钟线；期货读取需显式传 `market=Futures`，例如 `/realtime_5min?market=Futures&ts_code=RB2609.SHF&date=20260703`
+- 可选一级盘口字段会透传到 `market_bars_intraday`：`bid_price` 兼容 `bid1`/`best_bid`，`ask_price` 兼容 `ask1`/`best_ask`，`bid_size` 兼容 `bid_volume`/`bid1_volume`，`ask_size` 兼容 `ask_volume`/`ask1_volume`
+- 可选到期字段会透传到 `market_bars_intraday`：`last_trade_date`、`expiry_date`；若分钟 CSV 未带这些字段但 `market_assets` 的同一 Futures 合约已有 `last_trade_date`/`expiry_date`，CSV bridge 会补齐
+- 这些字段均为可空增量字段；Tushare 当前返回缺失时不阻断 OHLCV 写入，TradingAgent 只能在字段存在时使用盘口/到期保护增强
 
 `tools/check_cn_futures_5min_freshness.py` 是只读数据健康检查，默认 10 分钟阈值，可通过 `--sqlite-db`、`--now`、`--max-age-minutes` 和 `--json` 调整。它只报告数据是否新鲜、当前/下一交易时段是否已有 5 分钟 bar，不生成交易信号、不触发补采、不写 TradingAgent 队列。
 
@@ -515,7 +519,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
 | A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
-| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min()` DB-first，未传日期时使用该股票最新 intraday 日期，旧 CSV 目录仅作回退 |
+| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` DB-first，未传日期时使用该股票最新 intraday 日期，旧 CSV 目录仅作回退 |
 | A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
 | Crypto klines/ticker | Binance → NDJSON staging → marketdata.sqlite | Bridged: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
@@ -525,7 +529,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
-| 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；独立调度，不进入日频 `P6_other_daily` |
+| 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
 | 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
@@ -731,6 +735,8 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-05 | 1.1.10 | `/realtime_5min` 增加 `market` 参数，默认兼容 A股，同时支持 `market=Futures` 等非 A股 5 分钟 read model 输出；reader 会透传新增 L1 盘口字段。 |
+| 2026-07-05 | 1.1.9 | CNFutures `market_bars_intraday` 增加可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段；CSV bridge 支持 `rt_fut_min` 盘口字段透传，并可从 `market_assets` 补合约到期字段；`/realtime_5min` 支持 `market=Futures` 读取期货分钟线。 |
 | 2026-07-05 | 1.1.8 | CNFutures 5 分钟默认合约池加入股指期货 `IF/IH/IC/IM`，并按产品轮询自动选合约，供 TradingAgent 股指日内方向风格读取同一 SharedSignals 数据层。 |
 | 2026-07-04 | 1.1.7 | 新增 CNFutures 5 分钟数据新鲜度验收工具，只读检查 `market_bars_intraday` Futures 5 分钟 bar 的 stale/no_data/error 状态。 |
 | 2026-07-04 | 1.1.6 | 新增 CNFutures 5 分钟采集入口 `rt_fut_min`，写入 `market_bars_intraday`，并以独立 cron 支持日盘、夜盘和跨午夜夜盘采集。 |

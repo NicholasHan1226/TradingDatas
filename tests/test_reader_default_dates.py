@@ -93,3 +93,56 @@ def test_get_realtime_5min_without_date_uses_latest_intraday_date(tmp_path: Path
     assert rows[0]["degraded"] is False
     assert rows[0]["data"]["trade_date"] == "20260703"
     assert rows[0]["lineage"]["filters"]["date"] == "20260703"
+
+
+def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, trade_date, bar_time, interval, open, high, low, close, volume, amount,
+             bid_price, ask_price, bid_size, ask_size, provider, source_file, collected_at, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "Futures",
+                "RB2609.SHF",
+                "20260703",
+                "2026-07-03T14:55:00+08:00",
+                "5min",
+                3500.0,
+                3530.0,
+                3490.0,
+                3520.0,
+                1000.0,
+                3520000.0,
+                3519.0,
+                3521.0,
+                12.0,
+                9.0,
+                "tushare_rt_fut_min",
+                "rt_fut_min.csv",
+                "2026-07-03T06:55:00+00:00",
+                "{}",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    rows = reader.get_realtime_5min("RB2609.SHF", "20260703", market="Futures")
+
+    assert rows
+    assert rows[0]["degraded"] is False
+    assert rows[0]["data"]["bid_price"] == 3519.0
+    assert rows[0]["data"]["ask_price"] == 3521.0
+    assert rows[0]["lineage"]["filters"]["market"] == "Futures"

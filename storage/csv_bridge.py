@@ -205,6 +205,23 @@ _FACTOR_INSERT_COLUMNS = (
     "raw_json",
 )
 
+_INTRADAY_ALIAS_COLUMNS = {
+    "bid_price": ("bid_price", "bid1", "best_bid"),
+    "ask_price": ("ask_price", "ask1", "best_ask"),
+    "bid_size": ("bid_size", "bid_volume", "bid1_volume"),
+    "ask_size": ("ask_size", "ask_volume", "ask1_volume"),
+    "last_trade_date": ("last_trade_date",),
+    "expiry_date": ("expiry_date", "expiration_date", "delist_date", "delivery_date"),
+}
+
+
+def _first_present(row, *keys):
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
 
 def _coerce_float(value):
     if value in (None, ""):
@@ -302,8 +319,12 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append("trade_date")
         if api_name in ("weekly", "monthly", "stk_mins", "rt_k", "rt_fut_min") and "interval" in target_columns:
             derived_columns.append("interval")
+        if api_name == "rt_fut_min":
+            for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
+                if canonical in target_columns and (set(aliases) & csv_column_set or canonical in {"last_trade_date", "expiry_date"}):
+                    derived_columns.append(canonical)
     if table == "market_assets":
-        for col in ("name", "asset_type", "status", "updated_at", "raw_json"):
+        for col in ("name", "asset_type", "status", "updated_at", "raw_json", "last_trade_date", "expiry_date"):
             if col in target_columns:
                 derived_columns.append(col)
     if table == "market_events":
@@ -405,6 +426,11 @@ def _canonical_row(table, row, api_name, csv_path):
             row["interval"] = api_name
         elif api_name in ("stk_mins", "rt_k", "rt_fut_min"):
             row["interval"] = "5min"
+        if api_name == "rt_fut_min":
+            for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
+                value = _first_present(row, *aliases)
+                if value not in (None, ""):
+                    row[canonical] = value
 
     if table == "market_assets":
         if not row.get("name"):
@@ -425,6 +451,10 @@ def _canonical_row(table, row, api_name, csv_path):
                 row["asset_type"] = asset_type_map[api_name]
         if not row.get("status") and row.get("list_status"):
             row["status"] = row.get("list_status")
+        if not row.get("last_trade_date"):
+            row["last_trade_date"] = _first_present(row, "last_trade_date", "last_ddate")
+        if not row.get("expiry_date"):
+            row["expiry_date"] = _first_present(row, "expiry_date", "delist_date", "delivery_date", "end_date")
         if not row.get("updated_at"):
             row["updated_at"] = _csv_collected_at(csv_path)
         if not row.get("raw_json"):
@@ -508,6 +538,35 @@ def _row_values(row, columns, required_columns, csv_path, row_number):
     return [row.get(col) for col in columns]
 
 
+def _asset_expiry_metadata(conn, symbol):
+    if not symbol:
+        return {}
+    try:
+        rows = conn.execute(
+            "SELECT last_trade_date, expiry_date FROM market_assets WHERE market=? AND symbol=?",
+            ("Futures", str(symbol)),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return {}
+    if not rows:
+        return {}
+    return {
+        "last_trade_date": rows[0],
+        "expiry_date": rows[1],
+    }
+
+
+def _enrich_futures_intraday_from_assets(conn, row):
+    if row.get("last_trade_date") and row.get("expiry_date"):
+        return row
+    metadata = _asset_expiry_metadata(conn, row.get("symbol"))
+    if not row.get("last_trade_date") and metadata.get("last_trade_date"):
+        row["last_trade_date"] = metadata["last_trade_date"]
+    if not row.get("expiry_date") and metadata.get("expiry_date"):
+        row["expiry_date"] = metadata["expiry_date"]
+    return row
+
+
 def _flush_chunk(conn, sql, chunk):
     if not chunk:
         return 0
@@ -585,6 +644,8 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
             for row_number, row in enumerate(reader, start=2):
                 canonical_rows = _factor_rows(row, api_name, csv_path) if table == "market_factors" else [_canonical_row(table, row, api_name, csv_path)]
                 for canonical_row in canonical_rows:
+                    if table == "market_bars_intraday" and api_name == "rt_fut_min":
+                        canonical_row = _enrich_futures_intraday_from_assets(conn, canonical_row)
                     values = _row_values(canonical_row, columns, required_columns, csv_path, row_number)
                     if values is None:
                         continue

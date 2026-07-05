@@ -39,6 +39,36 @@ def schema_hash(sql: str) -> str:
     return hashlib.sha256(sql.encode()).hexdigest()[:16]
 
 
+def _quote_identifier(identifier: str) -> str:
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> int:
+    """Add nullable columns that were introduced after a table already existed."""
+    from storage.schema_contract import TABLES, TYPE_MAP
+
+    added = 0
+    type_map = TYPE_MAP["sqlite"]
+    for table in TABLES:
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({_quote_identifier(table.name)})").fetchall()
+        }
+        if not existing:
+            continue
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            if not column.nullable:
+                raise RuntimeError(f"cannot add missing NOT NULL column {table.name}.{column.name}")
+            conn.execute(
+                f"ALTER TABLE {_quote_identifier(table.name)} "
+                f"ADD COLUMN {_quote_identifier(column.name)} {type_map[column.logical_type]}"
+            )
+            added += 1
+    return added
+
+
 def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
     """Apply SCHEMA_SQL DDL to *db_path*. Returns a result dict."""
     import importlib
@@ -51,12 +81,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "drift": False,
         }
 
-    # Load schema from storage.schema (already on sys.path)
-    spec = importlib.util.spec_from_file_location(
-        "schema", str(REPO_DIR / "storage" / "schema.py")
-    )
-    schema_mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(schema_mod)
+    schema_mod = importlib.import_module("storage.schema")
     sql = schema_mod.SCHEMA_SQL
 
     conn = sqlite3.connect(str(db_path), timeout=10)
@@ -83,11 +108,35 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
         last_hash = cur[0] if cur else None
 
         if last_hash == current_hash:
+            if check_only:
+                conn.close()
+                return {
+                    "status": "ok",
+                    "message": "schema up to date",
+                    "applied": 0,
+                    "drift": False,
+                    "schema_hash": current_hash,
+                }
+            added_columns = _add_missing_columns(conn)
+            conn.commit()
+            if added_columns:
+                conn.execute(
+                    "INSERT INTO _migrations (schema_hash, applied_at, table_count, notes) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        current_hash,
+                        datetime.now(timezone.utc).isoformat(),
+                        conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0],
+                        f"repair missing nullable columns: {added_columns}",
+                    ),
+                )
+                conn.commit()
             conn.close()
             return {
                 "status": "ok",
-                "message": "schema up to date",
+                "message": f"schema up to date, added {added_columns} columns",
                 "applied": 0,
+                "added_columns": added_columns,
                 "drift": False,
                 "schema_hash": current_hash,
             }
@@ -116,6 +165,8 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             except sqlite3.OperationalError as exc:
                 print(f"[migrate] WARNING: {exc}", file=sys.stderr)
 
+        added_columns = _add_missing_columns(conn)
+
         conn.commit()
 
         # Count tables
@@ -138,8 +189,9 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
 
         result = {
             "status": "ok",
-            "message": f"applied {applied} statements",
+            "message": f"applied {applied} statements, added {added_columns} columns",
             "applied": applied,
+            "added_columns": added_columns,
             "table_count": table_count,
             "drift": False,
             "schema_hash": current_hash,

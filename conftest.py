@@ -75,7 +75,12 @@ def tmp_db_with_data(tmp_db: sqlite3.Connection) -> sqlite3.Connection:
     # market_assets
     for sym in ["000001.SZ", "600519.SH", "AAPL", "TSLA", "BTCUSDT"]:
         conn.execute(
-            "INSERT OR REPLACE INTO market_assets VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            """
+            INSERT OR REPLACE INTO market_assets
+            (market, symbol, name, asset_type, exchange, sector, list_date,
+             status, provider, source_file, updated_at, raw_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
             ("Ashare", sym, f"Asset {sym}", "stock", "SSE", "Finance",
              "20000101", "active", "tushare", "batch_001", ts, "{}"),
         )
