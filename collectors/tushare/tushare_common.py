@@ -32,49 +32,29 @@ csv.field_size_limit(10_000_000)
 _INVESTMENT_ROOT = Path(__file__).resolve().parents[3]
 ROOT = _INVESTMENT_ROOT
 INVESTMENT_ROOT = _INVESTMENT_ROOT
-MARKETGRAPH_ENV_KEYS = ("MARKETGRAPH_ROOT", "MARKETGRAPH_REPO")
+ASSOCIATION_ENV_KEYS = ("SHAREDSIGNALS_ASSOCIATION_ROOT", "ASSOCIATION_ROOT")
 
 
-def _looks_like_marketgraph_root(path: Path) -> bool:
-    return (
-        (path / "08-Market-Interfaces").exists()
-        and (path / "data").exists()
-        and (path / "AGENTS.md").exists()
-    )
-
-
-def resolve_marketgraph_root(
+def resolve_association_root(
     env: Mapping[str, str] | None = None,
     candidates: list[Path] | None = None,
 ) -> Path:
-    """Resolve the standalone MarketGraph repo used by A-share consumers.
-
-    `../MarketGraph` is a local compatibility layout. The explicit environment
-    path wins so server or MCP-adjacent runners can mount MarketGraph elsewhere
-    without changing A-share tools.
-    """
+    """Resolve the SharedSignals-owned association directory."""
     source_env = os.environ if env is None else env
-    for key in MARKETGRAPH_ENV_KEYS:
+    for key in ASSOCIATION_ENV_KEYS:
         raw = str(source_env.get(key) or "").strip()
         if raw:
             return Path(raw).expanduser().resolve()
 
-    search_paths = candidates or [
-        INVESTMENT_ROOT / "MarketGraph",
-        Path("/Users/nicholashan/Desktop/Investment/MarketGraph"),
-    ]
+    search_paths = candidates or [INVESTMENT_ROOT / "SharedSignals" / "data" / "association"]
     for candidate in search_paths:
         expanded = candidate.expanduser()
-        if _looks_like_marketgraph_root(expanded):
+        if expanded.exists():
             return expanded.resolve()
-    return (INVESTMENT_ROOT / "MarketGraph").resolve()
+    return (INVESTMENT_ROOT / "SharedSignals" / "data" / "association").resolve()
 
 
-MARKETGRAPH_ROOT = resolve_marketgraph_root()
-# 关联层数据已统一到 MarketGraph（跨市场单一真相源）。
-# _ASSOCIATION_DIR 是内部路径常量，仅用于需要直接写文件的内部 helper（如种子回填、事件写入）。
-# A 股各工具的读操作应通过 a_share_marketgraph_interface.py 进行，以接受合同校验、安全上下文和使用审计。
-_ASSOCIATION_DIR = MARKETGRAPH_ROOT / "data" / "association"
+_ASSOCIATION_DIR = resolve_association_root()
 # Codex config is the canonical source for Tushare/QuickSync token and API URL.
 # Environment variables (QUICKSYNC_TOKEN, QUICKSYNC_API_URL, etc.) can be used
 # as an optional override; set them when you need to temporarily switch provider.
@@ -416,18 +396,13 @@ def pending_review_event_ids(association_dir: Path | None = None) -> set[str]:
     they may be used for research and attribution, but must not flow into actionable
     impact relations or concentration-risk decisions until review_status changes.
 
-    Defaults to the MarketGraph stable read gateway per contract. When callers
-    pass an explicit directory, use that directory so tests, local replays and
-    temporary recovery runs can remain isolated.
+    Defaults to the SharedSignals association directory. When callers pass an
+    explicit directory, use that directory so tests, local replays and temporary
+    recovery runs can remain isolated.
     """
-    if association_dir is not None:
-        path = association_dir / "event_signal_associations.csv"
-        rows = read_csv(path) if path.exists() else []
-    else:
-        # Lazy import to avoid circular dependency (a_share_marketgraph_interface imports a_share_common).
-        from a_share_marketgraph_interface import _rows_from_result, read_marketgraph_table  # noqa: PLC0415
-
-        rows = _rows_from_result(read_marketgraph_table("association_event_signal_associations"))
+    root = association_dir or _ASSOCIATION_DIR
+    path = root / "event_signal_associations.csv"
+    rows = read_csv(path) if path.exists() else []
     return {
         str(row.get("review_event_id", "")).strip()
         for row in rows

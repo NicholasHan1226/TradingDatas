@@ -1,1 +1,0 @@
-"""RSS news/event collector."""

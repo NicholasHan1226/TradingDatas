@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (combined production crontab restored)
+> 最后更新：2026-07-05 (retired old tushare collector copy and MarketGraph symlinks)
 
 ---
 
@@ -17,6 +17,8 @@
 - **reader/API 缓存失效**：读取缓存同时监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm` 和 CSV/分钟线文件变更；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；新增 watchdog 闭环，监控 API/DB/cron log/disk/memory，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
+- **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
+- **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/marketgraph/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
@@ -28,7 +30,7 @@
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 256 accept backlog + 503 at capacity；客户端高压断连降级为 debug 日志，避免 BrokenPipe 噪音污染 systemd 日志
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
-- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已退役为 legacy localhost-only
+- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过 proxy 路径采集
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory 和 TradingAgent 跨系统健康输入
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
@@ -127,6 +129,9 @@
 
 ### 2026-07-05 combined production crontab restored
 
+- [x] 删除无引用旧目录 `collectors/tushare_old/`；该目录是旧 Ashare/Tushare 副本，已被现役 `collectors/tushare/` 取代。
+- [x] 删除断链 MarketGraph symlink：`bridge/marketgraph_marketdata_db.py` 改为本仓库兼容模块；`data/association`、`data/intake` 改成本地目录。
+- [x] 删除退役旧代码：`collectors/rss/`、`collectors/us_alpaca_*.py`、`tools/api_server.py`；RSS 恢复必须重新按 SharedSignals collector 契约设计，US 行情由 Tushare/现役 read model 负责。
 - [x] 主服务器 `marketgraph` 用户 crontab 已恢复为 Finance combined crontab：同时包含 SharedSignals 采集/同步/patrol/watchdog/capability 任务，以及 TradingAgent 模拟/复盘/健康任务。
 - [x] 修复前 live crontab 只有 TradingAgent 任务，导致 SharedSignals `cn_futures_5min.sh`、P0 5分钟采集、DuckDB sync、patrol/watchdog 等调度没有安装；修复后 `SharedSignals /health` 从 `degraded` 恢复为 `ok`，cron `active_logs=2`。
 - [x] 回退备份：`/opt/investment/SharedSignals/logs/cron/marketgraph_crontab_before_combined_sharedsignals_20260705T192844.bak`。
@@ -291,7 +296,7 @@
 
 - [x] `api_server.py`：`/market_data` 透传 `freq`；`/capital_flow` 支持 `date` 或 `ts_code/start/end` 参数，修复 TradingAgent 客户端与服务器契约不一致。
 - [x] `config/api_tokens.json`：已 `git rm --cached` 退出仓库追踪；`config/api_tokens.example.json` 只保留 `token_hash`/`sha256` 兼容字段模板；`.gitignore` 已确认覆盖真实 token 文件。
-- [x] `tools/api_server.py`：标记为 deprecated capability server；默认端口改为 `8083`，避免与主数据 API `8082` 冲突。
+- [x] `tools/api_server.py`：曾标记为 deprecated capability server；2026-07-05 已删除，当前唯一数据 API 入口为根目录 `api_server.py`。
 - [x] 新增 API handler 回归测试覆盖 `market_data.freq` 和 `capital_flow` range 参数传递。
 - [x] 验证：`python3 -m pytest tests/ -q --tb=line` 通过（205 passed；5 个既有 `SHAREDSIGNALS_TOKEN_SALT` 未配置 warning）。
 
@@ -409,7 +414,7 @@
 
 **已应用修复（10 项，SharedSignals 相关 6 项）：**
 1. [x] `.gitignore`：添加 `config/api_tokens.json` + `.env.*`
-2. [x] `tools/api_server.py`：端口默认值 8900 → 8082
+2. [x] `tools/api_server.py`：端口默认值 8900 → 8082；2026-07-05 已删除，保留此项仅作历史修复记录
 3. [x] `auth.py`：Salt token hashing（PBKDF2-HMAC-SHA256），`/cache/invalidate` 和 `/cache/status` 归入 `health` scope
 4. [x] `reader.py`：LRU cache 失效系统 — TTL + 文件 mtime 检测 + `clear_caches()` + `/cache/invalidate` + `/cache/status`
 5. [x] `api_server.py`：添加 `/cache/invalidate` 和 `/cache/status` 端点
@@ -472,8 +477,8 @@
 13. [x] `api_server.py`：500 错误处理器改为日志记录完整 traceback，返回通用错误消息（不泄露原始异常）
 14. [x] `tradingagent/shared/data/reader.py`：SharedSignalsReader 连接添加 `busy_timeout = 5000`
 15. [x] `tradingagent/shared/data/reader.py`：TradingagentDataReader 添加 `_maybe_alert()` 死人手刹 — errors 每累积 10 条自动 WARNING 日志
-16. [x] `collectors/rss/collector.py`：event_hash 从 64 位（`[:16]`）升级到 128 位（`[:32]`）
-17. [x] `collectors/rss/gap_filler.py`：同上，event_hash 升级到 128 位
+16. [x] `collectors/rss/collector.py`：event_hash 从 64 位（`[:16]`）升级到 128 位（`[:32]`）；RSS 旧 collector 已于 2026-07-05 删除
+17. [x] `collectors/rss/gap_filler.py`：同上，event_hash 升级到 128 位；RSS 旧 collector 已于 2026-07-05 删除
 18. [x] `tradingagent/shared/data/shared_signals_api.py`：添加 DeprecationWarning — 标记为未使用的参考代码
 19. [x] `reader.py`：`_get_capital_flow_cached` 添加注释说明其为未来本地采集器保留的参考代码
 
