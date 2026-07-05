@@ -51,6 +51,7 @@ class StorageAdapter:
         # Install sqlite extension for direct ATTACH (Bug #1 fix — skip Python memory round-trip)
         if not read_only:
             conn.execute("INSTALL sqlite; LOAD sqlite;")
+            conn.execute("SET sqlite_all_varchar=true")
         return conn
 
     # -- Sync ----------------------------------------------------------------
