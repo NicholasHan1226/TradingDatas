@@ -40,7 +40,7 @@
   - Tushare (14接口): A股行情/财务/资金/期货/港股
   - Binance (4接口): 加密货币行情
   - Polymarket (3接口): 预测市场
-  - RSS (883源) + Tavily + agents → 事件采集
+  - RSS (616 源，全部 `status=deferred`) + Tavily + agents → 事件采集（RSS 当前不作为现役生产 collector）
 - `storage/` — 数据库 schema 和管理
   - SQLite: marketdata.sqlite (75MB) + reference_index.sqlite (5MB)
   - 未来: DuckDB (analytics), 当前 SQLite
@@ -156,6 +156,6 @@ regime 检测、因果影响引擎、风险平价分配、前向验证。
 ## 服务器分布
 | 仓库 | 杭州 (8.138.181.177) | 新加坡 (47.82.153.58) | Mac Mini |
 |------|:---:|:---:|:---:|
-| SharedSignals | ✓ (主) | ✓ (RSS mirror / 待迁移) | — |
+| SharedSignals | ✓ (主) | RSS mirror 已停止（deferred） | — |
 | MarketGraph | ✓ | — | — |
 | TradingAgent | ✓ (模拟/影子) | — | ✓ (A股实盘) |

@@ -18,7 +18,7 @@
   Tushare(P0-P6分层接口) → marketdata.sqlite
   Binance(9 symbols, ticker 5min + klines) → NDJSON staging → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
-  RSS/RSSHub      → deferred（旧顶层资产已归档，恢复前需重接 collector）
+  RSS/RSSHub      → deferred（`data/source_registry.csv` 中 616 条源已改 `status=deferred`，恢复前需重接 collector）
   Tavily/DeepSeek → disabled（不属于当前生产采集）
   基本面           → 预计算落库后只读
 ```
@@ -46,7 +46,7 @@
 
 ## 服务器
 - 杭州 8.138.181.177: 境内采集 + 存储
-- 新加坡 47.82.153.58: 境外RSS采集 → rsync → 杭州
+- 新加坡 47.82.153.58: 境外RSS采集已停止（RSS deferred）；历史路径仅作审计参考
 
 ## 仓库
 https://github.com/NicholasHan1226/SharedSignals.git

@@ -90,7 +90,7 @@
 15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py`、`cron/cn_futures_5min.sh` 和 CSV→SQLite bridge 已支持 Tushare `rt_fut_min` 写入 `market_bars_intraday`；默认合约池覆盖 `rb/cu/i/m/if/ih/ic/im` 并按产品轮询选合约，生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集；`market_bars_intraday` 已扩展可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段，`/realtime_5min?market=Futures` 可通过 API 读取并透传这些字段，供 TradingAgent 在字段存在时增强模拟成交。
 17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
-18. [x] **RSS/RSSHub 退役收口** — 旧 RSSCollector cron 已禁用；RSSHub 残留进程已停止，旧顶层目录已移入 `_archive/retired_residuals_20260704T172705Z`；`rss_collector.db` 仅保留历史/迁移审计。
+18. [x] **RSS/RSSHub 退役收口** — 旧 RSSCollector cron 已禁用；RSSHub 残留进程已停止，旧顶层目录已移入 `_archive/retired_residuals_20260704T172705Z`；`rss_collector.db` 仅保留历史/迁移审计；`data/source_registry.csv` 中 616 条 RSS/RSSHub 源状态已从 `active` 改为 `deferred`，避免被 patrol/source_failover 误判为现役生产源。
 19. [x] **API 能力清单生产化** — `/capabilities` 缺 registry 时返回 auth scope 兜底；`cron/capability_scan.sh` 每小时刷新 registry，若存在 degraded endpoint 但 registry 已写出则记录 WARN 不阻断 cron。
 20. [x] **P0 5 分钟采集节奏保护** — `sync_daily.py` 支持 P0 rotating stock batch，`cron/collectors.sh` 默认每轮 100 只，保障 5 分钟采集不因全量 per-stock 调用重叠。
 21. [x] **API 开盘高压稳定性** — 2026-07-05 生产开盘模拟读压测覆盖 `/health`、`/market_data`、`/realtime_5min`、`/capital_flow`、`/crypto`、`/pm_markets` 等端点；修复后 160/160 正常峰值请求与 640/640 尖峰请求均 200，0 超时、0 交易队列副作用。

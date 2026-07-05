@@ -258,7 +258,7 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 ```python
 from marketgraph_marketdata_db import read_events
 
-# 最近 100 条 RSS 事件
+# 最近 100 条 RSS 事件（RSS 源当前为 deferred，恢复生产采集前仅返回历史数据或空结果）
 events = read_events(provider="rss", limit=100)
 ```
 
@@ -531,7 +531,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
-| 事件/信号 | RSS / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期 |
+| 事件/信号 | RSS(deferred) / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
 | 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |
