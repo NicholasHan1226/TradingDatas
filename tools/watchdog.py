@@ -108,41 +108,49 @@ def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
 
 
 def check_api_health(api_url: str = DEFAULT_API_URL, timeout: float = 8.0) -> dict[str, Any]:
-    started = time.time()
-    try:
-        req = urllib.request.Request(api_url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read(65536).decode("utf-8", errors="replace")
-            status_code = getattr(resp, "status", 200)
-        elapsed_ms = round((time.time() - started) * 1000, 1)
-        payload: Any = {}
+    errors: list[str] = []
+    attempts = int(os.environ.get("WATCHDOG_API_HEALTH_RETRIES", "3"))
+    for attempt in range(1, max(1, attempts) + 1):
+        started = time.time()
         try:
-            payload = json.loads(body) if body else {}
-        except json.JSONDecodeError:
-            payload = {"raw": body[:200]}
-        ok = 200 <= int(status_code) < 300 and (
-            not isinstance(payload, dict)
-            or str(payload.get("status", "ok")).lower() in {"ok", "healthy", "degraded"}
-        )
-        return {
-            "name": "api_health",
-            "status": "ok" if ok else "critical",
-            "score_factor": 1.0 if ok else 0.0,
-            "url": api_url,
-            "status_code": status_code,
-            "elapsed_ms": elapsed_ms,
-            "payload_status": payload.get("status") if isinstance(payload, dict) else None,
-            "alert": not ok,
-        }
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return {
-            "name": "api_health",
-            "status": "critical",
-            "score_factor": 0.0,
-            "url": api_url,
-            "error": str(exc),
-            "alert": True,
-        }
+            req = urllib.request.Request(api_url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read(65536).decode("utf-8", errors="replace")
+                status_code = getattr(resp, "status", 200)
+            elapsed_ms = round((time.time() - started) * 1000, 1)
+            payload: Any = {}
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                payload = {"raw": body[:200]}
+            ok = 200 <= int(status_code) < 300 and (
+                not isinstance(payload, dict)
+                or str(payload.get("status", "ok")).lower() in {"ok", "healthy", "degraded"}
+            )
+            return {
+                "name": "api_health",
+                "status": "ok" if ok else "critical",
+                "score_factor": 1.0 if ok else 0.0,
+                "url": api_url,
+                "status_code": status_code,
+                "elapsed_ms": elapsed_ms,
+                "payload_status": payload.get("status") if isinstance(payload, dict) else None,
+                "attempts": attempt,
+                "alert": not ok,
+            }
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            errors.append(f"attempt={attempt} error={exc}")
+            if attempt < attempts:
+                time.sleep(2)
+    return {
+        "name": "api_health",
+        "status": "critical",
+        "score_factor": 0.0,
+        "url": api_url,
+        "attempts": max(1, attempts),
+        "errors": errors[-3:],
+        "alert": True,
+    }
 
 
 def _parse_trade_date(value: Any) -> datetime | None:
