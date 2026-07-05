@@ -34,10 +34,10 @@ if [ -f "${ROOT}/.env" ]; then
   set +a
 fi
 
-export BINANCE_HTTP_PROXY="${BINANCE_HTTP_PROXY:-http://127.0.0.1:7890}"
+export BINANCE_HTTP_PROXIES="${BINANCE_HTTP_PROXIES:-${BINANCE_HTTP_PROXY:-http://127.0.0.1:7890}}"
 
 {
-  echo "[$(date -Iseconds)] START crypto_collect mode=${MODE} python=${PYTHON_BIN}"
+  echo "[$(date -Iseconds)] START crypto_collect mode=${MODE} python=${PYTHON_BIN} proxies=${BINANCE_HTTP_PROXIES}"
   PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/crypto/binance_collect.py --mode "${MODE}"
   echo "[$(date -Iseconds)] OK crypto_collect"
 } >> "${LOG_FILE}" 2>&1

@@ -35,3 +35,25 @@ def test_binance_health_check_retries_transient_requests_errors():
 
     assert result["status"] == "available"
     assert session.calls == 2
+
+
+def test_binance_get_falls_back_to_second_proxy():
+    collector = CryptoCollector(config={"retry": {"max_attempts": 1}}, proxy="http://sg-relay:8080,http://127.0.0.1:7890")
+    seen: list[dict] = []
+
+    class Session:
+        def get(self, *args, **kwargs):
+            seen.append(kwargs.get("proxies") or {})
+            if kwargs.get("proxies", {}).get("https") == "http://sg-relay:8080":
+                raise requests.exceptions.ProxyError("sg relay unavailable")
+            return _Response()
+
+    collector._session = Session()
+
+    response = collector._get("https://api.binance.com/api/v3/ping", timeout=10)
+
+    assert response.status_code == 200
+    assert seen == [
+        {"http": "http://sg-relay:8080", "https": "http://sg-relay:8080"},
+        {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"},
+    ]

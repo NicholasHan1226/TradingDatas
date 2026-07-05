@@ -21,6 +21,12 @@ from ..base import BaseCollector
 logger = logging.getLogger(__name__)
 
 
+def parse_proxy_list(value: str | list[str] | None) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
 class CryptoCollector(BaseCollector):
     """Binance crypto market data collector.
 
@@ -46,17 +52,30 @@ class CryptoCollector(BaseCollector):
         super().__init__(config)
         self._symbols = self.config.get("symbols", ["BTCUSDT", "ETHUSDT"])
         self._intervals = self.config.get("intervals", ["1d", "4h", "1h", "15m"])
-        self._proxy = proxy or self.config.get("proxy", "")
+        self._proxies = parse_proxy_list(proxy or self.config.get("proxies") or self.config.get("proxy", ""))
         self._dry_run = self.config.get("dry_run", False)
         self._session = requests.Session()
-        if self._proxy:
-            self._session.proxies = {"https": self._proxy}
         self.retry_max = self.config.get("retry", {}).get("max_attempts", 3)
 
     def _should_retry(self, exc: BaseException) -> bool:
         if isinstance(exc, requests.RequestException):
             return True
         return super()._should_retry(exc)
+
+    def _get(self, url: str, *, timeout: int, params: dict[str, Any] | None = None) -> requests.Response:
+        errors: list[str] = []
+        routes = self._proxies or [""]
+        for idx, proxy in enumerate(routes, start=1):
+            try:
+                request_kwargs: dict[str, Any] = {"params": params, "timeout": timeout}
+                if proxy:
+                    request_kwargs["proxies"] = {"http": proxy, "https": proxy}
+                return self._session.get(url, **request_kwargs)
+            except requests.RequestException as exc:
+                route = f"proxy#{idx}" if proxy else "direct"
+                errors.append(f"{route}: {exc}")
+                continue
+        raise requests.ConnectionError(f"all binance routes failed: {errors[-3:]}")
 
     # ------------------------------------------------------------------
     # Health check
@@ -65,9 +84,7 @@ class CryptoCollector(BaseCollector):
     def health_check(self) -> dict[str, Any]:
         try:
             def _ping() -> dict[str, Any]:
-                resp = self._session.get(
-                    f"{self.BASE_URL}/api/v3/ping", timeout=10
-                )
+                resp = self._get(f"{self.BASE_URL}/api/v3/ping", timeout=10)
                 if resp.status_code == 200:
                     return {"status": "available", "message": "binance api reachable"}
                 if resp.status_code == 429 or resp.status_code >= 500:
@@ -151,16 +168,12 @@ class CryptoCollector(BaseCollector):
             params["endTime"] = end_time
 
         def _call() -> list[dict[str, Any]]:
-            resp = self._session.get(
-                f"{self.BASE_URL}{self.KLINE_ENDPOINT}", params=params, timeout=30
-            )
+            resp = self._get(f"{self.BASE_URL}{self.KLINE_ENDPOINT}", params=params, timeout=30)
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("Retry-After", "5"))
                 logger.warning("binance 429, retry-after=%ds", retry_after)
                 time.sleep(retry_after)
-                resp = self._session.get(
-                    f"{self.BASE_URL}{self.KLINE_ENDPOINT}", params=params, timeout=30
-                )
+                resp = self._get(f"{self.BASE_URL}{self.KLINE_ENDPOINT}", params=params, timeout=30)
             resp.raise_for_status()
             raw = resp.json()
             return self._normalize_klines(raw, symbol, interval)
@@ -172,9 +185,7 @@ class CryptoCollector(BaseCollector):
         params = {"symbols": json.dumps(symbols, separators=(",", ":"))} if len(symbols) > 1 else {"symbol": symbols[0]}
 
         def _call() -> list[dict[str, Any]]:
-            resp = self._session.get(
-                f"{self.BASE_URL}{self.TICKER_ENDPOINT}", params=params, timeout=30
-            )
+            resp = self._get(f"{self.BASE_URL}{self.TICKER_ENDPOINT}", params=params, timeout=30)
             resp.raise_for_status()
             return self._normalize_tickers(resp.json())
 

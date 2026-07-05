@@ -112,6 +112,7 @@
 - [x] `storage/csv_bridge.py` 同步增加 SQLite busy 短重试和按需 WAL 设置，覆盖 Tushare CSV bridge 与 PM/其它 writer 争用同一 read model 时的 `database is locked`；`SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES` 可单独调优。
 - [x] `tools/watchdog.py` 的 API health 探针增加 3 次短重试，避免 SharedSignals API 单次慢响应把 watchdog 分数误打低；连续失败仍按 critical 处理。
 - [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走新加坡 RSS mirror。
+- [x] PM/Crypto 采集支持 `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES` 逗号分隔代理优先级列表；未来新加坡 relay 验证后可配置为 `Singapore relay -> local Clash/Mihomo`，当前默认仍只启用本机 Clash，避免把不存在的 relay 写入生产。
 
 ### 2026-07-05 health SLA research notice split
 

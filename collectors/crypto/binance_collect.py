@@ -49,7 +49,7 @@ def main() -> int:
         config["symbols"] = [symbol.upper() for symbol in args.symbols]
     if args.intervals:
         config["intervals"] = args.intervals
-    proxy = os.getenv("BINANCE_HTTP_PROXY") or config.get("proxy", "")
+    proxy = os.getenv("BINANCE_HTTP_PROXIES") or os.getenv("BINANCE_HTTP_PROXY") or config.get("proxies") or config.get("proxy", "")
 
     collector = CryptoCollector(config=config, proxy=proxy)
     contexts: list[dict[str, Any]] = []

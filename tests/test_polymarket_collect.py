@@ -96,3 +96,35 @@ def test_open_json_direct_fallback_requires_explicit_flag(monkeypatch):
         {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"},
         {},
     ]
+
+
+def test_open_json_tries_proxy_list_before_fallback(monkeypatch):
+    routes: list[dict[str, str]] = []
+
+    def fake_proxy_handler(proxies):
+        return proxies
+
+    class FakeOpener:
+        def __init__(self, proxies):
+            self.proxies = proxies
+
+        def open(self, req, timeout=25):  # noqa: ANN001
+            routes.append(self.proxies)
+            if self.proxies.get("https") == "http://sg-relay:8080":
+                raise OSError("sg relay unavailable")
+            return _Response([{"id": "local-clash"}])
+
+    monkeypatch.setattr(pm.urllib.request, "ProxyHandler", fake_proxy_handler)
+    monkeypatch.setattr(pm.urllib.request, "build_opener", lambda handler: FakeOpener(handler))
+
+    payload = pm.open_json(
+        "https://example.test",
+        proxy="http://sg-relay:8080,http://127.0.0.1:7890",
+        retries=1,
+    )
+
+    assert payload == [{"id": "local-clash"}]
+    assert routes == [
+        {"http": "http://sg-relay:8080", "https": "http://sg-relay:8080"},
+        {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"},
+    ]

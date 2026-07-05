@@ -57,19 +57,25 @@ def _env_flag(name: str, default: str = "0") -> bool:
     return str(os.getenv(name, default)).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def parse_proxy_list(value: str | None) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
 def open_json(
     url: str,
     *,
-    proxy: str,
+    proxy: str | None = None,
+    proxies: list[str] | None = None,
     timeout: int = 25,
     retries: int = 2,
     direct_fallback: bool = False,
     retry_sleep: float = 1.0,
 ) -> Any:
     routes: list[tuple[str, str]] = []
-    if proxy:
-        routes.append(("proxy", proxy))
-    if direct_fallback or not proxy:
+    proxy_routes = proxies if proxies is not None else parse_proxy_list(proxy)
+    for idx, route_proxy in enumerate(proxy_routes, start=1):
+        routes.append((f"proxy#{idx}", route_proxy))
+    if direct_fallback or not proxy_routes:
         routes.append(("direct", ""))
 
     errors: list[str] = []
@@ -93,7 +99,7 @@ def open_json(
     route_desc = ", ".join(name for name, _ in routes) or "none"
     raise RuntimeError(
         "polymarket fetch failed "
-        f"routes={route_desc} proxy={proxy or 'none'} retries={attempts} "
+        f"routes={route_desc} proxies={proxy_routes or ['none']} retries={attempts} "
         f"errors={errors[-min(len(errors), 4):]}"
     )
 
@@ -108,7 +114,7 @@ def fetch_markets(
 ) -> list[dict[str, Any]]:
     data = open_json(
         f"{GAMMA}/markets?closed=false&limit={int(limit)}",
-        proxy=proxy,
+        proxies=parse_proxy_list(proxy),
         timeout=timeout,
         retries=retries,
         direct_fallback=direct_fallback,
@@ -278,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Collect Polymarket markets/prices into SharedSignals read model")
     parser.add_argument("--db", default=os.getenv("SHAREDSIGNALS_MARKETDATA_DB", DEFAULT_DB))
     parser.add_argument("--limit", type=int, default=int(os.getenv("POLYMARKET_MAX_MARKETS", "200")))
-    parser.add_argument("--proxy", default=os.getenv("POLYMARKET_HTTP_PROXY", DEFAULT_PROXY))
+    parser.add_argument("--proxy", default=os.getenv("POLYMARKET_HTTP_PROXIES") or os.getenv("POLYMARKET_HTTP_PROXY", DEFAULT_PROXY))
     parser.add_argument("--request-timeout", type=int, default=int(os.getenv("POLYMARKET_REQUEST_TIMEOUT", "25")))
     parser.add_argument("--retries", type=int, default=int(os.getenv("POLYMARKET_FETCH_RETRIES", "2")))
     parser.add_argument("--db-retries", type=int, default=int(os.getenv("POLYMARKET_DB_RETRIES", "3")))

@@ -34,17 +34,17 @@ if [ -f "${ROOT}/.env" ]; then
   set +a
 fi
 
-export POLYMARKET_HTTP_PROXY="${POLYMARKET_HTTP_PROXY:-http://127.0.0.1:7890}"
+export POLYMARKET_HTTP_PROXIES="${POLYMARKET_HTTP_PROXIES:-${POLYMARKET_HTTP_PROXY:-http://127.0.0.1:7890}}"
 export POLYMARKET_FETCH_RETRIES="${POLYMARKET_FETCH_RETRIES:-3}"
 export POLYMARKET_REQUEST_TIMEOUT="${POLYMARKET_REQUEST_TIMEOUT:-25}"
 export POLYMARKET_DB_RETRIES="${POLYMARKET_DB_RETRIES:-3}"
 export POLYMARKET_DIRECT_FALLBACK_ENABLED="${POLYMARKET_DIRECT_FALLBACK_ENABLED:-0}"
 
 {
-  echo "[$(date -Iseconds)] START pm_collect limit=${LIMIT} python=${PYTHON_BIN} proxy=${POLYMARKET_HTTP_PROXY} direct_fallback=${POLYMARKET_DIRECT_FALLBACK_ENABLED}"
+  echo "[$(date -Iseconds)] START pm_collect limit=${LIMIT} python=${PYTHON_BIN} proxies=${POLYMARKET_HTTP_PROXIES} direct_fallback=${POLYMARKET_DIRECT_FALLBACK_ENABLED}"
   PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/polymarket_collect.py \
     --limit "${LIMIT}" \
-    --proxy "${POLYMARKET_HTTP_PROXY}" \
+    --proxy "${POLYMARKET_HTTP_PROXIES}" \
     --request-timeout "${POLYMARKET_REQUEST_TIMEOUT}" \
     --retries "${POLYMARKET_FETCH_RETRIES}" \
     --db-retries "${POLYMARKET_DB_RETRIES}"
