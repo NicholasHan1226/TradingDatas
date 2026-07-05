@@ -247,14 +247,14 @@ class TestRecoverFromBackup:
         assert result["reason"] == "restored_from_backup"
         assert result["integrity_ok"] is True
 
-        # Bad DB and sidecars should be in quarantine.
+        # Bad DB should be in quarantine. SQLite may clean invalid sidecars
+        # while probing a corrupt DB on some platforms, so only assert that
+        # source sidecars do not survive beside the restored DB.
         quarantine_dir = tmp_path / "quarantine"
         assert quarantine_dir.exists()
         quarantined = list(quarantine_dir.glob("marketdata_corrupt_*.sqlite"))
         assert len(quarantined) == 1
         assert quarantined[0].read_bytes() == b"NOT A SQLITE DATABASE\x00\x01\x02" * 50
-        assert len(list(quarantine_dir.glob("*wal"))) == 1
-        assert len(list(quarantine_dir.glob("*shm"))) == 1
 
         # Restored DB should match backup content and be clean of sidecars.
         assert db_path.exists()
