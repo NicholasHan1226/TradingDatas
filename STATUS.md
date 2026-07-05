@@ -15,13 +15,13 @@
 - **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮 5 分钟采集跳过
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **reader/API 缓存失效**：读取缓存同时监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm` 和 CSV/分钟线文件变更；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
-- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
+- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 与 `proxy_relay_health` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
 - **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/marketgraph/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/proxy_relay_health.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、新加坡 relay 健康、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
@@ -122,6 +122,11 @@
 - [x] 生产 `.env` 已设置 `POLYMARKET_HTTP_PROXIES=http://127.0.0.1:18889,http://127.0.0.1:7890` 与 `BINANCE_HTTP_PROXIES=http://127.0.0.1:18889,http://127.0.0.1:7890`。
 - [x] 生产 PM 实采通过：100 markets / 200 prices 写入成功；生产 Crypto 实采通过：9 行 intraday 数据写入成功。
 - [x] watchdog dry run 100 分；API health、DB freshness、collector status、disk、memory 均为 `ok`。
+
+### 2026-07-05 Singapore relay health watchdog input
+
+- [x] 新增 `tools/proxy_relay_health.py` 与 `cron/proxy_relay_health.sh`，每 5 分钟检查 PM/Crypto 新加坡 relay：本机 tunnel 代理可出网、出口 IP 符合 `47.82.153.58`，并可选检查 `sharedsignals-sg-relay-tunnel.service`。
+- [x] 结果写入 `logs/watchdog_inputs/proxy_relay.json`，由现有 watchdog 外部报告机制扣分；relay critical 时不需要新增一套告警系统，继续走 watchdog 邮件/自愈闭环。
 
 ### 2026-07-05 health SLA research notice split
 

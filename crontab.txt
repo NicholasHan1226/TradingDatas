@@ -43,6 +43,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Read model sync and health loop.
 */5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
+1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
 3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh

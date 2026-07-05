@@ -116,6 +116,7 @@ Validation:
 
 ```bash
 cd /opt/investment/SharedSignals
+cron/proxy_relay_health.sh
 cron/pm_collect.sh
 cron/crypto_collect.sh
 python3 tools/watchdog.py --once --dry-run --no-email
@@ -135,3 +136,17 @@ python3 tools/watchdog.py --once --dry-run --no-email
 - Crypto real run: 9 intraday rows collected and bridged successfully.
 - Watchdog dry run: score 100; API health, DB freshness, collector status,
   disk and memory all `ok`.
+
+## Watchdog Input
+
+`cron/proxy_relay_health.sh` runs every five minutes in production and writes
+`logs/watchdog_inputs/proxy_relay.json`. The report is consumed by the existing
+watchdog external-report path, so a broken relay reduces the SharedSignals
+health score without adding a separate alerting system.
+
+The report checks:
+
+- selected relay URL from `PROXY_RELAY_HEALTH_URL`, or the first non-local
+  proxy in `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES`;
+- optional systemd state for `sharedsignals-sg-relay-tunnel.service`;
+- egress IP through the relay, expected to be `47.82.153.58` by default.
