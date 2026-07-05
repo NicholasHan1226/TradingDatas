@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${RELAY_URL}" ]]; then
-  echo "missing --relay-url, for example http://47.82.153.58:18888" >&2
+  echo "missing --relay-url, for example http://127.0.0.1:18889" >&2
   exit 2
 fi
 

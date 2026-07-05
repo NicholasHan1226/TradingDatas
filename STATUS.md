@@ -4,13 +4,13 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (PM proxy hardening and combined-cron health handoff)
+> 最后更新：2026-07-05 (Singapore-first PM/Crypto proxy relay verified)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（P0-P6 分层接口）+ Binance（9 symbols，ticker 5min + klines）+ Polymarket（markets+prices，经本地 Mihomo/Clash proxy，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存
+- **行情采集**：稳定运行 — Tushare（P0-P6 分层接口）+ Binance（9 symbols，ticker 5min + klines）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走 SharedSignals collector + staging/bridge 契约
 - **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮 5 分钟采集跳过
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
@@ -33,7 +33,7 @@
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
 - **CSV→SQLite 桥**：`storage/csv_bridge.py` 已投产，executemany + 文件级事务 + 进程级 SQLite 写锁 + `--exit-on-failure`；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
-- **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 RSS + Binance relay → rsync/API → 杭州）；Polymarket 通过杭州本地 Mihomo/Clash `127.0.0.1:7890` 代理路径采集，不走新加坡 RSS mirror。
+- **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 relay）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 10 分钟写入 `logs/watchdog_inputs/health_sla.json`。
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
 
@@ -112,8 +112,16 @@
 - [x] `storage/csv_bridge.py` 同步增加 SQLite busy 短重试和按需 WAL 设置，覆盖 Tushare CSV bridge 与 PM/其它 writer 争用同一 read model 时的 `database is locked`；`SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES` 可单独调优。
 - [x] `tools/watchdog.py` 的 API health 探针增加 3 次短重试，避免 SharedSignals API 单次慢响应把 watchdog 分数误打低；连续失败仍按 critical 处理。
 - [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走新加坡 RSS mirror。
-- [x] PM/Crypto 采集支持 `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES` 逗号分隔代理优先级列表；未来新加坡 relay 验证后可配置为 `Singapore relay -> local Clash/Mihomo`，当前默认仍只启用本机 Clash，避免把不存在的 relay 写入生产。
-- [x] 新增 `deploy/install_singapore_proxy_relay.sh` 与 `deploy/configure_overseas_proxy_priority.sh`，用于在拿到新加坡 SSH 后安装只允许主服务器访问的受限 tinyproxy relay，并在杭州主服务器验证后切换为“新加坡优先、本机 Clash 备选”；操作说明见 `docs/singapore_proxy_relay.md`。
+- [x] PM/Crypto 采集支持 `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES` 逗号分隔代理优先级列表；生产已配置为本机 SSH tunnel 到新加坡 relay 优先、本机 Clash/Mihomo 兜底，避免直接暴露公网代理端口。
+- [x] 新增 `deploy/install_singapore_proxy_relay.sh` 与 `deploy/configure_overseas_proxy_priority.sh`，用于在拿到新加坡 SSH 后安装受限 tinyproxy relay，并在杭州主服务器验证后切换为“新加坡优先、本机 Clash 备选”；操作说明见 `docs/singapore_proxy_relay.md`。
+
+### 2026-07-05 Singapore-first PM/Crypto proxy relay verified
+
+- [x] 新加坡 `47.82.153.58` 已安装 tinyproxy，并收敛为只监听 `127.0.0.1:18888`，不暴露公网代理端口。
+- [x] 杭州主服务器已启用 `sharedsignals-sg-relay-tunnel.service`，本机监听 `127.0.0.1:18889` 并通过 SSH 隧道转发到新加坡本机 tinyproxy；隧道出口 IP 验证为 `47.82.153.58`。
+- [x] 生产 `.env` 已设置 `POLYMARKET_HTTP_PROXIES=http://127.0.0.1:18889,http://127.0.0.1:7890` 与 `BINANCE_HTTP_PROXIES=http://127.0.0.1:18889,http://127.0.0.1:7890`。
+- [x] 生产 PM 实采通过：100 markets / 200 prices 写入成功；生产 Crypto 实采通过：9 行 intraday 数据写入成功。
+- [x] watchdog dry run 100 分；API health、DB freshness、collector status、disk、memory 均为 `ok`。
 
 ### 2026-07-05 health SLA research notice split
 
