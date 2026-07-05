@@ -23,6 +23,7 @@ import csv
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -55,6 +56,14 @@ HK_STOCK_MASTER_PATH = _BASE_DIR / "reference" / "hk_stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
 DEFAULT_P0_STOCK_BATCH_SIZE = 100
 DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
+DEFAULT_P0_PRIORITY_STOCK_FILES = [
+    _BASE_DIR.parent / "TradingAgent" / "signals" / "positions" / "simulated_ashare_positions.json",
+    _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "local_sim" / "local_sim_positions.json",
+    _BASE_DIR.parent / "MarketGraph" / "outputs" / "ashare_closing_buy_candidates.json",
+    Path("/opt/investment/tradingagent/signals/positions/simulated_ashare_positions.json"),
+    Path("/opt/investment/tradingagent/shared/logs/local_sim/local_sim_positions.json"),
+    Path("/opt/investment/MarketGraph/outputs/ashare_closing_buy_candidates.json"),
+]
 
 VALID_TIERS = [
     "P0_trading_5min",
@@ -179,6 +188,105 @@ def parse_positive_int(value: str | int | None, default: int = 0) -> int:
     return parsed if parsed > 0 else default
 
 
+def normalize_ashare_code(value: Any) -> str:
+    """Return canonical A-share ts_code or empty string for unsupported symbols."""
+
+    raw = str(value or "").strip().upper()
+    if not raw:
+        return ""
+    match = re.search(r"(?<!\d)(\d{6})(?:\.(SH|SZ))?(?!\d)", raw)
+    if not match:
+        return ""
+    digits, exchange = match.group(1), match.group(2) or ""
+    if exchange == "SZ" and digits.startswith(("000", "001", "002", "003", "300", "301")):
+        return f"{digits}.SZ"
+    if exchange == "SH" and digits.startswith(("600", "601", "603", "605", "688", "689")):
+        return f"{digits}.SH"
+    if not exchange:
+        if digits.startswith(("000", "001", "002", "003", "300", "301")):
+            return f"{digits}.SZ"
+        if digits.startswith(("600", "601", "603", "605", "688", "689")):
+            return f"{digits}.SH"
+    return ""
+
+
+def _extract_ashare_codes(payload: Any) -> list[str]:
+    """Extract A-share codes from nested JSON-like payloads."""
+
+    codes: list[str] = []
+    if isinstance(payload, dict):
+        for key in ("ts_code", "symbol", "code", "ticker"):
+            code = normalize_ashare_code(payload.get(key))
+            if code:
+                codes.append(code)
+        for value in payload.values():
+            codes.extend(_extract_ashare_codes(value))
+    elif isinstance(payload, list):
+        for item in payload:
+            codes.extend(_extract_ashare_codes(item))
+    elif isinstance(payload, str):
+        codes.extend(normalize_ashare_code(match.group(0)) for match in re.finditer(r"\d{6}(?:\.(?:SH|SZ))?", payload.upper()))
+    return [code for code in codes if code]
+
+
+def _priority_stock_paths() -> list[Path]:
+    values = [
+        item.strip()
+        for item in os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCK_FILES", "").replace(",", os.pathsep).split(os.pathsep)
+        if item.strip()
+    ]
+    if values:
+        return [Path(value).expanduser() for value in values]
+    return list(DEFAULT_P0_PRIORITY_STOCK_FILES)
+
+
+def load_priority_stock_codes(
+    *,
+    paths: list[Path] | None = None,
+    allowed_codes: set[str] | None = None,
+    explicit_codes: str | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    """Load the P0 hot pool from holdings/candidate JSON files and env symbols."""
+
+    seen: set[str] = set()
+    codes: list[str] = []
+    sources: list[dict[str, Any]] = []
+
+    def add(code: str, source: str) -> None:
+        normalized = normalize_ashare_code(code)
+        if not normalized or normalized in seen:
+            return
+        if allowed_codes is not None and normalized not in allowed_codes:
+            return
+        seen.add(normalized)
+        codes.append(normalized)
+        sources.append({"code": normalized, "source": source})
+
+    for raw in (explicit_codes or os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCKS", "")).split(","):
+        add(raw, "env")
+
+    for path in paths if paths is not None else _priority_stock_paths():
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("failed to read P0 priority stock file %s: %s", path, exc)
+            continue
+        before = len(codes)
+        for code in _extract_ashare_codes(payload):
+            add(code, str(path))
+        if len(codes) > before:
+            logger.info("Loaded %d P0 priority stocks from %s", len(codes) - before, path)
+
+    return codes, {
+        "enabled": bool(codes),
+        "selected": len(codes),
+        "sources": sources[:50],
+        "source_count": len({item["source"] for item in sources}),
+    }
+
+
 def select_rotating_stock_batch(
     stock_codes: list[str],
     *,
@@ -241,6 +349,75 @@ def select_rotating_stock_batch(
         "selected": len(selected),
         "state_path": str(state_path),
     }
+
+
+def select_priority_rotating_stock_batch(
+    stock_codes: list[str],
+    *,
+    batch_size: int,
+    state_path: Path,
+    priority_codes: list[str],
+) -> tuple[list[str], dict[str, Any]]:
+    """Select priority symbols first, then fill remaining slots by rotating the market."""
+
+    allowed = set(stock_codes)
+    priority: list[str] = []
+    seen: set[str] = set()
+    for code in priority_codes:
+        normalized = normalize_ashare_code(code)
+        if normalized and normalized in allowed and normalized not in seen:
+            seen.add(normalized)
+            priority.append(normalized)
+
+    if not priority:
+        selected, meta = select_rotating_stock_batch(stock_codes, batch_size=batch_size, state_path=state_path)
+        meta["priority_count"] = 0
+        return selected, meta
+
+    if batch_size <= 0 or batch_size >= len(stock_codes):
+        ordered = priority + [code for code in stock_codes if code not in seen]
+        return ordered, {
+            "enabled": False,
+            "batch_size": batch_size,
+            "total": len(stock_codes),
+            "start_index": 0,
+            "next_index": 0,
+            "selected": len(ordered),
+            "priority_count": len(priority),
+            "priority_overflow": 0,
+            "state_path": str(state_path),
+        }
+
+    priority_selected = priority[:batch_size]
+    remaining_slots = max(batch_size - len(priority_selected), 0)
+    rotating_universe = [code for code in stock_codes if code not in set(priority_selected)]
+    if remaining_slots > 0:
+        rotating, meta = select_rotating_stock_batch(
+            rotating_universe,
+            batch_size=remaining_slots,
+            state_path=state_path,
+        )
+    else:
+        rotating, meta = [], {
+            "enabled": True,
+            "batch_size": batch_size,
+            "total": len(stock_codes),
+            "start_index": 0,
+            "next_index": 0,
+            "selected": len(priority_selected),
+            "state_path": str(state_path),
+        }
+    selected = priority_selected + [code for code in rotating if code not in set(priority_selected)]
+    meta.update(
+        {
+            "enabled": True,
+            "total": len(stock_codes),
+            "selected": len(selected),
+            "priority_count": len(priority_selected),
+            "priority_overflow": max(len(priority) - len(priority_selected), 0),
+        }
+    )
+    return selected, meta
 
 
 # ---------------------------------------------------------------------------
@@ -579,16 +756,21 @@ def main() -> None:
             or os.environ.get("SHAREDSIGNALS_P0_STOCK_BATCH_STATE")
             or DEFAULT_P0_STOCK_BATCH_STATE
         )
-        stock_codes, batch_meta = select_rotating_stock_batch(
+        priority_codes, priority_meta = load_priority_stock_codes(allowed_codes=set(stock_codes))
+        stock_codes, batch_meta = select_priority_rotating_stock_batch(
             stock_codes,
             batch_size=batch_size,
             state_path=state_path,
+            priority_codes=priority_codes,
         )
+        batch_meta["priority_sources"] = priority_meta.get("sources", [])
+        batch_meta["priority_source_count"] = priority_meta.get("source_count", 0)
         if batch_meta.get("enabled"):
             logger.info(
-                "P0 rotating stock batch: selected %d/%d stocks, batch_size=%d, cursor %d→%d, state=%s",
+                "P0 priority rotating stock batch: selected %d/%d stocks, priority=%d, batch_size=%d, cursor %d→%d, state=%s",
                 batch_meta["selected"],
                 batch_meta["total"],
+                batch_meta.get("priority_count", 0),
                 batch_meta["batch_size"],
                 batch_meta["start_index"],
                 batch_meta["next_index"],

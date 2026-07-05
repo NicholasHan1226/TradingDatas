@@ -7,9 +7,12 @@ from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     date_range,
     filter_apis,
+    load_priority_stock_codes,
     load_config,
+    normalize_ashare_code,
     parse_positive_int,
     resolve_api_window,
+    select_priority_rotating_stock_batch,
     select_rotating_stock_batch,
 )
 
@@ -124,3 +127,49 @@ def test_select_rotating_stock_batch_wraps_at_end(tmp_path: Path) -> None:
     assert selected == ["000004.SZ", "000001.SZ", "000002.SZ"]
     assert meta["start_index"] == 3
     assert meta["next_index"] == 2
+
+
+def test_normalize_ashare_code_filters_unsupported_symbols() -> None:
+    assert normalize_ashare_code("600000") == "600000.SH"
+    assert normalize_ashare_code("000001") == "000001.SZ"
+    assert normalize_ashare_code("300750.SZ") == "300750.SZ"
+    assert normalize_ashare_code("200011.SZ") == ""
+    assert normalize_ashare_code("830000.BJ") == ""
+
+
+def test_load_priority_stock_codes_reads_nested_json_and_filters_allowed(tmp_path: Path) -> None:
+    priority_file = tmp_path / "priority.json"
+    priority_file.write_text(
+        """
+        {
+          "positions": [{"ts_code": "600000.SH"}, {"symbol": "000001.SZ"}],
+          "closing_candidates": [{"code": "300750"}, {"ts_code": "200011.SZ"}]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    codes, meta = load_priority_stock_codes(
+        paths=[priority_file],
+        allowed_codes={"600000.SH", "000001.SZ", "300750.SZ"},
+    )
+
+    assert codes == ["600000.SH", "000001.SZ", "300750.SZ"]
+    assert meta["enabled"] is True
+    assert meta["selected"] == 3
+
+
+def test_select_priority_rotating_stock_batch_keeps_hot_pool_first(tmp_path: Path) -> None:
+    state_path = tmp_path / "cursor.json"
+    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "600000.SH", "600001.SH"]
+
+    selected, meta = select_priority_rotating_stock_batch(
+        codes,
+        batch_size=4,
+        state_path=state_path,
+        priority_codes=["600000.SH", "000003.SZ", "200011.SZ"],
+    )
+
+    assert selected[:2] == ["600000.SH", "000003.SZ"]
+    assert len(selected) == 4
+    assert meta["priority_count"] == 2
