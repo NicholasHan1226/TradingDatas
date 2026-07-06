@@ -19,6 +19,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
+from collectors.tushare.tushare_common import rows_to_dicts, tushare_data  # noqa: E402
+from env_bootstrap import bootstrap_sharedsignals_env  # noqa: E402
 from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_csv_to_sqlite  # noqa: E402
 
 API_NAME = "rt_fut_min"
@@ -129,6 +131,20 @@ def build_params(symbols: list[str], *, freq: str) -> dict[str, Any]:
     return {"ts_code": ",".join(symbols), "freq": freq}
 
 
+def collect_rt_fut_min_rows(params: dict[str, Any], *, fields: str = "") -> list[dict[str, Any]]:
+    """Collect rt_fut_min rows while preserving provider error details."""
+
+    bootstrap_sharedsignals_env()
+    data = tushare_data(API_NAME, params, fields, strict=False)
+    code = data.get("code")
+    error = str(data.get("error") or "").strip()
+    if error or code not in (None, "", 0, "0"):
+        code_text = "unknown" if code in (None, "") else str(code)
+        detail = error or "empty provider error message"
+        raise RuntimeError(f"Tushare {API_NAME} failed code={code_text}: {detail}")
+    return rows_to_dicts(data)
+
+
 def run_collection(
     *,
     trade_date: str,
@@ -160,12 +176,14 @@ def run_collection(
         return summary
 
     collector = TushareCollector()
-    rows = collector.collect(API_NAME, params, fields="")
-    summary["rows"] = len(rows)
-    if getattr(collector, "last_collect_failed", False):
+    collector._rate_limit(API_NAME)
+    try:
+        rows = collect_rt_fut_min_rows(params, fields="")
+    except Exception as exc:
         summary["state"] = "failed"
-        summary["error"] = collector.last_collect_error
+        summary["error"] = str(exc)
         return summary
+    summary["rows"] = len(rows)
     if not rows:
         summary["state"] = "empty"
         return summary
@@ -173,6 +191,11 @@ def run_collection(
     summary["csv_path"] = str(path) if path else ""
     if sqlite_bridge_enabled and path is not None:
         summary["sqlite_bridge_rows"] = ingest_csv_to_sqlite(sqlite_db_path, "market_bars_intraday", path)
+        if summary["sqlite_bridge_rows"] <= 0:
+            summary["bridge_status"] = "failed"
+            summary["state"] = "failed"
+            summary["error"] = f"sqlite bridge wrote 0 rows for non-empty {API_NAME} collection"
+            return summary
         summary["bridge_status"] = "ok"
     summary["state"] = "ok"
     return summary

@@ -143,6 +143,12 @@ def test_build_params_uses_comma_separated_symbols() -> None:
     }
 
 
+def test_rt_fut_min_is_allowed_for_api_self_checks() -> None:
+    from api_server import ALLOWED_TUSHARE_APIS
+
+    assert "rt_fut_min" in ALLOWED_TUSHARE_APIS
+
+
 def test_run_collection_dry_run_does_not_call_tushare(tmp_path: Path) -> None:
     summary = run_collection(
         trade_date="20260703",
@@ -155,6 +161,73 @@ def test_run_collection_dry_run_does_not_call_tushare(tmp_path: Path) -> None:
 
     assert summary["state"] == "dry_run"
     assert summary["params"] == {"ts_code": "RB2609.SHF", "freq": "5MIN"}
+
+
+def test_run_collection_surfaces_provider_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fail_provider(_params, *, fields: str = ""):
+        raise RuntimeError("Tushare rt_fut_min failed code=40203: permission denied")
+
+    monkeypatch.setattr("tools.collect_cn_futures_5min.collect_rt_fut_min_rows", fail_provider)
+
+    summary = run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        dry_run=False,
+        sqlite_bridge_enabled=True,
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert summary["state"] == "failed"
+    assert "permission denied" in summary["error"]
+
+
+def test_run_collection_fails_when_non_empty_rows_do_not_reach_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "data" / "tushare" / "rt_fut_min" / "20260703" / "rt_fut_min_20260703_5min.csv"
+
+    class FakeCollector:
+        @classmethod
+        def _rate_limit(cls, _api_name: str) -> None:
+            return None
+
+        def save(self, _api_name: str, _rows: list[dict], _trade_date: str, filename: str | None = None) -> Path:
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            csv_path.write_text(
+                "code,time,open,high,low,close,vol,amount\n"
+                "RB2609.SHF,2026-07-03 09:05:00,3500,3510,3490,3505,120,421000\n",
+                encoding="utf-8",
+            )
+            return csv_path
+
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.collect_rt_fut_min_rows",
+        lambda _params, *, fields="": [
+            {
+                "code": "RB2609.SHF",
+                "time": "2026-07-03 09:05:00",
+                "close": "3505",
+                "vol": "120",
+            }
+        ],
+    )
+    monkeypatch.setattr("tools.collect_cn_futures_5min.TushareCollector", FakeCollector)
+    monkeypatch.setattr("tools.collect_cn_futures_5min.ingest_csv_to_sqlite", lambda *_args, **_kwargs: 0)
+
+    summary = run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        dry_run=False,
+        sqlite_bridge_enabled=True,
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert summary["state"] == "failed"
+    assert summary["bridge_status"] == "failed"
+    assert "sqlite bridge wrote 0 rows" in summary["error"]
 
 
 def test_main_rejects_empty_symbol_selection(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

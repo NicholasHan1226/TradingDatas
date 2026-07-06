@@ -311,7 +311,7 @@ ALLOWED_TUSHARE_APIS = frozenset({
     "dc_index", "dc_daily", "dc_member",
     "limit_list", "limit_list_d", "limit_step", "broker_recommend",
     "stk_factor", "stk_factor_pro", "cyq_perf", "cyq_chips",
-    "stk_mins", "rt_min",
+    "stk_mins", "rt_min", "rt_fut_min",
     "stk_surv", "fund_daily", "fund_basic", "fund_nav", "fund_adj",
     "fund_portfolio", "fund_share", "fund_div",
     "fut_basic", "fut_daily", "fut_holding", "ft_limit",

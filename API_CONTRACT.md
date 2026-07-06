@@ -102,6 +102,7 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - 可选一级盘口字段会透传到 `market_bars_intraday`：`bid_price` 兼容 `bid1`/`best_bid`，`ask_price` 兼容 `ask1`/`best_ask`，`bid_size` 兼容 `bid_volume`/`bid1_volume`，`ask_size` 兼容 `ask_volume`/`ask1_volume`
 - 可选到期字段会透传到 `market_bars_intraday`：`last_trade_date`、`expiry_date`；若分钟 CSV 未带这些字段但 `market_assets` 的同一 Futures 合约已有 `last_trade_date`/`expiry_date`，CSV bridge 会补齐
 - 这些字段均为可空增量字段；Tushare 当前返回缺失时不阻断 OHLCV 写入，TradingAgent 只能在字段存在时使用盘口/到期保护增强
+- `rt_fut_min` 采集必须区分三种状态：provider 正常返回 0 行时为 `empty`；provider 返回权限、接口或本地调用错误时为 `failed`；非空行情 CSV 写入后 SQLite bridge 写入 0 行时为 `failed`。交易时段内持续 `empty` 或任何 `failed` 都应进入 SharedSignals watchdog/系统告警排查，不能被解释为 TradingAgent 无交易信号。
 
 `tools/check_cn_futures_5min_freshness.py` 是只读数据健康检查，默认 10 分钟阈值，可通过 `--sqlite-db`、`--now`、`--max-age-minutes` 和 `--json` 调整。它只报告数据是否新鲜、当前/下一交易时段是否已有 5 分钟 bar，不生成交易信号、不触发补采、不写 TradingAgent 队列。
 
@@ -736,6 +737,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-06 | 1.1.12 | CNFutures 5 分钟采集加强失败语义：`rt_fut_min` provider 错误和非空 CSV 桥接 0 行会返回 `failed`；SharedSignals API 白名单补入 `rt_fut_min`，便于只读接口自检。 |
 | 2026-07-06 | 1.1.11 | A股 P0 实时分钟接口从旧 `rt_k` 收口到 Tushare `rt_min`，CSV bridge/reader fallback 支持 `rt_min`；`repo_daily` 保留因子写入并额外投影到 `market_bars_daily`，使 `204001.SH` 可通过 `/market_data` 读取逆回购日线收益率。 |
 | 2026-07-05 | 1.1.10 | `/realtime_5min` 增加 `market` 参数，默认兼容 A股，同时支持 `market=Futures` 等非 A股 5 分钟 read model 输出；reader 会透传新增 L1 盘口字段。 |
 | 2026-07-05 | 1.1.9 | CNFutures `market_bars_intraday` 增加可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段；CSV bridge 支持 `rt_fut_min` 盘口字段透传，并可从 `market_assets` 补合约到期字段；`fut_basic` 配置补采 `last_ddate/delist_date`；`/realtime_5min` 支持 `market=Futures` 读取期货分钟线。 |
