@@ -8,6 +8,7 @@ Public API:
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sqlite3
 import subprocess
@@ -103,13 +104,9 @@ def get_health_status(
     # 4. Per-table SLA -----------------------------------------------------
     if check_sla:
         try:
-            from tools.health_sla import check_sla as _check_sla
-
-            raw_sla = _check_sla()
-            raw_status = str(raw_sla.get("status") or "error")
-            section_status = "error" if raw_status == "critical" else ("degraded" if raw_status == "degraded" else "ok")
-            checks["sla"] = {**raw_sla, "sla_status": raw_status, "status": section_status}
-            overall = _worse(overall, section_status)
+            sla = _load_health_sla_report()
+            checks["sla"] = sla
+            overall = _worse(overall, sla["status"])
         except Exception as exc:
             checks["sla"] = {"status": "error", "message": str(exc)}
             overall = _worse(overall, "error")
@@ -164,6 +161,54 @@ def _latest_csv_date(path: Path, column: str) -> str | None:
         return latest or None
     except Exception:
         return None
+
+
+def _decode_last_json_object(text: str) -> dict[str, Any] | None:
+    decoder = json.JSONDecoder()
+    index = 0
+    latest: dict[str, Any] | None = None
+    while index < len(text):
+        brace = text.find("{", index)
+        if brace < 0:
+            break
+        try:
+            value, end = decoder.raw_decode(text[brace:])
+        except json.JSONDecodeError:
+            index = brace + 1
+            continue
+        if isinstance(value, dict):
+            latest = value
+        index = brace + end
+    return latest
+
+
+def _normalize_sla_report(raw: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
+    raw_status = str(raw.get("status") or "error")
+    section_status = "error" if raw_status == "critical" else ("degraded" if raw_status in {"degraded", "missing", "invalid", "stale"} else "ok")
+    result = {**raw, "sla_status": raw_status, "status": section_status}
+    if path is not None:
+        result["report_path"] = str(path)
+        try:
+            result["report_age_seconds"] = round(max(0.0, datetime.now().timestamp() - path.stat().st_mtime), 1)
+        except OSError:
+            pass
+    return result
+
+
+def _load_health_sla_report() -> dict[str, Any]:
+    path = Path(os.environ.get("SHAREDSIGNALS_HEALTH_SLA_REPORT", str(SS / "logs" / "watchdog_inputs" / "health_sla.json")))
+    if not path.exists():
+        return _normalize_sla_report({"status": "missing", "message": "health_sla report not found"}, path=path)
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    if not text:
+        return _normalize_sla_report({"status": "invalid", "message": "health_sla report is empty"}, path=path)
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError:
+        raw = _decode_last_json_object(text)
+    if not isinstance(raw, dict) or "summary" not in raw:
+        return _normalize_sla_report({"status": "invalid", "message": "health_sla report is not a valid SLA payload"}, path=path)
+    return _normalize_sla_report(raw, path=path)
 
 
 def _reader_samples() -> dict[str, str]:

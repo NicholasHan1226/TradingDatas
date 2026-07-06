@@ -157,4 +157,4 @@ if __name__ == '__main__':
         violation_count = len(result.get("violations") or [])
         subprocess.run([sys.executable, str(Path(__file__).parent / 'email_sender.py'),
             '--subject', f'[CRITICAL] Data health SLA breached — {violation_count} violations',
-            '--body', json.dumps(result, indent=2), '--channel', 'system'], timeout=15)
+            '--body', json.dumps(result, indent=2), '--channel', 'system'], timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

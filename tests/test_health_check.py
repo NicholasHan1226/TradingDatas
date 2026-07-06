@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import time
 
-from tools import health_sla
 from tools import health_check
 
 
@@ -48,9 +48,9 @@ def test_cron_activity_reports_find_errors(tmp_path, monkeypatch) -> None:
 
 def test_health_status_includes_per_table_sla(monkeypatch) -> None:
     monkeypatch.setattr(
-        health_sla,
-        "check_sla",
-        lambda: {"status": "degraded", "summary": {"warning": 1}, "violations": [{"table": "market_events"}]},
+        health_check,
+        "_load_health_sla_report",
+        lambda: {"status": "degraded", "sla_status": "degraded", "summary": {"warning": 1}, "violations": [{"table": "market_events"}]},
     )
 
     result = health_check.get_health_status(
@@ -64,3 +64,22 @@ def test_health_status_includes_per_table_sla(monkeypatch) -> None:
     assert result["status"] == "degraded"
     assert result["checks"]["sla"]["status"] == "degraded"
     assert result["checks"]["sla"]["sla_status"] == "degraded"
+
+
+def test_health_sla_report_reader_uses_last_valid_payload(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "SharedSignals"
+    report = root / "logs" / "watchdog_inputs" / "health_sla.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        json.dumps({"status": "sent", "provider": "cloudflare"})
+        + "\n"
+        + json.dumps({"status": "critical", "summary": {"critical": 1}, "violations": [{"table": "market_pm_prices"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(health_check, "SS", root)
+
+    result = health_check._load_health_sla_report()
+
+    assert result["status"] == "error"
+    assert result["sla_status"] == "critical"
+    assert result["summary"]["critical"] == 1
