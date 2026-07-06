@@ -184,7 +184,7 @@ def _decode_last_json_object(text: str) -> dict[str, Any] | None:
 
 def _normalize_sla_report(raw: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
     raw_status = str(raw.get("status") or "error")
-    section_status = "error" if raw_status == "critical" else ("degraded" if raw_status in {"degraded", "missing", "invalid", "stale"} else "ok")
+    section_status = "degraded" if raw_status in {"critical", "degraded", "missing", "invalid", "stale"} else "ok"
     result = {**raw, "sla_status": raw_status, "status": section_status}
     if path is not None:
         result["report_path"] = str(path)

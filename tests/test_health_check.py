@@ -80,6 +80,6 @@ def test_health_sla_report_reader_uses_last_valid_payload(tmp_path, monkeypatch)
 
     result = health_check._load_health_sla_report()
 
-    assert result["status"] == "error"
+    assert result["status"] == "degraded"
     assert result["sla_status"] == "critical"
     assert result["summary"]["critical"] == 1
