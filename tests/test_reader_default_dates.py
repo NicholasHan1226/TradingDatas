@@ -10,6 +10,7 @@ from pathlib import Path
 def _reset_reader_paths(reader, *, db_path: Path, intake_root: Path) -> None:
     reader.SQLITE_PATH = reader._LazyPath(lambda: db_path)
     reader.INTAKE_ROOT = reader._LazyPath(lambda: intake_root)
+    reader.SHAREDSIGNALS_ROOT = reader._LazyPath(lambda: intake_root.parent)
     reader.SENTIMENT_SIGNALS_PATH = reader._LazyPath(lambda: intake_root / "sentiment_signals_archive.csv")
     reader.REALTIME_5M_ROOT = reader._LazyPath(lambda: intake_root / "rt_min_5m")
     reader.clear_caches()
@@ -95,6 +96,45 @@ def test_get_realtime_5min_without_date_uses_latest_intraday_date(tmp_path: Path
     assert rows[0]["degraded"] is False
     assert rows[0]["data"]["trade_date"] == "20260703"
     assert rows[0]["lineage"]["filters"]["date"] == "20260703"
+
+
+def test_get_realtime_5min_falls_back_to_sharedsignals_rt_min_csv(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+    finally:
+        conn.close()
+    _write_csv(
+        tmp_path / "data" / "tushare" / "rt_min" / "20260706" / "000001.SZ.csv",
+        ["ts_code", "freq", "time", "open", "close", "high", "low", "vol", "amount"],
+        [
+            {
+                "ts_code": "000001.SZ",
+                "freq": "5MIN",
+                "time": "2026-07-06 09:55:00",
+                "open": "10.27",
+                "close": "10.28",
+                "high": "10.32",
+                "low": "10.27",
+                "vol": "2245200",
+                "amount": "23112441",
+            }
+        ],
+    )
+
+    rows = reader.get_realtime_5min("000001.SZ", "20260706")
+
+    assert rows
+    assert rows[0]["degraded"] is False
+    assert rows[0]["data"]["close"] == "10.28"
+    assert "rt_min" in rows[0]["lineage"]["source_paths"][2]
 
 
 def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Path) -> None:

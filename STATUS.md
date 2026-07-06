@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-05 (Singapore-first PM/Crypto proxy relay verified)
+> 最后更新：2026-07-06 (A-share rt_min and repo_daily read-model repair)
 
 ---
 
@@ -25,7 +25,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并默认兼容 A股；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并默认兼容 A股；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **开发/生产边界**：2026-07-05 开盘前复核已将 `config/dev.yaml` 的 `server` 默认值改为 `127.0.0.1`；生产默认主服务器只保留在 `config/prod.yaml`，避免本地 dev 运行误连 `8.138.181.177`。
 - **基础设施文档与 SLA**：2026-07-05 开盘前复核已更新 `docs/INFRASTRUCTURE.md`，当前口径为 SQLite + DuckDB mirror、Redis 未启用；`tools/health_sla.py` 已支持 `MARKETDATA_SQLITE` / `SHAREDSIGNALS_MARKETDATA_DB` / `MARKETGRAPH_RUNTIME_ROOT`，不再只能读硬编码生产库；SLA 已按 trading/research 分层，交易价格/日线过期才触发 degraded/critical，研究事件过期只记 `notice`；周末/周一开盘前会放宽非 24/7 日频表阈值，PM/Crypto 价格不放宽，避免周末或研究层暂停误报成交易供数故障。
@@ -45,7 +45,7 @@
 - [x] R15 故障注入新增：主 `marketdata.sqlite` 损坏/丢失后，`tools/sqlite_recovery.py` + `patrol.py`/`heal.py` 已实现只读检测、备份切换或 DuckDB mirror 重建，默认 dry-run/fail-safe；详见 `docs/sqlite_recovery_runbook.md`。普通 WAL crash recovery 仍覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
 - Crypto 生产 5 分钟行情已切到 `CryptoCollector → NDJSON staging → storage/ndjson_bridge.py → SQLite`；`/crypto` reader 改为 SQLite-first，不再读取旧 `/opt/investment/Crypto/data/market/klines.csv`。
-- P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；如 TradingAgent 需要高关注热池优先刷新，应在后续阶段补充独立 hot-universe 配置。
+- P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 100 只股票，避免 5 分钟任务因全量 per-stock 调用长期重叠；当前实时分钟接口使用实测可用的 Tushare `rt_min`，旧 `rt_k` 仅保留历史 CSV/read fallback 兼容。
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 禁用；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 - `bridge/__init__.py` 仍保留 MarketGraph 工具路径兼容注入，用于历史 bridge/import 兼容；当前不是数据采集入口。后续拆到独立服务器前，应改为显式依赖或移除跨仓 `sys.path` 注入。
 
@@ -104,6 +104,7 @@
 23. [x] **5 分钟 read API 市场参数化** — `reader.get_realtime_5min()` 与 HTTP `/realtime_5min` 支持 `market` 参数，默认 `Ashare` 保持旧调用兼容；`market=Futures` 等非 A股市场不再被硬编码挡住，旧 CSV 目录回退仅保留给 A股历史 5 分钟目录。
 24. [x] **reader WAL 缓存失效修复** — `reader.py` 的缓存文件指纹已动态解析当前路径，并纳入 SQLite `-wal`/`-shm` sidecar；测试覆盖 sidecar mtime 更新后触发 `_files_changed()`，降低 5 分钟交易读取旧数据风险。
 25. [x] **health_sla 交易/研究分层与定时启用** — `market_bars_daily` 与 `market_pm_prices` 属交易关键 freshness，超阈值影响健康；`market_factors` 为 warning；`market_events` 属研究 lane，过期只记录 notice，不再把研究事件暂停误判为 SharedSignals 交易供数故障；周末/周一开盘前会扩大非 PM/Crypto 表的有效 freshness 窗口；`cron/health_sla.sh` 每 10 分钟运行并写入 watchdog input，critical/degraded 外部报告会纳入 watchdog 分数。
+26. [x] **A股 rt_min 与逆回购读模型修复** — P0 实时分钟配置从旧 `rt_k` 切到实测可用的 `rt_min`，CSV bridge 与 reader fallback 同步支持 `rt_min`；`repo_daily` 不再裁剪字段，并在保留 `market_factors` 的同时额外投影到 `market_bars_daily`，供 TradingAgent 以 `204001.SH` 日线收益率读取。
 
 ### 2026-07-05 PM proxy hardening
 

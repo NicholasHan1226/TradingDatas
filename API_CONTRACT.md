@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.10 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.11 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -519,7 +519,8 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
 | A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
-| A 股分钟线 | Tushare `stk_mins` / realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` DB-first，未传日期时使用该股票最新 intraday 日期，旧 CSV 目录仅作回退 |
+| A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; `reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` DB-first，未传日期时使用该股票最新 intraday 日期；SQLite 暂未刷入时会回退 SharedSignals `data/tushare/stk_mins` / `rt_min` CSV，旧 `rt_k` 目录仅作历史兼容 |
+| A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
 | A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
 | Crypto klines/ticker | Binance → NDJSON staging → marketdata.sqlite | Bridged: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
@@ -735,6 +736,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-06 | 1.1.11 | A股 P0 实时分钟接口从旧 `rt_k` 收口到 Tushare `rt_min`，CSV bridge/reader fallback 支持 `rt_min`；`repo_daily` 保留因子写入并额外投影到 `market_bars_daily`，使 `204001.SH` 可通过 `/market_data` 读取逆回购日线收益率。 |
 | 2026-07-05 | 1.1.10 | `/realtime_5min` 增加 `market` 参数，默认兼容 A股，同时支持 `market=Futures` 等非 A股 5 分钟 read model 输出；reader 会透传新增 L1 盘口字段。 |
 | 2026-07-05 | 1.1.9 | CNFutures `market_bars_intraday` 增加可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段；CSV bridge 支持 `rt_fut_min` 盘口字段透传，并可从 `market_assets` 补合约到期字段；`fut_basic` 配置补采 `last_ddate/delist_date`；`/realtime_5min` 支持 `market=Futures` 读取期货分钟线。 |
 | 2026-07-05 | 1.1.8 | CNFutures 5 分钟默认合约池加入股指期货 `IF/IH/IC/IM`，并按产品轮询自动选合约，供 TradingAgent 股指日内方向风格读取同一 SharedSignals 数据层。 |

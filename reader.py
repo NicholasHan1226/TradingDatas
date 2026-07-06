@@ -1189,6 +1189,15 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
     return _safe_public("reference:market_calendar", lineage, lambda generation: _is_trading_day_cached(generation, str(date)))
 
 
+def _realtime_5m_fallback_dirs(date_key: str) -> list[Path]:
+    return [
+        REALTIME_5M_ROOT / date_key,
+        SHAREDSIGNALS_ROOT / "data" / "tushare" / "stk_mins" / date_key,
+        SHAREDSIGNALS_ROOT / "data" / "tushare" / "rt_min" / date_key,
+        SHAREDSIGNALS_ROOT / "data" / "tushare" / "rt_k" / date_key,
+    ]
+
+
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_value: str) -> str:
@@ -1226,24 +1235,31 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
             reason = f"sqlite degraded for market={market_key} ts_code={ts_code}"
         return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
 
-    day_dir = REALTIME_5M_ROOT / date_key
-    fallback_lineage = {"reader": "get_realtime_5min", "source_path": str(day_dir), "filters": {"ts_code": ts_code, "date": date_key}}
+    fallback_dirs = _realtime_5m_fallback_dirs(date_key)
+    fallback_lineage = {
+        "reader": "get_realtime_5min",
+        "source_paths": [str(path) for path in fallback_dirs],
+        "filters": {"ts_code": ts_code, "date": date_key},
+    }
     try:
-        if not day_dir.exists():
-            reason = f"no rows in sqlite market_bars_intraday and missing directory: {day_dir}"
+        existing_dirs = [path for path in fallback_dirs if path.exists()]
+        if not existing_dirs:
+            reason = "no rows in sqlite market_bars_intraday and missing realtime CSV fallback directories"
             if degraded is not None:
-                reason = f"sqlite degraded and missing directory: {day_dir}"
+                reason = "sqlite degraded and missing realtime CSV fallback directories"
             return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
         matched: list[dict[str, Any]] = []
-        for path in sorted(day_dir.glob("*.csv")):
-            for row in _read_csv(path):
-                if row.get("ts_code") == ts_code:
-                    row["_source_file"] = str(path)
-                    matched.append(row)
-        matched.sort(key=lambda row: str(row.get("time") or row.get("bar_time") or ""))
+        for day_dir in existing_dirs:
+            for path in sorted(day_dir.glob("*.csv")):
+                for row in _read_csv(path):
+                    if row.get("ts_code") == ts_code:
+                        row["_source_file"] = str(path)
+                        matched.append(row)
+        matched.sort(key=lambda row: str(row.get("time") or row.get("trade_time") or row.get("bar_time") or ""))
         if not matched:
-            return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"no rows matched in {day_dir}", lineage=fallback_lineage))
-        return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:rt_min_5m", source_tier="tushare", collected_at=_file_collected_at(day_dir), lineage=fallback_lineage, stale_after_hours=2.0))
+            return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", "no rows matched in realtime CSV fallback directories", lineage=fallback_lineage))
+        collected_at = max((_file_collected_at(Path(row["_source_file"])) or "" for row in matched), default="") or None
+        return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:rt_min_5m", source_tier="tushare", collected_at=collected_at, lineage=fallback_lineage, stale_after_hours=2.0))
     except Exception as exc:  # pragma: no cover - defensive reader boundary
         return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"realtime read failed: {exc}", lineage=fallback_lineage))
 

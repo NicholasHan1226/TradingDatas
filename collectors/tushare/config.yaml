@@ -42,9 +42,10 @@ priorities:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
     per_stock: true
-  - api_name: rt_k
+  - api_name: rt_min
     frequency: 5min
     params:
+      freq: 5MIN
       ts_code: '{ts_code}'
     per_stock: true
   - api_name: margin
@@ -357,7 +358,6 @@ priorities:
     fields: ts_code,trade_date,pe,pe_ttm,pb,total_mv,turnover_rate
   - api_name: repo_daily
     per_stock: false
-    fields: trade_date,repo_maturity,amount,rate
   P5_hk_us_daily:
   - api_name: hk_daily
     frequency: daily

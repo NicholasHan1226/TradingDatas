@@ -119,6 +119,43 @@ def test_stk_mins_ingests_intraday_with_metadata(tmp_path: Path):
     assert row[7]
 
 
+def test_rt_min_ingests_intraday_with_metadata(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "rt_min" / "20260706" / "000001.SZ.csv",
+        "\n".join(
+            [
+                "ts_code,freq,time,open,close,high,low,vol,amount",
+                "000001.SZ,5MIN,2026-07-06 09:55:00,10.27,10.28,10.32,10.27,2245200,23112441",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, "market_bars_intraday", csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT market, symbol, trade_date, bar_time, interval, provider, close, volume, amount "
+            "FROM market_bars_intraday"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (
+        "Ashare",
+        "000001.SZ",
+        "20260706",
+        "2026-07-06 09:55:00",
+        "5min",
+        "tushare_rt_min",
+        10.28,
+        2245200.0,
+        23112441.0,
+    )
+
+
 def test_rt_fut_min_ingests_futures_intraday_with_code_time_fields(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
@@ -379,6 +416,50 @@ def test_low_frequency_macro_bridge_map_covers_p4_macro_apis() -> None:
     assert CSV_TO_TABLE_MAP["us_tbr"] == "market_factors"
     assert CSV_TO_TABLE_MAP["us_tltr"] == "market_factors"
     assert CSV_TO_TABLE_MAP["repo_daily"] == "market_factors"
+
+
+def test_repo_daily_keeps_factor_rows_and_projects_daily_bars(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "repo_daily" / "20260706" / "repo_daily_20260706.csv",
+        "\n".join(
+            [
+                "ts_code,trade_date,repo_maturity,pre_close,open,high,low,close,weight,amount,num",
+                "204001.SH,20260706,GC001,1.60,1.55,2.10,1.40,1.88,1.70,1000000,1200",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, CSV_TO_TABLE_MAP["repo_daily"], csv_path)
+
+    assert rows == 9
+    conn = sqlite3.connect(str(db_path))
+    try:
+        factor_names = [
+            row[0]
+            for row in conn.execute(
+                "SELECT factor_name FROM market_factors ORDER BY factor_name"
+            ).fetchall()
+        ]
+        bar = conn.execute(
+            "SELECT market, symbol, trade_date, open, high, low, close, amount, provider "
+            "FROM market_bars_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert "repo_daily:close" in factor_names
+    assert bar == (
+        "Ashare",
+        "204001.SH",
+        "20260706",
+        1.55,
+        2.1,
+        1.4,
+        1.88,
+        1000000.0,
+        "tushare_repo_daily",
+    )
 
 
 def test_cctv_news_derives_market_event_hash_and_metadata(tmp_path: Path):

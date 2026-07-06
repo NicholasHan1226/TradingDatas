@@ -118,6 +118,7 @@ CSV_TO_TABLE_MAP = {
     "stk_factor": "market_bars_daily",
     "stk_factor_pro": "market_bars_daily",
     "stk_mins": "market_bars_intraday",
+    "rt_min": "market_bars_intraday",
     "rt_k": "market_bars_intraday",
     "rt_fut_min": "market_bars_intraday",
     "stk_holdernumber": "market_assets",
@@ -133,6 +134,10 @@ CSV_TO_TABLE_MAP = {
     "us_basic": "market_assets",
     "us_daily": "market_bars_daily",
     "weekly": "market_bars_intraday",
+}
+
+CSV_ADDITIONAL_TABLES = {
+    "repo_daily": ("market_bars_daily",),
 }
 
 
@@ -151,7 +156,7 @@ def _api_name_from_path(csv_path):
 
 
 def _market_for(api_name, symbol):
-    if api_name in ("daily", "stock_basic", "weekly", "monthly", "stk_mins", "rt_k"):
+    if api_name in ("daily", "stock_basic", "weekly", "monthly", "stk_mins", "rt_min", "rt_k", "repo_daily"):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
         return "HK"
@@ -318,7 +323,7 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
                 derived_columns.append("trade_date")
-        if api_name in ("weekly", "monthly", "stk_mins", "rt_k", "rt_fut_min") and "interval" in target_columns:
+        if api_name in ("weekly", "monthly", "stk_mins", "rt_min", "rt_k", "rt_fut_min") and "interval" in target_columns:
             derived_columns.append("interval")
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
@@ -425,7 +430,7 @@ def _canonical_row(table, row, api_name, csv_path):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
         if api_name in ("weekly", "monthly"):
             row["interval"] = api_name
-        elif api_name in ("stk_mins", "rt_k", "rt_fut_min"):
+        elif api_name in ("stk_mins", "rt_min", "rt_k", "rt_fut_min"):
             row["interval"] = "5min"
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
@@ -768,7 +773,24 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
 def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
     db_path_obj = Path(db_path)
     with _sqlite_bridge_lock(db_path_obj):
-        return _ingest_csv_to_sqlite_unlocked(db_path_obj, table, csv_path, encoding=encoding, max_transaction_rows=max_transaction_rows)
+        rows_written = _ingest_csv_to_sqlite_unlocked(
+            db_path_obj,
+            table,
+            csv_path,
+            encoding=encoding,
+            max_transaction_rows=max_transaction_rows,
+        )
+        api_name = _api_name_from_path(Path(csv_path))
+        if CSV_TO_TABLE_MAP.get(api_name) == table:
+            for additional_table in CSV_ADDITIONAL_TABLES.get(api_name, ()):
+                rows_written += _ingest_csv_to_sqlite_unlocked(
+                    db_path_obj,
+                    additional_table,
+                    csv_path,
+                    encoding=encoding,
+                    max_transaction_rows=max_transaction_rows,
+                )
+        return rows_written
 
 
 def ingest_date_partition(db_path, api_name, trade_date, data_dir):
