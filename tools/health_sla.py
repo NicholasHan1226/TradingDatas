@@ -2,8 +2,12 @@
 """Data health SLA monitor — alerts when freshness breaches thresholds."""
 from __future__ import annotations
 import json, os, sqlite3, urllib.request
-from datetime import datetime, timezone, timedelta
+from datetime import date as date_cls, datetime, time as time_cls, timezone, timedelta
 from pathlib import Path
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover - Python fallback for constrained runtimes
+    ZoneInfo = None
 
 SLA_THRESHOLDS = {
     'market_bars_daily': {'max_age_hours': 72, 'market': 'all', 'lane': 'trading', 'severity': 'critical'},
@@ -49,6 +53,108 @@ def _effective_max_age_hours(sla: dict, now: datetime) -> int:
     return threshold
 
 
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date_cls:
+    day = date_cls(year, month, 1)
+    offset = (weekday - day.weekday()) % 7
+    return day + timedelta(days=offset + 7 * (n - 1))
+
+
+def _last_weekday(year: int, month: int, weekday: int) -> date_cls:
+    next_month = date_cls(year + int(month == 12), 1 if month == 12 else month + 1, 1)
+    day = next_month - timedelta(days=1)
+    return day - timedelta(days=(day.weekday() - weekday) % 7)
+
+
+def _observed_fixed_holiday(year: int, month: int, day: int) -> date_cls:
+    holiday = date_cls(year, month, day)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _easter_date(year: int) -> date_cls:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date_cls(year, month, day)
+
+
+def _us_market_holidays(year: int) -> set[date_cls]:
+    easter = _easter_date(year)
+    return {
+        _observed_fixed_holiday(year, 1, 1),
+        _nth_weekday(year, 1, 0, 3),
+        _nth_weekday(year, 2, 0, 3),
+        easter - timedelta(days=2),
+        _last_weekday(year, 5, 0),
+        _observed_fixed_holiday(year, 6, 19),
+        _observed_fixed_holiday(year, 7, 4),
+        _nth_weekday(year, 9, 0, 1),
+        _nth_weekday(year, 11, 3, 4),
+        _observed_fixed_holiday(year, 12, 25),
+    }
+
+
+def _is_market_trading_day(day: date_cls, market: str) -> bool:
+    if day.weekday() >= 5:
+        return False
+    market_key = str(market or "").strip().lower()
+    if market_key == "us":
+        holidays = _us_market_holidays(day.year) | _us_market_holidays(day.year - 1) | _us_market_holidays(day.year + 1)
+        return day not in holidays
+    return True
+
+
+def _previous_trading_day(day: date_cls, market: str) -> date_cls:
+    current = day
+    while not _is_market_trading_day(current, market):
+        current -= timedelta(days=1)
+    return current
+
+
+def _expected_latest_daily_date(market: str, now: datetime) -> date_cls | None:
+    market_key = str(market or "").strip().lower()
+    if market_key == "us":
+        if ZoneInfo:
+            market_now = _as_utc(now).astimezone(ZoneInfo("America/New_York"))
+        else:
+            market_now = _as_utc(now).astimezone(timezone(timedelta(hours=-5)))
+        cutoff_date = market_now.date()
+        if market_now.time() < time_cls(18, 10):
+            cutoff_date -= timedelta(days=1)
+        return _previous_trading_day(cutoff_date, "us")
+    if market_key == "global":
+        cn_now = _as_utc(now).astimezone(timezone(timedelta(hours=8)))
+        cutoff_date = cn_now.date() - timedelta(days=1 if cn_now.time() >= time_cls(8, 45) else 2)
+        return _previous_trading_day(cutoff_date, "global")
+    return None
+
+
+def _daily_trading_days_behind(latest: date_cls, expected: date_cls, market: str) -> int:
+    if latest >= expected:
+        return 0
+    count = 0
+    day = latest + timedelta(days=1)
+    while day <= expected:
+        if _is_market_trading_day(day, market):
+            count += 1
+        day += timedelta(days=1)
+    return count
+
+
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
@@ -64,7 +170,41 @@ def _parse_freshness_value(value):
     return _as_utc(datetime.fromisoformat(text.replace('Z', '+00:00')))
 
 
+def _append_daily_market_violation(violations: list, *, table: str, sla: dict, latest, now: datetime, market: str) -> bool:
+    market_key = str(market or "").strip().lower()
+    if market_key not in {"us", "global"}:
+        return False
+    latest_dt = _parse_freshness_value(latest)
+    expected = _expected_latest_daily_date(market_key, now)
+    if expected is None:
+        return False
+    latest_date = latest_dt.date()
+    trading_days_behind = _daily_trading_days_behind(latest_date, expected, market_key)
+    threshold_days = 1
+    if trading_days_behind <= threshold_days:
+        return True
+    age_hours = (now - latest_dt).total_seconds() / 3600
+    violations.append({
+        'table': table,
+        'age_hours': round(age_hours, 1),
+        'threshold_hours': _effective_max_age_hours({**sla, 'market': market}, now),
+        'base_threshold_hours': sla['max_age_hours'],
+        'latest': str(latest_dt)[:19],
+        'status': 'breached',
+        'lane': sla.get('lane', 'unknown'),
+        'severity': sla.get('severity', 'warning'),
+        'market': market,
+        'expected_latest_trade_date': expected.strftime("%Y%m%d"),
+        'trading_days_behind': trading_days_behind,
+        'threshold_trading_days_behind': threshold_days,
+    })
+    return True
+
+
 def _append_freshness_violation(violations: list, *, table: str, sla: dict, latest, now: datetime, market: str | None = None) -> None:
+    if table == 'market_bars_daily' and market:
+        if _append_daily_market_violation(violations, table=table, sla=sla, latest=latest, now=now, market=str(market)):
+            return
     latest_dt = _parse_freshness_value(latest)
     effective_max_age = _effective_max_age_hours({**sla, 'market': market or sla.get('market')}, now)
     age_hours = (now - latest_dt).total_seconds() / 3600

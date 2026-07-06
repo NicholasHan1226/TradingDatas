@@ -79,6 +79,96 @@ def test_trading_price_staleness_is_critical(tmp_path, monkeypatch):
     assert report["violations"][0]["severity"] == "critical"
 
 
+def test_us_independence_day_observed_gap_does_not_false_alarm(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-07T02:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.executemany(
+        "INSERT INTO market_bars_daily VALUES (?, ?)",
+        [
+            ("Ashare", "20260706"),
+            ("US", "20260702"),
+            ("Global", "20260703"),
+        ],
+    )
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not report["violations"]
+
+
+def test_us_daily_still_critical_after_two_trading_days_lag(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-08T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.executemany(
+        "INSERT INTO market_bars_daily VALUES (?, ?)",
+        [
+            ("Ashare", "20260708"),
+            ("US", "20260702"),
+        ],
+    )
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "critical"
+    assert any(
+        item.get("market") == "US"
+        and item.get("trading_days_behind") == 2
+        and item.get("expected_latest_trade_date") == "20260707"
+        for item in report["violations"]
+    )
+
+
+def test_global_daily_waits_until_scheduled_collection_window(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-07T00:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.executemany(
+        "INSERT INTO market_bars_daily VALUES (?, ?)",
+        [
+            ("Ashare", "20260706"),
+            ("Global", "20260703"),
+        ],
+    )
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not report["violations"]
+
+
 def test_weekend_daily_sla_expands_without_relaxing_pm_prices(tmp_path, monkeypatch):
     now = datetime.fromisoformat("2026-07-05T04:00:00+00:00")
     db_path = _db(tmp_path, now=now, daily_age_hours=80, event_age_hours=1, pm_age_hours=8)
