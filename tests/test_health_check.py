@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import json
+import sqlite3
 import subprocess
 import time
+from datetime import datetime, timezone
 
 from tools import health_check
 
@@ -83,3 +85,40 @@ def test_health_sla_report_reader_uses_last_valid_payload(tmp_path, monkeypatch)
     assert result["status"] == "degraded"
     assert result["sla_status"] == "critical"
     assert result["summary"]["critical"] == 1
+
+
+def test_data_freshness_uses_sla_and_crypto_intraday(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "SharedSignals"
+    runtime = tmp_path / "runtime"
+    db = runtime / "read_model" / "marketdata.sqlite"
+    db.parent.mkdir(parents=True)
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_bars_intraday (market TEXT, collected_at TEXT)")
+    conn.executemany(
+        "INSERT INTO market_bars_daily VALUES (?, ?)",
+        [
+            ("Ashare", "20260706"),
+            ("US", "20260702"),
+            ("Global", "20260703"),
+            ("Crypto", "20260701"),
+        ],
+    )
+    conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(health_check, "SS", root)
+    monkeypatch.setattr(health_check, "RUNTIME_ROOT", runtime)
+    monkeypatch.setattr(
+        health_check,
+        "_load_health_sla_report",
+        lambda: {"status": "ok", "sla_status": "ok", "summary": {}, "violations": []},
+    )
+
+    result = health_check._check_data_freshness()
+
+    assert result["status"] == "ok"
+    assert result["markets"]["US"]["status"] == "ok"
+    assert result["markets"]["Global"]["status"] == "ok"
+    assert result["markets"]["Crypto"]["status"] == "ok"
+    assert result["markets"]["Crypto"]["source"] == "market_bars_intraday_collected_at"

@@ -14,7 +14,7 @@ import sqlite3
 import subprocess
 import sys
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -317,30 +317,54 @@ def _check_data_freshness() -> dict[str, Any]:
     try:
         markets: dict[str, Any] = {}
         degraded: list[str] = []
-        today_dt = datetime.now()
-        for market in ["Ashare", "Crypto", "US"]:
-            cur = con.execute(
+        sla_report = _load_health_sla_report()
+        daily_violations = {
+            str(item.get("market") or "")
+            for item in sla_report.get("violations", [])
+            if item.get("table") == "market_bars_daily"
+        }
+        today_dt = datetime.now(timezone.utc)
+        for market in ["Ashare", "US", "Global"]:
+            row = con.execute(
                 "SELECT MAX(trade_date) FROM market_bars_daily WHERE market=?",
                 (market,),
-            )
-            row = cur.fetchone()
+            ).fetchone()
             latest = row[0] if row and row[0] else "?"
-            if latest == "?":
-                days = 999
-            else:
-                days = (today_dt - datetime.strptime(latest, "%Y%m%d")).days
-            if market == "Crypto":
-                max_age_days = 1
-            elif market == "US" and today_dt.weekday() == 0:
-                max_age_days = 4
-            elif today_dt.weekday() in (5, 6, 0):
-                max_age_days = 3
-            else:
-                max_age_days = 1
-            status = "ok" if days <= max_age_days else "degraded"
-            if days > max_age_days:
+            days = 999 if latest == "?" else (today_dt.replace(tzinfo=None) - datetime.strptime(latest, "%Y%m%d")).days
+            status = "degraded" if latest == "?" or market in daily_violations else "ok"
+            if status == "degraded":
                 degraded.append(f"{market}({latest})")
-            markets[market] = {"latest": latest, "age_days": days, "max_age_days": max_age_days, "status": status}
+            markets[market] = {
+                "latest": latest,
+                "age_days": days,
+                "status": status,
+                "source": "market_bars_daily_sla",
+            }
+
+        row = con.execute(
+            "SELECT MAX(collected_at) FROM market_bars_intraday WHERE market='Crypto'"
+        ).fetchone()
+        latest_crypto = row[0] if row and row[0] else ""
+        crypto_status = "degraded"
+        crypto_age_minutes = None
+        if latest_crypto:
+            try:
+                latest_dt = datetime.fromisoformat(str(latest_crypto).replace("Z", "+00:00"))
+                if latest_dt.tzinfo is None:
+                    latest_dt = latest_dt.replace(tzinfo=timezone.utc)
+                crypto_age_minutes = round(max(0.0, (today_dt - latest_dt.astimezone(timezone.utc)).total_seconds() / 60.0), 1)
+                crypto_status = "ok" if crypto_age_minutes <= 30 else "degraded"
+            except ValueError:
+                crypto_status = "degraded"
+        if crypto_status == "degraded":
+            degraded.append(f"Crypto({latest_crypto or '?'})")
+        markets["Crypto"] = {
+            "latest": latest_crypto or "?",
+            "age_minutes": crypto_age_minutes,
+            "max_age_minutes": 30,
+            "status": crypto_status,
+            "source": "market_bars_intraday_collected_at",
+        }
 
         return {
             "status": "degraded" if degraded else "ok",
