@@ -145,7 +145,7 @@
 - [x] CSV→SQLite bridge 已将 `rt_fut_min` 映射到 `market_bars_intraday`，兼容 `code/time` 和 `ts_code/trade_time` 字段，写入 `market=Futures`、`provider=tushare_rt_fut_min`、`interval=5min`。
 - [x] `market_bars_intraday` 新增可空 `bid_price/ask_price/bid_size/ask_size/last_trade_date/expiry_date`；`rt_fut_min` CSV bridge 兼容 `bid1/ask1/bid1_volume/ask1_volume` 等字段，并可从 `market_assets` 回填合约到期字段；`fut_basic` 配置已补采 `last_ddate/delist_date` 作为回填源。
 - [x] `/realtime_5min?market=Futures&ts_code=...` 已可读取 Futures 5 分钟 read model；reader 层会透传可空 L1 盘口字段，API 层仍只读、不生成交易判断。
-- [x] `rt_fut_min` 采集已加强失败语义：provider 权限/接口/本地调用错误返回 `failed`；非空行情 CSV 桥接 SQLite 写入 0 行也返回 `failed`，避免把高频交易支撑链路误判为正常空跑。
+- [x] `rt_fut_min` 采集已加强失败语义：provider 权限/接口/本地调用错误返回 `failed`；非空行情 CSV 桥接 SQLite 写入 0 行也返回 `failed`，避免把高频交易支撑链路误判为正常空跑。生产已确认 Tushare `rt_fut_min` 权限不足，采集器已增加 AKShare/Sina 5 分钟模拟盘备源，可通过 `CN_FUTURES_5MIN_AKSHARE_FALLBACK=0` 关闭；备源只用于模拟研究，不改变未来实盘券商/CTP 边界。
 - [x] 排期边界：`P6_other_daily` 保持 30 分钟杂项/日频刷新；期货 5 分钟采集走独立 cron，日盘/夜盘每 5 分钟运行，跨午夜段按周二到周六凌晨覆盖。
 - [x] 消费边界：TradingAgent/CNFutures 和 MarketGraph 只能读取 SharedSignals read model；SharedSignals 不生成买卖方向，不写 signal queue，不改变模拟盘或实盘权限。
 

@@ -26,6 +26,7 @@ from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_csv_to_sqlite  # noqa
 API_NAME = "rt_fut_min"
 DEFAULT_PRODUCTS = ("rb", "cu", "i", "m", "if", "ih", "ic", "im")
 DEFAULT_FREQ = "5MIN"
+DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL = 240
 _DATE_RE = re.compile(r"^\d{8}$")
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,11 @@ def build_params(symbols: list[str], *, freq: str) -> dict[str, Any]:
     return {"ts_code": ",".join(symbols), "freq": freq}
 
 
+def _truthy_env(name: str, default: str = "1") -> bool:
+    raw = str(os.environ.get(name, default)).strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def collect_rt_fut_min_rows(params: dict[str, Any], *, fields: str = "") -> list[dict[str, Any]]:
     """Collect rt_fut_min rows while preserving provider error details."""
 
@@ -143,6 +149,60 @@ def collect_rt_fut_min_rows(params: dict[str, Any], *, fields: str = "") -> list
         detail = error or "empty provider error message"
         raise RuntimeError(f"Tushare {API_NAME} failed code={code_text}: {detail}")
     return rows_to_dicts(data)
+
+
+def _akshare_symbol(symbol: str) -> str:
+    root = str(symbol or "").strip().split(".", 1)[0].upper()
+    if not root or not any(char.isdigit() for char in root):
+        return ""
+    return root
+
+
+def collect_akshare_futures_minute_rows(
+    symbols: list[str],
+    *,
+    period: str = "5",
+    max_rows_per_symbol: int = DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL,
+) -> list[dict[str, Any]]:
+    """Fallback CN futures 5-minute rows from AKShare/Sina for simulated trading."""
+
+    try:
+        import akshare as ak  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"AKShare fallback unavailable: {exc}") from exc
+
+    rows: list[dict[str, Any]] = []
+    limit = max(1, int(max_rows_per_symbol))
+    for symbol in symbols:
+        sina_symbol = _akshare_symbol(symbol)
+        if not sina_symbol:
+            continue
+        try:
+            frame = ak.futures_zh_minute_sina(symbol=sina_symbol, period=str(period))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AKShare futures_zh_minute_sina failed for %s: %s", symbol, exc)
+            continue
+        if frame is None or getattr(frame, "empty", True):
+            continue
+        for item in frame.tail(limit).to_dict("records"):
+            bar_time = str(item.get("datetime") or item.get("time") or "").strip()
+            if not bar_time:
+                continue
+            rows.append(
+                {
+                    "ts_code": symbol,
+                    "code": symbol,
+                    "time": bar_time,
+                    "open": item.get("open"),
+                    "high": item.get("high"),
+                    "low": item.get("low"),
+                    "close": item.get("close"),
+                    "vol": item.get("volume"),
+                    "hold": item.get("hold"),
+                    "provider": "akshare_sina_rt_fut_min",
+                }
+            )
+    return rows
 
 
 def run_collection(
@@ -177,13 +237,34 @@ def run_collection(
 
     collector = TushareCollector()
     collector._rate_limit(API_NAME)
+    source = "tushare_rt_fut_min"
     try:
         rows = collect_rt_fut_min_rows(params, fields="")
     except Exception as exc:
-        summary["state"] = "failed"
-        summary["error"] = str(exc)
-        return summary
+        fallback_error = ""
+        if _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK", "1"):
+            try:
+                rows = collect_akshare_futures_minute_rows(
+                    symbols,
+                    period="5",
+                    max_rows_per_symbol=int(os.environ.get("CN_FUTURES_AKSHARE_MAX_ROWS_PER_SYMBOL", str(DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL))),
+                )
+                source = "akshare_sina_rt_fut_min"
+                summary["fallback_from"] = "tushare_rt_fut_min"
+                summary["fallback_reason"] = str(exc)
+            except Exception as fallback_exc:  # noqa: BLE001
+                rows = []
+                fallback_error = str(fallback_exc)
+        else:
+            rows = []
+        if not rows:
+            summary["state"] = "failed"
+            summary["error"] = str(exc)
+            if fallback_error:
+                summary["fallback_error"] = fallback_error
+            return summary
     summary["rows"] = len(rows)
+    summary["source"] = source
     if not rows:
         summary["state"] = "empty"
         return summary
