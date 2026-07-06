@@ -38,10 +38,10 @@ def _effective_max_age_hours(sla: dict, now: datetime) -> int:
     if market in {'crypto', 'pm'}:
         return threshold
     is_weekend = cn_now.weekday() >= 5
-    is_monday_pre_open = cn_now.weekday() == 0 and cn_now.hour < 10
+    is_monday = cn_now.weekday() == 0
     if market == 'us' and cn_now.weekday() == 0:
         return max(threshold, 120)
-    if is_weekend or is_monday_pre_open:
+    if is_weekend or is_monday:
         if lane == 'trading':
             return max(threshold, 96)
         if lane == 'research':
