@@ -745,19 +745,26 @@ def _get_market_data_cached(_generation: int, ts_code: str, start: str, end: str
     if start_key > end_key:
         start_key, end_key = end_key, start_key
     market = "Ashare" if ts_code.endswith((".SH", ".SZ", ".BJ")) else "HK" if ts_code.endswith(".HK") else "US" if "." not in ts_code or ts_code.endswith(".US") else "Crypto"
+    symbols = [ts_code]
+    if market == "US":
+        base = ts_code[:-3] if ts_code.endswith(".US") else ts_code
+        symbols = [base, f"{base}.US"]
+        if ts_code.endswith(".US"):
+            symbols = [f"{base}.US", base]
+    placeholders = ",".join("?" for _ in symbols)
     query = """
         SELECT * FROM market_bars_daily
-        WHERE market = ? AND symbol = ? AND trade_date >= ? AND trade_date <= ?
+        WHERE market = ? AND symbol IN ({placeholders}) AND trade_date >= ? AND trade_date <= ?
         ORDER BY trade_date ASC
-    """
-    rows, degraded = _sqlite_rows(query, (market, ts_code, start_key, end_key), "market_bars_daily")
+    """.format(placeholders=placeholders)
+    rows, degraded = _sqlite_rows(query, (market, *symbols, start_key, end_key), "market_bars_daily")
     if degraded is not None:
         return _json_cached(lambda: degraded)
     lineage = {
         "reader": "get_market_data",
         "db_path": str(SQLITE_PATH),
         "table": "market_bars_daily",
-        "filters": {"ts_code": ts_code, "start": start_key, "end": end_key, "freq": freq, "adjusted": adjusted},
+        "filters": {"ts_code": ts_code, "symbols": symbols, "start": start_key, "end": end_key, "freq": freq, "adjusted": adjusted},
         "adjustment_note": "market_bars_daily has no separate adjustment column; adjusted is preserved as lineage only",
     }
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_bars_daily", source_tier="marketdata", lineage=lineage, stale_after_hours=48.0))

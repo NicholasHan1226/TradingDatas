@@ -63,7 +63,7 @@ marketdata.sqlite (11 表)
 |--------|------|--------|
 | `Ashare` | A 股 | Tushare (60+ 接口) — SharedSignals now has native Tushare collector via `reader.get_tushare()` |
 | `HK` | 港股 | A 股 ETF 代理 (6 ETF + HSI) |
-| `US` | 美股 | Tushare 美股接口 / Alpaca |
+| `US` | 美股 | Tushare 美股接口 |
 | `Crypto` | 加密 | Binance (4 接口) |
 | `PredictionMarkets` | 预测市场 | Polymarket (3 接口) |
 | `Global` | 全球指数 | Tushare `index_global` |

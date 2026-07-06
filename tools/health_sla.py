@@ -53,6 +53,34 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _parse_freshness_value(value):
+    if isinstance(value, datetime):
+        return _as_utc(value)
+    text = str(value or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return datetime.strptime(text, "%Y%m%d").replace(tzinfo=timezone.utc)
+    return _as_utc(datetime.fromisoformat(text.replace('Z', '+00:00')))
+
+
+def _append_freshness_violation(violations: list, *, table: str, sla: dict, latest, now: datetime, market: str | None = None) -> None:
+    latest_dt = _parse_freshness_value(latest)
+    effective_max_age = _effective_max_age_hours({**sla, 'market': market or sla.get('market')}, now)
+    age_hours = (now - latest_dt).total_seconds() / 3600
+    if age_hours <= effective_max_age:
+        return
+    payload = {
+        'table': table, 'age_hours': round(age_hours, 1),
+        'threshold_hours': effective_max_age,
+        'base_threshold_hours': sla['max_age_hours'], 'latest': str(latest_dt)[:19],
+        'status': 'breached',
+        'lane': sla.get('lane', 'unknown'),
+        'severity': sla.get('severity', 'warning'),
+    }
+    if market:
+        payload['market'] = market
+    violations.append(payload)
+
+
 def check_sla(now: datetime | None = None):
     db = (
         os.getenv("MARKETDATA_SQLITE")
@@ -74,27 +102,24 @@ def check_sla(now: datetime | None = None):
                     violations.append(_table_violation(table, sla, status='error', message='freshness date column not found', now=now))
                     continue
 
+                if table == 'market_bars_daily' and 'market' in cols:
+                    rows = conn.execute(f'SELECT market, MAX({date_col}) FROM {table} GROUP BY market').fetchall()
+                    if not rows:
+                        violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
+                        continue
+                    for market, latest in rows:
+                        if not latest:
+                            violations.append(_table_violation(table, {**sla, 'market': market}, status='empty', message=f'no freshness timestamp found for market={market}', now=now))
+                            continue
+                        _append_freshness_violation(violations, table=table, sla=sla, latest=latest, now=now, market=str(market or 'unknown'))
+                    continue
+
                 row = conn.execute(f'SELECT MAX({date_col}) FROM {table}').fetchone()
                 if not row or not row[0]:
                     violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
                     continue
 
-                latest = row[0]
-                if isinstance(latest, str):
-                    latest = datetime.fromisoformat(latest.replace('Z', '+00:00'))
-                latest = _as_utc(latest)
-
-                effective_max_age = _effective_max_age_hours(sla, now)
-                age_hours = (now - latest).total_seconds() / 3600
-                if age_hours > effective_max_age:
-                    violations.append({
-                        'table': table, 'age_hours': round(age_hours, 1),
-                        'threshold_hours': effective_max_age,
-                        'base_threshold_hours': sla['max_age_hours'], 'latest': str(latest)[:19],
-                        'status': 'breached',
-                        'lane': sla.get('lane', 'unknown'),
-                        'severity': sla.get('severity', 'warning'),
-                    })
+                _append_freshness_violation(violations, table=table, sla=sla, latest=row[0], now=now)
             except Exception as exc:
                 violations.append(_table_violation(table, sla, status='error', message=f'{exc.__class__.__name__}: {exc}', now=now))
     finally:
