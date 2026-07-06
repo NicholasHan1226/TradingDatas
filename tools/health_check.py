@@ -271,6 +271,8 @@ def _check_data_freshness() -> dict[str, Any]:
                 days = (today_dt - datetime.strptime(latest, "%Y%m%d")).days
             if market == "Crypto":
                 max_age_days = 1
+            elif market == "US" and today_dt.weekday() == 0:
+                max_age_days = 4
             elif today_dt.weekday() in (5, 6, 0):
                 max_age_days = 3
             else:

@@ -131,3 +131,31 @@ def test_market_bars_daily_checks_us_freshness_by_market(tmp_path, monkeypatch):
         item.get("table") == "market_bars_daily" and item.get("market") == "US"
         for item in report["violations"]
     )
+
+
+def test_us_daily_sla_allows_monday_before_us_session_updates(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-06T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.executemany(
+        "INSERT INTO market_bars_daily VALUES (?, ?)",
+        [
+            ("Ashare", "20260706"),
+            ("US", "20260702"),
+        ],
+    )
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not report["violations"]
