@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-06 (US symbol alias and per-market daily SLA repair)
+> 最后更新：2026-07-07 (/health SLA 聚合、PM freshness 列修复、missing/empty SLA 降级)
 
 ---
 
@@ -16,6 +16,7 @@
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **reader/API 缓存失效**：读取缓存同时监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm` 和 CSV/分钟线文件变更；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 与 `proxy_relay_health` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
+- **健康口径**：2026-07-07 起 `/health` 会聚合 `tools/health_sla.py` per-table SLA 结果；交易关键表 critical 映射为 health error，warning 映射为 degraded。研究事件“过期”仍只记 notice，不影响交易供数健康；但 tracked table 缺表/空表会至少降级为 degraded，避免 `health_sla` 出现 missing/empty 时整体仍显示 ok。`patrol.py` 的 PM freshness 已改用 `market_pm_prices.collected_at`，与现役 schema 对齐。
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
 - **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。

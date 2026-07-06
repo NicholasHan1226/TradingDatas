@@ -51,6 +51,7 @@ def get_health_status(
     check_functions: bool = True,
     check_data_freshness: bool = True,
     check_cron: bool = True,
+    check_sla: bool = True,
     check_arch: bool = True,
     check_compile: bool = True,
 ) -> dict[str, Any]:
@@ -99,7 +100,21 @@ def get_health_status(
             checks["cron"] = {"status": "error", "message": str(exc)}
             overall = _worse(overall, "error")
 
-    # 4. Architecture compliance -------------------------------------------
+    # 4. Per-table SLA -----------------------------------------------------
+    if check_sla:
+        try:
+            from tools.health_sla import check_sla as _check_sla
+
+            raw_sla = _check_sla()
+            raw_status = str(raw_sla.get("status") or "error")
+            section_status = "error" if raw_status == "critical" else ("degraded" if raw_status == "degraded" else "ok")
+            checks["sla"] = {**raw_sla, "sla_status": raw_status, "status": section_status}
+            overall = _worse(overall, section_status)
+        except Exception as exc:
+            checks["sla"] = {"status": "error", "message": str(exc)}
+            overall = _worse(overall, "error")
+
+    # 5. Architecture compliance -------------------------------------------
     if check_arch:
         try:
             arch = _check_architecture()
@@ -109,7 +124,7 @@ def get_health_status(
             checks["architecture"] = {"status": "error", "message": str(exc)}
             overall = _worse(overall, "error")
 
-    # 5. Compile -----------------------------------------------------------
+    # 6. Compile -----------------------------------------------------------
     if check_compile:
         try:
             comp = _check_compile()

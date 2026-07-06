@@ -14,7 +14,7 @@ SLA_THRESHOLDS = {
 SLA_DATE_COLUMNS = {
     'market_bars_daily': ['trade_date', 'updated_at', 'collected_at'],
     'market_factors': ['collected_at', 'updated_at', 'event_time', 'trade_date'],
-    'market_pm_prices': ['updated_at', 'collected_at'],
+    'market_pm_prices': ['collected_at', 'updated_at'],
     'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
 }
 
@@ -126,8 +126,14 @@ def check_sla(now: datetime | None = None):
                 violations.append(_table_violation(table, sla, status='error', message=f'{exc.__class__.__name__}: {exc}', now=now))
     finally:
         conn.close()
+    missing_or_empty_count = sum(1 for item in violations if item.get('status') in {'empty', 'error'})
     critical_count = sum(1 for item in violations if item.get('severity') == 'critical')
-    warning_count = sum(1 for item in violations if item.get('severity') == 'warning')
+    warning_count = sum(
+        1
+        for item in violations
+        if item.get('severity') == 'warning'
+        or (item.get('severity') == 'notice' and item.get('status') in {'empty', 'error'})
+    )
     status = 'critical' if critical_count else ('degraded' if warning_count else 'ok')
     return {
         'status': status,
@@ -137,6 +143,7 @@ def check_sla(now: datetime | None = None):
             'critical': critical_count,
             'warning': warning_count,
             'notice': sum(1 for item in violations if item.get('severity') == 'notice'),
+            'missing_or_empty': missing_or_empty_count,
         },
     }
 

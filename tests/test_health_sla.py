@@ -43,6 +43,30 @@ def test_research_event_staleness_is_notice_not_degraded(tmp_path, monkeypatch):
     assert report["violations"][0]["severity"] == "notice"
 
 
+def test_research_event_missing_or_empty_degrades_health(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-01T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (collected_at TEXT)")
+    conn.execute("INSERT INTO market_bars_daily VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "degraded"
+    assert report["summary"]["notice"] == 1
+    assert report["summary"]["missing_or_empty"] == 1
+    assert report["violations"][0]["table"] == "market_events"
+    assert report["violations"][0]["status"] == "empty"
+
+
 def test_trading_price_staleness_is_critical(tmp_path, monkeypatch):
     db_path = _db(tmp_path, event_age_hours=1, pm_age_hours=8)
     monkeypatch.setenv("MARKETDATA_SQLITE", str(db_path))

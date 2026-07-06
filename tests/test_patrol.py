@@ -25,7 +25,7 @@ def test_data_freshness_checks_pm_prices_and_iso_dates(tmp_path, monkeypatch):
     conn.execute("CREATE TABLE market_bars_intraday (trade_date TEXT)")
     conn.execute("CREATE TABLE market_events (event_time TEXT)")
     conn.execute("CREATE TABLE market_factors (collected_at TEXT)")
-    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (collected_at TEXT)")
     stale_iso = (now - timedelta(days=3)).isoformat()
     conn.execute("INSERT INTO market_pm_prices VALUES (?)", (stale_iso,))
     conn.commit()

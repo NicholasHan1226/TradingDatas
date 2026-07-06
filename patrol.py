@@ -192,7 +192,7 @@ def check_data_freshness() -> dict[str, Any]:
             ("market_bars_intraday",  "SELECT MAX(trade_date) FROM market_bars_intraday"),
             ("market_events",         "SELECT MAX(event_time)  FROM market_events"),
             ("market_factors",        "SELECT MAX(collected_at) FROM market_factors"),
-            ("market_pm_prices",      "SELECT MAX(updated_at) FROM market_pm_prices"),
+            ("market_pm_prices",      "SELECT MAX(collected_at) FROM market_pm_prices"),
         ]
         for _tbl, sql in queries:
             try:

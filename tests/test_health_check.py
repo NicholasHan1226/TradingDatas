@@ -4,6 +4,7 @@ import os
 import subprocess
 import time
 
+from tools import health_sla
 from tools import health_check
 
 
@@ -43,3 +44,23 @@ def test_cron_activity_reports_find_errors(tmp_path, monkeypatch) -> None:
     assert result["status"] == "degraded"
     assert result["active_logs"] == 0
     assert result["errors"]
+
+
+def test_health_status_includes_per_table_sla(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_sla,
+        "check_sla",
+        lambda: {"status": "degraded", "summary": {"warning": 1}, "violations": [{"table": "market_events"}]},
+    )
+
+    result = health_check.get_health_status(
+        check_functions=False,
+        check_data_freshness=False,
+        check_cron=False,
+        check_arch=False,
+        check_compile=False,
+    )
+
+    assert result["status"] == "degraded"
+    assert result["checks"]["sla"]["status"] == "degraded"
+    assert result["checks"]["sla"]["sla_status"] == "degraded"
