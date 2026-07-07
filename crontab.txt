@@ -17,13 +17,6 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # SharedSignals SQLite read model; no old /opt/investment/Crypto dependency.
 2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
 
-# Disabled provider jobs that must not be re-enabled outside SharedSignals.
-# Live crontab also keeps these old RSS entries disabled while ownership is
-# migrated. Do not restore them from MarketGraph/legacy RSSCollector.
-# DISABLED_20260704_sharedsignals_only: */5 * * * * /opt/marketgraph/venv/bin/python3 /opt/investment/RSSCollector/collector.py --tier hot >> /opt/investment/MarketGraphRuntime/collector.log 2>&1
-# DISABLED_20260704_sharedsignals_only: 5 * * * * /opt/marketgraph/venv/bin/python3 /opt/investment/RSSCollector/collector.py --tier warm >> /opt/investment/MarketGraphRuntime/collector.log 2>&1
-# DISABLED_20260704_sharedsignals_only: @reboot bash /opt/investment/RSSCollector/start_rsshub.sh >> /opt/investment/MarketGraphRuntime/rsshub.log 2>&1
-
 # Tushare tier split owned by SharedSignals.
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min
 

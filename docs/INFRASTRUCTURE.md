@@ -24,7 +24,7 @@
 
 ## 网络
 - Nginx :80 → 127.0.0.1:8082 (API server)
-- RSSHub :1200 已停用；旧 RSSCollector cron 已禁用，恢复前必须重新走 SharedSignals collector + staging/bridge 契约
+- RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新走 SharedSignals collector + staging/bridge 契约
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)
 - 新加坡 → rsync → 杭州 staging (每5min)
 
