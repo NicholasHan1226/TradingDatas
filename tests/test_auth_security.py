@@ -79,6 +79,14 @@ def test_signed_jwt_without_scope_defaults_to_minimum_scope(monkeypatch: pytest.
     assert not auth_module.check_endpoint_scope(account, "/market_data")
 
 
+def test_pm_scope_covers_markets_and_prices() -> None:
+    account = {"scopes": ["pm"]}
+
+    assert auth.check_endpoint_scope(account, "/pm_markets")
+    assert auth.check_endpoint_scope(account, "/pm_prices")
+    assert not auth.check_endpoint_scope(account, "/market_data")
+
+
 def test_signed_jwt_wrong_issuer_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,

@@ -547,6 +547,15 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
+        if path == "/pm_prices":
+            market_id = params.get("market_id", "").strip() or None
+            rows = reader.get_pm_prices(
+                market_id=market_id,
+                limit=to_int(params.get("limit"), 200),
+            )
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
         if path == "/reference":
             table = params.get("table", "").strip()
             if not table:

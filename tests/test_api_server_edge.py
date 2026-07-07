@@ -97,6 +97,12 @@ class _FakeReader:
         self.calls.append(("get_capital_flow", {"date": date, "ts_code": ts_code, **kwargs}))
         return []
 
+    def get_pm_prices(self, market_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        self.calls.append(("get_pm_prices", {"market_id": market_id, "limit": limit}))
+        return [
+            {"data": {"market_id": market_id or "pm-1", "price": 0.42}, "degraded": False},
+        ]
+
     def clear_caches(self) -> None:
         with self._lock:
             self.clear_count += 1
@@ -230,6 +236,16 @@ def test_api_passes_market_data_freq_and_capital_flow_range_params(api_edge_serv
             },
         ),
     ]
+
+
+def test_api_pm_prices_endpoint_uses_reader(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/pm_prices?market_id=pm-1&limit=5")
+
+    assert status == 200
+    assert payload["data"] == [{"market_id": "pm-1", "price": 0.42}]
+    assert reader.calls[-1] == ("get_pm_prices", {"market_id": "pm-1", "limit": 5})
 
 
 def test_api_limit_applies_to_sentiment_and_realtime(api_edge_server) -> None:

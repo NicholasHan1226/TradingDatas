@@ -28,7 +28,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`，`/pm_prices` 直接读取 `market_pm_prices` 价格快照供 PM edge、估值和研究回放使用；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **开发/生产边界**：2026-07-05 开盘前复核已将 `config/dev.yaml` 的 `server` 默认值改为 `127.0.0.1`；生产默认主服务器只保留在 `config/prod.yaml`，避免本地 dev 运行误连 `8.138.181.177`。
 - **基础设施文档与 SLA**：2026-07-05 开盘前复核已更新 `docs/INFRASTRUCTURE.md`，当前口径为 SQLite + DuckDB mirror、Redis 未启用；`tools/health_sla.py` 已支持 `MARKETDATA_SQLITE` / `SHAREDSIGNALS_MARKETDATA_DB` / `MARKETGRAPH_RUNTIME_ROOT`，不再只能读硬编码生产库；SLA 已按 trading/research 分层，交易价格/日线过期才触发 degraded/critical，研究事件过期只记 `notice`；`market_bars_daily` 若存在 `market` 列会按市场分别检查最新日期，避免 A股最新掩盖 US stale；周末/周一开盘前会放宽非 24/7 日频表阈值，PM/Crypto 价格不放宽，避免周末或研究层暂停误报成交易供数故障。
@@ -53,9 +53,9 @@
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 条目已从模板和生产 crontab 删除；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 - `bridge/__init__.py` 仍保留 MarketGraph 工具路径兼容注入，用于历史 bridge/import 兼容；当前不是数据采集入口。后续拆到独立服务器前，应改为显式依赖或移除跨仓 `sys.path` 注入。
 
-## 三、API 接口状态（HTTP 17/17；health core 12 OK / 3 delegated skipped）
+## 三、API 接口状态（HTTP 18/18；health core 13 OK / 3 delegated skipped）
 
-生产 HTTP API 暴露 17 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，MarketGraph 研究图谱类端点 `events`、`associations`、`impacts` 标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
+生产 HTTP API 暴露 18 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，MarketGraph 研究图谱类端点 `events`、`associations`、`impacts` 标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|
@@ -69,6 +69,7 @@
 | get_sentiment | /sentiment | OK |
 | get_crypto_klines | /crypto | OK |
 | get_pm_markets | /pm_markets | OK |
+| get_pm_prices | /pm_prices | OK |
 | get_associations | /associations | delegated |
 | get_impacts | /impacts | delegated |
 | get_industry | /industry | OK |
@@ -77,8 +78,8 @@
 | clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
-- 健康检查覆盖：`/health` 当前生产验证为 SharedSignals core reader functions `12/12`，另有 3 个 MarketGraph delegated endpoint 标记 skipped；HTTP surface 仍为 17 个端点；capability smoke 的延期端点会计入 `skipped`。
-- API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 15 接口 HTTP 封装
+- 健康检查覆盖：`/health` 当前生产验证为 SharedSignals core reader functions `13/13`，另有 3 个 MarketGraph delegated endpoint 标记 skipped；HTTP surface 仍为 18 个端点；capability smoke 的延期端点会计入 `skipped`。
+- API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 16 接口 HTTP 封装
 - 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
 ## 四、下一步
@@ -167,7 +168,7 @@
 - [x] `collectors/polymarket_collect.py` 从 Polymarket Gamma 拉取 active markets，并从 `outcomePrices`/`bestBid`/`bestAsk`/`lastTradePrice` 派生价格快照，写入统一 read model 的 `market_pm_markets` 与 `market_pm_prices`。
 - [x] 每次采集写入 `market_ingest_runs`，source 固定为 `polymarket_gamma`，便于 freshness、失败和回放审计。
 - [x] 新增 `cron/pm_collect.sh`，带 `flock`、生产 venv、proxy、`.env` bootstrap 和独立日志 `logs/cron/pm_collect.log`；生产 crontab 每 5 分钟运行。
-- [x] 边界：PM 上游 API 只允许在 SharedSignals collector 层调用；TradingAgent PM 模拟/影子盘只读 `/pm_markets` 或 read model，不直接访问 Polymarket。
+- [x] 边界：PM 上游 API 只允许在 SharedSignals collector 层调用；TradingAgent PM 模拟/影子盘只读 `/pm_markets`、`/pm_prices` 或 read model，不直接访问 Polymarket。
 
 ### 2026-07-04 production cron and consumer-boundary audit
 

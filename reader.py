@@ -1124,6 +1124,52 @@ def get_pm_markets(limit: int = 100) -> list[dict[str, Any]]:
     return _safe_public("sqlite:market_pm_markets", lineage, lambda generation: _get_pm_markets_cached(generation, int(limit)))
 
 
+@_register_cached
+@_bounded_lru_cache(maxsize=512)
+def _get_pm_prices_cached(_generation: int, market_id: str, limit: int) -> str:
+    query = """
+        SELECT *
+        FROM market_pm_prices
+        WHERE (? = '' OR market_id = ?)
+        ORDER BY price_time DESC, collected_at DESC, price_hash DESC
+        LIMIT ?
+    """
+    bounded_limit = max(1, min(int(limit), 1000))
+    normalized_market_id = str(market_id or "").strip()
+    rows, degraded = _sqlite_rows(
+        query,
+        (normalized_market_id, normalized_market_id, bounded_limit),
+        "market_pm_prices",
+    )
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    lineage = {
+        "reader": "get_pm_prices",
+        "db_path": str(SQLITE_PATH),
+        "table": "market_pm_prices",
+        "filters": {"market_id": normalized_market_id, "limit": bounded_limit},
+    }
+    return _json_cached(
+        lambda: _rows_to_wrappers(
+            rows or [],
+            source_id="sqlite:market_pm_prices",
+            source_tier="polymarket",
+            lineage=lineage,
+            stale_after_hours=2.0,
+        )
+    )
+
+
+def get_pm_prices(market_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    normalized_market_id = str(market_id or "").strip()
+    lineage = {"reader": "get_pm_prices", "filters": {"market_id": normalized_market_id, "limit": limit}}
+    return _safe_public(
+        "sqlite:market_pm_prices",
+        lineage,
+        lambda generation: _get_pm_prices_cached(generation, normalized_market_id, int(limit)),
+    )
+
+
 def _safe_reference_path(table: str) -> Path | None:
     name = table.strip()
     if not name:
@@ -1429,6 +1475,7 @@ def _self_test() -> list[dict[str, Any]]:
         ("macro_factors", lambda: get_macro_factors("20260601", "20260630")[:3]),
         ("crypto_klines", lambda: get_crypto_klines("BTCUSDT", 3)),
         ("pm_markets", lambda: get_pm_markets(3)),
+        ("pm_prices", lambda: get_pm_prices(limit=3)),
         ("reference", lambda: get_reference("stock_master")[:3]),
         ("is_trading_day", lambda: is_trading_day("20260629")),
         ("realtime_5min", lambda: get_realtime_5min("600276.SH", "20260629")[:3]),

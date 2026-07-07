@@ -144,7 +144,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "smoke_args": ["__LATEST_INTRADAY_SYMBOL__", "__LATEST_INTRADAY_DATE__"],
         "version": "1.0.0",
         "fields": ["ts_code", "trade_time", "open", "high", "low", "close", "vol"],
-        "sla_hours": 6,
+        "sla_hours": 2,
     },
     "get_news_list": {
         "module": "reader",
@@ -218,6 +218,17 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "version": "1.0.0",
         "fields": ["market_name", "outcome", "price", "volume", "updated_at"],
         "sla_hours": 6,
+    },
+    "get_pm_prices": {
+        "module": "reader",
+        "func": "get_pm_prices",
+        "path": "reader.py",
+        "category": "prediction_markets",
+        "description": "Read Polymarket price snapshots from unified marketdata DB",
+        "smoke_args": ["", 50],
+        "version": "1.0.0",
+        "fields": ["market_id", "token_id", "price_time", "price", "provider", "collected_at"],
+        "sla_hours": 2,
     },
 
     # --- reference/ (coverage & registry) ---

@@ -290,3 +290,46 @@ class TestMarketCalendar:
         clear_cache()
         with pytest.raises(TradingCalendarUnavailableError):
             get_trading_days(date(2026, 7, 2), date(2026, 7, 3))
+
+
+class TestPMPriceReader:
+    def test_get_pm_prices_reads_market_pm_prices(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            CREATE TABLE market_pm_prices (
+                price_hash TEXT PRIMARY KEY,
+                market_id TEXT,
+                token_id TEXT,
+                price_time TEXT,
+                price REAL,
+                provider TEXT,
+                source_file TEXT,
+                collected_at TEXT,
+                raw_json TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO market_pm_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("h1", "pm-1", "yes", "2026-07-07T00:00:00Z", 0.41, "polymarket", "unit", "2026-07-07T00:00:01Z", "{}"),
+                ("h2", "pm-1", "yes", "2026-07-07T00:05:00Z", 0.43, "polymarket", "unit", "2026-07-07T00:05:01Z", "{}"),
+                ("h3", "pm-2", "yes", "2026-07-07T00:04:00Z", 0.52, "polymarket", "unit", "2026-07-07T00:04:01Z", "{}"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+        monkeypatch.setenv("MARKETDATA_SQLITE", str(db_path))
+
+        import reader
+
+        reader.clear_caches()
+        rows = reader.get_pm_prices(market_id="pm-1", limit=1)
+
+        assert len(rows) == 1
+        assert rows[0]["data"]["market_id"] == "pm-1"
+        assert rows[0]["data"]["price"] == 0.43
+        assert rows[0]["provenance"]["source_tier"] == "polymarket"
+        assert rows[0]["lineage"]["table"] == "market_pm_prices"

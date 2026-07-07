@@ -58,7 +58,7 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "macro": {"/macro", "/capital_flow"},
     "events": {"/events", "/sentiment"},
     "crypto": {"/crypto"},
-    "pm": {"/pm_markets"},
+    "pm": {"/pm_markets", "/pm_prices"},
     "associations": {"/associations", "/impacts"},
     "tushare": {"/tushare"},
     "full": {"*"},

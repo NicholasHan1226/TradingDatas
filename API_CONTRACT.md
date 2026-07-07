@@ -294,6 +294,10 @@ from marketgraph_marketdata_db import read_pm_prices
 prices = read_pm_prices(limit=200)
 ```
 
+**HTTP**: `GET /pm_prices?market_id=<market_id>&limit=200`
+
+`market_id` 可省略；省略时返回最近价格快照。该端点只读取 `market_pm_prices`，用于 TradingAgent/MarketGraph 获取市场价格，不承载 `research_probability`、`marketgraph_probability`、`model_probability` 等判断字段。
+
 ---
 
 ### Crypto 市场
@@ -533,7 +537,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures`；需采集 `last_ddate` 与 `delist_date`，分别映射到 `last_trade_date` 与 `expiry_date` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
-| Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()` |
+| Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | RSS(deferred) / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
