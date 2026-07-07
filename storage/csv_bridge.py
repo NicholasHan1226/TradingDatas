@@ -75,7 +75,7 @@ CSV_TO_TABLE_MAP = {
     "sf_month": "market_factors",
     "cn_gdp": "market_factors",
     "daily": "market_bars_daily",
-    "daily_basic": "market_bars_daily",
+    "daily_basic": "market_factors",
     "dividend": "market_factors",
     "express": "market_factors",
     "fina_indicator": "market_factors",
@@ -116,7 +116,7 @@ CSV_TO_TABLE_MAP = {
     "shibor": "market_factors",
     "shibor_lpr": "market_factors",
     "stk_factor": "market_bars_daily",
-    "stk_factor_pro": "market_bars_daily",
+    "stk_factor_pro": "market_factors",
     "stk_mins": "market_bars_intraday",
     "rt_min": "market_bars_intraday",
     "rt_k": "market_bars_intraday",
@@ -138,6 +138,7 @@ CSV_TO_TABLE_MAP = {
 
 CSV_ADDITIONAL_TABLES = {
     "repo_daily": ("market_bars_daily",),
+    "stk_factor": ("market_factors",),
 }
 
 
@@ -197,6 +198,7 @@ _FACTOR_BASE_COLUMNS = {
     "collected_at",
     "raw_json",
 }
+_FACTOR_PRICE_COLUMNS = {"open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "volume", "amount"}
 _FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period", "month", "quarter", "year")
 _FACTOR_INSERT_COLUMNS = (
     "factor_hash",
@@ -269,6 +271,8 @@ def _factor_rows(row, api_name, csv_path):
     metrics = []
     for key, value in row.items():
         if key in _FACTOR_BASE_COLUMNS or key.startswith("_"):
+            continue
+        if api_name == "stk_factor" and key in _FACTOR_PRICE_COLUMNS:
             continue
         numeric = _coerce_float(value)
         if numeric is not None:

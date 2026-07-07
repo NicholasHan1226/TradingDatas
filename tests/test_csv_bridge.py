@@ -287,6 +287,45 @@ def test_factor_csv_expands_numeric_metrics(tmp_path: Path):
     assert "report_type" in records[0][7]
 
 
+def test_stk_factor_ingests_daily_bars_and_factor_metrics(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "stk_factor" / "20260704" / "600519.SH.csv",
+        "\n".join(
+            [
+                "ts_code,trade_date,open,high,low,close,vol,amount,pe,pb,turnover_rate",
+                "600519.SH,20260704,1200,1210,1190,1205,1000,1205000,22.5,8.2,0.31",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, CSV_TO_TABLE_MAP["stk_factor"], csv_path)
+
+    assert rows == 4
+    conn = sqlite3.connect(str(db_path))
+    try:
+        daily = conn.execute(
+            "SELECT market, symbol, trade_date, close, provider FROM market_bars_daily"
+        ).fetchone()
+        factors = conn.execute(
+            "SELECT factor_name, value FROM market_factors ORDER BY factor_name"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert daily == ("Ashare", "600519.SH", "20260704", 1205.0, "tushare_stk_factor")
+    assert factors == [
+        ("stk_factor:pb", 8.2),
+        ("stk_factor:pe", 22.5),
+        ("stk_factor:turnover_rate", 0.31),
+    ]
+
+
+def test_daily_basic_and_stk_factor_pro_map_to_factor_table() -> None:
+    assert CSV_TO_TABLE_MAP["daily_basic"] == "market_factors"
+    assert CSV_TO_TABLE_MAP["stk_factor_pro"] == "market_factors"
+
+
 def test_index_global_derives_global_market_for_daily_bars(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

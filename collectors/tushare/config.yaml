@@ -3,6 +3,7 @@ priorities:
   - api_name: daily
     fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
     frequency: 5min
+    lookback_days: 90
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -16,6 +17,7 @@ priorities:
     per_stock: true
   - api_name: stk_factor
     frequency: 5min
+    lookback_days: 90
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -65,6 +67,7 @@ priorities:
     fields: trade_date,ts_code,pre_close,up_limit,down_limit
   - api_name: stk_factor_pro
     per_stock: true
+    lookback_days: 90
     fields: ts_code,trade_date,pe,pb,turnover_rate,mv
   P1_eod_daily:
   - api_name: daily_basic
