@@ -31,6 +31,7 @@ REQUEST_TIMEOUT = env_float("SHAREDSIGNALS_REQUEST_TIMEOUT", 30.0, min_value=1.0
 MAX_THREADS = env_int("SHAREDSIGNALS_MAX_THREADS", 20, min_value=1, max_value=512)
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_CACHE_SECONDS = 60
+HEALTH_DEEP_CHECKS_ENV = "SHAREDSIGNALS_HEALTH_DEEP_CHECKS"
 
 
 def _ensure_runtime_loaded() -> None:
@@ -65,6 +66,10 @@ _health_cache_time: float = 0.0
 _health_cache_lock = threading.Lock()
 
 
+def _health_deep_checks_enabled() -> bool:
+    return str(os.environ.get(HEALTH_DEEP_CHECKS_ENV, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
 
 def _get_health() -> dict[str, Any]:
     """Return cached health status, refreshing if older than HEALTH_CACHE_SECONDS."""
@@ -76,8 +81,9 @@ def _get_health() -> dict[str, Any]:
 
     try:
         from tools.health_check import get_health_status
+        deep_checks = _health_deep_checks_enabled()
         result = get_health_status(
-            check_functions=True, check_data_freshness=True,
+            check_functions=deep_checks, check_data_freshness=deep_checks,
             check_cron=True, check_arch=False, check_compile=False,
         )
     except Exception:

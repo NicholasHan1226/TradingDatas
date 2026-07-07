@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-07 (A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口)
+> 最后更新：2026-07-07 (API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口)
 
 ---
 
@@ -112,6 +112,8 @@
 
 ### 2026-07-07 full-sync load and CNFutures empty-row fallback
 
+- [x] `/health` 默认恢复为轻量探针：只聚合 cron 活跃度与 watchdog/SLA 缓存，不再在请求内执行 reader functions 与 data freshness 大库读取；深度检查必须显式设置 `SHAREDSIGNALS_HEALTH_DEEP_CHECKS=1` 或走定时 patrol/health_sla/watchdog，避免健康探针本身拖慢 API。
+- [x] 生产侧对 19G SQLite WAL 完成一次维护 checkpoint，WAL 清至 MB 级，磁盘占用从 74% 降至 54%；该动作仅合并/截断 SQLite WAL，不删除业务数据。
 - [x] DuckDB 同步从 5 分钟全量镜像降为小时级分析镜像，并在 `duckdb_sync.sh` 中使用 `nice`/`ionice` 与 600 秒超时，避免全表扫描期间拖慢 SharedSignals API、TradingAgent 模拟盘和 SSH 运维入口。
 - [x] `crontab.txt` 明确 DuckDB 不属于 5 分钟交易 read path；TradingAgent/MarketGraph 仍应通过 SQLite read model/API 读取交易所需数据。
 - [x] CNFutures 5 分钟采集在 Tushare `rt_fut_min` 返回 0 行但未抛错时，会按默认开关 `CN_FUTURES_5MIN_AKSHARE_FALLBACK=1` 与 `CN_FUTURES_5MIN_AKSHARE_FALLBACK_ON_EMPTY=1` 尝试 AKShare/Sina 备源，避免“接口成功但无 bar”导致期货模拟盘科学空跑。

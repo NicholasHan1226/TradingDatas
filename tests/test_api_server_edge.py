@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 import api_server
+from tools import health_check
 
 
 class _FakeAuth:
@@ -267,6 +268,50 @@ def test_capabilities_falls_back_when_registry_missing(api_edge_server, monkeypa
     assert payload["metadata"]["degraded"] is True
     assert payload["data"]["status"] == "degraded"
     assert any(item["path"] == "/market_data" for item in payload["data"]["endpoints"])
+
+
+def test_api_health_defaults_to_lightweight_cached_checks(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_get_health_status(**kwargs):
+        calls.append(dict(kwargs))
+        return {"status": "ok", "checks": {"sla": {"status": "ok"}}, "timestamp": "2026-07-07T00:00:00"}
+
+    monkeypatch.delenv(api_server.HEALTH_DEEP_CHECKS_ENV, raising=False)
+    monkeypatch.setattr(health_check, "get_health_status", fake_get_health_status)
+    monkeypatch.setattr(api_server, "_health_cache", None)
+    monkeypatch.setattr(api_server, "_health_cache_time", 0.0)
+
+    result = api_server._get_health()
+
+    assert result["status"] == "ok"
+    assert calls == [
+        {
+            "check_functions": False,
+            "check_data_freshness": False,
+            "check_cron": True,
+            "check_arch": False,
+            "check_compile": False,
+        }
+    ]
+
+
+def test_api_health_deep_checks_are_explicit(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_get_health_status(**kwargs):
+        calls.append(dict(kwargs))
+        return {"status": "ok", "checks": {}, "timestamp": "2026-07-07T00:00:00"}
+
+    monkeypatch.setenv(api_server.HEALTH_DEEP_CHECKS_ENV, "1")
+    monkeypatch.setattr(health_check, "get_health_status", fake_get_health_status)
+    monkeypatch.setattr(api_server, "_health_cache", None)
+    monkeypatch.setattr(api_server, "_health_cache_time", 0.0)
+
+    api_server._get_health()
+
+    assert calls[0]["check_functions"] is True
+    assert calls[0]["check_data_freshness"] is True
 
 
 def test_sharedsignals_server_uses_large_accept_backlog() -> None:
