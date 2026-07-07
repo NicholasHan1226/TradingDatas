@@ -100,19 +100,22 @@ def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:
             CREATE TABLE market_assets (
                 market TEXT,
                 symbol TEXT,
+                name TEXT,
                 asset_type TEXT
             )
             """
         )
         conn.executemany(
-            "INSERT INTO market_assets VALUES (?, ?, ?)",
+            "INSERT INTO market_assets VALUES (?, ?, ?, ?)",
             [
-                ("Ashare", "000001.SZ", "stock"),
-                ("Ashare", "300750.SZ", "stock"),
-                ("Ashare", "600519.SH", "stock"),
-                ("Ashare", "159001.SZ", "fund"),
-                ("Ashare", "830000.BJ", "stock"),
-                ("US", "AAPL.US", "stock"),
+                ("Ashare", "000001.SZ", "平安银行", "stock"),
+                ("Ashare", "300750.SZ", "宁德时代", "stock"),
+                ("Ashare", "600519.SH", "贵州茅台", "stock"),
+                ("Ashare", "159001.SZ", "易方达货币ETF", "fund"),
+                ("Ashare", "830000.BJ", "北交样本", "stock"),
+                ("Ashare", "000003.SZ", "", "stock"),
+                ("Ashare", "000004.SZ", "国华退", "stock"),
+                ("US", "AAPL.US", "苹果", "stock"),
             ],
         )
         conn.commit()

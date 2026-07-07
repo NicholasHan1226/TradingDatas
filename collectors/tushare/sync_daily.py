@@ -99,7 +99,7 @@ def _load_stock_codes_from_sqlite(sqlite_path: Path) -> list[str]:
     try:
         rows = conn.execute(
             """
-            SELECT DISTINCT symbol
+            SELECT DISTINCT symbol, name
             FROM market_assets
             WHERE market = ?
               AND COALESCE(asset_type, 'stock') != ?
@@ -116,6 +116,8 @@ def _load_stock_codes_from_sqlite(sqlite_path: Path) -> list[str]:
         str(row[0] or "").strip()
         for row in rows
         if _looks_like_ashare_stock_code(str(row[0] or "").strip())
+        and str(row[1] or "").strip()
+        and "退" not in str(row[1] or "")
     ]
     logger.info("Loaded %d A-share stock codes from sqlite market_assets: %s", len(codes), sqlite_path)
     return codes
