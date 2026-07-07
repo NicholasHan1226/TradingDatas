@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-07 (/health SLA 聚合、PM freshness 列修复、missing/empty SLA 降级)
+> 最后更新：2026-07-07 (DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口)
 
 ---
 
@@ -22,7 +22,7 @@
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
 - **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
-- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，crontab 每 5 分钟同步；同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
+- **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，DuckDB 只作为分析镜像，不是 5 分钟交易 read path；2026-07-07 起定时同步降为每小时一次，并用低 IO/CPU 优先级与 10 分钟超时运行，避免全量 sqlite_scan 与交易采集/模拟任务抢占主库。同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/marketgraph/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/refresh_industry_map.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/proxy_relay_health.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已新增，分别负责 Tushare tier、Crypto ticker/klines、Polymarket markets/prices、A 股基础行业映射刷新、DuckDB 同步、patrol/heal、新加坡 relay 健康、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
@@ -82,7 +82,7 @@
 
 ## 四、下一步
 
-1. [x] DuckDB 初始同步完成（145K 行），定时同步已调度（每 5 分钟 crontab）
+1. [x] DuckDB 初始同步完成（145K 行），定时同步已调度为分析镜像小时级任务（非 5 分钟交易链路）
 2. [x] API 安全加固：Bearer token 认证 + scope-based 端点访问控制 + key-based 账户隔离
 3. [x] fx_daily/hibor 参数调优（2026-07-02 修复：fx_daily 加 exchange=FXCM，hibor 改用 date 参数）
 4. [x] hk_daily 全局查询修复（2026-07-02 修复：改为 per_stock + stock_list=hk）
@@ -108,6 +108,13 @@
 24. [x] **reader WAL 缓存失效修复** — `reader.py` 的缓存文件指纹已动态解析当前路径，并纳入 SQLite `-wal`/`-shm` sidecar；测试覆盖 sidecar mtime 更新后触发 `_files_changed()`，降低 5 分钟交易读取旧数据风险。
 25. [x] **health_sla 交易/研究分层与定时启用** — `market_bars_daily` 与 `market_pm_prices` 属交易关键 freshness，超阈值影响健康；`market_factors` 为 warning；`market_events` 属研究 lane，过期只记录 notice，不再把研究事件暂停误判为 SharedSignals 交易供数故障；周末/周一开盘前会扩大非 PM/Crypto 表的有效 freshness 窗口；`cron/health_sla.sh` 每 10 分钟运行并写入 watchdog input，critical/degraded 外部报告会纳入 watchdog 分数。
 26. [x] **A股 rt_min 与逆回购读模型修复** — P0 实时分钟配置从旧 `rt_k` 切到实测可用的 `rt_min`，CSV bridge 与 reader fallback 同步支持 `rt_min`；`repo_daily` 不再裁剪字段，并在保留 `market_factors` 的同时额外投影到 `market_bars_daily`，供 TradingAgent 以 `204001.SH` 日线收益率读取。
+
+### 2026-07-07 full-sync load and CNFutures empty-row fallback
+
+- [x] DuckDB 同步从 5 分钟全量镜像降为小时级分析镜像，并在 `duckdb_sync.sh` 中使用 `nice`/`ionice` 与 600 秒超时，避免全表扫描期间拖慢 SharedSignals API、TradingAgent 模拟盘和 SSH 运维入口。
+- [x] `crontab.txt` 明确 DuckDB 不属于 5 分钟交易 read path；TradingAgent/MarketGraph 仍应通过 SQLite read model/API 读取交易所需数据。
+- [x] CNFutures 5 分钟采集在 Tushare `rt_fut_min` 返回 0 行但未抛错时，会按默认开关 `CN_FUTURES_5MIN_AKSHARE_FALLBACK=1` 与 `CN_FUTURES_5MIN_AKSHARE_FALLBACK_ON_EMPTY=1` 尝试 AKShare/Sina 备源，避免“接口成功但无 bar”导致期货模拟盘科学空跑。
+- [x] 边界：AKShare/Sina 备源只用于模拟研究和数据连续性，不改变未来真实期货接入必须走受控券商/CTP 接口的边界。
 
 ### 2026-07-05 PM proxy hardening
 

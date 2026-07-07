@@ -41,7 +41,9 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 */30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
 # Read model sync and health loop.
-*/5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+# DuckDB is an analytics mirror, not the 5-minute trading read path. Keep it
+# off the 5-minute cadence so it cannot full-scan SQLite during trading loops.
+17 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh

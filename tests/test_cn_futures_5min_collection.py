@@ -238,6 +238,61 @@ def test_run_collection_uses_akshare_fallback_for_provider_errors(
     assert "权限不足" in summary["fallback_reason"]
 
 
+def test_run_collection_uses_akshare_fallback_for_empty_tushare_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "data" / "tushare" / "rt_fut_min" / "20260703" / "rt_fut_min_20260703_5min.csv"
+
+    class FakeCollector:
+        @classmethod
+        def _rate_limit(cls, _api_name: str) -> None:
+            return None
+
+        def save(self, _api_name: str, rows: list[dict], _trade_date: str, filename: str | None = None) -> Path:
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            csv_path.write_text(
+                "ts_code,code,time,open,high,low,close,vol,provider\n"
+                f"{rows[0]['ts_code']},{rows[0]['code']},{rows[0]['time']},3500,3510,3490,3505,120,{rows[0]['provider']}\n",
+                encoding="utf-8",
+            )
+            return csv_path
+
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.collect_rt_fut_min_rows",
+        lambda _params, *, fields="": [],
+    )
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.collect_akshare_futures_minute_rows",
+        lambda _symbols, **_kwargs: [
+            {
+                "ts_code": "RB2609.SHF",
+                "code": "RB2609.SHF",
+                "time": "2026-07-03 09:05:00",
+                "close": "3505",
+                "vol": "120",
+                "provider": "akshare_sina_rt_fut_min",
+            }
+        ],
+    )
+    monkeypatch.setattr("tools.collect_cn_futures_5min.TushareCollector", FakeCollector)
+    monkeypatch.setattr("tools.collect_cn_futures_5min.ingest_csv_to_sqlite", lambda *_args, **_kwargs: 1)
+
+    summary = run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        dry_run=False,
+        sqlite_bridge_enabled=True,
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert summary["state"] == "ok"
+    assert summary["source"] == "akshare_sina_rt_fut_min"
+    assert summary["fallback_from"] == "tushare_rt_fut_min_empty"
+    assert "empty rows" in summary["fallback_reason"]
+
+
 def test_run_collection_fails_when_non_empty_rows_do_not_reach_sqlite(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

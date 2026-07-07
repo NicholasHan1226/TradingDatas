@@ -13,7 +13,9 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 - `collectors.sh`: Tushare P0-P6 tiered collection.
 - `crypto_collect.sh` and `pm_collect.sh`: 5-minute Crypto and Polymarket collection.
 - `cn_futures_5min.sh` and `cn_futures_daily.sh`: China futures intraday and settlement data.
-- `duckdb_sync.sh`: SQLite read model to DuckDB mirror sync.
+- `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
+  not the trading read path; keep it off 5-minute cadence unless the merge is
+  incremental and load-tested.
 - `patrol.sh`, `health_sla.sh`, `watchdog.sh`: health checks and bounded self-heal loop.
 - `capability_scan.sh`: API capability registry refresh.
 

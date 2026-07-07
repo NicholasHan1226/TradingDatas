@@ -205,6 +205,19 @@ def collect_akshare_futures_minute_rows(
     return rows
 
 
+def _collect_akshare_fallback_rows(
+    symbols: list[str],
+    *,
+    reason: str,
+) -> tuple[list[dict[str, Any]], str]:
+    rows = collect_akshare_futures_minute_rows(
+        symbols,
+        period="5",
+        max_rows_per_symbol=int(os.environ.get("CN_FUTURES_AKSHARE_MAX_ROWS_PER_SYMBOL", str(DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL))),
+    )
+    return rows, reason
+
+
 def run_collection(
     *,
     trade_date: str,
@@ -244,14 +257,13 @@ def run_collection(
         fallback_error = ""
         if _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK", "1"):
             try:
-                rows = collect_akshare_futures_minute_rows(
+                rows, fallback_reason = _collect_akshare_fallback_rows(
                     symbols,
-                    period="5",
-                    max_rows_per_symbol=int(os.environ.get("CN_FUTURES_AKSHARE_MAX_ROWS_PER_SYMBOL", str(DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL))),
+                    reason=str(exc),
                 )
                 source = "akshare_sina_rt_fut_min"
                 summary["fallback_from"] = "tushare_rt_fut_min"
-                summary["fallback_reason"] = str(exc)
+                summary["fallback_reason"] = fallback_reason
             except Exception as fallback_exc:  # noqa: BLE001
                 rows = []
                 fallback_error = str(fallback_exc)
@@ -263,6 +275,22 @@ def run_collection(
             if fallback_error:
                 summary["fallback_error"] = fallback_error
             return summary
+    if (
+        not rows
+        and _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK", "1")
+        and _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK_ON_EMPTY", "1")
+    ):
+        try:
+            rows, fallback_reason = _collect_akshare_fallback_rows(
+                symbols,
+                reason="tushare_rt_fut_min returned empty rows",
+            )
+            if rows:
+                source = "akshare_sina_rt_fut_min"
+                summary["fallback_from"] = "tushare_rt_fut_min_empty"
+                summary["fallback_reason"] = fallback_reason
+        except Exception as fallback_exc:  # noqa: BLE001
+            summary["fallback_error"] = str(fallback_exc)
     summary["rows"] = len(rows)
     summary["source"] = source
     if not rows:
