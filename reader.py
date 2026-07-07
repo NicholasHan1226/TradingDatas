@@ -421,6 +421,26 @@ def _optional_date_key(value: Any) -> str | None:
     return _date_key(value)
 
 
+def _canonical_market_key(market: Any) -> str:
+    raw = str(market or "Ashare").strip()
+    normalized = raw.replace("-", "_").replace(" ", "_").lower()
+    aliases = {
+        "ashare": "Ashare",
+        "a_share": "Ashare",
+        "a股": "Ashare",
+        "cn": "Ashare",
+        "china_a": "Ashare",
+        "hk": "HK",
+        "hongkong": "HK",
+        "us": "US",
+        "usa": "US",
+        "crypto": "Crypto",
+        "futures": "Futures",
+        "cn_futures": "Futures",
+    }
+    return aliases.get(normalized, raw)
+
+
 def _file_collected_at(path: Path) -> str | None:
     try:
         st = path.stat()
@@ -1191,7 +1211,7 @@ def _realtime_5m_fallback_dirs(date_key: str) -> list[Path]:
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_value: str) -> str:
-    market_key = str(market or "Ashare")
+    market_key = _canonical_market_key(market)
     date_key = _optional_date_key(date_value)
     if date_key is None:
         latest_rows, latest_degraded = _sqlite_rows(
@@ -1255,7 +1275,7 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
 
 
 def get_realtime_5min(ts_code: str, date: Any, market: str = "Ashare") -> list[dict[str, Any]]:
-    market_key = str(market or "Ashare")
+    market_key = _canonical_market_key(market)
     lineage = {"reader": "get_realtime_5min", "filters": {"market": market_key, "ts_code": ts_code, "date": date}}
     return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, market_key, str(ts_code), str(date)))
 
