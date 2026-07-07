@@ -1127,20 +1127,26 @@ def get_pm_markets(limit: int = 100) -> list[dict[str, Any]]:
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_pm_prices_cached(_generation: int, market_id: str, limit: int) -> str:
-    query = """
-        SELECT *
-        FROM market_pm_prices
-        WHERE (? = '' OR market_id = ?)
-        ORDER BY price_time DESC, collected_at DESC, price_hash DESC
-        LIMIT ?
-    """
     bounded_limit = max(1, min(int(limit), 1000))
     normalized_market_id = str(market_id or "").strip()
-    rows, degraded = _sqlite_rows(
-        query,
-        (normalized_market_id, normalized_market_id, bounded_limit),
-        "market_pm_prices",
-    )
+    if normalized_market_id:
+        query = """
+            SELECT *
+            FROM market_pm_prices
+            WHERE market_id = ?
+            ORDER BY price_time DESC, collected_at DESC, price_hash DESC
+            LIMIT ?
+        """
+        params: tuple[Any, ...] = (normalized_market_id, bounded_limit)
+    else:
+        query = """
+            SELECT *
+            FROM market_pm_prices
+            ORDER BY rowid DESC
+            LIMIT ?
+        """
+        params = (bounded_limit,)
+    rows, degraded = _sqlite_rows(query, params, "market_pm_prices")
     if degraded is not None:
         return _json_cached(lambda: degraded)
     lineage = {
