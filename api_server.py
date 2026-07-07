@@ -148,7 +148,15 @@ def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
     if not all(isinstance(row, dict) and "data" in row for row in rows):
         return rows, {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
 
-    data_rows = [row.get("data") for row in rows]
+    data_rows = [
+        row.get("data")
+        for row in rows
+        if not (
+            isinstance(row, dict)
+            and bool(row.get("degraded"))
+            and row.get("data") in ({}, None)
+        )
+    ]
     degraded = any(bool(row.get("degraded")) for row in rows)
     freshness_rows = [row.get("freshness") for row in rows if isinstance(row.get("freshness"), dict)]
     quality_rows = [row.get("quality") for row in rows if isinstance(row.get("quality"), dict)]
@@ -495,7 +503,21 @@ class Handler(BaseHTTPRequestHandler):
             return wrap_response(payload, metadata, source)
 
         if path == "/events":
-            rows = reader.get_events(start=params.get("start"), end=params.get("end"))
+            symbol = (
+                params.get("symbol", "").strip()
+                or params.get("ts_code", "").strip()
+                or params.get("subject_code", "").strip()
+            )
+            rows = reader.get_events(
+                start=params.get("start"),
+                end=params.get("end"),
+                event_type=params.get("event_type", "").strip() or None,
+                market=params.get("market", "").strip() or None,
+                symbol=symbol or None,
+                subject_code=params.get("subject_code", "").strip() or symbol or None,
+                subject_type=params.get("subject_type", "").strip() or None,
+            )
+            rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

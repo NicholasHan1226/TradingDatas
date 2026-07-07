@@ -26,6 +26,8 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **生产数据边界（2026-07-04）**：外部 provider 调用只允许发生在 SharedSignals collector 层。`reader.py`、HTTP API 和消费者系统必须读取已采集的 SQLite/DuckDB/CSV read model；没有映射或没有缓存数据时返回 degraded 包装，不再现场调用 Tushare/DashScope/其它 provider。
 
+**空结果边界（2026-07-08）**：HTTP API 遇到缺表、缺文件或无匹配行时，业务数据固定返回 `data: []`，降级原因保留在 `metadata.degraded=true` 与 `metadata.degraded_reasons`。不得把 degraded 空包装暴露为 `data: [{}]`，避免消费者误判为“一条空数据”。
+
 **HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`。本机 MarketGraph/TradingAgent 可使用 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
 
 
@@ -243,7 +245,7 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 
 ### 事件和信号
 
-#### `read_events(provider="", event_type="", limit=200)`
+#### `read_events(provider="", event_type="", market="", symbol="", subject_code="", limit=200)`
 
 读取新闻/事件流。
 
@@ -252,6 +254,9 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 |------|------|------|------|
 | `provider` | `str` | `""` | 来源: `rss` / `tavily` / `agents` |
 | `event_type` | `str` | `""` | 事件类型 |
+| `market` | `str` | `""` | 过滤市场，如 `Ashare`、`US`、`Futures` |
+| `symbol` | `str` | `""` | 过滤标的代码 |
+| `subject_code` | `str` | `""` | 过滤事件主体代码，兼容 `600276.SH` / `SH600276` / `600276` |
 | `limit` | `int` | `200` | 最大返回行数 (上限 5000) |
 
 **返回**: `list[dict]` — 按 `collected_at` 降序排列

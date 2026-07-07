@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-07 (API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口)
+> 最后更新：2026-07-08 (事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口)
 
 ---
 
@@ -28,7 +28,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传 `freq`；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`，`/pm_prices` 直接读取 `market_pm_prices` 价格快照供 PM edge、估值和研究回放使用；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传 `freq`；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/events` 支持 `market`、`symbol/ts_code/subject_code`、`subject_type`、`event_type` 和 `limit` 过滤，A股代码兼容 `600276.SH` / `SH600276` / `600276` 形态；HTTP API 缺表/缺文件/无匹配时固定返回 `data: []` 并通过 `metadata.degraded` 与 `degraded_reasons` 暴露原因，不再暴露 `data: [{}]` 空壳；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`，`/pm_prices` 直接读取 `market_pm_prices` 价格快照供 PM edge、估值和研究回放使用；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **开发/生产边界**：2026-07-05 开盘前复核已将 `config/dev.yaml` 的 `server` 默认值改为 `127.0.0.1`；生产默认主服务器只保留在 `config/prod.yaml`，避免本地 dev 运行误连 `8.138.181.177`。
 - **基础设施文档与 SLA**：2026-07-05 开盘前复核已更新 `docs/INFRASTRUCTURE.md`，当前口径为 SQLite + DuckDB mirror、Redis 未启用；`tools/health_sla.py` 已支持 `MARKETDATA_SQLITE` / `SHAREDSIGNALS_MARKETDATA_DB` / `MARKETGRAPH_RUNTIME_ROOT`，不再只能读硬编码生产库；SLA 已按 trading/research 分层，交易价格/日线过期才触发 degraded/critical，研究事件过期只记 `notice`；`market_bars_daily` 若存在 `market` 列会按市场分别检查最新日期，避免 A股最新掩盖 US stale；周末/周一开盘前会放宽非 24/7 日频表阈值，PM/Crypto 价格不放宽，避免周末或研究层暂停误报成交易供数故障。

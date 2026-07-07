@@ -163,6 +163,73 @@ class TestRuntimeBridge:
         with pytest.raises(FileNotFoundError):
             read_csv(Path("/nonexistent/path.csv"))
 
+    def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
+        import csv
+        import reader
+
+        collected_at = datetime.now(timezone.utc).isoformat()
+        intake = tmp_path / "data" / "intake"
+        intake.mkdir(parents=True)
+        with (intake / "event_candidates.csv").open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "candidate_id",
+                    "candidate_date",
+                    "market",
+                    "subject_code",
+                    "subject_type",
+                    "proposed_event_type",
+                    "title",
+                    "collected_at",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow({
+                "candidate_id": "evt-1",
+                "candidate_date": "20260708",
+                "market": "Ashare",
+                "subject_code": "SH600276",
+                "subject_type": "stock",
+                "proposed_event_type": "policy",
+                "title": "matched",
+                "collected_at": collected_at,
+            })
+            writer.writerow({
+                "candidate_id": "evt-2",
+                "candidate_date": "20260708",
+                "market": "US",
+                "subject_code": "AAPL.US",
+                "subject_type": "stock",
+                "proposed_event_type": "policy",
+                "title": "other",
+                "collected_at": collected_at,
+            })
+
+        monkeypatch.setattr(reader, "INTAKE_ROOT", intake)
+        reader.clear_caches()
+
+        rows = reader.get_events(
+            start="20260708",
+            end="20260708",
+            event_type="policy",
+            market="Ashare",
+            subject_code="600276.SH",
+            subject_type="stock",
+        )
+
+        assert [row["data"]["candidate_id"] for row in rows] == ["evt-1"]
+
+    def test_degraded_empty_is_stale_and_unfresh(self):
+        import reader
+
+        rows = reader._degraded_empty("csv:event_candidates", "missing file")
+
+        assert rows[0]["degraded"] is True
+        assert rows[0]["data"] == {}
+        assert rows[0]["freshness"]["stale"] is True
+        assert rows[0]["freshness"]["score"] == 0.0
+
     def test_write_csv_creates_file(self, tmp_csv_dir: Path):
         from bridge.marketgraph_runtime_bridge import write_csv, read_csv
         path = tmp_csv_dir / "data" / "intake" / "output.csv"
@@ -325,6 +392,7 @@ class TestPMPriceReader:
 
         import reader
 
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
         reader.clear_caches()
         rows = reader.get_pm_prices(market_id="pm-1", limit=1)
 

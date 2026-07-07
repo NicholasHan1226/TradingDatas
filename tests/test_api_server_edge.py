@@ -61,7 +61,28 @@ class _FakeReader:
         self.clear_count = 0
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def get_events(self, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
+    def get_events(
+        self,
+        start: str | None = None,
+        end: str | None = None,
+        event_type: str | None = None,
+        market: str | None = None,
+        symbol: str | None = None,
+        subject_code: str | None = None,
+        subject_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        self.calls.append((
+            "get_events",
+            {
+                "start": start,
+                "end": end,
+                "event_type": event_type,
+                "market": market,
+                "symbol": symbol,
+                "subject_code": subject_code,
+                "subject_type": subject_type,
+            },
+        ))
         return []
 
     def get_sentiment(self, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
@@ -153,6 +174,50 @@ def test_api_request_with_no_query_params_does_not_crash(api_edge_server) -> Non
 
     assert status == 200
     assert payload["data"] == []
+
+
+def test_api_events_passes_filter_params_to_reader(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(
+        base_url,
+        "/events?market=Ashare&symbol=600000.SH&subject_type=stock&event_type=policy&start=20260701&end=20260708&limit=5",
+    )
+
+    assert status == 200
+    assert payload["data"] == []
+    assert reader.calls[-1] == (
+        "get_events",
+        {
+            "start": "20260701",
+            "end": "20260708",
+            "event_type": "policy",
+            "market": "Ashare",
+            "symbol": "600000.SH",
+            "subject_code": "600000.SH",
+            "subject_type": "stock",
+        },
+    )
+
+
+def test_aggregate_metadata_drops_degraded_empty_data_rows() -> None:
+    rows = [
+        {
+            "data": {},
+            "degraded": True,
+            "lineage": {"reason": "missing file"},
+            "freshness": {"stale": True, "score": 0.0},
+            "quality": {"score": 0.0},
+            "provenance": {"source_id": "csv:event_candidates"},
+        }
+    ]
+
+    payload, metadata, source = api_server.aggregate_metadata(rows)
+
+    assert payload == []
+    assert metadata["degraded"] is True
+    assert metadata["degraded_reasons"] == ["missing file"]
+    assert source == "csv:event_candidates"
 
 
 def test_api_malformed_json_query_param_returns_400(api_edge_server) -> None:

@@ -513,13 +513,15 @@ def _wrap(
     lineage: dict[str, Any] | None = None,
     stale_after_hours: float = 24.0,
 ) -> dict[str, Any]:
-    collected = collected_at or data.get("collected_at") or _now_iso()
+    collected = collected_at or data.get("collected_at")
+    if collected is None and (data or not degraded):
+        collected = _now_iso()
     return {
         "data": data,
         "provenance": {
             "source_id": source_id,
             "source_tier": source_tier or "unknown",
-            "collected_at": str(collected),
+            "collected_at": str(collected or ""),
         },
         "freshness": _freshness(collected, stale_after_hours=stale_after_hours, source_id=source_id),
         "quality": _quality(data),
@@ -536,7 +538,6 @@ def _degraded_empty(source_id: str, reason: str, *, lineage: dict[str, Any] | No
             {},
             source_id=source_id,
             source_tier="unavailable",
-            collected_at=_now_iso(),
             degraded=True,
             lineage=details,
         )
@@ -844,6 +845,63 @@ def _get_events_cached(_generation: int, start: str, end: str, event_type: str |
     return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:event_candidates", source_tier="event_candidate", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
 
 
+def _event_code_variants(value: Any) -> set[str]:
+    raw = str(value or "").strip().upper()
+    if not raw:
+        return set()
+    compact = raw.replace("-", "").replace("_", "")
+    variants = {raw, compact}
+    if "." in compact:
+        base, suffix = compact.split(".", 1)
+        variants.update({base, f"{suffix}{base}"})
+    elif len(compact) >= 8 and compact[:2] in {"SH", "SZ", "BJ"}:
+        base = compact[2:]
+        variants.update({base, f"{base}.{compact[:2]}"})
+    elif len(compact) == 6 and compact.isdigit():
+        if compact.startswith(("5", "6", "9")):
+            variants.update({f"{compact}.SH", f"SH{compact}"})
+        elif compact.startswith(("0", "1", "2", "3")):
+            variants.update({f"{compact}.SZ", f"SZ{compact}"})
+        elif compact.startswith(("4", "8")):
+            variants.update({f"{compact}.BJ", f"BJ{compact}"})
+    return {item for item in variants if item}
+
+
+def _event_row_matches_code(data: dict[str, Any], wanted: set[str]) -> bool:
+    if not wanted:
+        return True
+    for field in ("subject_code", "ts_code", "symbol", "code", "asset_code"):
+        if _event_code_variants(data.get(field)) & wanted:
+            return True
+    return False
+
+
+def _event_row_matches_market(data: dict[str, Any], market: Any) -> bool:
+    wanted = str(market or "").strip().lower()
+    if not wanted:
+        return True
+    aliases = {
+        "a_share": "ashare",
+        "a-share": "ashare",
+        "cnfutures": "futures",
+        "cn_futures": "futures",
+        "predictionmarkets": "predictionmarkets",
+        "pm": "predictionmarkets",
+    }
+    wanted = aliases.get(wanted, wanted)
+    values = [
+        data.get("market"),
+        data.get("target_market"),
+        data.get("market_scope"),
+        data.get("subject_market"),
+    ]
+    for value in values:
+        normalized = aliases.get(str(value or "").strip().lower(), str(value or "").strip().lower())
+        if normalized and normalized == wanted:
+            return True
+    return False
+
+
 def get_events(start: Any = None, end: Any = None, event_type: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
     if start is None and "date" in kwargs:
         start = kwargs.get("date")
@@ -851,10 +909,25 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
         end = start
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
     rows = _safe_public("csv:event_candidates", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
-    subject_code = kwargs.get("subject_code")
+    market = kwargs.get("market")
+    symbol = kwargs.get("symbol")
+    subject_code = kwargs.get("subject_code") or symbol
     subject_type = kwargs.get("subject_type")
-    if subject_code:
-        rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_code") == subject_code]
+    wanted_codes = _event_code_variants(subject_code)
+    if market:
+        rows = [
+            row for row in rows
+            if isinstance(row, dict)
+            and isinstance(row.get("data"), dict)
+            and _event_row_matches_market(row["data"], market)
+        ]
+    if wanted_codes:
+        rows = [
+            row for row in rows
+            if isinstance(row, dict)
+            and isinstance(row.get("data"), dict)
+            and _event_row_matches_code(row["data"], wanted_codes)
+        ]
     if subject_type:
         rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_type") == subject_type]
     return rows
