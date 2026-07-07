@@ -67,6 +67,23 @@ def test_p6_fut_basic_collects_expiry_fields() -> None:
     assert {"ts_code", "name", "exchange", "list_date", "last_ddate", "delist_date"}.issubset(fields)
 
 
+def test_p0_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p0_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P0_trading_5min"]
+    }
+
+    for api_name in ("daily", "stk_factor", "stk_factor_pro"):
+        api = p0_by_name[api_name]
+        assert api["lookback_days"] == 90
+        assert api["per_stock"] is True
+        assert api["params"] == {
+            "ts_code": "{ts_code}",
+            "start_date": "{start_date}",
+            "end_date": "{end_date}",
+        }
+
+
 def test_shibor_lpr_dedup_key_keeps_distinct_dates() -> None:
     collector = TushareCollector()
 

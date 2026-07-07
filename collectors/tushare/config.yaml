@@ -68,6 +68,10 @@ priorities:
   - api_name: stk_factor_pro
     per_stock: true
     lookback_days: 90
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
     fields: ts_code,trade_date,pe,pb,turnover_rate,mv
   P1_eod_daily:
   - api_name: daily_basic
