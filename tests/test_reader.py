@@ -230,6 +230,25 @@ class TestRuntimeBridge:
         assert rows[0]["freshness"]["stale"] is True
         assert rows[0]["freshness"]["score"] == 0.0
 
+    def test_get_events_preserves_degraded_empty_when_filters_are_present(self, tmp_path: Path, monkeypatch):
+        import reader
+
+        intake = tmp_path / "data" / "intake"
+        intake.mkdir(parents=True)
+        monkeypatch.setattr(reader, "INTAKE_ROOT", intake)
+        reader.clear_caches()
+
+        rows = reader.get_events(
+            start="20260708",
+            end="20260708",
+            market="Ashare",
+            subject_code="600276.SH",
+        )
+
+        assert rows[0]["degraded"] is True
+        assert rows[0]["data"] == {}
+        assert "missing file" in rows[0]["lineage"]["reason"]
+
     def test_write_csv_creates_file(self, tmp_csv_dir: Path):
         from bridge.marketgraph_runtime_bridge import write_csv, read_csv
         path = tmp_csv_dir / "data" / "intake" / "output.csv"

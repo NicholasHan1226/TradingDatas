@@ -909,6 +909,11 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
         end = start
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
     rows = _safe_public("csv:event_candidates", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
+    if rows and all(
+        isinstance(row, dict) and bool(row.get("degraded")) and row.get("data") in ({}, None)
+        for row in rows
+    ):
+        return rows
     market = kwargs.get("market")
     symbol = kwargs.get("symbol")
     subject_code = kwargs.get("subject_code") or symbol
