@@ -9,12 +9,6 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     per_stock: true
-  - api_name: moneyflow
-    frequency: 5min
-    params:
-      trade_date: '{trade_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
   - api_name: stk_factor
     frequency: 5min
     lookback_days: 90
@@ -80,6 +74,12 @@ priorities:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
     per_stock: true
+  - api_name: moneyflow
+    frequency: daily
+    lookback_days: 7
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
   - api_name: adj_factor
     frequency: daily
     params:

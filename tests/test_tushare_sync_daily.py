@@ -75,6 +75,7 @@ def test_p0_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
         api["api_name"]: api for api in config["priorities"]["P0_trading_5min"]
     }
 
+    assert "moneyflow" not in p0_by_name
     for api_name in ("daily", "stk_factor", "stk_factor_pro"):
         api = p0_by_name[api_name]
         assert api["lookback_days"] == 90
@@ -84,6 +85,19 @@ def test_p0_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
             "start_date": "{start_date}",
             "end_date": "{end_date}",
         }
+
+
+def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p1_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P1_eod_daily"]
+    }
+
+    api = p1_by_name["moneyflow"]
+    assert api["frequency"] == "daily"
+    assert api["lookback_days"] == 7
+    assert api["per_stock"] is False
+    assert api["params"] == {"trade_date": "{trade_date}"}
 
 
 def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:

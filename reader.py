@@ -117,7 +117,6 @@ SQLITE_PATH = _LazyPath(lambda: Path(os.environ.get("MARKETDATA_SQLITE") or RUNT
 INTAKE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_INTAKE_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "intake"))
 SENTIMENT_SIGNALS_PATH = _LazyPath(lambda: Path(os.environ.get("SENTIMENT_SIGNALS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "sentiment_signals.csv"))
 REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT") or SHAREDSIGNALS_ROOT.get() / "reference"))
-MONEYFLOW_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_MONEYFLOW_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "moneyflow"))  # TODO: build native moneyflow collector
 # TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
 MACRO_FACTORS_PATH = _LazyPath(lambda: Path(os.environ.get("MACRO_FACTORS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "macro_factors.csv"))
 REALTIME_5M_ROOT = _LazyPath(lambda: Path(os.environ.get("REALTIME_5M_ROOT") or RUNTIME_ROOT.get() / "staging" / "tushare_rt_min_5m"))
@@ -995,24 +994,8 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
         lineage,
         lambda generation: _get_tushare_cached(generation, str(api_name), ts_code, start_date, end_date, params_json),
     )
-# NOTE: _get_capital_flow_cached is intentionally unused — get_capital_flow()
-# delegates to get_tushare("moneyflow") instead. Kept as reference for future
-# native moneyflow collector (see TODO at MONEYFLOW_ROOT definition).
-def _get_capital_flow_cached(date_value: str, ts_code: str | None) -> str:
-    date_key = _date_key(date_value)
-    path = MONEYFLOW_ROOT / f"{date_key}.csv"
-    lineage = {"reader": "get_capital_flow", "source_path": str(path), "filters": {"date": date_key, "ts_code": ts_code}}
-    rows, degraded = _safe_csv(path, "csv:moneyflow", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    matched = rows or []
-    if ts_code:
-        matched = [row for row in matched if row.get("ts_code") == ts_code]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:moneyflow", source_tier="tushare", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=48.0))
-
-
 def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
-    """Get A-share moneyflow data. Wraps Tushare moneyflow API."""
+    """Get A-share moneyflow rows from the SharedSignals read model."""
     start = kwargs.get("start_date", date)
     end = kwargs.get("end_date", date)
     if not start and not ts_code:

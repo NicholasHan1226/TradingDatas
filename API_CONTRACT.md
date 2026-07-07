@@ -164,7 +164,7 @@ Tushare `news` / `major_news` / `cctv_news` 进入 `market_events` 时由 bridge
 | `collected_at` | TEXT | 采集时间 |
 | `raw_json` | TEXT | 原始行 JSON |
 
-低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）先按 P4/P6 定时采集落 CSV，再展开为 `market_factors`。月度/季度字段只作为 `event_time`，不作为数值因子。
+低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）先按 P4/P6 定时采集落 CSV，再展开为 `market_factors`。A股 `moneyflow` 是盘后日频资金流，按 P1 全市场采集后展开为 `moneyflow:*` 因子；盘中 5 分钟交易不依赖当天 `moneyflow` 即时更新。月度/季度字段只作为 `event_time`，不作为数值因子。
 
 #### market_coverage_status (覆盖状态)
 
@@ -493,7 +493,7 @@ for row in rows:
     d = row["data"]
     print(f"{d['trade_date']}: O={d['open']} C={d['close']}")
 
-# 读取个股资金流向
+# 读取个股资金流向；返回 market_factors 展开行，如 moneyflow:net_mf_amount
 rows = get_tushare("moneyflow", ts_code="000001.SZ", start_date="20260629", end_date="20260629")
 
 # 读取财务指标
@@ -514,7 +514,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 数据维度 | 来源 | 方式 |
 |---------|------|------|
 | A 股日线 OHLCV | Tushare `daily` | DB-first: `reader.get_tushare("daily", ...)` / HTTP `/tushare` |
-| A 股资金流向 | Tushare `moneyflow` | DB-first: `reader.get_tushare("moneyflow", ...)`；collector CSV 必须通过 `storage/csv_bridge.py` 写入 `market_factors` |
+| A 股资金流向 | Tushare `moneyflow` | P1 盘后日频全市场采集；DB-first: `reader.get_tushare("moneyflow", ...)` / HTTP `/capital_flow`；collector CSV 必须通过 `storage/csv_bridge.py` 写入 `market_factors`，返回 `moneyflow:*` 展开行 |
 | A 股财务指标 | Tushare `fina_indicator` | P2 collector → `market_factors`; `reader.get_fundamentals(ts_code=...)`（HTTP 也兼容 `symbol`） |
 | A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | P2 collector → read model / degraded if no recent rows |
 | A 股复权因子 | Tushare `adj_factor` | P0/P1 collector → read model |
