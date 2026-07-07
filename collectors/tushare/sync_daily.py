@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta
@@ -81,8 +82,57 @@ def load_config(path: Path) -> dict:
         return yaml.safe_load(fh)
 
 
-def load_stock_codes(path: Path) -> list[str]:
+def _looks_like_ashare_stock_code(code: str) -> bool:
+    """Return True for supported沪深 A股股票代码形态."""
+    return bool(re.match(r"^(00|30|60|68)\d{4}\.(SZ|SH)$", code))
+
+
+def _load_stock_codes_from_sqlite(sqlite_path: Path) -> list[str]:
+    """Read A股 stock symbols from the SharedSignals read model."""
+    if not sqlite_path.exists():
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True, timeout=5.0)
+    except sqlite3.Error as exc:
+        logger.warning("failed to open stock code sqlite source %s: %s", sqlite_path, exc)
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT symbol
+            FROM market_assets
+            WHERE market = ?
+              AND COALESCE(asset_type, 'stock') != ?
+            ORDER BY symbol
+            """,
+            ("Ashare", "fund"),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("failed to load stock codes from %s: %s", sqlite_path, exc)
+        return []
+    finally:
+        conn.close()
+    codes = [
+        str(row[0] or "").strip()
+        for row in rows
+        if _looks_like_ashare_stock_code(str(row[0] or "").strip())
+    ]
+    logger.info("Loaded %d A-share stock codes from sqlite market_assets: %s", len(codes), sqlite_path)
+    return codes
+
+
+def load_stock_codes(
+    path: Path,
+    *,
+    prefer_sqlite_assets: bool = False,
+    sqlite_path: Path = DEFAULT_SQLITE_PATH,
+) -> list[str]:
     """Read ts_code column from stock_master.csv."""
+    if prefer_sqlite_assets:
+        sqlite_codes = _load_stock_codes_from_sqlite(sqlite_path)
+        if sqlite_codes:
+            return sqlite_codes
+
     codes: list[str] = []
     with path.open("r", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
@@ -713,7 +763,7 @@ def main() -> None:
 
     # Load config + stocks
     config = load_config(CONFIG_PATH)
-    stock_codes = load_stock_codes(STOCK_MASTER_PATH)
+    stock_codes = load_stock_codes(STOCK_MASTER_PATH, prefer_sqlite_assets=True)
 
     if not stock_codes:
         logger.error("No stock codes in %s — aborting", STOCK_MASTER_PATH)

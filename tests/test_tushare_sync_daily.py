@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from collectors.mixins.dedup import DeduplicatorMixin
@@ -7,6 +8,7 @@ from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     date_range,
     filter_apis,
+    load_stock_codes,
     load_priority_stock_codes,
     load_config,
     normalize_ashare_code,
@@ -82,6 +84,60 @@ def test_p0_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
             "start_date": "{start_date}",
             "end_date": "{end_date}",
         }
+
+
+def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:
+    csv_path = tmp_path / "stock_master.csv"
+    csv_path.write_text(
+        "ts_code,symbol,name\n600519.SH,600519,贵州茅台\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE market_assets (
+                market TEXT,
+                symbol TEXT,
+                asset_type TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO market_assets VALUES (?, ?, ?)",
+            [
+                ("Ashare", "000001.SZ", "stock"),
+                ("Ashare", "300750.SZ", "stock"),
+                ("Ashare", "600519.SH", "stock"),
+                ("Ashare", "159001.SZ", "fund"),
+                ("Ashare", "830000.BJ", "stock"),
+                ("US", "AAPL.US", "stock"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    codes = load_stock_codes(csv_path, prefer_sqlite_assets=True, sqlite_path=db_path)
+
+    assert codes == ["000001.SZ", "300750.SZ", "600519.SH"]
+
+
+def test_load_stock_codes_falls_back_to_csv_when_sqlite_missing(tmp_path: Path) -> None:
+    csv_path = tmp_path / "stock_master.csv"
+    csv_path.write_text(
+        "ts_code,symbol,name\n600519.SH,600519,贵州茅台\n000001.SZ,000001,平安银行\n",
+        encoding="utf-8",
+    )
+
+    codes = load_stock_codes(
+        csv_path,
+        prefer_sqlite_assets=True,
+        sqlite_path=tmp_path / "missing.sqlite",
+    )
+
+    assert codes == ["600519.SH", "000001.SZ"]
 
 
 def test_shibor_lpr_dedup_key_keeps_distinct_dates() -> None:
