@@ -31,23 +31,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from runtime_paths import marketdata_duckdb_path, marketdata_sqlite_path, sharedsignals_root
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import table_names
 
 # ---------------------------------------------------------------------------
 # Defaults (mirroring patrol.py / heal.py)
 # ---------------------------------------------------------------------------
-DEFAULT_DB_PATH = Path(
-    os.environ.get("SHAREDSIGNALS_RUNTIME_READ_MODEL")
-    or "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
-)
-DEFAULT_DUCKDB_PATH = Path(
-    os.environ.get("SHAREDSIGNALS_DUCKDB_PATH")
-    or "/opt/investment/SharedSignals/data/marketdata.duckdb"
-)
-DEFAULT_SHARED_ROOT = Path(
-    os.environ.get("SHAREDSIGNALS_ROOT") or "/opt/investment/SharedSignals"
-)
+DEFAULT_DB_PATH = marketdata_sqlite_path()
+DEFAULT_DUCKDB_PATH = marketdata_duckdb_path()
+DEFAULT_SHARED_ROOT = sharedsignals_root()
 
 # Tables that must exist and have at least some rows for a backup to be
 # considered "not empty".  Empty backups are still valid if explicitly chosen.

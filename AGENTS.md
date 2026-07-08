@@ -8,7 +8,7 @@
 ## 层级披露
 
 - 上层 `~/Projects/Finance/AGENTS.md` 只定义 Finance 工作区三项目边界和跨项目协作规则。
-- 本文件只定义 SharedSignals 的数据采集、存储、staging、桥接、patrol/heal 和输出契约。
+- 本文件只定义 SharedSignals 的数据采集、存储、直接入库、patrol/heal 和输出契约。
 - 进入具体采集器、storage、bridge、reference 或 docs 后，继续读取最近层级文档；采集命令、schema 和运行边界以本仓库文档为准。
 
 ## 目标
@@ -18,23 +18,31 @@
 ## 三系统协作边界
 
 - SharedSignals 是供数层，只负责采集、去重、缓存和健康巡查；不做投资分析、交易判断、执行路由或回执处理。
-- MarketGraph 和 TradingAgent 可以读取 SharedSignals 暴露的 SQLite/CSV/NDJSON 或未来服务接口；这种关系是数据契约消费，不是 MCP 强耦合互调。
-- 对 TradingAgent 而言，SharedSignals/ShareChannel API 是默认消费入口；SQLite/CSV/NDJSON 只保留为兼容和故障降级，不能重新引入 TradingAgent/MarketGraph 独立采集。
+- MarketGraph 和 TradingAgent 只能消费 SharedSignals 暴露的 HTTP API 或 SQLite/DuckDB read model；这种关系是数据契约消费，不是 MCP 强耦合互调。
+- 对 TradingAgent 而言，SharedSignals/ShareChannel API 是默认消费入口；SQLite/DuckDB read model 只允许作为只读批处理入口。生产 reader/API 不得回退旧 CSV、NDJSON、旧目录或其它系统内部文件；缺表、缺数据或缺映射必须返回 degraded/fail-closed，不能把旧文件当兜底。
 - 未来对外提供服务接口时，默认只暴露数据读取、健康状态和来源留痕；任何交易信号、下单、模拟执行或邮件通知都属于 tradingagent/Hermes 边界。
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库
 - 不做什么: 不分析, 不分类, 不做交易决策
-- 存储: SQLite read model + DuckDB mirror + CSV + NDJSON staging
+- 存储: SQLite read model + DuckDB mirror；CSV/NDJSON 只允许作为 collector staging、审计或历史迁移材料，不是生产读取兜底。
 
 ## 现状
-- 行情: Tushare/Binance/PM(markets/prices) → SQLite + DuckDB + CSV/NDJSON 缓存；具体接口数以 `collectors/tushare/config.yaml` 和 `STATUS.md` 当前记录为准
+- 行情: Tushare/Binance/PM(markets/prices) → SQLite read model + DuckDB mirror；具体接口数以 `collectors/tushare/config.yaml` 和 `STATUS.md` 当前记录为准。CSV/NDJSON 只作为 collector staging、审计或历史迁移材料，不作为生产消费兜底。
 - 事件: RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；恢复前必须走 SharedSignals collector + staging/bridge 契约
 - 基本面: Tushare 财务/分红/融资融券等由分层定时任务采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
-- staging: 6 streams (collection_runs/sentiment_signals/event_candidates/...)
+- 运行审计: collector 写入 `market_ingest_runs`，cron/watchdog/health_sla 读取数据库和日志
 
 ## 依赖
 - 采集输入: 外部 API (Tushare/Binance/PM/RSS/Tavily/DeepSeek) 只允许在 SharedSignals collector 层调用；未启用的数据源不得被 MarketGraph/TradingAgent 绕过 SharedSignals 直接调用
-- 输出: SQLite + DuckDB + CSV + NDJSON/只读服务接口 → MarketGraph 和 TradingAgent 按契约读取
+- 输出: HTTP API + SQLite/DuckDB read model → MarketGraph 和 TradingAgent 按契约读取。CSV/NDJSON 不作为跨系统生产消费入口。
+
+## 入库与输出硬规则（2026-07-08）
+
+- 采集成功的定义是 provider rows 经过校验后直接写入 SQLite read model；非空采集结果写入 0 行必须标记 failed，并进入 watchdog/系统告警。
+- P0-P6 Tushare、CNFutures、Crypto、PM 等现役 collector 不得提供 CSV-only 成功路径，也不得通过 `--no-sqlite-bridge` 一类开关绕过 read model 入库。
+- `collectors/tushare/config.yaml` 中启用的接口必须同时具备 read model 表映射、HTTP API 白名单、采集频率声明和限流保护；新增接口必须补测试，证明“能采、能入库、能通过 API 查到”。
+- 生产定时任务必须覆盖 5 分钟交易供数、日频研究供数、健康巡查、能力扫描和 watchdog；修改 cron 前后必须运行能力/频率闭环测试。
+- SharedSignals 不读取 TradingAgent/MarketGraph 的候选、持仓、输出或旧缓存来决定采集范围；短周期优先股票只能来自本仓库 read model 中的资产池或显式环境变量。
 
 ## 巡查自愈系统 (patrol + heal)
 
@@ -50,7 +58,7 @@
 输出: JSON {checks: [{name, status, value, threshold, alert}], overall_score}
 
 ### heal.py — 自愈动作
-- source down → 切换备用源(source_failover.py)
+- source stale → 记录 stale collector 告警，要求重跑对应 direct-DB collector；不做旧 RSS/source failover
 - 数据缺失 → 触发补采(重跑marketdata_db --ingest)
 - staging积压 → 强制运行runtime_bridge --apply
 - SQLite锁 → 等待5s重试, 清理WAL(PRAGMA wal_checkpoint)
@@ -64,9 +72,6 @@
 - patterns.jsonl: 发现的模式(周复盘迭代规则)
 - failover_history.jsonl: 源切换历史
 
-### source_failover.py — 源故障切换
-预配置FAILOVER_MAP: 主源↔备用源映射, 覆盖A股/港股/美股/Crypto/PM/全球新闻/宏观等源。
-
 ## 文件结构
 - collectors/ — 各数据源采集器
 - storage/ — schema文档 (当前SQLite, 计划DuckDB)
@@ -76,7 +81,6 @@
 - staging/ — 本层staging缓冲
 - patrol.py — 10min巡查 (6维度健康检查)
 - heal.py — 自愈引擎 (failover/backfill/merge/checkpoint/cleanup/drift)
-- source_failover.py — 源故障切换映射
 - logs/ — 紧急告警 (emergency_alerts.log)
 
 ## Projects 工作区同步补充
@@ -85,7 +89,7 @@
 
 - 仓库地址、remote 名称和默认分支以本仓库内 `git remote -v`、`git branch --show-current` 和项目文档为准，不从其它项目继承。
 - 开发前检查 `git status -sb`、`git remote -v`、当前分支和是否落后远端；发现采集、存储、桥接或其它 agent 的未提交改动时，先确认来源，不得覆盖。
-- 涉及采集源、SQLite/CSV/NDJSON staging、schema、API contract、bridge、patrol/heal、failover 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md`、`LOG.md` 或 `docs/` 下对应说明。
+- 涉及采集源、SQLite read model、schema、API contract、patrol/heal 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md`、`LOG.md` 或 `docs/` 下对应说明。
 - 提交时只暂存本次审计过的文件；数据库、缓存、日志、staging、密钥和本机运行产物默认不提交，除非项目文档明确要求并已审计。
 - 从旧 `Desktop/Works/02.AI_Projects` 或其它 iCloud 管理目录迁移时，优先使用当前 Projects 下真实 clone；旧目录只作为对照和补漏来源。
 
@@ -100,9 +104,9 @@
 ## 2026-07-04 SharedSignals-only 数据边界
 
 - SharedSignals 是三系统唯一外部数据采集入口；MarketGraph 和 TradingAgent 不得重新启用独立 Tushare/RSS/PM/Crypto provider 采集任务。
-- `reader.py` 和 HTTP API 必须优先读取 `/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` 与本仓库 DuckDB/CSV 产物；无缓存、无映射或无数据时返回 degraded，不现场调用 Tushare。
+- `reader.py` 和 HTTP API 必须读取 `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` 与本仓库 DuckDB mirror；无缓存、无映射或无数据时返回 degraded，不现场调用 Tushare，也不回退 CSV/NDJSON/旧目录或其它系统目录。
 - 生产 API 默认绑定 `127.0.0.1:8082`；本机消费者可通过 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 访问，外部账号接入必须配置 token/JWT 和账号并发限制。
 - `/health` 是轻量存活与汇总健康探针，默认读取 cron 与 watchdog/SLA 缓存，不得在请求内跑 reader functions、大库 freshness 扫描、compile 或架构审计；如需深度检查，只能显式设置 `SHAREDSIGNALS_HEALTH_DEEP_CHECKS=1` 或走定时 `health_sla` / patrol / watchdog 产物。
 - Tushare 无积分消耗但有并发/频率约束；P0 交易时段每 5 分钟采集，P1-P6 按交易/研究需要分层调度，所有结果先落库再供 MarketGraph/TradingAgent 读取。
 - DuckDB/SQLite 同步和 watchdog 必须以 `marketgraph` 运行用户执行；若手工维护导致数据或日志文件变成 root 属主，应恢复为 `marketgraph:marketgraph` 后再验证 cron。
-- RSS/RSSHub 边界：RSS 采集代码和数据消费契约归 SharedSignals；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，旧 RSSHub/RSSCollector 顶层运行资产已退出现役层。`/opt/investment/MarketGraphRuntime/rss_collector.db` 仅作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector、staging/bridge、健康检查和回滚方案。
+- RSS/RSSHub 边界：RSS 采集代码和旧故障切换入口已退出现役层；恢复事件采集前必须重新接入 SharedSignals collector、直接入库、健康检查和回滚方案，不得恢复旧 RSS collector、旧文件 staging 或旧跨系统运行层入口。

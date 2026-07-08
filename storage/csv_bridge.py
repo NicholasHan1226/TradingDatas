@@ -17,17 +17,14 @@ from typing import Any
 
 from storage.schema_contract import get_table, table_primary_keys
 from env_bootstrap import env_int
+from runtime_paths import marketdata_sqlite_path
 
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
 MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_CSV_BRIDGE_MAX_TRANSACTION_ROWS", 0, min_value=0)
 DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES", 3, min_value=1)
 
-DEFAULT_SQLITE_PATH = (
-    Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
-    / "read_model"
-    / "marketdata.sqlite"
-)
+DEFAULT_SQLITE_PATH = marketdata_sqlite_path()
 
 
 def _bridge_lock_path(db_path: Path) -> Path:
@@ -127,7 +124,6 @@ CSV_TO_TABLE_MAP = {
     "stk_limit": "market_factors",
     "stk_mins": "market_bars_intraday",
     "rt_min": "market_bars_intraday",
-    "rt_k": "market_bars_intraday",
     "rt_fut_min": "market_bars_intraday",
     "stk_holdernumber": "market_assets",
     "stk_holdertrade": "market_assets",
@@ -173,7 +169,6 @@ def _market_for(api_name, symbol):
         "monthly",
         "stk_mins",
         "rt_min",
-        "rt_k",
         "repo_daily",
         "concept",
         "concept_detail",
@@ -348,7 +343,7 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
                 derived_columns.append("trade_date")
-        if api_name in ("weekly", "monthly", "stk_mins", "rt_min", "rt_k", "rt_fut_min") and "interval" in target_columns:
+        if api_name in ("weekly", "monthly", "stk_mins", "rt_min", "rt_fut_min") and "interval" in target_columns:
             derived_columns.append("interval")
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
@@ -455,7 +450,7 @@ def _canonical_row(table, row, api_name, csv_path):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
         if api_name in ("weekly", "monthly"):
             row["interval"] = api_name
-        elif api_name in ("stk_mins", "rt_min", "rt_k", "rt_fut_min"):
+        elif api_name in ("stk_mins", "rt_min", "rt_fut_min"):
             row["interval"] = "5min"
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
@@ -778,6 +773,107 @@ def _ingest_csv_to_sqlite_once(db_path, table, csv_path, encoding="utf-8-sig", m
     return rows_written
 
 
+def _ingest_rows_to_sqlite_once(
+    db_path,
+    table,
+    api_name,
+    rows,
+    *,
+    source_name: str,
+    max_transaction_rows: int | None = None,
+):
+    """Ingest provider rows directly into an existing SQLite read-model table."""
+
+    db_path = Path(db_path)
+    if not db_path.exists():
+        raise FileNotFoundError(f"sqlite db not found: {db_path}")
+
+    clean_rows = [dict(row) for row in (rows or []) if isinstance(row, dict)]
+    if not clean_rows:
+        return 0
+
+    source_path = Path(str(source_name or f"{api_name}_direct"))
+    rows_written = 0
+    transaction_open = False
+    transaction_rows = 0
+    max_rows_per_transaction = MAX_TRANSACTION_ROWS if max_transaction_rows is None else int(max_transaction_rows)
+    conn = sqlite3.connect(str(db_path), timeout=30)
+    try:
+        _prepare_sqlite_connection(conn)
+
+        target_columns = _table_columns(conn, table)
+        if not target_columns:
+            raise RuntimeError(f"sqlite table does not exist: {table}")
+
+        row_columns: list[str] = []
+        seen_columns: set[str] = set()
+        for row in clean_rows:
+            for col in row.keys():
+                if col not in seen_columns:
+                    row_columns.append(str(col))
+                    seen_columns.add(str(col))
+        if table == "market_factors":
+            columns = [col for col in _FACTOR_INSERT_COLUMNS if col in target_columns]
+        else:
+            columns = _columns_for_insert(table, row_columns, target_columns, str(api_name))
+        if not columns:
+            raise RuntimeError(f"no matching sqlite columns for table={table} api_name={api_name}")
+
+        pk_columns = [
+            col
+            for col in table_primary_keys().get(table, [])
+            if col in target_columns
+        ]
+        for pk_col in pk_columns:
+            if pk_col not in columns:
+                columns.append(pk_col)
+        required_columns = _required_columns(table, target_columns)
+        sql = _insert_sql(table, columns, pk_columns)
+        chunk: list[list[Any]] = []
+        conn.execute("BEGIN IMMEDIATE")
+        transaction_open = True
+
+        for row_number, row in enumerate(clean_rows, start=1):
+            canonical_rows = (
+                _factor_rows(row, str(api_name), source_path)
+                if table == "market_factors"
+                else [_canonical_row(table, row, str(api_name), source_path)]
+            )
+            for canonical_row in canonical_rows:
+                if table == "market_bars_intraday" and api_name == "rt_fut_min":
+                    canonical_row = _enrich_futures_intraday_from_assets(conn, canonical_row)
+                values = _row_values(canonical_row, columns, required_columns, source_path, row_number)
+                if values is None:
+                    continue
+                chunk.append(values)
+                if len(chunk) >= CHUNK_SIZE:
+                    chunk_written = _flush_chunk(conn, sql, chunk)
+                    rows_written += chunk_written
+                    transaction_rows += len(chunk)
+                    chunk.clear()
+                    if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
+                        conn.commit()
+                        transaction_open = False
+                        conn.execute("BEGIN IMMEDIATE")
+                        transaction_open = True
+                        transaction_rows = 0
+
+        if chunk:
+            chunk_written = _flush_chunk(conn, sql, chunk)
+            rows_written += chunk_written
+            transaction_rows += len(chunk)
+        conn.commit()
+        transaction_open = False
+    except Exception:
+        if transaction_open:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return rows_written
+
+
 def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
     last_error: Exception | None = None
     for attempt in range(1, DB_BUSY_RETRIES + 1):
@@ -816,6 +912,39 @@ def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_tra
                     additional_table,
                     csv_path,
                     encoding=encoding,
+                    max_transaction_rows=max_transaction_rows,
+                )
+        return rows_written
+
+
+def ingest_rows_to_sqlite(
+    db_path,
+    table,
+    api_name,
+    rows,
+    *,
+    source_name: str | None = None,
+    max_transaction_rows: int | None = None,
+):
+    db_path_obj = Path(db_path)
+    source = source_name or f"{api_name}_direct"
+    with _sqlite_bridge_lock(db_path_obj):
+        rows_written = _ingest_rows_to_sqlite_once(
+            db_path_obj,
+            table,
+            api_name,
+            rows,
+            source_name=source,
+            max_transaction_rows=max_transaction_rows,
+        )
+        if CSV_TO_TABLE_MAP.get(api_name) == table:
+            for additional_table in CSV_ADDITIONAL_TABLES.get(api_name, ()):
+                rows_written += _ingest_rows_to_sqlite_once(
+                    db_path_obj,
+                    additional_table,
+                    api_name,
+                    rows,
+                    source_name=source,
                     max_transaction_rows=max_transaction_rows,
                 )
         return rows_written

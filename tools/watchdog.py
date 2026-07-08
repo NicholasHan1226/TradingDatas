@@ -23,9 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import marketdata_sqlite_path, runtime_root
 
 ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parents[1]))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
+RUNTIME_ROOT = runtime_root()
 LOG_DIR = ROOT / "logs"
 WATCHDOG_LOG = Path(os.environ.get("WATCHDOG_LOG", LOG_DIR / "watchdog.jsonl"))
 WATCHDOG_STATE = Path(os.environ.get("WATCHDOG_STATE", LOG_DIR / "watchdog_state.json"))
@@ -39,7 +40,7 @@ DEFAULT_API_URL = os.environ.get(
     f"http://127.0.0.1:{os.environ.get('SHAREDSIGNALS_API_PORT', '8082')}/health",
 )
 DEFAULT_DB_PATH = Path(
-    os.environ.get("WATCHDOG_DB_PATH", RUNTIME_ROOT / "read_model" / "marketdata.sqlite")
+    os.environ.get("WATCHDOG_DB_PATH", marketdata_sqlite_path())
 )
 
 WEIGHTS = {
@@ -63,8 +64,8 @@ COLLECTOR_FAILURE_PATTERNS = (
     ("ModuleNotFoundError", r"\bModuleNotFoundError\b"),
     ("ERROR", r"\bERROR\b"),
     ("FAILED", r"\bFAILED\b"),
-    ("SQLITE_BRIDGE_ERRORS", r"\bSQLITE_BRIDGE_ERRORS\b"),
-    ("bridge_failures", r"\bbridge_failures=([1-9][0-9]*)\b"),
+    ("SQLITE_ERRORS", r"\bSQLITE_ERRORS\b"),
+    ("sqlite_failures", r"\bsqlite_failures=([1-9][0-9]*)\b"),
     ("database is locked", r"database is locked"),
 )
 COLLECTOR_FAILURE_RE = re.compile(

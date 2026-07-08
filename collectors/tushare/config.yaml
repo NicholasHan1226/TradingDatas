@@ -115,12 +115,15 @@ priorities:
   - api_name: repurchase
     per_stock: true
     fields: ts_code,ann_date,vol,amount,high_limit
+    frequency: daily
   - api_name: pledge_stat
     per_stock: true
     fields: ts_code,end_date,pledge_amount,pledge_ratio
+    frequency: daily
   - api_name: pledge_detail
     per_stock: true
     fields: ts_code,holder_name,pledge_amount
+    frequency: daily
   P2_financial_daily:
   - api_name: fina_indicator
     frequency: daily
@@ -173,15 +176,19 @@ priorities:
   - api_name: top10_holders
     per_stock: true
     fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
+    frequency: daily
   - api_name: top10_floatholders
     per_stock: true
     fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
+    frequency: daily
   - api_name: stk_holdertrade
     per_stock: true
     fields: ts_code,ann_date,holder_name,in_de,change_vol
+    frequency: daily
   - api_name: top_inst
     per_stock: true
     fields: ts_code,ann_date,inst_name,hold_amount,hold_ratio
+    frequency: daily
   P3_reference_daily:
   - api_name: stock_basic
     frequency: daily
@@ -236,15 +243,19 @@ priorities:
   - api_name: share_float
     per_stock: true
     fields: ts_code,ann_date,float_share,float_ratio
+    frequency: daily
   - api_name: stk_surv
     per_stock: false
     fields: ts_code,trade_date,pe,pb,roe,total_mv,circ_mv
+    frequency: daily
   - api_name: trade_cal
     per_stock: false
     fields: cal_date,is_open,pretrade_date
+    frequency: daily
   - api_name: stk_managers
     per_stock: true
     fields: ts_code,name,gender,position,edu
+    frequency: daily
   P4_macro_daily:
   - api_name: cn_cpi
     frequency: daily
@@ -340,11 +351,14 @@ priorities:
   - api_name: index_global
     per_stock: false
     fields: ts_code,trade_date,open,close,high,low,pct_chg
+    frequency: daily
   - api_name: index_dailybasic
     per_stock: false
     fields: ts_code,trade_date,pe,pe_ttm,pb,total_mv,turnover_rate
+    frequency: daily
   - api_name: repo_daily
     per_stock: false
+    frequency: daily
   P5_hk_us_daily:
   - api_name: hk_daily
     frequency: daily

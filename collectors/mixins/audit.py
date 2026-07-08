@@ -8,28 +8,24 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
+
+from runtime_paths import marketdata_sqlite_path
 
 logger = logging.getLogger(__name__)
 
 
 class SQLiteAuditMixin:
-    """Writes ingest run audit records to SQLite and CSV staging."""
+    """Writes ingest run audit records to SQLite."""
 
     db_path: str = ""
-    csv_audit_path: str = ""
 
     def _ensure_audit_paths(self) -> None:
         if not self.db_path:
-            root = os.environ.get("SHAREDSIGNALS_ROOT", "")
-            self.db_path = os.path.join(root, "data", "marketdata.sqlite") if root else ""
-        if not self.csv_audit_path:
-            root = os.environ.get("SHAREDSIGNALS_ROOT", "")
-            self.csv_audit_path = os.path.join(root, "data", "intake", "collection_runs.csv") if root else ""
+            self.db_path = str(marketdata_sqlite_path())
 
     def _write_audit(self, run_result: dict[str, Any]) -> bool:
-        """Write audit record to market_ingest_runs table and CSV staging."""
+        """Write audit record to market_ingest_runs."""
         self._ensure_audit_paths()
         success = False
         if not self.db_path:
@@ -61,26 +57,6 @@ class SQLiteAuditMixin:
                 success = True
             except Exception:
                 logger.exception("audit sqlite write failed")
-
-        if self.csv_audit_path:
-            try:
-                Path(self.csv_audit_path).parent.mkdir(parents=True, exist_ok=True)
-                import csv
-                write_header = not os.path.exists(self.csv_audit_path)
-                with open(self.csv_audit_path, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    if write_header:
-                        writer.writerow(["run_id", "started_at", "finished_at", "status", "source",
-                                         "rows_read", "rows_written", "notes"])
-                    writer.writerow([
-                        run_result["run_id"], run_result["started_at"], run_result["finished_at"],
-                        run_result["status"], run_result["source"],
-                        run_result.get("rows_read", 0), run_result.get("rows_written", 0),
-                        json.dumps(run_result.get("notes", {}), ensure_ascii=False),
-                    ])
-                success = True
-            except Exception:
-                logger.exception("audit csv write failed")
         return success
 
     @staticmethod

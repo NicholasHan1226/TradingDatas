@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """SharedSignals native Tushare collector — generic collector class.
 
-Uses the Ashare Tushare wrapper (_call) to fetch ANY Tushare API and persist
-results as date-partitioned CSV under data/tushare/.
+Uses the Tushare wrapper (_call) to fetch provider rows. Production persistence
+is owned by collectors/tushare/sync_daily.py, which writes rows directly into
+the SQLite read model.
 
 Import chain:
   collect() -> env bootstrap -> tushare_common (token) -> tushare_api (_call)
@@ -10,34 +11,18 @@ Import chain:
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import logging
-import os
 import re
-from datetime import datetime, timezone
-from pathlib import Path
 import time
 from threading import Lock
 from typing import Any
-
-_BASE_DIR = Path(__file__).resolve().parents[2]  # SharedSignals root
 
 from ..base import BaseCollector  # noqa: E402
 
 logger = logging.getLogger(__name__)
 _TUSHARE_CALL: Any | None = None
 _TUSHARE_CALL_LOCK = Lock()
-
-
-class SaveError(Exception):
-    """Raised when non-empty collected rows cannot be persisted."""
-
-    def __init__(self, api_name: str, path: Path, reason: str):
-        self.api_name = api_name
-        self.path = path
-        self.reason = reason
-        super().__init__(f"save failed for {api_name} at {path}: {reason}")
 
 
 def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> list[dict[str, Any]]:
@@ -60,7 +45,7 @@ def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> li
 # ---------------------------------------------------------------------------
 
 class TushareCollector(BaseCollector):
-    """Generic Tushare data collector backed by the Ashare API wrapper.
+    """Generic Tushare data collector backed by the SharedSignals Tushare wrapper.
 
     Includes API rate limiter for Tushare free tier (200 calls/min).
 
@@ -70,7 +55,6 @@ class TushareCollector(BaseCollector):
         rows = collector.collect("daily", {"ts_code": "000001.SZ",
                                            "start_date": "20250623",
                                            "end_date": "20250630"})
-        collector.save("daily", rows, "20250630", filename="000001.SZ.csv")
     """
 
     # Rate limiter state (class-level)
@@ -79,18 +63,12 @@ class TushareCollector(BaseCollector):
     _rate_calls: dict[str, list[float]] = {}  # api_name -> list of timestamps
     _rate_lock = Lock()
 
-    # Data root (class-level — set from module _BASE_DIR)
-    DATA_ROOT = _BASE_DIR / "data" / "tushare"
-
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.last_collect_failed = False
         self.last_collect_error = ""
         self.collect_call_count = 0
         self.collect_failure_count = 0
-        self.last_save_failed = False
-        self.last_save_error = ""
-        self.save_failure_count = 0
 
     @classmethod
     def _rate_limit(cls, api_name: str):
@@ -315,80 +293,18 @@ class TushareCollector(BaseCollector):
             return []
 
     # ------------------------------------------------------------------
-    # save
-    # ------------------------------------------------------------------
-
-    def save(
-        self,
-        api_name: str,
-        rows: list[dict[str, Any]],
-        trade_date: str,
-        filename: str | None = None,
-    ) -> Path | None:
-        """Persist collected rows as a date-partitioned CSV file.
-
-        Directory layout::
-
-            data/tushare/{api_name}/{trade_date}/{filename}.csv
-
-        Args:
-            api_name:   Tushare API name.
-            rows:       Collected row dicts.
-            trade_date: Trade date string (YYYYMMDD) used for partitioning.
-            filename:   Output CSV filename (without extension).  Defaults to
-                        ``{api_name}_{trade_date}.csv``.
-
-        Returns:
-            Path to the written CSV file, or None if rows is empty.
-        """
-        self.last_save_failed = False
-        self.last_save_error = ""
-        if not rows:
-            logger.info("save %s/%s: no rows, skipping", api_name, trade_date)
-            return None
-
-        dir_path = self.DATA_ROOT / api_name / trade_date
-        fname = (filename or f"{api_name}_{trade_date}") + ".csv"
-        path = dir_path / fname
-
-        try:
-            dir_path.mkdir(parents=True, exist_ok=True)
-            import tempfile
-            fields = list(rows[0].keys())
-            # Write to temp file then atomically rename to avoid truncation races
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                suffix=".csv", prefix=".tmp_", dir=str(dir_path)
-            )
-            try:
-                with os.fdopen(tmp_fd, "w", encoding="utf-8-sig", newline="") as fh:
-                    writer = csv.DictWriter(fh, fieldnames=fields)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                os.replace(tmp_path, str(path))
-            except Exception:
-                # Clean up temp file on failure
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
-            logger.info("save %s → %s (%d rows)", api_name, path, len(rows))
-            return path
-        except Exception as exc:
-            self.last_save_failed = True
-            self.last_save_error = str(exc)
-            self.save_failure_count += 1
-            logger.exception("save %s failed", api_name)
-            raise SaveError(api_name, path, str(exc)) from exc
-
-    # ------------------------------------------------------------------
-    # BaseCollector-compatible interface (orchestrator calls these)
+    # BaseCollector-compatible metadata
     # ------------------------------------------------------------------
 
     name = "tushare"
     provider = "tushare"
     market = "Ashare"
     target_tables = ["market_bars_daily", "market_events"]
+
+    def save(self, batch: Any, **kwargs: Any) -> Any:
+        """Block the retired CSV persistence lifecycle."""
+        del batch, kwargs
+        raise RuntimeError("TushareCollector.save is retired; use sync_daily direct SQLite ingestion")
 
     def health_check(self) -> dict[str, Any]:
         """Check if Tushare API wrapper is importable and functional."""
@@ -401,130 +317,16 @@ class TushareCollector(BaseCollector):
         except ImportError as exc:
             return {"status": "unavailable", "message": str(exc)}
 
-    def plan(self, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        """Generate collection tasks by flattening priority groups from config.
-
-        Resolves {ts_code} placeholders from stock_master.csv so that per-stock
-        Tushare collectors produce real API calls instead of silent no-ops.
-        """
-        import re
-        tasks: list[dict[str, Any]] = []
-
-        # Collect all API entries across priority groups
-        for key, value in self.config.items():
-            if key == "priorities":
-                for _prio_name, prio_tasks in value.items():
-                    if isinstance(prio_tasks, list):
-                        tasks.extend(prio_tasks)
-            elif isinstance(value, list):
-                tasks.extend(value)
-
-        # Resolve {ts_code} placeholders against stock_master.csv
-        resolved: list[dict[str, Any]] = []
-        _placeholder_re = re.compile(r"\{ts_code\}")
-        _stock_codes: list[str] | None = None
-
-        for task in tasks:
-            raw = str(task)
-            if "{ts_code}" not in raw:
-                resolved.append(task)
-                continue
-            # Lazy-load stock codes from reference CSV
-            if _stock_codes is None:
-                _stock_codes = self._load_stock_codes()
-            if not _stock_codes:
-                logger.warning("plan: {ts_code} placeholder found but no stock codes loaded — skipping %s", task.get("api_name", task))
-                continue
-            for code in _stock_codes:
-                import json
-                # Use json round-trip for safe placeholder substitution
-                raw_resolved = json.loads(json.dumps(task).replace("{ts_code}", code))
-                resolved.append(raw_resolved)
-
-        return resolved
-
-    def _load_stock_codes(self) -> list[str]:
-        """Load ts_code list from stock_master.csv reference file."""
-        import csv
-        master = self.REFERENCE_ROOT / "stock_master.csv"
-        if not master.exists():
-            logger.warning("_load_stock_codes: %s not found", master)
-            return []
-        try:
-            with open(master, "r", encoding="utf-8-sig", newline="") as f:
-                rows = list(csv.DictReader(f))
-            codes = [r["ts_code"] for r in rows if r.get("ts_code")]
-            logger.info("_load_stock_codes: loaded %d codes from %s", len(codes), master)
-            return codes
-        except Exception:
-            logger.exception("_load_stock_codes: failed to read %s", master)
-            return []
-
     def run(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Orchestrator-compatible run() — executes full lifecycle via mixin hooks."""
-        run_id = self._make_run_id()
-        started_at = self._utc_now()
+        """Retired legacy lifecycle.
 
-        result: dict[str, Any] = {
-            "run_id": run_id, "collector": self.name, "started_at": started_at,
-            "finished_at": "", "status": "running", "rows_read": 0,
-            "rows_written": 0, "tables_written": [], "error": "", "notes": {},
-        }
-
-        try:
-            health = self.health_check()
-            if health.get("status") == "unavailable":
-                result["status"] = "skipped"
-                result["error"] = health.get("message", "collector unavailable")
-                return self._finish(result)
-
-            tasks = self.plan(context)
-            if not tasks:
-                result["status"] = "success"
-                result["notes"]["message"] = "no tasks planned"
-                return self._finish(result)
-
-            for task in tasks:
-                try:
-                    rows = self.collect(
-                        task["api_name"], task.get("params", {}), task.get("fields"),
-                    )
-                    if not rows:
-                        continue
-                    result["rows_read"] += len(rows)
-
-                    validated = self.validate_batch(task["api_name"], rows)
-                    deduped = self.deduplicate_batch(task["api_name"], validated)
-
-                    trade_date = task.get("trade_date") or datetime.now(timezone.utc).strftime("%Y%m%d")
-                    save_path = self.save(task["api_name"], deduped, trade_date)
-                    if save_path:
-                        result["rows_written"] += len(deduped)
-                        result["tables_written"].extend(self.target_tables)
-                except Exception:
-                    logger.exception("task failed: %s", task)
-                    result["notes"].setdefault("task_errors", []).append(str(task))
-
-            result["status"] = "success" if result["rows_written"] > 0 else "partial_success"
-        except Exception as exc:
-            logger.exception("collector run failed: %s", self.name)
-            result["status"] = "failed"
-            result["error"] = str(exc)
-
-        try:
-            self._write_audit({
-                "run_id": run_id,
-                "started_at": started_at,
-                "finished_at": self._utc_now(),
-                "status": result["status"],
-                "source": f"{self.name}:{self.provider}",
-                "rows_read": result["rows_read"],
-                "rows_written": result["rows_written"],
-                "notes": {"config_hash": str(hash(str(self.config))), "error": result["error"]},
-            })
-        except Exception:
-            logger.exception("audit write failed for %s", self.name)
-        return self._finish(result)
+        Production Tushare jobs must use collectors/tushare/sync_daily.py so
+        provider rows are planned from the SQLite read model and written back
+        directly to SQLite. Keeping a CSV-writing lifecycle here would reopen a
+        stale data path, so direct collector.run() is intentionally blocked.
+        """
+        del context
+        raise RuntimeError("TushareCollector.run is retired; use collectors/tushare/sync_daily.py")
 
 
 # ---------------------------------------------------------------------------

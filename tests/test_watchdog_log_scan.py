@@ -13,10 +13,10 @@ def test_collector_status_detects_uppercase_error_and_db_lock(tmp_path: Path, mo
     log_file = log_dir / "collectors.log"
     log_file.write_text(
         "[2026-07-04T18:00:00+08:00] START collectors tiers=P6_other_daily\n"
-        "2026-07-04 18:00:43,531 WARNING SQLITE_BRIDGE_ERRORS: "
+        "2026-07-04 18:00:43,531 WARNING SQLITE_ERRORS: "
         "[\'fund_basic:/tmp/fund_basic.csv:database is locked\']\n"
         "2026-07-04 18:00:43,531 ERROR Tushare sync failed threshold: "
-        "api_failures=0 save_failures=0 bridge_failures=1\n",
+        "api_failures=0 sqlite_failures=1\n",
         encoding="utf-8",
     )
     now = time.time()
@@ -40,7 +40,7 @@ def test_collector_status_ignores_zero_error_counters_after_ok(tmp_path: Path, m
     log_file.write_text(
         "[2026-07-04T18:30:00+08:00] START collectors tiers=P4_macro_daily\n"
         "2026-07-04 18:30:38,570 INFO [P4_macro_daily] COMPLETE: "
-        "17 APIs, api_failures=0/17, save_failures=0, bridge_errors=0, 10.9s total\n"
+        "17 APIs, api_failures=0/17, sqlite_errors=0, 10.9s total\n"
         "[2026-07-04T18:30:38+08:00] OK collectors\n",
         encoding="utf-8",
     )

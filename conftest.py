@@ -132,13 +132,6 @@ def tmp_csv_dir() -> Path:
                      "url": "https://example.com/earn", "source": "rss",
                      "status": "verified", "collected_at": NOW.isoformat()}])
 
-        # sentiment_signals.csv
-        _write_csv(intake / "sentiment_signals.csv",
-                   ["signal_id", "title", "sentiment", "source", "collected_at"],
-                   [{"signal_id": "s001", "title": "Bullish crypto",
-                     "sentiment": "positive", "source": "rss",
-                     "collected_at": NOW.isoformat()}])
-
         # collection_runs.csv
         _write_csv(intake / "collection_runs.csv",
                    ["run_id", "started_at", "finished_at", "status", "rows_read", "rows_written"],

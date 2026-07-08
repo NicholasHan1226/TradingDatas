@@ -17,7 +17,6 @@ as degraded empty wrappers instead of raising.
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sqlite3
@@ -36,6 +35,7 @@ except ImportError:
 
 import warnings as _warnings
 from env_bootstrap import env_float, env_int
+from runtime_paths import marketdata_sqlite_path, runtime_root, sharedsignals_root
 
 
 class _LazyPath:
@@ -109,29 +109,10 @@ def _freshness_threshold(source_id):
     return float(cfg["fallback_default_hours"])
 
 INVESTMENT_ROOT = _LazyPath(lambda: Path(os.environ.get("INVESTMENT_ROOT") or "/opt/investment"))
-SHAREDSIGNALS_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_ROOT") or INVESTMENT_ROOT.get() / "SharedSignals"))
-MARKETGRAPH_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_ROOT") or INVESTMENT_ROOT.get() / "MarketGraph"))
-RUNTIME_ROOT = _LazyPath(lambda: Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT") or INVESTMENT_ROOT.get() / "MarketGraphRuntime"))
-ASHARE_ROOT = _LazyPath(lambda: Path(os.environ.get("ASHARE_ROOT") or SHAREDSIGNALS_ROOT.get() / "collectors" / "tushare"))
-SQLITE_PATH = _LazyPath(lambda: Path(os.environ.get("MARKETDATA_SQLITE") or RUNTIME_ROOT.get() / "read_model" / "marketdata.sqlite"))
-INTAKE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_INTAKE_ROOT") or SHAREDSIGNALS_ROOT.get() / "data" / "intake"))
-SENTIMENT_SIGNALS_PATH = _LazyPath(lambda: Path(os.environ.get("SENTIMENT_SIGNALS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "sentiment_signals.csv"))
+SHAREDSIGNALS_ROOT = _LazyPath(sharedsignals_root)
+RUNTIME_ROOT = _LazyPath(runtime_root)
+SQLITE_PATH = _LazyPath(marketdata_sqlite_path)
 REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_ROOT") or SHAREDSIGNALS_ROOT.get() / "reference"))
-# TODO: build native Tushare macro collector; for now symlink/copy macro_factors.csv from MG
-MACRO_FACTORS_PATH = _LazyPath(lambda: Path(os.environ.get("MACRO_FACTORS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "macro_factors.csv"))
-REALTIME_5M_ROOT = _LazyPath(lambda: Path(os.environ.get("REALTIME_5M_ROOT") or RUNTIME_ROOT.get() / "staging" / "tushare_rt_min_5m"))
-STOCK_INDUSTRY_MAP_PATH = _LazyPath(lambda: Path(os.environ.get("STOCK_INDUSTRY_MAP_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "stock_industry_map.csv"))
-EVENT_SIGNAL_ASSOC_PATH = _LazyPath(lambda: Path(os.environ.get("EVENT_SIGNAL_ASSOC_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "event_signal_associations.csv"))
-IMPACT_RELATIONS_PATH = _LazyPath(lambda: Path(os.environ.get("IMPACT_RELATIONS_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "impact_relations.csv"))
-TARGET_STOCK_MAP_PATH = _LazyPath(lambda: Path(os.environ.get("TARGET_STOCK_MAP_PATH") or SHAREDSIGNALS_ROOT.get() / "data" / "association" / "target_stock_map.csv"))
-
-LEGACY_RECOMMENDATIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "recommendations.csv"  # LEGACY: migrate to SS-native
-LEGACY_REVIEWS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "reviews.csv"  # LEGACY
-LEGACY_DIRECTION_HITS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "direction_hit_reviews.csv"  # LEGACY
-LEGACY_SHADOW_TRADES = SHAREDSIGNALS_ROOT / "data" / "legacy" / "shadow_sim_trades.csv"  # LEGACY
-LEGACY_SHADOW_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "latest_shadow_positions.csv"  # LEGACY
-LEGACY_PAPER_POSITIONS = SHAREDSIGNALS_ROOT / "data" / "legacy" / "paper_positions.csv"  # LEGACY
-LEGACY_SIM_EXECUTION_LOG = SHAREDSIGNALS_ROOT / "data" / "legacy" / "simulated_execution_log.jsonl"  # LEGACY
 
 # -- Cache invalidation --------------------------------------------------------
 
@@ -291,13 +272,6 @@ def _watched_paths() -> list[Path]:
     """
     return [
         *_sqlite_watch_paths(SQLITE_PATH),
-        _resolved_path(INTAKE_ROOT / "sentiment_signals.csv"),
-        _resolved_path(SENTIMENT_SIGNALS_PATH),
-        _resolved_path(MACRO_FACTORS_PATH),
-        _resolved_path(STOCK_INDUSTRY_MAP_PATH),
-        _resolved_path(EVENT_SIGNAL_ASSOC_PATH),
-        _resolved_path(IMPACT_RELATIONS_PATH),
-        _resolved_path(TARGET_STOCK_MAP_PATH),
     ]
 
 
@@ -309,13 +283,6 @@ def _files_changed(last_reset: float) -> bool:
     for path in _watched_paths():
         try:
             if path.exists() and path.stat().st_mtime > last_reset:
-                return True
-        except OSError:
-            continue
-    realtime_root = _resolved_path(REALTIME_5M_ROOT)
-    for p in realtime_root.glob("**/*.csv") if realtime_root.exists() else []:
-        try:
-            if p.stat().st_mtime > last_reset:
                 return True
         except OSError:
             continue
@@ -550,86 +517,6 @@ def _safe_public(source_id: str, lineage: dict[str, Any], producer: Callable[[in
         return _clone_cached(producer(generation_snapshot))
     except Exception as exc:  # pragma: no cover - final public boundary
         return _degraded_empty(source_id, f"reader failed: {exc}", lineage=lineage)
-
-
-def _read_csv(path: Path) -> list[dict[str, Any]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as fh:
-        return [_clean_row(row) for row in csv.DictReader(fh)]
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            item = json.loads(line)
-            if isinstance(item, dict):
-                rows.append(_clean_row(item))
-    return rows
-
-
-def _legacy_wrapped_rows(rows: list[dict[str, Any]], *, source_id: str, source_tier: str, collected_at: Any, lineage: dict[str, Any], stale_after_hours: float = 24.0) -> list[dict[str, Any]]:
-    return _rows_to_wrappers(rows, source_id=source_id, source_tier=source_tier, collected_at=collected_at, lineage=lineage, stale_after_hours=stale_after_hours)
-
-
-def _legacy_market_dataset(dataset: str, **kwargs: Any) -> list[dict[str, Any]] | None:
-    name = str(dataset or "").strip()
-    if name == "market_factors":
-        symbols = [str(s) for s in kwargs.get("symbols", []) if s] or [str(kwargs.get("symbol") or "")]
-        symbols = [s for s in symbols if s]
-        for symbol in symbols:
-            rows = get_fundamentals(symbol)
-            if rows and not rows[0].get("degraded"):
-                return rows
-        return _degraded_empty("sqlite:market_factors", "no rows matched", lineage={"reader": "legacy_market_dataset", "dataset": name, "filters": kwargs})
-
-    if name == "market_bars_daily":
-        symbols = [str(s) for s in kwargs.get("symbols", []) if s] or [str(kwargs.get("symbol") or "")]
-        symbols = [s for s in symbols if s]
-        limit = int(kwargs.get("limit", 60))
-        rows_by_symbol, degraded = _sqlite_rows_by_symbols("market_bars_daily", symbols, limit)
-        if degraded is not None:
-            return degraded
-        for symbol in symbols:
-            rows = rows_by_symbol.get(symbol, [])
-            if rows:
-                rows = list(reversed(rows))
-                lineage = {"reader": "legacy_market_dataset", "dataset": name, "filters": {**kwargs, "symbol": symbol}}
-                return _legacy_wrapped_rows(rows, source_id="sqlite:market_bars_daily", source_tier="marketdata", collected_at=None, lineage=lineage, stale_after_hours=48.0)
-        return _degraded_empty("sqlite:market_bars_daily", "no rows matched", lineage={"reader": "legacy_market_dataset", "dataset": name, "filters": kwargs})
-
-    file_map = {
-        "recommendations": (LEGACY_RECOMMENDATIONS, _read_csv, "legacy:recommendations", "recommendation", 24.0),
-        "reviews": (LEGACY_REVIEWS, _read_csv, "legacy:reviews", "review", 24.0),
-        "direction_hit_reviews": (LEGACY_DIRECTION_HITS, _read_csv, "legacy:direction_hit_reviews", "review", 24.0),
-        "shadow_sim_trades": (LEGACY_SHADOW_TRADES, _read_csv, "legacy:shadow_sim_trades", "tradebook", 24.0),
-        "latest_shadow_positions": (LEGACY_SHADOW_POSITIONS, _read_csv, "legacy:latest_shadow_positions", "portfolio", 24.0),
-        "paper_positions": (LEGACY_PAPER_POSITIONS, _read_csv, "legacy:paper_positions", "portfolio", 24.0),
-        "simulated_execution_log": (LEGACY_SIM_EXECUTION_LOG, _read_jsonl, "legacy:simulated_execution_log", "tradebook", 24.0),
-    }
-    config = file_map.get(name)
-    if config is None:
-        return None
-    path, loader, source_id, source_tier, stale_after_hours = config
-    lineage = {"reader": "legacy_market_dataset", "dataset": name, "source_path": str(path)}
-    try:
-        if not path.exists():
-            return _degraded_empty(source_id, f"missing file: {path}", lineage=lineage)
-        rows = loader(path)
-        return _legacy_wrapped_rows(rows, source_id=source_id, source_tier=source_tier, collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=stale_after_hours)
-    except Exception as exc:
-        return _degraded_empty(source_id, f"legacy dataset read failed: {exc}", lineage=lineage)
-
-
-def _safe_csv(path: Path, source_id: str, lineage: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
-    try:
-        if not path.exists():
-            return None, _degraded_empty(source_id, f"missing file: {path}", lineage=lineage)
-        return _read_csv(path), None
-    except Exception as exc:  # pragma: no cover - defensive reader boundary
-        return None, _degraded_empty(source_id, f"csv read failed: {exc}", lineage=lineage)
 
 
 def _sqlite_rows(query: str, params: tuple[Any, ...], table: str) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
@@ -931,10 +818,6 @@ def _as_of_filter(rows: list[dict[str, Any]], as_of: str) -> list[dict[str, Any]
 
 
 def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str = "daily", adjusted: bool = True, **kwargs: Any) -> list[dict[str, Any]]:
-    if start is None and end is None:
-        legacy_rows = _legacy_market_dataset(str(ts_code), **kwargs)
-        if legacy_rows is not None:
-            return legacy_rows
     lineage = {"reader": "get_market_data", "filters": {"ts_code": ts_code, "start": start, "end": end, "freq": freq, "adjusted": adjusted}}
     return _safe_public("sqlite:market_bars_daily", lineage, lambda generation: _get_market_data_cached(generation, str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
 
@@ -1094,25 +977,32 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_sentiment_cached(_generation: int, start: str, end: str, tier: str | None) -> str:
-    primary_path = INTAKE_ROOT / "sentiment_signals.csv"
-    paths = [primary_path, SENTIMENT_SIGNALS_PATH]
-    last_degraded: list[dict[str, Any]] | None = None
-    for path in paths:
-        source_id = "csv:sentiment_signals" if path is primary_path else "csv:sentiment_signals:archive"
-        lineage = {"reader": "get_sentiment", "source_path": str(path), "filters": {"start": start, "end": end, "tier": tier}}
-        rows, degraded = _safe_csv(path, source_id, lineage)
-        if degraded is not None:
-            last_degraded = degraded
-            continue
-        matched = _filter_date_range(rows or [], start, end, ("source_date", "candidate_date", "collected_at_dt", "collected_at"))
-        if tier:
-            matched = [row for row in matched if str(row.get("source_tier") or row.get("evidence_tier") or "").lower() == tier.lower()]
-        if matched:
-            return _json_cached(lambda: _rows_to_wrappers(matched, source_id=source_id, source_tier="sentiment", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=48.0))
-    if last_degraded is not None:
-        return _json_cached(lambda: last_degraded)
-    lineage = {"reader": "get_sentiment", "source_paths": [str(p) for p in paths], "filters": {"start": start, "end": end, "tier": tier}}
-    return _json_cached(lambda: _degraded_empty("csv:sentiment_signals", "no rows matched in sentiment signal sources", lineage=lineage))
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key and end_key and start_key > end_key:
+        start_key, end_key = end_key, start_key
+    where = ["LOWER(event_type) = ?"]
+    params: list[Any] = ["sentiment"]
+    date_expr = "REPLACE(SUBSTR(COALESCE(NULLIF(trade_date, ''), event_time, collected_at), 1, 10), '-', '')"
+    if start_key:
+        where.append(f"{date_expr} >= ?")
+        params.append(start_key)
+    if end_key:
+        where.append(f"{date_expr} <= ?")
+        params.append(end_key)
+    lineage = {"reader": "get_sentiment", "source": "sqlite:market_events", "filters": {"start": start, "end": end, "tier": tier}}
+    rows, degraded = _sqlite_rows(
+        "SELECT * FROM market_events "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT 5000",
+        tuple(params),
+        "market_events",
+    )
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    if tier:
+        rows = [row for row in rows or [] if str(row.get("source_tier") or row.get("tier") or "").lower() == tier.lower()]
+    return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_events", source_tier="sentiment", lineage=lineage, stale_after_hours=48.0))
 
 
 def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
@@ -1121,7 +1011,7 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
     if end is None:
         end = start
     lineage = {"reader": "get_sentiment", "filters": {"start": start, "end": end, "tier": tier, **kwargs}}
-    rows = _safe_public("csv:sentiment_signals", lineage, lambda generation: _get_sentiment_cached(generation, str(start), str(end), tier))
+    rows = _safe_public("sqlite:market_events", lineage, lambda generation: _get_sentiment_cached(generation, str(start), str(end), tier))
     subject_code = kwargs.get("subject_code")
     if subject_code:
         rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_code") == subject_code]
@@ -1257,13 +1147,38 @@ def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwar
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_macro_factors_cached(_generation: int, start: str, end: str) -> str:
-    path = MACRO_FACTORS_PATH
-    lineage = {"reader": "get_macro_factors", "source_path": str(path), "filters": {"start": start, "end": end}}
-    rows, degraded = _safe_csv(path, "csv:macro_factors", lineage)
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key and end_key and start_key > end_key:
+        start_key, end_key = end_key, start_key
+    where = [
+        "("
+        "market IN ('Macro', 'Global', 'Rates', 'FX', 'Commodity') "
+        "OR provider IN ("
+        "'tushare_cn_cpi','tushare_cn_pmi','tushare_cn_m','tushare_cn_ppi','tushare_cn_gdp',"
+        "'tushare_sf_month','tushare_shibor','tushare_shibor_lpr','tushare_us_tycr','tushare_us_tbr','tushare_us_tltr',"
+        "'tushare_repo_daily'"
+        ")"
+        ")"
+    ]
+    params: list[Any] = []
+    if start_key:
+        where.append("REPLACE(SUBSTR(event_time, 1, 10), '-', '') >= ?")
+        params.append(start_key)
+    if end_key:
+        where.append("REPLACE(SUBSTR(event_time, 1, 10), '-', '') <= ?")
+        params.append(end_key)
+    lineage = {"reader": "get_macro_factors", "source": "sqlite:market_factors", "filters": {"start": start, "end": end}}
+    rows, degraded = _sqlite_rows(
+        "SELECT * FROM market_factors "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY event_time DESC, collected_at DESC LIMIT 5000",
+        tuple(params),
+        "market_factors",
+    )
     if degraded is not None:
         return _json_cached(lambda: degraded)
-    matched = _filter_date_range(rows or [], start, end, ("last_updated",))
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:macro_factors", source_tier="macro", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=168.0))
+    return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_factors", source_tier="macro", lineage=lineage, stale_after_hours=168.0))
 
 
 def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list[dict[str, Any]]:
@@ -1271,15 +1186,8 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
         start = kwargs.get("date")
     if end is None:
         end = start
-    if "date" in kwargs:
-        path = SHAREDSIGNALS_ROOT / "data" / "all_weather_regime.csv"
-        lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}, "compat_mode": "all_weather_regime"}
-        rows, degraded = _safe_csv(path, "csv:all_weather_regime", lineage)
-        if degraded is not None:
-            return degraded
-        return _legacy_wrapped_rows(rows or [], source_id="csv:all_weather_regime", source_tier="macro", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=168.0)
     lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}}
-    return _safe_public("csv:macro_factors", lineage, lambda generation: _get_macro_factors_cached(generation, str(start), str(end)))
+    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_macro_factors_cached(generation, str(start), str(end)))
 
 
 @_register_cached
@@ -1407,39 +1315,22 @@ def get_pm_prices(market_id: str | None = None, limit: int = 200) -> list[dict[s
     )
 
 
-def _safe_reference_path(table: str) -> Path | None:
-    name = table.strip()
-    if not name:
-        return None
-    if name.endswith(".csv"):
-        name = name[:-4]
-    if "/" in name or "\\" in name or name in {".", ".."}:
-        return None
-    path = (REFERENCE_ROOT / f"{name}.csv").resolve()
-    try:
-        path.relative_to(REFERENCE_ROOT.resolve())
-    except ValueError:
-        return None
-    return path
-
-
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_reference_cached(_generation: int, table: str) -> str:
-    path = _safe_reference_path(table)
-    lineage = {"reader": "get_reference", "reference_root": str(REFERENCE_ROOT), "filters": {"table": table}}
-    if path is None:
-        return _json_cached(lambda: _degraded_empty("csv:reference", f"invalid reference table: {table}", lineage=lineage))
-    lineage["source_path"] = str(path)
-    rows, degraded = _safe_csv(path, f"csv:reference:{path.stem}", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id=f"csv:reference:{path.stem}", source_tier="reference", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+    lineage = {"reader": "get_reference", "filters": {"table": table}}
+    return _json_cached(
+        lambda: _degraded_empty(
+            "sqlite:reference",
+            "reference CSV endpoints are retired; use explicit read-model tables or /tushare",
+            lineage=lineage,
+        )
+    )
 
 
 def get_reference(table: str) -> list[dict[str, Any]]:
     lineage = {"reader": "get_reference", "filters": {"table": table}}
-    return _safe_public("csv:reference", lineage, lambda generation: _get_reference_cached(generation, str(table)))
+    return _safe_public("sqlite:reference", lineage, lambda generation: _get_reference_cached(generation, str(table)))
 
 
 @_register_cached
@@ -1482,15 +1373,6 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
     return _safe_public("reference:market_calendar", lineage, lambda generation: _is_trading_day_cached(generation, str(date)))
 
 
-def _realtime_5m_fallback_dirs(date_key: str) -> list[Path]:
-    return [
-        REALTIME_5M_ROOT / date_key,
-        SHAREDSIGNALS_ROOT / "data" / "tushare" / "stk_mins" / date_key,
-        SHAREDSIGNALS_ROOT / "data" / "tushare" / "rt_min" / date_key,
-        SHAREDSIGNALS_ROOT / "data" / "tushare" / "rt_k" / date_key,
-    ]
-
-
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_value: str) -> str:
@@ -1522,39 +1404,10 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
         collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
         return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="marketdata", collected_at=collected_at, lineage=lineage, stale_after_hours=48.0))
 
-    if market_key != "Ashare":
-        reason = f"no rows in sqlite market_bars_intraday for market={market_key} ts_code={ts_code}"
-        if degraded is not None:
-            reason = f"sqlite degraded for market={market_key} ts_code={ts_code}"
-        return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
-
-    fallback_dirs = _realtime_5m_fallback_dirs(date_key)
-    fallback_lineage = {
-        "reader": "get_realtime_5min",
-        "source_paths": [str(path) for path in fallback_dirs],
-        "filters": {"ts_code": ts_code, "date": date_key},
-    }
-    try:
-        existing_dirs = [path for path in fallback_dirs if path.exists()]
-        if not existing_dirs:
-            reason = "no rows in sqlite market_bars_intraday and missing realtime CSV fallback directories"
-            if degraded is not None:
-                reason = "sqlite degraded and missing realtime CSV fallback directories"
-            return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
-        matched: list[dict[str, Any]] = []
-        for day_dir in existing_dirs:
-            for path in sorted(day_dir.glob("*.csv")):
-                for row in _read_csv(path):
-                    if row.get("ts_code") == ts_code:
-                        row["_source_file"] = str(path)
-                        matched.append(row)
-        matched.sort(key=lambda row: str(row.get("time") or row.get("trade_time") or row.get("bar_time") or ""))
-        if not matched:
-            return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", "no rows matched in realtime CSV fallback directories", lineage=fallback_lineage))
-        collected_at = max((_file_collected_at(Path(row["_source_file"])) or "" for row in matched), default="") or None
-        return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:rt_min_5m", source_tier="tushare", collected_at=collected_at, lineage=fallback_lineage, stale_after_hours=2.0))
-    except Exception as exc:  # pragma: no cover - defensive reader boundary
-        return _json_cached(lambda: _degraded_empty("csv:rt_min_5m", f"realtime read failed: {exc}", lineage=fallback_lineage))
+    reason = f"no rows in sqlite market_bars_intraday for market={market_key} ts_code={ts_code}"
+    if degraded is not None:
+        reason = f"sqlite degraded for market={market_key} ts_code={ts_code}"
+    return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
 
 
 def get_realtime_5min(ts_code: str, date: Any, market: str = "Ashare") -> list[dict[str, Any]]:
@@ -1565,14 +1418,6 @@ def get_realtime_5min(ts_code: str, date: Any, market: str = "Ashare") -> list[d
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_industry_cached(_generation: int, ts_code: str) -> str:
-    path = STOCK_INDUSTRY_MAP_PATH
-    lineage = {"reader": "get_industry", "source_path": str(path), "filters": {"ts_code": ts_code}}
-    rows, degraded = _safe_csv(path, "csv:stock_industry_map", lineage)
-    if degraded is None:
-        matched = [row for row in (rows or []) if row.get("ts_code") == ts_code]
-        if matched:
-            return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:stock_industry_map", source_tier="reference", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
-
     db_lineage = {"reader": "get_industry", "source": "sqlite:market_assets", "filters": {"ts_code": ts_code}}
     asset_rows, asset_degraded = _sqlite_rows(
         "SELECT market, symbol, symbol AS ts_code, name, asset_type, exchange, "
@@ -1593,62 +1438,24 @@ def _get_industry_cached(_generation: int, ts_code: str) -> str:
 def get_industry(ts_code: str) -> list[dict[str, Any]]:
     """Return stock industry / chain / sector / concept info for a given ts_code.
 
-    Reads from MarketGraph stock_industry_map.csv (5,611 stocks).
-    Returns degraded empty wrapper if ts_code not found or file missing.
+    Reads only from the SharedSignals SQLite read model.
+    Returns degraded empty wrapper if ts_code is not present in market_assets.
     """
     lineage = {"reader": "get_industry", "filters": {"ts_code": ts_code}}
-    return _safe_public("csv:stock_industry_map", lineage, lambda generation: _get_industry_cached(generation, str(ts_code)))
+    return _safe_public("sqlite:market_assets", lineage, lambda generation: _get_industry_cached(generation, str(ts_code)))
 
 
 @_register_cached
 @_bounded_lru_cache(maxsize=64, should_cache=lambda args, _value: bool(args[1] or args[2]))
 def _get_associations_cached(_generation: int, ts_code: str, event_id: str) -> str:
-    """Build lookup: ts_code -> target_stock_map -> associations, or event_id -> associations."""
     lineage_base = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
-
-    assoc_path = EVENT_SIGNAL_ASSOC_PATH
-    assoc_rows, assoc_degraded = _safe_csv(assoc_path, "csv:event_signal_associations", {**lineage_base, "source_path": str(assoc_path)})
-    if assoc_degraded is not None:
-        return _json_cached(lambda: assoc_degraded)
-
-    tsm_path = TARGET_STOCK_MAP_PATH
-    tsm_rows, tsm_degraded = _safe_csv(tsm_path, "csv:target_stock_map", {**lineage_base, "source_path": str(tsm_path)})
-    if tsm_degraded is not None:
-        return _json_cached(lambda: tsm_degraded)
-
-    if event_id:
-        # event_id -> associations where source_reference_id matches
-        matched_assoc = [row for row in (assoc_rows or []) if row.get("source_reference_id") == event_id]
-        if not matched_assoc:
-            return _json_cached(lambda: _degraded_empty("csv:event_signal_associations", f"no associations for event_id={event_id}", lineage=lineage_base))
-        # Enrich with ts_codes from target_stock_map
-        result: list[dict[str, Any]] = []
-        for assoc in matched_assoc:
-            target_id = assoc.get("target_id", "")
-            tsm_matches = [row for row in (tsm_rows or []) if row.get("target_id") == target_id]
-            if tsm_matches:
-                for tsm in tsm_matches:
-                    merged = dict(assoc)
-                    merged["ts_codes"] = tsm.get("ts_codes", "")
-                    merged["target_stock_source"] = tsm.get("source", "")
-                    result.append(merged)
-            else:
-                result.append(assoc)
-        return _json_cached(lambda: _rows_to_wrappers(result, source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
-
-    if ts_code:
-        # ts_code -> target_stock_map -> targets -> associations
-        tsm_matches = [row for row in (tsm_rows or []) if ts_code in str(row.get("ts_codes", "")).split("|")]
-        if not tsm_matches:
-            return _json_cached(lambda: _degraded_empty("csv:target_stock_map", f"ts_code {ts_code} not found in target_stock_map", lineage=lineage_base))
-        target_ids = set(row.get("target_id", "") for row in tsm_matches if row.get("target_id"))
-        matched_assoc = [row for row in (assoc_rows or []) if row.get("target_id") in target_ids or row.get("target_id") == ts_code or row.get("subject_id") == ts_code]
-        if not matched_assoc:
-            return _json_cached(lambda: _degraded_empty("csv:event_signal_associations", f"no associations for ts_code={ts_code}", lineage=lineage_base))
-        return _json_cached(lambda: _rows_to_wrappers(matched_assoc, source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
-
-    # Neither ts_code nor event_id provided -> return all associations
-    return _json_cached(lambda: _rows_to_wrappers(assoc_rows or [], source_id="csv:event_signal_associations", source_tier="association", collected_at=_file_collected_at(assoc_path), lineage=lineage_base, stale_after_hours=720.0))
+    return _json_cached(
+        lambda: _degraded_empty(
+            "marketgraph:associations_api",
+            "association CSV reads are retired; consume MarketGraph public API/read model",
+            lineage=lineage_base,
+        )
+    )
 
 
 def get_associations(ts_code: str | None = None, event_id: str | None = None) -> list[dict[str, Any]]:
@@ -1659,24 +1466,20 @@ def get_associations(ts_code: str | None = None, event_id: str | None = None) ->
     Returns degraded empty wrapper when nothing found or errors occur.
     """
     lineage = {"reader": "get_associations", "filters": {"ts_code": ts_code, "event_id": event_id}}
-    return _safe_public("csv:event_signal_associations", lineage, lambda generation: _get_associations_cached(generation, str(ts_code or ""), str(event_id or "")))
+    return _safe_public("marketgraph:associations_api", lineage, lambda generation: _get_associations_cached(generation, str(ts_code or ""), str(event_id or "")))
 
 
 @_register_cached
 @_bounded_lru_cache(maxsize=64, should_cache=lambda args, _value: bool(args[1] or args[2]))
 def _get_impacts_cached(_generation: int, event_type: str, target: str) -> str:
-    path = IMPACT_RELATIONS_PATH
-    lineage = {"reader": "get_impacts", "source_path": str(path), "filters": {"event_type": event_type, "target": target}}
-    rows, degraded = _safe_csv(path, "csv:impact_relations", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    matched = rows or []
-    if event_type:
-        matched = [row for row in matched if str(row.get("impact_type", "")).lower() == event_type.lower()]
-    if target:
-        target_lower = target.lower()
-        matched = [row for row in matched if target_lower in str(row.get("target_id", "")).lower() or target_lower in str(row.get("target_name", "")).lower() or target_lower in str(row.get("target_type", "")).lower()]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:impact_relations", source_tier="association", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=720.0))
+    lineage = {"reader": "get_impacts", "filters": {"event_type": event_type, "target": target}}
+    return _json_cached(
+        lambda: _degraded_empty(
+            "marketgraph:impacts_api",
+            "impact CSV reads are retired; consume MarketGraph public API/read model",
+            lineage=lineage,
+        )
+    )
 
 
 def get_impacts(event_type: str | None = None, target: str | None = None) -> list[dict[str, Any]]:
@@ -1686,7 +1489,7 @@ def get_impacts(event_type: str | None = None, target: str | None = None) -> lis
     Returns degraded empty wrapper when nothing found or errors occur.
     """
     lineage = {"reader": "get_impacts", "filters": {"event_type": event_type, "target": target}}
-    return _safe_public("csv:impact_relations", lineage, lambda generation: _get_impacts_cached(generation, str(event_type or ""), str(target or "")))
+    return _safe_public("marketgraph:impacts_api", lineage, lambda generation: _get_impacts_cached(generation, str(event_type or ""), str(target or "")))
 
 
 def _summary(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:

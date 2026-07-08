@@ -9,7 +9,6 @@ import logging
 import os
 import re
 import tempfile
-import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -61,16 +60,8 @@ _ASSOCIATION_DIR = resolve_association_root()
 CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_API_URL = "https://api.tushare.pro"
 QUICKSYNC_API_URL = "https://api.quicksync.cn"
-STOCK_BASIC_CACHE_FILE = ROOT / "data" / "tushare_cache" / "stock_basic_latest.csv"
-STOCK_BASIC_CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
-STOCK_BASIC_REFRESH_TIMEOUT = 8
-STOCK_BASIC_FIELDS = ["ts_code", "name", "industry", "market"]
 STRATEGY_LIBRARY = ROOT / "strategy_library.csv"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
-_STOCK_BASIC_MEMORY_CACHE: dict[str, dict[str, Any]] | None = None
-_STOCK_BASIC_MEMORY_CACHE_DATE = ""
-_STOCK_BASIC_MEMORY_CACHE_FILE = ""
-_STOCK_BASIC_LAST_STATUS: dict[str, Any] = {}
 _DEFAULT_STRATEGY_ALIASES: dict[str, set[str]] = {
     "STRAT_BREAKOUT_CONTINUATION": {"突破延续策略", "板块轮动首强策略"},
     "STRAT_SECTOR_ROTATION_FRONT": {"板块轮动首强策略"},
@@ -387,168 +378,6 @@ def append_unique_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[s
         added += 1
     write_csv(path, existing, fieldnames)
     return added
-
-
-def pending_review_event_ids(association_dir: Path | None = None) -> set[str]:
-    """Return event_ids whose event_signal_associations review_status is pending_review_sample.
-
-    These associations are derived event-source links that are still under review;
-    they may be used for research and attribution, but must not flow into actionable
-    impact relations or concentration-risk decisions until review_status changes.
-
-    Defaults to the SharedSignals association directory. When callers pass an
-    explicit directory, use that directory so tests, local replays and temporary
-    recovery runs can remain isolated.
-    """
-    root = association_dir or _ASSOCIATION_DIR
-    path = root / "event_signal_associations.csv"
-    rows = read_csv(path) if path.exists() else []
-    return {
-        str(row.get("review_event_id", "")).strip()
-        for row in rows
-        if row.get("review_status") == "pending_review_sample" and row.get("review_event_id")
-    }
-
-
-def _copy_stock_basic_map(rows_by_code: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {code: dict(row) for code, row in rows_by_code.items()}
-
-
-def _stock_basic_rows_to_map(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        code = str(row.get("ts_code") or "").strip()
-        if not code:
-            continue
-        result[code] = {field: row.get(field, "") for field in STOCK_BASIC_FIELDS}
-    return result
-
-
-def _read_stock_basic_cache(path: Path | None = None) -> dict[str, dict[str, Any]]:
-    path = path or STOCK_BASIC_CACHE_FILE
-    if not path.exists():
-        return {}
-    try:
-        return _stock_basic_rows_to_map(read_csv(path))
-    except Exception:
-        return {}
-
-
-def _write_stock_basic_cache(rows_by_code: dict[str, dict[str, Any]], path: Path | None = None) -> None:
-    path = path or STOCK_BASIC_CACHE_FILE
-    rows = [rows_by_code[code] for code in sorted(rows_by_code)]
-    write_csv(path, rows, STOCK_BASIC_FIELDS)
-
-
-def _stock_basic_cache_is_fresh(path: Path | None = None, *, max_age_seconds: int = STOCK_BASIC_CACHE_MAX_AGE_SECONDS) -> bool:
-    path = path or STOCK_BASIC_CACHE_FILE
-    if max_age_seconds <= 0 or not path.exists():
-        return False
-    try:
-        return time.time() - path.stat().st_mtime <= max_age_seconds
-    except OSError:
-        return False
-
-
-def _set_stock_basic_memory_cache(rows_by_code: dict[str, dict[str, Any]], path: Path | None = None) -> None:
-    global _STOCK_BASIC_MEMORY_CACHE, _STOCK_BASIC_MEMORY_CACHE_DATE, _STOCK_BASIC_MEMORY_CACHE_FILE
-    _STOCK_BASIC_MEMORY_CACHE = _copy_stock_basic_map(rows_by_code)
-    _STOCK_BASIC_MEMORY_CACHE_DATE = today_yyyymmdd()
-    _STOCK_BASIC_MEMORY_CACHE_FILE = str(path or STOCK_BASIC_CACHE_FILE)
-
-
-def stock_basic_cache_status() -> dict[str, Any]:
-    return dict(_STOCK_BASIC_LAST_STATUS)
-
-
-def stock_basic_map(
-    *,
-    force_refresh: bool = False,
-    max_cache_age_seconds: int = STOCK_BASIC_CACHE_MAX_AGE_SECONDS,
-) -> dict[str, dict[str, Any]]:
-    """Return listed A-share stock basics with disk cache fallback.
-
-    stock_basic changes slowly. Prefer today's local cache and fall back to the
-    latest usable cache when the provider stalls, so slow basic metadata cannot
-    block the daily workflow.
-    """
-    global _STOCK_BASIC_LAST_STATUS
-    cache_file = STOCK_BASIC_CACHE_FILE
-    today_key = today_yyyymmdd()
-
-    if (
-        not force_refresh
-        and _STOCK_BASIC_MEMORY_CACHE is not None
-        and _STOCK_BASIC_MEMORY_CACHE_DATE == today_key
-        and _STOCK_BASIC_MEMORY_CACHE_FILE == str(cache_file)
-    ):
-        _STOCK_BASIC_LAST_STATUS = {
-            "source": "memory_cache",
-            "cache_file": str(cache_file),
-            "row_count": len(_STOCK_BASIC_MEMORY_CACHE),
-            "stale": False,
-            "error": "",
-        }
-        return _copy_stock_basic_map(_STOCK_BASIC_MEMORY_CACHE)
-
-    if not force_refresh and _stock_basic_cache_is_fresh(cache_file, max_age_seconds=max_cache_age_seconds):
-        cached = _read_stock_basic_cache(cache_file)
-        if cached:
-            _set_stock_basic_memory_cache(cached, cache_file)
-            _STOCK_BASIC_LAST_STATUS = {
-                "source": "disk_cache",
-                "cache_file": str(cache_file),
-                "row_count": len(cached),
-                "stale": False,
-                "error": "",
-            }
-            return _copy_stock_basic_map(cached)
-
-    last_error = ""
-    try:
-        rows = tushare_rows(
-            "stock_basic",
-            {"exchange": "", "list_status": "L"},
-            ",".join(STOCK_BASIC_FIELDS),
-            retries=1,
-            timeout=STOCK_BASIC_REFRESH_TIMEOUT,
-        )
-        live = _stock_basic_rows_to_map(rows)
-        if not live:
-            raise RuntimeError("stock_basic returned empty rows")
-        _write_stock_basic_cache(live, cache_file)
-        _set_stock_basic_memory_cache(live, cache_file)
-        _STOCK_BASIC_LAST_STATUS = {
-            "source": "live_refresh",
-            "cache_file": str(cache_file),
-            "row_count": len(live),
-            "stale": False,
-            "error": "",
-        }
-        return _copy_stock_basic_map(live)
-    except Exception as exc:
-        last_error = str(exc)
-
-    cached = _read_stock_basic_cache(cache_file)
-    if cached:
-        _set_stock_basic_memory_cache(cached, cache_file)
-        _STOCK_BASIC_LAST_STATUS = {
-            "source": "disk_cache_fallback",
-            "cache_file": str(cache_file),
-            "row_count": len(cached),
-            "stale": True,
-            "error": last_error,
-        }
-        return _copy_stock_basic_map(cached)
-
-    _STOCK_BASIC_LAST_STATUS = {
-        "source": "failed",
-        "cache_file": str(cache_file),
-        "row_count": 0,
-        "stale": True,
-        "error": last_error,
-    }
-    raise RuntimeError(f"stock_basic refresh failed and no usable cache is available: {last_error}")
 
 
 def daily_map(trade_date: str) -> dict[str, dict[str, Any]]:

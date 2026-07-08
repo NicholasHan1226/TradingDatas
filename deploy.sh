@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_DIR="/opt/investment/SharedSignals"
 BACKUP_DIR="/opt/investment/SharedSignals/backups"
-RUNTIME_DIR="${MARKETGRAPH_RUNTIME_ROOT:-/opt/investment/MarketGraphRuntime}"
+RUNTIME_DIR="${SHAREDSIGNALS_RUNTIME_ROOT:-/opt/investment/SharedSignals/runtime}"
 SQLITE_DB="${RUNTIME_DIR}/read_model/marketdata.sqlite"
 VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

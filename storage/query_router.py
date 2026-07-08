@@ -1,11 +1,9 @@
 """Route queries: hot(<30d)→SQLite,  cold(>30d)→DuckDB/Parquet."""
 import sqlite3
 from datetime import datetime, timedelta
-import os
+from runtime_paths import marketdata_sqlite_path
 
-SQLITE_PATH = os.environ.get(
-    "MARKETDATA_SQLITE",
-    "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite")
+SQLITE_PATH = str(marketdata_sqlite_path())
 HOT_DAYS = 30
 
 

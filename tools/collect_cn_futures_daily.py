@@ -2,8 +2,8 @@
 """SharedSignals CNFutures daily collection entry point.
 
 Thin wrapper around ``collectors/tushare/sync_daily.py`` that runs the
-Tushare ``fut_daily`` global API for a single trade_date, bridges the
-result into ``market_bars_daily`` with ``market=Futures``, and exits
+Tushare ``fut_daily`` global API for a single trade_date, writes the result
+directly into ``market_bars_daily`` with ``market=Futures``, and exits
 non-zero on any failure.
 
 Intended callers:
@@ -14,7 +14,7 @@ Intended callers:
 Usage:
     python3 tools/collect_cn_futures_daily.py
     python3 tools/collect_cn_futures_daily.py --trade-date 20260703
-    python3 tools/collect_cn_futures_daily.py --no-sqlite-bridge --dry-run
+    python3 tools/collect_cn_futures_daily.py --dry-run
 """
 
 from __future__ import annotations
@@ -42,11 +42,7 @@ def default_trade_date() -> str:
     return datetime.now().strftime("%Y%m%d")
 
 
-def build_command(
-    trade_date: str,
-    *,
-    sqlite_bridge_enabled: bool = True,
-) -> list[str]:
+def build_command(trade_date: str) -> list[str]:
     """Build the sync_daily.py subprocess command."""
     if not _DATE_RE.match(trade_date):
         raise ValueError(f"invalid trade_date {trade_date!r}, expected YYYYMMDD")
@@ -59,20 +55,17 @@ def build_command(
         "--exit-on-failure",
         "--failure-threshold", "0.0",
     ]
-    if not sqlite_bridge_enabled:
-        cmd.append("--no-sqlite-bridge")
     return cmd
 
 
 def run_collection(
     trade_date: str,
     *,
-    sqlite_bridge_enabled: bool = True,
     dry_run: bool = False,
 ) -> int:
     """Run the fut_daily collection and return the subprocess exit code."""
-    cmd = build_command(trade_date, sqlite_bridge_enabled=sqlite_bridge_enabled)
-    logger.info("CNFutures daily collection: trade_date=%s bridge=%s", trade_date, sqlite_bridge_enabled)
+    cmd = build_command(trade_date)
+    logger.info("CNFutures daily collection: trade_date=%s direct_sqlite=true", trade_date)
     logger.info("Running: %s", " ".join(cmd))
 
     if dry_run:
@@ -97,11 +90,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Trade date as YYYYMMDD (default: {default_trade_date()})",
     )
     parser.add_argument(
-        "--no-sqlite-bridge",
-        action="store_true",
-        help="Disable additive CSV-to-SQLite bridge",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print the command that would be run without executing it",
@@ -118,7 +106,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return run_collection(
             trade_date=args.trade_date,
-            sqlite_bridge_enabled=not args.no_sqlite_bridge,
             dry_run=args.dry_run,
         )
     except ValueError as exc:

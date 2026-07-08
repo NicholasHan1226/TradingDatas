@@ -339,11 +339,9 @@ def _latest_daily_by_market_recent(conn: sqlite3.Connection, table: str, date_co
 
 
 def check_sla(now: datetime | None = None):
-    db = (
-        os.getenv("MARKETDATA_SQLITE")
-        or os.getenv("SHAREDSIGNALS_MARKETDATA_DB")
-        or str(Path(os.getenv("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite")
-    )
+    from runtime_paths import marketdata_sqlite_path
+
+    db = str(marketdata_sqlite_path())
     if not os.path.exists(db):
         return {'status': 'critical', 'reason': 'DB not found', 'db': db, 'violations': []}
     

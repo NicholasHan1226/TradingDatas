@@ -19,9 +19,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from storage.schema_contract import get_table, render_indexes, render_table, table_with_name  # noqa: E402
+from runtime_paths import marketdata_sqlite_path  # noqa: E402
 
 
-DEFAULT_SQLITE_PATH = "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+DEFAULT_SQLITE_PATH = str(marketdata_sqlite_path())
 OLD_TABLE = "market_bars_daily"
 NEW_TABLE = "market_bars_daily_new"
 BACKUP_TABLE = "market_bars_daily_old_provider_pk"

@@ -9,13 +9,14 @@ import hashlib
 import json
 import logging
 import os
+import sqlite3
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import requests
 
+from runtime_paths import marketdata_sqlite_path
 from ..base import BaseCollector
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class CryptoCollector(BaseCollector):
         self._intervals = self.config.get("intervals", ["1d", "4h", "1h", "15m"])
         self._proxies = parse_proxy_list(proxy or self.config.get("proxies") or self.config.get("proxy", ""))
         self._dry_run = self.config.get("dry_run", False)
+        self._db_path = str(self.config.get("db") or marketdata_sqlite_path())
         self._session = requests.Session()
         self.retry_max = self.config.get("retry", {}).get("max_attempts", 3)
 
@@ -263,7 +265,7 @@ class CryptoCollector(BaseCollector):
     # ------------------------------------------------------------------
 
     def save(self, rows: list[dict[str, Any]], task: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Save klines to date-partitioned CSV staging. SQLite write delegated to writer/orchestrator."""
+        """Write Binance rows directly into the SharedSignals SQLite read model."""
         if not rows:
             return {"rows_read": 0, "rows_written": 0, "tables": [], "errors": []}
 
@@ -271,33 +273,100 @@ class CryptoCollector(BaseCollector):
             logger.info("dry_run: would save %d rows", len(rows))
             return {"rows_read": len(rows), "rows_written": 0, "tables": self.target_tables, "errors": []}
 
-        interval = task.get("interval", "unknown") if task else "unknown"
-        symbol = task.get("symbol", "unknown") if task else "unknown"
-        now = datetime.now(timezone.utc)
-        trade_date = now.strftime("%Y%m%d")
-        ts = now.strftime("%H%M%S")
+        daily_rows: list[tuple[Any, ...]] = []
+        intraday_rows: list[tuple[Any, ...]] = []
+        source_file = "binance_direct"
+        for row in rows:
+            payload = dict(row)
+            payload["source_file"] = source_file
+            if str(payload.get("interval") or "") == "1d":
+                daily_rows.append(
+                    (
+                        payload.get("market") or self.market,
+                        payload.get("symbol") or "",
+                        payload.get("trade_date") or "",
+                        payload.get("open"),
+                        payload.get("high"),
+                        payload.get("low"),
+                        payload.get("close"),
+                        payload.get("volume"),
+                        payload.get("amount"),
+                        payload.get("provider") or self.provider,
+                        payload.get("source_file") or source_file,
+                        payload.get("collected_at") or datetime.now(timezone.utc).isoformat(),
+                        payload.get("raw_json") if isinstance(payload.get("raw_json"), str) else json.dumps(payload, ensure_ascii=False),
+                    )
+                )
+            else:
+                intraday_rows.append(
+                    (
+                        payload.get("market") or self.market,
+                        payload.get("symbol") or "",
+                        payload.get("bar_time") or payload.get("collected_at") or datetime.now(timezone.utc).isoformat(),
+                        payload.get("trade_date") or "",
+                        payload.get("interval") or "",
+                        payload.get("open"),
+                        payload.get("high"),
+                        payload.get("low"),
+                        payload.get("close"),
+                        payload.get("volume"),
+                        payload.get("amount"),
+                        None,
+                        None,
+                        None,
+                        None,
+                        "",
+                        "",
+                        payload.get("provider") or self.provider,
+                        payload.get("source_file") or source_file,
+                        payload.get("collected_at") or datetime.now(timezone.utc).isoformat(),
+                        payload.get("raw_json") if isinstance(payload.get("raw_json"), str) else json.dumps(payload, ensure_ascii=False),
+                    )
+                )
 
-        dir_path = self._data_root / "crypto" / "binance" / interval / trade_date
-        dir_path.mkdir(parents=True, exist_ok=True)
-
-        fname = f"{symbol}_{ts}.ndjson"
-        path = dir_path / fname
-
+        conn: sqlite3.Connection | None = None
         try:
-            try:
-                source_file = str(path.relative_to(Path.cwd()))
-            except ValueError:
-                source_file = str(path)
-            with path.open("w", encoding="utf-8") as f:
-                for row in rows:
-                    row["source_file"] = source_file
-                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            logger.info("binance save: %s → %d rows", path.name, len(rows))
-            return {
-                "rows_read": len(rows), "rows_written": len(rows),
-                "tables": self.target_tables, "errors": [],
-                "source_file": source_file,
-            }
+            conn = sqlite3.connect(self._db_path, timeout=30)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            if daily_rows:
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO market_bars_daily
+                    (market, symbol, trade_date, open, high, low, close, volume, amount, provider, source_file, collected_at, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    daily_rows,
+                )
+            if intraday_rows:
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO market_bars_intraday
+                    (market, symbol, bar_time, trade_date, interval, open, high, low, close, volume, amount,
+                     bid_price, ask_price, bid_size, ask_size, last_trade_date, expiry_date, provider, source_file, collected_at, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    intraday_rows,
+                )
+            conn.commit()
         except Exception:
-            logger.exception("binance save failed: %s", path)
-            return {"rows_read": len(rows), "rows_written": 0, "tables": [], "errors": [str(path)]}
+            if conn is not None:
+                conn.rollback()
+            logger.exception("binance sqlite save failed")
+            return {"rows_read": len(rows), "rows_written": 0, "tables": [], "errors": [self._db_path]}
+        finally:
+            if conn is not None:
+                conn.close()
+
+        tables = []
+        if daily_rows:
+            tables.append("market_bars_daily")
+        if intraday_rows:
+            tables.append("market_bars_intraday")
+        return {
+            "rows_read": len(rows),
+            "rows_written": len(daily_rows) + len(intraday_rows),
+            "tables": tables,
+            "errors": [],
+            "source_file": source_file,
+        }

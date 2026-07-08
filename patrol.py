@@ -29,21 +29,18 @@ from pathlib import Path
 from typing import Any, Optional
 
 from env_bootstrap import env_float, env_int
+from runtime_paths import marketdata_sqlite_path, runtime_root
 from tools import sqlite_recovery
 
 # ---------------------------------------------------------------------------
 # Path configuration (mirrors SharedSignals convention)
 # ---------------------------------------------------------------------------
 SHARED_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
-MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", "/opt/investment/MarketGraph"))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
+RUNTIME_ROOT = runtime_root()
 
-DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
-SOURCE_REGISTRY = SHARED_ROOT / "data" / "source_registry.csv"
-INTAKE_DIR = SHARED_ROOT / "data" / "intake"
+DB_PATH = marketdata_sqlite_path()
 STAGING_ROOT = RUNTIME_ROOT / "staging"
 ARCHIVE_DIR = RUNTIME_ROOT / "archive"
-COLLECTION_RUNS_CSV = INTAKE_DIR / "collection_runs.csv"
 
 LOG_DIR = SHARED_ROOT / "logs"
 PATROL_HISTORY = LOG_DIR / "patrol_history.jsonl"
@@ -92,60 +89,61 @@ def _freshness_date(value: Any) -> tuple[date, str] | None:
 # ============================================================
 
 def check_source_health() -> dict[str, Any]:
-    """Check each source's last collection timestamp via collection_runs.csv.
-
-    Only flags sources that have been collected before but whose last run
-    exceeds the staleness threshold. Sources never collected are tracked
-    separately as 'never_collected' (informational, not an alert).
-
-    Returns:
-        {status, value, threshold, stale_sources: [...], alert}
-    """
+    """Check each source's last collection timestamp via market_ingest_runs."""
     stale = []
-    never_collected = []
     now = datetime.now(timezone.utc)
+    last_run: dict[str, str] = {}
 
-    # Read source registry for active sources
-    active_source_ids: set[str] = set()
-    if SOURCE_REGISTRY.exists():
-        with open(SOURCE_REGISTRY, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                sid = row.get("source_id", "").strip()
-                status = row.get("status", "").strip()
-                if sid and status == "active":
-                    active_source_ids.add(sid)
+    if DB_PATH.exists():
+        conn: sqlite3.Connection | None = None
+        try:
+            conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5)
+            rows = conn.execute(
+                """
+                SELECT source, MAX(finished_at) AS finished_at
+                FROM market_ingest_runs
+                WHERE source IS NOT NULL AND source != ''
+                GROUP BY source
+                """
+            ).fetchall()
+            last_run = {str(source): str(finished) for source, finished in rows if source and finished}
+        except sqlite3.Error as exc:
+            return {
+                "name": "source_health",
+                "status": "alert",
+                "value": 1,
+                "threshold": STALE_SOURCE_HOURS,
+                "threshold_unit": "hours",
+                "stale_sources": [{"source_id": "market_ingest_runs", "reason": str(exc)}],
+                "total_active_sources": 0,
+                "collected_sources": 0,
+                "never_collected_count": 0,
+                "alert": True,
+                "checked_at": utc_now(),
+            }
+        finally:
+            if conn is not None:
+                conn.close()
 
-    # Read collection_runs for last run per source
-    last_run: dict[str, str] = {}  # source_id → finished_at
-    if COLLECTION_RUNS_CSV.exists():
-        with open(COLLECTION_RUNS_CSV, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                sid = row.get("source_id", "").strip()
-                finished = row.get("finished_at", "").strip()
-                if sid and finished:
-                    if sid not in last_run or finished > last_run[sid]:
-                        last_run[sid] = finished
+    for sid, finished in sorted(last_run.items()):
+        try:
+            finished_dt = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+            hours = (now - finished_dt).total_seconds() / 3600
+            if hours > STALE_SOURCE_HOURS:
+                stale.append({
+                    "source_id": sid,
+                    "last_run": finished,
+                    "hours_since": round(hours, 1),
+                    "reason": f"stale_{hours:.0f}h",
+                })
+        except (ValueError, TypeError):
+            stale.append({
+                "source_id": sid,
+                "last_run": finished,
+                "hours_since": None,
+                "reason": "unparseable_timestamp",
+            })
 
-    for sid in sorted(active_source_ids):
-        finished = last_run.get(sid)
-        if not finished:
-            # Never collected: track separately, not an alert
-            never_collected.append(sid)
-        else:
-            try:
-                finished_dt = datetime.fromisoformat(finished.replace("Z", "+00:00"))
-                hours = (now - finished_dt).total_seconds() / 3600
-                if hours > STALE_SOURCE_HOURS:
-                    stale.append({"source_id": sid, "last_run": finished,
-                                  "hours_since": round(hours, 1),
-                                  "reason": f"stale_{hours:.0f}h"})
-            except (ValueError, TypeError):
-                stale.append({"source_id": sid, "last_run": finished, "hours_since": None,
-                              "reason": "unparseable_timestamp"})
-
-    # Only stale (previously-collected but timed-out) sources trigger alert
     status = "ok" if len(stale) == 0 else ("degrade" if len(stale) <= 5 else "alert")
     return {
         "name": "source_health",
@@ -154,9 +152,9 @@ def check_source_health() -> dict[str, Any]:
         "threshold": STALE_SOURCE_HOURS,
         "threshold_unit": "hours",
         "stale_sources": stale,
-        "total_active_sources": len(active_source_ids),
+        "total_active_sources": len(last_run),
         "collected_sources": len(last_run),
-        "never_collected_count": len(never_collected),
+        "never_collected_count": 0,
         "alert": status != "ok",
         "checked_at": utc_now(),
     }

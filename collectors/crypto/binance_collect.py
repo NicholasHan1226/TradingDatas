@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from collectors.crypto.binance import CryptoCollector
-from storage.ndjson_bridge import DEFAULT_SQLITE_PATH, ingest_crypto_ndjson_to_sqlite
+from runtime_paths import marketdata_sqlite_path
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -39,9 +39,7 @@ def main() -> int:
     parser.add_argument("--interval", action="append", dest="intervals", help="Kline interval to collect. Repeatable.")
     parser.add_argument("--symbol", action="append", dest="symbols", help="Symbol to collect. Repeatable.")
     parser.add_argument("--config", default=str(Path(__file__).resolve().parent / "config.yaml"))
-    parser.add_argument("--db", default=str(DEFAULT_SQLITE_PATH))
-    parser.add_argument("--bridge-since-minutes", type=int, default=180)
-    parser.add_argument("--no-bridge", action="store_true")
+    parser.add_argument("--db", default=str(marketdata_sqlite_path()))
     args = parser.parse_args()
 
     config = _load_config(Path(args.config))
@@ -49,6 +47,7 @@ def main() -> int:
         config["symbols"] = [symbol.upper() for symbol in args.symbols]
     if args.intervals:
         config["intervals"] = args.intervals
+    config["db"] = args.db
     proxy = os.getenv("BINANCE_HTTP_PROXIES") or os.getenv("BINANCE_HTTP_PROXY") or config.get("proxies") or config.get("proxy", "")
 
     collector = CryptoCollector(config=config, proxy=proxy)
@@ -60,12 +59,6 @@ def main() -> int:
 
     runs = [collector.run(context) for context in contexts]
     result: dict[str, Any] = {"collector": "crypto_binance", "runs": runs}
-    if not args.no_bridge:
-        result["bridge"] = ingest_crypto_ndjson_to_sqlite(
-            Path(args.db),
-            ROOT / "data" / "crypto" / "binance",
-            since_minutes=args.bridge_since_minutes,
-        )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
 
     rows_written = sum(int(run.get("rows_written") or 0) for run in runs)

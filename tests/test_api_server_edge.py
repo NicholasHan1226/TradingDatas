@@ -240,10 +240,10 @@ def test_aggregate_metadata_drops_degraded_empty_data_rows() -> None:
         {
             "data": {},
             "degraded": True,
-            "lineage": {"reason": "missing file"},
+            "lineage": {"reason": "missing sqlite db"},
             "freshness": {"stale": True, "score": 0.0},
             "quality": {"score": 0.0},
-            "provenance": {"source_id": "csv:event_candidates"},
+            "provenance": {"source_id": "sqlite:market_events"},
         }
     ]
 
@@ -251,8 +251,8 @@ def test_aggregate_metadata_drops_degraded_empty_data_rows() -> None:
 
     assert payload == []
     assert metadata["degraded"] is True
-    assert metadata["degraded_reasons"] == ["missing file"]
-    assert source == "csv:event_candidates"
+    assert metadata["degraded_reasons"] == ["missing sqlite db"]
+    assert source == "sqlite:market_events"
 
 
 def test_api_malformed_json_query_param_returns_400(api_edge_server) -> None:

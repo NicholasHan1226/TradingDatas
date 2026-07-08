@@ -20,8 +20,9 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from runtime_paths import marketdata_sqlite_path
 
-DEFAULT_DB = "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+DEFAULT_DB = str(marketdata_sqlite_path())
 GAMMA = "https://gamma-api.polymarket.com"
 DEFAULT_PROXY = "http://127.0.0.1:7890"
 PROVIDER = "polymarket"
@@ -282,7 +283,7 @@ def write_rows(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Collect Polymarket markets/prices into SharedSignals read model")
-    parser.add_argument("--db", default=os.getenv("SHAREDSIGNALS_MARKETDATA_DB", DEFAULT_DB))
+    parser.add_argument("--db", default=DEFAULT_DB)
     parser.add_argument("--limit", type=int, default=int(os.getenv("POLYMARKET_MAX_MARKETS", "200")))
     parser.add_argument("--proxy", default=os.getenv("POLYMARKET_HTTP_PROXIES") or os.getenv("POLYMARKET_HTTP_PROXY", DEFAULT_PROXY))
     parser.add_argument("--request-timeout", type=int, default=int(os.getenv("POLYMARKET_REQUEST_TIMEOUT", "25")))

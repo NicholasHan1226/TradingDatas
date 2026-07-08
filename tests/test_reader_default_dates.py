@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import os
 import sqlite3
 import time
@@ -9,46 +8,54 @@ from pathlib import Path
 
 def _reset_reader_paths(reader, *, db_path: Path, intake_root: Path) -> None:
     reader.SQLITE_PATH = reader._LazyPath(lambda: db_path)
-    reader.INTAKE_ROOT = reader._LazyPath(lambda: intake_root)
     reader.SHAREDSIGNALS_ROOT = reader._LazyPath(lambda: intake_root.parent)
-    reader.SENTIMENT_SIGNALS_PATH = reader._LazyPath(lambda: intake_root / "sentiment_signals_archive.csv")
-    reader.REALTIME_5M_ROOT = reader._LazyPath(lambda: intake_root / "rt_min_5m")
     reader.clear_caches()
-
-
-def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
-    path.parent.mkdir(parents=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
 
 
 def test_get_sentiment_without_dates_returns_recent_rows(tmp_path: Path) -> None:
     import reader
+    from storage.schema import SCHEMA_SQL
 
     db_path = tmp_path / "marketdata.sqlite"
     intake_root = tmp_path / "intake"
     _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
-    _write_csv(
-        intake_root / "sentiment_signals.csv",
-        ["signal_id", "title", "sentiment", "source_date", "collected_at"],
-        [
-            {
-                "signal_id": "s001",
-                "title": "positive signal",
-                "sentiment": "positive",
-                "source_date": "20260703",
-                "collected_at": "2026-07-03T10:00:00+00:00",
-            }
-        ],
-    )
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT INTO market_events (
+                event_hash, provider, event_type, event_time, trade_date,
+                market, symbol, title, content, url, source, source_file,
+                collected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "sentiment-1",
+                "tushare_news",
+                "sentiment",
+                "20260703",
+                "20260703",
+                "Ashare",
+                "000001.SZ",
+                "positive signal",
+                "sentiment=positive",
+                "",
+                "tushare_news",
+                "news_direct",
+                "2026-07-03T10:00:00+00:00",
+                "{}",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     rows = reader.get_sentiment()
 
     assert rows
     assert rows[0]["degraded"] is False
-    assert rows[0]["data"]["signal_id"] == "s001"
+    assert rows[0]["data"]["event_hash"] == "sentiment-1"
 
 
 def test_get_realtime_5min_without_date_uses_latest_intraday_date(tmp_path: Path) -> None:
@@ -146,7 +153,7 @@ def test_get_realtime_5min_normalizes_lowercase_ashare_market(tmp_path: Path) ->
     assert rows[0]["lineage"]["filters"]["market"] == "Ashare"
 
 
-def test_get_realtime_5min_falls_back_to_sharedsignals_rt_min_csv(tmp_path: Path) -> None:
+def test_get_realtime_5min_does_not_fall_back_to_rt_min_csv(tmp_path: Path) -> None:
     import reader
     from storage.schema import SCHEMA_SQL
 
@@ -159,30 +166,16 @@ def test_get_realtime_5min_falls_back_to_sharedsignals_rt_min_csv(tmp_path: Path
         conn.commit()
     finally:
         conn.close()
-    _write_csv(
-        tmp_path / "data" / "tushare" / "rt_min" / "20260706" / "000001.SZ.csv",
-        ["ts_code", "freq", "time", "open", "close", "high", "low", "vol", "amount"],
-        [
-            {
-                "ts_code": "000001.SZ",
-                "freq": "5MIN",
-                "time": "2026-07-06 09:55:00",
-                "open": "10.27",
-                "close": "10.28",
-                "high": "10.32",
-                "low": "10.27",
-                "vol": "2245200",
-                "amount": "23112441",
-            }
-        ],
-    )
+    old_csv = tmp_path / "data" / "tushare" / "rt_min" / "20260706" / "000001.SZ.csv"
+    old_csv.parent.mkdir(parents=True)
+    old_csv.write_text("ts_code,time,close\n000001.SZ,2026-07-06 09:55:00,10.28\n", encoding="utf-8")
 
     rows = reader.get_realtime_5min("000001.SZ", "20260706")
 
     assert rows
-    assert rows[0]["degraded"] is False
-    assert rows[0]["data"]["close"] == "10.28"
-    assert "rt_min" in rows[0]["lineage"]["source_paths"][2]
+    assert rows[0]["degraded"] is True
+    assert rows[0]["data"] == {}
+    assert rows[0]["provenance"]["source_id"] == "sqlite:market_bars_intraday"
 
 
 def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Path) -> None:

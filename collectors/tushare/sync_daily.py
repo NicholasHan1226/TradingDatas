@@ -11,15 +11,14 @@ Usage:
     sync_daily.py --tier P6_other_daily          # futures/funds/news
     sync_daily.py --test --tier P0_trading_5min  # quick test on 3 stocks
 
-Reads config.yaml for tier definitions, iterates over stocks in
-reference/stock_master.csv (for per_stock APIs), calls each API,
-and writes date-partitioned CSV output to data/tushare/.
+Reads config.yaml for tier definitions, iterates over stock assets already in
+the SharedSignals read model, calls each API, and writes provider rows directly
+into the SQLite read model.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import logging
 import os
@@ -39,11 +38,11 @@ _BASE_DIR = Path(__file__).resolve().parents[2]  # SharedSignals root
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from collectors.tushare.collector import SaveError, TushareCollector  # noqa: E402
+from collectors.tushare.collector import TushareCollector  # noqa: E402
 from storage.csv_bridge import (  # noqa: E402
     CSV_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
-    ingest_csv_to_sqlite,
+    ingest_rows_to_sqlite,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,27 +52,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
-STOCK_MASTER_PATH = _BASE_DIR / "reference" / "stock_master.csv"
-HK_STOCK_MASTER_PATH = _BASE_DIR / "reference" / "hk_stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
 DEFAULT_P0_STOCK_BATCH_SIZE = 30
 DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
 ASHARE_TZ = ZoneInfo("Asia/Shanghai")
-DEFAULT_P0_PRIORITY_STOCK_FILES = [
-    _BASE_DIR.parent / "TradingAgent" / "signals" / "positions" / "simulated_ashare_positions.json",
-    _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "local_sim" / "local_sim_positions.json",
-    _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "ashare_no_trade_explanations.jsonl",
-    _BASE_DIR.parent / "TradingAgent" / "shared" / "runtime_test" / "ashare_preopen_dry_run_latest.json",
-    _BASE_DIR.parent / "TradingAgent" / "shared" / "review" / "ashare" / "execution_exclusions_*.jsonl",
-    _BASE_DIR.parent / "MarketGraph" / "outputs" / "ashare_closing_buy_candidates.json",
-    Path("/opt/investment/tradingagent/signals/positions/simulated_ashare_positions.json"),
-    Path("/opt/investment/tradingagent/shared/logs/local_sim/local_sim_positions.json"),
-    Path("/opt/investment/tradingagent/shared/logs/ashare_no_trade_explanations.jsonl"),
-    Path("/opt/investment/tradingagent/shared/runtime_test/ashare_preopen_dry_run_latest.json"),
-    Path("/opt/investment/tradingagent/shared/review/ashare/execution_exclusions_*.jsonl"),
-    Path("/opt/investment/MarketGraph/outputs/ashare_closing_buy_candidates.json"),
-]
-DEFAULT_PRIORITY_JSONL_MAX_LINES = 500
 
 VALID_TIERS = [
     "P0_trading_5min",
@@ -132,27 +114,9 @@ def _load_stock_codes_from_sqlite(sqlite_path: Path) -> list[str]:
     return codes
 
 
-def load_stock_codes(
-    path: Path,
-    *,
-    prefer_sqlite_assets: bool = False,
-    sqlite_path: Path = DEFAULT_SQLITE_PATH,
-) -> list[str]:
-    """Read ts_code column from stock_master.csv."""
-    if prefer_sqlite_assets:
-        sqlite_codes = _load_stock_codes_from_sqlite(sqlite_path)
-        if sqlite_codes:
-            return sqlite_codes
-
-    codes: list[str] = []
-    with path.open("r", encoding="utf-8") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            code = (row.get("ts_code") or "").strip()
-            if code:
-                codes.append(code)
-    logger.info("Loaded %d stock codes from %s", len(codes), path)
-    return codes
+def load_stock_codes(sqlite_path: Path = DEFAULT_SQLITE_PATH) -> list[str]:
+    """Read stock codes from the SQLite read model only."""
+    return _load_stock_codes_from_sqlite(sqlite_path)
 
 
 def date_range(lookback_days: int, end_date_override: str | None = None) -> tuple[str, str, str]:
@@ -287,123 +251,12 @@ def normalize_ashare_code(value: Any) -> str:
     return ""
 
 
-def _extract_ashare_codes(payload: Any) -> list[str]:
-    """Extract A-share codes from nested JSON-like payloads."""
-
-    codes: list[str] = []
-    if isinstance(payload, dict):
-        for key in ("ts_code", "symbol", "code", "ticker"):
-            code = normalize_ashare_code(payload.get(key))
-            if code:
-                codes.append(code)
-        for value in payload.values():
-            codes.extend(_extract_ashare_codes(value))
-    elif isinstance(payload, list):
-        for item in payload:
-            codes.extend(_extract_ashare_codes(item))
-    elif isinstance(payload, str):
-        codes.extend(normalize_ashare_code(match.group(0)) for match in re.finditer(r"\d{6}(?:\.(?:SH|SZ))?", payload.upper()))
-    return [code for code in codes if code]
-
-
-def _extract_priority_ashare_codes(payload: Any) -> list[str]:
-    """Extract priority A-share codes without promoting broad audit samples."""
-
-    if not isinstance(payload, dict):
-        return _extract_ashare_codes(payload)
-
-    focused_codes: list[str] = []
-    for key in (
-        "sample_skipped_candidates",
-        "skipped_candidates",
-        "execution_skips",
-        "sample_execution_skips",
-    ):
-        if key in payload:
-            focused_codes.extend(_extract_ashare_codes(payload.get(key)))
-
-    no_trade = payload.get("no_trade_explanation")
-    if isinstance(no_trade, dict):
-        focused_codes.extend(_extract_priority_ashare_codes(no_trade))
-
-    if str(payload.get("kind") or "") in {"skipped_candidate", "execution_exclusion"}:
-        for key in ("ts_code", "symbol", "code", "ticker"):
-            code = normalize_ashare_code(payload.get(key))
-            if code:
-                focused_codes.append(code)
-
-    if focused_codes:
-        return focused_codes
-    if any(key in payload for key in ("audit_events", "trigger_replay", "stage_calls")):
-        return []
-    return _extract_ashare_codes(payload)
-
-
-def _priority_stock_paths() -> list[Path]:
-    values = [
-        item.strip()
-        for item in os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCK_FILES", "").replace(",", os.pathsep).split(os.pathsep)
-        if item.strip()
-    ]
-    if values:
-        return [Path(value).expanduser() for value in values]
-    return list(DEFAULT_P0_PRIORITY_STOCK_FILES)
-
-
-def _expand_priority_stock_paths(paths: list[Path]) -> list[Path]:
-    expanded: list[Path] = []
-    for path in paths:
-        text = str(path)
-        if any(char in text for char in "*?[]"):
-            matches = sorted(
-                path.parent.glob(path.name),
-                key=lambda item: item.stat().st_mtime if item.exists() else 0,
-                reverse=True,
-            )
-            expanded.extend(item for item in matches if item.is_file())
-        else:
-            expanded.append(path)
-    return expanded
-
-
-def _read_priority_stock_payloads(path: Path) -> list[Any]:
-    if path.suffix.lower() != ".jsonl":
-        return [json.loads(path.read_text(encoding="utf-8"))]
-
-    max_lines = parse_positive_int(
-        os.environ.get("SHAREDSIGNALS_P0_PRIORITY_JSONL_MAX_LINES"),
-        DEFAULT_PRIORITY_JSONL_MAX_LINES,
-    )
-    lines = path.read_text(encoding="utf-8").splitlines()
-    payloads: list[Any] = []
-    for line in lines[-max_lines:]:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            payloads.append(json.loads(stripped))
-        except json.JSONDecodeError as exc:
-            logger.warning("failed to parse P0 priority jsonl line from %s: %s", path, exc)
-    latest_generated_at = max(
-        (str(item.get("generated_at") or "") for item in payloads if isinstance(item, dict)),
-        default="",
-    )
-    if latest_generated_at:
-        payloads = [
-            item
-            for item in payloads
-            if isinstance(item, dict) and str(item.get("generated_at") or "") == latest_generated_at
-        ]
-    return payloads
-
-
 def load_priority_stock_codes(
     *,
-    paths: list[Path] | None = None,
     allowed_codes: set[str] | None = None,
     explicit_codes: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
-    """Load the P0 hot pool from holdings/candidate JSON files and env symbols."""
+    """Load the P0 hot pool from explicit environment symbols only."""
 
     seen: set[str] = set()
     codes: list[str] = []
@@ -422,28 +275,12 @@ def load_priority_stock_codes(
     for raw in (explicit_codes or os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCKS", "")).split(","):
         add(raw, "env")
 
-    for path in _expand_priority_stock_paths(paths if paths is not None else _priority_stock_paths()):
-        if not path.exists() or not path.is_file():
-            continue
-        try:
-            payloads = _read_priority_stock_payloads(path)
-        except Exception as exc:
-            logger.warning("failed to read P0 priority stock file %s: %s", path, exc)
-            continue
-        before = len(codes)
-        for payload in payloads:
-            for code in _extract_priority_ashare_codes(payload):
-                add(code, str(path))
-        if len(codes) > before:
-            logger.info("Loaded %d P0 priority stocks from %s", len(codes) - before, path)
-
     return codes, {
         "enabled": bool(codes),
         "selected": len(codes),
         "sources": sources[:50],
         "source_count": len({item["source"] for item in sources}),
     }
-
 
 def select_rotating_stock_batch(
     stock_codes: list[str],
@@ -603,13 +440,11 @@ def sync_tier(
     start_date: str,
     end_date: str,
     hk_stock_codes: list[str] | None = None,
-    sqlite_bridge_enabled: bool = True,
     sqlite_db_path: Path = DEFAULT_SQLITE_PATH,
 ) -> dict[str, dict]:
     """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
     stats: dict[str, dict] = {}
-    bridge_errors: list[str] = []
-    save_errors: list[str] = []
+    sqlite_errors: list[str] = []
     tier_start = time.time()
 
     # Split APIs: global, A-share per-stock, HK per-stock
@@ -631,69 +466,36 @@ def sync_tier(
                 tier_name, len(apis), len(per_stock_ashare), len(per_stock_hk), len(global_apis),
                 len(stock_codes), len(hk_codes), total_calls)
 
-    def _csv_has_data_rows(path: Path) -> bool:
-        try:
-            with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
-                reader = csv.reader(handle)
-                next(reader, None)
-                return next(reader, None) is not None
-        except OSError:
-            return False
-
-    def _bridge_csv(api_name: str, path: Path | None) -> dict[str, Any]:
-        if not sqlite_bridge_enabled or path is None:
-            return {
-                "rows": 0,
-                "status": "disabled" if not sqlite_bridge_enabled else "empty",
-                "error": "",
-            }
+    def _write_sqlite(api_name: str, rows: list[dict[str, Any]], source_name: str) -> dict[str, Any]:
+        if not rows:
+            return {"rows": 0, "status": "empty", "error": ""}
         table = CSV_TO_TABLE_MAP.get(api_name)
         if not table:
-            error = f"{api_name}:{path}:no sqlite table mapping"
-            bridge_errors.append(error)
+            error = f"{api_name}:no sqlite table mapping"
+            sqlite_errors.append(error)
             return {"rows": 0, "status": "unmapped", "error": error}
         try:
-            rows = ingest_csv_to_sqlite(sqlite_db_path, table, path)
-            if rows == 0 and _csv_has_data_rows(path):
-                error = f"{api_name}:{path}:bridge wrote 0 rows for non-empty CSV"
-                bridge_errors.append(error)
-                logger.warning("sqlite bridge failed for %s from %s: %s", api_name, path, error)
+            written = ingest_rows_to_sqlite(sqlite_db_path, table, api_name, rows, source_name=source_name)
+            if written == 0:
+                error = f"{api_name}:{source_name}:direct sqlite write produced 0 rows for non-empty collection"
+                sqlite_errors.append(error)
+                logger.warning("direct sqlite write failed for %s from %s: %s", api_name, source_name, error)
                 return {"rows": 0, "status": "failed", "error": error}
-            logger.info("sqlite bridge %s -> %s: %d rows from %s", api_name, table, rows, path)
-            return {"rows": rows, "status": "ok", "error": ""}
+            logger.info("direct sqlite %s -> %s: %d rows from %s", api_name, table, written, source_name)
+            return {"rows": written, "status": "ok", "error": ""}
         except Exception as exc:
-            error = f"{api_name}:{path}:{exc}"
-            bridge_errors.append(error)
-            logger.warning("sqlite bridge failed for %s from %s: %s", api_name, path, exc, exc_info=True)
+            error = f"{api_name}:{source_name}:{exc}"
+            sqlite_errors.append(error)
+            logger.warning("direct sqlite write failed for %s from %s: %s", api_name, source_name, exc, exc_info=True)
             return {"rows": 0, "status": "failed", "error": error}
 
-    def _bridge_status(statuses: list[str]) -> str:
-        if not sqlite_bridge_enabled:
-            return "disabled"
+    def _sqlite_status(statuses: list[str]) -> str:
         if not statuses:
             return "empty"
-        for status in ("failed", "ok", "empty", "unmapped", "disabled"):
+        for status in ("failed", "ok", "empty", "unmapped"):
             if status in statuses:
                 return status
         return "empty"
-
-    def _save_csv(
-        api_name: str,
-        rows: list[dict[str, Any]],
-        filename: str | None = None,
-    ) -> tuple[Path | None, str]:
-        if not rows:
-            return None, ""
-        try:
-            return collector.save(api_name, rows, trade_date, filename=filename), ""
-        except SaveError as exc:
-            error = str(exc)
-            logger.warning("csv save failed for %s: %s", api_name, error, exc_info=True)
-        except Exception as exc:
-            error = f"save failed for {api_name}: {exc}"
-            logger.warning("csv save failed for %s: %s", api_name, error, exc_info=True)
-        save_errors.append(error)
-        return None, error
 
     def _run_per_stock(api_defs: list[dict], codes: list[str], label: str) -> None:
         nonlocal call_idx
@@ -708,11 +510,9 @@ def sync_tier(
             api_total = 0
             api_calls = 0
             api_failures = 0
-            save_failures = 0
-            bridge_total = 0
-            bridge_statuses: list[str] = []
-            api_bridge_errors: list[str] = []
-            api_save_errors: list[str] = []
+            sqlite_total = 0
+            sqlite_statuses: list[str] = []
+            api_sqlite_errors: list[str] = []
 
             for ts_code in codes:
                 call_idx += 1
@@ -722,15 +522,11 @@ def sync_tier(
                 if getattr(collector, "last_collect_failed", False):
                     api_failures += 1
                 api_total += len(rows)
-                save_path, save_error = _save_csv(api_name, rows, filename=ts_code)
-                if save_error:
-                    save_failures += 1
-                    api_save_errors.append(save_error)
-                bridge_result = _bridge_csv(api_name, save_path)
-                bridge_total += int(bridge_result["rows"])
-                bridge_statuses.append(str(bridge_result["status"]))
-                if bridge_result.get("error"):
-                    api_bridge_errors.append(str(bridge_result["error"]))
+                sqlite_result = _write_sqlite(api_name, rows, source_name=f"{api_name}_{ts_code}_{trade_date}")
+                sqlite_total += int(sqlite_result["rows"])
+                sqlite_statuses.append(str(sqlite_result["status"]))
+                if sqlite_result.get("error"):
+                    api_sqlite_errors.append(str(sqlite_result["error"]))
                 logger.info("[%s] [%d/%d] %s %s → %d rows",
                             tier_name, call_idx, total_calls,
                             api_name, ts_code, len(rows))
@@ -740,16 +536,14 @@ def sync_tier(
                 "rows": api_total,
                 "calls": api_calls,
                 "failure_count": api_failures,
-                "save_failure_count": save_failures,
                 "duration_s": round(duration, 1),
-                "sqlite_bridge_rows": bridge_total,
-                "bridge_status": _bridge_status(bridge_statuses),
-                "bridge_errors": api_bridge_errors,
-                "save_errors": api_save_errors,
+                "sqlite_rows": sqlite_total,
+                "sqlite_status": _sqlite_status(sqlite_statuses),
+                "sqlite_errors": api_sqlite_errors,
             }
-            logger.info("[%s] %s (%s): %d rows, api_failures=%d/%d, save_failures=%d, bridge=%s/%d rows in %.1fs",
-                        tier_name, api_name, label, api_total, api_failures, api_calls, save_failures,
-                        stats[api_name]["bridge_status"], bridge_total, duration)
+            logger.info("[%s] %s (%s): %d rows, api_failures=%d/%d, sqlite=%s/%d rows in %.1fs",
+                        tier_name, api_name, label, api_total, api_failures, api_calls,
+                        stats[api_name]["sqlite_status"], sqlite_total, duration)
 
     # ── Per-stock: A-share ──
     _run_per_stock(per_stock_ashare, stock_codes, "A-share")
@@ -771,45 +565,38 @@ def sync_tier(
         params = fill_params(template, None, trade_date, api_start_date, api_end_date)
         rows = collector.collect(api_name, params, fields)
         api_failures = 1 if getattr(collector, "last_collect_failed", False) else 0
-        save_path, save_error = _save_csv(api_name, rows)
-        save_failures = 1 if save_error else 0
-        bridge_result = _bridge_csv(api_name, save_path)
-        bridge_total = int(bridge_result["rows"])
+        sqlite_result = _write_sqlite(api_name, rows, source_name=f"{api_name}_{trade_date}")
+        sqlite_total = int(sqlite_result["rows"])
 
         duration = time.time() - api_start
         stats[api_name] = {
             "rows": len(rows),
             "calls": 1,
             "failure_count": api_failures,
-            "save_failure_count": save_failures,
             "duration_s": round(duration, 1),
-            "sqlite_bridge_rows": bridge_total,
-            "bridge_status": str(bridge_result["status"]),
-            "bridge_errors": [str(bridge_result["error"])] if bridge_result.get("error") else [],
-            "save_errors": [save_error] if save_error else [],
+            "sqlite_rows": sqlite_total,
+            "sqlite_status": str(sqlite_result["status"]),
+            "sqlite_errors": [str(sqlite_result["error"])] if sqlite_result.get("error") else [],
         }
-        logger.info("[%s] [%d/%d] %s (global) → %d rows, api_failures=%d/1, save_failures=%d, bridge=%s/%d rows in %.1fs",
+        logger.info("[%s] [%d/%d] %s (global) → %d rows, api_failures=%d/1, sqlite=%s/%d rows in %.1fs",
                     tier_name, call_idx, total_calls,
-                    api_name, len(rows), api_failures, save_failures, stats[api_name]["bridge_status"], bridge_total, duration)
+                    api_name, len(rows), api_failures, stats[api_name]["sqlite_status"], sqlite_total, duration)
 
     tier_duration = time.time() - tier_start
     total_failures = sum(int(s.get("failure_count", 0)) for s in stats.values())
-    total_save_failures = sum(int(s.get("save_failure_count", 0)) for s in stats.values())
     counted_calls = sum(int(s.get("calls", 0)) for s in stats.values())
     stats["_tier_summary"] = {
         "tier": tier_name,
         "apis": len(apis),
         "calls": counted_calls,
         "failure_count": total_failures,
-        "save_failure_count": total_save_failures,
-        "bridge_failure_count": len(bridge_errors),
+        "sqlite_failure_count": len(sqlite_errors),
         "failure_ratio": round(total_failures / counted_calls, 4) if counted_calls else 0.0,
         "duration_s": round(tier_duration, 1),
-        "bridge_errors": bridge_errors,
-        "save_errors": save_errors,
+        "sqlite_errors": sqlite_errors,
     }
-    logger.info("[%s] COMPLETE: %d APIs, api_failures=%d/%d, save_failures=%d, bridge_errors=%d, %.1fs total",
-                tier_name, len(apis), total_failures, counted_calls, total_save_failures, len(bridge_errors), tier_duration)
+    logger.info("[%s] COMPLETE: %d APIs, api_failures=%d/%d, sqlite_errors=%d, %.1fs total",
+                tier_name, len(apis), total_failures, counted_calls, len(sqlite_errors), tier_duration)
     return stats
 
 
@@ -817,12 +604,10 @@ def _failure_exit_code(summary: dict[str, Any], *, threshold: float, exit_on_fai
     if not exit_on_failure:
         return 0
     failure_count = int(summary.get("failure_count", 0))
-    save_failure_count = int(summary.get("save_failure_count", 0))
-    bridge_failure_count = int(summary.get("bridge_failure_count", 0))
+    sqlite_failure_count = int(summary.get("sqlite_failure_count", 0))
     calls = int(summary.get("calls", 0))
-    combined_failure_count = failure_count + save_failure_count
-    failure_ratio = (combined_failure_count / calls) if calls else 0.0
-    if bridge_failure_count > 0 or save_failure_count > 0 or (calls and failure_ratio > threshold):
+    failure_ratio = (failure_count / calls) if calls else 0.0
+    if sqlite_failure_count > 0 or (calls and failure_ratio > threshold):
         return 2
     return 0
 
@@ -859,11 +644,6 @@ def main() -> None:
         "--only-api",
         default="",
         help="Comma-separated API names to run within the selected tier",
-    )
-    parser.add_argument(
-        "--no-sqlite-bridge",
-        action="store_true",
-        help="Disable additive CSV-to-SQLite bridge and keep CSV-only mode",
     )
     parser.add_argument(
         "--exit-on-failure",
@@ -904,10 +684,10 @@ def main() -> None:
 
     # Load config + stocks
     config = load_config(CONFIG_PATH)
-    stock_codes = load_stock_codes(STOCK_MASTER_PATH, prefer_sqlite_assets=True)
+    stock_codes = load_stock_codes(sqlite_path=DEFAULT_SQLITE_PATH)
 
     if not stock_codes:
-        logger.error("No stock codes in %s — aborting", STOCK_MASTER_PATH)
+        logger.error("No A-share stock codes in SQLite market_assets — aborting")
         sys.exit(1)
 
     tier_name = args.tier
@@ -924,12 +704,7 @@ def main() -> None:
     needs_hk = any(a.get("stock_list") == "hk" for a in apis)
     hk_stock_codes: list[str] = []
     if needs_hk:
-        if HK_STOCK_MASTER_PATH.exists():
-            hk_stock_codes = load_stock_codes(HK_STOCK_MASTER_PATH)
-            if not hk_stock_codes:
-                logger.warning("HK stock master file exists but is empty: %s", HK_STOCK_MASTER_PATH)
-        else:
-            logger.warning("HK stock master file not found: %s — HK per-stock APIs will be skipped", HK_STOCK_MASTER_PATH)
+        logger.warning("HK per-stock Tushare collection is disabled until HK assets are sourced from the read model")
 
     if args.test:
         stock_codes = stock_codes[:3]
@@ -996,7 +771,6 @@ def main() -> None:
         collector, tier_name, apis, stock_codes,
         trade_date, start_date, end_date,
         hk_stock_codes=hk_stock_codes,
-        sqlite_bridge_enabled=not args.no_sqlite_bridge,
     )
 
     # Summary
@@ -1004,28 +778,23 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("SYNC SUMMARY [%s] — %.1fs total", tier_name, elapsed)
     total_rows = 0
-    total_bridge_rows = 0
-    bridge_errors: list[str] = []
-    save_errors: list[str] = []
+    total_sqlite_rows = 0
+    sqlite_errors: list[str] = []
     for api_name, s in stats.items():
         if api_name.startswith("_"):
             continue
         total_rows += s["rows"]
-        total_bridge_rows += s.get("sqlite_bridge_rows", 0)
-        bridge_errors.extend(s.get("bridge_errors", []))
-        save_errors.extend(s.get("save_errors", []))
-        logger.info("  %-25s %6d rows  api_failures=%4d/%-4d  save_failures=%4d  bridge=%-8s %6d  %6.1fs",
-                    api_name, s["rows"], s.get("failure_count", 0), s.get("calls", 0), s.get("save_failure_count", 0),
-                    s.get("bridge_status", "empty"), s.get("sqlite_bridge_rows", 0), s["duration_s"])
+        total_sqlite_rows += s.get("sqlite_rows", 0)
+        sqlite_errors.extend(s.get("sqlite_errors", []))
+        logger.info("  %-25s %6d rows  api_failures=%4d/%-4d  sqlite=%-8s %6d  %6.1fs",
+                    api_name, s["rows"], s.get("failure_count", 0), s.get("calls", 0),
+                    s.get("sqlite_status", "empty"), s.get("sqlite_rows", 0), s["duration_s"])
     tier_summary = stats.get("_tier_summary", {})
     logger.info("  %-25s %6d rows", "TOTAL", total_rows)
-    logger.info("  %-25s %6d rows", "SQLITE_BRIDGE_TOTAL", total_bridge_rows)
+    logger.info("  %-25s %6d rows", "SQLITE_TOTAL", total_sqlite_rows)
     logger.info("  %-25s %6d/%-6d", "TUSHARE_FAILURES", tier_summary.get("failure_count", 0), tier_summary.get("calls", 0))
-    logger.info("  %-25s %6d", "SAVE_FAILURES", tier_summary.get("save_failure_count", 0))
-    if bridge_errors:
-        logger.warning("SQLITE_BRIDGE_ERRORS: %s", bridge_errors)
-    if save_errors:
-        logger.warning("SAVE_ERRORS: %s", save_errors)
+    if sqlite_errors:
+        logger.warning("SQLITE_ERRORS: %s", sqlite_errors)
     logger.info("=" * 60)
 
     exit_code = _failure_exit_code(
@@ -1035,15 +804,13 @@ def main() -> None:
     )
     if exit_code:
         failure_count = int(tier_summary.get("failure_count", 0))
-        save_failure_count = int(tier_summary.get("save_failure_count", 0))
-        bridge_failure_count = int(tier_summary.get("bridge_failure_count", 0))
+        sqlite_failure_count = int(tier_summary.get("sqlite_failure_count", 0))
         calls = int(tier_summary.get("calls", 0))
-        failure_ratio = ((failure_count + save_failure_count) / calls) if calls else 0.0
+        failure_ratio = (failure_count / calls) if calls else 0.0
         logger.error(
-            "Tushare sync failed threshold: api_failures=%d save_failures=%d bridge_failures=%d calls=%d ratio=%.2f threshold=%.2f",
+            "Tushare sync failed threshold: api_failures=%d sqlite_failures=%d calls=%d ratio=%.2f threshold=%.2f",
             failure_count,
-            save_failure_count,
-            bridge_failure_count,
+            sqlite_failure_count,
             calls,
             failure_ratio,
             args.failure_threshold,

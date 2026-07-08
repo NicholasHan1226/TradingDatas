@@ -2,9 +2,8 @@
 """Unified Tushare API wrapper with LRU caching.
 
 All functions return list[dict]; empty on error or no results (strict=False).
-Import from `a_share_common` and always talk to Tushare through this module
-so caching, error handling, and field defaults stay consistent across the
-entire A-share workflow.
+Import from the current SharedSignals Tushare modules; do not restore legacy
+A-share compatibility module names.
 """
 
 from __future__ import annotations
@@ -80,7 +79,7 @@ def _read_cache_csv(api_name: str, trade_date: str) -> list[dict[str, Any]] | No
     if not path.is_file():
         return None
     try:
-        from a_share_common import read_csv
+        from tushare_common import read_csv
         rows = read_csv(path)
         return rows if rows else None
     except (IOError, OSError, json.JSONDecodeError) as e:

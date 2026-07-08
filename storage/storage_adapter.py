@@ -16,13 +16,14 @@ from typing import Any
 
 import duckdb
 
+from runtime_paths import marketdata_duckdb_path, marketdata_sqlite_path
 from .duckdb_schema import create_schema
 from .schema_contract import get_table
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SQLITE_PATH = "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
-DEFAULT_DUCKDB_PATH = "/opt/investment/SharedSignals/data/marketdata.duckdb"
+DEFAULT_SQLITE_PATH = str(marketdata_sqlite_path())
+DEFAULT_DUCKDB_PATH = str(marketdata_duckdb_path())
 
 
 class StorageAdapter:

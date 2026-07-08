@@ -7,7 +7,6 @@ Public API:
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sqlite3
@@ -18,10 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import runtime_root
+
 SS = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
-RUNTIME_ROOT = Path(
-    os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")
-)
+RUNTIME_ROOT = runtime_root()
 
 # ---------------------------------------------------------------------------
 # .env loader (best-effort)
@@ -142,27 +141,6 @@ def get_health_status(
 # Individual check helpers
 # ---------------------------------------------------------------------------
 
-def _latest_csv_date(path: Path, column: str) -> str | None:
-    try:
-        if not path.exists() or path.stat().st_size == 0:
-            return None
-        latest = ""
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            for row in csv.DictReader(handle):
-                value = str(row.get(column) or row.get("candidate_date") or row.get("collected_at_dt") or row.get("collected_at") or "").strip()
-                if value.isdigit() and len(value) == 8:
-                    try:
-                        parsed = datetime.strptime(value, "%Y%m%d")
-                    except ValueError:
-                        continue
-                    if parsed.year < 2020 or value > datetime.now().strftime("%Y%m%d"):
-                        continue
-                    latest = max(latest, value)
-        return latest or None
-    except Exception:
-        return None
-
-
 def _decode_last_json_object(text: str) -> dict[str, Any] | None:
     decoder = json.JSONDecoder()
     index = 0
@@ -240,6 +218,11 @@ def _reader_samples() -> dict[str, str]:
             row = con.execute("SELECT trade_date FROM market_events WHERE COALESCE(trade_date, '') != '' ORDER BY trade_date DESC LIMIT 1").fetchone()
             if row:
                 samples["event_date"] = str(row["trade_date"] or samples["event_date"])
+            row = con.execute(
+                "SELECT trade_date FROM market_events WHERE event_type='sentiment' AND COALESCE(trade_date, '') != '' ORDER BY trade_date DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                samples["sentiment_date"] = str(row["trade_date"] or samples["sentiment_date"])
             row = con.execute("SELECT symbol FROM market_assets WHERE market='Ashare' AND COALESCE(sector, '') != '' ORDER BY symbol LIMIT 1").fetchone()
             if row:
                 samples["industry_symbol"] = str(row["symbol"] or samples["industry_symbol"])
@@ -249,12 +232,6 @@ def _reader_samples() -> dict[str, str]:
                 samples["intraday_date"] = str(row["trade_date"] or samples["intraday_date"])
         finally:
             con.close()
-    sentiment_date = (
-        _latest_csv_date(SS / "data" / "intake" / "sentiment_signals.csv", "source_date")
-        or _latest_csv_date(SS / "data" / "sentiment_signals.csv", "source_date")
-    )
-    if sentiment_date:
-        samples["sentiment_date"] = sentiment_date
     return samples
 
 
@@ -426,13 +403,19 @@ def _check_architecture() -> dict[str, Any]:
     source = reader_path.read_text(encoding="utf-8")
     lines = source.splitlines()
     mg_refs = sum(1 for l in lines if "MARKETGRAPH_ROOT" in l and "MARKETGRAPH_ROOT =" not in l)
-    ashare_refs = sum(1 for l in lines if "ASHARE_ROOT" in l and "data" in l)
-    violations = mg_refs + ashare_refs
+    legacy_refs = sum(
+        1
+        for line in lines
+        if "Ashare/data" in line
+        or "a_share" + "_tushare_api" in line
+        or "a_share" + "_common" in line
+    )
+    violations = mg_refs + legacy_refs
 
     return {
         "status": "ok" if violations == 0 else "degraded",
         "marketgraph_refs": mg_refs,
-        "ashare_data_refs": ashare_refs,
+        "legacy_provider_refs": legacy_refs,
     }
 
 

@@ -66,10 +66,9 @@ def generate_dates(start: datetime, end: datetime, skip_weekends: bool) -> list[
 def build_command(
     python_bin: str,
     trade_date: str,
-    extra_args: list[str] | None = None,
 ) -> list[str]:
     """Construct the sync_daily.py command for a single trade date."""
-    cmd: list[str] = [
+    return [
         python_bin,
         str(_SYNC_SCRIPT),
         "--tier", _TIER,
@@ -78,9 +77,6 @@ def build_command(
         "--exit-on-failure",
         "--failure-threshold", "0.0",
     ]
-    if extra_args:
-        cmd.extend(extra_args)
-    return cmd
 
 
 def run_backfill(
@@ -91,7 +87,6 @@ def run_backfill(
     dry_run: bool = False,
     fail_fast: bool = False,
     python_bin: str | None = None,
-    extra_args: list[str] | None = None,
 ) -> dict[str, Any]:
     """Loop over dates and run the per-day sync command.
 
@@ -118,7 +113,7 @@ def run_backfill(
     }
 
     for trade_date in dates:
-        cmd = build_command(python_bin, trade_date, extra_args)
+        cmd = build_command(python_bin, trade_date)
         summary["commands"].append({"date": trade_date, "cmd": cmd})
 
         if dry_run:
@@ -198,11 +193,6 @@ def main() -> None:
         default=sys.executable,
         help="Python interpreter used to run sync_daily.py",
     )
-    parser.add_argument(
-        "--extra-args",
-        default="",
-        help="Extra arguments passed through to sync_daily.py (quoted string)",
-    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -212,8 +202,6 @@ def main() -> None:
 
     start = args.start_date.strftime("%Y%m%d")
     end = args.end_date.strftime("%Y%m%d")
-    extra = [x for x in args.extra_args.split() if x] if args.extra_args else None
-
     try:
         summary = run_backfill(
             start,
@@ -222,7 +210,6 @@ def main() -> None:
             dry_run=args.dry_run,
             fail_fast=args.fail_fast,
             python_bin=args.python_bin,
-            extra_args=extra,
         )
     except ValueError as exc:
         logger.error("%s", exc)

@@ -7,9 +7,9 @@ Usage:
     python3 heal.py --dry-run                              # preview actions only
 
 Healing strategies:
-    source_health   → source_failover.py (switch to backup source)
+    source_health   → alert stale collector/source; owning cron must rerun direct DB collector
     data_freshness  → trigger backfill collector re-run
-    staging_backpressure → force runtime_bridge merge
+    staging_backpressure → alert; retired CSV runtime bridge is not used
     sqlite_health    → backup-switch / DuckDB rebuild for corrupt DB, WAL checkpoint, lock retry
     disk_usage       → clean old archive (>30d Parquet), stop collectors
     field_drift      → update expected_fields.json + alert
@@ -27,36 +27,18 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from runtime_paths import marketdata_sqlite_path, runtime_root
 from tools import sqlite_recovery
 
 # ---------------------------------------------------------------------------
 # Path configuration
 # ---------------------------------------------------------------------------
 SHARED_ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals"))
-MARKETGRAPH_ROOT = Path(os.environ.get("MARKETGRAPH_ROOT", "/opt/investment/MarketGraph"))
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
+RUNTIME_ROOT = runtime_root()
 
-DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
+DB_PATH = marketdata_sqlite_path()
 STAGING_ROOT = RUNTIME_ROOT / "staging"
 ARCHIVE_DIR = RUNTIME_ROOT / "archive"
-INTAKE_DIR = SHARED_ROOT / "data" / "intake"
-
-BRIDGE_SCRIPT = SHARED_ROOT / "bridge" / "marketgraph_runtime_bridge.py"
-FAILOVER_SCRIPT = SHARED_ROOT / "source_failover.py"
-
-# Validate script existence at module load — self-healing is dead on arrival
-# if these don't exist, so warn loudly.
-for _script_path, _script_name in [
-    (BRIDGE_SCRIPT, "bridge/marketgraph_runtime_bridge.py"),
-    (FAILOVER_SCRIPT, "source_failover.py"),
-]:
-    if not _script_path.exists():
-        import warnings
-        warnings.warn(
-            f"heal.py: {_script_name} not found at {_script_path!s} — "
-            f"self-healing operations will fail. Set SHAREDSIGNALS_ROOT to correct path.",
-            RuntimeWarning,
-        )
 
 MEMORY_DIR = SHARED_ROOT / "memory"
 HEAL_ACTIONS_LOG = MEMORY_DIR / "heal_actions.jsonl"
@@ -294,7 +276,7 @@ def _verify_heal(action_name: str, action: dict) -> dict:
 
     elif action_name == "source_health":
         verify["verified"] = action.get("healed", False)
-        verify["details"] = "source_failover_rc=" + str(action.get("failover_rc", "N/A"))
+        verify["details"] = str(action.get("next_action", "collector rerun required"))
 
     return verify
 
@@ -304,22 +286,19 @@ def _verify_heal(action_name: str, action: dict) -> dict:
 # ============================================================
 
 def heal_source_health(check_result: dict, dry_run: bool = False) -> dict:
-    """Switch stale sources to backup via source_failover.py.
-
-    source_failover.py reads the stale source list and maps to fallback sources.
-    """
+    """Alert stale direct-DB collectors without falling back to retired sources."""
     stale = check_result.get("stale_sources", [])
     if not stale:
         return {"action": "source_health", "healed": False, "reason": "no_stale_sources"}
 
     action = {
         "action": "source_health",
-        "action_type": "failover",
+        "action_type": "collector_stale_alert",
         "target": [s["source_id"] for s in stale],
         "from_val": "stale",
-        "to_val": "backup",
-        "reason": f"{len(stale)} source(s) stale",
-        "reversible": True,
+        "to_val": "rerun_required",
+        "reason": f"{len(stale)} source(s) stale; source failover is retired",
+        "reversible": False,
         "healed_at": utc_now(),
     }
 
@@ -327,54 +306,29 @@ def heal_source_health(check_result: dict, dry_run: bool = False) -> dict:
         action["dry_run"] = True
         return action
 
-    if not _check_cooldown("failover", dry_run=dry_run):
+    if not _check_cooldown("source_health_alert", dry_run=dry_run):
         action["cooldown_skipped"] = True
         action["healed"] = False
         action["error"] = "rate_limited"
         record_action(action)
         return action
 
-    # Run source_failover.py if it exists
-    if FAILOVER_SCRIPT.exists():
-        stale_ids = ",".join(s["source_id"] for s in stale)
-        try:
-            result = subprocess.run(
-                [sys.executable, str(FAILOVER_SCRIPT), "--sources", stale_ids, "--action", "failover"],
-                capture_output=True, text=True, timeout=30, cwd=str(SHARED_ROOT)
-            )
-            action["failover_output"] = result.stdout.strip()
-            action["failover_rc"] = result.returncode
-            action["healed"] = result.returncode == 0
-            if result.returncode != 0:
-                action["healed"] = False
-                action["error"] = result.stderr.strip()
-        except Exception as e:
-            action["healed"] = False
-            action["error"] = str(e)
-    else:
-        action["healed"] = False
-        action["error"] = "source_failover.py not found"
-        action["fallback"] = "manual_failover_required"
-
+    action["healed"] = False
+    action["next_action"] = "rerun the owning collector cron/script and inspect market_ingest_runs"
     record_action(action)
-    if not action.get("healed"):
-        sev = ACTION_SEVERITY.get("source_health", "high")
-        alert("source_failover_failed", action, severity=sev)
+    sev = ACTION_SEVERITY.get("source_health", "high")
+    alert("source_health_stale_collector", action, severity=sev)
 
     action["_verify"] = _verify_heal("source_health", action)
     return action
 
 
 def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
-    """Trigger backfill for stale data.
-
-    Strategy: call the marketdata_db backfill mechanism, or a dedicated
-    collector re-run script.
-    """
+    """Report stale data without invoking retired bridge/backfill scripts."""
     days_behind = check_result.get("days_behind", 0)
     action = {
         "action": "data_freshness",
-        "action_type": "backfill",
+        "action_type": "collector_rerun_required",
         "target": "marketdata.sqlite",
         "from_val": f"{days_behind}d_behind",
         "to_val": "fresh",
@@ -394,28 +348,9 @@ def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
         record_action(action)
         return action
 
-    # Try to run the marketdata_db backfill
-    db_script = SHARED_ROOT / "bridge" / "marketgraph_marketdata_db.py"
-    if db_script.exists():
-        try:
-            result = subprocess.run(
-                [sys.executable, str(db_script), "--ingest", "--dataset", "daily"],
-                capture_output=True, text=True, timeout=120, cwd=str(SHARED_ROOT)
-            )
-            action["backfill_output"] = result.stdout.strip()[:500]
-            action["backfill_rc"] = result.returncode
-            action["healed"] = result.returncode == 0
-            if result.returncode != 0:
-                action["error"] = result.stderr.strip()[:500]
-        except subprocess.TimeoutExpired:
-            action["healed"] = False
-            action["error"] = "backfill_timed_out_after_120s"
-        except Exception as e:
-            action["healed"] = False
-            action["error"] = str(e)
-    else:
-        action["healed"] = False
-        action["error"] = "marketgraph_marketdata_db.py not found"
+    action["healed"] = False
+    action["error"] = "automatic backfill bridge retired; rerun the owning collector tier directly"
+    action["next_action"] = "Use cron/collectors.sh or the market-specific collector that owns the stale table; do not call legacy bridge ingest."
 
     record_action(action)
     if not action.get("healed"):
@@ -427,14 +362,14 @@ def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
 
 
 def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict:
-    """Force runtime_bridge merge to clear staging backlog."""
+    """Report staging backpressure without invoking retired CSV runtime bridge."""
     total = check_result.get("value", 0)
     action = {
         "action": "staging_backpressure",
-        "action_type": "bridge_merge",
+        "action_type": "staging_owner_required",
         "target": str(STAGING_ROOT),
         "from_val": f"{total}_pending",
-        "to_val": "merged",
+        "to_val": "manual_owner_review",
         "reason": f"{total} pending staging files (threshold: {check_result.get('threshold', 100)})",
         "reversible": False,
         "healed_at": utc_now(),
@@ -451,39 +386,15 @@ def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict
         record_action(action)
         return action
 
-    if not BRIDGE_SCRIPT.exists():
-        action["healed"] = False
-        action["error"] = "bridge script not found"
-        record_action(action)
-        emergency_alert("bridge_not_found", action)
-        return action
-
-    try:
-        # Process all streams at once (no --stream flag = all streams)
-        result = subprocess.run(
-            [sys.executable, str(BRIDGE_SCRIPT), "--apply", "--min-file-age-seconds", "0"],
-            capture_output=True, text=True, timeout=300, cwd=str(SHARED_ROOT)
-        )
-        action["bridge_output"] = result.stdout.strip()[:1000]
-        action["bridge_rc"] = result.returncode
-        action["healed"] = result.returncode == 0
-
-        # Re-count staging after merge
-        remaining = 0
-        if STAGING_ROOT.exists():
-            for d in STAGING_ROOT.iterdir():
-                if d.is_dir():
-                    remaining += len(list(d.glob("*.ndjson")))
-        action["remaining_after"] = remaining
-
-        if result.returncode != 0:
-            action["error"] = result.stderr.strip()[:500]
-    except subprocess.TimeoutExpired:
-        action["healed"] = False
-        action["error"] = "bridge_merge_timed_out"
-    except Exception as e:
-        action["healed"] = False
-        action["error"] = str(e)
+    remaining = 0
+    if STAGING_ROOT.exists():
+        for d in STAGING_ROOT.iterdir():
+            if d.is_dir():
+                remaining += len(list(d.glob("*.ndjson")))
+    action["remaining_after"] = remaining
+    action["healed"] = False
+    action["error"] = "runtime CSV bridge retired; staging owner must ingest directly to read model or archive stale files"
+    action["next_action"] = "Identify the owning collector/stream and implement direct SQLite ingestion; do not merge into MarketGraph CSV from SharedSignals."
 
     record_action(action)
     if not action.get("healed"):

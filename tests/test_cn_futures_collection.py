@@ -28,10 +28,10 @@ def test_daily_wrapper_builds_fut_daily_only_command() -> None:
     assert "--dry-run" not in cmd
 
 
-def test_daily_wrapper_supports_no_sqlite_bridge() -> None:
-    cmd = build_command("20260703", sqlite_bridge_enabled=False)
+def test_daily_wrapper_has_no_csv_only_success_switch() -> None:
+    cmd = build_command("20260703")
 
-    assert "--no-sqlite-bridge" in cmd
+    assert "--no-sqlite-bridge" not in cmd
 
 
 def test_daily_wrapper_dry_run_does_not_spawn_process(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,7 +62,7 @@ def test_backfill_generate_dates_skips_weekends() -> None:
 
 
 def test_backfill_builds_existing_sync_daily_command() -> None:
-    cmd = build_backfill_command("python3", "20260703", ["--no-sqlite-bridge"])
+    cmd = build_backfill_command("python3", "20260703")
 
     assert cmd[0] == "python3"
     assert cmd[1].endswith("collectors/tushare/sync_daily.py")
@@ -70,7 +70,7 @@ def test_backfill_builds_existing_sync_daily_command() -> None:
     assert "fut_daily" in cmd
     assert "--trade-date" in cmd
     assert "20260703" in cmd
-    assert "--no-sqlite-bridge" in cmd
+    assert "--no-sqlite-bridge" not in cmd
 
 
 def test_backfill_summary_continues_after_failed_day(monkeypatch: pytest.MonkeyPatch) -> None:

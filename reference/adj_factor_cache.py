@@ -2,29 +2,19 @@
 """Adjusted-price helper backed by SharedSignals cache.
 
 This read-side helper never calls Tushare directly. The collector layer is
-responsible for populating adjustment factors into the read model or CSV cache.
+responsible for populating adjustment factors into the read model.
 """
 
 from __future__ import annotations
 
-import csv
-import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
-DEFAULT_DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
-DEFAULT_CACHE_PATH = Path(os.environ.get("SHAREDSIGNALS_ROOT", "/opt/investment/SharedSignals")) / "reference" / "adj_factor_cache.csv"
-
+from runtime_paths import marketdata_sqlite_path
 
 def _db_path() -> Path:
-    return Path(os.environ.get("SHARED_SIGNALS_DB", str(DEFAULT_DB_PATH)))
-
-
-def _cache_path() -> Path:
-    return Path(os.environ.get("SHAREDSIGNALS_ADJ_FACTOR_CACHE", str(DEFAULT_CACHE_PATH)))
+    return marketdata_sqlite_path()
 
 
 def _normalize_date(value: str | None) -> str:
@@ -73,25 +63,6 @@ def _read_from_db(ts_code: str, start_date: str, end_date: str) -> dict[str, flo
     return factors
 
 
-def _read_from_csv(ts_code: str, start_date: str, end_date: str) -> dict[str, float]:
-    path = _cache_path()
-    if not path.exists():
-        return {}
-    factors: dict[str, float] = {}
-    try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            for row in csv.DictReader(handle):
-                if str(row.get("ts_code") or row.get("symbol") or "").strip() != ts_code:
-                    continue
-                trade_date = _normalize_date(str(row.get("trade_date") or row.get("event_time") or ""))
-                if not trade_date or trade_date < start_date or trade_date > end_date:
-                    continue
-                factors[trade_date] = float(row.get("adj_factor") or row.get("value") or 0)
-    except (OSError, ValueError):
-        return {}
-    return factors
-
-
 def fetch_adj_factor(ts_code: str, start_date: str = "20200101", end_date: str | None = None) -> dict[str, float]:
     """Return cached adjustment factors keyed by YYYYMMDD."""
     code = str(ts_code or "").strip()
@@ -99,7 +70,7 @@ def fetch_adj_factor(ts_code: str, start_date: str = "20200101", end_date: str |
         return {}
     start = _normalize_date(start_date) or "20200101"
     end = _normalize_date(end_date) if end_date else datetime.now().strftime("%Y%m%d")
-    return _read_from_db(code, start, end) or _read_from_csv(code, start, end)
+    return _read_from_db(code, start, end)
 
 
 def get_adjusted_price(ts_code: str, date: str, raw_close: float) -> float:

@@ -3,10 +3,9 @@ import sqlite3
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
+from runtime_paths import marketdata_sqlite_path
 
-SQLITE_PATH = os.environ.get(
-    "MARKETDATA_SQLITE",
-    "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite")
+SQLITE_PATH = str(marketdata_sqlite_path())
 COLD_DIR = Path("/opt/investment/SharedSignals/storage/cold")
 ARCHIVE_DAYS = int(os.environ.get("ARCHIVE_DAYS", "30"))
 

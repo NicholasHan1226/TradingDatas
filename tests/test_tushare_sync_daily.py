@@ -10,7 +10,6 @@ from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     DEFAULT_P0_STOCK_BATCH_SIZE,
-    DEFAULT_P0_PRIORITY_STOCK_FILES,
     date_range,
     filter_apis,
     load_stock_codes,
@@ -77,7 +76,7 @@ def test_p6_fut_basic_collects_expiry_fields() -> None:
     assert {"ts_code", "name", "exchange", "list_date", "last_ddate", "delist_date"}.issubset(fields)
 
 
-def test_configured_tushare_apis_have_sqlite_bridge_mapping() -> None:
+def test_configured_tushare_apis_have_sqlite_table_mapping() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
     missing = []
     for tier, apis in config["priorities"].items():
@@ -165,25 +164,14 @@ def test_p6_cb_daily_is_global_trade_date_snapshot() -> None:
     assert cb_daily_apis[0]["params"] == {"trade_date": "{trade_date}"}
 
 
-def test_sync_tier_marks_non_empty_csv_zero_bridge_rows_failed(tmp_path: Path, monkeypatch) -> None:
-    csv_path = tmp_path / "data" / "tushare" / "daily" / "20260708" / "daily_20260708.csv"
-    csv_path.parent.mkdir(parents=True)
-    csv_path.write_text(
-        "ts_code,trade_date,open,high,low,close,vol,amount\n"
-        "000001.SZ,20260708,10,11,9,10.5,1000,10500\n",
-        encoding="utf-8",
-    )
-
+def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
         last_collect_failed = False
 
         def collect(self, api_name, params, fields=None):
             return [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
 
-        def save(self, api_name, rows, trade_date, filename=None):
-            return csv_path
-
-    monkeypatch.setattr(sync_daily_module, "ingest_csv_to_sqlite", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
 
     stats = sync_tier(
         FakeCollector(),
@@ -196,9 +184,32 @@ def test_sync_tier_marks_non_empty_csv_zero_bridge_rows_failed(tmp_path: Path, m
         sqlite_db_path=tmp_path / "marketdata.sqlite",
     )
 
-    assert stats["daily"]["bridge_status"] == "failed"
-    assert stats["daily"]["bridge_errors"]
-    assert stats["_tier_summary"]["bridge_failure_count"] == 1
+    assert stats["daily"]["sqlite_status"] == "failed"
+    assert stats["daily"]["sqlite_errors"]
+    assert stats["_tier_summary"]["sqlite_failure_count"] == 1
+
+
+def test_exit_on_failure_considers_sqlite_failures() -> None:
+    assert sync_daily_module._failure_exit_code(
+        {"calls": 10, "failure_count": 6, "sqlite_failure_count": 0},
+        threshold=0.5,
+        exit_on_failure=True,
+    ) == 2
+    assert sync_daily_module._failure_exit_code(
+        {"calls": 10, "failure_count": 0, "sqlite_failure_count": 1},
+        threshold=0.5,
+        exit_on_failure=True,
+    ) == 2
+    assert sync_daily_module._failure_exit_code(
+        {"calls": 10, "failure_count": 4, "sqlite_failure_count": 0},
+        threshold=0.5,
+        exit_on_failure=True,
+    ) == 0
+    assert sync_daily_module._failure_exit_code(
+        {"calls": 10, "failure_count": 10, "sqlite_failure_count": 10},
+        threshold=0.5,
+        exit_on_failure=False,
+    ) == 0
 
 
 def test_p6_cron_runs_after_market_close_only() -> None:
@@ -226,13 +237,10 @@ def test_p0_trading_lane_only_contains_intraday_apis() -> None:
     assert DEFAULT_P0_STOCK_BATCH_SIZE == 30
 
 
-def test_p0_priority_sources_include_tradingagent_candidate_report() -> None:
-    paths = {str(path) for path in DEFAULT_P0_PRIORITY_STOCK_FILES}
 
-    assert any("ashare_preopen_dry_run_latest.json" in path for path in paths)
-    assert any("ashare_no_trade_explanations.jsonl" in path for path in paths)
-    assert any("execution_exclusions_*.jsonl" in path for path in paths)
-
+def test_p0_priority_sources_do_not_read_cross_system_files() -> None:
+    assert not hasattr(sync_daily_module, "DEFAULT_P0_PRIORITY_STOCK_FILES")
+    assert not hasattr(sync_daily_module, "_priority_stock_paths")
 
 def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
@@ -265,11 +273,6 @@ def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
 
 
 def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:
-    csv_path = tmp_path / "stock_master.csv"
-    csv_path.write_text(
-        "ts_code,symbol,name\n600519.SH,600519,贵州茅台\n",
-        encoding="utf-8",
-    )
     db_path = tmp_path / "marketdata.sqlite"
     conn = sqlite3.connect(str(db_path))
     try:
@@ -300,25 +303,15 @@ def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    codes = load_stock_codes(csv_path, prefer_sqlite_assets=True, sqlite_path=db_path)
+    codes = load_stock_codes(sqlite_path=db_path)
 
     assert codes == ["000001.SZ", "300750.SZ", "600519.SH"]
 
 
-def test_load_stock_codes_falls_back_to_csv_when_sqlite_missing(tmp_path: Path) -> None:
-    csv_path = tmp_path / "stock_master.csv"
-    csv_path.write_text(
-        "ts_code,symbol,name\n600519.SH,600519,贵州茅台\n000001.SZ,000001,平安银行\n",
-        encoding="utf-8",
-    )
+def test_load_stock_codes_returns_empty_when_sqlite_missing(tmp_path: Path) -> None:
+    codes = load_stock_codes(sqlite_path=tmp_path / "missing.sqlite")
 
-    codes = load_stock_codes(
-        csv_path,
-        prefer_sqlite_assets=True,
-        sqlite_path=tmp_path / "missing.sqlite",
-    )
-
-    assert codes == ["600519.SH", "000001.SZ"]
+    assert codes == []
 
 
 def test_shibor_lpr_dedup_key_keeps_distinct_dates() -> None:
@@ -422,61 +415,15 @@ def test_normalize_ashare_code_filters_unsupported_symbols() -> None:
     assert normalize_ashare_code("830000.BJ") == ""
 
 
-def test_load_priority_stock_codes_reads_nested_json_and_filters_allowed(tmp_path: Path) -> None:
-    priority_file = tmp_path / "priority.json"
-    priority_file.write_text(
-        """
-        {
-          "positions": [{"ts_code": "600000.SH"}, {"symbol": "000001.SZ"}],
-          "closing_candidates": [{"code": "300750"}, {"ts_code": "200011.SZ"}]
-        }
-        """,
-        encoding="utf-8",
-    )
-
+def test_load_priority_stock_codes_reads_explicit_env_only() -> None:
     codes, meta = load_priority_stock_codes(
-        paths=[priority_file],
+        explicit_codes="600000.SH,000001.SZ,300750,200011.SZ",
         allowed_codes={"600000.SH", "000001.SZ", "300750.SZ"},
     )
 
     assert codes == ["600000.SH", "000001.SZ", "300750.SZ"]
     assert meta["enabled"] is True
     assert meta["selected"] == 3
-
-
-def test_load_priority_stock_codes_reads_jsonl_glob_candidates(tmp_path: Path) -> None:
-    priority_file = tmp_path / "execution_exclusions_20260708.jsonl"
-    priority_file.write_text(
-        "\n".join(
-            [
-                '{"audit_events": [{"ts_code": "000001.SZ"}, {"ts_code": "000002.SZ"}]}',
-                (
-                    '{"generated_at": "2026-07-08T02:10:00+00:00", '
-                    '"symbol": "000001.SZ", "reason": "missing_or_non_positive_price"}'
-                ),
-                (
-                    '{"generated_at": "2026-07-08T02:12:00+00:00", '
-                    '"symbol": "601288.SH", "reason": "missing_or_non_positive_price"}'
-                ),
-                (
-                    '{"generated_at": "2026-07-08T02:12:00+00:00", '
-                    '"sample_skipped_candidates": [{"symbol": "002714.SZ"}, {"ts_code": "601398.SH"}]}'
-                ),
-                '{"symbol": "200011.SZ"}',
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    codes, meta = load_priority_stock_codes(
-        paths=[tmp_path / "execution_exclusions_*.jsonl"],
-        allowed_codes={"000001.SZ", "000002.SZ", "601288.SH", "002714.SZ", "601398.SH"},
-    )
-
-    assert codes == ["601288.SH", "002714.SZ", "601398.SH"]
-    assert meta["enabled"] is True
-    assert meta["source_count"] == 1
 
 
 def test_select_priority_rotating_stock_batch_keeps_hot_pool_first(tmp_path: Path) -> None:

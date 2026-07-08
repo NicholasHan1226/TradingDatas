@@ -26,6 +26,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
+from runtime_paths import marketdata_sqlite_path
+
 # ---- Path setup ----
 TOOLS_DIR = Path(__file__).resolve().parent
 SHARED_SIGNALS = TOOLS_DIR.parent
@@ -286,7 +288,7 @@ def _read_latest_sample(
     provider: str = "",
     interval: str = "",
 ) -> dict[str, str]:
-    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    db_path = marketdata_sqlite_path()
     fallback = {"symbol": fallback_symbol, "trade_date": fallback_date}
     if not db_path.exists():
         return fallback
@@ -314,7 +316,7 @@ def _read_latest_sample(
 
 
 def _latest_event_date() -> str:
-    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    db_path = marketdata_sqlite_path()
     fallback = "20260629"
     if not db_path.exists():
         return fallback
@@ -333,7 +335,7 @@ def _latest_event_date() -> str:
 
 
 def _latest_provider_date(table: str, provider: str, fallback: str) -> str:
-    db_path = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")) / "read_model" / "marketdata.sqlite"
+    db_path = marketdata_sqlite_path()
     if not db_path.exists():
         return fallback
     try:

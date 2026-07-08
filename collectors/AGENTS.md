@@ -6,63 +6,58 @@
 
 ## 本目录职责
 
-本目录是 SharedSignals 的统一数据采集框架。所有外部数据源（股票、Crypto、预测市场、RSS 新闻）通过统一的 Collector 接口接入，由 Orchestrator 按调度策略并行执行。
+本目录是 SharedSignals 的统一数据采集层。所有现役外部数据源由 cron wrapper 调用对应 collector/脚本，采集成功必须直接写入 SQLite read model。
 
 ## 核心架构
 
 ```
-run_collectors.sh
-  → orchestrator.py (Orchestrator)
-      → registry.yaml (collector 注册表)
-      → base.py (Collector 基类)
-      → tushare/collector.py    (A 股行情/基本面/资金流)
-      → crypto/binance.py       (Binance K线/资金费率)
-      → polymarket/collector.py (Polymarket 市场数据)
+cron/collectors.sh          → tushare/sync_daily.py
+cron/crypto_collect.sh      → crypto/binance_collect.py
+cron/pm_collect.sh          → polymarket_collect.py
+cron/cn_futures_5min.sh     → tools/collect_cn_futures_5min.py
 ```
 
 ## 关键文件
 
 | 文件 | 职责 |
 |------|------|
-| `orchestrator.py` | 统一调度器：读 registry → 按优先级+schedule 并行执行 collector |
 | `base.py` | Collector 基类：定义 `collect()` 接口、错误处理、重试策略 |
 | `models.py` | 数据模型：CollectionResult、HealthStatus 等 |
-| `registry.yaml` | Collector 注册表：定义每个 collector 的 enable/priority/schedule |
-| `run_collectors.sh` | 入口脚本，Orchestrator 持续循环模式 |
 
 ### 子 Collector
 
 | 目录 | 市场 | 数据源 | 关键文件 |
 |------|------|--------|----------|
 | `tushare/` | A股/港股/美股/期货/汇率 | Tushare API | `collector.py`, `sync_daily.py`, `config.yaml` |
-| `crypto/` | Crypto | Binance Public API | `binance.py`, `config.yaml` |
-| `polymarket/` | 预测市场 | Polymarket API | `collector.py`, `parquet_loader.py`, `config.yaml` |
+| `crypto/` | Crypto | Binance Public API | `binance.py`, `binance_collect.py`, `config.yaml` |
+| 根层 `polymarket_collect.py` | 预测市场 | Polymarket Gamma API | `polymarket_collect.py` |
 
 ### RSS/RSSHub 退役状态
 
-RSS/RSSHub 旧 collector 代码已删除。当前主服务器不把 RSS/RSSHub 当作现役 collector；`/opt/investment/MarketGraphRuntime/rss_collector.db` 仅保留历史/迁移审计价值。恢复事件采集前必须作为新的 SharedSignals collector 重新设计调度、数据库归属、staging/bridge、健康检查和回滚方案，不得从 MarketGraph 或旧 RSSCollector 恢复旧采集。
+RSS/RSSHub 旧 collector 代码已删除。当前主服务器不把 RSS/RSSHub 当作现役 collector。恢复事件采集前必须作为新的 SharedSignals collector 重新设计调度、数据库归属、直接入库、健康检查和回滚方案，不得从 MarketGraph 或旧 RSSCollector 恢复旧采集。
 
 ## 修改规则
 
 1. **新增 Collector**：
    - 继承 `base.py` 的 `Collector` 基类
    - 实现 `collect()` 方法，返回 `CollectionResult`
-   - 在 `registry.yaml` 注册（enable/priority/schedule）
    - 在子目录添加 `config.yaml`（API 配置、限速参数等）
-2. **输出目标**：collector 写入 `SharedSignals/data/` 下的 staging 区，不直接写正式表
-3. **错误处理**：所有 collector 必须优雅处理 API 限频、超时、空返回 —— 不抛异常中断 orchestrator
+   - 在 `cron/` 添加受 flock 保护的 wrapper，并补 `tests/test_capability_coverage.py`
+2. **输出目标**：collector 必须直接写 SQLite read model；非空采集写入 0 行必须失败并进入 watchdog/health_sla
+3. **错误处理**：所有 collector 必须优雅处理 API 限频、超时、空返回，并把失败写入 `market_ingest_runs` / cron log
 4. **数据不分析**：collector 只负责采集、去重、存储，不做任何投资分析或信号生成
 5. **不碰资金**：本目录代码不涉及任何交易执行、资金操作或账户管理
-6. **KimiWork 已退役**：collector 调度由 SharedSignals crontab/orchestrator 管理，不引用 KimiWork
+6. **旧调度已退役**：通用调度器、文件注册表、文件 staging bridge、parquet loader 均已删除；不得恢复为生产入口
 
 ## 运行方式
 
 ```bash
-# 单次运行所有 enabled collector
-python3 -m collectors.orchestrator --once
+# A股/期货/Tushare tiers
+cron/collectors.sh --tier P0_trading_5min
 
-# 持续循环模式（crontab 入口）
-collectors/run_collectors.sh
+# Crypto / PM
+cron/crypto_collect.sh
+cron/pm_collect.sh
 
 # 环境变量
 SHAREDSIGNALS_ROOT=/opt/investment/SharedSignals

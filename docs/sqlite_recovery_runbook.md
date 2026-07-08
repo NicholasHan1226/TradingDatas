@@ -1,6 +1,6 @@
 # SharedSignals SQLite 主库损坏恢复 Runbook
 
-> **范围**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite`
+> **范围**：`/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite`
 > **边界**：只恢复数据采集/存储层，不分析、不生成交易信号、不触发模拟/实盘执行。
 
 ## 1. 触发条件
@@ -20,7 +20,7 @@
 
 1. **最近有效 SQLite 备份**
    - 搜索目录（按顺序）：
-     - `{db_path.parent}/backups`（即 `/opt/investment/MarketGraphRuntime/read_model/backups`）
+     - `{db_path.parent}/backups`（即 `/opt/investment/SharedSignals/runtime/read_model/backups`）
      - `$SHAREDSIGNALS_ROOT/backups`（即 `/opt/investment/SharedSignals/backups`）
    - 只接受满足以下条件的 `*.sqlite`：
      - 非空
@@ -91,7 +91,7 @@ python3 tools/sqlite_recovery.py --apply --json
 # 1. 完整性检查
 python3 - <<'PY'
 import sqlite3
-p = "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+p = "/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite"
 c = sqlite3.connect(p)
 print("quick_check:", c.execute("PRAGMA quick_check").fetchone()[0])
 for t in ["market_assets", "market_bars_daily", "market_bars_intraday",

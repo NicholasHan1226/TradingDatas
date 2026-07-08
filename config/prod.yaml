@@ -7,11 +7,8 @@ secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore R
 
 # ---- Database ----
 database:
-  marketdata: "/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite"
+  marketdata: "/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite"
   duckdb: "/opt/investment/SharedSignals/data/marketdata.duckdb"
-  reference_index: "/opt/investment/MarketGraphRuntime/read_model/reference_index.sqlite"
-  # Historical audit only. RSS/RSSHub is retired from production collectors.
-  rss_collector_archive: "/opt/investment/MarketGraphRuntime/rss_collector.db"
   max_size_mb: 500
 
 # ---- Collectors ----
@@ -64,28 +61,12 @@ collectors:
     frequency: "15min"
     max_tokens_per_run: 50000
 
-# ---- Staging ----
-staging:
-  root: "/opt/investment/MarketGraphRuntime/staging"
-  streams:
-    - event_candidates
-    - collection_runs
-    - enterprise_relation_source_results
-    - event_candidate_repair_workpack
-    - market_move_observations
-    - sentiment_signals
-  archive_dir: "/opt/investment/MarketGraphRuntime/archive"
-  rejected_dir: "/opt/investment/MarketGraphRuntime/rejected"
-  min_file_age_seconds: 30
-  max_file_age_hours: 24
-
-# ---- Bridge ----
-bridge:
-  csv_bridge_script: "storage/csv_bridge.py"
-  ndjson_bridge_script: "storage/ndjson_bridge.py"
+# ---- Runtime ----
+runtime:
+  root: "/opt/investment/SharedSignals/runtime"
+  archive_dir: "/opt/investment/SharedSignals/runtime/archive"
+  rejected_dir: "/opt/investment/SharedSignals/runtime/rejected"
   duckdb_sync_script: "storage/duckdb_merge.py"
-  batch_size: 10000
-  lock_timeout_seconds: 1800
 
 # ---- Health ----
 health:
@@ -99,8 +80,7 @@ health:
     healthy: 0.95
     intermittent: 0.70
   fallback_sources:
-    coindesk: reuters
-    yahoo_finance: google_finance
+    enabled: false
 
 # ---- Backfill ----
 backfill:

@@ -114,54 +114,10 @@ class TestMarketdataDB:
 
 
 # ============================================================================
-# bridge/marketgraph_runtime_bridge.py tests
+# reader event tests
 # ============================================================================
 
-class TestRuntimeBridge:
-    """Test the runtime bridge (staging -> CSV) functions."""
-
-    def test_streams_have_all_6_streams(self):
-        from bridge.marketgraph_runtime_bridge import STREAMS
-        assert len(STREAMS) == 6
-        expected = {
-            "event_candidates", "collection_runs",
-            "enterprise_relation_source_results",
-            "event_candidate_repair_workpack",
-            "market_move_observations", "sentiment_signals",
-        }
-        assert set(STREAMS.keys()) == expected
-
-    def test_stream_spec_has_required_fields(self):
-        from bridge.marketgraph_runtime_bridge import STREAMS
-        for name, spec in STREAMS.items():
-            assert spec.name == name
-            assert spec.target is not None
-            assert len(spec.key_fields) >= 1
-            assert isinstance(spec.boundary, str) and len(spec.boundary) > 0
-
-    def test_read_csv_returns_fieldnames_and_rows(self, tmp_csv_dir: Path):
-        from bridge.marketgraph_runtime_bridge import read_csv
-        path = tmp_csv_dir / "data" / "intake" / "event_candidates.csv"
-        fieldnames, rows = read_csv(path)
-        assert isinstance(fieldnames, list)
-        assert isinstance(rows, list)
-        assert len(fieldnames) >= 4
-        assert len(rows) == 2
-        assert "candidate_id" in fieldnames
-        assert rows[0]["candidate_id"] == "c001"
-
-    def test_read_csv_handles_empty_file(self, tmp_csv_dir: Path):
-        from bridge.marketgraph_runtime_bridge import read_csv
-        empty = tmp_csv_dir / "data" / "intake" / "empty.csv"
-        empty.write_text("col1,col2\n", encoding="utf-8")
-        fieldnames, rows = read_csv(empty)
-        assert fieldnames == ["col1", "col2"]
-        assert rows == []
-
-    def test_read_csv_raises_on_missing(self):
-        from bridge.marketgraph_runtime_bridge import read_csv
-        with pytest.raises(FileNotFoundError):
-            read_csv(Path("/nonexistent/path.csv"))
+class TestReaderEvents:
 
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader
@@ -271,7 +227,6 @@ class TestRuntimeBridge:
             conn.close()
 
         monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        monkeypatch.setattr(reader, "INTAKE_ROOT", tmp_path / "missing_intake")
         reader.clear_caches()
 
         rows = reader.get_events(
@@ -290,7 +245,7 @@ class TestRuntimeBridge:
     def test_degraded_empty_is_stale_and_unfresh(self):
         import reader
 
-        rows = reader._degraded_empty("csv:event_candidates", "missing file")
+        rows = reader._degraded_empty("sqlite:market_events", "missing sqlite db")
 
         assert rows[0]["degraded"] is True
         assert rows[0]["data"] == {}
@@ -313,29 +268,6 @@ class TestRuntimeBridge:
         assert rows[0]["degraded"] is True
         assert rows[0]["data"] == {}
         assert "missing sqlite db" in rows[0]["lineage"]["reason"]
-
-    def test_write_csv_creates_file(self, tmp_csv_dir: Path):
-        from bridge.marketgraph_runtime_bridge import write_csv, read_csv
-        path = tmp_csv_dir / "data" / "intake" / "output.csv"
-        write_csv(path, ["id", "name"], [
-            {"id": "1", "name": "test1"},
-            {"id": "2", "name": "test2"},
-        ])
-        assert path.exists()
-        _, rows = read_csv(path)
-        assert len(rows) == 2
-        assert rows[0]["id"] == "1"
-
-    def test_write_csv_ignores_extra_fields(self, tmp_csv_dir: Path):
-        from bridge.marketgraph_runtime_bridge import write_csv, read_csv
-        path = tmp_csv_dir / "data" / "intake" / "filtered.csv"
-        write_csv(path, ["id"], [
-            {"id": "1", "extra": "ignored", "more": "also_ignored"},
-        ])
-        _, rows = read_csv(path)
-        assert "extra" not in rows[0]
-        assert rows[0]["id"] == "1"
-
 
 # ============================================================================
 # reference/market_calendar.py tests

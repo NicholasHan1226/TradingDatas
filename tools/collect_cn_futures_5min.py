@@ -21,12 +21,11 @@ if str(ROOT) not in sys.path:
 from collectors.tushare.collector import TushareCollector  # noqa: E402
 from collectors.tushare.tushare_common import rows_to_dicts, tushare_data  # noqa: E402
 from env_bootstrap import bootstrap_sharedsignals_env  # noqa: E402
-from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_csv_to_sqlite  # noqa: E402
+from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_rows_to_sqlite  # noqa: E402
 
 API_NAME = "rt_fut_min"
 DEFAULT_PRODUCTS = ("rb", "cu", "i", "m", "if", "ih", "ic", "im")
 DEFAULT_FREQ = "5MIN"
-DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL = 240
 _DATE_RE = re.compile(r"^\d{8}$")
 
 logger = logging.getLogger(__name__)
@@ -132,11 +131,6 @@ def build_params(symbols: list[str], *, freq: str) -> dict[str, Any]:
     return {"ts_code": ",".join(symbols), "freq": freq}
 
 
-def _truthy_env(name: str, default: str = "1") -> bool:
-    raw = str(os.environ.get(name, default)).strip().lower()
-    return raw not in {"0", "false", "no", "off"}
-
-
 def collect_rt_fut_min_rows(params: dict[str, Any], *, fields: str = "") -> list[dict[str, Any]]:
     """Collect rt_fut_min rows while preserving provider error details."""
 
@@ -151,80 +145,12 @@ def collect_rt_fut_min_rows(params: dict[str, Any], *, fields: str = "") -> list
     return rows_to_dicts(data)
 
 
-def _akshare_symbol(symbol: str) -> str:
-    root = str(symbol or "").strip().split(".", 1)[0].upper()
-    if not root or not any(char.isdigit() for char in root):
-        return ""
-    return root
-
-
-def collect_akshare_futures_minute_rows(
-    symbols: list[str],
-    *,
-    period: str = "5",
-    max_rows_per_symbol: int = DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL,
-) -> list[dict[str, Any]]:
-    """Fallback CN futures 5-minute rows from AKShare/Sina for simulated trading."""
-
-    try:
-        import akshare as ak  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"AKShare fallback unavailable: {exc}") from exc
-
-    rows: list[dict[str, Any]] = []
-    limit = max(1, int(max_rows_per_symbol))
-    for symbol in symbols:
-        sina_symbol = _akshare_symbol(symbol)
-        if not sina_symbol:
-            continue
-        try:
-            frame = ak.futures_zh_minute_sina(symbol=sina_symbol, period=str(period))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("AKShare futures_zh_minute_sina failed for %s: %s", symbol, exc)
-            continue
-        if frame is None or getattr(frame, "empty", True):
-            continue
-        for item in frame.tail(limit).to_dict("records"):
-            bar_time = str(item.get("datetime") or item.get("time") or "").strip()
-            if not bar_time:
-                continue
-            rows.append(
-                {
-                    "ts_code": symbol,
-                    "code": symbol,
-                    "time": bar_time,
-                    "open": item.get("open"),
-                    "high": item.get("high"),
-                    "low": item.get("low"),
-                    "close": item.get("close"),
-                    "vol": item.get("volume"),
-                    "hold": item.get("hold"),
-                    "provider": "akshare_sina_rt_fut_min",
-                }
-            )
-    return rows
-
-
-def _collect_akshare_fallback_rows(
-    symbols: list[str],
-    *,
-    reason: str,
-) -> tuple[list[dict[str, Any]], str]:
-    rows = collect_akshare_futures_minute_rows(
-        symbols,
-        period="5",
-        max_rows_per_symbol=int(os.environ.get("CN_FUTURES_AKSHARE_MAX_ROWS_PER_SYMBOL", str(DEFAULT_AKSHARE_MAX_ROWS_PER_SYMBOL))),
-    )
-    return rows, reason
-
-
 def run_collection(
     *,
     trade_date: str,
     symbols: list[str],
     freq: str,
     dry_run: bool,
-    sqlite_bridge_enabled: bool,
     sqlite_db_path: Path,
 ) -> dict[str, Any]:
     if not _DATE_RE.match(trade_date):
@@ -240,8 +166,8 @@ def run_collection(
         "symbol_count": len(symbols),
         "dry_run": dry_run,
         "rows": 0,
-        "sqlite_bridge_rows": 0,
-        "bridge_status": "disabled" if not sqlite_bridge_enabled else "empty",
+        "sqlite_rows": 0,
+        "sqlite_status": "empty",
         "state": "dry_run" if dry_run else "pending",
     }
     if dry_run:
@@ -254,58 +180,27 @@ def run_collection(
     try:
         rows = collect_rt_fut_min_rows(params, fields="")
     except Exception as exc:
-        fallback_error = ""
-        if _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK", "1"):
-            try:
-                rows, fallback_reason = _collect_akshare_fallback_rows(
-                    symbols,
-                    reason=str(exc),
-                )
-                source = "akshare_sina_rt_fut_min"
-                summary["fallback_from"] = "tushare_rt_fut_min"
-                summary["fallback_reason"] = fallback_reason
-            except Exception as fallback_exc:  # noqa: BLE001
-                rows = []
-                fallback_error = str(fallback_exc)
-        else:
-            rows = []
-        if not rows:
-            summary["state"] = "failed"
-            summary["error"] = str(exc)
-            if fallback_error:
-                summary["fallback_error"] = fallback_error
-            return summary
-    if (
-        not rows
-        and _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK", "1")
-        and _truthy_env("CN_FUTURES_5MIN_AKSHARE_FALLBACK_ON_EMPTY", "1")
-    ):
-        try:
-            rows, fallback_reason = _collect_akshare_fallback_rows(
-                symbols,
-                reason="tushare_rt_fut_min returned empty rows",
-            )
-            if rows:
-                source = "akshare_sina_rt_fut_min"
-                summary["fallback_from"] = "tushare_rt_fut_min_empty"
-                summary["fallback_reason"] = fallback_reason
-        except Exception as fallback_exc:  # noqa: BLE001
-            summary["fallback_error"] = str(fallback_exc)
+        summary["state"] = "failed"
+        summary["error"] = str(exc)
+        return summary
     summary["rows"] = len(rows)
     summary["source"] = source
     if not rows:
         summary["state"] = "empty"
         return summary
-    path = collector.save(API_NAME, rows, trade_date, filename=f"{API_NAME}_{trade_date}_{freq.lower()}")
-    summary["csv_path"] = str(path) if path else ""
-    if sqlite_bridge_enabled and path is not None:
-        summary["sqlite_bridge_rows"] = ingest_csv_to_sqlite(sqlite_db_path, "market_bars_intraday", path)
-        if summary["sqlite_bridge_rows"] <= 0:
-            summary["bridge_status"] = "failed"
-            summary["state"] = "failed"
-            summary["error"] = f"sqlite bridge wrote 0 rows for non-empty {API_NAME} collection"
-            return summary
-        summary["bridge_status"] = "ok"
+    summary["sqlite_rows"] = ingest_rows_to_sqlite(
+        sqlite_db_path,
+        "market_bars_intraday",
+        API_NAME,
+        rows,
+        source_name=f"{API_NAME}_{trade_date}_{freq.lower()}",
+    )
+    if summary["sqlite_rows"] <= 0:
+        summary["sqlite_status"] = "failed"
+        summary["state"] = "failed"
+        summary["error"] = f"direct sqlite write produced 0 rows for non-empty {API_NAME} collection"
+        return summary
+    summary["sqlite_status"] = "ok"
     summary["state"] = "ok"
     return summary
 
@@ -318,7 +213,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-symbols", type=int, default=int(os.environ.get("CN_FUTURES_5MIN_MAX_SYMBOLS", "30")), help="Max auto-selected futures contracts.")
     parser.add_argument("--freq", default=os.environ.get("CN_FUTURES_5MIN_FREQ", DEFAULT_FREQ), help="Tushare rt_fut_min freq, default 5MIN.")
     parser.add_argument("--sqlite-db", type=Path, default=DEFAULT_SQLITE_PATH, help="SQLite read model path.")
-    parser.add_argument("--no-sqlite-bridge", action="store_true", help="Collect CSV only.")
     parser.add_argument("--dry-run", action="store_true", help="Print selected symbols and params without calling Tushare.")
     return parser.parse_args(argv)
 
@@ -341,7 +235,6 @@ def main(argv: list[str] | None = None) -> int:
             symbols=symbols,
             freq=str(args.freq).upper(),
             dry_run=bool(args.dry_run),
-            sqlite_bridge_enabled=not args.no_sqlite_bridge,
             sqlite_db_path=args.sqlite_db,
         )
     except Exception as exc:

@@ -9,17 +9,14 @@ the cached `market_bars_daily` dates here.
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional, Union
 
+from runtime_paths import marketdata_sqlite_path
 
 DateLike = Union[date, datetime, str]
-
-RUNTIME_ROOT = Path(os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime"))
-DEFAULT_DB_PATH = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
 
 _range_cache: dict[tuple[str, str, str], list[date]] = {}
 
@@ -29,7 +26,7 @@ class TradingCalendarUnavailableError(RuntimeError):
 
 
 def _db_path() -> Path:
-    return Path(os.environ.get("SHARED_SIGNALS_DB", str(DEFAULT_DB_PATH)))
+    return marketdata_sqlite_path()
 
 
 def _to_date(d: DateLike) -> date:

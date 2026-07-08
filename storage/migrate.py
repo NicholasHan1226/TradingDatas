@@ -29,10 +29,9 @@ from pathlib import Path
 REPO_DIR = Path(__file__).resolve().parents[1]  # SharedSignals root
 sys.path.insert(0, str(REPO_DIR))
 
-RUNTIME_ROOT = Path(
-    os.environ.get("MARKETGRAPH_RUNTIME_ROOT", "/opt/investment/MarketGraphRuntime")
-)
-DEFAULT_DB = RUNTIME_ROOT / "read_model" / "marketdata.sqlite"
+from runtime_paths import marketdata_sqlite_path  # noqa: E402
+
+DEFAULT_DB = marketdata_sqlite_path()
 
 
 def schema_hash(sql: str) -> str:

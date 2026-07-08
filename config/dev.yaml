@@ -7,8 +7,6 @@ server: ${SHAREDSIGNALS_SERVER:-127.0.0.1}
 # ---- Database ----
 database:
   marketdata: "/tmp/sharedsignals_dev_marketdata.sqlite"
-  reference_index: "/tmp/sharedsignals_dev_reference.sqlite"
-  rss_collector: "/tmp/sharedsignals_dev_rss.db"
 
 # ---- Collectors ----
 collectors:
@@ -16,7 +14,6 @@ collectors:
     - tushare_sample    # A-share: 2 stocks only
     - binance_sample    # Crypto: BTC/ETH only
     - polymarket_sample # Prediction Markets: 2 tags
-    - rss_sample        # RSS: 5 feeds
 
   tushare:
     enabled: true
@@ -34,28 +31,6 @@ collectors:
     enabled: true
     tags: ["crypto", "politics"]
     frequency: "manual"
-
-  rss:
-    enabled: true
-    feeds:
-      - name: "reuters_top"
-        url: "https://feeds.reuters.com/reuters/topNews"
-        category: "news"
-        interval_minutes: 60
-      - name: "coindesk"
-        url: "https://feeds.coindesk.com/coindesk"
-        category: "crypto"
-        interval_minutes: 60
-    fallback_enabled: true
-
-# ---- Staging ----
-staging:
-  root: "/tmp/sharedsignals_dev_staging"
-  streams:
-    - event_candidates
-    - sentiment_signals
-    - collection_runs
-  max_file_age_minutes: 5
 
 # ---- Health ----
 health:

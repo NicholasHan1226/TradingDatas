@@ -264,7 +264,7 @@ def test_main_emits_json_when_requested(tmp_path: Path, capsys: pytest.CaptureFi
 
 def test_parse_args_defaults() -> None:
     args = parse_args([])
-    assert args.sqlite_db == Path("/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite")
+    assert args.sqlite_db == Path("/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite")
     assert args.max_age_minutes == 10
     assert args.json is False
 
