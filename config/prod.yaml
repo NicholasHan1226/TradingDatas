@@ -3,7 +3,7 @@
 
 environment: prod
 server: ${SHAREDSIGNALS_SERVER:-8.138.181.177}
-secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore RSS mirror
+secondary_server: ${SHAREDSIGNALS_SECONDARY_SERVER:-47.82.153.58}  # Singapore proxy relay (Polymarket/Crypto); RSS/RSSHub retired
 
 # ---- Database ----
 database:

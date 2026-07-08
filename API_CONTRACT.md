@@ -32,12 +32,12 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
-**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`。本机 MarketGraph/TradingAgent 可使用 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
+**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
 
 
 | 入口 | 实现文件 | 适用场景 |
 |------|---------|---------|
-| **SQLite Read Model** | `bridge/marketgraph_marketdata_db.py` | 直接 Python import，用于 cron 任务 / 批处理 / 本地脚本 |
+| **SQLite Read Model** | `reader.py` / `bridge/marketgraph_marketdata_db.py`（兼容模块） | 直接 Python import，用于 SharedSignals 内部 cron / 批处理 / 本地脚本；非跨系统生产入口 |
 | **MCP Server (34 tools)** | `MarketGraph/08-Market-Interfaces/tools/marketgraph_mcp_server.py` | 远程 agent / 外部进程通过 stdio JSON-RPC 调用 |
 
 本文档聚焦 **SQLite Read Model** 的 Python 函数接口。MCP 工具的参数映射见[附录](#附录-mcp-工具映射)。
@@ -137,7 +137,7 @@ CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免
 | `volume` | REAL | 成交量 |
 | `amount` | REAL | 成交额 |
 | `provider` | TEXT | 数据源 (tushare / binance / polymarket) |
-| `source_file` | TEXT | 来源 CSV 路径 |
+| `source_file` | TEXT | 来源标识（采集运行 key/路径），仅作迁移/审计参考；现役数据由 collector 直接入库 |
 | `collected_at` | TEXT | 采集时间 ISO8601 |
 | `raw_json` | TEXT | 原始响应 JSON |
 
@@ -170,11 +170,11 @@ Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `mar
 | `event_time` | TEXT | 指标对应期，优先取 `trade_date/ann_date/end_date/report_date/date/period/month/quarter/year` |
 | `value` | REAL | 数值化指标 |
 | `provider` | TEXT | 例如 `tushare_shibor_lpr` |
-| `source_file` | TEXT | 来源 CSV 文件 |
+| `source_file` | TEXT | 来源标识（采集运行 key/路径），仅作迁移/审计参考 |
 | `collected_at` | TEXT | 采集时间 |
 | `raw_json` | TEXT | 原始行 JSON |
 
-低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）先按 P4/P6 定时采集落 CSV，再展开为 `market_factors`。A股 `moneyflow` 是盘后日频资金流，按 P1 全市场采集后展开为 `moneyflow:*` 因子；盘中 5 分钟交易不依赖当天 `moneyflow` 即时更新。月度/季度字段只作为 `event_time`，不作为数值因子。
+低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）由 P4/P6 定时采集直接写入 read model，再展开为 `market_factors`；CSV 仅作为 staging/历史迁移材料。A股 `moneyflow` 是盘后日频资金流，按 P1 全市场采集后展开为 `moneyflow:*` 因子；盘中 5 分钟交易不依赖当天 `moneyflow` 即时更新。月度/季度字段只作为 `event_time`，不作为数值因子。
 
 #### market_coverage_status (覆盖状态)
 
@@ -190,7 +190,7 @@ Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `mar
 
 ## Reader 函数
 
-所有 reader 函数位于 `bridge/marketgraph_marketdata_db.py`，以及辅助的 `reference/market_calendar.py`。`reference/market_calendar.py` 只读 SharedSignals read model，不再导入旧 A 股 Tushare wrapper 或现场调用 provider。
+所有 reader 函数位于 SharedSignals `reader.py`（HTTP API 与内部读取入口），`bridge/marketgraph_marketdata_db.py` 仅保留跨仓兼容辅助模块。辅助的 `reference/market_calendar.py` 只读 SharedSignals read model，不再导入旧 A 股 Tushare wrapper 或现场调用 provider。
 
 ### 市场数据读取
 
@@ -273,7 +273,7 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 ```python
 from marketgraph_marketdata_db import read_events
 
-# 最近 100 条 RSS 事件（RSS 源当前为 deferred，恢复生产采集前仅返回历史数据或空结果）
+# 最近 100 条新闻/公告事件（事件采集当前由 Tushare news/announcements 提供；RSS/RSSHub 已退役，恢复前需按 SharedSignals collector 重新接入）
 events = read_events(provider="rss", limit=100)
 ```
 
@@ -460,7 +460,7 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 | Crypto 因子 | 按需/低频 | ~5min DB sync | ≤ 60min |
 | A 股日线 | 盘后 EOD | 日级 | 最新交易日 |
 | 美股日线 | 盘后 EOD | 日级 | 最新交易日 |
-| RSS 事件 | 10-15min | staging → bridge 延迟 | 最新 collected_at |
+| Tushare 新闻/公告事件 | 日频（P6） | SQLite read model | 最新 collected_at |
 | 基本面 | 日级预计算 | 按需 | 季度报告期后 |
 
 ### 数据质量标记
@@ -526,7 +526,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 ### 数据维度来源标注
 
-以下标注哪些数据维度由 SharedSignals **natively collected**（原生采集）vs **bridged**（桥接）：
+以下标注哪些数据维度由 SharedSignals 原生采集直接写入 read model；历史 "bridge" 仅指迁移/兼容辅助层，不作为现役采集成功路径：
 
 | 数据维度 | 来源 | 方式 |
 |---------|------|------|

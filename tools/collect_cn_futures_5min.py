@@ -207,7 +207,7 @@ def run_collection(
     trade_date: str,
     symbols: list[str],
     freq: str,
-    provider: str,
+    provider: str = TUSHARE_PROVIDER,
     dry_run: bool,
     sqlite_db_path: Path,
 ) -> dict[str, Any]:

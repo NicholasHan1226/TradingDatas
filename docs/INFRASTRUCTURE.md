@@ -4,7 +4,7 @@
 | 角色 | IP | 规格 | 职责 |
 |------|-----|------|------|
 | 华南3/广州 (主) | 8.138.181.177 | 4核8GB/99GB | SharedSignals、MarketGraph、TradingAgent 生产主节点 |
-| 新加坡 | 47.82.153.58 | 30GB | 境外 RSS mirror / 待收口节点 |
+| 新加坡 | 47.82.153.58 | 30GB | 境外代理 relay（Polymarket/Crypto）；RSS/RSSHub 已退役归档 |
 | Mac Mini | 本地 | — | TradingAgent A股模拟盘可选 Hermes/同花顺 GUI 第二路径；SharedSignals 不依赖 Mini |
 
 ## 域名
@@ -26,7 +26,7 @@
 - Nginx :80 → 127.0.0.1:8082 (API server)
 - RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新设计 SharedSignals collector 并直接写入 read model
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)
-- 新加坡 → rsync → 主服务器 staging (每5min)
+- 新加坡仅作为 Polymarket/Crypto 境外代理 relay，不运行 RSSHub/rsync staging；主服务器通过 SSH 隧道连接新加坡 127.0.0.1:18888
 
 ## API Keys
 - 详见 .env (不在此文档记录值)

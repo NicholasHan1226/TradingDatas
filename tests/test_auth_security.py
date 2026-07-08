@@ -175,3 +175,80 @@ def test_default_free_concurrency_limit(monkeypatch: pytest.MonkeyPatch) -> None
         auth_module.claim_concurrency(account)
     auth_module.release_concurrency(account["tenant_id"])
     auth_module.release_concurrency(account["tenant_id"])
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _token_config(token: str, tenant_id: str, scopes: list[str]) -> dict[str, Any]:
+    return {
+        "sha256": _token_hash(token),
+        "tenant_id": tenant_id,
+        "tier": "free",
+        "scopes": scopes,
+    }
+
+
+def test_rate_limit_exceeded(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("rate-token", "tenant-rate", ["read"])]}
+        ),
+    )
+    # Force a tiny limit so the test is deterministic and does not depend on time.
+    auth_module.RATE_LIMITS["free"] = 1
+
+    account = auth_module.authenticate(
+        {"Authorization": "Bearer rate-token"}, "203.0.113.10"
+    )
+    auth_module.enforce_rate_limit(account["tenant_id"], account["tier"])
+    with pytest.raises(auth_module.RateLimitError):
+        auth_module.enforce_rate_limit(account["tenant_id"], account["tier"])
+
+
+def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {
+                "tokens": [
+                    _token_config("a-token", "tenant-a", ["read"]),
+                    _token_config("b-token", "tenant-b", ["read"]),
+                ]
+            }
+        ),
+    )
+    auth_module.RATE_LIMITS["free"] = 1
+
+    account_a = auth_module.authenticate(
+        {"Authorization": "Bearer a-token"}, "203.0.113.10"
+    )
+    account_b = auth_module.authenticate(
+        {"Authorization": "Bearer b-token"}, "203.0.113.10"
+    )
+
+    auth_module.enforce_rate_limit(account_a["tenant_id"], account_a["tier"])
+    # tenant-a second request is blocked.
+    with pytest.raises(auth_module.RateLimitError):
+        auth_module.enforce_rate_limit(account_a["tenant_id"], account_a["tier"])
+    # tenant-b is unaffected by tenant-a's quota consumption.
+    auth_module.enforce_rate_limit(account_b["tenant_id"], account_b["tier"])
+
+
+def test_scope_isolation_limits_endpoint_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("health-token", "tenant-health", ["health"])]}
+        ),
+    )
+
+    account = auth_module.authenticate(
+        {"Authorization": "Bearer health-token"}, "203.0.113.10"
+    )
+
+    assert auth_module.check_endpoint_scope(account, "/health")
+    assert not auth_module.check_endpoint_scope(account, "/market_data")
+    assert not auth_module.check_endpoint_scope(account, "/tushare")

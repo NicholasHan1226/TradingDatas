@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除)
+> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`)
 
 ---
 
@@ -22,7 +22,7 @@
 - **`/health` data_freshness 对齐**：2026-07-07 起旧 `data_freshness` 检查不再用另一套自然日规则判定 US/Global；Ashare/US/Global 跟随 `health_sla` 的日线判定，Crypto 改看 `market_bars_intraday.collected_at` 30 分钟新鲜度，避免 Crypto daily 旧样本和 US/Global 假期样本把 `/health` 误打 degraded。
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
-- **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
+- **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 仅作为 SharedSignals 本仓库兼容辅助模块，不暴露为跨系统生产入口；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，DuckDB 只作为分析镜像，不是 5 分钟交易 read path；2026-07-07 起定时同步降为每小时一次，并用低 IO/CPU 优先级与 10 分钟超时运行，避免全量 sqlite_scan 与交易采集/模拟任务抢占主库。同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/sharedsignals/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
 - **环境与邮件边界**：SharedSignals 只读取 `SHAREDSIGNALS_ENV_FILE`、`/opt/sharedsignals/.env`、`/opt/investment/SharedSignals/.env` 或本仓 `.env`；不得再读取 MarketGraph env 或 TradingAgent env。系统邮件发件入口统一由本仓配置提供，缺配置时只落本地 fallback 记录并触发告警。
@@ -36,9 +36,9 @@
 - **基础设施文档与 SLA**：2026-07-08 起 `tools/health_sla.py`、`reader.py`、patrol/heal、SQLite recovery 与 storage adapter 均通过 `runtime_paths.py` 解析 SharedSignals 自有 runtime；SLA 已按 trading/research 分层，交易价格/日线过期才触发 degraded/critical，研究事件过期只记 `notice`；`market_bars_daily` 若存在 `market` 列会按市场分别检查最新日期，避免 A股最新掩盖 US stale；周末/周一开盘前会放宽非 24/7 日频表阈值，PM/Crypto 价格不放宽。
 - **API 线程化**：`ThreadingHTTPServer` + 30s request timeout + max 20 threads + 256 accept backlog + 503 at capacity；客户端高压断连降级为 debug 日志，避免 BrokenPipe 噪音污染 systemd 日志
 - **auth 内存治理**：`_DEDUP_CACHE` entries + bytes 双上限；`_REQUEST_LOG` tenant/event 上限 + TTL
-- **直接入库门禁**：`storage/read_model_store.py` 是现役 read model 写入模块；Tushare/CNFutures 等生产 collector 只能把 provider rows 直接写入 SQLite read model，历史 CSV 迁移 helper 不得作为生产采集成功路径；Tushare P0-P6 已配置接口必须全部有 read model 映射，非空 provider rows 写入 SQLite 0 行会标记 `failed` 并计入 tier `sqlite_failure_count`，避免“采集成功但数据库/API 无数据”被误判为正常；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
-- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 监听 `8082`；本机消费者通过 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
-- **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外 relay）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
+- **直接入库门禁**：`storage/read_model_store.py` 现役写入路径为 `ingest_rows_to_sqlite()`，Tushare/CNFutures 等生产 collector 必须把 provider rows 直接写入 SQLite read model；`ingest_csv_to_sqlite()` 及 CSV 相关 helper 仅保留为历史迁移/审计工具，不得作为生产采集成功路径；Tushare P0-P6 已配置接口必须全部有 read model 映射，非空 provider rows 写入 SQLite 0 行会标记 `failed` 并计入 tier `sqlite_failure_count`，避免“采集成功但数据库/API 无数据”被误判为正常；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
+- **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）；本机消费者仅在 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
+- **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外代理 relay；旧 RSS/RSSHub 路径已退役）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 10 分钟写入 `logs/watchdog_inputs/health_sla.json`。
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟 ticker、Crypto 每小时 1d klines、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
 
@@ -96,7 +96,7 @@
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
-11. [x] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
+11. [x] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用；SQLite/DuckDB read model 仅供 SharedSignals 内部/授权只读诊断，生产消费者统一走 HTTP API
 12. [x] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换/ DuckDB 重建流程已实现，默认 dry-run/fail-safe，详见 `docs/sqlite_recovery_runbook.md`；env 运行中热加载仍待后续迭代。
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
@@ -129,9 +129,9 @@
 
 - [x] `cron/pm_collect.sh` 显式导出 `POLYMARKET_HTTP_PROXY=http://127.0.0.1:7890`、请求超时、网络短重试和 SQLite 写库短重试配置，并把 proxy 通过 `--proxy` 传入 collector；不再只依赖 Python 内部默认值。
 - [x] `collectors/polymarket_collect.py` 默认禁用 direct fallback，避免本地 proxy 短故障后又直连并把错误误写成 `Network is unreachable`；如确需直连审计，必须显式设置 `POLYMARKET_DIRECT_FALLBACK_ENABLED=1` 或传 `--allow-direct-fallback`。写入 read model 时先设置 busy timeout，并对 `database is locked` 做有限短重试，减少 5 分钟多任务撞库导致的漏采。
-- [x] SQLite 写入层增加 busy 短重试和按需 WAL 设置，覆盖 Tushare 直接入库与 PM/其它 writer 争用同一 read model 时的 `database is locked`；`SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES` 仍作为历史环境变量名保留，后续可改名为 SQLite writer retry。
+- [x] SQLite 写入层增加 busy 短重试和按需 WAL 设置，覆盖 Tushare 直接入库与 PM/其它 writer 争用同一 read model 时的 `database is locked`；`SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES` 是历史环境变量名，仅影响 migration-only CSV helper，现役直接入库通过函数参数控制重试。
 - [x] `tools/watchdog.py` 的 API health 探针增加 3 次短重试，避免 SharedSignals API 单次慢响应把 watchdog 分数误打低；连续失败仍按 critical 处理。
-- [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走新加坡 RSS mirror。
+- [x] `.env.example` 与 `.env.template` 已补齐 Polymarket proxy 配置，明确 PM 走杭州本地 Mihomo/Clash，不走旧 RSS/RSSHub 路径。
 - [x] PM/Crypto 采集支持 `POLYMARKET_HTTP_PROXIES` / `BINANCE_HTTP_PROXIES` 逗号分隔代理优先级列表；生产已配置为本机 SSH tunnel 到新加坡 relay 优先、本机 Clash/Mihomo 兜底，避免直接暴露公网代理端口。
 - [x] 新增 `deploy/install_singapore_proxy_relay.sh` 与 `deploy/configure_overseas_proxy_priority.sh`，用于在拿到新加坡 SSH 后安装受限 tinyproxy relay，并在杭州主服务器验证后切换为“新加坡优先、本机 Clash 备选”；操作说明见 `docs/singapore_proxy_relay.md`。
 
@@ -280,7 +280,7 @@
 
 ### 2026-07-04 SharedSignals API 与系统邮件运行时对齐
 
-- [x] TradingAgent 生产 loader 已默认设置 `SHAREDSIGNALS_API_URL=http://127.0.0.1:8082`，A股读取链路以 SharedSignals/ShareChannel API 为第一入口，SQLite 仅保留只读回退。
+- [x] TradingAgent 生产 loader 已默认设置 `SHAREDSIGNALS_API_URL=http://127.0.0.1:8082`，A股读取链路以 SharedSignals/ShareChannel API 为第一入口；SQLite/DuckDB read model 仅供 SharedSignals 内部/授权只读诊断。
 - [x] SharedSignals 系统邮件发送器已改为 Cloudflare Email Service REST endpoint `/email/sending/send`，不再尝试 DeadSimple/SMTP；失败时只保存本地 fallback 证据。
 - [x] 邮件配置入口已从历史 MarketGraph env 迁出，统一到 SharedSignals 自有 env；规范通道为交易 `notice@tradingagent.cc -> tradingadviser@coze.email`、系统 `notice@tradingagent.cc -> soc@coze.email`。
 
@@ -439,7 +439,7 @@
 - [x] auth.py 增强 — 10 scope 类别 + SCOPE_ENDPOINTS 映射 + "read" union scope + "full" wildcard
 - [x] api_server.py scope enforcement — 所有端点 authenticate → check_endpoint_scope → rate limit → dispatch
 - [x] /health 分层 — 无认证返回最小版，有 token+scope 返回完整健康报告
-- [x] LOCALHOST_BYPASS — 127.0.0.1/::1/localhost 自动跳过认证（生产保护 internals）
+- [x] LOCALHOST_BYPASS — 由 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 控制，127.0.0.1/::1/localhost 才自动跳过认证；生产默认关闭，外部账号必须走 token/JWT
 - [x] 2 个 API token 配置 — tradingagent（read scope）、marketgraph（health+market_data etc+read）
 - [x] SHAREDSIGNALS_API_KEY 由 SharedSignals 自有 env 管理；TradingAgent 通过 API key 消费，不再依赖 MarketGraph env chain
 - [x] SharedSignalsAPIClient 部署到服务器 + 3 接口测试通过（market_data/health/fundamentals）
@@ -485,7 +485,7 @@
 
 **SharedSignals 相关历史发现（CRITICAL/HIGH，已作为历史记录保留）：**
 - **6 条 CRITICAL 断裂数据链（历史）:** 当时存在 Tushare 只写 CSV、RSS/NDJSON、Crypto/NDJSON 等断裂；当前生产 Tushare/Crypto/PM/CNFutures 已要求直接入 SQLite read model，旧链路不作为现役方案。
-- **API 服务器单线程阻塞：** `api_server.py` 使用 plain `HTTPServer`（非 ThreadedHTTPServer），并发请求排队
+- **API 服务器线程化：** `api_server.py` 已改为 `ThreadingHTTPServer`（`SharedSignalsHTTPServer`），支持 `SHAREDSIGNALS_MAX_THREADS` 并发限制；历史单线程阻塞问题已修复。
 - **auth.py 无界内存增长：** `_DEDUP_CACHE` 和 `_REQUEST_LOG` 无容量上限，无 TTL 过期
 - **评分管线 N+1 扇出：** 每只股票 5-6 次调用，20 只股票 100+ 次循环内调用
 - **API 参数文档完全缺失：** 15 个数据端点无参数说明、无类型标注、无示例
@@ -517,7 +517,7 @@
 - **数据完整性问题：**
   - `get_market_data()` 查询不包含 `market` 过滤 — 跨市场符号冲突会返回重复行
   - event_hash 64 位截断碰撞风险（3 个收集器用 3 种不同哈希策略）
-  - Tushare/RSS 收集器只写 CSV/NDJSON，不写 SQLite — 依赖 MarketGraph sync_all 作唯一 SQLite 桥
+  - Tushare/RSS 收集器只写 CSV/NDJSON（历史）— 当前生产 collector 已直接写入 SQLite read model
   - `market_bars_daily` 主键含 `provider` — 同 symbol+date 不同 provider 可产生重复行
   - schema.py vs duckdb_schema.py 中 INTEGER vs BIGINT 类型不匹配
 - **代码质量问题：**
@@ -548,7 +548,7 @@
 - **CSV 非原子写入（CRITICAL）：** `collector.py` 的 `save()` 先 `open("w")` 截断再写入 — 并发 reader 会读到空/半截文件
 - **`plan()` 模板 bug（CRITICAL）：** `collector.py:plan()` 返回未解析的 `{ts_code}` 占位符 — 所有 per-stock Tushare 采集器静默 no-op
 - **TOCTOU race in audit CSV（CRITICAL）：** `_write_audit_csv()` `os.path.exists()` 检查 + append 模式 — 并发 collector 产生重复 header
-- **localhost bypass 默认为 on（CRITICAL）：** `auth.py` `SHAREDSIGNALS_LOCALHOST_BYPASS` 默认 `"1"` — 完全鉴权绕过
+- **localhost bypass 默认关闭：** `auth.py` `SHAREDSIGNALS_LOCALHOST_BYPASS` 默认 `False`；生产必须显式开启且配合防火墙/监听地址限制使用。
 - **Token hashing 无 salt 默认（HIGH）：** 空 `SHAREDSIGNALS_TOKEN_SALT` 退化为纯 SHA256
 - **env 自动加载在 import-time（HIGH）：** 3 个模块在 import 时 mutate `os.environ` — 非确定性行为
 - **无 circuit breaker（HIGH）：** 3 个外部 API collector 各自重试，无全局故障追踪
@@ -591,14 +591,14 @@
 | Tushare | Tushare Pro（按 `collectors/tushare/config.yaml` 分层配置） | market_bars_daily 等 | 已有（参考实现） |
 | Binance | Binance REST API | market_bars_daily, market_bars_intraday | 新实现 |
 | Polymarket | Gamma API + CLOB API | market_pm_markets, market_pm_prices | 新实现 |
-| RSS | RSS collector（deferred） | market_events / sentiment_signals | 退役旧顶层资产，恢复前需重接 SharedSignals collector |
+| RSS | RSS collector（retired） | market_events / sentiment_signals | 已退役归档；恢复事件采集前必须按 SharedSignals direct-DB collector 重新设计，不得恢复旧 RSSHub/staging/bridge |
 
 ### 运维基础设施
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
 | 巡查 | `patrol.py` | 6 项健康检查：source_health, data_freshness, staging_backpressure, sqlite_health, disk_usage, field_drift |
-| 自愈 | `heal.py` | 6 种策略：source failover, backfill, force bridge merge, WAL checkpoint, disk cleanup, field drift update |
+| 自愈 | `heal.py` | 6 种策略：source stale alert, backfill, staging cleanup, WAL checkpoint, disk cleanup, field drift update；不再执行旧 CSV/staging bridge merge |
 | 同步 | `duckdb_merge.py` | SQLite → DuckDB 定时同步 |
 | 调度 | `scheduler.py` | merge → patrol → heal 统一调度入口 |
 

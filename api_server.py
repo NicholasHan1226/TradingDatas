@@ -24,7 +24,7 @@ if str(ROOT) not in sys.path:
 auth: Any | None = None
 reader: Any | None = None
 _runtime_load_lock = threading.Lock()
-HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "0.0.0.0")
+HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "127.0.0.1")
 PORT = env_int("SHAREDSIGNALS_API_PORT", 8082, min_value=1, max_value=65535)
 VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
 REQUEST_TIMEOUT = env_float("SHAREDSIGNALS_REQUEST_TIMEOUT", 30.0, min_value=1.0, max_value=300.0)

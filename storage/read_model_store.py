@@ -1,4 +1,8 @@
-"""CSV-to-SQLite bridge for SharedSignals storage tables."""
+"""SQLite read-model writer and historical CSV migration helper.
+
+现役采集使用 `ingest_rows_to_sqlite()` 直接写入 read model。`ingest_csv_to_sqlite()`
+及 CSV 相关 helper 仅保留为历史迁移/审计工具，不得作为生产采集成功路径。
+"""
 
 from __future__ import annotations
 
@@ -673,11 +677,12 @@ def _prepare_sqlite_connection(conn: sqlite3.Connection) -> None:
 
 
 def _ingest_csv_to_sqlite_once(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
-    """Ingest one CSV file into an existing SQLite table.
+    """Ingest one CSV file into an existing SQLite table (migration-only).
 
-    The bridge is defensive: it never creates target tables. If the database or
-    table is missing, it logs and returns 0 so CSV collection remains the source
-    of truth.
+    The helper is defensive: it never creates target tables. If the database or
+    table is missing, it logs and returns 0. CSV ingestion is retained only for
+    historical migration/audit; production collectors must use
+    `ingest_rows_to_sqlite()`.
     """
     db_path = Path(db_path)
     csv_path = Path(csv_path)
