@@ -539,6 +539,42 @@ def test_cctv_news_derives_market_event_hash_and_metadata(tmp_path: Path):
     )
 
 
+def test_anns_d_derives_announcement_market_event(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    csv_path = _write_csv(
+        tmp_path / "data" / "tushare" / "anns_d" / "20260708" / "anns_d_20260708.csv",
+        "\n".join(
+            [
+                "ts_code,name,ann_date,title,url,rec_time",
+                "600276.SH,恒瑞医药,20260708,董事会公告,https://example.com/ann,2026-07-08 20:00:00",
+            ]
+        ),
+    )
+
+    rows = ingest_csv_to_sqlite(db_path, CSV_TO_TABLE_MAP["anns_d"], csv_path)
+
+    assert rows == 1
+    conn = sqlite3.connect(str(db_path))
+    try:
+        record = conn.execute(
+            "SELECT provider, event_type, event_time, trade_date, market, symbol, title, url "
+            "FROM market_events"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert record == (
+        "tushare_anns_d",
+        "anns_d",
+        "20260708",
+        "20260708",
+        "Ashare",
+        "600276.SH",
+        "董事会公告",
+        "https://example.com/ann",
+    )
+
+
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

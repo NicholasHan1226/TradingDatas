@@ -146,7 +146,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "fields": ["ts_code", "trade_time", "open", "high", "low", "close", "vol"],
         "sla_hours": 2,
     },
-    "get_news_list": {
+    "get_tushare_news": {
         "module": "reader",
         "func": "get_tushare",
         "path": "reader.py",
@@ -157,6 +157,18 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "version": "1.0.0",
         "fields": ["datetime", "content", "source", "title"],
         "sla_hours": 6,
+    },
+    "get_announcements": {
+        "module": "reader",
+        "func": "get_tushare",
+        "path": "reader.py",
+        "category": "events",
+        "description": "Read Tushare listed-company announcements from the SharedSignals read model",
+        "smoke_args": ["anns_d"],
+        "smoke_kwargs": {"trade_date": "__LATEST_EVENT_DATE__"},
+        "version": "1.0.0",
+        "fields": ["ts_code", "ann_date", "title", "url", "source"],
+        "sla_hours": 24,
     },
 
     # --- bridge/ (marketgraph unified marketdata DB) ---

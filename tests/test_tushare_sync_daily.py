@@ -89,6 +89,57 @@ def test_configured_tushare_apis_have_sqlite_bridge_mapping() -> None:
     assert missing == []
 
 
+def test_configured_tushare_apis_are_allowed_by_api_gateway() -> None:
+    from api_server import ALLOWED_TUSHARE_APIS
+
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    missing = []
+    for tier, apis in config["priorities"].items():
+        for api in apis:
+            api_name = api["api_name"]
+            if api_name not in ALLOWED_TUSHARE_APIS:
+                missing.append(f"{tier}:{api_name}")
+
+    assert missing == []
+
+
+def test_p6_news_announcement_event_apis_are_single_config_entries() -> None:
+    from collections import Counter
+
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    all_names = [
+        api["api_name"]
+        for apis in config["priorities"].values()
+        for api in apis
+    ]
+    duplicate_names = {
+        name: count
+        for name, count in Counter(all_names).items()
+        if count > 1
+    }
+    assert duplicate_names == {}
+
+    p6_names = [api["api_name"] for api in config["priorities"]["P6_other_daily"]]
+    counts = Counter(p6_names)
+
+    for api_name in ("news", "major_news", "cctv_news", "anns_d", "report_rc"):
+        assert counts[api_name] == 1
+
+    p6_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P6_other_daily"]
+    }
+    assert p6_by_name["news"]["params"] == {
+        "start_date": "{start_date}",
+        "end_date": "{end_date}",
+    }
+    assert "url" in p6_by_name["news"]["fields"]
+    assert p6_by_name["anns_d"]["params"] == {
+        "start_date": "{start_date}",
+        "end_date": "{end_date}",
+    }
+    assert p6_by_name["anns_d"]["per_stock"] is False
+
+
 def test_p6_index_and_fund_daily_are_trade_date_snapshots() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
     p6_by_name = {

@@ -943,8 +943,58 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_events_cached(_generation: int, start: str, end: str, event_type: str | None) -> str:
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key and end_key and start_key > end_key:
+        start_key, end_key = end_key, start_key
+
+    where = ["1=1"]
+    params: list[Any] = []
+    date_expr = "REPLACE(SUBSTR(COALESCE(NULLIF(trade_date, ''), event_time, collected_at), 1, 10), '-', '')"
+    if start_key:
+        where.append(f"{date_expr} >= ?")
+        params.append(start_key)
+    if end_key:
+        where.append(f"{date_expr} <= ?")
+        params.append(end_key)
+    if event_type:
+        where.append("LOWER(event_type) = ?")
+        params.append(event_type.lower())
+
+    db_lineage = {
+        "reader": "get_events",
+        "source": "sqlite:market_events",
+        "filters": {"start": start, "end": end, "event_type": event_type},
+    }
+    rows, db_degraded = _sqlite_rows(
+        "SELECT * FROM market_events "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT 5000",
+        tuple(params),
+        "market_events",
+    )
+    if db_degraded is None and rows:
+        collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
+        return _json_cached(
+            lambda: _rows_to_wrappers(
+                rows,
+                source_id="sqlite:market_events",
+                source_tier="events",
+                collected_at=collected_at,
+                lineage=db_lineage,
+                stale_after_hours=168.0,
+            )
+        )
+
     path = INTAKE_ROOT / "event_candidates.csv"
-    lineage = {"reader": "get_events", "source_path": str(path), "filters": {"start": start, "end": end, "event_type": event_type}}
+    lineage = {
+        "reader": "get_events",
+        "source_path": str(path),
+        "fallback_from": "sqlite:market_events",
+        "filters": {"start": start, "end": end, "event_type": event_type},
+    }
+    if db_degraded is not None:
+        lineage["sqlite_degraded_reason"] = db_degraded[0].get("lineage", {}).get("reason") if db_degraded else "unknown"
     rows, degraded = _safe_csv(path, "csv:event_candidates", lineage)
     if degraded is not None:
         return _json_cached(lambda: degraded)
@@ -1017,7 +1067,7 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
     if end is None:
         end = start
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
-    rows = _safe_public("csv:event_candidates", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
+    rows = _safe_public("sqlite:market_events", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
     if rows and all(
         isinstance(row, dict) and bool(row.get("degraded")) and row.get("data") in ({}, None)
         for row in rows
@@ -1181,7 +1231,7 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
     Args:
         api_name: Tushare API name, e.g. "daily", "moneyflow", "fina_indicator",
                   "income", "balancesheet", "adj_factor", "margin", "limit_list",
-                  "hk_hold", "stock_minutes", "news_list", etc.
+                  "stk_mins", "news", "major_news", "cctv_news", "anns_d", etc.
         ts_code: Optional stock code; auto-added to params as "ts_code".
         start_date: Optional start date (YYYYMMDD); auto-added as "start_date".
         end_date: Optional end date (YYYYMMDD); auto-added as "end_date".

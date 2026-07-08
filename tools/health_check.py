@@ -276,6 +276,7 @@ def _check_reader_functions() -> dict[str, Any]:
         ("reference", reader.get_reference("stock_master")),
         ("macro", reader.get_macro_factors("20260601", "20260629")),
         ("capital_flow", reader.get_capital_flow(samples["moneyflow_date"], ts_code=samples["moneyflow_symbol"])),
+        ("events", reader.get_events(samples["event_date"], samples["event_date"])),
         ("sentiment", reader.get_sentiment(samples["sentiment_date"], samples["sentiment_date"])),
         ("crypto", reader.get_crypto_klines("BTCUSDT", 5)),
         ("pm_markets", reader.get_pm_markets(5)),
@@ -284,7 +285,6 @@ def _check_reader_functions() -> dict[str, Any]:
         ("tushare", reader.get_tushare(api_name="stock_basic", ts_code=samples["industry_symbol"])),
     ]
     skipped = {
-        "events": "delegated_to_marketgraph_or_future_sharedsignals_event_collector",
         "associations": "marketgraph_research_graph_endpoint",
         "impacts": "marketgraph_research_graph_endpoint",
     }

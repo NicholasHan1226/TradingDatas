@@ -220,6 +220,60 @@ class TestRuntimeBridge:
 
         assert [row["data"]["candidate_id"] for row in rows] == ["evt-1"]
 
+    def test_get_events_reads_sqlite_market_events_before_csv(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.execute(
+                """
+                INSERT INTO market_events (
+                    event_hash, provider, event_type, event_time, trade_date,
+                    market, symbol, title, content, url, source, source_file,
+                    collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "event-1",
+                    "tushare_anns_d",
+                    "anns_d",
+                    "20260708",
+                    "20260708",
+                    "Ashare",
+                    "600276.SH",
+                    "董事会公告",
+                    "公告内容",
+                    "https://example.com/ann",
+                    "tushare_anns_d",
+                    "anns_d_20260708.csv",
+                    datetime.now(timezone.utc).isoformat(),
+                    "{}",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        monkeypatch.setattr(reader, "INTAKE_ROOT", tmp_path / "missing_intake")
+        reader.clear_caches()
+
+        rows = reader.get_events(
+            start="20260708",
+            end="20260708",
+            event_type="anns_d",
+            market="Ashare",
+            subject_code="600276.SH",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["data"]["title"] == "董事会公告"
+        assert rows[0]["provenance"]["source_id"] == "tushare_anns_d"
+        assert rows[0]["lineage"]["source"] == "sqlite:market_events"
+
     def test_degraded_empty_is_stale_and_unfresh(self):
         import reader
 

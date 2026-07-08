@@ -169,8 +169,6 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     per_stock: true
-  - api_name: dividend
-    per_stock: true
     fields: ts_code,div_year,cash_div,record_date,ex_date
   - api_name: top10_holders
     per_stock: true
@@ -202,6 +200,7 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     per_stock: true
+    fields: ts_code,ann_date,end_date,holder_num
   - api_name: concept
     frequency: daily
     params: {}
@@ -243,9 +242,6 @@ priorities:
   - api_name: trade_cal
     per_stock: false
     fields: cal_date,is_open,pretrade_date
-  - api_name: stk_holdernumber
-    per_stock: true
-    fields: ts_code,ann_date,end_date,holder_num
   - api_name: stk_managers
     per_stock: true
     fields: ts_code,name,gender,position,edu
@@ -431,24 +427,17 @@ priorities:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+    fields: datetime,content,title,src,url,channels
   - api_name: major_news
     frequency: daily
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+    fields: title,content,pub_time,src,subject
   - api_name: broker_recommend
     per_stock: false
     fields: month,broker,ts_code,name,stk_rating
-  - api_name: major_news
-    per_stock: false
-    fields: title,content,pub_time,src,subject
-  - api_name: margin_secs
-    per_stock: false
-    fields: ts_code,name,rzye,rqye,exchange
-  - api_name: limit_list
-    per_stock: false
-    fields: trade_date,ts_code,limit_times,close,pct_chg
   - api_name: fut_basic
     per_stock: false
     fields: ts_code,name,exchange,list_date,last_ddate,delist_date
@@ -460,9 +449,19 @@ priorities:
     params:
       trade_date: '{trade_date}'
     fields: ts_code,trade_date,open,high,low,close,vol
-  - api_name: news
+  - api_name: anns_d
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
     per_stock: false
-    fields: datetime,content,title,src,channels
+    fields: ts_code,name,ann_date,title,url,rec_time
+  - api_name: report_rc
+    frequency: daily
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+    per_stock: false
   - api_name: cctv_news
     per_stock: false
     fields: date,title,content,broadcast_time

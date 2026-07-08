@@ -79,7 +79,7 @@
 
 ## Events
 
-### [OK] `get_news_list`
+### [OK] `get_tushare_news`
 
 - **Status**: `ok`
 - **Path**: `reader.py`
@@ -90,6 +90,12 @@
 - **Fields**: datetime, content, source, title
 - **Description**: Read Tushare news from the SharedSignals read model
 - **Last success**: 2026-07-05T15:40:54+08:00
+
+### [PENDING REFRESH] `get_announcements`
+
+- **Status**: `pending registry refresh`
+- **Path**: `reader.py`
+- **Description**: Read Tushare listed-company announcements from the SharedSignals read model
 
 ---
 
@@ -253,7 +259,8 @@
 | `get_limit_list` | `ok` | 2.7 | 1 | - | market_depth | `reader.py` |
 | `get_hk_hold` | `skipped` | 0 | 0 | - | cross_border | `reader.py` |
 | `get_stock_minutes` | `ok` | 4.2 | 49 | - | intraday | `reader.py` |
-| `get_news_list` | `ok` | 14.5 | 233 | - | events | `reader.py` |
+| `get_tushare_news` | `ok` | 14.5 | 233 | - | events | `reader.py` |
+| `get_announcements` | `pending registry refresh` | - | - | - | events | `reader.py` |
 | `get_crypto_klines` | `ok` | 2.9 | 10 | - | crypto | `reader.py` |
 | `get_us_daily` | `ok` | 2.5 | 1 | - | us_market | `reader.py` |
 | `get_hk_etf` | `skipped` | 0 | 0 | - | hk_market | `reader.py` |

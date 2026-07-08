@@ -57,6 +57,7 @@ def _sqlite_bridge_lock(db_path: Path):
 
 CSV_TO_TABLE_MAP = {
     "adj_factor": "market_bars_daily",
+    "anns_d": "market_events",
     "balancesheet": "market_factors",
     "block_trade": "market_events",
     "broker_recommend": "market_events",
@@ -111,6 +112,7 @@ CSV_TO_TABLE_MAP = {
     "pledge_detail": "market_factors",
     "pledge_stat": "market_factors",
     "repo_daily": "market_factors",
+    "report_rc": "market_events",
     "repurchase": "market_factors",
     "concept": "market_assets",
     "concept_detail": "market_assets",

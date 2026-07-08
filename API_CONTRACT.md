@@ -155,7 +155,7 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 | `source` | TEXT | 源名称 |
 | `collected_at` | TEXT | 采集时间 |
 
-Tushare `news` / `major_news` / `cctv_news` 进入 `market_events` 时由 bridge 自动补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。
+Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由 bridge 自动补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。`/events` 优先读取 `market_events`，旧 `event_candidates.csv` 只作为兼容兜底。
 
 #### market_factors (因子/宏观/资金)
 
@@ -490,7 +490,7 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `api_name` | `str` | 必填 | Tushare API 名，如 `daily`、`moneyflow`、`fina_indicator`、`income`、`balancesheet`、`adj_factor`、`margin`、`limit_list`、`hk_hold`、`stock_minutes`、`news_list` 等 |
+| `api_name` | `str` | 必填 | Tushare API 名，如 `daily`、`moneyflow`、`fina_indicator`、`income`、`balancesheet`、`adj_factor`、`margin`、`limit_list`、`stk_mins`、`news`、`major_news`、`cctv_news`、`anns_d`、`report_rc` 等；已配置采集且已映射 SQLite 的接口应全部开放 |
 | `ts_code` | `str` | `None` | 股票代码，自动注入到 params 中 |
 | `start_date` | `str` | `None` | 起始日期 YYYYMMDD，自动注入到 params 中 |
 | `end_date` | `str` | `None` | 截止日期 YYYYMMDD，自动注入到 params 中 |
@@ -540,7 +540,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮 30 只且优先覆盖服务器持仓、TradingAgent 当前候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` DB-first，未传日期时使用该股票最新 intraday 日期；SQLite 暂未刷入时会回退 SharedSignals `data/tushare/stk_mins` / `rt_min` CSV，旧 `rt_k` 目录仅作历史兼容 |
 | A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
-| A 股新闻 | Tushare `news_list` / news sources | collector → `market_events`; no live provider fallback |
+| A 股新闻/公告/研报 | Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` | P6 collector → `market_events`; `/events` 与 `/tushare` 均 DB-first；no live provider fallback |
 | Crypto klines/ticker | Binance → NDJSON staging → marketdata.sqlite | Bridged: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Bridged: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Bridged: `read_daily("US", ...)` |
@@ -551,7 +551,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
-| 事件/信号 | RSS(deferred) / Tavily → intake CSV | Bridged: `reader.get_events()` / `reader.get_sentiment()`；sentiment intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；未传日期时不过滤日期；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
+| 事件/信号 | Tushare news/announcements → `market_events`; legacy RSS/Tavily intake CSV deferred | `reader.get_events()` 优先读 SQLite `market_events`，旧 `event_candidates.csv` 只作兼容兜底；`reader.get_sentiment()` 仍读 sentiment CSV，intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
 | 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |

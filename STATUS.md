@@ -4,13 +4,13 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-08 (A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库映射完整性保护、health_sla 大表轻量化)
+> 最后更新：2026-07-08 (A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（P0-P6 分层 87 个配置条目，全部要求有 CSV→SQLite 映射）+ Binance（9 symbols，ticker 5min 写 `market_bars_intraday`，每小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存；2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先覆盖持仓、TradingAgent 当前 A股候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，且只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；CNFutures 5 分钟新鲜度检查把 11:31-11:59 识别为 lunch、12:00-12:59 识别为 lunch_preopen，午休期间不因 11:30 bar 自然老化误报 stale，13:00 起恢复交易时段 stale 检查；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P6 杂项/日频层改为盘后夜间运行，`cb_daily` 改为按 `trade_date` 全市场快照，避免开盘期间长跑逐股任务抢占 P0/模拟交易资源；P0 股票清单优先从 read model `market_assets` 读取有名称、非退市、非基金的沪深 A股，`reference/stock_master.csv` 只作兜底，避免样本清单限制全市场轮询和退市代码浪费 5 分钟配额；分钟线不扩大为历史分钟回补，避免采集压力失控；CSV→SQLite bridge 已把 `stk_factor` 同时投到 `market_bars_daily` 与 `market_factors`，`daily_basic`/`stk_factor_pro`/`moneyflow`/`top_list`/`limit_step`/`stk_auction`/`stk_limit` 投到 `market_factors`，`concept`/`concept_detail`/`hs_const` 投到 `market_assets`，避免数据只停留在 CSV、不能被 TradingAgent/MarketGraph 通过 API/read model 消费。
+- **行情采集**：稳定运行 — Tushare（P0-P6 分层 83 个唯一接口，全部要求有 CSV→SQLite 映射且全部开放 `/tushare` 只读 API）+ Binance（9 symbols，ticker 5min 写 `market_bars_intraday`，每小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存；2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先覆盖持仓、TradingAgent 当前 A股候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，且只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；CNFutures 5 分钟新鲜度检查把 11:31-11:59 识别为 lunch、12:00-12:59 识别为 lunch_preopen，午休期间不因 11:30 bar 自然老化误报 stale，13:00 起恢复交易时段 stale 检查；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P6 杂项/日频层改为盘后夜间运行，`news`/`major_news`/`cctv_news`/`anns_d`/`report_rc` 统一落 `market_events`，`cb_daily` 改为按 `trade_date` 全市场快照，避免开盘期间长跑逐股任务抢占 P0/模拟交易资源；P0 股票清单优先从 read model `market_assets` 读取有名称、非退市、非基金的沪深 A股，`reference/stock_master.csv` 只作兜底，避免样本清单限制全市场轮询和退市代码浪费 5 分钟配额；分钟线不扩大为历史分钟回补，避免采集压力失控；CSV→SQLite bridge 已把 `stk_factor` 同时投到 `market_bars_daily` 与 `market_factors`，`daily_basic`/`stk_factor_pro`/`moneyflow`/`top_list`/`limit_step`/`stk_auction`/`stk_limit` 投到 `market_factors`，`concept`/`concept_detail`/`hs_const` 投到 `market_assets`，避免数据只停留在 CSV、不能被 TradingAgent/MarketGraph 通过 API/read model 消费。
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走 SharedSignals collector + staging/bridge 契约
 - **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮 5 分钟采集跳过
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
@@ -28,7 +28,7 @@
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/MarketGraphRuntime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，11 表；2026-07-04 生产同步验证写入 200,202 行，staging 6 streams 活跃
-- **API 契约**：`/market_data` 已透传并支持 `freq`；`freq=daily` 读 `market_bars_daily`，`freq=1m/5m/15m/30m/60m` 读 `market_bars_intraday`，未传 start/end 时只取该标的最新 intraday 交易日；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/events` 支持 `market`、`symbol/ts_code/subject_code`、`subject_type`、`event_type` 和 `limit` 过滤，A股代码兼容 `600276.SH` / `SH600276` / `600276` 形态；HTTP API 缺表/缺文件/无匹配时固定返回 `data: []` 并通过 `metadata.degraded` 与 `degraded_reasons` 暴露原因，不再暴露 `data: [{}]` 空壳；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`，`/pm_prices` 直接读取 `market_pm_prices` 价格快照供 PM edge、估值和研究回放使用；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
+- **API 契约**：`/market_data` 已透传并支持 `freq`；`freq=daily` 读 `market_bars_daily`，`freq=1m/5m/15m/30m/60m` 读 `market_bars_intraday`，未传 start/end 时只取该标的最新 intraday 交易日；美股日线读取兼容 `AAPL` 与 `AAPL.US` 两种 symbol 写法并在 read model 中互查；A股国债逆回购 `repo_daily` 保留 `market_factors` 因子写入，并额外投影到 `market_bars_daily`，因此 `204001.SH` 可按日线收益率读取；`/capital_flow` 同时支持 `date` 和 `ts_code/start/end` 调用，返回 P1 盘后采集并桥接到 `market_factors` 的 `moneyflow:*` 展开行；`/events` 优先读取 SQLite `market_events`，旧 `event_candidates.csv` 只作兼容兜底，并支持 `market`、`symbol/ts_code/subject_code`、`subject_type`、`event_type` 和 `limit` 过滤，A股代码兼容 `600276.SH` / `SH600276` / `600276` 形态；`/tushare` 白名单与 `collectors/tushare/config.yaml` + `storage/csv_bridge.py` 映射保持一致，避免“已采集入库但 API 不可查”；HTTP API 缺表/缺文件/无匹配时固定返回 `data: []` 并通过 `metadata.degraded` 与 `degraded_reasons` 暴露原因，不再暴露 `data: [{}]` 空壳；`/pm_markets` 已优先返回带最新价的 Polymarket 市场并透出 `price/latest_price/latest_price_time`，`/pm_prices` 直接读取 `market_pm_prices` 价格快照供 PM edge、估值和研究回放使用；`/health` 使用读模型动态样例，避免周末/空样例误报；`/sentiment` 与 `/realtime_5min` 支持 `limit` 输出限流，`/realtime_5min` 另支持 `market` 参数并规范化 `ashare/Ashare/a_share` 为同一 A股读模型入口；`/capabilities` 有生成 registry + auth scope 兜底，缺失文件时不再返回 500，能力 smoke 也改为 DB-first reader 样例；真实 `config/api_tokens.json` 已退出 Git 跟踪，仓库仅保留模板
 - **API 安全**：JWT 默认禁用（需显式配置 `SHAREDSIGNALS_JWT_PUBLIC_KEY`+`SHAREDSIGNALS_JWT_ISSUER`）；Bearer token 通过 `token_hash`/`sha256` 64 位摘要认证（设置 `SHAREDSIGNALS_TOKEN_SALT` 时由 `auth._hash_token()` 生成 PBKDF2-HMAC-SHA256 摘要）；scope-based 端点访问控制；`LOCALHOST_BYPASS` 默认关闭
 - **开发/生产边界**：2026-07-05 开盘前复核已将 `config/dev.yaml` 的 `server` 默认值改为 `127.0.0.1`；生产默认主服务器只保留在 `config/prod.yaml`，避免本地 dev 运行误连 `8.138.181.177`。
 - **基础设施文档与 SLA**：2026-07-05 开盘前复核已更新 `docs/INFRASTRUCTURE.md`，当前口径为 SQLite + DuckDB mirror、Redis 未启用；`tools/health_sla.py` 已支持 `MARKETDATA_SQLITE` / `SHAREDSIGNALS_MARKETDATA_DB` / `MARKETGRAPH_RUNTIME_ROOT`，不再只能读硬编码生产库；SLA 已按 trading/research 分层，交易价格/日线过期才触发 degraded/critical，研究事件过期只记 `notice`；`market_bars_daily` 若存在 `market` 列会按市场分别检查最新日期，避免 A股最新掩盖 US stale；周末/周一开盘前会放宽非 24/7 日频表阈值，PM/Crypto 价格不放宽，避免周末或研究层暂停误报成交易供数故障。
@@ -53,9 +53,9 @@
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 条目已从模板和生产 crontab 删除；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计，恢复事件采集前必须重新接入 SharedSignals collector + staging/bridge。
 - `bridge/__init__.py` 仍保留 MarketGraph 工具路径兼容注入，用于历史 bridge/import 兼容；当前不是数据采集入口。后续拆到独立服务器前，应改为显式依赖或移除跨仓 `sys.path` 注入。
 
-## 三、API 接口状态（HTTP 18/18；health core 13 OK / 3 delegated skipped）
+## 三、API 接口状态（HTTP 18/18；health core 14 OK / 2 delegated skipped）
 
-生产 HTTP API 暴露 18 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，MarketGraph 研究图谱类端点 `events`、`associations`、`impacts` 标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
+生产 HTTP API 暴露 18 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，`events` 已由 SQLite `market_events` 原生承担，MarketGraph 研究图谱类端点 `associations`、`impacts` 仍标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|
@@ -65,7 +65,7 @@
 | get_reference | /reference | OK |
 | get_macro_factors | /macro | OK |
 | get_capital_flow | /capital_flow | OK |
-| get_events | /events | delegated |
+| get_events | /events | OK |
 | get_sentiment | /sentiment | OK |
 | get_crypto_klines | /crypto | OK |
 | get_pm_markets | /pm_markets | OK |
@@ -78,7 +78,7 @@
 | clear_caches | /cache/invalidate | OK (GET/POST) |
 | cache_status | /cache/status | OK |
 
-- 健康检查覆盖：`/health` 当前生产验证为 SharedSignals core reader functions `13/13`，另有 3 个 MarketGraph delegated endpoint 标记 skipped；HTTP surface 仍为 18 个端点；capability smoke 的延期端点会计入 `skipped`。
+- 健康检查覆盖：`/health` 当前生产验证为 SharedSignals core reader functions `14/14`，另有 2 个 MarketGraph delegated endpoint 标记 skipped；HTTP surface 仍为 18 个端点；capability smoke 的延期端点会计入 `skipped`。
 - API 客户端：TradingAgent [SharedSignalsAPIClient](../tradingagent/shared/data/shared_signals_api.py) 已实现 16 接口 HTTP 封装
 - 契约修复：`/market_data` `freq` 参数已进入 reader；`/capital_flow` 已兼容 TradingAgent 客户端的 `ts_code/start/end` 参数。
 
@@ -184,7 +184,7 @@
 - [x] 删除无引用旧目录 `collectors/tushare_old/`；该目录是旧 Ashare/Tushare 副本，已被现役 `collectors/tushare/` 取代。
 - [x] 删除断链 MarketGraph symlink：`bridge/marketgraph_marketdata_db.py` 改为本仓库兼容模块；`data/association`、`data/intake` 改成本地目录。
 - [x] 删除退役旧代码：`collectors/rss/`、`collectors/us_alpaca_*.py`、`tools/api_server.py`；RSS 恢复必须重新按 SharedSignals collector 契约设计，US 行情由 Tushare/现役 read model 负责。
-- [x] `/health` 不再把 MarketGraph 研究图谱类 `events`/`associations`/`impacts` 作为 SharedSignals 核心供数健康项；三者标记 delegated/skipped，避免通过软链或文件复制重新耦合。
+- [x] `/health` 不再把 MarketGraph 研究图谱类 `associations`/`impacts` 作为 SharedSignals 核心供数健康项；`events` 已切到 SharedSignals SQLite `market_events` DB-first 输出并纳入健康检查，避免通过软链或文件复制重新耦合。
 - [x] 主服务器 `marketgraph` 用户 crontab 已恢复为 Finance combined crontab：同时包含 SharedSignals 采集/同步/patrol/watchdog/capability 任务，以及 TradingAgent 模拟/复盘/健康任务。
 - [x] 修复前 live crontab 只有 TradingAgent 任务，导致 SharedSignals `cn_futures_5min.sh`、P0 5分钟采集、DuckDB sync、patrol/watchdog 等调度没有安装；修复后 `SharedSignals /health` 从 `degraded` 恢复为 `ok`，cron `active_logs=2`。
 - [x] 回退备份：`/opt/investment/SharedSignals/logs/cron/marketgraph_crontab_before_combined_sharedsignals_20260705T192844.bak`。
@@ -206,7 +206,7 @@
 
 ### 2026-07-05 capability read-model alignment
 
-- [x] `tools/capability_scan.py` 已把现役能力 smoke 收口为 DB-first reader 调用，动态从生产 read model 选择最新 A 股、美股、分钟线和 Tushare news 样例；本地缺生产 DB 时只使用兜底样例，不现场调用 provider。
+- [x] `tools/capability_scan.py` 已把现役能力 smoke 收口为 DB-first reader 调用，动态从生产 read model 选择最新 A 股、美股、分钟线、Tushare news 和 announcements 样例；本地缺生产 DB 时只使用兜底样例，不现场调用 provider。
 - [x] HK/cross-border 持仓与港股 lane 当前暂缓，`get_hk_hold`、`get_hk_etf`、`get_hk_index` 在 capability registry 中标记为 `skipped`，不会继续污染 degraded 计数。
 - [x] `capability_scan` 输出 summary 增加 `skipped`，API 合同生成也能展示 skipped 状态。
 - [x] 边界：该改动只影响 SharedSignals 能力自检和 `/capabilities` registry，不生成交易信号、不写 TradingAgent 队列。
