@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
+    DEFAULT_P0_STOCK_BATCH_SIZE,
     date_range,
     filter_apis,
     load_stock_codes,
     load_priority_stock_codes,
     load_config,
+    is_ashare_intraday_session,
     normalize_ashare_code,
     parse_positive_int,
     resolve_api_window,
@@ -69,15 +73,35 @@ def test_p6_fut_basic_collects_expiry_fields() -> None:
     assert {"ts_code", "name", "exchange", "list_date", "last_ddate", "delist_date"}.issubset(fields)
 
 
-def test_p0_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
+def test_p6_index_and_fund_daily_are_trade_date_snapshots() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
-    p0_by_name = {
-        api["api_name"]: api for api in config["priorities"]["P0_trading_5min"]
+    p6_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P6_other_daily"]
     }
 
-    assert "moneyflow" not in p0_by_name
+    for api_name in ("index_daily", "fund_daily"):
+        api = p6_by_name[api_name]
+        assert api["frequency"] == "daily"
+        assert api["per_stock"] is False
+        assert api["params"] == {"trade_date": "{trade_date}"}
+
+
+def test_p0_trading_lane_only_contains_intraday_apis() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p0_names = [api["api_name"] for api in config["priorities"]["P0_trading_5min"]]
+
+    assert p0_names == ["stk_mins", "rt_min"]
+    assert DEFAULT_P0_STOCK_BATCH_SIZE == 30
+
+
+def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p1_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P1_eod_daily"]
+    }
+
     for api_name in ("daily", "stk_factor", "stk_factor_pro"):
-        api = p0_by_name[api_name]
+        api = p1_by_name[api_name]
         assert api["lookback_days"] == 90
         assert api["per_stock"] is True
         assert api["params"] == {
@@ -217,6 +241,37 @@ def test_select_rotating_stock_batch_wraps_at_end(tmp_path: Path) -> None:
     assert selected == ["000004.SZ", "000001.SZ", "000002.SZ"]
     assert meta["start_index"] == 3
     assert meta["next_index"] == 2
+
+
+def test_select_rotating_stock_batch_resets_on_new_trade_date(tmp_path: Path) -> None:
+    state_path = tmp_path / "cursor.json"
+    state_path.write_text(
+        '{"next_index": 3, "trade_date": "20260707"}',
+        encoding="utf-8",
+    )
+    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]
+
+    selected, meta = select_rotating_stock_batch(
+        codes,
+        batch_size=2,
+        state_path=state_path,
+        trade_date="20260708",
+    )
+
+    assert selected == ["000001.SZ", "000002.SZ"]
+    assert meta["start_index"] == 0
+    assert meta["next_index"] == 2
+    assert '"trade_date": "20260708"' in state_path.read_text(encoding="utf-8")
+
+
+def test_is_ashare_intraday_session_windows() -> None:
+    tz = ZoneInfo("Asia/Shanghai")
+
+    assert is_ashare_intraday_session(datetime(2026, 7, 8, 9, 30, tzinfo=tz)) is True
+    assert is_ashare_intraday_session(datetime(2026, 7, 8, 13, 0, tzinfo=tz)) is True
+    assert is_ashare_intraday_session(datetime(2026, 7, 8, 9, 25, tzinfo=tz)) is False
+    assert is_ashare_intraday_session(datetime(2026, 7, 8, 12, 0, tzinfo=tz)) is False
+    assert is_ashare_intraday_session(datetime(2026, 7, 11, 10, 0, tzinfo=tz)) is False
 
 
 def test_normalize_ashare_code_filters_unsupported_symbols() -> None:

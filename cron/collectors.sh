@@ -76,10 +76,10 @@ if [ -f "${ROOT}/.env" ]; then
   set +a
 fi
 
-# P0 contains several per-stock Tushare APIs. Rotating batches keep the
-# 5-minute production cadence from overlapping itself while full coverage rolls
-# forward through the day.
-export SHAREDSIGNALS_P0_STOCK_BATCH_SIZE="${SHAREDSIGNALS_P0_STOCK_BATCH_SIZE:-100}"
+# P0 is the trading-session fast lane and should stay limited to intraday
+# quote APIs. A small rotating batch keeps each run inside the 5-minute cadence
+# while priority holdings/candidates are always selected first.
+export SHAREDSIGNALS_P0_STOCK_BATCH_SIZE="${SHAREDSIGNALS_P0_STOCK_BATCH_SIZE:-30}"
 
 {
   echo "[$(date -Iseconds)] START collectors tiers=${TIERS[*]} python=${PYTHON_BIN}"

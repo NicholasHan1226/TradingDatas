@@ -1,36 +1,5 @@
 priorities:
   P0_trading_5min:
-  - api_name: daily
-    fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
-    frequency: 5min
-    lookback_days: 90
-    params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
-  - api_name: stk_factor
-    frequency: 5min
-    lookback_days: 90
-    params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
-  - api_name: index_daily
-    frequency: 5min
-    params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
-  - api_name: fund_daily
-    frequency: 5min
-    params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
   - api_name: stk_mins
     frequency: 5min
     params:
@@ -44,22 +13,26 @@ priorities:
       freq: 5MIN
       ts_code: '{ts_code}'
     per_stock: true
-  - api_name: margin
-    per_stock: false
-    fields: trade_date,ts_code,rzye,rqye,rzmre,rqmcl
-  - api_name: margin_detail
-    per_stock: false
-    fields: trade_date,ts_code,rzye,rqye,rqmcl
-  - api_name: block_trade
-    per_stock: false
-    fields: trade_date,ts_code,price,vol,amount
-  - api_name: limit_list_d
-    per_stock: false
-    fields: trade_date,ts_code,limit_times,limit
-  - api_name: limit_step
-    per_stock: false
-    fields: trade_date,ts_code,pre_close,up_limit,down_limit
+  P1_eod_daily:
+  - api_name: daily
+    fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
+    frequency: daily
+    lookback_days: 90
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+  - api_name: stk_factor
+    frequency: daily
+    lookback_days: 90
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
   - api_name: stk_factor_pro
+    frequency: daily
     per_stock: true
     lookback_days: 90
     params:
@@ -67,7 +40,6 @@ priorities:
       start_date: '{start_date}'
       ts_code: '{ts_code}'
     fields: ts_code,trade_date,pe,pb,turnover_rate,mv
-  P1_eod_daily:
   - api_name: daily_basic
     frequency: daily
     params:
@@ -114,6 +86,18 @@ priorities:
       end_date: '{end_date}'
       start_date: '{start_date}'
     per_stock: false
+  - api_name: margin
+    frequency: daily
+    per_stock: false
+    fields: trade_date,ts_code,rzye,rqye,rzmre,rqmcl
+  - api_name: limit_list_d
+    frequency: daily
+    per_stock: false
+    fields: trade_date,ts_code,limit_times,limit
+  - api_name: limit_step
+    frequency: daily
+    per_stock: false
+    fields: trade_date,ts_code,pre_close,up_limit,down_limit
   - api_name: stk_auction
     frequency: daily
     params:
@@ -418,6 +402,16 @@ priorities:
   - api_name: fut_daily
     frequency: daily
     fields: ts_code,trade_date,open,high,low,close,vol,amount
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+  - api_name: index_daily
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+  - api_name: fund_daily
+    frequency: daily
     params:
       trade_date: '{trade_date}'
     per_stock: false

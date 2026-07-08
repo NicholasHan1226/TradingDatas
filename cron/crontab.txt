@@ -41,7 +41,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # /opt/investment/RSSCollector hot/warm or RSSHub @reboot jobs back.
 
 # Read model sync, patrol, and SLA watchdog.
-*/5 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+17 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 */10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh

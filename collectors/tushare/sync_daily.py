@@ -30,6 +30,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -55,8 +56,9 @@ CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
 STOCK_MASTER_PATH = _BASE_DIR / "reference" / "stock_master.csv"
 HK_STOCK_MASTER_PATH = _BASE_DIR / "reference" / "hk_stock_master.csv"
 DEFAULT_LOOKBACK_DAYS = 7
-DEFAULT_P0_STOCK_BATCH_SIZE = 100
+DEFAULT_P0_STOCK_BATCH_SIZE = 30
 DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
+ASHARE_TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_P0_PRIORITY_STOCK_FILES = [
     _BASE_DIR.parent / "TradingAgent" / "signals" / "positions" / "simulated_ashare_positions.json",
     _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "local_sim" / "local_sim_positions.json",
@@ -156,6 +158,22 @@ def date_range(lookback_days: int, end_date_override: str | None = None) -> tupl
     start_date = (today - timedelta(days=lookback_days)).strftime("%Y%m%d")
     end_date = trade_date
     return trade_date, start_date, end_date
+
+
+def is_ashare_intraday_session(now: datetime | None = None) -> bool:
+    """Return True during A-share continuous/open auction intraday windows."""
+
+    current = now or datetime.now(ASHARE_TZ)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=ASHARE_TZ)
+    else:
+        current = current.astimezone(ASHARE_TZ)
+    if current.weekday() >= 5:
+        return False
+    minute = current.hour * 60 + current.minute
+    morning = 9 * 60 + 30 <= minute <= 11 * 60 + 30
+    afternoon = 13 * 60 <= minute <= 15 * 60
+    return morning or afternoon
 
 
 def resolve_api_window(
@@ -344,6 +362,7 @@ def select_rotating_stock_batch(
     *,
     batch_size: int,
     state_path: Path,
+    trade_date: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     """Return a stable rotating slice of stock codes and persist the next cursor."""
 
@@ -363,7 +382,10 @@ def select_rotating_stock_batch(
     if state_path.exists():
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            start_index = int(state.get("next_index", 0)) % total
+            if trade_date and str(state.get("trade_date") or "") != str(trade_date):
+                start_index = 0
+            else:
+                start_index = int(state.get("next_index", 0)) % total
         except Exception as exc:
             logger.warning("failed to read P0 stock batch state %s: %s", state_path, exc)
             start_index = 0
@@ -382,6 +404,7 @@ def select_rotating_stock_batch(
             {
                 "next_index": next_index,
                 "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "trade_date": trade_date or "",
                 "batch_size": batch_size,
                 "total": total,
             },
@@ -409,6 +432,7 @@ def select_priority_rotating_stock_batch(
     batch_size: int,
     state_path: Path,
     priority_codes: list[str],
+    trade_date: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     """Select priority symbols first, then fill remaining slots by rotating the market."""
 
@@ -422,7 +446,12 @@ def select_priority_rotating_stock_batch(
             priority.append(normalized)
 
     if not priority:
-        selected, meta = select_rotating_stock_batch(stock_codes, batch_size=batch_size, state_path=state_path)
+        selected, meta = select_rotating_stock_batch(
+            stock_codes,
+            batch_size=batch_size,
+            state_path=state_path,
+            trade_date=trade_date,
+        )
         meta["priority_count"] = 0
         return selected, meta
 
@@ -448,6 +477,7 @@ def select_priority_rotating_stock_batch(
             rotating_universe,
             batch_size=remaining_slots,
             state_path=state_path,
+            trade_date=trade_date,
         )
     else:
         rotating, meta = [], {
@@ -756,6 +786,11 @@ def main() -> None:
         default="",
         help="Cursor file for P0 rotating stock batches",
     )
+    parser.add_argument(
+        "--allow-off-session",
+        action="store_true",
+        help="Allow P0 to run outside A-share intraday windows for manual backfill/smoke runs",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -797,6 +832,17 @@ def main() -> None:
         hk_stock_codes = hk_stock_codes[:3] if hk_stock_codes else []
         logger.info("TEST MODE: using %d A-share / %d HK stocks", len(stock_codes), len(hk_stock_codes))
 
+    trade_date, start_date, end_date = date_range(args.lookback, args.trade_date or None)
+    if (
+        tier_name == "P0_trading_5min"
+        and not args.test
+        and not args.allow_off_session
+        and os.environ.get("SHAREDSIGNALS_P0_ALLOW_OFF_SESSION", "").strip() != "1"
+        and not is_ashare_intraday_session()
+    ):
+        logger.info("SKIP P0_trading_5min outside A-share intraday session; cursor not advanced")
+        return
+
     batch_meta: dict[str, Any] = {"enabled": False}
     if tier_name == "P0_trading_5min" and not args.test:
         batch_size = args.stock_batch_size or parse_positive_int(
@@ -814,6 +860,7 @@ def main() -> None:
             batch_size=batch_size,
             state_path=state_path,
             priority_codes=priority_codes,
+            trade_date=trade_date,
         )
         batch_meta["priority_sources"] = priority_meta.get("sources", [])
         batch_meta["priority_source_count"] = priority_meta.get("source_count", 0)
@@ -829,7 +876,6 @@ def main() -> None:
                 batch_meta["state_path"],
             )
 
-    trade_date, start_date, end_date = date_range(args.lookback, args.trade_date or None)
     logger.info("=" * 60)
     logger.info("TIER: %s  |  A-Stocks: %d  |  HK-Stocks: %d  |  APIs: %d",
                 tier_name, len(stock_codes), len(hk_stock_codes), len(apis))
