@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.11 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.15 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -27,6 +27,10 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 **生产数据边界（2026-07-04）**：外部 provider 调用只允许发生在 SharedSignals collector 层。`reader.py`、HTTP API 和消费者系统必须读取已采集的 SQLite/DuckDB/CSV read model；没有映射或没有缓存数据时返回 degraded 包装，不再现场调用 Tushare/DashScope/其它 provider。
 
 **空结果边界（2026-07-08）**：HTTP API 遇到缺表、缺文件或无匹配行时，业务数据固定返回 `data: []`，降级原因保留在 `metadata.degraded=true` 与 `metadata.degraded_reasons`。不得把 degraded 空包装暴露为 `data: [{}]`，避免消费者误判为“一条空数据”。
+
+**入库完整性边界（2026-07-08）**：`collectors/tushare/config.yaml` 中已启用的 P0-P6 Tushare 接口必须全部有 `storage/csv_bridge.py` 的 CSV→SQLite read model 映射。非空 CSV 桥接写入 0 行必须标记为 `failed` 并计入 tier `bridge_failure_count`；不能把“采集成功但未入库”当作正常空返回。
+
+**频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
 **HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`。本机 MarketGraph/TradingAgent 可使用 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
 
@@ -531,6 +535,8 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股复权因子 | Tushare `adj_factor` | P0/P1 collector → read model |
 | A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
 | A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
+| A 股龙虎榜/竞价/涨跌停价格 | Tushare `top_list` / `stk_auction` / `limit_step` / `stk_limit` | P1 collector → `market_factors`; 只作为结构化行情/盘口参考，不生成交易判断 |
+| A 股题材/指数成分参考 | Tushare `concept` / `concept_detail` / `hs_const` | P3 collector → `market_assets`; 只作为参考/归因维度，不作为行情价格 |
 | A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮 30 只且优先覆盖服务器持仓、TradingAgent 当前候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` DB-first，未传日期时使用该股票最新 intraday 日期；SQLite 暂未刷入时会回退 SharedSignals `data/tushare/stk_mins` / `rt_min` CSV，旧 `rt_k` 目录仅作历史兼容 |
 | A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
@@ -749,6 +755,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-08 | 1.1.15 | Tushare P0-P6 配置接口增加入库完整性门禁：补齐 `top_list`、`limit_step`、`stk_auction`、`stk_limit`、`concept`、`concept_detail`、`hs_const` 的 CSV→SQLite 映射；非空 CSV 桥接 0 行会标记 `failed` 并计入 `bridge_failure_count`，防止数据只留在 CSV 而 API/read model 不可见；`/market_data` 的 `freq=1m/5m/15m/30m/60m` 改为读取 `market_bars_intraday`，不再返回误导性的 unsupported。 |
 | 2026-07-08 | 1.1.14 | A股 P0 优先池补入 TradingAgent 真实模拟执行的 no-trade/execution-exclusion JSONL 和通配符路径，确保执行候选缺价后可在下一轮 5 分钟采集中优先补价，而不只依赖盘前 dry-run 候选。 |
 | 2026-07-08 | 1.1.13 | A股 P0 5分钟通道收窄为 `stk_mins`/`rt_min` 分钟行情，默认 30 只优先/轮转批次；P0 只在 09:30-11:30、13:00-15:00 推进游标并按交易日重置；优先池补入 TradingAgent 当前 A股候选报告；`daily`/`stk_factor`/`stk_factor_pro` 转入 P1 盘后日频 90 天窗口，避免日频重任务或盘前空跑拖住交易时段 `market_bars_intraday` 更新。 |
 | 2026-07-06 | 1.1.12 | CNFutures 5 分钟采集加强失败语义：`rt_fut_min` provider 错误和非空 CSV 桥接 0 行会返回 `failed`；生产确认 Tushare `rt_fut_min` 权限不足后，增加 AKShare/Sina 5 分钟模拟盘备源；SharedSignals API 白名单补入 `rt_fut_min`，便于只读接口自检。 |

@@ -753,19 +753,14 @@ def _rows_to_wrappers(
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_market_data_cached(_generation: int, ts_code: str, start: str, end: str, freq: str, adjusted: bool) -> str:
-    if freq != "daily":
-        return _json_cached(
-            lambda: _degraded_empty(
-                "sqlite:market_bars_daily",
-                f"unsupported freq: {freq}",
-                lineage={"reader": "get_market_data", "freq": freq, "adjusted": adjusted},
-            )
-        )
-    start_key, end_key = _date_key(start), _date_key(end)
+    freq_key = _canonical_market_data_freq(freq)
+    market, symbols = _market_symbols_for_code(ts_code)
+    if freq_key != "daily":
+        return _get_market_intraday_cached(ts_code, start, end, freq_key, adjusted, market, symbols)
+    start_key = _date_key(start)
+    end_key = _date_key(end)
     if start_key > end_key:
         start_key, end_key = end_key, start_key
-    market = "Ashare" if ts_code.endswith((".SH", ".SZ", ".BJ")) else "HK" if ts_code.endswith(".HK") else "US" if "." not in ts_code or ts_code.endswith(".US") else "Crypto"
-    symbols = [ts_code]
     if market == "US":
         base = ts_code[:-3] if ts_code.endswith(".US") else ts_code
         symbols = [base, f"{base}.US"]
@@ -788,6 +783,120 @@ def _get_market_data_cached(_generation: int, ts_code: str, start: str, end: str
         "adjustment_note": "market_bars_daily has no separate adjustment column; adjusted is preserved as lineage only",
     }
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_bars_daily", source_tier="marketdata", lineage=lineage, stale_after_hours=48.0))
+
+
+def _canonical_market_data_freq(freq: Any) -> str:
+    value = str(freq or "daily").strip().lower()
+    aliases = {
+        "d": "daily",
+        "day": "daily",
+        "1d": "daily",
+        "daily": "daily",
+        "1m": "1min",
+        "1min": "1min",
+        "5m": "5min",
+        "5min": "5min",
+        "15m": "15min",
+        "15min": "15min",
+        "30m": "30min",
+        "30min": "30min",
+        "60m": "60min",
+        "60min": "60min",
+        "1h": "60min",
+    }
+    return aliases.get(value, value)
+
+
+def _market_symbols_for_code(ts_code: str) -> tuple[str, list[str]]:
+    symbol = str(ts_code or "").strip()
+    upper = symbol.upper()
+    if upper.endswith((".SH", ".SZ", ".BJ")):
+        return "Ashare", [symbol]
+    if upper.endswith(".HK"):
+        return "HK", [symbol]
+    if upper.endswith((".USDT", "USDT", ".USDC", "USDC", ".BUSD", "BUSD")):
+        return "Crypto", [upper.replace(".USDT", "USDT").replace(".USDC", "USDC").replace(".BUSD", "BUSD")]
+    if "." not in symbol or upper.endswith(".US"):
+        base = symbol[:-3] if upper.endswith(".US") else symbol
+        return "US", ([f"{base}.US", base] if upper.endswith(".US") else [base, f"{base}.US"])
+    return "Crypto", [symbol]
+
+
+def _get_market_intraday_cached(
+    ts_code: str,
+    start: str,
+    end: str,
+    freq: str,
+    adjusted: bool,
+    market: str,
+    symbols: list[str],
+) -> str:
+    if freq not in {"1min", "5min", "15min", "30min", "60min", "24h_ticker"}:
+        return _json_cached(
+            lambda: _degraded_empty(
+                "sqlite:market_bars_intraday",
+                f"unsupported freq: {freq}",
+                lineage={"reader": "get_market_data", "freq": freq, "adjusted": adjusted},
+            )
+        )
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key and end_key and start_key > end_key:
+        start_key, end_key = end_key, start_key
+    placeholders = ",".join("?" for _ in symbols)
+    latest_trade_date = None
+    if not start_key and not end_key:
+        latest_query = f"""
+            SELECT MAX(trade_date) AS trade_date
+            FROM market_bars_intraday
+            WHERE market = ? AND symbol IN ({placeholders}) AND (interval = ? OR interval IS NULL OR interval = '')
+        """
+        latest_rows, latest_degraded = _sqlite_rows(latest_query, (market, *symbols, freq), "market_bars_intraday")
+        if latest_degraded is not None:
+            return _json_cached(lambda: latest_degraded)
+        latest_trade_date = latest_rows[0].get("trade_date") if latest_rows else None
+        if not latest_trade_date:
+            return _json_cached(
+                lambda: _degraded_empty(
+                    "sqlite:market_bars_intraday",
+                    f"no intraday trade_date for ts_code={ts_code} freq={freq}",
+                    lineage={"reader": "get_market_data", "filters": {"ts_code": ts_code, "freq": freq}},
+                )
+            )
+        start_key = end_key = str(latest_trade_date)
+
+    params: list[Any] = [market, *symbols, freq]
+    date_filters = []
+    if start_key:
+        date_filters.append("trade_date >= ?")
+        params.append(start_key)
+    if end_key:
+        date_filters.append("trade_date <= ?")
+        params.append(end_key)
+    date_sql = (" AND " + " AND ".join(date_filters)) if date_filters else ""
+    query = f"""
+        SELECT * FROM market_bars_intraday
+        WHERE market = ? AND symbol IN ({placeholders}) AND (interval = ? OR interval IS NULL OR interval = ''){date_sql}
+        ORDER BY bar_time ASC
+    """
+    rows, degraded = _sqlite_rows(query, tuple(params), "market_bars_intraday")
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    lineage = {
+        "reader": "get_market_data",
+        "db_path": str(SQLITE_PATH),
+        "table": "market_bars_intraday",
+        "filters": {
+            "ts_code": ts_code,
+            "symbols": symbols,
+            "start": start_key,
+            "end": end_key,
+            "freq": freq,
+            "adjusted": adjusted,
+        },
+        "adjustment_note": "market_bars_intraday has no separate adjustment column; adjusted is preserved as lineage only",
+    }
+    return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_bars_intraday", source_tier="marketdata", lineage=lineage, stale_after_hours=2.0))
 
 
 

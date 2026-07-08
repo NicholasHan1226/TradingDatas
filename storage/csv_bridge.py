@@ -112,11 +112,17 @@ CSV_TO_TABLE_MAP = {
     "pledge_stat": "market_factors",
     "repo_daily": "market_factors",
     "repurchase": "market_factors",
+    "concept": "market_assets",
+    "concept_detail": "market_assets",
+    "hs_const": "market_assets",
     "share_float": "market_assets",
     "shibor": "market_factors",
     "shibor_lpr": "market_factors",
+    "limit_step": "market_factors",
+    "stk_auction": "market_factors",
     "stk_factor": "market_bars_daily",
     "stk_factor_pro": "market_factors",
+    "stk_limit": "market_factors",
     "stk_mins": "market_bars_intraday",
     "rt_min": "market_bars_intraday",
     "rt_k": "market_bars_intraday",
@@ -127,6 +133,7 @@ CSV_TO_TABLE_MAP = {
     "stk_surv": "market_factors",
     "stock_basic": "market_assets",
     "stock_company": "market_assets",
+    "top_list": "market_factors",
     "top10_floatholders": "market_assets",
     "top10_holders": "market_assets",
     "top_inst": "market_assets",
@@ -157,7 +164,19 @@ def _api_name_from_path(csv_path):
 
 
 def _market_for(api_name, symbol):
-    if api_name in ("daily", "stock_basic", "weekly", "monthly", "stk_mins", "rt_min", "rt_k", "repo_daily"):
+    if api_name in (
+        "daily",
+        "stock_basic",
+        "weekly",
+        "monthly",
+        "stk_mins",
+        "rt_min",
+        "rt_k",
+        "repo_daily",
+        "concept",
+        "concept_detail",
+        "hs_const",
+    ):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
         return "HK"
@@ -452,9 +471,12 @@ def _canonical_row(table, row, api_name, csv_path):
             row["sector"] = row.get("industry")
         if not row.get("asset_type"):
             asset_type_map = {
+                "concept": "concept",
+                "concept_detail": "concept_member",
                 "etf_basic": "etf",
                 "fut_basic": "future",
                 "fund_basic": "fund",
+                "hs_const": "index_constituent",
                 "hk_basic": "stock",
                 "stock_basic": "stock",
                 "us_basic": "stock",

@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
@@ -21,7 +22,9 @@ from collectors.tushare.sync_daily import (
     resolve_api_window,
     select_priority_rotating_stock_batch,
     select_rotating_stock_batch,
+    sync_tier,
 )
+from storage.csv_bridge import CSV_TO_TABLE_MAP
 
 
 def test_resolve_api_window_uses_api_lookback_days() -> None:
@@ -74,6 +77,18 @@ def test_p6_fut_basic_collects_expiry_fields() -> None:
     assert {"ts_code", "name", "exchange", "list_date", "last_ddate", "delist_date"}.issubset(fields)
 
 
+def test_configured_tushare_apis_have_sqlite_bridge_mapping() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    missing = []
+    for tier, apis in config["priorities"].items():
+        for api in apis:
+            api_name = api["api_name"]
+            if api_name not in CSV_TO_TABLE_MAP:
+                missing.append(f"{tier}:{api_name}")
+
+    assert missing == []
+
+
 def test_p6_index_and_fund_daily_are_trade_date_snapshots() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
     p6_by_name = {
@@ -97,6 +112,42 @@ def test_p6_cb_daily_is_global_trade_date_snapshot() -> None:
     assert len(cb_daily_apis) == 1
     assert cb_daily_apis[0]["per_stock"] is False
     assert cb_daily_apis[0]["params"] == {"trade_date": "{trade_date}"}
+
+
+def test_sync_tier_marks_non_empty_csv_zero_bridge_rows_failed(tmp_path: Path, monkeypatch) -> None:
+    csv_path = tmp_path / "data" / "tushare" / "daily" / "20260708" / "daily_20260708.csv"
+    csv_path.parent.mkdir(parents=True)
+    csv_path.write_text(
+        "ts_code,trade_date,open,high,low,close,vol,amount\n"
+        "000001.SZ,20260708,10,11,9,10.5,1000,10500\n",
+        encoding="utf-8",
+    )
+
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            return [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
+
+        def save(self, api_name, rows, trade_date, filename=None):
+            return csv_path
+
+    monkeypatch.setattr(sync_daily_module, "ingest_csv_to_sqlite", lambda *args, **kwargs: 0)
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {"trade_date": "{trade_date}"}}],
+        stock_codes=[],
+        trade_date="20260708",
+        start_date="20260708",
+        end_date="20260708",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["bridge_status"] == "failed"
+    assert stats["daily"]["bridge_errors"]
+    assert stats["_tier_summary"]["bridge_failure_count"] == 1
 
 
 def test_p6_cron_runs_after_market_close_only() -> None:

@@ -420,3 +420,71 @@ class TestPMPriceReader:
         assert rows[0]["data"]["price"] == 0.43
         assert rows[0]["provenance"]["source_tier"] == "polymarket"
         assert rows[0]["lineage"]["table"] == "market_pm_prices"
+
+
+class TestMarketDataReader:
+    def test_get_market_data_supports_intraday_freq(self, tmp_path, monkeypatch):
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.executescript(SCHEMA_SQL)
+        conn.executemany(
+            """
+            INSERT INTO market_bars_intraday (
+                market, symbol, bar_time, trade_date, interval,
+                open, high, low, close, volume, amount,
+                provider, source_file, collected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("Ashare", "000001.SZ", "2026-07-08 09:35:00", "20260708", "5min", 10, 10.2, 9.9, 10.1, 1000, 10100, "tushare_rt_min", "unit.csv", "2026-07-08T09:35:01Z", "{}"),
+                ("Ashare", "000001.SZ", "2026-07-08 09:40:00", "20260708", "5min", 10.1, 10.3, 10.0, 10.2, 1100, 11220, "tushare_rt_min", "unit.csv", "2026-07-08T09:40:01Z", "{}"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        import reader
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+        rows = reader.get_market_data("000001.SZ", "20260708", "20260708", freq="5m")
+
+        assert [row["data"]["bar_time"] for row in rows] == [
+            "2026-07-08 09:35:00",
+            "2026-07-08 09:40:00",
+        ]
+        assert rows[0]["provenance"]["source_id"] == "tushare_rt_min"
+        assert rows[0]["lineage"]["filters"]["freq"] == "5min"
+
+    def test_get_market_data_intraday_without_dates_uses_latest_trade_date(self, tmp_path, monkeypatch):
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.executescript(SCHEMA_SQL)
+        conn.executemany(
+            """
+            INSERT INTO market_bars_intraday (
+                market, symbol, bar_time, trade_date, interval,
+                open, high, low, close, volume, amount,
+                provider, source_file, collected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("Ashare", "000001.SZ", "2026-07-07 15:00:00", "20260707", "5min", 9, 9, 9, 9, 100, 900, "tushare_rt_min", "unit.csv", "2026-07-07T15:00:01Z", "{}"),
+                ("Ashare", "000001.SZ", "2026-07-08 09:35:00", "20260708", "5min", 10, 10.2, 9.9, 10.1, 1000, 10100, "tushare_rt_min", "unit.csv", "2026-07-08T09:35:01Z", "{}"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        import reader
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+        rows = reader.get_market_data("000001.SZ", None, None, freq="5m")
+
+        assert len(rows) == 1
+        assert rows[0]["data"]["trade_date"] == "20260708"

@@ -631,6 +631,15 @@ def sync_tier(
                 tier_name, len(apis), len(per_stock_ashare), len(per_stock_hk), len(global_apis),
                 len(stock_codes), len(hk_codes), total_calls)
 
+    def _csv_has_data_rows(path: Path) -> bool:
+        try:
+            with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.reader(handle)
+                next(reader, None)
+                return next(reader, None) is not None
+        except OSError:
+            return False
+
     def _bridge_csv(api_name: str, path: Path | None) -> dict[str, Any]:
         if not sqlite_bridge_enabled or path is None:
             return {
@@ -640,9 +649,16 @@ def sync_tier(
             }
         table = CSV_TO_TABLE_MAP.get(api_name)
         if not table:
-            return {"rows": 0, "status": "unmapped", "error": ""}
+            error = f"{api_name}:{path}:no sqlite table mapping"
+            bridge_errors.append(error)
+            return {"rows": 0, "status": "unmapped", "error": error}
         try:
             rows = ingest_csv_to_sqlite(sqlite_db_path, table, path)
+            if rows == 0 and _csv_has_data_rows(path):
+                error = f"{api_name}:{path}:bridge wrote 0 rows for non-empty CSV"
+                bridge_errors.append(error)
+                logger.warning("sqlite bridge failed for %s from %s: %s", api_name, path, error)
+                return {"rows": 0, "status": "failed", "error": error}
             logger.info("sqlite bridge %s -> %s: %d rows from %s", api_name, table, rows, path)
             return {"rows": rows, "status": "ok", "error": ""}
         except Exception as exc:
