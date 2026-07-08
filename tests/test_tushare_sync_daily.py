@@ -99,6 +99,8 @@ def test_p0_priority_sources_include_tradingagent_candidate_report() -> None:
     paths = {str(path) for path in DEFAULT_P0_PRIORITY_STOCK_FILES}
 
     assert any("ashare_preopen_dry_run_latest.json" in path for path in paths)
+    assert any("ashare_no_trade_explanations.jsonl" in path for path in paths)
+    assert any("execution_exclusions_*.jsonl" in path for path in paths)
 
 
 def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
@@ -309,6 +311,30 @@ def test_load_priority_stock_codes_reads_nested_json_and_filters_allowed(tmp_pat
     assert codes == ["600000.SH", "000001.SZ", "300750.SZ"]
     assert meta["enabled"] is True
     assert meta["selected"] == 3
+
+
+def test_load_priority_stock_codes_reads_jsonl_glob_candidates(tmp_path: Path) -> None:
+    priority_file = tmp_path / "execution_exclusions_20260708.jsonl"
+    priority_file.write_text(
+        "\n".join(
+            [
+                '{"symbol": "601288.SH", "reason": "missing_or_non_positive_price"}',
+                '{"sample_skipped_candidates": [{"symbol": "002714.SZ"}, {"ts_code": "601398.SH"}]}',
+                '{"symbol": "200011.SZ"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    codes, meta = load_priority_stock_codes(
+        paths=[tmp_path / "execution_exclusions_*.jsonl"],
+        allowed_codes={"601288.SH", "002714.SZ", "601398.SH"},
+    )
+
+    assert codes == ["601288.SH", "002714.SZ", "601398.SH"]
+    assert meta["enabled"] is True
+    assert meta["source_count"] == 1
 
 
 def test_select_priority_rotating_stock_batch_keeps_hot_pool_first(tmp_path: Path) -> None:

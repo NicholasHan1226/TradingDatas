@@ -62,13 +62,18 @@ ASHARE_TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_P0_PRIORITY_STOCK_FILES = [
     _BASE_DIR.parent / "TradingAgent" / "signals" / "positions" / "simulated_ashare_positions.json",
     _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "local_sim" / "local_sim_positions.json",
+    _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "ashare_no_trade_explanations.jsonl",
     _BASE_DIR.parent / "TradingAgent" / "shared" / "runtime_test" / "ashare_preopen_dry_run_latest.json",
+    _BASE_DIR.parent / "TradingAgent" / "shared" / "review" / "ashare" / "execution_exclusions_*.jsonl",
     _BASE_DIR.parent / "MarketGraph" / "outputs" / "ashare_closing_buy_candidates.json",
     Path("/opt/investment/tradingagent/signals/positions/simulated_ashare_positions.json"),
     Path("/opt/investment/tradingagent/shared/logs/local_sim/local_sim_positions.json"),
+    Path("/opt/investment/tradingagent/shared/logs/ashare_no_trade_explanations.jsonl"),
     Path("/opt/investment/tradingagent/shared/runtime_test/ashare_preopen_dry_run_latest.json"),
+    Path("/opt/investment/tradingagent/shared/review/ashare/execution_exclusions_*.jsonl"),
     Path("/opt/investment/MarketGraph/outputs/ashare_closing_buy_candidates.json"),
 ]
+DEFAULT_PRIORITY_JSONL_MAX_LINES = 500
 
 VALID_TIERS = [
     "P0_trading_5min",
@@ -312,6 +317,43 @@ def _priority_stock_paths() -> list[Path]:
     return list(DEFAULT_P0_PRIORITY_STOCK_FILES)
 
 
+def _expand_priority_stock_paths(paths: list[Path]) -> list[Path]:
+    expanded: list[Path] = []
+    for path in paths:
+        text = str(path)
+        if any(char in text for char in "*?[]"):
+            matches = sorted(
+                path.parent.glob(path.name),
+                key=lambda item: item.stat().st_mtime if item.exists() else 0,
+                reverse=True,
+            )
+            expanded.extend(item for item in matches if item.is_file())
+        else:
+            expanded.append(path)
+    return expanded
+
+
+def _read_priority_stock_payloads(path: Path) -> list[Any]:
+    if path.suffix.lower() != ".jsonl":
+        return [json.loads(path.read_text(encoding="utf-8"))]
+
+    max_lines = parse_positive_int(
+        os.environ.get("SHAREDSIGNALS_P0_PRIORITY_JSONL_MAX_LINES"),
+        DEFAULT_PRIORITY_JSONL_MAX_LINES,
+    )
+    lines = path.read_text(encoding="utf-8").splitlines()
+    payloads: list[Any] = []
+    for line in lines[-max_lines:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payloads.append(json.loads(stripped))
+        except json.JSONDecodeError as exc:
+            logger.warning("failed to parse P0 priority jsonl line from %s: %s", path, exc)
+    return payloads
+
+
 def load_priority_stock_codes(
     *,
     paths: list[Path] | None = None,
@@ -337,17 +379,18 @@ def load_priority_stock_codes(
     for raw in (explicit_codes or os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCKS", "")).split(","):
         add(raw, "env")
 
-    for path in paths if paths is not None else _priority_stock_paths():
+    for path in _expand_priority_stock_paths(paths if paths is not None else _priority_stock_paths()):
         if not path.exists() or not path.is_file():
             continue
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payloads = _read_priority_stock_payloads(path)
         except Exception as exc:
             logger.warning("failed to read P0 priority stock file %s: %s", path, exc)
             continue
         before = len(codes)
-        for code in _extract_ashare_codes(payload):
-            add(code, str(path))
+        for payload in payloads:
+            for code in _extract_ashare_codes(payload):
+                add(code, str(path))
         if len(codes) > before:
             logger.info("Loaded %d P0 priority stocks from %s", len(codes) - before, path)
 
