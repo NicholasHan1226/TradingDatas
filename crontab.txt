@@ -2,16 +2,16 @@
 #
 # Source of truth: on 8.138.181.177, inspect with:
 #   sudo -u marketgraph crontab -l
-# Production uses one combined marketgraph user crontab for SharedSignals,
-# TradingAgent, and MarketGraph. Do not install this single-system file directly
-# over live crontab; merge it with the other two system crontab references.
+# Production ops may compose one marketgraph user crontab from the three repos.
+# This repo file only owns SharedSignals entries; never install it directly over
+# live crontab or use it to overwrite TradingAgent/MarketGraph entries.
 #
 # SharedSignals owns market data collection. TradingAgent and MarketGraph must
-# consume SharedSignals API/read model and must not re-enable their old direct
+# consume SharedSignals API and must not re-enable their old direct
 # Tushare/Binance/Polymarket collectors.
 
 SHELL=/bin/bash
-PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # Crypto 24/7 freshness. Ticker runs every 5 minutes into intraday; a separate
 # hourly 1d kline job keeps market_bars_daily fresh without full all-interval

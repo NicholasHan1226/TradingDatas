@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="${SHAREDSIGNALS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-DEFAULT_PYTHON_BIN="/opt/marketgraph/venv/bin/python3"
+DEFAULT_PYTHON_BIN="/opt/sharedsignals/venv/bin/python3"
 if [ -n "${SHAREDSIGNALS_VENV_PYTHON:-}" ]; then
   PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON}"
 elif [ -x "${DEFAULT_PYTHON_BIN}" ]; then

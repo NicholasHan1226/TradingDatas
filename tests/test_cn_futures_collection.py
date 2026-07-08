@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 import subprocess
+import sys
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +15,8 @@ from collectors.tushare.backfill_fut_daily import (
     run_backfill,
 )
 from tools.collect_cn_futures_daily import build_command, main, run_collection
+from storage.schema import SCHEMA_SQL
+from tools import collect_cn_futures_5min
 
 
 def test_daily_wrapper_builds_fut_daily_only_command() -> None:
@@ -128,3 +133,62 @@ def test_backfill_fail_fast_stops_after_first_failure(monkeypatch: pytest.Monkey
     assert seen == ["20260701", "20260702"]
     assert summary["success_count"] == 1
     assert summary["failure_count"] == 1
+
+
+def test_cn_futures_5min_sina_provider_writes_read_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Frame:
+        empty = False
+
+        def __init__(self, rows: list[dict[str, object]]) -> None:
+            self._rows = rows
+
+        def tail(self, limit: int) -> "_Frame":
+            return _Frame(self._rows[-limit:])
+
+        def to_dict(self, orient: str) -> list[dict[str, object]]:
+            assert orient == "records"
+            return list(self._rows)
+
+    fake_akshare = types.SimpleNamespace(
+        futures_zh_minute_sina=lambda symbol, period: _Frame(
+            [
+                {"datetime": "2026-07-03 14:50:00", "open": 3500, "high": 3510, "low": 3490, "close": 3505, "volume": 100, "hold": 1000},
+                {"datetime": "2026-07-03 14:55:00", "open": 3505, "high": 3520, "low": 3500, "close": 3515, "volume": 120, "hold": 1001},
+            ]
+        )
+    )
+    monkeypatch.setitem(sys.modules, "akshare", fake_akshare)
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+    finally:
+        conn.close()
+
+    summary = collect_cn_futures_5min.run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        provider=collect_cn_futures_5min.SINA_PROVIDER,
+        dry_run=False,
+        sqlite_db_path=db_path,
+    )
+
+    assert summary["state"] == "ok"
+    assert summary["provider"] == "sina_futures_minute"
+    assert summary["sqlite_rows"] == 2
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT symbol, close, provider FROM market_bars_intraday WHERE market='Futures' ORDER BY bar_time"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [
+        ("RB2609.SHF", 3505.0, "sina_futures_minute"),
+        ("RB2609.SHF", 3515.0, "sina_futures_minute"),
+    ]

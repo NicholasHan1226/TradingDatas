@@ -16,7 +16,7 @@ from collections import OrderedDict
 from typing import Any
 
 # Ensure this directory is on sys.path so absolute imports work both as a
-# package submodule and when imported via PYTHONPATH from MarketGraph scripts.
+# package submodule and when the collector is invoked as a standalone script.
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)

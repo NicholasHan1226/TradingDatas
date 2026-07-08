@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_DIR="/opt/investment/SharedSignals"
 BACKUP_DIR="/opt/investment/SharedSignals/backups"
 SQLITE_DB="${SHAREDSIGNALS_MARKETDATA_DB:-/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite}"
-VENV_PYTHON="/opt/marketgraph/venv/bin/python3"
+VENV_PYTHON="/opt/sharedsignals/venv/bin/python3"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 success() { echo "[OK] $*"; }

@@ -10,7 +10,7 @@ if [ "$(id -u)" -eq 0 ] && id -u "${RUN_AS_USER}" >/dev/null 2>&1; then
   exec runuser -u "${RUN_AS_USER}" -- "$0" "$@"
 fi
 
-PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
+PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"
 LOG_FILE="${LOG_DIR}/pm_collect.log"

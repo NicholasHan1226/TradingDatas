@@ -17,7 +17,7 @@
 - 系统类: notice@tradingagent.cc → soc@coze.email
 
 ## 环境
-- Python: 3.12.3 (venv /opt/marketgraph/venv)
+- Python: 3.12.3 (venv /opt/sharedsignals/venv)
 - OS: Ubuntu 24.04
 - SQLite + DuckDB mirror：`/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` 是生产 read model，`/opt/investment/SharedSignals/data/marketdata.duckdb` 每小时同步用于只读分析加速；Redis 未启用。
 - 旧 RSS/RSSHub 资产仅作历史审计，不作为当前生产采集或 API 数据源。

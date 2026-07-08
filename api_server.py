@@ -644,10 +644,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/realtime_5min":
             ts_code = params.get("ts_code", "").strip()
-            if not ts_code:
-                raise ValueError("ts_code is required")
             date = params.get("date", "").strip() or None
             market = params.get("market", "").strip() or "Ashare"
+            if not ts_code and not market:
+                raise ValueError("ts_code or market is required")
             rows = reader.get_realtime_5min(ts_code=ts_code, date=date, market=market)
             rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)

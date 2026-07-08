@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared helpers for the Investment A-share workflow."""
+"""Shared helpers for the SharedSignals Tushare collectors."""
 
 from __future__ import annotations
 
@@ -21,34 +21,6 @@ except ModuleNotFoundError:  # pragma: no cover
     except ModuleNotFoundError:  # pragma: no cover
         tomllib = None
 
-# tushare_common.py lives at SharedSignals/collectors/tushare/
-# parents[3] = /opt/investment/ (or ~/Projects/Finance locally)
-_INVESTMENT_ROOT = Path(__file__).resolve().parents[3]
-ROOT = _INVESTMENT_ROOT
-INVESTMENT_ROOT = _INVESTMENT_ROOT
-ASSOCIATION_ENV_KEYS = ("SHAREDSIGNALS_ASSOCIATION_ROOT", "ASSOCIATION_ROOT")
-
-
-def resolve_association_root(
-    env: Mapping[str, str] | None = None,
-    candidates: list[Path] | None = None,
-) -> Path:
-    """Resolve the SharedSignals-owned association directory."""
-    source_env = os.environ if env is None else env
-    for key in ASSOCIATION_ENV_KEYS:
-        raw = str(source_env.get(key) or "").strip()
-        if raw:
-            return Path(raw).expanduser().resolve()
-
-    search_paths = candidates or [INVESTMENT_ROOT / "SharedSignals" / "data" / "association"]
-    for candidate in search_paths:
-        expanded = candidate.expanduser()
-        if expanded.exists():
-            return expanded.resolve()
-    return (INVESTMENT_ROOT / "SharedSignals" / "data" / "association").resolve()
-
-
-_ASSOCIATION_DIR = resolve_association_root()
 # Codex config is the canonical source for Tushare/QuickSync token and API URL.
 # Environment variables (QUICKSYNC_TOKEN, QUICKSYNC_API_URL, etc.) can be used
 # as an optional override; set them when you need to temporarily switch provider.

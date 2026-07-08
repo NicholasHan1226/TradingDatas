@@ -24,7 +24,8 @@
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
 - **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 已改为 SharedSignals 本仓库兼容模块；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，DuckDB 只作为分析镜像，不是 5 分钟交易 read path；2026-07-07 起定时同步降为每小时一次，并用低 IO/CPU 优先级与 10 分钟超时运行，避免全量 sqlite_scan 与交易采集/模拟任务抢占主库。同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
-- **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/marketgraph/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
+- **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/sharedsignals/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
+- **环境与邮件边界**：SharedSignals 只读取 `SHAREDSIGNALS_ENV_FILE`、`/opt/sharedsignals/.env`、`/opt/investment/SharedSignals/.env` 或本仓 `.env`；不得再读取 MarketGraph env 或 TradingAgent env。系统邮件发件入口统一由本仓配置提供，缺配置时只落本地 fallback 记录并触发告警。
 - **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/proxy_relay_health.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已收口为现役入口，分别负责 Tushare tier、Crypto 5 分钟 ticker/按需 klines、Polymarket markets/prices、DuckDB 同步、patrol/heal、新加坡 relay 健康、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
@@ -95,11 +96,11 @@
 8. [x] **P1：API 服务器线程化与资源上限** — ThreadingHTTPServer + request timeout + semaphore thread limiter
 9. [x] **P1：auth.py 内存治理** — `_DEDUP_CACHE` 已加 entries + bytes 双上限和单条响应上限；`_REQUEST_LOG` 已有 tenant/event 上限 + TTL
 10. [x] **P1：import-time env 加载统一** — 集中到进程启动入口，消除非确定性
-11. [x] **P2：SharedSignals API/read model 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
+11. [x] **P2：SharedSignals API 作为默认消费入口** — TradingAgent 健康回执已通过 SharedSignals API；MarketGraph 旧 provider/RSS/Tushare 采集 cron 与 provider passthrough 已禁用，SQLite/DuckDB 只读回退保留
 12. [x] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换/ DuckDB 重建流程已实现，默认 dry-run/fail-safe，详见 `docs/sqlite_recovery_runbook.md`；env 运行中热加载仍待后续迭代。
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
-15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API/read model。
+15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py` 与 `cron/cn_futures_5min.sh` 已支持 Tushare `rt_fut_min` 直接写入 `market_bars_intraday`；默认合约池覆盖 `rb/cu/i/m/if/ih/ic/im` 并按产品轮询选合约，生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集；`market_bars_intraday` 已扩展可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段，`/realtime_5min?market=Futures` 可通过 API 读取并透传这些字段，供 TradingAgent 在字段存在时增强模拟成交。
 17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
 18. [x] **RSS/RSSHub 退役收口** — RSS/RSSHub 不作为现役 collector；恢复事件采集前必须按 SharedSignals direct-DB collector 重新接入。
@@ -278,7 +279,7 @@
 
 - [x] TradingAgent 生产 loader 已默认设置 `SHAREDSIGNALS_API_URL=http://127.0.0.1:8082`，A股读取链路以 SharedSignals/ShareChannel API 为第一入口，SQLite 仅保留只读回退。
 - [x] SharedSignals 系统邮件发送器已改为 Cloudflare Email Service REST endpoint `/email/sending/send`，不再尝试 DeadSimple/SMTP；失败时只保存本地 fallback 证据。
-- [x] 邮件配置入口统一到 `/opt/marketgraph/.env`，规范通道为交易 `notice@tradingagent.cc -> tradingadviser@coze.email`、系统 `notice@tradingagent.cc -> soc@coze.email`。
+- [x] 邮件配置入口已从历史 MarketGraph env 迁出，统一到 SharedSignals 自有 env；规范通道为交易 `notice@tradingagent.cc -> tradingadviser@coze.email`、系统 `notice@tradingagent.cc -> soc@coze.email`。
 
 ### 2026-07-04 SharedSignals-only provider 边界落地
 
@@ -295,7 +296,7 @@
 
 ### 2026-07-04 Tushare 5分钟调度与 read model 桥接修复
 
-- [x] `cron/collectors.sh` 支持按 `--tier` 单独运行，P0 可与日频层拆开调度；cron wrapper 默认使用 `/opt/marketgraph/venv/bin/python3`，避免 DuckDB 同步误用系统 Python。
+- [x] `cron/collectors.sh` 支持按 `--tier` 单独运行，P0 可与日频层拆开调度；cron wrapper 默认使用 `/opt/sharedsignals/venv/bin/python3`，避免 DuckDB 同步误用系统 Python。
 - [x] `cron/crontab.txt` 已改为 P0 工作日 9-15 点每 5 分钟，P1/P2/P3/P4/P5/P6 按自然时间窗口运行，不再每 2 小时全 tier 捆绑。
 - [x] `storage/read_model_store.py` 已将 `stk_mins` 映射到 `market_bars_intraday`，并为 Tushare rows 直接入库补齐 `provider`、`collected_at`、`trade_date`、`interval` 等 lineage 字段；`rt_k` 未作为现役生产映射。
 - [x] 验证：SharedSignals 全量测试 207 项通过；DuckDB wrapper 用生产 venv 实跑通过，`duckdb_merge.py` 状态 `ok`。
@@ -304,7 +305,7 @@
 ### 2026-07-04 watchdog 日志失败扫描与 DuckDB venv Python
 
 - [x] `tools/watchdog.py` 的 collector cron log 检查已从只看新鲜度扩展为扫描最近日志内容；命中 `Traceback`、`ModuleNotFoundError`、`Error`、`FAILED` 时将 `collector_status` 判为 critical，并把该项 `score_factor` 降为 0。
-- [x] `cron/duckdb_sync.sh` 已新增 Python 解释器优先级：`SHAREDSIGNALS_VENV_PYTHON` → `VENV_PYTHON`（默认 `/opt/marketgraph/venv/bin/python3`）→ `/opt/marketgraph/venv/bin/python` → 系统 `python3`，避免 DuckDB 依赖落到系统 Python 缺包。
+- [x] `cron/duckdb_sync.sh` 已新增 Python 解释器优先级：`SHAREDSIGNALS_VENV_PYTHON` → `VENV_PYTHON`（默认 `/opt/sharedsignals/venv/bin/python3`）→ `/opt/sharedsignals/venv/bin/python` → 系统 `python3`，避免 DuckDB 依赖落到系统 Python 缺包。
 - [x] 验证：`py_compile tools/watchdog.py`、`bash -n cron/duckdb_sync.sh` 通过；本地 smoke 确认新日志内 `Traceback/ModuleNotFoundError` 会触发 collector critical。
 - [x] 生产验证：主服务器已用 `marketgraph` 用户运行 DuckDB sync 成功；watchdog 误报修复后 score=100，collector_status 无 failure_patterns。
 
@@ -368,7 +369,7 @@
 - [x] `collectors/tushare/collector.py` + `sync_daily.py`：采集异常显式打标，tier summary 统计每 API 失败数；新增 `--exit-on-failure` 和失败比例阈值
 - [x] `collectors/tushare/sync_daily.py`：当时修复 bridge 结果语义；当前结果字段已收口为 `sqlite_status` / `sqlite_errors` / `sqlite_failure_count`
 - [x] `auth.py`：dedup 响应缓存增加 `SHAREDSIGNALS_DEDUP_MAX_BYTES`（默认 10MB）与 `SHAREDSIGNALS_DEDUP_MAX_ENTRY_BYTES`（默认 1MB），超限跳过或 LRU 驱逐
-- [x] `bridge/__init__.py`：为本地 Projects 工作区补充 sibling `../MarketGraph` 模块搜索路径，避免 `/opt/investment/MarketGraph` 不存在时测试导入断链
+- [x] `bridge/__init__.py`：当前只暴露 SharedSignals 自有模块，不再补充 sibling MarketGraph 模块搜索路径
 - [x] 验证：`tests/test_api_server_edge.py` + `tests/test_read_model_store.py` 已通过；全量验证见本轮最终回执
 
 ### 2026-07-02 TEST ROUND 3：Phase 1 边界条件验证（历史记录）
@@ -409,7 +410,7 @@
 ### 2026-07-02 Tushare API 包装器迁移
 
 - [x] `tushare_api.py`（843 行，40+ 函数）+ `tushare_common.py`（657 行）从 `/opt/investment/Ashare/tools/` 迁移到本目录
-- [x] 历史兼容性包装器已从 collector 边界删除；现役 Tushare 调用只保留当前 SharedSignals collector/API/read model 入口。
+- [x] 历史兼容性包装器已从 collector 边界删除；现役 Tushare 调用只保留当前 SharedSignals collector/HTTP API 入口。
 - [x] `collector.py` 移除旧 sys.path bootstrap，改用 `from .tushare_api import _call`
 - [x] `reader.py` 旧 A 股根路径默认值已删除；生产 reader 不再暴露旧 collector 路径常量。
 - [x] `capability_scan.py` 路径引用更新
@@ -437,7 +438,7 @@
 - [x] /health 分层 — 无认证返回最小版，有 token+scope 返回完整健康报告
 - [x] LOCALHOST_BYPASS — 127.0.0.1/::1/localhost 自动跳过认证（生产保护 internals）
 - [x] 2 个 API token 配置 — tradingagent（read scope）、marketgraph（health+market_data etc+read）
-- [x] SHAREDSIGNALS_API_KEY 注入 /opt/marketgraph/.env，TRADINGAGENT_ENV_LOADER chain 生效
+- [x] SHAREDSIGNALS_API_KEY 由 SharedSignals 自有 env 管理；TradingAgent 通过 API key 消费，不再依赖 MarketGraph env chain
 - [x] SharedSignalsAPIClient 部署到服务器 + 3 接口测试通过（market_data/health/fundamentals）
 
 ### 2026-07-02 Goal 3 数据集成
@@ -471,7 +472,7 @@
 3. [x] `auth.py`：Salt token hashing（PBKDF2-HMAC-SHA256），`/cache/invalidate` 和 `/cache/status` 归入 `health` scope
 4. [x] `reader.py`：LRU cache 失效系统 — TTL + 文件 mtime 检测 + `clear_caches()` + `/cache/invalidate` + `/cache/status`
 5. [x] `api_server.py`：添加 `/cache/invalidate` 和 `/cache/status` 端点
-6. [x] `tradingagent/.env.example`：`SHAREDSIGNALS_ROOT` + `MARKETGRAPH_ENV_FILE` 路径修正
+6. [x] 历史 TradingAgent/MarketGraph env chain 已退役；当前 SharedSignals 不读取跨仓 env 文件
 
 ### 2026-07-02 Goal 2 审计 Round 3（高强度终检）
 

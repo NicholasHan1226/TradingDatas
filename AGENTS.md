@@ -18,8 +18,8 @@
 ## 三系统协作边界
 
 - SharedSignals 是供数层，只负责采集、去重、缓存和健康巡查；不做投资分析、交易判断、执行路由或回执处理。
-- MarketGraph 和 TradingAgent 只能消费 SharedSignals 暴露的 HTTP API 或 SQLite/DuckDB read model；这种关系是数据契约消费，不是 MCP 强耦合互调。
-- 对 TradingAgent 而言，SharedSignals/ShareChannel API 是默认消费入口；SQLite/DuckDB read model 只允许作为只读批处理入口。生产 reader/API 不得回退旧 CSV、NDJSON、旧目录或其它系统内部文件；缺表、缺数据或缺映射必须返回 degraded/fail-closed，不能把旧文件当兜底。
+- MarketGraph 和 TradingAgent 生产运行只能消费 SharedSignals 暴露的 HTTP API；SQLite/DuckDB read model 是 SharedSignals 内部存储和本仓只读诊断/批处理入口，不是跨系统生产兜底。
+- 对 TradingAgent 而言，SharedSignals/ShareChannel API 是唯一生产市场数据入口。生产 reader/API 不得回退旧 CSV、NDJSON、旧目录或其它系统内部文件；缺表、缺数据或缺映射必须返回 degraded/fail-closed，不能把旧文件当兜底。
 - 未来对外提供服务接口时，默认只暴露数据读取、健康状态和来源留痕；任何交易信号、下单、模拟执行或邮件通知都属于 tradingagent/Hermes 边界。
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库
@@ -34,7 +34,7 @@
 
 ## 依赖
 - 采集输入: 外部 API (Tushare/Binance/PM/RSS/Tavily/DeepSeek) 只允许在 SharedSignals collector 层调用；未启用的数据源不得被 MarketGraph/TradingAgent 绕过 SharedSignals 直接调用
-- 输出: HTTP API + SQLite/DuckDB read model → MarketGraph 和 TradingAgent 按契约读取。CSV/NDJSON 不作为跨系统生产消费入口。
+- 输出: HTTP API → MarketGraph 和 TradingAgent 按契约读取。SQLite/DuckDB read model 保留给 SharedSignals 内部和明确授权的只读诊断；CSV/NDJSON 不作为跨系统生产消费入口。
 
 ## 入库与输出硬规则（2026-07-08）
 

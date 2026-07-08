@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="${SHAREDSIGNALS_ROOT:-/opt/investment/SharedSignals}"
 ENV_FILE="${SHAREDSIGNALS_ENV_FILE:-${ROOT}/.env}"
-PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
+PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 LOCAL_PROXY="${LOCAL_PROXY_URL:-http://127.0.0.1:7890}"
 RELAY_URL=""
 APPLY=0

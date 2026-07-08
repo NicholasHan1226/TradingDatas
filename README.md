@@ -24,7 +24,7 @@
 ```
 
 ## 存储
-- 行情: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb` — API/reader 只读此处
+- 行情: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb` — 对外 HTTP API 只读此处
 - 事件: SQLite (URL去重) — 原始事件, 不做分类
 - 参考: SQLite `market_assets` / `market_factors` / `market_events`；旧 reference CSV 不作为生产 API 兜底
 

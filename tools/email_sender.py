@@ -1,7 +1,7 @@
 """
 SharedSignals email sender — independent of tradingagent.
 Sends via Cloudflare Email Service REST endpoint, then saves a local fallback record.
-Configure via /opt/marketgraph/.env, repo .env, or process env vars.
+Configure via SharedSignals env files or process env vars.
 """
 from __future__ import annotations
 import hashlib, json, os, smtplib, ssl, time, urllib.error, urllib.request
@@ -19,8 +19,8 @@ def _normalize_env_value(raw: str) -> str:
 
 def _load_email_env_files() -> None:
     env_files = (
-        Path(os.environ.get("MARKETGRAPH_ENV_FILE", "/opt/marketgraph/.env")),
-        Path("/opt/investment/MarketGraph/deploy/marketgraph_cron.env"),
+        Path(os.environ.get("SHAREDSIGNALS_ENV_FILE", "/opt/sharedsignals/.env")),
+        Path("/opt/investment/SharedSignals/.env"),
         Path(__file__).resolve().parent.parent / ".env",
     )
     for env_path in dict.fromkeys(env_files):

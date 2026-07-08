@@ -11,7 +11,7 @@ Cross-system data flow is intentionally narrow:
 SharedSignals
   collects provider data and writes SQLite/DuckDB read models
       |
-      | HTTP API / read-model contract
+      | HTTP API contract
       v
 MarketGraph                       TradingAgent
 research graph and evidence       trading decisions, queues, simulated ledgers
@@ -19,14 +19,14 @@ research graph and evidence       trading decisions, queues, simulated ledgers
 
 No repository may import another repository's internal modules as a production
 dependency. SharedSignals is the only external market-data collection owner.
-MarketGraph and TradingAgent consume its API/read model and fail closed when
+MarketGraph and TradingAgent consume its HTTP API and fail closed when
 data is missing.
 
 ## Repositories
 
 | Repository | Role |
 | --- | --- |
-| SharedSignals | Shared collection, validation, direct database writes, API/read-model output |
+| SharedSignals | Shared collection, validation, direct database writes, HTTP API output |
 | MarketGraph | Research graph, macro/cross-market evidence, read-only interfaces |
 | TradingAgent | Trading decisions, signal queues, simulated/shadow ledgers, notifications |
 
@@ -34,8 +34,7 @@ data is missing.
 
 SharedSignals owns external data ingestion. Its collectors validate provider
 rows, write them directly into the SQLite read model, mirror analytical data to
-DuckDB when configured, and expose the result through HTTP/API and read-model
-contracts.
+DuckDB when configured, and expose the result through HTTP API contracts.
 
 It does not make trading decisions, run strategies, write TradingAgent queues,
 or maintain MarketGraph research facts.
@@ -51,17 +50,17 @@ Current production collectors include:
 CSV/NDJSON files are not a production read fallback. They may exist only as
 bounded tests, explicit historical migration material, or local audit fixtures.
 Production success means rows reached the read model and can be returned through
-SharedSignals API/read-model access.
+SharedSignals HTTP API access.
 
 ## MarketGraph
 
 MarketGraph owns long-horizon research, event/impact relationships,
 cross-market context, readiness, attribution, and read-only research interfaces.
 
-It reads SharedSignals API/read-model outputs for market data. It must not
+It reads SharedSignals HTTP API outputs for market data. It must not
 restore independent Tushare, Eastmoney, Binance, Polymarket, RSS, Tavily, or
 Firecrawl provider collection paths. New provider coverage belongs in
-SharedSignals first, then MarketGraph consumes the resulting API/read model.
+SharedSignals first, then MarketGraph consumes the resulting HTTP API.
 
 MarketGraph does not trigger execution, Hermes, broker APIs, simulated fills, or
 real-money workflows.
@@ -76,7 +75,7 @@ It reads SharedSignals data through its shared data facade, backed by the
 SharedSignals API in production. SQLite read-model access is allowed only for
 explicit local tests or emergency diagnostics with the documented switches.
 
-TradingAgent reads MarketGraph through public research APIs/read models when it
+TradingAgent reads MarketGraph through public research APIs when it
 needs research evidence. It must not depend on MarketGraph internal provider
 collectors or use MarketGraph as a market-data source.
 
@@ -85,7 +84,7 @@ collectors or use MarketGraph as a market-data source.
 1. SharedSignals is the only provider collection owner.
 2. MarketGraph is read-only research and evidence; it never executes trades.
 3. TradingAgent owns trading decisions, simulated/shadow accounting and queues.
-4. Cross-system reads use HTTP APIs or documented read-model contracts.
+4. Cross-system production reads use HTTP APIs; local read-model access is only for documented diagnostics.
 5. Missing data fails closed; old CSV, NDJSON, sibling repo paths and desktop
    folders are not production fallbacks.
 6. Each repository is committed, pushed, deployed and verified independently.

@@ -231,6 +231,60 @@ def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Pa
     assert rows[0]["lineage"]["filters"]["market"] == "Futures"
 
 
+def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        rows = [
+            ("Futures", "RB2609.SHF", "20260703", "2026-07-03T14:50:00+08:00", 3510.0),
+            ("Futures", "RB2609.SHF", "20260703", "2026-07-03T14:55:00+08:00", 3520.0),
+            ("Futures", "CU2609.SHF", "20260703", "2026-07-03T14:55:00+08:00", 80120.0),
+            ("Futures", "RB2609.SHF", "20260702", "2026-07-02T14:55:00+08:00", 3500.0),
+        ]
+        for market, symbol, trade_date, bar_time, close in rows:
+            conn.execute(
+                """
+                INSERT INTO market_bars_intraday
+                (market, symbol, trade_date, bar_time, interval, open, high, low, close, volume, amount, provider, source_file, collected_at, raw_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    market,
+                    symbol,
+                    trade_date,
+                    bar_time,
+                    "5min",
+                    close,
+                    close,
+                    close,
+                    close,
+                    1000.0,
+                    close * 1000,
+                    "sina_futures_minute",
+                    "direct_db",
+                    "2026-07-03T06:55:00+00:00",
+                    "{}",
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = reader.get_realtime_5min("", "20260703", market="Futures")
+
+    symbols = [row["data"]["symbol"] for row in result]
+    assert symbols == ["CU2609.SHF", "RB2609.SHF"]
+    assert {row["data"]["bar_time"] for row in result} == {"2026-07-03T14:55:00+08:00"}
+    assert result[0]["lineage"]["filters"]["ts_code"] == ""
+
+
 def test_cache_invalidation_watches_sqlite_wal_sidecar(tmp_path: Path) -> None:
     import reader
 

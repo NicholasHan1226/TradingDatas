@@ -108,7 +108,6 @@ def _freshness_threshold(source_id):
         return float(cfg["sources"][source_id].get("stale_after_hours", cfg["fallback_default_hours"]))
     return float(cfg["fallback_default_hours"])
 
-INVESTMENT_ROOT = _LazyPath(lambda: Path(os.environ.get("INVESTMENT_ROOT") or "/opt/investment"))
 SHAREDSIGNALS_ROOT = _LazyPath(sharedsignals_root)
 RUNTIME_ROOT = _LazyPath(runtime_root)
 SQLITE_PATH = _LazyPath(marketdata_sqlite_path)
@@ -1125,7 +1124,7 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
     """Read Tushare API data through SharedSignals reader, returning metadata-wrapped rows.
 
     Reads from the SharedSignals read-model tables populated by collectors. It
-    never calls the live Tushare provider path from the API/reader layer. Results
+    never calls the live Tushare provider path from the HTTP API layer. Results
     are LRU-cached (maxsize=512).
 
     Args:
@@ -1393,40 +1392,56 @@ def is_trading_day(date: Any) -> list[dict[str, Any]]:
 @_bounded_lru_cache(maxsize=512)
 def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_value: str) -> str:
     market_key = _canonical_market_key(market)
+    symbol_key = str(ts_code or "").strip()
     date_key = _optional_date_key(date_value)
     if date_key is None:
-        latest_rows, latest_degraded = _sqlite_rows(
-            "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ? AND symbol = ?",
-            (market_key, ts_code),
-            "market_bars_intraday",
-        )
+        if symbol_key:
+            latest_query = "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ? AND symbol = ?"
+            latest_params: tuple[Any, ...] = (market_key, symbol_key)
+        else:
+            latest_query = "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ?"
+            latest_params = (market_key,)
+        latest_rows, latest_degraded = _sqlite_rows(latest_query, latest_params, "market_bars_intraday")
         if latest_degraded is not None:
             return _json_cached(lambda: latest_degraded)
         latest = latest_rows[0].get("trade_date") if latest_rows else None
         date_key = _optional_date_key(latest)
         if date_key is None:
-            lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": ts_code, "date": None}}
-            return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", f"no intraday trade_date for ts_code={ts_code}", lineage=lineage))
-    lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": ts_code, "date": date_key}}
-    rows, degraded = _sqlite_rows(
-        "SELECT * FROM market_bars_intraday "
-        "WHERE market = ? AND symbol = ? AND trade_date = ? "
-        "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '') "
-        "ORDER BY bar_time ASC LIMIT 5000",
-        (market_key, ts_code, date_key, "5min", "5m"),
-        "market_bars_intraday",
-    )
+            lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": symbol_key, "date": None}}
+            return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", f"no intraday trade_date for market={market_key} ts_code={symbol_key or '*'}", lineage=lineage))
+    lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": symbol_key, "date": date_key}}
+    if symbol_key:
+        query = (
+            "SELECT * FROM market_bars_intraday "
+            "WHERE market = ? AND symbol = ? AND trade_date = ? "
+            "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '') "
+            "ORDER BY bar_time ASC LIMIT 5000"
+        )
+        params: tuple[Any, ...] = (market_key, symbol_key, date_key, "5min", "5m")
+    else:
+        query = (
+            "WITH scoped AS ("
+            "SELECT * FROM market_bars_intraday "
+            "WHERE market = ? AND trade_date = ? "
+            "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '')"
+            "), latest AS (SELECT MAX(COALESCE(bar_time, '')) AS latest_bar_time FROM scoped) "
+            "SELECT scoped.* FROM scoped, latest "
+            "WHERE COALESCE(scoped.bar_time, '') = latest.latest_bar_time "
+            "ORDER BY scoped.symbol ASC LIMIT 5000"
+        )
+        params = (market_key, date_key, "5min", "5m")
+    rows, degraded = _sqlite_rows(query, params, "market_bars_intraday")
     if degraded is None and rows:
         collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
         return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="marketdata", collected_at=collected_at, lineage=lineage, stale_after_hours=48.0))
 
-    reason = f"no rows in sqlite market_bars_intraday for market={market_key} ts_code={ts_code}"
+    reason = f"no rows in sqlite market_bars_intraday for market={market_key} ts_code={symbol_key or '*'}"
     if degraded is not None:
-        reason = f"sqlite degraded for market={market_key} ts_code={ts_code}"
+        reason = f"sqlite degraded for market={market_key} ts_code={symbol_key or '*'}"
     return _json_cached(lambda: _degraded_empty("sqlite:market_bars_intraday", reason, lineage=lineage))
 
 
-def get_realtime_5min(ts_code: str, date: Any, market: str = "Ashare") -> list[dict[str, Any]]:
+def get_realtime_5min(ts_code: str = "", date: Any = None, market: str = "Ashare") -> list[dict[str, Any]]:
     market_key = _canonical_market_key(market)
     lineage = {"reader": "get_realtime_5min", "filters": {"market": market_key, "ts_code": ts_code, "date": date}}
     return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, market_key, str(ts_code), str(date)))
@@ -1468,7 +1483,7 @@ def _get_associations_cached(_generation: int, ts_code: str, event_id: str) -> s
     return _json_cached(
         lambda: _degraded_empty(
             "marketgraph:associations_api",
-            "association CSV reads are retired; consume MarketGraph public API/read model",
+            "association CSV reads are retired; consume MarketGraph public API",
             lineage=lineage_base,
         )
     )
@@ -1492,7 +1507,7 @@ def _get_impacts_cached(_generation: int, event_type: str, target: str) -> str:
     return _json_cached(
         lambda: _degraded_empty(
             "marketgraph:impacts_api",
-            "impact CSV reads are retired; consume MarketGraph public API/read model",
+            "impact CSV reads are retired; consume MarketGraph public API",
             lineage=lineage,
         )
     )

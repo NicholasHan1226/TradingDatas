@@ -9,13 +9,13 @@ RUN_AS_USER="${SHAREDSIGNALS_CRON_USER:-marketgraph}"
 if [ "$(id -u)" -eq 0 ] && id -u "${RUN_AS_USER}" >/dev/null 2>&1; then
   exec runuser -u "${RUN_AS_USER}" -- "$0" "$@"
 fi
-VENV_PYTHON="${VENV_PYTHON:-/opt/marketgraph/venv/bin/python3}"
+VENV_PYTHON="${VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 if [ -n "${SHAREDSIGNALS_VENV_PYTHON:-}" ]; then
   PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON}"
 elif [ -x "${VENV_PYTHON}" ]; then
   PYTHON_BIN="${VENV_PYTHON}"
-elif [ -x "/opt/marketgraph/venv/bin/python" ]; then
-  PYTHON_BIN="/opt/marketgraph/venv/bin/python"
+elif [ -x "/opt/sharedsignals/venv/bin/python" ]; then
+  PYTHON_BIN="/opt/sharedsignals/venv/bin/python"
 else
   PYTHON_BIN="${PYTHON_BIN:-python3}"
 fi

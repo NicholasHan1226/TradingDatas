@@ -550,10 +550,10 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures`；需采集 `last_ddate` 与 `delist_date`，分别映射到 `last_trade_date` 与 `expiry_date` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
-| Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Direct DB: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
+| Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 与 `reader.get_sentiment()` 只读 SQLite `market_events`；旧事件候选/情绪文件不作为 SharedSignals 对外数据源 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
-| 参考表 | Read model tables | `reader.get_reference()` 对旧 CSV reference 返回 degraded；消费者应使用明确 API/read model 表 |
+| 参考表 | Read model tables | `reader.get_reference()` 对旧 CSV reference 返回 degraded；生产消费者应使用明确 HTTP API 端点 |
 | 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |
 
 ### 关联查询 (Association Queries)
@@ -755,10 +755,10 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 API/read model 输出。 |
+| 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 HTTP API 输出。 |
 | 2026-07-08 | 1.1.17 | `/tushare?api_name=fut_basic`、`hk_basic`、`us_basic`、`etf_basic` 等资产类接口按对应 market 过滤 `market_assets`，不再把所有资产接口默认限定为 A股；TradingAgent/CNFutures 可通过 SharedSignals API 获取期货合约资产列表。 |
 | 2026-07-08 | 1.1.16 | 生产采集链路收口为 provider rows 直接写 SQLite read model；删除 CSV-only 成功开关、旧 `rt_k` 映射和 reader/API CSV fallback 文档口径；非空 rows 写入 0 行会标记 `failed` 并计入 `sqlite_failure_count`。 |
-| 2026-07-08 | 1.1.15 | Tushare P0-P6 配置接口增加入库完整性门禁：补齐 `top_list`、`limit_step`、`stk_auction`、`stk_limit`、`concept`、`concept_detail`、`hs_const` 的 read model 映射；非空采集结果写入 SQLite 0 行会标记 `failed`，防止数据只停留在 staging 而 API/read model 不可见；`/market_data` 的 `freq=1m/5m/15m/30m/60m` 改为读取 `market_bars_intraday`，不再返回误导性的 unsupported。 |
+| 2026-07-08 | 1.1.15 | Tushare P0-P6 配置接口增加入库完整性门禁：补齐 `top_list`、`limit_step`、`stk_auction`、`stk_limit`、`concept`、`concept_detail`、`hs_const` 的 read model 映射；非空采集结果写入 SQLite 0 行会标记 `failed`，防止数据只停留在 staging 而 HTTP API 不可见；`/market_data` 的 `freq=1m/5m/15m/30m/60m` 改为读取 `market_bars_intraday`，不再返回误导性的 unsupported。 |
 | 2026-07-08 | 1.1.14 | 历史记录：A股 P0 曾短暂读取 TradingAgent no-trade/execution-exclusion 文件补价；当前已退役，P0 优先池只允许来自 SharedSignals read model 或显式环境变量。 |
 | 2026-07-08 | 1.1.13 | A股 P0 5分钟通道收窄为 `stk_mins`/`rt_min` 分钟行情，默认 30 只优先/轮转批次；P0 只在 09:30-11:30、13:00-15:00 推进游标并按交易日重置；优先池仅来自 SharedSignals read model 或显式环境变量，不读取 TradingAgent/MarketGraph 内部文件；`daily`/`stk_factor`/`stk_factor_pro` 转入 P1 盘后日频 90 天窗口，避免日频重任务或盘前空跑拖住交易时段 `market_bars_intraday` 更新。 |
 | 2026-07-06 | 1.1.12 | 历史记录：CNFutures 5 分钟采集曾增加 AKShare/Sina 模拟盘备源；当前该备源已退役，`rt_fut_min` provider 错误和非空写库 0 行必须返回 `failed`。 |

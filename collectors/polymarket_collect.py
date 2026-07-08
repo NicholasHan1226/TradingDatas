@@ -4,7 +4,7 @@
 This script is intentionally small and cron-friendly: fetch active Gamma
 markets, derive price snapshots from the market payload, and write both tables
 into the unified SQLite read model. TradingAgent and MarketGraph consume the
-result through SharedSignals API/read model only.
+result through SharedSignals HTTP API only.
 """
 
 from __future__ import annotations

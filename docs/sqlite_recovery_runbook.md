@@ -81,7 +81,7 @@ python3 tools/sqlite_recovery.py --apply --json
 1. 检查备份目录是否真的有有效 `*.sqlite`。
 2. 检查 DuckDB mirror 是否存在且有数据：`duckdb /opt/investment/SharedSignals/data/marketdata.duckdb "SELECT COUNT(*) FROM market_bars_daily;"`
 3. 如果两者都不可用，从离线/对象存储手工取回最近备份，放入 `$SHAREDSIGNALS_ROOT/backups/` 后重新执行 `--apply`。
-4. 在修复完成前，API/reader 会按既有降级逻辑返回 `degraded`，不会现场调用外部数据源，也不会产生交易判断。
+4. 在修复完成前，对外 HTTP API 会按既有降级逻辑返回 `degraded`，不会现场调用外部数据源，也不会产生交易判断。
 
 ## 7. 验证清单
 
