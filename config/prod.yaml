@@ -46,7 +46,7 @@ collectors:
   rss:
     enabled: false
     status: "retired"
-    note: "Historical RSSHub/RSSCollector assets are archived; do not restore as production collectors without a new SharedSignals staging/bridge plan."
+    note: "Historical RSSHub/RSSCollector assets are archived; do not restore as production collectors. Rebuild as a new SharedSignals collector that writes directly to the read model."
     proxy: "http://127.0.0.1:7890"
     max_retries: 4
     timeout_seconds: 30

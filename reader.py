@@ -1050,8 +1050,8 @@ def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str
 @_bounded_lru_cache(maxsize=512)
 def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
     """Read Tushare-backed data from the SharedSignals read model only."""
-    from storage.csv_bridge import CSV_TO_TABLE_MAP
-    table = CSV_TO_TABLE_MAP.get(api_name)
+    from storage.read_model_store import API_TO_TABLE_MAP
+    table = API_TO_TABLE_MAP.get(api_name)
     params = json.loads(params_json) if params_json else {}
     lineage = {"reader": "get_tushare", "source": f"db:{table or 'unmapped'}", "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params}}
     if not table:
@@ -1079,8 +1079,24 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
             where.append(f"{date_col} <= ?")
             vals.append(end)
         if table == "market_assets" and "market" in cols:
+            market_filter = str(params.get("market") or "").strip()
+            if not market_filter:
+                market_filter = {
+                    "stock_basic": "Ashare",
+                    "stock_company": "Ashare",
+                    "concept": "Ashare",
+                    "concept_detail": "Ashare",
+                    "hs_const": "Ashare",
+                    "trade_cal": "Ashare",
+                    "fut_basic": "Futures",
+                    "hk_basic": "HK",
+                    "us_basic": "US",
+                    "etf_basic": "ETF",
+                    "fund_basic": "Fund",
+                    "fund_nav": "Fund",
+                }.get(api_name, "Ashare")
             where.append("market = ?")
-            vals.append("Ashare")
+            vals.append(market_filter)
         if "provider" in cols:
             if table == "market_assets":
                 providers = ["tushare", f"tushare_{api_name}"]

@@ -60,7 +60,7 @@
 ### heal.py — 自愈动作
 - source stale → 记录 stale collector 告警，要求重跑对应 direct-DB collector；不做旧 RSS/source failover
 - 数据缺失 → 触发补采(重跑marketdata_db --ingest)
-- staging积压 → 强制运行runtime_bridge --apply
+- staging积压 → 告警并记录；要求所属 collector 直接入库或归档旧 staging，不再运行旧 runtime bridge
 - SQLite锁 → 等待5s重试, 清理WAL(PRAGMA wal_checkpoint)
 - 磁盘满 → 清理旧archive(>30天Parquet), >90%发出停止采集信号
 - 字段漂变 → 更新expected_fields.json + 告警
@@ -75,7 +75,7 @@
 ## 文件结构
 - collectors/ — 各数据源采集器
 - storage/ — schema文档 (当前SQLite, 计划DuckDB)
-- bridge/ — staging→CSV/SQLite 归并桥
+- bridge/ — read-model 兼容辅助模块；旧跨仓 CSV/staging bridge 已退役
 - reference/ — 参考数据、expected_fields.json 与只读缓存辅助工具；不得放回旧 Ashare/RSSCollector 软链入口
 - memory/ — 采集层记忆 + 巡查/自愈历史
 - staging/ — 本层staging缓冲

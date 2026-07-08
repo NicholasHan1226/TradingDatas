@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from storage.csv_bridge import DEFAULT_SQLITE_PATH  # noqa: E402
+from storage.read_model_store import DEFAULT_SQLITE_PATH  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

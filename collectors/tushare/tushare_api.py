@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified Tushare API wrapper with LRU caching.
+"""Unified Tushare API wrapper with in-memory LRU caching.
 
 All functions return list[dict]; empty on error or no results (strict=False).
 Import from the current SharedSignals Tushare modules; do not restore legacy
@@ -8,7 +8,6 @@ A-share compatibility module names.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -22,7 +21,7 @@ _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
 
-from tushare_common import ROOT, to_float, tushare_rows
+from tushare_common import to_float, tushare_rows
 
 logger = logging.getLogger(__name__)
 
@@ -63,45 +62,6 @@ def _clear_cache() -> None:
     """Clear the module-level API cache (useful for testing or forced refresh)."""
     with _cache_lock:
         _cache.clear()
-
-
-_TUSHARE_CACHE_DIR = ROOT / "data" / "tushare_cache"
-
-
-def _cache_csv_path(api_name: str, trade_date: str) -> Path:
-    """Return path to a date-partitioned CSV cache for an API."""
-    return _TUSHARE_CACHE_DIR / api_name / f"{trade_date}.csv"
-
-
-def _read_cache_csv(api_name: str, trade_date: str) -> list[dict[str, Any]] | None:
-    """Read cached rows for a given API+date.  Returns None if missing/empty."""
-    path = _cache_csv_path(api_name, trade_date)
-    if not path.is_file():
-        return None
-    try:
-        from tushare_common import read_csv
-        rows = read_csv(path)
-        return rows if rows else None
-    except (IOError, OSError, json.JSONDecodeError) as e:
-        logger.warning("Cache read failed for %s/%s: %s", api_name, trade_date, e, exc_info=True)
-        return None
-
-
-def _write_cache_csv(api_name: str, trade_date: str, rows: list[dict[str, Any]]) -> None:
-    """Persist row results to a date-partitioned CSV cache."""
-    if not rows:
-        return
-    path = _cache_csv_path(api_name, trade_date)
-    try:
-        import csv as _csv
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fields = list(rows[0].keys())
-        with path.open("w", encoding="utf-8-sig", newline="") as fh:
-            writer = _csv.DictWriter(fh, fieldnames=fields)
-            writer.writeheader()
-            writer.writerows(rows)
-    except Exception:
-        pass  # Cache write is best-effort; never crash the caller.
 
 
 # ---------------------------------------------------------------------------
@@ -292,35 +252,21 @@ def get_stk_auction(ts_code: str = "", trade_date: str = "") -> list[dict[str, A
 def get_moneyflow(trade_date: str) -> list[dict[str, Any]]:
     """个股资金流向（按交易日全市场）。
 
-    Tushare API: moneyflow.  Results cached to tushare_cache/moneyflow/;
-    subsequent calls for the same date return cached rows without API cost.
+    Tushare API: moneyflow.
     """
-    cached = _read_cache_csv("moneyflow", trade_date)
-    if cached is not None:
-        return cached
-    rows = _call("moneyflow", {"trade_date": trade_date})
-    if rows:
-        _write_cache_csv("moneyflow", trade_date, rows)
-    return rows
+    return _call("moneyflow", {"trade_date": trade_date})
 
 
 def get_limit_list_d(trade_date: str, limit_type: str = "U") -> list[dict[str, Any]]:
     """涨跌停列表（日频）。
 
-    Tushare API: limit_list_d.  Results cached to tushare_cache/limit_list_d/.
+    Tushare API: limit_list_d.
     limit_type: U=涨停, D=跌停, Z=炸板
     """
-    cache_key = f"limit_list_d_{limit_type}"
-    cached = _read_cache_csv(cache_key, trade_date)
-    if cached is not None:
-        return cached
-    rows = _call(
+    return _call(
         "limit_list_d",
         {"trade_date": trade_date, "limit_type": limit_type},
     )
-    if rows:
-        _write_cache_csv(cache_key, trade_date, rows)
-    return rows
 
 
 def get_stk_limit(ts_code: str, trade_date: str) -> list[dict[str, Any]]:
@@ -366,15 +312,9 @@ def get_block_trade(
 def get_margin(trade_date: str) -> list[dict[str, Any]]:
     """融资融券交易汇总（按交易日全市场）。
 
-    Tushare API: margin.  Results cached to tushare_cache/margin/.
+    Tushare API: margin.
     """
-    cached = _read_cache_csv("margin", trade_date)
-    if cached is not None:
-        return cached
-    rows = _call("margin", {"trade_date": trade_date})
-    if rows:
-        _write_cache_csv("margin", trade_date, rows)
-    return rows
+    return _call("margin", {"trade_date": trade_date})
 
 
 def get_margin_detail(ts_code: str, start_date: str, end_date: str) -> list[dict[str, Any]]:

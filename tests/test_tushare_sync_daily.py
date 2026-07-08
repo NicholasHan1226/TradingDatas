@@ -23,7 +23,7 @@ from collectors.tushare.sync_daily import (
     select_rotating_stock_batch,
     sync_tier,
 )
-from storage.csv_bridge import CSV_TO_TABLE_MAP
+from storage.read_model_store import API_TO_TABLE_MAP
 
 
 def test_resolve_api_window_uses_api_lookback_days() -> None:
@@ -82,7 +82,7 @@ def test_configured_tushare_apis_have_sqlite_table_mapping() -> None:
     for tier, apis in config["priorities"].items():
         for api in apis:
             api_name = api["api_name"]
-            if api_name not in CSV_TO_TABLE_MAP:
+            if api_name not in API_TO_TABLE_MAP:
                 missing.append(f"{tier}:{api_name}")
 
     assert missing == []

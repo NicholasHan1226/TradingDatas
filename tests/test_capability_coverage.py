@@ -4,7 +4,7 @@ from pathlib import Path
 
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import load_config
-from storage.csv_bridge import CSV_TO_TABLE_MAP
+from storage.read_model_store import API_TO_TABLE_MAP
 
 
 CRONTAB_FILES = (Path("crontab.txt"), Path("cron/crontab.txt"))
@@ -38,7 +38,7 @@ def test_all_configured_tushare_interfaces_are_db_mapped_and_api_visible() -> No
     missing_api: list[str] = []
     for tier, api_name, _api in _configured_tushare_apis():
         key = f"{tier}:{api_name}"
-        if api_name not in CSV_TO_TABLE_MAP:
+        if api_name not in API_TO_TABLE_MAP:
             missing_db.append(key)
         if api_name not in ALLOWED_TUSHARE_APIS:
             missing_api.append(key)
@@ -77,7 +77,7 @@ def test_tushare_collection_entrypoints_do_not_allow_csv_only_success() -> None:
     assert "--no-sqlite-bridge" not in Path(cn_futures_daily.__file__).read_text(encoding="utf-8")
     assert "--no-sqlite-bridge" not in cn_futures_5min.parse_args.__code__.co_consts
     assert not hasattr(sync_daily, "STOCK_MASTER_PATH")
-    assert "rt_k" not in CSV_TO_TABLE_MAP
+    assert "rt_k" not in API_TO_TABLE_MAP
 
 
 def test_no_retired_bridge_or_orchestrator_entrypoints_remain() -> None:

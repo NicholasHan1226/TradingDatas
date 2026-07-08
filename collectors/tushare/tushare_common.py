@@ -3,12 +3,10 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import os
 import re
-import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -22,9 +20,6 @@ except ModuleNotFoundError:  # pragma: no cover
         import tomli as tomllib
     except ModuleNotFoundError:  # pragma: no cover
         tomllib = None
-
-csv.field_size_limit(10_000_000)
-
 
 # tushare_common.py lives at SharedSignals/collectors/tushare/
 # parents[3] = /opt/investment/ (or ~/Projects/Finance locally)
@@ -60,14 +55,7 @@ _ASSOCIATION_DIR = resolve_association_root()
 CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_API_URL = "https://api.tushare.pro"
 QUICKSYNC_API_URL = "https://api.quicksync.cn"
-STRATEGY_LIBRARY = ROOT / "strategy_library.csv"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
-_DEFAULT_STRATEGY_ALIASES: dict[str, set[str]] = {
-    "STRAT_BREAKOUT_CONTINUATION": {"突破延续策略", "板块轮动首强策略"},
-    "STRAT_SECTOR_ROTATION_FRONT": {"板块轮动首强策略"},
-    "STRAT_HIGH_OPEN_NO_CHASE": {"高开禁追策略"},
-    "STRAT_WEAK_MARKET_DEFENSE": {"弱市防守策略"},
-}
 
 
 def _parse_tushare_url(raw_url: str) -> dict[str, str]:
@@ -287,97 +275,6 @@ def to_tencent_symbol(ts_code: str) -> str:
     code = normalize_code(ts_code)
     number, suffix = code.split(".")
     return suffix.lower() + number
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
-def strategy_aliases(path: Path | None = None) -> dict[str, set[str]]:
-    aliases = {key: set(values) for key, values in _DEFAULT_STRATEGY_ALIASES.items()}
-    strategy_path = path or STRATEGY_LIBRARY
-    if strategy_path.exists():
-        for row in read_csv(strategy_path):
-            strategy_id = str(row.get("strategy_id") or "").strip()
-            strategy_name = str(row.get("strategy_name") or "").strip()
-            if strategy_id and strategy_name:
-                aliases.setdefault(strategy_id, set()).add(strategy_name)
-                aliases.setdefault(strategy_name, set()).add(strategy_id)
-    return aliases
-
-
-def strategy_filter_values(raw: str | None, path: Path | None = None) -> set[str]:
-    if not raw:
-        return set()
-    tokens = [item.strip() for item in raw.split(",") if item.strip()]
-    if not tokens or any(item.upper() == "ALL" for item in tokens):
-        return set()
-    aliases = strategy_aliases(path)
-    allowed: set[str] = set()
-    for token in tokens:
-        allowed.add(token)
-        allowed.update(aliases.get(token, set()))
-    return allowed
-
-
-def matches_strategy_filter(
-    row: dict[str, Any],
-    raw_filter: str | None,
-    path: Path | None = None,
-) -> bool:
-    allowed = strategy_filter_values(raw_filter, path)
-    if not allowed:
-        return True
-    row_values = {
-        str(row.get("strategy") or "").strip(),
-        str(row.get("strategy_id") or "").strip(),
-        str(row.get("strategy_name") or "").strip(),
-        str(row.get("source") or "").strip(),
-    }
-    return bool(row_values & allowed)
-
-
-def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write: render to a temp file in the same directory, fsync, then
-    # os.replace() onto the target. This guarantees concurrent readers and a
-    # second writer never observe a half-written ledger (truncated header /
-    # orphan row fragment) if a run is interrupted or two writers overlap.
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
-            writer.writeheader()
-            writer.writerows(rows)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
-def append_unique_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], key_fields: list[str]) -> int:
-    existing = read_csv(path)
-    seen = {tuple(str(row.get(key, "")) for key in key_fields) for row in existing}
-    added = 0
-    for row in rows:
-        key = tuple(str(row.get(field, "")) for field in key_fields)
-        if key in seen:
-            continue
-        existing.append({field: row.get(field, "") for field in fieldnames})
-        seen.add(key)
-        added += 1
-    write_csv(path, existing, fieldnames)
-    return added
 
 
 def daily_map(trade_date: str) -> dict[str, dict[str, Any]]:

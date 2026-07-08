@@ -65,7 +65,11 @@ class BaseCollector(
 
     @abstractmethod
     def save(self, batch: Any, **kwargs: Any) -> Any:
-        """Persist collected data to staging (CSV/NDJSON) and/or SQLite tables."""
+        """Persist collected data directly to read-model tables.
+
+        Implementations must return explicit SQLite/read-model write counts.
+        Audit or migration files, if any, do not count as collection success.
+        """
         ...
 
     # -- optional overrides --------------------------------------------------
@@ -132,16 +136,30 @@ class BaseCollector(
                     deduped = self.deduplicate_batch(api, validated)
                     save_result = self.save(deduped, task=task)
                     if save_result and isinstance(save_result, dict):
-                        result["rows_written"] += save_result.get("rows_written", len(deduped))
-                        result["tables_written"].extend(
-                            save_result.get("tables", self.target_tables)
+                        written = int(
+                            save_result.get(
+                                "sqlite_rows_written",
+                                save_result.get("rows_written", 0),
+                            )
+                            or 0
                         )
+                        result["rows_written"] += written
+                        if written > 0:
+                            result["tables_written"].extend(
+                                save_result.get("tables", self.target_tables)
+                            )
                 except Exception:
                     logger.exception("task failed: %s", task)
                     result["notes"].setdefault("task_errors", []).append(str(task))
 
             # 4. Audit
-            result["status"] = "success" if result["rows_written"] > 0 else "partial_success"
+            if result["rows_written"] > 0:
+                result["status"] = "success"
+            elif result["rows_read"] > 0:
+                result["status"] = "failed"
+                result["error"] = "non-empty collection wrote zero read-model rows"
+            else:
+                result["status"] = "partial_success"
             self._write_audit({
                 "run_id": run_id,
                 "started_at": started_at,

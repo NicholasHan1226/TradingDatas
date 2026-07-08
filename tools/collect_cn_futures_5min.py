@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 from collectors.tushare.collector import TushareCollector  # noqa: E402
 from collectors.tushare.tushare_common import rows_to_dicts, tushare_data  # noqa: E402
 from env_bootstrap import bootstrap_sharedsignals_env  # noqa: E402
-from storage.csv_bridge import DEFAULT_SQLITE_PATH, ingest_rows_to_sqlite  # noqa: E402
+from storage.read_model_store import DEFAULT_SQLITE_PATH, ingest_rows_to_sqlite  # noqa: E402
 
 API_NAME = "rt_fut_min"
 DEFAULT_PRODUCTS = ("rb", "cu", "i", "m", "if", "ih", "ic", "im")

@@ -529,7 +529,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 数据维度 | 来源 | 方式 |
 |---------|------|------|
 | A 股日线 OHLCV | Tushare `daily` | DB-first: `reader.get_tushare("daily", ...)` / HTTP `/tushare` |
-| A 股资金流向 | Tushare `moneyflow` | P1 盘后日频全市场采集；DB-first: `reader.get_tushare("moneyflow", ...)` / HTTP `/capital_flow`；collector CSV 必须通过 `storage/csv_bridge.py` 写入 `market_factors`，返回 `moneyflow:*` 展开行 |
+| A 股资金流向 | Tushare `moneyflow` | P1 盘后日频全市场采集；DB-first: `reader.get_tushare("moneyflow", ...)` / HTTP `/capital_flow`；collector rows 必须通过 `storage/read_model_store.py` 直接写入 `market_factors`，返回 `moneyflow:*` 展开行 |
 | A 股财务指标 | Tushare `fina_indicator` | P2 collector → `market_factors`; `reader.get_fundamentals(ts_code=...)`（HTTP 也兼容 `symbol`） |
 | A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | P2 collector → read model / degraded if no recent rows |
 | A 股复权因子 | Tushare `adj_factor` | P0/P1 collector → read model |
@@ -755,6 +755,8 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 API/read model 输出。 |
+| 2026-07-08 | 1.1.17 | `/tushare?api_name=fut_basic`、`hk_basic`、`us_basic`、`etf_basic` 等资产类接口按对应 market 过滤 `market_assets`，不再把所有资产接口默认限定为 A股；TradingAgent/CNFutures 可通过 SharedSignals API 获取期货合约资产列表。 |
 | 2026-07-08 | 1.1.16 | 生产采集链路收口为 provider rows 直接写 SQLite read model；删除 CSV-only 成功开关、旧 `rt_k` 映射和 reader/API CSV fallback 文档口径；非空 rows 写入 0 行会标记 `failed` 并计入 `sqlite_failure_count`。 |
 | 2026-07-08 | 1.1.15 | Tushare P0-P6 配置接口增加入库完整性门禁：补齐 `top_list`、`limit_step`、`stk_auction`、`stk_limit`、`concept`、`concept_detail`、`hs_const` 的 read model 映射；非空采集结果写入 SQLite 0 行会标记 `failed`，防止数据只停留在 staging 而 API/read model 不可见；`/market_data` 的 `freq=1m/5m/15m/30m/60m` 改为读取 `market_bars_intraday`，不再返回误导性的 unsupported。 |
 | 2026-07-08 | 1.1.14 | 历史记录：A股 P0 曾短暂读取 TradingAgent no-trade/execution-exclusion 文件补价；当前已退役，P0 优先池只允许来自 SharedSignals read model 或显式环境变量。 |

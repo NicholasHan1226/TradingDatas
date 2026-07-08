@@ -1,17 +1,14 @@
 """pytest fixtures for SharedSignals test suite.
 
-Provides: mock SQLite (in-memory with full schema), mock CSV dirs,
-mock RSS feed configs, and sample data generators.
+Provides: mock SQLite (in-memory with full schema) and sample data generators.
 """
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sqlite3
 import sys
 import tempfile
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -108,115 +105,6 @@ def tmp_db_with_data(tmp_db: sqlite3.Connection) -> sqlite3.Connection:
 
     conn.commit()
     return conn
-
-
-# ---------------------------------------------------------------------------
-# CSV fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def tmp_csv_dir() -> Path:
-    """Temp directory with sample CSV files mimicking the intake structure."""
-    with tempfile.TemporaryDirectory(prefix="test_csv_") as d:
-        root = Path(d)
-        intake = root / "data" / "intake"
-        intake.mkdir(parents=True)
-
-        # event_candidates.csv
-        _write_csv(intake / "event_candidates.csv",
-                   ["candidate_id", "title", "url", "source", "status", "collected_at"],
-                   [{"candidate_id": "c001", "title": "Fed Meeting",
-                     "url": "https://example.com/fed", "source": "rss",
-                     "status": "needs_review", "collected_at": NOW.isoformat()},
-                    {"candidate_id": "c002", "title": "Earnings Beat",
-                     "url": "https://example.com/earn", "source": "rss",
-                     "status": "verified", "collected_at": NOW.isoformat()}])
-
-        # collection_runs.csv
-        _write_csv(intake / "collection_runs.csv",
-                   ["run_id", "started_at", "finished_at", "status", "rows_read", "rows_written"],
-                   [{"run_id": "r001", "started_at": NOW.isoformat(),
-                     "finished_at": NOW.isoformat(), "status": "success",
-                     "rows_read": "100", "rows_written": "95"}])
-
-        yield root
-
-
-def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
-
-
-# ---------------------------------------------------------------------------
-# RSS fixture
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def mock_rss_feed_config() -> dict[str, Any]:
-    """Sample RSS feed configuration."""
-    return {
-        "feeds": [
-            {"name": "reuters_top", "url": "https://example.com/rss/reuters",
-             "category": "news", "health": "healthy", "priority": 1},
-            {"name": "bloomberg_markets", "url": "https://example.com/rss/bloomberg",
-             "category": "markets", "health": "healthy", "priority": 2},
-            {"name": "coindesk_crypto", "url": "https://example.com/rss/coindesk",
-             "category": "crypto", "health": "intermittent", "priority": 3},
-        ],
-        "fallback_order": ["reuters_top", "bloomberg_markets", "coindesk_crypto"],
-    }
-
-
-@pytest.fixture
-def mock_rss_items() -> list[dict[str, Any]]:
-    """Sample RSS feed items as dicts."""
-    return [
-        {"title": "Fed holds rates steady",
-         "link": "https://example.com/news/fed",
-         "description": "The Federal Reserve held interest rates...",
-         "published": "Mon, 29 Jun 2026 14:00:00 GMT",
-         "source": "reuters_top"},
-        {"title": "Bitcoin surges past $150k",
-         "link": "https://example.com/news/btc",
-         "description": "Bitcoin reached new all-time high...",
-         "published": "Mon, 29 Jun 2026 15:30:00 GMT",
-         "source": "coindesk_crypto"},
-        {"title": "S&P 500 closes at record",
-         "link": "https://example.com/news/sp500",
-         "description": "The S&P 500 index closed at a record high...",
-         "published": "Mon, 29 Jun 2026 16:00:00 GMT",
-         "source": "bloomberg_markets"},
-    ]
-
-
-@pytest.fixture
-def mock_rss_xml() -> str:
-    """Sample RSS 2.0 XML feed."""
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>Test Feed</title>
-    <link>https://example.com</link>
-    <description>Test RSS feed for SharedSignals</description>
-    <item>
-      <title>Fed holds rates steady</title>
-      <link>https://example.com/news/fed</link>
-      <description>The Federal Reserve held interest rates steady</description>
-      <pubDate>Mon, 29 Jun 2026 14:00:00 GMT</pubDate>
-      <guid>https://example.com/news/fed</guid>
-    </item>
-    <item>
-      <title>Bitcoin surges</title>
-      <link>https://example.com/news/btc</link>
-      <description>Bitcoin reached new highs</description>
-      <pubDate>Mon, 29 Jun 2026 15:30:00 GMT</pubDate>
-      <guid>https://example.com/news/btc</guid>
-    </item>
-  </channel>
-</rss>"""
 
 
 # ---------------------------------------------------------------------------

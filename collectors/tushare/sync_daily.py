@@ -39,8 +39,8 @@ if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
-from storage.csv_bridge import (  # noqa: E402
-    CSV_TO_TABLE_MAP,
+from storage.read_model_store import (  # noqa: E402
+    API_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
     ingest_rows_to_sqlite,
 )
@@ -469,7 +469,7 @@ def sync_tier(
     def _write_sqlite(api_name: str, rows: list[dict[str, Any]], source_name: str) -> dict[str, Any]:
         if not rows:
             return {"rows": 0, "status": "empty", "error": ""}
-        table = CSV_TO_TABLE_MAP.get(api_name)
+        table = API_TO_TABLE_MAP.get(api_name)
         if not table:
             error = f"{api_name}:no sqlite table mapping"
             sqlite_errors.append(error)

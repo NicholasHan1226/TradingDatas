@@ -22,7 +22,7 @@ sources:
     stale_after_hours: 1
   binance:
     stale_after_hours: 1
-  csv:crypto_klines:
+  sqlite:market_crypto_klines:
     stale_after_hours: 1
 
   # Polymarket prediction markets
@@ -34,9 +34,9 @@ sources:
     stale_after_hours: 2
 
   # Events / sentiment
-  csv:event_candidates:
+  sqlite:market_events:
     stale_after_hours: 6
-  csv:sentiment_signals:
+  sqlite:market_sentiment:
     stale_after_hours: 6
 
   # Financial statements (weekly threshold)
@@ -52,40 +52,24 @@ sources:
     stale_after_hours: 168
 
   # Macro
-  csv:macro_factors:
+  sqlite:macro_factors:
     stale_after_hours: 48
-  csv:all_weather_regime:
+  sqlite:all_weather_regime:
     stale_after_hours: 48
 
   # Moneyflow / trading (T+1)
-  csv:moneyflow:
+  sqlite:moneyflow:
     stale_after_hours: 24
 
   # Reference — essentially permanent
-  csv:reference:
+  sqlite:reference:
     stale_after_hours: 8760   # 1 year as sentinel; stale_after is irrelevant for reference
   reference:market_calendar:
     stale_after_hours: 24     # calendar cached but refreshed daily
 
   # Realtime 5-min data
-  csv:rt_min_5m:
+  sqlite:market_bars_intraday:
     stale_after_hours: 1
-
-  # Legacy datasets
-  legacy:recommendations:
-    stale_after_hours: 24
-  legacy:reviews:
-    stale_after_hours: 24
-  legacy:direction_hit_reviews:
-    stale_after_hours: 24
-  legacy:shadow_sim_trades:
-    stale_after_hours: 24
-  legacy:latest_shadow_positions:
-    stale_after_hours: 24
-  legacy:paper_positions:
-    stale_after_hours: 24
-  legacy:simulated_execution_log:
-    stale_after_hours: 24
 
 # Fallback default when source_id not matched in sources map.
 fallback_default_hours: 24

@@ -1,161 +1,102 @@
-# 三仓库架构 (Three-Repo Architecture)
+# Three-Repo Architecture
 
-## 概览
-投资系统拆分为三个独立 Git 仓库, 各自独立部署、独立版本、独立演进。
-仓库间通过共享数据文件 (SQLite/CSV/NDJSON) 通信, 不做直接代码 import。
+## Overview
+
+The finance system is split into three independent Git repositories. They are
+versioned, deployed, and operated independently.
+
+Cross-system data flow is intentionally narrow:
 
 ```
-┌─────────────────┐    SQLite/CSV    ┌─────────────────┐
-│  SharedSignals  │ ───────────────▶ │   MarketGraph   │
-│  数据采集+存储   │                  │  战略研究 (只读)  │
-└─────────────────┘                  └─────────────────┘
-        │                                     │
-        │ SQLite/CSV                     研究结论 (CSV)
-        ▼                                     ▼
-┌─────────────────┐    共享模块调用     ┌─────────────────┐
-│     TradingAgent    │ ◀────────────────  │   (消费研究结论)  │
-│  交易全闭环      │                    │                 │
-└─────────────────┘                    └─────────────────┘
+SharedSignals
+  collects provider data and writes SQLite/DuckDB read models
+      |
+      | HTTP API / read-model contract
+      v
+MarketGraph                       TradingAgent
+research graph and evidence       trading decisions, queues, simulated ledgers
 ```
 
-## 仓库清单
-| 仓库 | 地址 | 职责 |
-|------|------|------|
-| SharedSignals | https://github.com/NicholasHan1226/SharedSignals.git | 数据采集 + 存储 |
-| MarketGraph | https://github.com/NicholasHan1226/MarketGraph.git | 战略研究 |
-| TradingAgent | https://github.com/NicholasHan1226/Tradingagent.cc.git | 交易线 |
+No repository may import another repository's internal modules as a production
+dependency. SharedSignals is the only external market-data collection owner.
+MarketGraph and TradingAgent consume its API/read model and fail closed when
+data is missing.
 
----
+## Repositories
 
-## 1. SharedSignals — 数据采集与存储
-**地址**: https://github.com/NicholasHan1226/SharedSignals.git
-**本地路径**: /opt/investment/SharedSignals/
+| Repository | Role |
+| --- | --- |
+| SharedSignals | Shared collection, validation, direct database writes, API/read-model output |
+| MarketGraph | Research graph, macro/cross-market evidence, read-only interfaces |
+| TradingAgent | Trading decisions, signal queues, simulated/shadow ledgers, notifications |
 
-### 职责
-统一采集所有外部数据源, 去重入库, 供研究线和交易线共享读取。
-不分析、不分类、不做交易决策。
+## SharedSignals
 
-### 文件结构
-- `collectors/` — 各数据源采集器
-  - Tushare (14接口): A股行情/财务/资金/期货/港股
-  - Binance (4接口): 加密货币行情
-  - Polymarket (3接口): 预测市场
-  - RSS (616 源，全部 `status=deferred`) + Tavily + agents → 事件采集（RSS 当前不作为现役生产 collector）
-- `storage/` — 数据库 schema 和管理
-  - SQLite: marketdata.sqlite (75MB) + reference_index.sqlite (5MB)
-  - 未来: DuckDB (analytics), 当前 SQLite
-- `bridge/` — staging→DB 归并桥 (runtime_bridge)
-  - 6 streams: event_candidates / sentiment_signals / collection_runs / ...
-- `reference/` — 参考数据
-  - stock_master / source_registry / entity_map / market_calendar
-- `memory/` — 采集层记忆
-- `patrol.py` — 巡查 (来源健康 / 数据新鲜度)
-- `heal.py` — 自愈 (切换备用源 / 补采)
+SharedSignals owns external data ingestion. Its collectors validate provider
+rows, write them directly into the SQLite read model, mirror analytical data to
+DuckDB when configured, and expose the result through HTTP/API and read-model
+contracts.
 
-### 输出
-- SQLite (主) + CSV (缓存) + NDJSON (staging)
-- 消费方: MarketGraph (只读), TradingAgent (直接读)
+It does not make trading decisions, run strategies, write TradingAgent queues,
+or maintain MarketGraph research facts.
 
----
+Current production collectors include:
 
-## 2. MarketGraph — 战略研究
-**地址**: https://github.com/NicholasHan1226/MarketGraph.git
-**本地路径**: /opt/investment/MarketGraph/
+- Tushare tiers for A-share, futures, HK/US daily, funds, ETF, macro, news,
+  announcements, research and reference data.
+- Binance public-market collection for Crypto.
+- Polymarket market and price collection.
+- CN futures 5-minute collection.
 
-### 职责
-宏观战略研究层。复刻桥水 All Weather 框架:
-regime 检测、因果影响引擎、风险平价分配、前向验证。
-不做快事件、不做交易。
+CSV/NDJSON files are not a production read fallback. They may exist only as
+bounded tests, explicit historical migration material, or local audit fixtures.
+Production success means rows reached the read model and can be returned through
+SharedSignals API/read-model access.
 
-### 文件结构 (10个领域模块)
-- `00-Shared-Kernel/` — 共享内核 (契约/引用/内存)
-- `01-Asset-Universe/` — 资产主数据
-- `02-Industry-Enterprise-Graph/` — 行业企业图谱
-- `03-Events-Signals/` — 事件信号采集
-- `04-Macro-CrossAsset/` — 宏观跨资产 (regime)
-- `05-Impact-Propagation/` — 因果影响引擎
-  - 事件 → 受影响板块/个股排序
-  - 方向 (受益/受损) + 置信度 + 因果链 + 历史兑现率
-- `06-Portfolio-Risk/` — 组合风控
-- `07-Review-Calibration/` — 复盘校准 (前向OOS验证)
-- `08-Market-Interfaces/` — 市场接口 (MCP 只读)
-- `09-AllWeather/` — All Weather 风险平价分配
+## MarketGraph
 
-### 对外能力
-- MCP 工具: regime / impact_query / all_weather / news_brief / decision_draft
-- 契约表: causal_truth_table / market_knowledge_packages
-- 只读研究, 不执行交易
+MarketGraph owns long-horizon research, event/impact relationships,
+cross-market context, readiness, attribution, and read-only research interfaces.
 
-### 输入
-- SharedSignals 的 SQLite + CSV (只读)
+It reads SharedSignals API/read-model outputs for market data. It must not
+restore independent Tushare, Eastmoney, Binance, Polymarket, RSS, Tavily, or
+Firecrawl provider collection paths. New provider coverage belongs in
+SharedSignals first, then MarketGraph consumes the resulting API/read model.
 
-### 输出
-- 研究结论 (CSV) → TradingAgent 消费
-- 不回传交易结果 (保持研究独立)
+MarketGraph does not trigger execution, Hermes, broker APIs, simulated fills, or
+real-money workflows.
 
----
+## TradingAgent
 
-## 3. TradingAgent — 交易线
-**地址**: https://github.com/NicholasHan1226/Tradingagent.cc.git
-**本地路径**: /opt/investment/tradingagent/
+TradingAgent owns strategy evaluation, signal queues, simulated/shadow ledgers,
+daily/weekly review, notifications, and future controlled real-broker
+integration.
 
-### 职责
-交易全闭环。覆盖多个市场, 共享通用模块 + 市场特定逻辑。
+It reads SharedSignals data through its shared data facade, backed by the
+SharedSignals API in production. SQLite read-model access is allowed only for
+explicit local tests or emergency diagnostics with the documented switches.
 
-### 文件结构
-- `shared/` — 跨市场共享模块 (约20个工具)
-  - 筛选 → 对抗 → 风控 → 组合 → 执行 → 复盘
-  - 权重式打分, 不设硬门禁
-- 市场特定:
-  - `Ashare/` — A股 (含 Hermes 同花顺自动化执行)
-  - `HK/` — 港股
-  - `US/` — 美股
-  - `Crypto/` — 加密货币
-  - `PM/` — 组合管理
+TradingAgent reads MarketGraph through public research APIs/read models when it
+needs research evidence. It must not depend on MarketGraph internal provider
+collectors or use MarketGraph as a market-data source.
 
-### 输入
-- SharedSignals 原始数据 (直接读 SQLite/CSV)
-- MarketGraph 研究结论 (CSV)
+## Operating Rules
 
-### 输出
-- 交易信号 / 模拟盘 / 影子盘记录
-- 不回传研究层 (保持研究独立)
+1. SharedSignals is the only provider collection owner.
+2. MarketGraph is read-only research and evidence; it never executes trades.
+3. TradingAgent owns trading decisions, simulated/shadow accounting and queues.
+4. Cross-system reads use HTTP APIs or documented read-model contracts.
+5. Missing data fails closed; old CSV, NDJSON, sibling repo paths and desktop
+   folders are not production fallbacks.
+6. Each repository is committed, pushed, deployed and verified independently.
 
----
+## Production Layout
 
-## 通信机制
+| Repository | Main server `8.138.181.177` | Notes |
+| --- | --- | --- |
+| SharedSignals | `/opt/investment/SharedSignals` | Data collection, read model, API |
+| MarketGraph | `/opt/investment/MarketGraph` | Research API and read-only runtime |
+| TradingAgent | `/opt/investment/tradingagent` | Sim/shadow trading runtime and front API |
 
-### 当前 (基于文件)
-| 通道 | 格式 | 方向 |
-|------|------|------|
-| 主数据库 | SQLite (marketdata.sqlite) | SharedSignals → 所有 |
-| 缓存 | CSV | SharedSignals → 所有 |
-| 事件staging | NDJSON → CSV (bridge) | SharedSignals → 所有 |
-| 研究结论 | CSV | MarketGraph → TradingAgent |
-
-**关键约束**: 仓库间不做直接代码 import。所有数据交换通过文件。
-
-### 未来扩展
-| 通道 | 用途 | 状态 |
-|------|------|------|
-| Redis pub/sub | 实时事件推送 (替代文件轮询) | 规划中 |
-| DuckDB | 分析型查询 (替代 SQLite) | 规划中 |
-| 多租户 MCP | 多账户隔离的只读研究接口 | 规划中 |
-
----
-
-## 边界原则
-1. **采集一次, 两线共享** — SharedSignals 是唯一采集入口, 不重复
-2. **MarketGraph 不做交易** — 只做战略研究, 输出结论
-3. **TradingAgent 不回传** — 交易结果不回研究层, 保持 OOS 纯度
-4. **文件通信** — 仓库间无代码依赖, 通过 SQLite/CSV 交换
-5. **独立部署** — 三个仓库独立 git, 独立版本, 独立 CI
-
----
-
-## 服务器分布
-| 仓库 | 华南3/广州主服务器 (8.138.181.177) | 新加坡 (47.82.153.58) | Mac Mini |
-|------|:---:|:---:|:---:|
-| SharedSignals | ✓ (主) | RSS mirror 已停止（deferred） | — |
-| MarketGraph | ✓ | — | — |
-| TradingAgent | ✓ (模拟/影子) | — | ✓ (A股实盘) |
+Mac Mini/Hermes is a reserved A-share GUI execution bridge owned by
+TradingAgent, not a SharedSignals or MarketGraph responsibility.

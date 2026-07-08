@@ -25,6 +25,9 @@ reference/__pycache__/
 tests/__pycache__/
 data/tushare/
 # Local database/read-model runtime artifacts
+runtime/
+staging/
+data/*.csv
 data/*.duckdb
 data/*.duckdb.wal
 data/*.duckdb.tmp

@@ -118,6 +118,65 @@ class TestMarketdataDB:
 # ============================================================================
 
 class TestReaderEvents:
+    def test_get_tushare_fut_basic_reads_futures_assets_not_ashare(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_assets (
+                    market, symbol, name, asset_type, exchange, sector, list_date,
+                    status, provider, source_file, updated_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "Futures",
+                        "RB2609.SHF",
+                        "螺纹钢2609",
+                        "future",
+                        "SHFE",
+                        "",
+                        "20260101",
+                        "listed",
+                        "tushare_fut_basic",
+                        "fut_basic",
+                        "2026-07-08T09:00:00",
+                        "{}",
+                    ),
+                    (
+                        "Ashare",
+                        "000001.SZ",
+                        "平安银行",
+                        "stock",
+                        "SZSE",
+                        "银行",
+                        "19910403",
+                        "active",
+                        "tushare_stock_basic",
+                        "stock_basic",
+                        "2026-07-08T09:00:00",
+                        "{}",
+                    ),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        futures = reader.get_tushare("fut_basic")
+        stocks = reader.get_tushare("stock_basic")
+
+        assert [row["data"]["symbol"] for row in futures] == ["RB2609.SHF"]
+        assert all(row["data"]["market"] == "Futures" for row in futures)
+        assert [row["data"]["symbol"] for row in stocks] == ["000001.SZ"]
 
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader
