@@ -172,9 +172,11 @@ class TestReaderEvents:
         reader.clear_caches()
 
         futures = reader.get_tushare("fut_basic")
+        futures_alias = reader.get_tushare("fut_basic", market="CNFutures")
         stocks = reader.get_tushare("stock_basic")
 
         assert [row["data"]["symbol"] for row in futures] == ["RB2609.SHF"]
+        assert [row["data"]["symbol"] for row in futures_alias] == ["RB2609.SHF"]
         assert all(row["data"]["market"] == "Futures" for row in futures)
         assert [row["data"]["symbol"] for row in stocks] == ["000001.SZ"]
 
@@ -228,6 +230,38 @@ class TestReaderEvents:
                         collected_at,
                         "{}",
                     ),
+                    (
+                        "evt-3",
+                        "tushare_policy",
+                        "policy",
+                        "20260708",
+                        "20260708",
+                        "Futures",
+                        "RB2609.SHF",
+                        "futures matched",
+                        "",
+                        "",
+                        "tushare_policy",
+                        "policy_20260708.csv",
+                        collected_at,
+                        "{}",
+                    ),
+                    (
+                        "evt-4",
+                        "polymarket_news",
+                        "policy",
+                        "20260708",
+                        "20260708",
+                        "PredictionMarkets",
+                        "pm-1",
+                        "pm matched",
+                        "",
+                        "",
+                        "polymarket_news",
+                        "policy_20260708.csv",
+                        collected_at,
+                        "{}",
+                    ),
                 ],
             )
             conn.commit()
@@ -247,6 +281,22 @@ class TestReaderEvents:
         )
 
         assert [row["data"]["event_hash"] for row in rows] == ["evt-1"]
+
+        futures_rows = reader.get_events(
+            start="20260708",
+            end="20260708",
+            event_type="policy",
+            market="CNFutures",
+        )
+        pm_rows = reader.get_events(
+            start="20260708",
+            end="20260708",
+            event_type="policy",
+            market="PM",
+        )
+
+        assert [row["data"]["event_hash"] for row in futures_rows] == ["evt-3"]
+        assert [row["data"]["event_hash"] for row in pm_rows] == ["evt-4"]
 
     def test_get_events_reads_sqlite_market_events_only(self, tmp_path: Path, monkeypatch):
         import reader

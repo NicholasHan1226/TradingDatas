@@ -394,16 +394,36 @@ def _canonical_market_key(market: Any) -> str:
         "a_share": "Ashare",
         "a股": "Ashare",
         "cn": "Ashare",
+        "china": "Ashare",
         "china_a": "Ashare",
+        "mainland": "Ashare",
         "hk": "HK",
         "hongkong": "HK",
+        "hong_kong": "HK",
         "us": "US",
         "usa": "US",
+        "united_states": "US",
+        "us_market": "US",
         "crypto": "Crypto",
+        "cryptos": "Crypto",
+        "cryptocurrency": "Crypto",
         "futures": "Futures",
+        "future": "Futures",
         "cn_futures": "Futures",
+        "cnfutures": "Futures",
+        "cn_future": "Futures",
+        "cnfuture": "Futures",
+        "predictionmarkets": "PredictionMarkets",
+        "prediction_markets": "PredictionMarkets",
+        "pm": "PredictionMarkets",
+        "polymarket": "PredictionMarkets",
     }
     return aliases.get(normalized, raw)
+
+
+def _market_match_key(market: Any) -> str:
+    canonical = _canonical_market_key(market)
+    return str(canonical or "").strip().replace("-", "_").replace(" ", "_").lower()
 
 
 def _file_collected_at(path: Path) -> str | None:
@@ -904,18 +924,9 @@ def _event_row_matches_code(data: dict[str, Any], wanted: set[str]) -> bool:
 
 
 def _event_row_matches_market(data: dict[str, Any], market: Any) -> bool:
-    wanted = str(market or "").strip().lower()
+    wanted = _market_match_key(market)
     if not wanted:
         return True
-    aliases = {
-        "a_share": "ashare",
-        "a-share": "ashare",
-        "cnfutures": "futures",
-        "cn_futures": "futures",
-        "predictionmarkets": "predictionmarkets",
-        "pm": "predictionmarkets",
-    }
-    wanted = aliases.get(wanted, wanted)
     values = [
         data.get("market"),
         data.get("target_market"),
@@ -923,7 +934,7 @@ def _event_row_matches_market(data: dict[str, Any], market: Any) -> bool:
         data.get("subject_market"),
     ]
     for value in values:
-        normalized = aliases.get(str(value or "").strip().lower(), str(value or "").strip().lower())
+        normalized = _market_match_key(value)
         if normalized and normalized == wanted:
             return True
     return False
@@ -1094,6 +1105,7 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
                     "fund_basic": "Fund",
                     "fund_nav": "Fund",
                 }.get(api_name, "Ashare")
+            market_filter = _canonical_market_key(market_filter)
             where.append("market = ?")
             vals.append(market_filter)
         if "provider" in cols:

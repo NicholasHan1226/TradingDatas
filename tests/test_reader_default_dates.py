@@ -230,6 +230,11 @@ def test_get_realtime_5min_supports_non_ashare_market_and_l1_fields(tmp_path: Pa
     assert rows[0]["data"]["ask_price"] == 3521.0
     assert rows[0]["lineage"]["filters"]["market"] == "Futures"
 
+    alias_rows = reader.get_realtime_5min("RB2609.SHF", "20260703", market="CNFutures")
+    assert alias_rows
+    assert alias_rows[0]["data"]["symbol"] == "RB2609.SHF"
+    assert alias_rows[0]["lineage"]["filters"]["market"] == "Futures"
+
 
 def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_path: Path) -> None:
     import reader

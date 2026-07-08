@@ -74,7 +74,9 @@ marketdata.sqlite (11 表)
 | `PredictionMarkets` | 预测市场 | Polymarket (3 接口) |
 | `Global` | 全球指数 | Tushare `index_global` |
 | `ETF` | ETF 基础信息 | Tushare `etf_basic` |
-| `Futures` | 期货基础信息、日线和分钟线 | Tushare `fut_basic` / `fut_daily` / `rt_fut_min` |
+| `Futures` | 期货基础信息、日线和分钟线 | Tushare `fut_basic` / `fut_daily` + AkShare/Sina 5 分钟 |
+
+市场参数在 HTTP API 和 reader 内统一规范化。规范值仍以表中 `market` 为准；常见别名如 `CNFutures`、`cn_futures`、`cn-futures` 会映射到 `Futures`，`PM` / `Polymarket` 会映射到 `PredictionMarkets`，`hong_kong` 会映射到 `HK`。未知市场名不做模糊兜底，应返回空/降级结果并由调用方修正。
 
 ### CNFutures 行情采集合同
 
@@ -99,10 +101,10 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 
 `P6_other_daily` 只在盘后夜间运行，避免开盘期间与 P0 5 分钟行情和 TradingAgent 模拟执行争用 SQLite/read model。`cb_daily` 使用 `trade_date` 全市场快照，不再按 A 股股票池逐股调用。
 
-`rt_fut_min` 使用独立的 CNFutures 5 分钟采集入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。默认从最新 Futures 日线合约池按产品轮询选择 `rb/cu/i/m/if/ih/ic/im` 重点品种，避免远月合约过多时挤掉股指产品；其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证。也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。直接写入 SQLite read model：
+CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。当前默认 provider 为 AkShare/Sina 分钟行情；Tushare `rt_fut_min` 只保留为显式 `CN_FUTURES_5MIN_PROVIDER=tushare_rt_fut_min` 时的可选 provider。默认从最新 Futures 日线合约池按产品轮询选择 `rb/cu/i/m/if/ih/ic/im` 重点品种，避免远月合约过多时挤掉股指产品；其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证。也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。直接写入 SQLite read model：
 
 - `market="Futures"`
-- `provider="tushare_rt_fut_min"`
+- `provider="sina_futures_minute"`（默认）或显式配置下的 `provider="tushare_rt_fut_min"`
 - `interval="5min"`
 - `symbol` 兼容 Tushare 返回的 `ts_code`、`symbol` 或 `code`
 - `trade_date` 从 `time`/`trade_time` 派生，`bar_time` 保留分钟时间戳
@@ -110,8 +112,8 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - 可选一级盘口字段会透传到 `market_bars_intraday`：`bid_price` 兼容 `bid1`/`best_bid`，`ask_price` 兼容 `ask1`/`best_ask`，`bid_size` 兼容 `bid_volume`/`bid1_volume`，`ask_size` 兼容 `ask_volume`/`ask1_volume`
 - 可选到期字段会透传到 `market_bars_intraday`：`last_trade_date`、`expiry_date`；若分钟 provider rows 未带这些字段但 `market_assets` 的同一 Futures 合约已有 `last_trade_date`/`expiry_date`，入库层会补齐
 - 这些字段均为可空增量字段；Tushare 当前返回缺失时不阻断 OHLCV 写入，TradingAgent 只能在字段存在时使用盘口/到期保护增强
-- `rt_fut_min` 采集必须区分三种状态：provider 正常返回 0 行时为 `empty`；provider 返回权限、接口或本地调用错误时为 `failed`；非空 provider rows 直接写入 SQLite 为 0 行时为 `failed`。交易时段内持续 `empty` 或任何 `failed` 都应进入 SharedSignals watchdog/系统告警排查，不能被解释为 TradingAgent 无交易信号。
-- CNFutures 5 分钟采集不再启用 AKShare/Sina 备源。Tushare/QuickSync `rt_fut_min` 权限或接口错误必须返回 `failed` 并进入 watchdog/系统告警；provider 正常返回 0 行只能标记 `empty`，不得用其它来源伪装成同一生产供数链。
+- CNFutures 5 分钟采集必须区分三种状态：provider 正常返回 0 行时为 `empty`；provider 返回权限、接口或本地调用错误时为 `failed`；非空 provider rows 直接写入 SQLite 为 0 行时为 `failed`。交易时段内持续 `empty` 或任何 `failed` 都应进入 SharedSignals watchdog/系统告警排查，不能被解释为 TradingAgent 无交易信号。
+- 不允许在 TradingAgent 或 MarketGraph 内另起期货 5 分钟直采；两者只通过 SharedSignals HTTP API 读取同一 SQLite read model。
 
 `tools/check_cn_futures_5min_freshness.py` 是只读数据健康检查，默认 10 分钟阈值，可通过 `--sqlite-db`、`--now`、`--max-age-minutes` 和 `--json` 调整。它只报告数据是否新鲜、当前/下一交易时段是否已有 5 分钟 bar，不生成交易信号、不触发补采、不写 TradingAgent 队列。
 
@@ -549,7 +551,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures`；需采集 `last_ddate` 与 `delist_date`，分别映射到 `last_trade_date` 与 `expiry_date` |
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
-| 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
+| 期货 5 分钟 OHLCV | AkShare/Sina 默认；Tushare `rt_fut_min` 可显式启用 | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 或 `market=CNFutures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 与 `reader.get_sentiment()` 只读 SQLite `market_events`；旧事件候选/情绪文件不作为 SharedSignals 对外数据源 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
@@ -755,6 +757,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.19 | 统一 reader/API 市场名规范化：`CNFutures`、`cn_futures` 等别名映射到 `Futures`，`PM`/`Polymarket` 映射到 `PredictionMarkets`；`/realtime_5min`、`/tushare` 资产读取和事件过滤共用同一市场识别规则。同步更正 CNFutures 5 分钟默认 provider 为 AkShare/Sina，Tushare `rt_fut_min` 仅保留为显式可选 provider。 |
 | 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 HTTP API 输出。 |
 | 2026-07-08 | 1.1.17 | `/tushare?api_name=fut_basic`、`hk_basic`、`us_basic`、`etf_basic` 等资产类接口按对应 market 过滤 `market_assets`，不再把所有资产接口默认限定为 A股；TradingAgent/CNFutures 可通过 SharedSignals API 获取期货合约资产列表。 |
 | 2026-07-08 | 1.1.16 | 生产采集链路收口为 provider rows 直接写 SQLite read model；删除 CSV-only 成功开关、旧 `rt_k` 映射和 reader/API CSV fallback 文档口径；非空 rows 写入 0 行会标记 `failed` 并计入 `sqlite_failure_count`。 |
