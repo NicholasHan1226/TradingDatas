@@ -301,3 +301,56 @@ def test_daily_sla_allows_monday_intraday_before_eod_daily_update(tmp_path, monk
 
     assert report["status"] == "ok"
     assert not report["violations"]
+
+
+def test_crypto_daily_stale_uses_intraday_freshness(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-08T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_bars_intraday (market TEXT, collected_at TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.execute("INSERT INTO market_bars_daily VALUES (?, ?)", ("Crypto", "20260705"))
+    conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", (now - timedelta(minutes=10)).isoformat()))
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not report["violations"]
+
+
+def test_crypto_intraday_staleness_is_critical(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-08T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_bars_intraday (market TEXT, collected_at TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.execute("INSERT INTO market_bars_daily VALUES (?, ?)", ("Crypto", "20260708"))
+    conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", (now - timedelta(hours=2)).isoformat()))
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "critical"
+    assert any(
+        item.get("table") == "market_bars_intraday"
+        and item.get("market") == "Crypto"
+        and item.get("source") == "market_bars_intraday_collected_at"
+        for item in report["violations"]
+    )

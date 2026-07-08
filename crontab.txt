@@ -13,9 +13,11 @@
 SHELL=/bin/bash
 PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-# Crypto 24/7 freshness. Collector saves NDJSON staging, then bridges into the
-# SharedSignals SQLite read model; no old /opt/investment/Crypto dependency.
+# Crypto 24/7 freshness. Ticker runs every 5 minutes into intraday; a separate
+# hourly 1d kline job keeps market_bars_daily fresh without full all-interval
+# pulls on every 5-minute tick.
 2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
+4 * * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh
 
 # Tushare tier split owned by SharedSignals.
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min

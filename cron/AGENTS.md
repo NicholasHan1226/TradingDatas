@@ -11,7 +11,7 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 ## Active production groups
 
 - `collectors.sh`: Tushare P0-P6 tiered collection.
-- `crypto_collect.sh` and `pm_collect.sh`: 5-minute Crypto and Polymarket collection.
+- `crypto_collect.sh` and `pm_collect.sh`: 5-minute Crypto ticker/PM collection; Crypto 1d klines run separately via `SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d` to keep `market_bars_daily` fresh without pulling every kline interval on the 5-minute cadence.
 - `cn_futures_5min.sh` and `cn_futures_daily.sh`: China futures intraday and settlement data.
 - `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
   not the trading read path; keep it off 5-minute cadence unless the merge is

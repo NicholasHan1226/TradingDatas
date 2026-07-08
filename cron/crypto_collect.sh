@@ -16,6 +16,7 @@ LOCK_DIR="${ROOT}/logs/locks"
 LOG_FILE="${LOG_DIR}/crypto_collect.log"
 LOCK_FILE="${LOCK_DIR}/crypto_collect.lock"
 MODE="${SHAREDSIGNALS_CRYPTO_MODE:-ticker}"
+INTERVALS="${SHAREDSIGNALS_CRYPTO_INTERVALS:-}"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}"
 
@@ -37,7 +38,16 @@ fi
 export BINANCE_HTTP_PROXIES="${BINANCE_HTTP_PROXIES:-${BINANCE_HTTP_PROXY:-http://127.0.0.1:7890}}"
 
 {
-  echo "[$(date -Iseconds)] START crypto_collect mode=${MODE} python=${PYTHON_BIN} proxies=${BINANCE_HTTP_PROXIES}"
-  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/crypto/binance_collect.py --mode "${MODE}"
+  EXTRA_ARGS=()
+  if [ -n "${INTERVALS}" ]; then
+    IFS=', ' read -r -a INTERVAL_LIST <<< "${INTERVALS//,/ }"
+    for interval in "${INTERVAL_LIST[@]}"; do
+      if [ -n "${interval}" ]; then
+        EXTRA_ARGS+=(--interval "${interval}")
+      fi
+    done
+  fi
+  echo "[$(date -Iseconds)] START crypto_collect mode=${MODE} intervals=${INTERVALS:-default} python=${PYTHON_BIN} proxies=${BINANCE_HTTP_PROXIES}"
+  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/crypto/binance_collect.py --mode "${MODE}" "${EXTRA_ARGS[@]}"
   echo "[$(date -Iseconds)] OK crypto_collect"
 } >> "${LOG_FILE}" 2>&1

@@ -30,8 +30,11 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
 */30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
-# Crypto and PM market freshness.
+# Crypto and PM market freshness. Crypto ticker keeps intraday fresh every 5
+# minutes; hourly 1d klines keep market_bars_daily fresh without pulling every
+# configured interval on each 5-minute run.
 2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
+4 * * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh
 */5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
 
 # RSS/RSSHub is retired from production collectors. Do not add the old

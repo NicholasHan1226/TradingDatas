@@ -17,10 +17,12 @@ SLA_THRESHOLDS = {
 }
 SLA_DATE_COLUMNS = {
     'market_bars_daily': ['trade_date', 'updated_at', 'collected_at'],
+    'market_bars_intraday': ['collected_at', 'updated_at', 'bar_time', 'trade_date'],
     'market_factors': ['collected_at', 'updated_at', 'event_time', 'trade_date'],
     'market_pm_prices': ['collected_at', 'updated_at'],
     'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
 }
+CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "30")) / 60.0
 
 def _table_violation(table: str, sla: dict, *, status: str, message: str, now: datetime) -> dict:
     return {
@@ -223,6 +225,44 @@ def _append_freshness_violation(violations: list, *, table: str, sla: dict, late
     violations.append(payload)
 
 
+def _crypto_intraday_violation(conn: sqlite3.Connection, now: datetime) -> dict | None:
+    sla = {
+        'max_age_hours': CRYPTO_INTRADAY_MAX_AGE_HOURS,
+        'market': 'Crypto',
+        'lane': 'trading',
+        'severity': 'critical',
+    }
+    table = 'market_bars_intraday'
+    cols = [r[1] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
+    if not cols:
+        return _table_violation(table, sla, status='error', message='crypto intraday table not found', now=now)
+    date_col = next((c for c in SLA_DATE_COLUMNS[table] if c in cols), None)
+    if not date_col:
+        return _table_violation(table, sla, status='error', message='crypto intraday freshness date column not found', now=now)
+    row = conn.execute(
+        f'SELECT MAX({date_col}) FROM {table} WHERE lower(market)=lower(?)',
+        ('Crypto',),
+    ).fetchone()
+    if not row or not row[0]:
+        return _table_violation(table, sla, status='empty', message='no crypto intraday freshness timestamp found', now=now)
+    latest_dt = _parse_freshness_value(row[0])
+    age_hours = (now - latest_dt).total_seconds() / 3600
+    if age_hours <= CRYPTO_INTRADAY_MAX_AGE_HOURS:
+        return None
+    return {
+        'table': table,
+        'age_hours': round(age_hours, 2),
+        'threshold_hours': CRYPTO_INTRADAY_MAX_AGE_HOURS,
+        'base_threshold_hours': CRYPTO_INTRADAY_MAX_AGE_HOURS,
+        'latest': str(latest_dt)[:19],
+        'status': 'breached',
+        'lane': sla['lane'],
+        'severity': sla['severity'],
+        'market': 'Crypto',
+        'source': 'market_bars_intraday_collected_at',
+    }
+
+
 def check_sla(now: datetime | None = None):
     db = (
         os.getenv("MARKETDATA_SQLITE")
@@ -250,6 +290,11 @@ def check_sla(now: datetime | None = None):
                         violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
                         continue
                     for market, latest in rows:
+                        if str(market or '').strip().lower() == 'crypto':
+                            violation = _crypto_intraday_violation(conn, now)
+                            if violation:
+                                violations.append(violation)
+                            continue
                         if not latest:
                             violations.append(_table_violation(table, {**sla, 'market': market}, status='empty', message=f'no freshness timestamp found for market={market}', now=now))
                             continue
