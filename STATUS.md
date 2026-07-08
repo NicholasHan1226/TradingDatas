@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-08 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 备源退役、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除)
+> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除)
 
 ---
 
@@ -108,14 +108,17 @@
 20. [x] **P0 5 分钟采集节奏保护** — `sync_daily.py` 支持 P0 rotating stock batch，`cron/collectors.sh` 默认每轮 100 只，保障 5 分钟采集不因全量 per-stock 调用重叠；A股 P0 已新增 priority hot pool，先读取持仓/本地模拟仓位/尾盘候选与 `SHAREDSIGNALS_P0_PRIORITY_STOCKS`，再用剩余配额轮询全市场，避免重点标的在 5 分钟交易频率下等待全市场一轮才刷新。
 21. [x] **API 开盘高压稳定性** — 2026-07-05 生产开盘模拟读压测覆盖 `/health`、`/market_data`、`/realtime_5min`、`/capital_flow`、`/crypto`、`/pm_markets` 等端点；修复后 160/160 正常峰值请求与 640/640 尖峰请求均 200，0 超时、0 交易队列副作用。
 22. [x] **Capability smoke 与 read model 对齐** — `tools/capability_scan.py` 的现役能力 smoke 已收口到 `reader.py` / `reference.market_calendar`，不再现场调用 Tushare wrapper；当前暂停的 HK/cross-border 端点显式标记 skipped，避免把架构延期误判成数据故障。
-23. [x] **5 分钟 read API 市场参数化** — `reader.get_realtime_5min()` 与 HTTP `/realtime_5min` 支持 `market` 参数，默认 `Ashare` 保持旧调用兼容；`market=Futures` 等非 A股市场不再被硬编码挡住，旧 CSV 目录回退仅保留给 A股历史 5 分钟目录。
+23. [x] **5 分钟 read API 市场参数化** — `reader.get_realtime_5min()` 与 HTTP `/realtime_5min` 支持 `market` 参数，默认 `Ashare`；`market=Futures`、`market=CNFutures`、`market=cn_futures` 等期货别名统一读取 `market_bars_intraday.market='Futures'`，不再被硬编码挡住。
 24. [x] **reader WAL 缓存失效修复** — `reader.py` 的缓存文件指纹已动态解析当前路径，并纳入 SQLite `-wal`/`-shm` sidecar；测试覆盖 sidecar mtime 更新后触发 `_files_changed()`，降低 5 分钟交易读取旧数据风险。
 25. [x] **health_sla 交易/研究分层与定时启用** — `market_bars_daily` 与 `market_pm_prices` 属交易关键 freshness，超阈值影响健康；`market_factors` 为 warning；`market_events` 属研究 lane，过期只记录 notice，不再把研究事件暂停误判为 SharedSignals 交易供数故障；周末/周一开盘前会扩大非 PM/Crypto 表的有效 freshness 窗口；`cron/health_sla.sh` 每 10 分钟运行并写入 watchdog input，critical/degraded 外部报告会纳入 watchdog 分数。
 26. [x] **A股 rt_min 与逆回购读模型修复** — P0 实时分钟配置收口到实测可用的 `rt_min`，旧分钟接口映射和 reader CSV fallback 已退役；`repo_daily` 不再裁剪字段，并在保留 `market_factors` 的同时额外投影到 `market_bars_daily`，供 TradingAgent 以 `204001.SH` 日线收益率读取。
 
-### 2026-07-08 CNFutures 5分钟备源退役
+### 2026-07-09 市场参数与 CNFutures 5分钟口径收口
 
 - [x] `/health` 默认恢复为轻量探针：只聚合 cron 活跃度与 watchdog/SLA 缓存，不再在请求内执行 reader functions 与 data freshness 大库读取；深度检查必须显式设置 `SHAREDSIGNALS_HEALTH_DEEP_CHECKS=1` 或走定时 patrol/health_sla/watchdog，避免健康探针本身拖慢 API。
+- [x] `reader.py` 市场参数统一规范化：`CNFutures`、`cn_futures`、`cn-futures` 映射到 `Futures`；`PM`/`Polymarket` 映射到 `PredictionMarkets`；`/realtime_5min`、`/tushare` 资产读取和事件过滤共用同一规则。
+- [x] CNFutures 5分钟默认 provider 为 AkShare/Sina，Tushare `rt_fut_min` 只作为显式 provider 选项；无论 provider，采集结果都必须直接写入 SQLite read model，再由 HTTP API 输出。
+- [x] 2026-07-09 生产验收：`/realtime_5min?market=CNFutures`、`/realtime_5min?market=cn_futures` 和 `/tushare?api_name=fut_basic&market=CNFutures` 均返回 `market='Futures'` 的真实数据库行。
 - [x] 生产侧对 19G SQLite WAL 完成一次维护 checkpoint，WAL 清至 MB 级，磁盘占用从 74% 降至 54%；该动作仅合并/截断 SQLite WAL，不删除业务数据。
 - [x] DuckDB 同步从 5 分钟全量镜像降为小时级分析镜像，并在 `duckdb_sync.sh` 中使用 `nice`/`ionice` 与 600 秒超时，避免全表扫描期间拖慢 SharedSignals API、TradingAgent 模拟盘和 SSH 运维入口。
 - [x] `crontab.txt` 明确 DuckDB 不属于 5 分钟交易 read path；TradingAgent/MarketGraph 仍应通过 SQLite read model/API 读取交易所需数据。
