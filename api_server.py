@@ -630,6 +630,7 @@ class Handler(BaseHTTPRequestHandler):
                 end_date=params.get("end_date") or None,
                 **{k: v for k, v in params.items() if k not in ("api_name", "ts_code", "start_date", "end_date")},
             )
+            rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

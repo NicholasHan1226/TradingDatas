@@ -124,6 +124,30 @@ class _FakeReader:
             {"data": {"market_id": market_id or "pm-1", "price": 0.42}, "degraded": False},
         ]
 
+    def get_tushare(
+        self,
+        api_name: str,
+        ts_code: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        **params: Any,
+    ) -> list[dict[str, Any]]:
+        self.calls.append((
+            "get_tushare",
+            {
+                "api_name": api_name,
+                "ts_code": ts_code,
+                "start_date": start_date,
+                "end_date": end_date,
+                **params,
+            },
+        ))
+        return [
+            {"data": {"title": "news-1"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
+            {"data": {"title": "news-2"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
+            {"data": {"title": "news-3"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
+        ]
+
     def clear_caches(self) -> None:
         with self._lock:
             self.clear_count += 1
@@ -198,6 +222,17 @@ def test_api_events_passes_filter_params_to_reader(api_edge_server) -> None:
             "subject_type": "stock",
         },
     )
+
+
+def test_api_tushare_applies_limit(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/tushare?api_name=news&limit=2")
+
+    assert status == 200
+    assert [row["title"] for row in payload["data"]] == ["news-1", "news-2"]
+    assert payload["metadata"]["degraded"] is False
+    assert reader.calls[-1][0] == "get_tushare"
 
 
 def test_aggregate_metadata_drops_degraded_empty_data_rows() -> None:
