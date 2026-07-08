@@ -104,7 +104,7 @@ def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> Non
         "event_candidates.csv",
         "sentiment_signals.csv",
         "collection_runs.csv",
-        "MarketGraphRuntime/read_model/marketdata.sqlite",
+        "MarketGraphRuntime/read_model/" + "marketdata.sqlite",
     )
     offenders: list[str] = []
     for pattern in PRODUCTION_CODE_GLOBS:
