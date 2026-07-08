@@ -24,7 +24,13 @@ SLA_DATE_COLUMNS = {
 }
 CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "30")) / 60.0
 RECENT_SAMPLE_LIMIT = int(os.getenv("SHAREDSIGNALS_HEALTH_SLA_RECENT_SAMPLE_LIMIT", "50000"))
-RECENT_SAMPLE_TABLES = {"market_bars_intraday", "market_factors", "market_pm_prices", "market_events"}
+RECENT_SAMPLE_TABLES = {
+    "market_bars_daily",
+    "market_bars_intraday",
+    "market_factors",
+    "market_pm_prices",
+    "market_events",
+}
 
 def _table_violation(table: str, sla: dict, *, status: str, message: str, now: datetime) -> dict:
     return {
@@ -307,6 +313,31 @@ def _latest_freshness_value(conn: sqlite3.Connection, table: str, date_col: str)
     return row[0] if row and row[0] else None
 
 
+def _latest_daily_by_market_recent(conn: sqlite3.Connection, table: str, date_col: str):
+    rows = conn.execute(
+        f"""
+        SELECT market, {date_col}
+        FROM {table}
+        ORDER BY rowid DESC
+        LIMIT ?
+        """,
+        (max(1, RECENT_SAMPLE_LIMIT),),
+    ).fetchall()
+    latest_by_market: dict[str, tuple[datetime, object]] = {}
+    for market, value in rows:
+        if value in (None, ""):
+            continue
+        market_key = str(market or "unknown")
+        try:
+            parsed = _parse_freshness_value(value)
+        except Exception:
+            continue
+        current = latest_by_market.get(market_key)
+        if current is None or parsed > current[0]:
+            latest_by_market[market_key] = (parsed, value)
+    return [(market, value) for market, (_parsed, value) in latest_by_market.items()]
+
+
 def check_sla(now: datetime | None = None):
     db = (
         os.getenv("MARKETDATA_SQLITE")
@@ -331,7 +362,7 @@ def check_sla(now: datetime | None = None):
                     continue
 
                 if table == 'market_bars_daily' and 'market' in cols:
-                    rows = conn.execute(f'SELECT market, MAX({date_col}) FROM {table} GROUP BY market').fetchall()
+                    rows = _latest_daily_by_market_recent(conn, table, date_col)
                     if not rows:
                         violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
                         continue
