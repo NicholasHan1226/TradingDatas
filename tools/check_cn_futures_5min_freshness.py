@@ -92,10 +92,36 @@ def _session_info(now_cn: datetime) -> dict[str, Any]:
             "in_session": False,
         }
 
-    if DAY_SESSION_START <= t <= DAY_SESSION_END:
+    # Morning session: 09:00-11:30
+    if DAY_SESSION_START <= t <= time(11, 30):
         return {
             "current": "day",
             "next_session_start": datetime.combine(today, DAY_SESSION_START, tzinfo=CN_TZ),
+            "in_session": True,
+        }
+
+    # Lunch break phase 1: 11:31-11:59
+    if time(11, 31) <= t <= time(11, 59):
+        return {
+            "current": "lunch",
+            "next_session_start": datetime.combine(today, time(13, 0), tzinfo=CN_TZ),
+            "in_session": False,
+        }
+
+    # Lunch pre-open phase: 12:00-12:59
+    if time(12, 0) <= t <= time(12, 59):
+        return {
+            "current": "lunch_preopen",
+            "next_session_start": datetime.combine(today, time(13, 0), tzinfo=CN_TZ),
+            "in_session": False,
+        }
+
+    # Afternoon session: 13:00-15:00. Some CN futures products open at 13:00,
+    # so the shared freshness check must not suppress 13:00-13:29 stale alerts.
+    if time(13, 0) <= t <= DAY_SESSION_END:
+        return {
+            "current": "day",
+            "next_session_start": datetime.combine(today, time(13, 0), tzinfo=CN_TZ),
             "in_session": True,
         }
 
@@ -217,7 +243,7 @@ def check_freshness(
 
     status = "fresh"
     reasons: list[str] = []
-    if age_minutes > max_age_minutes:
+    if session["in_session"] and age_minutes > max_age_minutes:
         status = "stale"
         reasons.append(f"latest bar is {age_minutes:.1f} minutes old (threshold {max_age_minutes})")
     if session["in_session"] and not next_session_has_data:

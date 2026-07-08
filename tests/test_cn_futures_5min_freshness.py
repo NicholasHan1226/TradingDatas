@@ -279,3 +279,112 @@ def test_parse_args_custom_now() -> None:
 def test_parse_args_space_separated_now_with_timezone() -> None:
     args = parse_args(["--now", "2026-07-04 01:05:00+00:00"])
     assert args.now == datetime(2026, 7, 4, 9, 5, tzinfo=CN_TZ)
+
+
+# Lunch break session-info tests
+
+
+def test_session_info_lunch_1131_to_1159() -> None:
+    """11:31-11:59 should be recognised as lunch/closed, in_session=False."""
+    now = datetime(2026, 7, 3, 11, 45, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "lunch"
+    assert info["in_session"] is False
+
+
+def test_session_info_lunch_preopen_1200_to_1259() -> None:
+    """12:00-12:59 should be recognised as lunch_preopen, in_session=False."""
+    now = datetime(2026, 7, 3, 12, 15, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "lunch_preopen"
+    assert info["in_session"] is False
+
+
+def test_session_info_afternoon_session_starts_at_1300() -> None:
+    """13:00 starts the afternoon freshness window for shared CN futures checks."""
+    now = datetime(2026, 7, 3, 13, 5, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "day"
+    assert info["in_session"] is True
+
+
+def test_session_info_afternoon_session_1330() -> None:
+    """Afternoon session remains active at 13:30."""
+    now = datetime(2026, 7, 3, 13, 35, tzinfo=CN_TZ)
+    info = _session_info(now)
+    assert info["current"] == "day"
+    assert info["in_session"] is True
+
+
+# Lunch break freshness tests
+
+
+def test_check_freshness_not_stale_during_lunch_with_1130_bar(tmp_path: Path) -> None:
+    """During lunch (12:15), an 11:30 bar should NOT be stale and should
+    not return non-zero."""
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 11:30:00")])
+
+    now = datetime(2026, 7, 3, 12, 15, tzinfo=CN_TZ)
+    report = check_freshness(db_path, now=now, max_age_minutes=10)
+
+    assert report["status"] == "fresh", f"unexpected status: {report}"
+    assert report["session"]["current"] == "lunch_preopen"
+    assert report["session"]["in_session"] is False
+
+
+def test_main_returns_zero_during_lunch_with_1130_bar(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """main() should return 0 during lunch (12:15) with an 11:30 bar."""
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 11:30:00")])
+
+    code = main([
+        "--sqlite-db", str(db_path),
+        "--now", "2026-07-03T12:15:00+08:00",
+        "--max-age-minutes", "10",
+    ])
+
+    assert code == 0, f"expected exit 0, got {code}"
+    assert "status: fresh" in capsys.readouterr().out
+
+
+# Preserve real day/night stale behaviour
+
+
+def test_check_freshness_still_stale_in_day_session_when_aged(tmp_path: Path) -> None:
+    """During day session (morning), stale-by-age should still apply."""
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 09:00:00")])
+
+    now = datetime(2026, 7, 3, 9, 25, tzinfo=CN_TZ)
+    report = check_freshness(db_path, now=now, max_age_minutes=10)
+
+    assert report["status"] == "stale"
+    assert report["session"]["in_session"] is True
+
+
+def test_check_freshness_still_stale_in_day_afternoon_when_no_data(tmp_path: Path) -> None:
+    """Afternoon session with only morning data → stale (no afternoon bars)."""
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 11:25:00")])
+
+    now = datetime(2026, 7, 3, 13, 40, tzinfo=CN_TZ)
+    report = check_freshness(db_path, now=now, max_age_minutes=10)
+
+    assert report["status"] == "stale"
+    assert report["session"]["current"] == "day"
+    assert report["session"]["in_session"] is True
+
+
+def test_check_freshness_still_stale_in_night_session_when_aged(tmp_path: Path) -> None:
+    """During night session, stale-by-age should still apply."""
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_test_db(db_path, [("Futures", "RB2609.SHF", "2026-07-03 21:00:00")])
+
+    now = datetime(2026, 7, 3, 21, 25, tzinfo=CN_TZ)
+    report = check_freshness(db_path, now=now, max_age_minutes=10)
+
+    assert report["status"] == "stale"
+    assert report["session"]["in_session"] is True
