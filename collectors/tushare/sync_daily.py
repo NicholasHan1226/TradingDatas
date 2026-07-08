@@ -306,6 +306,39 @@ def _extract_ashare_codes(payload: Any) -> list[str]:
     return [code for code in codes if code]
 
 
+def _extract_priority_ashare_codes(payload: Any) -> list[str]:
+    """Extract priority A-share codes without promoting broad audit samples."""
+
+    if not isinstance(payload, dict):
+        return _extract_ashare_codes(payload)
+
+    focused_codes: list[str] = []
+    for key in (
+        "sample_skipped_candidates",
+        "skipped_candidates",
+        "execution_skips",
+        "sample_execution_skips",
+    ):
+        if key in payload:
+            focused_codes.extend(_extract_ashare_codes(payload.get(key)))
+
+    no_trade = payload.get("no_trade_explanation")
+    if isinstance(no_trade, dict):
+        focused_codes.extend(_extract_priority_ashare_codes(no_trade))
+
+    if str(payload.get("kind") or "") in {"skipped_candidate", "execution_exclusion"}:
+        for key in ("ts_code", "symbol", "code", "ticker"):
+            code = normalize_ashare_code(payload.get(key))
+            if code:
+                focused_codes.append(code)
+
+    if focused_codes:
+        return focused_codes
+    if any(key in payload for key in ("audit_events", "trigger_replay", "stage_calls")):
+        return []
+    return _extract_ashare_codes(payload)
+
+
 def _priority_stock_paths() -> list[Path]:
     values = [
         item.strip()
@@ -389,7 +422,7 @@ def load_priority_stock_codes(
             continue
         before = len(codes)
         for payload in payloads:
-            for code in _extract_ashare_codes(payload):
+            for code in _extract_priority_ashare_codes(payload):
                 add(code, str(path))
         if len(codes) > before:
             logger.info("Loaded %d P0 priority stocks from %s", len(codes) - before, path)

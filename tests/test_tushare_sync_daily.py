@@ -318,6 +318,7 @@ def test_load_priority_stock_codes_reads_jsonl_glob_candidates(tmp_path: Path) -
     priority_file.write_text(
         "\n".join(
             [
+                '{"audit_events": [{"ts_code": "000001.SZ"}, {"ts_code": "000002.SZ"}]}',
                 '{"symbol": "601288.SH", "reason": "missing_or_non_positive_price"}',
                 '{"sample_skipped_candidates": [{"symbol": "002714.SZ"}, {"ts_code": "601398.SH"}]}',
                 '{"symbol": "200011.SZ"}',
@@ -329,7 +330,7 @@ def test_load_priority_stock_codes_reads_jsonl_glob_candidates(tmp_path: Path) -
 
     codes, meta = load_priority_stock_codes(
         paths=[tmp_path / "execution_exclusions_*.jsonl"],
-        allowed_codes={"601288.SH", "002714.SZ", "601398.SH"},
+        allowed_codes={"000001.SZ", "000002.SZ", "601288.SH", "002714.SZ", "601398.SH"},
     )
 
     assert codes == ["601288.SH", "002714.SZ", "601398.SH"]
