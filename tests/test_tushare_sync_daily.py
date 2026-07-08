@@ -87,6 +87,25 @@ def test_p6_index_and_fund_daily_are_trade_date_snapshots() -> None:
         assert api["params"] == {"trade_date": "{trade_date}"}
 
 
+def test_p6_cb_daily_is_global_trade_date_snapshot() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    cb_daily_apis = [
+        api for api in config["priorities"]["P6_other_daily"]
+        if api.get("api_name") == "cb_daily"
+    ]
+
+    assert len(cb_daily_apis) == 1
+    assert cb_daily_apis[0]["per_stock"] is False
+    assert cb_daily_apis[0]["params"] == {"trade_date": "{trade_date}"}
+
+
+def test_p6_cron_runs_after_market_close_only() -> None:
+    crontab = Path("cron/crontab.txt").read_text(encoding="utf-8")
+
+    assert "*/30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily" not in crontab
+    assert "20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily" in crontab
+
+
 def test_p0_trading_lane_only_contains_intraday_apis() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
     p0_names = [api["api_name"] for api in config["priorities"]["P0_trading_5min"]]

@@ -425,13 +425,6 @@ priorities:
     params:
       market: ''
     per_stock: false
-  - api_name: cb_daily
-    frequency: daily
-    params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
   - api_name: news
     frequency: daily
     params:
@@ -464,6 +457,8 @@ priorities:
     fields: ts_code,ann_date,nav_value,accum_nav
   - api_name: cb_daily
     per_stock: false
+    params:
+      trade_date: '{trade_date}'
     fields: ts_code,trade_date,open,high,low,close,vol
   - api_name: news
     per_stock: false

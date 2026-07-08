@@ -10,7 +10,7 @@
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（P0-P6 分层接口）+ Binance（9 symbols，ticker 5min 写 `market_bars_intraday`，每小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存；2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先覆盖持仓、TradingAgent 当前 A股候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，且只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P0 股票清单优先从 read model `market_assets` 读取有名称、非退市、非基金的沪深 A股，`reference/stock_master.csv` 只作兜底，避免样本清单限制全市场轮询和退市代码浪费 5 分钟配额；分钟线不扩大为历史分钟回补，避免采集压力失控；CSV→SQLite bridge 已把 `stk_factor` 同时投到 `market_bars_daily` 与 `market_factors`，`daily_basic`/`stk_factor_pro`/`moneyflow` 投到 `market_factors`，避免估值/换手/资金因子下载后落错表、不能被 TradingAgent 六维评分消费。
+- **行情采集**：稳定运行 — Tushare（P0-P6 分层接口）+ Binance（9 symbols，ticker 5min 写 `market_bars_intraday`，每小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite + CSV/NDJSON 缓存；2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先覆盖持仓、TradingAgent 当前 A股候选、模拟执行未交易/排除候选和 MarketGraph 尾盘候选，且只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P6 杂项/日频层改为盘后夜间运行，`cb_daily` 改为按 `trade_date` 全市场快照，避免开盘期间长跑逐股任务抢占 P0/模拟交易资源；P0 股票清单优先从 read model `market_assets` 读取有名称、非退市、非基金的沪深 A股，`reference/stock_master.csv` 只作兜底，避免样本清单限制全市场轮询和退市代码浪费 5 分钟配额；分钟线不扩大为历史分钟回补，避免采集压力失控；CSV→SQLite bridge 已把 `stk_factor` 同时投到 `market_bars_daily` 与 `market_factors`，`daily_basic`/`stk_factor_pro`/`moneyflow` 投到 `market_factors`，避免估值/换手/资金因子下载后落错表、不能被 TradingAgent 六维评分消费。
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走 SharedSignals collector + staging/bridge 契约
 - **4 条现役数据管线**：Tushare、Binance、Polymarket、DuckDB 同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮 5 分钟采集跳过
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
@@ -160,7 +160,7 @@
 - [x] `market_bars_intraday` 新增可空 `bid_price/ask_price/bid_size/ask_size/last_trade_date/expiry_date`；`rt_fut_min` CSV bridge 兼容 `bid1/ask1/bid1_volume/ask1_volume` 等字段，并可从 `market_assets` 回填合约到期字段；`fut_basic` 配置已补采 `last_ddate/delist_date` 作为回填源。
 - [x] `/realtime_5min?market=Futures&ts_code=...` 已可读取 Futures 5 分钟 read model；reader 层会透传可空 L1 盘口字段，API 层仍只读、不生成交易判断。
 - [x] `rt_fut_min` 采集已加强失败语义：provider 权限/接口/本地调用错误返回 `failed`；非空行情 CSV 桥接 SQLite 写入 0 行也返回 `failed`，避免把高频交易支撑链路误判为正常空跑。生产已确认 Tushare `rt_fut_min` 权限不足，采集器已增加 AKShare/Sina 5 分钟模拟盘备源，可通过 `CN_FUTURES_5MIN_AKSHARE_FALLBACK=0` 关闭；备源只用于模拟研究，不改变未来实盘券商/CTP 边界。
-- [x] 排期边界：`P6_other_daily` 保持 30 分钟杂项/日频刷新；期货 5 分钟采集走独立 cron，日盘/夜盘每 5 分钟运行，跨午夜段按周二到周六凌晨覆盖。
+- [x] 排期边界：`P6_other_daily` 改为盘后夜间杂项/日频刷新；期货 5 分钟采集走独立 cron，日盘/夜盘每 5 分钟运行，跨午夜段按周二到周六凌晨覆盖。
 - [x] 消费边界：TradingAgent/CNFutures 和 MarketGraph 只能读取 SharedSignals read model；SharedSignals 不生成买卖方向，不写 signal queue，不改变模拟盘或实盘权限。
 
 ### 2026-07-04 Polymarket markets/prices 生产采集闭环

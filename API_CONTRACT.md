@@ -93,6 +93,8 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 - `trade_date` 使用 `YYYYMMDD`
 - `open/high/low/close/volume/amount` 来自 Tushare 日线字段映射
 
+`P6_other_daily` 只在盘后夜间运行，避免开盘期间与 P0 5 分钟行情和 TradingAgent 模拟执行争用 SQLite/read model。`cb_daily` 使用 `trade_date` 全市场快照，不再按 A 股股票池逐股调用。
+
 `rt_fut_min` 使用独立的 CNFutures 5 分钟采集入口，不进入 `P6_other_daily`，避免日频杂项层阻塞盘中交易频率。默认从最新 Futures 日线合约池按产品轮询选择 `rb/cu/i/m/if/ih/ic/im` 重点品种，避免远月合约过多时挤掉股指产品；其中 `IF/IH/IC/IM` 供 TradingAgent 股指日内方向风格做模拟验证。也可通过 `CN_FUTURES_5MIN_SYMBOLS` 或 `--symbols` 指定合约。SQLite bridge 写入：
 
 - `market="Futures"`

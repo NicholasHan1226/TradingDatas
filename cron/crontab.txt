@@ -28,7 +28,7 @@ PATH=/opt/marketgraph/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 30 6 * * * /opt/investment/SharedSignals/cron/refresh_industry_map.sh
 45 8 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P4_macro_daily
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
-*/30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
+20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
 # Crypto and PM market freshness. Crypto ticker keeps intraday fresh every 5
 # minutes; hourly 1d klines keep market_bars_daily fresh without pulling every
