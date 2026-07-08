@@ -100,10 +100,20 @@ def test_p6_cb_daily_is_global_trade_date_snapshot() -> None:
 
 
 def test_p6_cron_runs_after_market_close_only() -> None:
-    crontab = Path("cron/crontab.txt").read_text(encoding="utf-8")
+    crontabs = [
+        Path("crontab.txt").read_text(encoding="utf-8"),
+        Path("cron/crontab.txt").read_text(encoding="utf-8"),
+    ]
 
-    assert "*/30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily" not in crontab
-    assert "20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily" in crontab
+    for crontab in crontabs:
+        assert (
+            "*/30 * * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily"
+            not in crontab
+        )
+        assert (
+            "20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily"
+            in crontab
+        )
 
 
 def test_p0_trading_lane_only_contains_intraday_apis() -> None:
