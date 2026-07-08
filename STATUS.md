@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-08 (A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库映射完整性保护)
+> 最后更新：2026-07-08 (A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 空返回备源、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库映射完整性保护、health_sla 大表轻量化)
 
 ---
 
@@ -16,7 +16,7 @@
 - **DB-first API 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；CSV/SQLite 直接读取只保留为兼容或降级路径
 - **reader/API 缓存失效**：读取缓存同时监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm` 和 CSV/分钟线文件变更；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
 - **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 与 `proxy_relay_health` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
-- **健康口径**：2026-07-07 起 `/health` 会聚合 `tools/health_sla.py` per-table SLA 结果；API 请求只读取 `logs/watchdog_inputs/health_sla.json` 的定时产物，不在请求内重新扫大库。交易关键表 critical 保留为 `sla_status=critical` 并让 `/health` degraded，但不映射为 API error，避免数据新鲜度问题触发 API 进程误重启。研究事件“过期”仍只记 notice，不影响交易供数健康；但 tracked table 缺表/空表会至少降级为 degraded，避免 `health_sla` 出现 missing/empty 时整体仍显示 ok。`patrol.py` 的 PM freshness 已改用 `market_pm_prices.collected_at`，与现役 schema 对齐；`health_sla.py` critical 邮件发送器输出不再污染 watchdog JSON；2026-07-08 起 Crypto 不再按 `market_bars_daily.trade_date` 判定 24/7 交易新鲜度，改用 `market_bars_intraday.collected_at` 30 分钟 SLA，避免日线旧样本把正常 5 分钟采集误报 critical。
+- **健康口径**：2026-07-07 起 `/health` 会聚合 `tools/health_sla.py` per-table SLA 结果；API 请求只读取 `logs/watchdog_inputs/health_sla.json` 的定时产物，不在请求内重新扫大库。交易关键表 critical 保留为 `sla_status=critical` 并让 `/health` degraded，但不映射为 API error，避免数据新鲜度问题触发 API 进程误重启。研究事件“过期”仍只记 notice，不影响交易供数健康；但 tracked table 缺表/空表会至少降级为 degraded，避免 `health_sla` 出现 missing/empty 时整体仍显示 ok。`patrol.py` 的 PM freshness 已改用 `market_pm_prices.collected_at`，与现役 schema 对齐；`health_sla.py` critical 邮件发送器输出不再污染 watchdog JSON；2026-07-08 起 Crypto 不再按 `market_bars_daily.trade_date` 判定 24/7 交易新鲜度，改用 `market_bars_intraday.collected_at` 30 分钟 SLA，避免日线旧样本把正常 5 分钟采集误报 critical；同日起 `health_sla.py` 对 `market_factors`、`market_events`、`market_pm_prices`、`market_bars_intraday` 采用最近写入样本判断 freshness，并设置只读连接 busy timeout，避免 10 分钟健康任务在生产大表上全表扫描并拖到 wrapper timeout。
 - **US/Global 日线 SLA**：2026-07-07 起 `market_bars_daily` 中 `US` 与 `Global` 不再只按自然小时数判断 stale，而是按“应产生并采集到的最近有效交易日”计算。US 识别常见 NYSE 假期与 P5 06:10 CST/18:10 ET 后采集窗口；Global 按 P4 08:45 CST 采集窗口处理。两者落后 1 个有效交易日以内不触发 critical，落后 2 个有效交易日仍 critical，避免美国假期/长周末后把正常休市误判为供数故障。
 - **`/health` data_freshness 对齐**：2026-07-07 起旧 `data_freshness` 检查不再用另一套自然日规则判定 US/Global；Ashare/US/Global 跟随 `health_sla` 的日线判定，Crypto 改看 `market_bars_intraday.collected_at` 30 分钟新鲜度，避免 Crypto daily 旧样本和 US/Global 假期样本把 `/health` 误打 degraded。
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）

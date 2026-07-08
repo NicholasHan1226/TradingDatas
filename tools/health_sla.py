@@ -23,6 +23,8 @@ SLA_DATE_COLUMNS = {
     'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
 }
 CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "30")) / 60.0
+RECENT_SAMPLE_LIMIT = int(os.getenv("SHAREDSIGNALS_HEALTH_SLA_RECENT_SAMPLE_LIMIT", "50000"))
+RECENT_SAMPLE_TABLES = {"market_bars_intraday", "market_factors", "market_pm_prices", "market_events"}
 
 def _table_violation(table: str, sla: dict, *, status: str, message: str, now: datetime) -> dict:
     return {
@@ -239,13 +241,16 @@ def _crypto_intraday_violation(conn: sqlite3.Connection, now: datetime) -> dict 
     date_col = next((c for c in SLA_DATE_COLUMNS[table] if c in cols), None)
     if not date_col:
         return _table_violation(table, sla, status='error', message='crypto intraday freshness date column not found', now=now)
-    row = conn.execute(
-        f'SELECT MAX({date_col}) FROM {table} WHERE lower(market)=lower(?)',
-        ('Crypto',),
-    ).fetchone()
-    if not row or not row[0]:
+    latest = _latest_recent_value(
+        conn,
+        table,
+        date_col,
+        where_sql='WHERE lower(market)=lower(?)',
+        params=('Crypto',),
+    )
+    if not latest:
         return _table_violation(table, sla, status='empty', message='no crypto intraday freshness timestamp found', now=now)
-    latest_dt = _parse_freshness_value(row[0])
+    latest_dt = _parse_freshness_value(latest)
     age_hours = (now - latest_dt).total_seconds() / 3600
     if age_hours <= CRYPTO_INTRADAY_MAX_AGE_HOURS:
         return None
@@ -263,6 +268,45 @@ def _crypto_intraday_violation(conn: sqlite3.Connection, now: datetime) -> dict 
     }
 
 
+def _latest_recent_value(
+    conn: sqlite3.Connection,
+    table: str,
+    date_col: str,
+    *,
+    where_sql: str = "",
+    params: tuple = (),
+    limit: int = RECENT_SAMPLE_LIMIT,
+):
+    query = f"""
+        SELECT {date_col}
+        FROM {table}
+        {where_sql}
+        ORDER BY rowid DESC
+        LIMIT ?
+    """
+    rows = conn.execute(query, (*params, max(1, int(limit)))).fetchall()
+    latest_dt = None
+    latest_raw = None
+    for (value,) in rows:
+        if value in (None, ""):
+            continue
+        try:
+            parsed = _parse_freshness_value(value)
+        except Exception:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest_raw = value
+    return latest_raw
+
+
+def _latest_freshness_value(conn: sqlite3.Connection, table: str, date_col: str):
+    if table in RECENT_SAMPLE_TABLES:
+        return _latest_recent_value(conn, table, date_col)
+    row = conn.execute(f'SELECT MAX({date_col}) FROM {table}').fetchone()
+    return row[0] if row and row[0] else None
+
+
 def check_sla(now: datetime | None = None):
     db = (
         os.getenv("MARKETDATA_SQLITE")
@@ -274,8 +318,10 @@ def check_sla(now: datetime | None = None):
     
     violations = []
     now = now or datetime.now(timezone.utc)
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
     try:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA busy_timeout=3000")
         for table, sla in SLA_THRESHOLDS.items():
             try:
                 cols = [r[1] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
@@ -301,12 +347,12 @@ def check_sla(now: datetime | None = None):
                         _append_freshness_violation(violations, table=table, sla=sla, latest=latest, now=now, market=str(market or 'unknown'))
                     continue
 
-                row = conn.execute(f'SELECT MAX({date_col}) FROM {table}').fetchone()
-                if not row or not row[0]:
+                latest = _latest_freshness_value(conn, table, date_col)
+                if not latest:
                     violations.append(_table_violation(table, sla, status='empty', message='no freshness timestamp found', now=now))
                     continue
 
-                _append_freshness_violation(violations, table=table, sla=sla, latest=row[0], now=now)
+                _append_freshness_violation(violations, table=table, sla=sla, latest=latest, now=now)
             except Exception as exc:
                 violations.append(_table_violation(table, sla, status='error', message=f'{exc.__class__.__name__}: {exc}', now=now))
     finally:
