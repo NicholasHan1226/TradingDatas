@@ -384,6 +384,16 @@ def _read_priority_stock_payloads(path: Path) -> list[Any]:
             payloads.append(json.loads(stripped))
         except json.JSONDecodeError as exc:
             logger.warning("failed to parse P0 priority jsonl line from %s: %s", path, exc)
+    latest_generated_at = max(
+        (str(item.get("generated_at") or "") for item in payloads if isinstance(item, dict)),
+        default="",
+    )
+    if latest_generated_at:
+        payloads = [
+            item
+            for item in payloads
+            if isinstance(item, dict) and str(item.get("generated_at") or "") == latest_generated_at
+        ]
     return payloads
 
 

@@ -319,8 +319,18 @@ def test_load_priority_stock_codes_reads_jsonl_glob_candidates(tmp_path: Path) -
         "\n".join(
             [
                 '{"audit_events": [{"ts_code": "000001.SZ"}, {"ts_code": "000002.SZ"}]}',
-                '{"symbol": "601288.SH", "reason": "missing_or_non_positive_price"}',
-                '{"sample_skipped_candidates": [{"symbol": "002714.SZ"}, {"ts_code": "601398.SH"}]}',
+                (
+                    '{"generated_at": "2026-07-08T02:10:00+00:00", '
+                    '"symbol": "000001.SZ", "reason": "missing_or_non_positive_price"}'
+                ),
+                (
+                    '{"generated_at": "2026-07-08T02:12:00+00:00", '
+                    '"symbol": "601288.SH", "reason": "missing_or_non_positive_price"}'
+                ),
+                (
+                    '{"generated_at": "2026-07-08T02:12:00+00:00", '
+                    '"sample_skipped_candidates": [{"symbol": "002714.SZ"}, {"ts_code": "601398.SH"}]}'
+                ),
                 '{"symbol": "200011.SZ"}',
             ]
         )
