@@ -62,9 +62,11 @@ ASHARE_TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_P0_PRIORITY_STOCK_FILES = [
     _BASE_DIR.parent / "TradingAgent" / "signals" / "positions" / "simulated_ashare_positions.json",
     _BASE_DIR.parent / "TradingAgent" / "shared" / "logs" / "local_sim" / "local_sim_positions.json",
+    _BASE_DIR.parent / "TradingAgent" / "shared" / "runtime_test" / "ashare_preopen_dry_run_latest.json",
     _BASE_DIR.parent / "MarketGraph" / "outputs" / "ashare_closing_buy_candidates.json",
     Path("/opt/investment/tradingagent/signals/positions/simulated_ashare_positions.json"),
     Path("/opt/investment/tradingagent/shared/logs/local_sim/local_sim_positions.json"),
+    Path("/opt/investment/tradingagent/shared/runtime_test/ashare_preopen_dry_run_latest.json"),
     Path("/opt/investment/MarketGraph/outputs/ashare_closing_buy_candidates.json"),
 ]
 

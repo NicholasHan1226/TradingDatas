@@ -9,6 +9,7 @@ from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     DEFAULT_P0_STOCK_BATCH_SIZE,
+    DEFAULT_P0_PRIORITY_STOCK_FILES,
     date_range,
     filter_apis,
     load_stock_codes,
@@ -92,6 +93,12 @@ def test_p0_trading_lane_only_contains_intraday_apis() -> None:
 
     assert p0_names == ["stk_mins", "rt_min"]
     assert DEFAULT_P0_STOCK_BATCH_SIZE == 30
+
+
+def test_p0_priority_sources_include_tradingagent_candidate_report() -> None:
+    paths = {str(path) for path in DEFAULT_P0_PRIORITY_STOCK_FILES}
+
+    assert any("ashare_preopen_dry_run_latest.json" in path for path in paths)
 
 
 def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
