@@ -291,7 +291,6 @@ def _watched_paths() -> list[Path]:
     """
     return [
         *_sqlite_watch_paths(SQLITE_PATH),
-        _resolved_path(INTAKE_ROOT / "event_candidates.csv"),
         _resolved_path(INTAKE_ROOT / "sentiment_signals.csv"),
         _resolved_path(SENTIMENT_SIGNALS_PATH),
         _resolved_path(MACRO_FACTORS_PATH),
@@ -986,22 +985,9 @@ def _get_events_cached(_generation: int, start: str, end: str, event_type: str |
             )
         )
 
-    path = INTAKE_ROOT / "event_candidates.csv"
-    lineage = {
-        "reader": "get_events",
-        "source_path": str(path),
-        "fallback_from": "sqlite:market_events",
-        "filters": {"start": start, "end": end, "event_type": event_type},
-    }
     if db_degraded is not None:
-        lineage["sqlite_degraded_reason"] = db_degraded[0].get("lineage", {}).get("reason") if db_degraded else "unknown"
-    rows, degraded = _safe_csv(path, "csv:event_candidates", lineage)
-    if degraded is not None:
-        return _json_cached(lambda: degraded)
-    matched = _filter_date_range(rows or [], start, end, ("candidate_date", "collected_at_dt", "collected_at"))
-    if event_type:
-        matched = [row for row in matched if str(row.get("proposed_event_type", "")).lower() == event_type.lower()]
-    return _json_cached(lambda: _rows_to_wrappers(matched, source_id="csv:event_candidates", source_tier="event_candidate", collected_at=_file_collected_at(path), lineage=lineage, stale_after_hours=24.0))
+        return _json_cached(lambda: db_degraded)
+    return _json_cached(lambda: _degraded_empty("sqlite:market_events", "no rows matched", lineage=db_lineage))
 
 
 def _event_code_variants(value: Any) -> set[str]:
@@ -1093,7 +1079,15 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
             and _event_row_matches_code(row["data"], wanted_codes)
         ]
     if subject_type:
-        rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("data"), dict) and row["data"].get("subject_type") == subject_type]
+        rows = [
+            row for row in rows
+            if isinstance(row, dict)
+            and isinstance(row.get("data"), dict)
+            and (
+                not row["data"].get("subject_type")
+                or str(row["data"].get("subject_type")) == str(subject_type)
+            )
+        ]
     return rows
 
 

@@ -164,49 +164,62 @@ class TestRuntimeBridge:
             read_csv(Path("/nonexistent/path.csv"))
 
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
-        import csv
         import reader
+        from storage.schema import SCHEMA_SQL
 
         collected_at = datetime.now(timezone.utc).isoformat()
-        intake = tmp_path / "data" / "intake"
-        intake.mkdir(parents=True)
-        with (intake / "event_candidates.csv").open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(
-                handle,
-                fieldnames=[
-                    "candidate_id",
-                    "candidate_date",
-                    "market",
-                    "subject_code",
-                    "subject_type",
-                    "proposed_event_type",
-                    "title",
-                    "collected_at",
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, provider, event_type, event_time, trade_date,
+                    market, symbol, title, content, url, source, source_file,
+                    collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "evt-1",
+                        "tushare_policy",
+                        "policy",
+                        "20260708",
+                        "20260708",
+                        "Ashare",
+                        "SH600276",
+                        "matched",
+                        "",
+                        "",
+                        "tushare_policy",
+                        "policy_20260708.csv",
+                        collected_at,
+                        "{}",
+                    ),
+                    (
+                        "evt-2",
+                        "tushare_policy",
+                        "policy",
+                        "20260708",
+                        "20260708",
+                        "US",
+                        "AAPL.US",
+                        "other",
+                        "",
+                        "",
+                        "tushare_policy",
+                        "policy_20260708.csv",
+                        collected_at,
+                        "{}",
+                    ),
                 ],
             )
-            writer.writeheader()
-            writer.writerow({
-                "candidate_id": "evt-1",
-                "candidate_date": "20260708",
-                "market": "Ashare",
-                "subject_code": "SH600276",
-                "subject_type": "stock",
-                "proposed_event_type": "policy",
-                "title": "matched",
-                "collected_at": collected_at,
-            })
-            writer.writerow({
-                "candidate_id": "evt-2",
-                "candidate_date": "20260708",
-                "market": "US",
-                "subject_code": "AAPL.US",
-                "subject_type": "stock",
-                "proposed_event_type": "policy",
-                "title": "other",
-                "collected_at": collected_at,
-            })
+            conn.commit()
+        finally:
+            conn.close()
 
-        monkeypatch.setattr(reader, "INTAKE_ROOT", intake)
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
         reader.clear_caches()
 
         rows = reader.get_events(
@@ -218,9 +231,9 @@ class TestRuntimeBridge:
             subject_type="stock",
         )
 
-        assert [row["data"]["candidate_id"] for row in rows] == ["evt-1"]
+        assert [row["data"]["event_hash"] for row in rows] == ["evt-1"]
 
-    def test_get_events_reads_sqlite_market_events_before_csv(self, tmp_path: Path, monkeypatch):
+    def test_get_events_reads_sqlite_market_events_only(self, tmp_path: Path, monkeypatch):
         import reader
         from storage.schema import SCHEMA_SQL
 
@@ -287,9 +300,7 @@ class TestRuntimeBridge:
     def test_get_events_preserves_degraded_empty_when_filters_are_present(self, tmp_path: Path, monkeypatch):
         import reader
 
-        intake = tmp_path / "data" / "intake"
-        intake.mkdir(parents=True)
-        monkeypatch.setattr(reader, "INTAKE_ROOT", intake)
+        monkeypatch.setattr(reader, "SQLITE_PATH", tmp_path / "missing_marketdata.sqlite")
         reader.clear_caches()
 
         rows = reader.get_events(
@@ -301,7 +312,7 @@ class TestRuntimeBridge:
 
         assert rows[0]["degraded"] is True
         assert rows[0]["data"] == {}
-        assert "missing file" in rows[0]["lineage"]["reason"]
+        assert "missing sqlite db" in rows[0]["lineage"]["reason"]
 
     def test_write_csv_creates_file(self, tmp_csv_dir: Path):
         from bridge.marketgraph_runtime_bridge import write_csv, read_csv

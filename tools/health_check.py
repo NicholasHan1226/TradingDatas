@@ -249,9 +249,6 @@ def _reader_samples() -> dict[str, str]:
                 samples["intraday_date"] = str(row["trade_date"] or samples["intraday_date"])
         finally:
             con.close()
-    event_date = _latest_csv_date(SS / "data" / "intake" / "event_candidates.csv", "candidate_date")
-    if event_date:
-        samples["event_date"] = event_date
     sentiment_date = (
         _latest_csv_date(SS / "data" / "intake" / "sentiment_signals.csv", "source_date")
         or _latest_csv_date(SS / "data" / "sentiment_signals.csv", "source_date")

@@ -155,7 +155,7 @@ SharedSignals 只负责采集和桥接国内期货行情，不生成交易信号
 | `source` | TEXT | 源名称 |
 | `collected_at` | TEXT | 采集时间 |
 
-Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由 bridge 自动补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。`/events` 优先读取 `market_events`，旧 `event_candidates.csv` 只作为兼容兜底。
+Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由 bridge 自动补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。`/events` 只读取 SQLite `market_events`，不再回退旧 `event_candidates.csv`。
 
 #### market_factors (因子/宏观/资金)
 
@@ -551,7 +551,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货日线 OHLCV | Tushare `fut_daily` | collector → `market_bars_daily`，market=`Futures`；按 `trade_date` 全品种采集，不使用 A 股股票列表 |
 | 期货 5 分钟 OHLCV | Tushare `rt_fut_min` | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | Polymarket 市场/价格 | Polymarket API → marketdata.sqlite | Bridged: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
-| 事件/信号 | Tushare news/announcements → `market_events`; legacy RSS/Tavily intake CSV deferred | `reader.get_events()` 优先读 SQLite `market_events`，旧 `event_candidates.csv` 只作兼容兜底；`reader.get_sentiment()` 仍读 sentiment CSV，intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
+| 事件/信号 | Tushare news/announcements → `market_events`; legacy RSS/Tavily intake CSV deferred | `reader.get_events()` 只读 SQLite `market_events`；旧 `event_candidates.csv` 仅属历史/MarketGraph staging，不作为 SharedSignals 对外 `/events` 数据源；`reader.get_sentiment()` 仍读 sentiment CSV，intake 空时回退 `data/sentiment_signals.csv` 并保留 provenance；RSS 源在 `source_registry.csv` 中已标记 `deferred`，当前不作为现役生产 collector |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | reference/*.csv | Bridged: `reader.get_reference()` |
 | 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |
