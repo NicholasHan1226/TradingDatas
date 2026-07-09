@@ -198,6 +198,8 @@ CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免
 
 Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由直接入库层补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。SEC EDGAR filings manual pilot collector 也写入 `market_events`，provider 为 `sec_edgar`，event_type 形如 `sec_edgar:10-K`。`/events` 只读取 SQLite `market_events`，不再回退旧事件候选文件。
 
+SEC EDGAR pilot rows use `market="US"` and `symbol="CIK##########"`; for example, query Apple filing rows through `/events?market=US&event_type=sec_edgar:4&subject_code=CIK0000320193&limit=5`. This remains a manual pilot until scheduled cadence and SLA evidence are approved.
+
 #### market_factors (因子/宏观/资金)
 
 | 字段 | 类型 | 说明 |

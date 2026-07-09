@@ -13,6 +13,7 @@ It does not classify trades, generate signals, score impact, place orders, or wr
 | Source | API names | Collection path | Output |
 | --- | --- | --- | --- |
 | Tushare event APIs | `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `cron/tushare_events_collect.sh` with `--only-api` | `market_events` |
+| SEC EDGAR filings | manual CIK submissions pilot | `collectors/events/sec_edgar_filings.py` manual run only | `market_events` |
 | RSS/RSSHub | retired/deferred | none | none |
 | Tavily/DeepSeek event input | disabled/deferred | none | none |
 
@@ -31,6 +32,8 @@ The active production event lane runs every 30 minutes from 08:00 to 23:59 Monda
 | `report_rc` | 30-minute active window in the current wrapper | Research-report context; not immediate execution input. |
 
 Before expanding the pilot, prove provider latency, dedup ratio, SQLite write cost, API read latency, and freshness SLA behavior on one source first. Do not increase `anns_d`, `report_rc`, or `cctv_news` without separate evidence.
+
+SEC EDGAR remains a manual B1 pilot source, not scheduled production collection. The 2026-07-09 pilot wrote filing metadata for Apple and Microsoft CIKs to `market_events`; consumers read it through `/events` with `event_type=sec_edgar:*` and optional `subject_code=CIK...`.
 
 ## Consumer Rules
 

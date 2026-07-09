@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役、Green Gate 日报接入）
+> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役、Green Gate 日报接入、SEC EDGAR 手动 pilot 入库/API 验证）
 
 ---
 
@@ -40,7 +40,7 @@
 
 ## 四、当前风险与未完成项
 
-- **B1 扩源仍是 planned**：SEC EDGAR filings 已有 manual pilot collector；官方交易所公告仍是 planned。所有 B1 源必须先跑 pilot 和治理验收，不得直接装 cron。
+- **B1 扩源仍是 planned**：SEC EDGAR filings 已完成一次生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`，API 可读），但仍未装 cron；官方交易所公告仍是 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
 - **`reader.py` / `api_server.py` 仍偏大**：当前测试覆盖通过，但长期应继续按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。
 - **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
 - **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
@@ -70,6 +70,6 @@ curl -s http://127.0.0.1:8082/agent_config
 
 ## 六、下一步
 
-1. [ ] B1 official event pilot：用 `collectors/events/sec_edgar_filings.py` 对少量 CIK 做 dry-run/手动写库验证；再评估官方交易所公告 collector。
+1. [ ] B1 official event follow-up：观察 SEC EDGAR pilot 行 1-2 个交易日；若 `/events` 查询、SLA 和 Green Gate 继续正常，再评估 30-60 分钟 filing metadata pilot cron 或优先做官方交易所公告 collector。
 2. [ ] 继续拆小 reader/API：优先抽离无状态配置读取和 response helpers，再逐步拆业务 endpoint。
 3. [ ] 生产观察：继续看 `/source_status` 和 Green Gate 日报是否保持 green，尤其是 `api_module_catalog`、`health_sla_summary`、`capability_registry` 和 `data_artifact_guard`。

@@ -80,7 +80,7 @@ Do not install any planned candidate into production cron until it has passed th
 
 | Source | Script | Status | Production rule |
 | --- | --- | --- | --- |
-| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events`; not installed in cron. |
+| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 rows for Apple/Microsoft CIKs and API readback passed | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events`; not installed in cron. |
 
 SEC EDGAR pilot example:
 
@@ -91,6 +91,14 @@ SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
 ```
 
 Remove `--dry-run` only after validating the target SQLite path and expected row shape. Scheduled mode requires source governance to remain green after pilot evidence is reviewed.
+
+API readback example after a pilot write:
+
+```bash
+curl "http://127.0.0.1:8082/events?market=US&event_type=sec_edgar:4&subject_code=CIK0000320193&limit=5"
+```
+
+Keep `sec_edgar_filings` in `planned` mode until the pilot has 1-2 trading days of Green Gate/source_status observation and an explicit cadence/SLA decision.
 
 ## Lightweight Registry Pattern
 

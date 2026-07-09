@@ -483,6 +483,78 @@ class TestReaderEvents:
         assert len(rows) == 2
         assert [row["data"]["title"] for row in rows] == ["event 3", "event 2"]
 
+    def test_get_events_pushes_symbol_filter_before_limit(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            rows = []
+            for idx in range(10):
+                rows.append(
+                    (
+                        f"newer-{idx}",
+                        "sec_edgar",
+                        "sec_edgar:4",
+                        f"2026-07-{20 + idx:02d}T00:00:00+00:00",
+                        f"202607{20 + idx:02d}",
+                        "US",
+                        "CIK9999999999",
+                        f"newer {idx}",
+                        "",
+                        "",
+                        "SEC EDGAR submissions",
+                        "sec_edgar_filings",
+                        datetime.now(timezone.utc).isoformat(),
+                        "{}",
+                    )
+                )
+            rows.append(
+                (
+                    "target-old",
+                    "sec_edgar",
+                    "sec_edgar:4",
+                    "2026-07-01T00:00:00+00:00",
+                    "20260701",
+                    "US",
+                    "CIK0000320193",
+                    "Apple Form 4",
+                    "",
+                    "",
+                    "SEC EDGAR submissions",
+                    "sec_edgar_filings",
+                    datetime.now(timezone.utc).isoformat(),
+                    "{}",
+                )
+            )
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, provider, event_type, event_time, trade_date,
+                    market, symbol, title, content, url, source, source_file,
+                    collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        result = reader.get_events(
+            market="US",
+            subject_code="CIK0000320193",
+            event_type="sec_edgar:4",
+            limit=2,
+        )
+
+        assert [row["data"]["event_hash"] for row in result] == ["target-old"]
+
     def test_degraded_empty_is_stale_and_unfresh(self):
         import reader
 

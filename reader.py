@@ -893,7 +893,15 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_events_cached(_generation: int, start: str, end: str, event_type: str | None, limit: int) -> str:
+def _get_events_cached(
+    _generation: int,
+    start: str,
+    end: str,
+    event_type: str | None,
+    limit: int,
+    market: str | None,
+    subject_code: str | None,
+) -> str:
     start_key = _optional_date_key(start)
     end_key = _optional_date_key(end)
     if start_key and end_key and start_key > end_key:
@@ -911,11 +919,20 @@ def _get_events_cached(_generation: int, start: str, end: str, event_type: str |
     if event_type:
         where.append("LOWER(event_type) = ?")
         params.append(event_type.lower())
+    market_key = _market_match_key(market)
+    if market_key:
+        where.append("LOWER(REPLACE(REPLACE(COALESCE(market, ''), '-', '_'), ' ', '_')) = ?")
+        params.append(market_key)
+    wanted_codes = sorted(_event_code_variants(subject_code))
+    if wanted_codes:
+        placeholders = ",".join("?" for _ in wanted_codes)
+        where.append(f"UPPER(COALESCE(symbol, '')) IN ({placeholders})")
+        params.extend(wanted_codes)
 
     db_lineage = {
         "reader": "get_events",
         "source": "sqlite:market_events",
-        "filters": {"start": start, "end": end, "event_type": event_type},
+        "filters": {"start": start, "end": end, "event_type": event_type, "market": market, "subject_code": subject_code},
     }
     rows, db_degraded = _sqlite_rows(
         "SELECT * FROM market_events "
@@ -997,17 +1014,29 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
         end = start
     limit = _bounded_limit(kwargs.get("limit"), 500)
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
-    rows = _safe_public("sqlite:market_events", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type, limit))
+    market = kwargs.get("market")
+    symbol = kwargs.get("symbol")
+    subject_code = kwargs.get("subject_code") or kwargs.get("ts_code") or symbol
+    subject_type = kwargs.get("subject_type")
+    wanted_codes = _event_code_variants(subject_code)
+    rows = _safe_public(
+        "sqlite:market_events",
+        lineage,
+        lambda generation: _get_events_cached(
+            generation,
+            str(start),
+            str(end),
+            event_type,
+            limit,
+            str(market or "") or None,
+            str(subject_code or "") or None,
+        ),
+    )
     if rows and all(
         isinstance(row, dict) and bool(row.get("degraded")) and row.get("data") in ({}, None)
         for row in rows
     ):
         return rows
-    market = kwargs.get("market")
-    symbol = kwargs.get("symbol")
-    subject_code = kwargs.get("subject_code") or symbol
-    subject_type = kwargs.get("subject_type")
-    wanted_codes = _event_code_variants(subject_code)
     if market:
         rows = [
             row for row in rows
