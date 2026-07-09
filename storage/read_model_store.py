@@ -104,6 +104,8 @@ API_TO_TABLE_MAP = {
     "index_dailybasic": "market_bars_daily",
     "index_classify": "market_assets",
     "index_global": "market_bars_daily",
+    "index_member": "market_relationships",
+    "index_member_all": "market_relationships",
     "index_monthly": "market_bars_intraday",
     "index_weekly": "market_bars_intraday",
     "index_weight": "market_bars_daily",
@@ -148,6 +150,8 @@ API_TO_TABLE_MAP = {
     "stock_company": "market_assets",
     "suspend_d": "market_events",
     "ths_index": "market_assets",
+    "ths_member": "market_relationships",
+    "dc_member": "market_relationships",
     "top_list": "market_factors",
     "top10_floatholders": "market_assets",
     "top10_holders": "market_assets",
@@ -195,6 +199,10 @@ def _market_for(api_name, symbol):
         "hs_const",
         "ths_index",
         "dc_index",
+        "ths_member",
+        "dc_member",
+        "index_member",
+        "index_member_all",
     ):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
@@ -256,6 +264,13 @@ _FACTOR_INSERT_COLUMNS = (
     "collected_at",
     "raw_json",
 )
+
+_RELATIONSHIP_APIS = {"ths_member", "dc_member", "index_member", "index_member_all"}
+
+
+def _relationship_hash(api_name, parent_symbol, child_symbol, relationship_type, trade_date, raw_json):
+    payload = "|".join(str(part or "") for part in (api_name, parent_symbol, child_symbol, relationship_type, trade_date, raw_json))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 _INTRADAY_ALIAS_COLUMNS = {
     "bid_price": ("bid_price", "bid1", "best_bid"),
@@ -383,6 +398,23 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
                 derived_columns.append(col)
     if table == "market_events":
         for col in ("event_hash", "event_type", "event_time", "trade_date", "source", "raw_json"):
+            if col in target_columns:
+                derived_columns.append(col)
+    if table == "market_relationships":
+        for col in (
+            "relationship_hash",
+            "relationship_type",
+            "market",
+            "parent_symbol",
+            "parent_name",
+            "child_symbol",
+            "child_name",
+            "start_date",
+            "end_date",
+            "trade_date",
+            "weight",
+            "raw_json",
+        ):
             if col in target_columns:
                 derived_columns.append(col)
     if api_name and "provider" in target_columns:
@@ -545,6 +577,40 @@ def _canonical_row(table, row, api_name, csv_path):
             row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
         if not row.get("event_hash"):
             row["event_hash"] = _event_hash(provider, event_type, event_time, row)
+
+    if table == "market_relationships":
+        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        parent_symbol = _first_present(row, "parent_symbol", "parent_code", "index_code", "ts_code", "index_id", "id")
+        child_symbol = _first_present(row, "child_symbol", "child_code", "con_code", "stock_code", "member_code", "symbol", "code")
+        if child_symbol == parent_symbol:
+            child_symbol = _first_present(row, "con_code", "stock_code", "member_code", "child_code")
+        parent_name = _first_present(row, "parent_name", "index_name", "name", "industry_name")
+        child_name = _first_present(row, "child_name", "con_name", "stock_name", "member_name")
+        trade_date = _first_present(row, "trade_date", "ann_date", "date")
+        start_date = _first_present(row, "start_date", "in_date", "begin_date")
+        end_date = _first_present(row, "end_date", "out_date", "end_date")
+        raw_json = row.get("raw_json") or json.dumps(row, ensure_ascii=False, sort_keys=True)
+        if provider and not row.get("provider"):
+            row["provider"] = provider
+        row["relationship_type"] = row.get("relationship_type") or api_name or "membership"
+        row["market"] = row.get("market") or _market_for(api_name, parent_symbol or child_symbol)
+        row["parent_symbol"] = parent_symbol
+        row["parent_name"] = parent_name
+        row["child_symbol"] = child_symbol
+        row["child_name"] = child_name
+        row["trade_date"] = trade_date or start_date or end_date or row.get("collected_at")
+        row["start_date"] = start_date
+        row["end_date"] = end_date
+        row["weight"] = _coerce_float(row.get("weight"))
+        row["raw_json"] = raw_json
+        row["relationship_hash"] = row.get("relationship_hash") or _relationship_hash(
+            api_name,
+            row.get("parent_symbol"),
+            row.get("child_symbol"),
+            row.get("relationship_type"),
+            row.get("trade_date"),
+            raw_json,
+        )
 
     if api_name and not row.get("provider"):
         row["provider"] = f"tushare_{api_name}"

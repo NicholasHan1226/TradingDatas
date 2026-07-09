@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.22 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.23 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -73,8 +73,9 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 ### 存储概览
 
 ```
-marketdata.sqlite (11 表)
+marketdata.sqlite (12 表)
 ├── market_assets              —— 品种主表
+├── market_relationships       —— 指数/主题/行业成分关系
 ├── market_bars_daily          —— 日线 OHLCV
 ├── market_bars_intraday       —— 分钟线 OHLCV
 ├── market_events              —— 新闻/事件流
@@ -584,6 +585,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股龙虎榜/竞价/涨跌停价格 | Tushare `top_list` / `stk_auction` / `limit_step` / `stk_limit` | P1 collector → `market_factors`; 只作为结构化行情/盘口参考，不生成交易判断 |
 | A 股题材/指数成分参考 | Tushare `concept` / `concept_detail` / `hs_const` | P3 collector → `market_assets`; 只作为参考/归因维度，不作为行情价格 |
 | A 股题材/行业/名称参考 | Tushare `namechange` / `ths_index` / `dc_index` / `index_classify` | P3 collector → `market_events` 或 `market_assets`; 只作为参考/归因维度，不生成交易判断 |
+| A 股主题/指数成分关系 | Tushare `ths_member` / `dc_member` / `index_member` / `index_member_all` | P3 collector → `market_relationships`; 保留 parent/child 多对多关系，DB-first `/tushare` |
 | A 股北向资金/沪深港通资金 | Tushare `moneyflow_hsgt` | P1 collector → `market_factors`; DB-first `/tushare?api_name=moneyflow_hsgt` |
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮从 read model 资产池和显式环境变量优先池选股并轮转补足，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，未传日期时使用该股票最新 intraday 日期；无数据返回 degraded/empty，不回退 CSV 或旧目录 |
 | A 股/指数周月线 | Tushare `weekly` / `monthly` / `index_weekly` / `index_monthly` | P7 low-frequency wrapper → `market_bars_intraday` with interval=`weekly`/`monthly`/`index_weekly`/`index_monthly`; DB-first `/tushare` |
@@ -805,6 +807,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.23 | 启用 B1 关系/成分数据：新增 `market_relationships` read model，`ths_member`、`dc_member`、`index_member`、`index_member_all` 进入 P3 日频参考层；Tushare 生产配置接口从 98 增至 102，planned backlog 从 16 降至 12。 |
 | 2026-07-09 | 1.1.22 | 新增 `/agent_config` 外部 agent 机器接入配置端点，补充一键复制 prompt 与 16 个 planned Tushare 接口的分批激活 backlog，明确外部 agent 应先读健康/配置再按市场和频率调用。 |
 | 2026-07-09 | 1.1.21 | 明确 SharedSignals 是分钟级/5 分钟级交易数据供给层，不是毫秒级 HFT 或执行系统；Tushare 生产 tier 扩展到 P0-P7，新增 P7 周/月线低频 lane、事件 30 分钟 lane、第一批 planned-to-scheduled 数据维度和外部 agent 调用规则。 |
 | 2026-07-09 | 1.1.20 | 补齐 HTTP `/capabilities` 与 `/cache/status` 合同；澄清 `/associations`、`/impacts` 是 SharedSignals API/read-model 输出，消费者不得直接读取 MarketGraph 仓库文件；保留 localhost bypass 默认关闭的安全边界。 |

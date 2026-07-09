@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-09
 
-SharedSignals currently has 115 Tushare names in the HTTP read allowlist. Of those, 98 are configured in production collection tiers, `rt_fut_min` is an independent 5-minute futures collector option, and 16 planned interfaces remain in the activation backlog.
+SharedSignals currently has 115 Tushare names in the HTTP read allowlist. Of those, 102 are configured in production collection tiers, `rt_fut_min` is an independent 5-minute futures collector option, and 12 planned interfaces remain in the activation backlog.
 
 This backlog exists so remaining interfaces are used scientifically: by market, module, read-model shape, and cadence. Do not mark an interface scheduled merely because it is allowlisted.
 
@@ -20,9 +20,16 @@ Every activation must prove:
 
 ## Batch Plan
 
+Completed:
+
+| Batch | APIs | Market/module | Read model | Cadence | Status |
+| --- | --- | --- | --- | --- | --- |
+| B1 relationship/reference | `ths_member`, `dc_member`, `index_member`, `index_member_all` | A-share themes and index membership | `market_relationships` | daily_reference | Scheduled in P3 reference lane |
+
+Remaining:
+
 | Batch | APIs | Market/module | Target read model | Cadence | Why this order |
 | --- | --- | --- | --- | --- | --- |
-| B1 relationship/reference | `ths_member`, `dc_member`, `index_member`, `index_member_all` | A-share themes and index membership | membership/relationship projection, or `market_assets` only with explicit relation fields | daily_reference | These are many-to-many mappings and should not be forced into price/factor rows without preserving relationship semantics. |
 | B2 daily supporting bars | `ths_daily`, `dc_daily`, `opt_daily`, `fut_holding` | A-share themes, options, futures | `market_bars_daily` or `market_factors` depending on returned fields | postclose_daily / futures_settlement_daily | These support cross-section and derivatives context, but are not 5-minute trading feeds. |
 | B3 financial/reporting details | `fina_audit`, `fina_mainbz`, `fund_portfolio` | A-share filings and fund holdings | `market_factors` with report-period keys and raw row lineage | daily_reporting_window / reporting_window | These are reporting-window datasets and need per-symbol or per-period sharding proof. |
 | B4 adjustments/reference enhancements | `bak_basic`, `fund_adj`, `cyq_perf`, `cyq_chips` | A-share reference, fund NAV support, chips | `market_assets` or `market_factors` after pilot field inspection | daily_reference / postclose_daily | Field shapes need a small pilot before final table mapping. |
@@ -49,12 +56,8 @@ Every activation must prove:
 | `fina_mainbz` | A-share fundamentals | daily_reporting_window | Main-business breakdown needs raw lineage and period keys. |
 | `bak_basic` | A-share reference | daily_reference | Reference enrichment; verify provider rows are non-empty. |
 | `ths_daily` | A-share themes | daily_reference | Theme/industry daily data; map to bars only after field proof. |
-| `ths_member` | A-share themes | daily_reference | Many-to-many membership mapping. |
 | `ths_hot` | A-share hotness | intraday_or_daily_pilot | Pilot cadence before high-frequency use. |
 | `dc_daily` | A-share themes | postclose_daily | Daily sector/theme data; likely EOD only. |
-| `dc_member` | A-share themes | daily_reference | Many-to-many membership mapping. |
-| `index_member` | Macro/global index | daily_reference | Many-to-many index constituent mapping. |
-| `index_member_all` | Macro/global index | daily_reference | Many-to-many index constituent mapping. |
 | `fut_holding` | Futures | futures_settlement_daily | Settlement/positioning context. |
 | `fund_adj` | Funds | daily_nav | NAV adjustment support; map after field proof. |
 | `fund_portfolio` | Funds | reporting_window | Fund holdings/reporting-period dataset. |

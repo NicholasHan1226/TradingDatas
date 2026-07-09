@@ -1104,7 +1104,10 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
         end = end_date or params.get("end_date", "")
         where: list[str] = []
         vals: list[Any] = []
-        if code and "symbol" in cols:
+        if table == "market_relationships" and code and {"parent_symbol", "child_symbol"} <= set(cols):
+            where.append("(parent_symbol = ? OR child_symbol = ?)")
+            vals.extend([code, code])
+        elif code and "symbol" in cols:
             where.append("symbol = ?")
             vals.append(code)
         date_col = "trade_date" if "trade_date" in cols else "event_time" if "event_time" in cols else "updated_at" if "updated_at" in cols else "collected_at" if "collected_at" in cols else ""
@@ -1132,6 +1135,10 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
                     "fund_nav": "Fund",
                 }.get(api_name, "Ashare")
             market_filter = _canonical_market_key(market_filter)
+            where.append("market = ?")
+            vals.append(market_filter)
+        if table == "market_relationships" and "market" in cols and params.get("market"):
+            market_filter = _canonical_market_key(str(params.get("market") or "").strip())
             where.append("market = ?")
             vals.append(market_filter)
         if "provider" in cols:

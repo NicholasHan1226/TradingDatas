@@ -179,6 +179,19 @@ def test_tushare_capability_plan_marks_current_collection_paths() -> None:
     assert by_name["rt_fut_min"]["mode"] == "independent"
 
 
+def test_relationship_member_apis_are_scheduled_and_mapped_to_relationships() -> None:
+    configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
+    planned_rows = _planned_tushare_apis()
+    by_name = {row["api_name"]: row for row in planned_rows}
+    relationship_apis = {"ths_member", "dc_member", "index_member", "index_member_all"}
+
+    assert relationship_apis <= configured
+    for api_name in relationship_apis:
+        assert API_TO_TABLE_MAP[api_name] == "market_relationships"
+        assert by_name[api_name]["mode"] == "scheduled"
+        assert by_name[api_name]["cadence"] == "daily_reference"
+
+
 def test_tushare_event_wrapper_runs_only_event_apis() -> None:
     wrapper = Path("cron/tushare_events_collect.sh").read_text(encoding="utf-8")
 
@@ -259,7 +272,7 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
     assert "外部 agent" in docs["API_CONTRACT.md"]
     assert "/agent_config" in docs["API_CONTRACT.md"]
     assert "不要绕过 SharedSignals" in docs["docs/external_agent_api_prompt.md"]
-    assert "16 planned" in docs["docs/tushare_activation_backlog.md"]
+    assert "12 planned" in docs["docs/tushare_activation_backlog.md"]
 
 
 def test_external_agent_config_matches_current_capability_counts() -> None:
@@ -271,7 +284,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.22"
+    assert config["contract_version"] == "1.1.23"
     assert config["tushare_status"]["allowlisted_api_names"] == len(ALLOWED_TUSHARE_APIS)
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)

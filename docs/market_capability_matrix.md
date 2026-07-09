@@ -8,10 +8,10 @@ This document is the market-facing capability and cadence guide for SharedSignal
 
 SharedSignals should be managed by market and data-latency need, not by provider name alone.
 
-- `collectors/tushare/config.yaml` is the active Tushare collection plan: 98 configured interfaces.
+- `collectors/tushare/config.yaml` is the active Tushare collection plan: 102 configured interfaces.
 - `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 115 names.
 - `config/tushare_capability_plan.yaml` is the market/module management plan for all 115 allowlisted names.
-- `docs/tushare_activation_backlog.md` is the activation plan for the remaining 16 planned interfaces.
+- `docs/tushare_activation_backlog.md` is the activation plan for the remaining 12 planned interfaces.
 - `/agent_config` and `config/external_agent_api_config.json` expose the external-agent integration contract and frequency labels.
 - HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
 - SharedSignals supports minute/5-minute trading data inputs, but not millisecond HFT, order matching, order placement, funds, accounts, or execution receipts.
@@ -25,6 +25,7 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | A-share daily/technical | Tushare `daily`, `stk_factor`, `stk_factor_pro`, `daily_basic`, `adj_factor` | `/market_data`, `/tushare` | Post-close daily | Latest trading day after EOD collection | Active |
 | A-share flow/depth/events-derived data | Tushare `moneyflow`, `moneyflow_hsgt`, `margin`, `margin_detail`, `top_list`, `limit_list`, `limit_list_d`, `limit_step`, `stk_auction`, `stk_limit`, `block_trade` | `/capital_flow`, `/events`, `/tushare` | Post-close daily | Latest trading day or latest collected event row | Active, not buy/sell logic |
 | A-share fundamentals/reference | Tushare `fina_indicator`, financial statements, holders, pledge, company, concept, index membership, calendar | `/fundamentals`, `/reference`, `/industry`, `/tushare` | Daily/reference windows | Latest available reporting/reference snapshot | Active |
+| A-share theme/index relationships | Tushare `ths_member`, `dc_member`, `index_member`, `index_member_all` | `/tushare` | Daily reference | Latest collected membership snapshot | Active relationship lane |
 | China futures daily | Tushare `fut_basic`, `fut_daily` | `/market_data`, `/tushare` | Daily settlement window | Latest futures trading day after settlement | Active |
 | China futures intraday | AkShare/Sina default; Tushare `rt_fut_min` only when explicitly enabled | `/realtime_5min?market=Futures`, `/realtime_5min?market=CNFutures` | Day/night sessions every 5 minutes | 10 minute default freshness during active session | Active |
 | Crypto | Binance ticker and 1d klines | `/crypto`, `/market_data?market=Crypto` | Ticker every 5 minutes; daily klines hourly | Intraday <= 30 minutes | Active |

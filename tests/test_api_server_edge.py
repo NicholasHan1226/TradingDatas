@@ -152,6 +152,14 @@ class _FakeReader:
                 **params,
             },
         ))
+        if api_name == "ths_member":
+            return [
+                {
+                    "data": {"parent_symbol": "885001.TI", "child_symbol": "000001.SZ"},
+                    "degraded": False,
+                    "provenance": {"source_id": "tushare_ths_member"},
+                }
+            ]
         return [
             {"data": {"title": "news-1"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
             {"data": {"title": "news-2"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
@@ -250,6 +258,17 @@ def test_api_tushare_applies_limit(api_edge_server) -> None:
 
     assert status == 200
     assert [row["title"] for row in payload["data"]] == ["news-1", "news-2"]
+    assert payload["metadata"]["degraded"] is False
+    assert reader.calls[-1][0] == "get_tushare"
+
+
+def test_api_tushare_relationship_api_is_visible(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/tushare?api_name=ths_member&limit=1")
+
+    assert status == 200
+    assert payload["data"] == [{"parent_symbol": "885001.TI", "child_symbol": "000001.SZ"}]
     assert payload["metadata"]["degraded"] is False
     assert reader.calls[-1][0] == "get_tushare"
 
@@ -451,9 +470,9 @@ def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) 
 
     assert status == 200
     assert payload["source"] == "external_agent_api_config.json"
-    assert payload["data"]["contract_version"] == "1.1.22"
+    assert payload["data"]["contract_version"] == "1.1.23"
     assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 115
-    assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 16
+    assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 12
     assert payload["metadata"]["degraded"] is False
     assert payload["metadata"]["lineage"]["source"] == "config/external_agent_api_config.json"
 

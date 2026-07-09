@@ -610,6 +610,71 @@ def test_first_batch_planned_api_rows_ingest_to_sqlite(tmp_path: Path):
     assert intervals == {"weekly", "index_weekly"}
 
 
+def test_relationship_member_apis_ingest_to_market_relationships(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    samples = {
+        "ths_member": [
+            {
+                "ts_code": "885001.TI",
+                "name": "同花顺主题",
+                "con_code": "000001.SZ",
+                "con_name": "平安银行",
+                "weight": 1.5,
+                "in_date": "20260101",
+            }
+        ],
+        "dc_member": [
+            {
+                "ts_code": "BK0420.DC",
+                "name": "东方财富板块",
+                "con_code": "600000.SH",
+                "con_name": "浦发银行",
+                "weight": 2.5,
+            }
+        ],
+        "index_member": [
+            {
+                "index_code": "000300.SH",
+                "con_code": "600519.SH",
+                "con_name": "贵州茅台",
+                "trade_date": "20260709",
+                "weight": 6.5,
+            }
+        ],
+        "index_member_all": [
+            {
+                "index_code": "000905.SH",
+                "con_code": "000001.SZ",
+                "con_name": "平安银行",
+                "trade_date": "20260709",
+            }
+        ],
+    }
+
+    for api_name, rows in samples.items():
+        table = API_TO_TABLE_MAP[api_name]
+        assert table == "market_relationships"
+        assert ingest_rows_to_sqlite(db_path, table, api_name, rows, source_name=f"{api_name}_test") == 1
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute(
+            """
+            SELECT provider, relationship_type, market, parent_symbol, child_symbol, child_name, weight
+            FROM market_relationships
+            ORDER BY provider, child_symbol
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(rows) == 4
+    assert ("tushare_index_member", "index_member", "Ashare", "000300.SH", "600519.SH", "贵州茅台", 6.5) in rows
+    assert ("tushare_ths_member", "ths_member", "Ashare", "885001.TI", "000001.SZ", "平安银行", 1.5) in rows
+
+
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

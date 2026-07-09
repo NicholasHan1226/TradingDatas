@@ -5,7 +5,7 @@ Strategy (from Codex architecture review):
   - DuckDB provides a fast read-only analytics copy
   - Per-thread duckdb.connect() — never global duckdb.sql()
 
-All 11 tables defined here match the SQLite schema in storage/schema.py.
+All 12 tables defined here match the SQLite schema in storage/schema.py.
 """
 
 from __future__ import annotations
@@ -16,10 +16,11 @@ from typing import Any
 # DuckDB DDL (rendered from storage.schema_contract)
 # ---------------------------------------------------------------------------
 
-from .schema_contract import render_schema, table_names
+from .schema_contract import render_schema, table_names, table_primary_keys
 
 DUCKDB_SCHEMA_SQL = render_schema("duckdb")
 TABLE_NAMES = table_names()
+TABLE_PRIMARY_KEYS = table_primary_keys()
 
 
 def create_schema(conn: Any) -> None:

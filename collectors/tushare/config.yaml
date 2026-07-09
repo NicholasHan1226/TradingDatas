@@ -246,6 +246,18 @@ priorities:
       index_code: ''
       start_date: '{start_date}'
     per_stock: false
+  - api_name: index_member
+    frequency: daily
+    params:
+      index_code: ''
+    per_stock: false
+    fields: index_code,con_code,trade_date,weight
+  - api_name: index_member_all
+    frequency: daily
+    params:
+      index_code: ''
+    per_stock: false
+    fields: index_code,con_code,trade_date,weight
   - api_name: share_float
     per_stock: true
     fields: ts_code,ann_date,float_share,float_ratio
@@ -268,11 +280,23 @@ priorities:
     params: {}
     per_stock: false
     fields: ts_code,name,count,exchange,list_date,type
+  - api_name: ths_member
+    frequency: daily
+    params:
+      ts_code: ''
+    per_stock: false
+    fields: ts_code,name,con_code,con_name,weight,in_date,out_date,is_new
   - api_name: dc_index
     frequency: daily
     params: {}
     per_stock: false
     fields: ts_code,trade_date,name,leading,leading_code,pct_change,leading_pct,total_mv,turnover_rate,up_num,down_num,idx_type,level
+  - api_name: dc_member
+    frequency: daily
+    params:
+      ts_code: ''
+    per_stock: false
+    fields: ts_code,name,con_code,con_name,weight,in_date,out_date
   - api_name: index_classify
     frequency: daily
     params:

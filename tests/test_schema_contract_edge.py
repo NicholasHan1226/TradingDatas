@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from storage.schema_contract import Column, Table, get_table, render_schema, render_table
+from storage import duckdb_schema
+from storage.schema_contract import Column, Table, get_table, render_schema, render_table, table_primary_keys
 
 
 def test_schema_contract_unknown_dialect_raises_value_error() -> None:
@@ -30,3 +31,8 @@ def test_schema_contract_table_without_pk_renders_without_primary_key() -> None:
     assert "symbol TEXT NOT NULL" in ddl
     assert "value REAL" in ddl
     assert "PRIMARY KEY" not in ddl
+
+
+def test_duckdb_schema_exports_primary_keys() -> None:
+    assert duckdb_schema.TABLE_PRIMARY_KEYS == table_primary_keys()
+    assert duckdb_schema.TABLE_PRIMARY_KEYS["market_relationships"] == ["relationship_hash"]

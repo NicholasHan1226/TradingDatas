@@ -30,13 +30,14 @@ class TestSchemaSQL:
         assert isinstance(SCHEMA_SQL, str)
         assert len(SCHEMA_SQL) > 100
 
-    def test_schema_contains_all_11_tables(self):
+    def test_schema_contains_all_12_tables(self):
         from storage.schema import SCHEMA_SQL
         required_tables = [
             "market_assets", "market_bars_daily", "market_bars_intraday",
             "market_events", "market_pm_markets", "market_pm_prices",
             "market_factors", "market_ingest_runs", "market_coverage_status",
             "market_backfill_status", "provider_interface_matrix",
+            "market_relationships",
         ]
         schema_upper = SCHEMA_SQL.upper()
         for table in required_tables:

@@ -91,11 +91,11 @@ modules:
       - {api_name: hs_const, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_daily, mode: planned, cadence: daily_reference}
       - {api_name: ths_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: ths_member, mode: planned, cadence: daily_reference}
+      - {api_name: ths_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_hot, mode: planned, cadence: intraday_or_daily_pilot}
       - {api_name: dc_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: dc_daily, mode: planned, cadence: postclose_daily}
-      - {api_name: dc_member, mode: planned, cadence: daily_reference}
+      - {api_name: dc_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
 
   - module: index_global_and_macro
     market: MacroGlobal
@@ -109,8 +109,8 @@ modules:
       - {api_name: index_weekly, mode: scheduled, tier: P7_low_frequency, cadence: weekly_reference}
       - {api_name: index_monthly, mode: scheduled, tier: P7_low_frequency, cadence: monthly_reference}
       - {api_name: index_classify, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: index_member, mode: planned, cadence: daily_reference}
-      - {api_name: index_member_all, mode: planned, cadence: daily_reference}
+      - {api_name: index_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
+      - {api_name: index_member_all, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: cn_cpi, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
       - {api_name: cn_gdp, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
       - {api_name: cn_m, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
