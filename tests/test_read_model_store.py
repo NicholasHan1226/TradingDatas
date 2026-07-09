@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from storage.read_model_store import API_TO_TABLE_MAP, ingest_csv_to_sqlite
+from storage.read_model_store import API_TO_TABLE_MAP, ingest_csv_to_sqlite, ingest_rows_to_sqlite
 from storage.schema import SCHEMA_SQL
 
 
@@ -573,6 +573,41 @@ def test_anns_d_derives_announcement_market_event(tmp_path: Path):
         "董事会公告",
         "https://example.com/ann",
     )
+
+
+def test_first_batch_planned_api_rows_ingest_to_sqlite(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    samples = {
+        "suspend_d": [{"ts_code": "600000.SH", "trade_date": "20260709", "suspend_type": "AM"}],
+        "namechange": [{"ts_code": "000001.SZ", "name": "平安银行", "ann_date": "20260709"}],
+        "index_classify": [{"index_code": "801010", "industry_name": "农林牧渔", "level": "L1"}],
+        "cb_basic": [{"ts_code": "113000.SH", "bond_short_name": "转债样例", "maturity_date": "20300101"}],
+        "opt_basic": [{"ts_code": "10000001.SH", "name": "期权样例", "exchange": "SSE"}],
+        "fund_share": [{"ts_code": "000001.OF", "trade_date": "20260709", "fd_share": 123.4}],
+        "ft_limit": [{"ts_code": "IF2607.CFE", "trade_date": "20260709", "up_limit": 4100, "down_limit": 3900}],
+        "weekly": [{"ts_code": "000001.SZ", "trade_date": "20260703", "open": 10, "close": 11}],
+        "index_weekly": [{"ts_code": "000001.SH", "trade_date": "20260703", "open": 4000, "close": 4050}],
+    }
+
+    for api_name, rows in samples.items():
+        table = API_TO_TABLE_MAP[api_name]
+        assert ingest_rows_to_sqlite(db_path, table, api_name, rows, source_name=f"{api_name}_test") > 0
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM market_events WHERE provider IN ('tushare_suspend_d', 'tushare_namechange')").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM market_assets WHERE provider IN ('tushare_index_classify', 'tushare_cb_basic', 'tushare_opt_basic')").fetchone()[0] == 3
+        assert conn.execute("SELECT COUNT(*) FROM market_factors WHERE provider IN ('tushare_fund_share', 'tushare_ft_limit')").fetchone()[0] >= 2
+        intervals = {
+            row[0]
+            for row in conn.execute("SELECT DISTINCT interval FROM market_bars_intraday WHERE provider IN ('tushare_weekly', 'tushare_index_weekly')")
+        }
+    finally:
+        conn.close()
+
+    assert intervals == {"weekly", "index_weekly"}
 
 
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):

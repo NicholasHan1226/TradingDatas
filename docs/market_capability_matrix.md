@@ -92,6 +92,20 @@ Suggested event cadences for evaluation:
 
 The event wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with a 2-day lookback. It can be narrowed through `SHAREDSIGNALS_EVENT_APIS` and `SHAREDSIGNALS_EVENT_LOOKBACK_DAYS`. `news` and `major_news` require full datetime bounds, while announcements and reports continue to use `YYYYMMDD` date bounds.
 
+Low-frequency bars are a separate lane. `P7_low_frequency` is run by `cron/tushare_low_frequency_collect.sh` and defaults to `weekly,monthly,index_weekly,index_monthly`. Keep these out of daily P6 so weekly/monthly all-market pulls do not run every night.
+
+First planned-to-scheduled batch:
+
+| Lane | APIs | Cadence |
+| --- | --- | --- |
+| A-share events / post-close | `suspend_d` | Post-close daily |
+| A-share reference | `namechange`, `ths_index`, `dc_index`, `index_classify` | Daily reference |
+| Funds / convertible bonds / options support | `fund_share`, `fund_div`, `cb_basic`, `cb_issue`, `opt_basic` | Daily reference or daily reporting |
+| Futures reference | `ft_limit` | Daily reference |
+| Low-frequency bars | `weekly`, `monthly`, `index_weekly`, `index_monthly` | Weekly wrapper, with monthly rows included for refresh |
+
+Still-planned APIs are intentionally held back when they require a many-to-many membership read model, a per-stock financial sharding plan, or a non-empty provider window proof. Do not mark them scheduled merely because they are allowlisted.
+
 Before increasing event frequency, run a small live pilot:
 
 1. Pick one source, such as announcements.

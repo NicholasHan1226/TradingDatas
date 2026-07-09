@@ -57,7 +57,7 @@ DEFAULT_P0_STOCK_BATCH_SIZE = 30
 DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
 ASHARE_TZ = ZoneInfo("Asia/Shanghai")
 
-VALID_TIERS = [
+DEFAULT_TIERS = [
     "P0_trading_5min",
     "P1_eod_daily",
     "P2_financial_daily",
@@ -66,11 +66,17 @@ VALID_TIERS = [
     "P5_hk_us_daily",
     "P6_other_daily",
 ]
+VALID_TIERS = DEFAULT_TIERS
 
 
 def load_config(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as fh:
         return yaml.safe_load(fh)
+
+
+def valid_tiers(config_path: Path = CONFIG_PATH) -> list[str]:
+    config = load_config(config_path)
+    return list(config.get("priorities", {}).keys())
 
 
 def _looks_like_ashare_stock_code(code: str) -> bool:
@@ -639,11 +645,12 @@ def _failure_exit_code(summary: dict[str, Any], *, threshold: float, exit_on_fai
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    valid_tier_names = valid_tiers()
     parser = argparse.ArgumentParser(description="SharedSignals Tushare multi-tier sync")
     parser.add_argument(
         "--tier",
         required=True,
-        choices=VALID_TIERS,
+        choices=valid_tier_names,
         help="Which tier to sync",
     )
     parser.add_argument(

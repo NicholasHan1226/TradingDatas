@@ -63,7 +63,9 @@ API_TO_TABLE_MAP = {
     "block_trade": "market_events",
     "broker_recommend": "market_events",
     "cashflow": "market_factors",
+    "cb_basic": "market_assets",
     "cb_daily": "market_bars_daily",
+    "cb_issue": "market_events",
     "cctv_news": "market_events",
     "cn_cpi": "market_factors",
     "cn_m": "market_factors",
@@ -85,7 +87,9 @@ API_TO_TABLE_MAP = {
     "etf_basic": "market_assets",
     "fund_basic": "market_assets",
     "fund_daily": "market_bars_daily",
+    "fund_div": "market_factors",
     "fund_nav": "market_assets",
+    "fund_share": "market_factors",
     "fut_basic": "market_assets",
     "fut_daily": "market_bars_daily",
     "fx_daily": "market_bars_daily",
@@ -98,7 +102,10 @@ API_TO_TABLE_MAP = {
     "index_basic": "market_bars_daily",
     "index_daily": "market_bars_daily",
     "index_dailybasic": "market_bars_daily",
+    "index_classify": "market_assets",
     "index_global": "market_bars_daily",
+    "index_monthly": "market_bars_intraday",
+    "index_weekly": "market_bars_intraday",
     "index_weight": "market_bars_daily",
     "limit_list": "market_events",
     "limit_list_d": "market_events",
@@ -109,7 +116,9 @@ API_TO_TABLE_MAP = {
     "moneyflow": "market_factors",
     "moneyflow_hsgt": "market_factors",
     "monthly": "market_bars_intraday",
+    "namechange": "market_events",
     "news": "market_events",
+    "opt_basic": "market_assets",
     "pledge_detail": "market_factors",
     "pledge_stat": "market_factors",
     "repo_daily": "market_factors",
@@ -117,6 +126,8 @@ API_TO_TABLE_MAP = {
     "repurchase": "market_factors",
     "concept": "market_assets",
     "concept_detail": "market_assets",
+    "dc_index": "market_assets",
+    "ft_limit": "market_factors",
     "hs_const": "market_assets",
     "share_float": "market_assets",
     "shibor": "market_factors",
@@ -135,6 +146,8 @@ API_TO_TABLE_MAP = {
     "stk_surv": "market_factors",
     "stock_basic": "market_assets",
     "stock_company": "market_assets",
+    "suspend_d": "market_events",
+    "ths_index": "market_assets",
     "top_list": "market_factors",
     "top10_floatholders": "market_assets",
     "top10_holders": "market_assets",
@@ -171,12 +184,15 @@ def _market_for(api_name, symbol):
         "stock_basic",
         "weekly",
         "monthly",
+        "index_classify",
         "stk_mins",
         "rt_min",
         "repo_daily",
         "concept",
         "concept_detail",
         "hs_const",
+        "ths_index",
+        "dc_index",
     ):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
@@ -187,6 +203,12 @@ def _market_for(api_name, symbol):
         return "Global"
     if api_name in ("fut_basic", "fut_daily", "rt_fut_min"):
         return "Futures"
+    if api_name in ("ft_limit",):
+        return "Futures"
+    if api_name in ("fund_share", "fund_div"):
+        return "Fund"
+    if api_name in ("opt_basic",):
+        return "Options"
     if api_name == "etf_basic":
         return "ETF"
 
@@ -428,7 +450,7 @@ def _event_hash(provider, event_type, event_time, row):
 
 
 def _canonical_row(table, row, api_name, csv_path):
-    symbol = row.get("ts_code") or row.get("symbol") or row.get("code")
+    symbol = row.get("ts_code") or row.get("symbol") or row.get("code") or row.get("index_code")
     if symbol:
         row["symbol"] = symbol
         if not row.get("ts_code") and api_name == "rt_fut_min":
@@ -452,7 +474,7 @@ def _canonical_row(table, row, api_name, csv_path):
             row["bar_time"] = row.get("time")
             if not row.get("trade_date"):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
-        if api_name in ("weekly", "monthly"):
+        if api_name in ("weekly", "monthly", "index_weekly", "index_monthly"):
             row["interval"] = api_name
         elif api_name in ("stk_mins", "rt_min", "rt_fut_min"):
             row["interval"] = "5min"
@@ -464,7 +486,7 @@ def _canonical_row(table, row, api_name, csv_path):
 
     if table == "market_assets":
         if not row.get("name"):
-            for name_col in ("name", "csname", "cname", "extname", "index_name"):
+            for name_col in ("name", "csname", "cname", "extname", "index_name", "industry_name", "bond_short_name"):
                 if row.get(name_col):
                     row["name"] = row.get(name_col)
                     break
@@ -474,12 +496,17 @@ def _canonical_row(table, row, api_name, csv_path):
             asset_type_map = {
                 "concept": "concept",
                 "concept_detail": "concept_member",
+                "cb_basic": "convertible_bond",
+                "dc_index": "thematic_index",
                 "etf_basic": "etf",
                 "fut_basic": "future",
                 "fund_basic": "fund",
                 "hs_const": "index_constituent",
                 "hk_basic": "stock",
+                "index_classify": "index_classification",
+                "opt_basic": "option",
                 "stock_basic": "stock",
+                "ths_index": "thematic_index",
                 "us_basic": "stock",
             }
             if api_name in asset_type_map:

@@ -188,6 +188,27 @@ def test_p6_cb_daily_is_global_trade_date_snapshot() -> None:
     assert cb_daily_apis[0]["params"] == {"trade_date": "{trade_date}"}
 
 
+def test_first_batch_planned_apis_are_assigned_to_frequency_lanes() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    by_tier = {
+        tier: {api["api_name"]: api for api in apis}
+        for tier, apis in config["priorities"].items()
+    }
+
+    for api_name in ("namechange", "ths_index", "dc_index", "index_classify", "cb_basic", "opt_basic"):
+        assert by_tier["P3_reference_daily"][api_name]["per_stock"] is False
+
+    for api_name in ("fund_share", "fund_div", "cb_issue", "ft_limit"):
+        assert by_tier["P6_other_daily"][api_name]["per_stock"] is False
+
+    for api_name in ("weekly", "monthly", "index_weekly", "index_monthly"):
+        assert by_tier["P7_low_frequency"][api_name]["per_stock"] is False
+
+
+def test_sync_daily_tier_choices_come_from_config() -> None:
+    assert "P7_low_frequency" in sync_daily_module.valid_tiers()
+
+
 def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
         last_collect_failed = False

@@ -29,6 +29,10 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
 20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
+# Low-frequency weekly/monthly bars run separately so full P6 daily collection
+# does not pull them every night.
+40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh
+
 # Event/news lane. This runs only selected P6 event APIs and must not be
 # replaced by high-frequency full P6 collection.
 */30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh

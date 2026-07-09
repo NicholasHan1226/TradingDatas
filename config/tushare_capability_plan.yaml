@@ -24,8 +24,8 @@ modules:
     default_cadence: postclose_daily
     apis:
       - {api_name: daily, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
-      - {api_name: weekly, mode: planned, cadence: weekly_or_on_demand}
-      - {api_name: monthly, mode: planned, cadence: monthly_or_on_demand}
+      - {api_name: weekly, mode: scheduled, tier: P7_low_frequency, cadence: weekly_reference}
+      - {api_name: monthly, mode: scheduled, tier: P7_low_frequency, cadence: monthly_reference}
       - {api_name: adj_factor, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: daily_basic, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: stk_factor, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
@@ -48,7 +48,7 @@ modules:
       - {api_name: stk_limit, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: top_list, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: broker_recommend, mode: scheduled, tier: P6_other_daily, cadence: daily_research}
-      - {api_name: suspend_d, mode: planned, cadence: postclose_daily}
+      - {api_name: suspend_d, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: cyq_perf, mode: planned, cadence: postclose_daily}
       - {api_name: cyq_chips, mode: planned, cadence: postclose_daily}
 
@@ -82,7 +82,7 @@ modules:
       - {api_name: stock_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stock_company, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: bak_basic, mode: planned, cadence: daily_reference}
-      - {api_name: namechange, mode: planned, cadence: daily_reference}
+      - {api_name: namechange, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stk_managers, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stk_surv, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: trade_cal, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
@@ -90,10 +90,10 @@ modules:
       - {api_name: concept_detail, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: hs_const, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_daily, mode: planned, cadence: daily_reference}
-      - {api_name: ths_index, mode: planned, cadence: daily_reference}
+      - {api_name: ths_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_member, mode: planned, cadence: daily_reference}
       - {api_name: ths_hot, mode: planned, cadence: intraday_or_daily_pilot}
-      - {api_name: dc_index, mode: planned, cadence: daily_reference}
+      - {api_name: dc_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: dc_daily, mode: planned, cadence: postclose_daily}
       - {api_name: dc_member, mode: planned, cadence: daily_reference}
 
@@ -106,9 +106,9 @@ modules:
       - {api_name: index_daily, mode: scheduled, tier: P6_other_daily, cadence: postclose_daily}
       - {api_name: index_dailybasic, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
       - {api_name: index_global, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
-      - {api_name: index_weekly, mode: planned, cadence: weekly_or_on_demand}
-      - {api_name: index_monthly, mode: planned, cadence: monthly_or_on_demand}
-      - {api_name: index_classify, mode: planned, cadence: daily_reference}
+      - {api_name: index_weekly, mode: scheduled, tier: P7_low_frequency, cadence: weekly_reference}
+      - {api_name: index_monthly, mode: scheduled, tier: P7_low_frequency, cadence: monthly_reference}
+      - {api_name: index_classify, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: index_member, mode: planned, cadence: daily_reference}
       - {api_name: index_member_all, mode: planned, cadence: daily_reference}
       - {api_name: cn_cpi, mode: scheduled, tier: P4_macro_daily, cadence: daily_macro}
@@ -147,7 +147,7 @@ modules:
       - {api_name: fut_daily, mode: scheduled, tier: P6_other_daily, cadence: futures_settlement_daily}
       - {api_name: rt_fut_min, mode: independent, cadence: futures_session_5min}
       - {api_name: fut_holding, mode: planned, cadence: futures_settlement_daily}
-      - {api_name: ft_limit, mode: planned, cadence: daily_reference}
+      - {api_name: ft_limit, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
 
   - module: funds_etf_convertible_bonds_options
     market: FundsETFOptions
@@ -158,13 +158,13 @@ modules:
       - {api_name: fund_nav, mode: scheduled, tier: P6_other_daily, cadence: daily_nav}
       - {api_name: fund_adj, mode: planned, cadence: daily_nav}
       - {api_name: fund_portfolio, mode: planned, cadence: reporting_window}
-      - {api_name: fund_share, mode: planned, cadence: daily_or_weekly}
-      - {api_name: fund_div, mode: planned, cadence: daily_reporting_window}
+      - {api_name: fund_share, mode: scheduled, tier: P6_other_daily, cadence: daily_or_weekly}
+      - {api_name: fund_div, mode: scheduled, tier: P6_other_daily, cadence: daily_reporting_window}
       - {api_name: etf_basic, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
       - {api_name: cb_daily, mode: scheduled, tier: P6_other_daily, cadence: postclose_daily}
-      - {api_name: cb_basic, mode: planned, cadence: daily_reference}
-      - {api_name: cb_issue, mode: planned, cadence: daily_reference}
-      - {api_name: opt_basic, mode: planned, cadence: daily_reference}
+      - {api_name: cb_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
+      - {api_name: cb_issue, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
+      - {api_name: opt_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: opt_daily, mode: planned, cadence: postclose_daily}
 
   - module: event_news_announcements_reports

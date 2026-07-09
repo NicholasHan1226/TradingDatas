@@ -40,11 +40,12 @@
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）；本机消费者仅在 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外代理 relay；旧 RSS/RSSHub 路径已退役）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 10 分钟写入 `logs/watchdog_inputs/health_sla.json`。
-- **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟 ticker、Crypto 每小时 1d klines、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
-- **市场能力治理**：新增 `docs/market_capability_matrix.md`，把现役数据源、HTTP/read surface、采集频率、Tushare 83 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；外部 agent 接入应按市场和 freshness 读取，不把白名单误当全量生产采集。
-- **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_pilot 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane 试点 wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
+- **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P7、Crypto 5 分钟 ticker、Crypto 每小时 1d klines、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
+- **市场能力治理**：新增 `docs/market_capability_matrix.md`，把现役数据源、HTTP/read surface、采集频率、Tushare 98 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；外部 agent 接入应按市场和 freshness 读取，不把白名单误当全量生产采集。
+- **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_lane 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
 - **新闻/公告事件 lane 已启用**：2026-07-09 生产 smoke 验证 `tushare_events_collect.sh` 默认事件组 5 个接口 9.4 秒完成、`api_failures=0/5`、`sqlite_errors=0`、写入 2529 行；生产 crontab 增加每 30 分钟 08:00-23:59 周一至周六事件采集，只运行选定事件 API，不高频运行整个 P6。
 - **事件 lane 时间参数修正**：`news` 与 `major_news` 使用 `{start_datetime}` / `{end_datetime}` 生成 `YYYY-MM-DD HH:MM:SS` 查询窗口；公告、研报和其它日频接口继续使用 `YYYYMMDD`，避免把通用日频窗口误用于新闻快讯接口。
+- **第一批 planned 能力启用**：新增 `P7_low_frequency` 与 `cron/tushare_low_frequency_collect.sh`，把 A股/指数周月线改为每周独立低频采集；同时将 `suspend_d`、`namechange`、`ths_index`、`dc_index`、`index_classify`、`cb_basic`、`opt_basic`、`fund_share`、`fund_div`、`cb_issue`、`ft_limit` 纳入对应日频参考/事件/支持层。能力计划当前为 93 scheduled + 5 event_lane + 1 independent + 16 planned。
 
 ## 二、已知问题
 

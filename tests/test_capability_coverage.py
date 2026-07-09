@@ -177,6 +177,16 @@ def test_tushare_event_wrapper_runs_only_event_apis() -> None:
     assert "--no-sqlite-bridge" not in wrapper
 
 
+def test_tushare_low_frequency_wrapper_runs_only_low_frequency_apis() -> None:
+    wrapper = Path("cron/tushare_low_frequency_collect.sh").read_text(encoding="utf-8")
+
+    assert "P7_low_frequency" in wrapper
+    assert "--only-api" in wrapper
+    assert "SHAREDSIGNALS_LOW_FREQ_APIS" in wrapper
+    assert "weekly,monthly,index_weekly,index_monthly" in wrapper
+    assert "--no-sqlite-bridge" not in wrapper
+
+
 def test_production_cron_declares_required_collection_and_health_cadence() -> None:
     required_lines = {
         "*/5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min",
@@ -185,6 +195,7 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
         "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
+        "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
         "3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
         "17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
