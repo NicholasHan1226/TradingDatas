@@ -128,15 +128,39 @@ def test_p6_news_announcement_event_apis_are_single_config_entries() -> None:
         api["api_name"]: api for api in config["priorities"]["P6_other_daily"]
     }
     assert p6_by_name["news"]["params"] == {
-        "start_date": "{start_date}",
-        "end_date": "{end_date}",
+        "start_date": "{start_datetime}",
+        "end_date": "{end_datetime}",
     }
     assert "url" in p6_by_name["news"]["fields"]
+    assert p6_by_name["major_news"]["params"] == {
+        "start_date": "{start_datetime}",
+        "end_date": "{end_datetime}",
+    }
     assert p6_by_name["anns_d"]["params"] == {
         "start_date": "{start_date}",
         "end_date": "{end_date}",
     }
     assert p6_by_name["anns_d"]["per_stock"] is False
+
+
+def test_fill_params_supports_datetime_bounds() -> None:
+    params = sync_daily_module.fill_params(
+        {
+            "start_date": "{start_datetime}",
+            "end_date": "{end_datetime}",
+            "trade_date": "{trade_date}",
+        },
+        None,
+        "20260709",
+        "20260707",
+        "20260709",
+    )
+
+    assert params == {
+        "start_date": "2026-07-07 00:00:00",
+        "end_date": "2026-07-09 23:59:59",
+        "trade_date": "20260709",
+    }
 
 
 def test_p6_index_and_fund_daily_are_trade_date_snapshots() -> None:

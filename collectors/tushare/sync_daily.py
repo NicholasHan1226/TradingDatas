@@ -187,6 +187,8 @@ def fill_params(
     """
     import copy
     result = copy.deepcopy(template)
+    start_datetime = _datetime_start_bound(start_date)
+    end_datetime = _datetime_end_bound(end_date)
 
     def _replace(val: Any) -> Any:
         if isinstance(val, str):
@@ -195,6 +197,8 @@ def fill_params(
             val = val.replace("{trade_date}", trade_date)
             val = val.replace("{start_date}", start_date)
             val = val.replace("{end_date}", end_date)
+            val = val.replace("{start_datetime}", start_datetime)
+            val = val.replace("{end_datetime}", end_datetime)
             return val
         if isinstance(val, dict):
             return {k: _replace(v) for k, v in val.items()}
@@ -203,6 +207,24 @@ def fill_params(
         return val
 
     return _replace(result)
+
+
+def _datetime_start_bound(value: str) -> str:
+    text = str(value or "").strip()
+    if " " in text:
+        return text
+    if "-" in text:
+        return f"{text} 00:00:00"
+    return f"{text[:4]}-{text[4:6]}-{text[6:]} 00:00:00"
+
+
+def _datetime_end_bound(value: str) -> str:
+    text = str(value or "").strip()
+    if " " in text:
+        return text
+    if "-" in text:
+        return f"{text} 23:59:59"
+    return f"{text[:4]}-{text[4:6]}-{text[6:]} 23:59:59"
 
 
 def filter_apis(apis: list[dict[str, Any]], only_api: str | None) -> list[dict[str, Any]]:

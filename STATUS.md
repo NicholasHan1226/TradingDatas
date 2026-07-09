@@ -44,6 +44,7 @@
 - **市场能力治理**：新增 `docs/market_capability_matrix.md`，把现役数据源、HTTP/read surface、采集频率、Tushare 83 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；外部 agent 接入应按市场和 freshness 读取，不把白名单误当全量生产采集。
 - **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_pilot 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane 试点 wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
 - **新闻/公告事件 lane 已启用**：2026-07-09 生产 smoke 验证 `tushare_events_collect.sh` 默认事件组 5 个接口 9.4 秒完成、`api_failures=0/5`、`sqlite_errors=0`、写入 2529 行；生产 crontab 增加每 30 分钟 08:00-23:59 周一至周六事件采集，只运行选定事件 API，不高频运行整个 P6。
+- **事件 lane 时间参数修正**：`news` 与 `major_news` 使用 `{start_datetime}` / `{end_datetime}` 生成 `YYYY-MM-DD HH:MM:SS` 查询窗口；公告、研报和其它日频接口继续使用 `YYYYMMDD`，避免把通用日频窗口误用于新闻快讯接口。
 
 ## 二、已知问题
 

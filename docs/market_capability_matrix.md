@@ -90,7 +90,7 @@ Suggested event cadences for evaluation:
 | CCTV/major scheduled news | Hourly or daily | Often not a 5-minute trading signal |
 | Research reports | Daily or several times per day | Usually research context, not immediate execution input |
 
-The event wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with a 2-day lookback. It can be narrowed through `SHAREDSIGNALS_EVENT_APIS` and `SHAREDSIGNALS_EVENT_LOOKBACK_DAYS`.
+The event wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with a 2-day lookback. It can be narrowed through `SHAREDSIGNALS_EVENT_APIS` and `SHAREDSIGNALS_EVENT_LOOKBACK_DAYS`. `news` and `major_news` require full datetime bounds, while announcements and reports continue to use `YYYYMMDD` date bounds.
 
 Before increasing event frequency, run a small live pilot:
 
