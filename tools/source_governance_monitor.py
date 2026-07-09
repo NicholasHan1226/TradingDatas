@@ -15,8 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parents[1]))
 AGENT_CONFIG_PATH = ROOT / "config" / "external_agent_api_config.json"
+API_MODULE_CATALOG_PATH = ROOT / "config" / "api_module_catalog.yaml"
+SOURCE_EXPANSION_PRIORITY_PATH = ROOT / "config" / "source_expansion_priority.yaml"
 CAPABILITY_REGISTRY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_SLA_PATH = ROOT / "logs" / "watchdog_inputs" / "health_sla.json"
 CRONTAB_PATH = ROOT / "crontab.txt"
@@ -83,6 +87,18 @@ def _json_file(path: Path, default: Any) -> Any:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        return default
+
+
+def _yaml_file(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    if not text:
+        return default
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError:
         return default
 
 
@@ -162,6 +178,119 @@ def _evaluate_agent_config(agent_config: dict[str, Any]) -> list[dict[str, Any]]
     return checks
 
 
+def _source_candidates(source_expansion_plan: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for batch in source_expansion_plan.get("priority_batches", []):
+        if not isinstance(batch, dict):
+            continue
+        for item in batch.get("candidates", []):
+            if not isinstance(item, dict):
+                continue
+            candidate = dict(item)
+            candidate["batch"] = batch.get("batch")
+            rows.append(candidate)
+    return rows
+
+
+def _evaluate_api_module_catalog(
+    *,
+    agent_config: dict[str, Any],
+    api_module_catalog: dict[str, Any] | None,
+    source_expansion_plan: dict[str, Any] | None,
+    crontab_text: str,
+) -> dict[str, Any]:
+    onboarding = agent_config.get("data_source_onboarding") if isinstance(agent_config.get("data_source_onboarding"), dict) else {}
+    missing_config_refs = [
+        name
+        for name in ("api_module_catalog", "source_expansion_priority_plan")
+        if not onboarding.get(name)
+    ]
+    if not isinstance(api_module_catalog, dict) or not api_module_catalog:
+        return _check(
+            "api_module_catalog",
+            "red",
+            "API/module catalog is missing or unreadable",
+            missing_config_refs=missing_config_refs,
+        )
+    if not isinstance(source_expansion_plan, dict) or not source_expansion_plan:
+        return _check(
+            "api_module_catalog",
+            "red",
+            "source expansion plan is missing or unreadable",
+            missing_config_refs=missing_config_refs,
+        )
+
+    module_rows = [
+        row
+        for row in api_module_catalog.get("canonical_modules", [])
+        if isinstance(row, dict) and row.get("module")
+    ]
+    module_names = [str(row["module"]) for row in module_rows]
+    modules = {str(row["module"]): row for row in module_rows}
+    candidates = _source_candidates(source_expansion_plan)
+    duplicate_modules = sorted(name for name in set(module_names) if module_names.count(name) > 1)
+    missing_modules: list[str] = []
+    table_offenders: list[str] = []
+    surface_offenders: list[str] = []
+    activated_offenders: list[str] = []
+    cron_offenders: list[str] = []
+
+    for item in candidates:
+        source_id = str(item.get("source_id") or item.get("batch") or "unknown")
+        if item.get("activation_mode") != "planned" or item.get("production_ready") is not False:
+            activated_offenders.append(source_id)
+
+        write_path = str(item.get("write_path") or "")
+        if write_path and write_path in crontab_text:
+            cron_offenders.append(source_id)
+
+        module = modules.get(str(item.get("module")))
+        if module is None:
+            missing_modules.append(f"{source_id}:{item.get('module')}")
+            continue
+
+        allowed_tables = set(module.get("canonical_tables") or [])
+        target_tables = set(item.get("target_tables") or [])
+        if not target_tables <= allowed_tables:
+            table_offenders.append(f"{source_id}:{sorted(target_tables - allowed_tables)}")
+
+        allowed_surfaces = set(module.get("default_http_surface") or [])
+        surfaces = set(item.get("http_surface") or [])
+        if not surfaces <= allowed_surfaces:
+            surface_offenders.append(f"{source_id}:{sorted(surfaces - allowed_surfaces)}")
+
+    endpoint_reuse = (api_module_catalog.get("api_extension_policy") or {}).get("default") == "reuse_existing_endpoint"
+    catalog_active = api_module_catalog.get("status") == "active_governance"
+    plan_planned_only = source_expansion_plan.get("status") == "planned_only"
+    offenders = (
+        missing_config_refs
+        + duplicate_modules
+        + missing_modules
+        + table_offenders
+        + surface_offenders
+        + activated_offenders
+        + cron_offenders
+    )
+    status = "green" if catalog_active and endpoint_reuse and plan_planned_only and not offenders else "red"
+    return _check(
+        "api_module_catalog",
+        status,
+        "source expansion candidates map to planned modules and reusable APIs" if status == "green" else "source expansion module/API mapping needs review",
+        module_count=len(modules),
+        candidate_count=len(candidates),
+        catalog_active=catalog_active,
+        endpoint_reuse_default=endpoint_reuse,
+        plan_planned_only=plan_planned_only,
+        missing_config_refs=missing_config_refs,
+        duplicate_modules=duplicate_modules,
+        missing_modules=missing_modules,
+        table_offenders=table_offenders,
+        surface_offenders=surface_offenders,
+        activated_offenders=activated_offenders,
+        cron_offenders=cron_offenders,
+    )
+
+
 def _evaluate_cron(crontab_text: str) -> dict[str, Any]:
     missing: list[str] = []
     duplicates: list[str] = []
@@ -231,12 +360,22 @@ def evaluate_source_governance(
     *,
     agent_config: dict[str, Any],
     crontab_text: str,
+    api_module_catalog: dict[str, Any] | None = None,
+    source_expansion_plan: dict[str, Any] | None = None,
     health_sla_report: dict[str, Any] | None = None,
     capability_registry: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     checks = []
     checks.extend(_evaluate_agent_config(agent_config))
+    checks.append(
+        _evaluate_api_module_catalog(
+            agent_config=agent_config,
+            api_module_catalog=api_module_catalog,
+            source_expansion_plan=source_expansion_plan,
+            crontab_text=crontab_text,
+        )
+    )
     checks.append(_evaluate_cron(crontab_text))
     checks.append(_evaluate_health_sla(health_sla_report))
     checks.append(_evaluate_capability_registry(capability_registry))
@@ -259,6 +398,8 @@ def evaluate_source_governance(
         "checks": checks,
         "source_files": {
             "agent_config": str(AGENT_CONFIG_PATH),
+            "api_module_catalog": str(API_MODULE_CATALOG_PATH),
+            "source_expansion_priority": str(SOURCE_EXPANSION_PRIORITY_PATH),
             "crontab": str(CRONTAB_PATH),
             "health_sla": str(HEALTH_SLA_PATH),
             "capability_registry": str(CAPABILITY_REGISTRY_PATH),
@@ -310,12 +451,16 @@ def render_operator_summary(report: dict[str, Any]) -> str:
 
 def build_source_governance_report() -> dict[str, Any]:
     agent_config = _json_file(AGENT_CONFIG_PATH, {})
+    api_module_catalog = _yaml_file(API_MODULE_CATALOG_PATH, {})
+    source_expansion_plan = _yaml_file(SOURCE_EXPANSION_PRIORITY_PATH, {})
     capability_registry = _json_file(CAPABILITY_REGISTRY_PATH, {})
     health_sla_report = _json_file(HEALTH_SLA_PATH, {})
     crontab_text = CRONTAB_PATH.read_text(encoding="utf-8", errors="replace") if CRONTAB_PATH.exists() else ""
     return evaluate_source_governance(
         agent_config=agent_config,
         crontab_text=crontab_text,
+        api_module_catalog=api_module_catalog,
+        source_expansion_plan=source_expansion_plan,
         health_sla_report=health_sla_report,
         capability_registry=capability_registry,
     )

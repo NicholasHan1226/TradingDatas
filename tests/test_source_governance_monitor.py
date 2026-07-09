@@ -5,7 +5,7 @@ from tools import source_governance_monitor
 
 def _agent_config() -> dict:
     return {
-        "contract_version": "1.1.33",
+        "contract_version": "1.1.34",
         "primary_endpoints": [{"path": path} for path in sorted(source_governance_monitor.REQUIRED_ENDPOINTS)],
         "market_frequency_labels": {
             "Ashare_intraday": "5min trading-session intraday",
@@ -21,6 +21,67 @@ def _agent_config() -> dict:
             "scheduled_or_independent_or_event_lane": 115,
             "planned_activation_backlog": 0,
         },
+        "data_source_onboarding": {
+            "api_module_catalog": "config/api_module_catalog.yaml",
+            "source_expansion_priority_plan": "config/source_expansion_priority.yaml",
+        },
+    }
+
+
+def _api_module_catalog() -> dict:
+    return {
+        "status": "active_governance",
+        "api_extension_policy": {
+            "default": "reuse_existing_endpoint",
+        },
+        "canonical_modules": [
+            {
+                "module": "event_news_announcements_reports",
+                "canonical_tables": ["market_events"],
+                "default_http_surface": ["/events", "/sentiment", "/tushare"],
+            },
+            {
+                "module": "macro_rates_fx",
+                "canonical_tables": ["market_factors"],
+                "default_http_surface": ["/macro", "/tushare"],
+            },
+        ],
+    }
+
+
+def _source_expansion_plan() -> dict:
+    return {
+        "status": "planned_only",
+        "priority_batches": [
+            {
+                "batch": "B1_event_risk_official_sources",
+                "candidates": [
+                    {
+                        "source_id": "official_exchange_announcements_cn",
+                        "module": "event_news_announcements_reports",
+                        "activation_mode": "planned",
+                        "production_ready": False,
+                        "target_tables": ["market_events"],
+                        "http_surface": ["/events", "/sentiment"],
+                        "write_path": "collectors/events/official_exchange_announcements.py",
+                    }
+                ],
+            },
+            {
+                "batch": "B2_macro_official_sources",
+                "candidates": [
+                    {
+                        "source_id": "fred_macro_rates",
+                        "module": "macro_rates_fx",
+                        "activation_mode": "planned",
+                        "production_ready": False,
+                        "target_tables": ["market_factors"],
+                        "http_surface": ["/macro"],
+                        "write_path": "collectors/macro/fred_macro_rates.py",
+                    }
+                ],
+            },
+        ],
     }
 
 
@@ -43,6 +104,8 @@ def test_source_governance_monitor_returns_green_when_sources_are_complete() -> 
     report = source_governance_monitor.evaluate_source_governance(
         agent_config=_agent_config(),
         crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
         health_sla_report={
             "status": "ok",
             "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
@@ -57,6 +120,30 @@ def test_source_governance_monitor_returns_green_when_sources_are_complete() -> 
     assert all(check["status"] == "green" for check in report["checks"])
 
 
+def test_source_governance_monitor_returns_red_for_bad_module_mapping() -> None:
+    plan = _source_expansion_plan()
+    plan["priority_batches"][0]["candidates"][0]["target_tables"] = ["market_bars_intraday"]
+    plan["priority_batches"][1]["candidates"][0]["activation_mode"] = "scheduled"
+
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=plan,
+        health_sla_report={
+            "status": "ok",
+            "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
+        },
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+    )
+
+    assert report["status"] == "red"
+    red_checks = {check["name"]: check for check in report["checks"] if check["status"] == "red"}
+    assert "api_module_catalog" in red_checks
+    assert red_checks["api_module_catalog"]["evidence"]["table_offenders"]
+    assert red_checks["api_module_catalog"]["evidence"]["activated_offenders"] == ["fred_macro_rates"]
+
+
 def test_source_governance_monitor_returns_red_for_backlog_or_duplicate_cron() -> None:
     agent_config = _agent_config()
     agent_config["tushare_status"]["planned_activation_backlog"] = 1
@@ -65,6 +152,8 @@ def test_source_governance_monitor_returns_red_for_backlog_or_duplicate_cron() -
     report = source_governance_monitor.evaluate_source_governance(
         agent_config=agent_config,
         crontab_text=crontab_text,
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
         health_sla_report={
             "status": "critical",
             "summary": {"critical": 1, "warning": 0, "notice": 0, "missing_or_empty": 0},
@@ -83,6 +172,8 @@ def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
     report = source_governance_monitor.evaluate_source_governance(
         agent_config=_agent_config(),
         crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
         health_sla_report={
             "status": "ok",
             "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
@@ -95,6 +186,6 @@ def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
 
     assert "结论：green" in summary
     assert "当前状态：外部 API 22 个端点" in summary
-    assert "依据：green 检查 6 项，yellow 0 项，red 0 项" in summary
+    assert "依据：green 检查 7 项，yellow 0 项，red 0 项" in summary
     assert "风险：无直接阻断" in summary
     assert "下一步：保持当前采集频率" in summary

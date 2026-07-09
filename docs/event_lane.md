@@ -38,7 +38,7 @@ Consumers must:
 
 1. Read `/health`, `/agent_config`, and `/source_status` before using event rows.
 2. Read `/events` for news, announcements, reports, and event rows.
-3. Treat `/sentiment` as a derived event projection that may be degraded or empty until a sentiment source is explicitly enabled.
+3. Treat `/sentiment` as a derived event projection over `market_events`.  It surfaces rows whose `event_type` is listed in `reference/sentiment_event_types.yaml` (default: `sentiment`, `major_news`, `news`, `cctv_news`).  It may be degraded or empty when no configured source has collected rows.
 4. Check `metadata.degraded`, `metadata.degraded_reasons`, `metadata.freshness`, row `event_time`, row `collected_at`, and `provenance.source_id`.
 5. Fail closed when events are stale, empty, or degraded.
 

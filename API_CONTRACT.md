@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.33 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.34 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -49,7 +49,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 | `GET /health` | `health` | 服务、cron、SLA 和 read model 健康状态 |
 | `GET /capabilities` | `health` | 返回当前 API/read-model 能力登记；能力登记缺失时返回 degraded fallback，帮助消费者发现可用端点 |
 | `GET /agent_config` | `health` | 返回外部 agent 接入机器配置、频率标签、禁止绕过规则和推荐调用端点 |
-| `GET /source_status` | `health` | 返回数据源治理 green/yellow/red 状态，检查接口纳管、调度重复、SLA 和能力 registry |
+| `GET /source_status` | `health` | 返回数据源治理 green/yellow/red 状态，检查接口纳管、模块/API 目录、扩源 planned 队列、调度重复、SLA 和能力 registry |
 | `GET /cache/status` | `health` | 返回 API 进程内 cache generation、TTL、容量、条目数和鉴权去重缓存摘要 |
 | `GET/POST /cache/invalidate` | `health` | 清理 API 进程内缓存；仅影响 API cache，不删除 read model 数据 |
 | `GET /market_data` | `market_data` | 日线/分钟行情，只读 SQLite read model |
@@ -591,7 +591,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 数据维度 | 来源 | 方式 |
 |---------|------|------|
 | A 股日线 OHLCV | Tushare `daily` | DB-first: `reader.get_tushare("daily", ...)` / HTTP `/tushare` |
-| A 股资金流向 | Tushare `moneyflow` | P1 盘后日频全市场采集；DB-first: `reader.get_tushare("moneyflow", ...)` / HTTP `/capital_flow`；collector rows 必须通过 `storage/read_model_store.py` 直接写入 `market_factors`，返回 `moneyflow:*` 展开行 |
+| A 股资金流向 | Tushare `moneyflow` / `moneyflow_hsgt` / `margin` / `margin_detail` | P1 盘后日频采集；DB-first: HTTP `/capital_flow` 读取 `market_factors` 中 `tushare_moneyflow`、`tushare_moneyflow_hsgt`、`tushare_margin`、`tushare_margin_detail` 展开行；也支持 `reader.get_tushare("moneyflow", ...)` 等原生维度 |
 | A 股财务指标 | Tushare `fina_indicator` | P2 collector → `market_factors`; `reader.get_fundamentals(ts_code=...)`（HTTP 也兼容 `symbol`） |
 | A 股审计/主营构成 | Tushare `fina_audit` / `fina_mainbz` | P2 collector → `market_factors`; 报告期优先作为 `event_time`，公告日保留在 `raw_json`；DB-first `/fundamentals` / `/tushare` |
 | A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | P2 collector → read model / degraded if no recent rows |
@@ -623,10 +623,10 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 基金/可转债/期权支持数据 | Tushare `fund_share` / `fund_div` / `fund_adj` / `fund_portfolio` / `cb_basic` / `cb_issue` / `opt_basic` | P3/P6 collectors → `market_factors` / `market_fund_portfolio` / `market_assets` / `market_events`; fund portfolio 保留基金代码、持仓股票、公告日、报告期和持仓市值明细，不展开为通用因子；DB-first `/tushare` |
 | 期权日线 | Tushare `opt_daily` | P6 collector → `market_bars_daily`; 期权 EOD 支持数据，不作为实时盘口 |
 | Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
-| 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 与 `reader.get_sentiment()` 只读 SQLite `market_events`；旧事件候选/情绪文件不作为 SharedSignals 对外数据源 |
+| 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 只读 SQLite `market_events`；`reader.get_sentiment()` 读取 `reference/sentiment_event_types.yaml` 中配置的 sentiment 源事件类型（默认含 `sentiment`、`major_news`、`news`、`cctv_news`），不回退旧情绪文件 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
 | 参考表 | Read model tables | `reader.get_reference()` 对旧 CSV reference 返回 degraded；生产消费者应使用明确 HTTP API 端点 |
-| 宏观因子 | Tushare P4 macro + read model | P4 collector → `market_factors`; `reader.get_macro_factors()` DB-first |
+| 宏观因子 | Tushare P4 macro/rates/FX/global + read model | P4 collector → `market_factors`；`/macro` 读取 `cn_cpi/cn_gdp/cn_m/cn_pmi/cn_ppi/sf_month/shibor/shibor_lpr/hibor/libor/us_tycr/us_tbr/us_tltr/fx_daily/repo_daily/index_global/index_dailybasic` 展开行，并兼容 `event_time` 为月度/季度格式 |
 
 ### 关联查询 (Association Queries)
 
@@ -827,6 +827,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.34 | `/source_status` 增加 API/module catalog 与 source expansion plan 映射检查，确认 planned 数据源没有误启用、候选模块能映射到默认 HTTP surface 和 read-model 表、扩源默认复用现有 API。 |
 | 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |
 | 2026-07-09 | 1.1.32 | 新增 `config/source_expansion_priority.yaml` 横向数据源扩展队列，并在 `/agent_config` 的 `data_source_onboarding` 中暴露 planned-only 扩源状态、优先批次和准入门槛；计划源不代表生产 collector 已启用。 |
 | 2026-07-09 | 1.1.31 | 新增 `/source_status` 与 `tools/source_governance_monitor.py`，按 green/yellow/red 输出接口纳管、调度重复、SLA 和能力 registry 治理状态；外部 agent 配置扩展到 22 个 HTTP 路径。 |

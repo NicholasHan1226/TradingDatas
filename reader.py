@@ -1035,6 +1035,25 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
     return rows
 
 
+_DEFAULT_SENTIMENT_EVENT_TYPES = frozenset({"sentiment", "major_news", "news", "cctv_news"})
+
+
+def _sentiment_event_types() -> frozenset[str]:
+    """Return event types that feed the /sentiment read-model projection."""
+    cfg_path = REFERENCE_ROOT / "sentiment_event_types.yaml"
+    if yaml is None or not cfg_path.exists():
+        return _DEFAULT_SENTIMENT_EVENT_TYPES
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        configured = data.get("sentiment_event_types")
+        if isinstance(configured, list) and configured:
+            return frozenset(str(item).strip().lower() for item in configured if str(item).strip())
+    except Exception:
+        pass
+    return _DEFAULT_SENTIMENT_EVENT_TYPES
+
+
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_sentiment_cached(_generation: int, start: str, end: str, tier: str | None) -> str:
@@ -1042,8 +1061,25 @@ def _get_sentiment_cached(_generation: int, start: str, end: str, tier: str | No
     end_key = _optional_date_key(end)
     if start_key and end_key and start_key > end_key:
         start_key, end_key = end_key, start_key
-    where = ["LOWER(event_type) = ?"]
-    params: list[Any] = ["sentiment"]
+
+    sentiment_types = _sentiment_event_types()
+    if not sentiment_types:
+        lineage = {
+            "reader": "get_sentiment",
+            "source": "sqlite:market_events",
+            "filters": {"start": start, "end": end, "tier": tier},
+        }
+        return _json_cached(
+            lambda: _degraded_empty(
+                "sqlite:market_events",
+                "no sentiment event types configured",
+                lineage=lineage,
+            )
+        )
+
+    type_placeholders = ",".join("?" for _ in sentiment_types)
+    where = [f"LOWER(event_type) IN ({type_placeholders})"]
+    params: list[Any] = list(sentiment_types)
     date_expr = "REPLACE(SUBSTR(COALESCE(NULLIF(trade_date, ''), event_time, collected_at), 1, 10), '-', '')"
     if start_key:
         where.append(f"{date_expr} >= ?")
@@ -1272,14 +1308,118 @@ def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | Non
         lineage,
         lambda generation: _get_tushare_cached(generation, str(api_name), ts_code, start_date, end_date, params_json),
     )
+_CAPITAL_FLOW_PROVIDERS = [
+    "tushare_moneyflow",
+    "tushare_moneyflow_hsgt",
+    "tushare_margin",
+    "tushare_margin_detail",
+]
+
+_MACRO_FACTOR_MARKETS = {"Macro", "Global", "Rates", "FX", "Commodity"}
+_MACRO_FACTOR_PROVIDERS = [
+    "tushare_cn_cpi",
+    "tushare_cn_pmi",
+    "tushare_cn_m",
+    "tushare_cn_ppi",
+    "tushare_cn_gdp",
+    "tushare_sf_month",
+    "tushare_shibor",
+    "tushare_shibor_lpr",
+    "tushare_hibor",
+    "tushare_libor",
+    "tushare_us_tycr",
+    "tushare_us_tbr",
+    "tushare_us_tltr",
+    "tushare_fx_daily",
+    "tushare_repo_daily",
+    "tushare_index_global",
+    "tushare_index_dailybasic",
+]
+
+
+def _macro_event_date_expr() -> str:
+    """Normalize macro event_time (date/month/quarter) to an 8-digit date string."""
+    return (
+        "CASE "
+        "WHEN event_time GLOB '????Q[1-4]' "
+        "THEN substr(event_time,1,4)||printf('%02d',(substr(event_time,6,1)-1)*3+1)||'01' "
+        "WHEN length(replace(substr(event_time,1,10),'-','')) = 6 "
+        "THEN substr(replace(substr(event_time,1,10),'-',''),1,6)||'01' "
+        "ELSE substr(replace(substr(event_time,1,10),'-',''),1,8) "
+        "END"
+    )
+
+
+@_register_cached
+@_bounded_lru_cache(maxsize=512)
+def _get_capital_flow_cached(
+    _generation: int,
+    ts_code: str,
+    start: str,
+    end: str,
+    limit: int,
+) -> str:
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key and end_key and start_key > end_key:
+        start_key, end_key = end_key, start_key
+
+    provider_placeholders = ",".join("?" for _ in _CAPITAL_FLOW_PROVIDERS)
+    where: list[str] = [f"provider IN ({provider_placeholders})"]
+    params: list[Any] = list(_CAPITAL_FLOW_PROVIDERS)
+    if ts_code:
+        where.append("symbol = ?")
+        params.append(ts_code)
+    if start_key:
+        where.append("event_time >= ?")
+        params.append(start_key)
+    if end_key:
+        where.append("event_time <= ?")
+        params.append(end_key)
+
+    lineage = {
+        "reader": "get_capital_flow",
+        "source": "sqlite:market_factors",
+        "filters": {"ts_code": ts_code, "start": start, "end": end},
+    }
+    sql = (
+        f"SELECT * FROM market_factors WHERE {' AND '.join(where)} "
+        "ORDER BY event_time DESC, collected_at DESC LIMIT ?"
+    )
+    rows, degraded = _sqlite_rows(sql, (*params, _bounded_limit(limit, 500)), "market_factors")
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    return _json_cached(
+        lambda: _rows_to_wrappers(
+            rows or [],
+            source_id="sqlite:market_factors",
+            source_tier="capital_flow",
+            lineage=lineage,
+            stale_after_hours=48.0,
+        )
+    )
+
+
 def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
-    """Get A-share moneyflow rows from the SharedSignals read model."""
+    """Get A-share capital-flow rows from the SharedSignals read model.
+
+    Covers moneyflow, northbound (moneyflow_hsgt), margin, and margin_detail
+    factors written by the P1 post-close collectors.
+    """
     start = kwargs.get("start_date", date)
     end = kwargs.get("end_date", date)
     if not start and not ts_code:
         from datetime import datetime
         start = datetime.now().strftime("%Y%m%d")
-    return get_tushare("moneyflow", ts_code=ts_code, start_date=start, end_date=end or start)
+    lineage = {"reader": "get_capital_flow", "filters": {"date": date, "ts_code": ts_code, "start": start, "end": end}}
+    return _safe_public(
+        "sqlite:market_factors",
+        lineage,
+        lambda generation: _get_capital_flow_cached(
+            generation, str(ts_code or ""), str(start or ""), str(end or start or ""), _bounded_limit(kwargs.get("limit"), 500)
+        ),
+    )
+
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
@@ -1288,29 +1428,30 @@ def _get_macro_factors_cached(_generation: int, start: str, end: str, limit: int
     end_key = _optional_date_key(end)
     if start_key and end_key and start_key > end_key:
         start_key, end_key = end_key, start_key
+
+    market_placeholders = ",".join("?" for _ in _MACRO_FACTOR_MARKETS)
+    provider_placeholders = ",".join("?" for _ in _MACRO_FACTOR_PROVIDERS)
     where = [
-        "("
-        "market IN ('Macro', 'Global', 'Rates', 'FX', 'Commodity') "
-        "OR provider IN ("
-        "'tushare_cn_cpi','tushare_cn_pmi','tushare_cn_m','tushare_cn_ppi','tushare_cn_gdp',"
-        "'tushare_sf_month','tushare_shibor','tushare_shibor_lpr','tushare_us_tycr','tushare_us_tbr','tushare_us_tltr',"
-        "'tushare_repo_daily'"
-        ")"
-        ")"
+        f"(market IN ({market_placeholders}) OR provider IN ({provider_placeholders}))"
     ]
-    params: list[Any] = []
+    params: list[Any] = [*list(_MACRO_FACTOR_MARKETS), *_MACRO_FACTOR_PROVIDERS]
+
+    event_date_expr = _macro_event_date_expr()
     if start_key:
-        where.append("REPLACE(SUBSTR(event_time, 1, 10), '-', '') >= ?")
+        where.append(f"{event_date_expr} >= ?")
         params.append(start_key)
     if end_key:
-        where.append("REPLACE(SUBSTR(event_time, 1, 10), '-', '') <= ?")
+        where.append(f"{event_date_expr} <= ?")
         params.append(end_key)
+
     lineage = {"reader": "get_macro_factors", "source": "sqlite:market_factors", "filters": {"start": start, "end": end}}
+    sql = (
+        f"SELECT * FROM market_factors WHERE {' AND '.join(where)} "
+        f"ORDER BY {event_date_expr} DESC, collected_at DESC LIMIT ?"
+    )
     rows, degraded = _sqlite_rows(
-        "SELECT * FROM market_factors "
-        f"WHERE {' AND '.join(where)} "
-        "ORDER BY event_time DESC, collected_at DESC LIMIT ?",
-        (*tuple(params), _bounded_limit(limit, 500)),
+        sql,
+        (*params, _bounded_limit(limit, 500)),
         "market_factors",
     )
     if degraded is not None:
