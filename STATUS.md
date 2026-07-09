@@ -41,6 +41,8 @@
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外代理 relay；旧 RSS/RSSHub 路径已退役）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 10 分钟写入 `logs/watchdog_inputs/health_sla.json`。
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P6、Crypto 5 分钟 ticker、Crypto 每小时 1d klines、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
+- **市场能力治理**：新增 `docs/market_capability_matrix.md`，把现役数据源、HTTP/read surface、采集频率、Tushare 83 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；外部 agent 接入应按市场和 freshness 读取，不把白名单误当全量生产采集。
+- **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_pilot 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane 试点 wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
 
 ## 二、已知问题
 

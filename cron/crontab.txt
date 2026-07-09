@@ -29,6 +29,11 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
 20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
 
+# Event/news lane pilot. Enable only after a production smoke proves provider
+# latency, dedup ratio, SQLite write cost, and /events API latency are healthy.
+# Keep this narrower than full P6; do not high-frequency run all P6 APIs.
+# */30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh
+
 # Crypto and PM market freshness. Crypto ticker keeps intraday fresh every 5
 # minutes; hourly 1d klines keep market_bars_daily fresh without pulling every
 # configured interval on each 5-minute run.

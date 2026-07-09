@@ -93,7 +93,7 @@ marketdata.sqlite (11 表)
 | market | 含义 | 数据源 |
 |--------|------|--------|
 | `Ashare` | A 股 | Tushare (60+ 接口) — SharedSignals now has native Tushare collector via `reader.get_tushare()` |
-| `HK` | 港股 | A 股 ETF 代理 (6 ETF + HSI) |
+| `HK` | 港股 | Tushare `hk_daily` / `hk_basic` / 港股财务接口 |
 | `US` | 美股 | Tushare 美股接口 |
 | `Crypto` | 加密 | Binance (4 接口) |
 | `PredictionMarkets` | 预测市场 | Polymarket (3 接口) |
@@ -564,14 +564,14 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股涨跌停列表 | Tushare `limit_list` | P0/P1 collector → read model |
 | A 股龙虎榜/竞价/涨跌停价格 | Tushare `top_list` / `stk_auction` / `limit_step` / `stk_limit` | P1 collector → `market_factors`; 只作为结构化行情/盘口参考，不生成交易判断 |
 | A 股题材/指数成分参考 | Tushare `concept` / `concept_detail` / `hs_const` | P3 collector → `market_assets`; 只作为参考/归因维度，不作为行情价格 |
-| A 股北向资金 | Tushare `hk_hold` | P0/P1 collector → read model |
+| A 股北向资金/沪深港通资金 | Tushare `moneyflow_hsgt` | P1 collector → `market_factors`; DB-first `/tushare?api_name=moneyflow_hsgt` |
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮从 read model 资产池和显式环境变量优先池选股并轮转补足，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，未传日期时使用该股票最新 intraday 日期；无数据返回 degraded/empty，不回退 CSV 或旧目录 |
 | A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
 | A 股新闻/公告/研报 | Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` | P6 collector → `market_events`; `/events` 与 `/tushare` 均 DB-first；no live provider fallback |
 | Crypto klines/ticker | Binance collector → marketdata.sqlite | Direct DB: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Direct DB: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Direct DB: `read_daily("US", ...)` |
-| HK ETF 日线 | marketdata.sqlite | Direct DB: `read_daily("HK", ...)` via `get_hk_etf` |
+| HK 日线/基础/财务 | Tushare `hk_daily` / `hk_basic` / `hk_income` / `hk_balancesheet` / `hk_cashflow` | P5 collector → read model; DB-first `/market_data` and `/tushare` |
 | 全球指数日线 | Tushare `index_global` | collector → `market_bars_daily`，market=`Global` |
 | ETF 基础信息 | Tushare `etf_basic` | collector → `market_assets`，market=`ETF` |
 | 期货基础信息 | Tushare `fut_basic` | collector → `market_assets`，market=`Futures`；需采集 `last_ddate` 与 `delist_date`，分别映射到 `last_trade_date` 与 `expiry_date` |

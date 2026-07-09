@@ -8,6 +8,7 @@ from storage.read_model_store import API_TO_TABLE_MAP
 
 
 CRONTAB_FILES = (Path("crontab.txt"), Path("cron/crontab.txt"))
+TUSHARE_CAPABILITY_PLAN = Path("config/tushare_capability_plan.yaml")
 PRODUCTION_CODE_GLOBS = (
     "reader.py",
     "runtime_paths.py",
@@ -29,6 +30,20 @@ def _configured_tushare_apis() -> list[tuple[str, str, dict]]:
         for tier, apis in config["priorities"].items()
         for api in apis
     ]
+
+
+def _planned_tushare_apis() -> list[dict]:
+    import yaml
+
+    payload = yaml.safe_load(TUSHARE_CAPABILITY_PLAN.read_text(encoding="utf-8"))
+    rows: list[dict] = []
+    for module in payload.get("modules", []):
+        for api in module.get("apis", []):
+            item = dict(api)
+            item["module"] = module["module"]
+            item["market"] = module["market"]
+            rows.append(item)
+    return rows
 
 
 def test_all_configured_tushare_interfaces_are_db_mapped_and_api_visible() -> None:
@@ -123,6 +138,43 @@ def test_external_api_output_endpoints_cover_configured_tushare_interfaces() -> 
 
     configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
     assert configured <= set(ALLOWED_TUSHARE_APIS)
+
+
+def test_tushare_capability_plan_covers_every_allowlisted_api() -> None:
+    from api_server import ALLOWED_TUSHARE_APIS
+
+    planned_rows = _planned_tushare_apis()
+    planned = [row["api_name"] for row in planned_rows]
+    allowed = set(ALLOWED_TUSHARE_APIS)
+    allowed_modes = {"scheduled", "independent", "event_pilot", "planned"}
+
+    assert sorted(name for name in set(planned) if planned.count(name) > 1) == []
+    assert set(planned) == allowed
+    for row in planned_rows:
+        assert row.get("module")
+        assert row.get("market")
+        assert row.get("cadence")
+        assert row.get("mode") in allowed_modes
+
+
+def test_tushare_capability_plan_marks_current_collection_paths() -> None:
+    configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
+    planned_rows = _planned_tushare_apis()
+    by_name = {row["api_name"]: row for row in planned_rows}
+
+    missing = sorted(name for name in configured if by_name[name]["mode"] not in {"scheduled", "event_pilot"})
+    assert missing == []
+    assert by_name["rt_fut_min"]["mode"] == "independent"
+
+
+def test_tushare_event_wrapper_runs_only_event_apis() -> None:
+    wrapper = Path("cron/tushare_events_collect.sh").read_text(encoding="utf-8")
+
+    assert "P6_other_daily" in wrapper
+    assert "--only-api" in wrapper
+    assert "SHAREDSIGNALS_EVENT_APIS" in wrapper
+    assert "anns_d,news,major_news,cctv_news,report_rc" in wrapper
+    assert "--no-sqlite-bridge" not in wrapper
 
 
 def test_production_cron_declares_required_collection_and_health_cadence() -> None:

@@ -9,6 +9,7 @@
 | 文件 | 用途 |
 |------|------|
 | [../API_CONTRACT.md](../API_CONTRACT.md) | SharedSignals 当前对外 API 契约（reader 函数、数据格式、生产边界） |
+| [market_capability_matrix.md](market_capability_matrix.md) | 按市场说明现役数据源、接口能力、采集频率、Tushare 白名单与生产采集计划的边界 |
 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | 基础设施说明 |
 | [repo_structure.md](repo_structure.md) | 仓库结构说明 |
 
