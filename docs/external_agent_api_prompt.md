@@ -28,13 +28,19 @@ Allowed behavior:
 3. Prefer business endpoints:
    - /market_data
    - /realtime_5min
+   - /is_trading_day
    - /events
+   - /sentiment
    - /fundamentals
+   - /reference
+   - /industry
    - /macro
    - /capital_flow
    - /crypto
    - /pm_markets
    - /pm_prices
+   - /associations
+   - /impacts
 4. Use /tushare only when a native Tushare-shaped dataset is required:
    - /tushare?api_name=<name>&limit=<n>
    - This still reads SharedSignals database rows. It does not call Tushare live.
@@ -55,6 +61,8 @@ Frequency interpretation:
 - News, announcements, CCTV news, major news, and research reports: event lane, currently 30-minute active-window collection.
 - Daily bars, capital flow, fundamentals, macro, funds, ETF, convertible bonds, options, reference data: daily or reporting-window data.
 - Weekly/monthly A-share and index bars: low-frequency lane, not a 5-minute feed.
+- /associations and /impacts are delegated read-model projections; degraded or empty is valid when research projections have not been synced.
+- /cache/status is read-only operational metadata; /cache/invalidate is operator-controlled and must not be used as a data fallback.
 
 Minimal call examples:
 - GET /health
@@ -63,6 +71,8 @@ Minimal call examples:
 - GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50
 - GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708
 - GET /events?event_type=news&limit=20
+- GET /reference?table=market_assets
+- GET /industry?ts_code=600519.SH
 - GET /tushare?api_name=index_weekly&limit=20
 
 Decision rule for trading workflows:
@@ -79,4 +89,6 @@ Decision rule for trading workflows:
 - Capability registry: `GET /capabilities`
 - Full contract: `API_CONTRACT.md`
 - Market/frequency guide: `docs/market_capability_matrix.md`
+- Event lane guide: `docs/event_lane.md`
+- New source onboarding: `docs/data_source_onboarding.md`
 - Tushare activation backlog: `docs/tushare_activation_backlog.md`

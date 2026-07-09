@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取)
+> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取、外部 agent 21 路径配置补齐、事件 lane/新增数据源治理文档补齐)
 
 ---
 
@@ -42,7 +42,8 @@
 - **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 15 分钟错峰写入 `logs/watchdog_inputs/health_sla.json`。
 - **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-09 主服务器降载边界更新；SharedSignals owns Tushare P0-P7、Crypto 30 分钟 ticker、Crypto 每 6 小时 1d klines、Polymarket 30 分钟、DuckDB 非交易高峰 sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
 - **市场能力治理**：`docs/market_capability_matrix.md` 把现役数据源、HTTP/read surface、采集频率、Tushare 114 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；`docs/tushare_activation_backlog.md` 作为已完成激活台账保留，当前 0 planned；外部 agent 接入应按市场和 freshness 读取，不把日频/披露/参考接口误当 5 分钟交易数据。
-- **外部 agent 接入**：`GET /agent_config` 输出机器可读 API 配置、频率标签和禁止绕过规则；`docs/external_agent_api_prompt.md` 提供可复制 prompt。外部 agent 必须先读 `/health`/`/agent_config`，再通过业务端点或 `/tushare` 读取数据库输出。
+- **外部 agent 接入**：`GET /agent_config` 输出机器可读 API 配置、频率标签和禁止绕过规则；2026-07-09 起配置已列出完整 21 个 HTTP 路径（含 health/config/cache、业务数据、delegated projection 和 `/tushare`），不再只列 13 个主要端点；`docs/external_agent_api_prompt.md` 提供可复制 prompt。外部 agent 必须先读 `/health`/`/agent_config`，再通过业务端点或 `/tushare` 读取数据库输出。
+- **扩展治理**：事件 lane 独立说明维护在 `docs/event_lane.md`；新增数据源接入规则维护在 `docs/data_source_onboarding.md`。新增源必须声明 source/provider/market/module/cadence/freshness/target tables/write path/rate limit/degraded behavior/API surface/consumer/write cost，并通过覆盖测试后才能进入生产调度。
 - **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_lane 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
 - **新闻/公告事件 lane 已启用**：2026-07-09 生产 smoke 验证 `tushare_events_collect.sh` 默认事件组 5 个接口 9.4 秒完成、`api_failures=0/5`、`sqlite_errors=0`、写入 2529 行；生产 crontab 增加每 30 分钟 08:00-23:59 周一至周六事件采集，只运行选定事件 API，不高频运行整个 P6。
 - **事件 lane 时间参数修正**：`news` 与 `major_news` 使用 `{start_datetime}` / `{end_datetime}` 生成 `YYYY-MM-DD HH:MM:SS` 查询窗口；公告、研报和其它日频接口继续使用 `YYYYMMDD`，避免把通用日频窗口误用于新闻快讯接口。
@@ -62,9 +63,9 @@
 - RSS/RSSHub 已退出现役层：旧 RSSCollector cron 条目已从模板和生产 crontab 删除；主服务器残留 RSSHub node 已停止，`/opt/investment/RSSHub`、`/opt/investment/RSSCollector`、`/opt/investment/Users` 和顶层 `.env.bak` 已归档到 `/opt/investment/_archive/retired_residuals_20260704T172705Z`。保留 `rss_collector.db` 只作历史/迁移审计；恢复事件采集前必须作为新的 SharedSignals collector 直接写入 read model，不得恢复旧 RSSCollector 或 staging/bridge。
 - `bridge/__init__.py` 已列入跨仓兼容残留清理项；当前不是数据采集入口。拆到独立服务器前必须移除跨仓 `sys.path` 注入或改为显式包依赖，不能继续作为隐式旧系统依赖。
 
-## 三、API 接口状态（HTTP 18/18；health core 14 OK / 2 delegated skipped）
+## 三、API 接口状态（HTTP 路径 21；业务/缓存端点 18；health core 14 OK / 2 delegated skipped）
 
-生产 HTTP API 暴露 18 个只读端点；`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，`events` 已由 SQLite `market_events` 原生承担，MarketGraph 研究图谱类端点 `associations`、`impacts` 仍标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
+生产 HTTP API 暴露 21 个路径：3 个 health/config 入口（`/health`、`/capabilities`、`/agent_config`）+ 18 个业务/缓存端点。`/health` 当前只把 SharedSignals 自身供数能力计入核心健康，`events` 已由 SQLite `market_events` 原生承担，MarketGraph 研究图谱类端点 `associations`、`impacts` 仍标记为 delegated/skipped，不再通过软链依赖 MarketGraph 内部目录。HTTP surface、`/health` reader sample 和 capability smoke 三个数字口径不同，不应混用。
 
 | 接口 | 端点 | 状态 |
 |------|------|------|

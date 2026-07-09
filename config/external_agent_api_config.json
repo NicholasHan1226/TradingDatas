@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.28",
+  "contract_version": "1.1.29",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -56,6 +56,19 @@
       "use": "Fetch this external-agent integration contract."
     },
     {
+      "path": "/cache/status",
+      "scope": "health",
+      "cadence_class": "service_health",
+      "use": "Inspect API cache generation, TTL, entry count, and auth dedup cache summary."
+    },
+    {
+      "path": "/cache/invalidate",
+      "scope": "health",
+      "params": ["method=POST"],
+      "cadence_class": "operator_control",
+      "use": "Operator-controlled API cache invalidation. This clears API cache only; it never deletes read-model data."
+    },
+    {
       "path": "/market_data",
       "scope": "market_data",
       "params": ["ts_code", "start", "end", "freq"],
@@ -70,6 +83,13 @@
       "use": "A-share or Futures 5-minute bars only."
     },
     {
+      "path": "/is_trading_day",
+      "scope": "market_data",
+      "params": ["date"],
+      "cadence_class": "calendar_reference",
+      "use": "Trading-day check from read model with safe weekday fallback for future or unavailable dates."
+    },
+    {
       "path": "/events",
       "scope": "events",
       "params": ["market", "symbol", "subject_type", "event_type", "start", "end", "limit"],
@@ -77,11 +97,32 @@
       "use": "News, announcements, reports, and event rows from market_events."
     },
     {
+      "path": "/sentiment",
+      "scope": "events",
+      "params": ["start", "end", "limit"],
+      "cadence_class": "event_lane_derived_or_degraded",
+      "use": "Sentiment-style event projection when present; consumers must accept degraded/empty when no sentiment source is configured."
+    },
+    {
       "path": "/fundamentals",
       "scope": "fundamentals",
       "params": ["ts_code", "limit"],
       "cadence_class": "daily_reporting_window",
       "use": "Financial and fundamental factors from market_factors."
+    },
+    {
+      "path": "/reference",
+      "scope": "fundamentals",
+      "params": ["table"],
+      "cadence_class": "daily_reference",
+      "use": "Explicit read-model reference table access. Retired CSV reference files return degraded."
+    },
+    {
+      "path": "/industry",
+      "scope": "fundamentals",
+      "params": ["ts_code"],
+      "cadence_class": "daily_reference",
+      "use": "Industry, sector, concept, and chain fields from market_assets."
     },
     {
       "path": "/macro",
@@ -119,6 +160,20 @@
       "use": "Polymarket price snapshots."
     },
     {
+      "path": "/associations",
+      "scope": "associations",
+      "params": ["ts_code", "event_id"],
+      "cadence_class": "delegated_read_model_projection",
+      "use": "Event-to-security association projection when synced into SharedSignals; degraded/empty is valid when delegated research data is absent."
+    },
+    {
+      "path": "/impacts",
+      "scope": "associations",
+      "params": ["event_type", "target"],
+      "cadence_class": "delegated_read_model_projection",
+      "use": "Impact relationship projection when synced into SharedSignals; degraded/empty is valid when delegated research data is absent."
+    },
+    {
       "path": "/tushare",
       "scope": "tushare",
       "params": ["api_name", "ts_code", "start_date", "end_date", "market", "limit"],
@@ -137,6 +192,37 @@
     "Funds_ETF_CB_Options": "daily/reference/reporting windows",
     "Events": "30min event lane for active windows",
     "Low_frequency_bars": "weekly wrapper for weekly/monthly refresh"
+  },
+  "data_source_onboarding": {
+    "doc": "docs/data_source_onboarding.md",
+    "mandatory_fields": [
+      "source_id",
+      "provider",
+      "market",
+      "module",
+      "api_name_or_dataset",
+      "activation_mode",
+      "cadence_class",
+      "freshness_sla",
+      "target_tables",
+      "write_path",
+      "rate_limit",
+      "degraded_behavior",
+      "http_surface",
+      "owner_consumer",
+      "expected_write_cost"
+    ],
+    "mandatory_artifacts": [
+      "collector config",
+      "capability plan row",
+      "read-model table mapping",
+      "HTTP/API visibility or explicit delegation",
+      "cron wrapper when scheduled",
+      "capability coverage tests",
+      "market capability matrix update",
+      "external agent config update when externally consumable"
+    ],
+    "rule": "A new data source is not production-ready until it can collect, write SQLite read-model rows, expose DB-first API/reader output or explicit degraded semantics, and pass coverage tests without CSV/NDJSON/provider fallback."
   },
   "tushare_status": {
     "allowlisted_api_names": 115,

@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.28 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.29 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -575,7 +575,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 5. 按市场和频率理解数据：A股/期货保留 5 分钟交易输入；Crypto/PM 当前是 30 分钟供数；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 21 个可发现路径，并用 `cadence_class` 区分交易、研究、delegated projection 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
 
@@ -820,6 +820,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.29 | 补齐外部 agent 机器配置的完整 21 个 HTTP 路径，新增 `docs/event_lane.md` 与 `docs/data_source_onboarding.md`，明确事件 lane 和未来数据源接入治理规则；P6 生产配置接口补齐 frequency 声明。 |
 | 2026-07-09 | 1.1.28 | 生产热路径降载：Crypto ticker 与 Polymarket markets/prices 从 5 分钟改为 30 分钟，Crypto 1d support bars 改为 6 小时；DuckDB mirror 与 capability scan 避开 09:00-15:59 中国交易高峰，patrol/health_sla 改为错峰运行。 |
 | 2026-07-09 | 1.1.27 | `/tushare?api_name=daily` 无代码/无日期请求改为限定 A股最新交易日和 `provider=tushare_daily` 后读取，避免生产大日线表无界排序超时；用于 TradingAgent 盘前批量日线覆盖和流动性排序。 |
 | 2026-07-09 | 1.1.26 | 将 Tushare `fund_portfolio` 从 `market_factors` 因子展开迁移到专用 `market_fund_portfolio` 明细表，保留 `symbol` 基金代码、`holding_symbol` 持仓股票、`ann_date`、`end_date`、市值和占比字段；减少单公告日写入放大和大表索引压力。 |

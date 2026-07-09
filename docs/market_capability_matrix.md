@@ -145,3 +145,7 @@ Operational handoff:
 - Copy-paste prompt: `docs/external_agent_api_prompt.md`
 - Machine-readable config: `GET /agent_config`
 - Remaining Tushare activation plan: `docs/tushare_activation_backlog.md`
+- Event lane guide: `docs/event_lane.md`
+- New source onboarding checklist: `docs/data_source_onboarding.md`
+
+`GET /agent_config` lists the full 21 HTTP paths as discoverable integration surface: health/config/cache paths, business data paths, delegated association/impact projections, and `/tushare`. External agents should still prefer the business endpoint that matches their market and cadence, then fall back to `/tushare` only for native Tushare-shaped read-model output.

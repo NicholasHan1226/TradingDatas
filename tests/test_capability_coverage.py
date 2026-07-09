@@ -66,14 +66,7 @@ def test_all_configured_tushare_interfaces_are_db_mapped_and_api_visible() -> No
 def test_configured_tushare_interfaces_declare_frequency_and_rate_guard() -> None:
     missing_frequency: list[str] = []
     for tier, api_name, api in _configured_tushare_apis():
-        if not api.get("frequency") and tier in {
-            "P0_trading_5min",
-            "P1_eod_daily",
-            "P2_financial_daily",
-            "P3_reference_daily",
-            "P4_macro_daily",
-            "P5_hk_us_daily",
-        }:
+        if not api.get("frequency"):
             missing_frequency.append(f"{tier}:{api_name}")
 
     assert missing_frequency == []
@@ -314,6 +307,8 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
         "docs/market_capability_matrix.md": Path("docs/market_capability_matrix.md").read_text(encoding="utf-8"),
         "docs/external_agent_api_prompt.md": Path("docs/external_agent_api_prompt.md").read_text(encoding="utf-8"),
         "docs/tushare_activation_backlog.md": Path("docs/tushare_activation_backlog.md").read_text(encoding="utf-8"),
+        "docs/event_lane.md": Path("docs/event_lane.md").read_text(encoding="utf-8"),
+        "docs/data_source_onboarding.md": Path("docs/data_source_onboarding.md").read_text(encoding="utf-8"),
     }
 
     combined = "\n".join(docs.values())
@@ -334,6 +329,8 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
     assert "/agent_config" in docs["API_CONTRACT.md"]
     assert "不要绕过 SharedSignals" in docs["docs/external_agent_api_prompt.md"]
     assert "0 planned" in docs["docs/tushare_activation_backlog.md"]
+    assert "event lane" in docs["docs/event_lane.md"]
+    assert "新增数据源" in docs["docs/data_source_onboarding.md"]
 
 
 def test_external_agent_config_matches_current_capability_counts() -> None:
@@ -345,7 +342,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.28"
+    assert config["contract_version"] == "1.1.29"
     assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
     assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
     cadence_by_path = {item["path"]: item["cadence_class"] for item in config["primary_endpoints"]}
@@ -356,5 +353,31 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)
     assert config["tushare_status"]["scheduled_or_independent_or_event_lane"] == len(active)
-    assert "/agent_config" in [item["path"] for item in config["primary_endpoints"]]
+    endpoint_paths = {item["path"] for item in config["primary_endpoints"]}
+    required_paths = {
+        "/health",
+        "/capabilities",
+        "/agent_config",
+        "/cache/status",
+        "/cache/invalidate",
+        "/market_data",
+        "/realtime_5min",
+        "/is_trading_day",
+        "/events",
+        "/sentiment",
+        "/fundamentals",
+        "/reference",
+        "/industry",
+        "/macro",
+        "/capital_flow",
+        "/crypto",
+        "/pm_markets",
+        "/pm_prices",
+        "/associations",
+        "/impacts",
+        "/tushare",
+    }
+    assert required_paths <= endpoint_paths
+    assert config["data_source_onboarding"]["mandatory_fields"]
+    assert "docs/data_source_onboarding.md" in config["data_source_onboarding"]["doc"]
     assert "Do not call Tushare" in " ".join(config["boundary"]["hard_forbidden"])
