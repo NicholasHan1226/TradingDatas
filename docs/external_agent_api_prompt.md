@@ -64,6 +64,7 @@ Frequency interpretation:
 - Weekly/monthly A-share and index bars: low-frequency lane, not a 5-minute feed.
 - /associations and /impacts are delegated read-model projections; degraded or empty is valid when research projections have not been synced.
 - /cache/status is read-only operational metadata; /cache/invalidate is operator-controlled and must not be used as a data fallback.
+- New source expansion candidates are listed in config/source_expansion_priority.yaml through /agent_config. Treat them as planned-only until /source_status, endpoint metadata, docs, and operator handoff show the source is production-ready.
 
 Minimal call examples:
 - GET /health
@@ -94,4 +95,5 @@ Decision rule for trading workflows:
 - Market/frequency guide: `docs/market_capability_matrix.md`
 - Event lane guide: `docs/event_lane.md`
 - New source onboarding: `docs/data_source_onboarding.md`
+- Source expansion priority plan: `config/source_expansion_priority.yaml`
 - Tushare activation backlog: `docs/tushare_activation_backlog.md`

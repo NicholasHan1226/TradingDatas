@@ -4,7 +4,7 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取、外部 agent 22 路径配置补齐、`/source_status` 数据源治理状态、事件 lane/新增数据源治理文档补齐、生产 SQLite 从 DuckDB 恢复并加固 deploy/rollback)
+> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取、外部 agent 22 路径配置补齐、`/source_status` 数据源治理状态、事件 lane/新增数据源治理文档补齐、生产 SQLite 从 DuckDB 恢复并加固 deploy/rollback、横向扩展数据源 planned-only 队列纳入 `/agent_config`)
 
 ---
 
@@ -14,6 +14,7 @@
 - **因子边界**：SharedSignals 的 `market_factors` 只输出事实型 read-model 数据，例如 provider 财务/资金流/宏观/持仓/限制/参考字段和必要字段展开；不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件。TradingAgent 应通过 API 读取这些事实数据后，自行完成交易因子提取、标准化、组合、风控和决策。
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走新的 SharedSignals collector 直接写 SQLite read model，不得恢复旧文件 staging、旧 bridge 或跨系统运行层入口。
 - **现役数据源/同步管线**：Tushare、Binance、Polymarket、CNFutures 采集 + DuckDB 分析镜像同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护，当前生产频率为 30 分钟；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮采集跳过
+- **横向扩展队列**：新增外部数据源已按 `config/source_expansion_priority.yaml` 纳入 planned-only 治理队列，优先级为 `B1_event_risk_official_sources`（官方公告/披露/SEC 事件）→ `B2_macro_official_sources`（官方宏观/利率）→ `B3_market_redundancy_and_altdata`（加密/预测市场冗余）。这些候选源当前不是生产 collector，不安装 cron；只有通过直接入库、API 可读、freshness SLA、限流、降级语义、测试和 pilot 验收后才能进入 scheduled 模式。
 - **DB/API-only 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；生产 reader/API 不再读取 CSV/NDJSON/旧目录作为兜底。
 - **repo 数据文件边界**：仓库根 `data/*.csv` 旧样本已删除并加入忽略；现役采集不得把 CSV cache 当成功路径。Tushare wrapper 只允许进程内 LRU 短缓存，结果必须由 collector 直接写 SQLite read model 后再输出。
 - **reader/API 缓存失效**：读取缓存监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm`；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存

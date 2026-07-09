@@ -346,7 +346,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.31"
+    assert config["contract_version"] == "1.1.32"
     assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
     assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
     assert config["market_frequency_labels"]["Events"] == "30min full event lane plus 15min news/major_news pilot refresh"
@@ -358,6 +358,8 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)
     assert config["tushare_status"]["scheduled_or_independent_or_event_lane"] == len(active)
+    assert config["data_source_onboarding"]["source_expansion_priority_plan"] == "config/source_expansion_priority.yaml"
+    assert config["data_source_onboarding"]["horizontal_expansion_status"].startswith("planned_only")
     endpoint_paths = {item["path"] for item in config["primary_endpoints"]}
     required_paths = {
         "/health",

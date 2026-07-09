@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.31 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.32 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -31,6 +31,8 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 **入库完整性边界（2026-07-09）**：`collectors/tushare/config.yaml` 中已启用的 P0-P7 Tushare 接口必须全部有 read model 表映射、API 白名单、采集频率声明和限流保护。非空 provider rows 直接写入 SQLite 为 0 行时必须标记为 `failed` 并计入 tier `sqlite_failure_count`；不能把“采集成功但未入库”当作正常空返回。
 
 **交易供数边界（2026-07-09）**：SharedSignals 是 5 分钟级/分钟级交易数据供给层，负责采集、整理、增量入库、健康标记和只读 API 输出；不承诺毫秒级 HFT、订单簿撮合、下单、资金、账户、执行回执或交易判断。
+
+**横向扩源边界（2026-07-09）**：新增外部数据源先进入 `config/source_expansion_priority.yaml` 的 planned 队列，再通过 collector、SQLite read model、API/read surface、freshness SLA、限流、降级语义、测试和生产 pilot 验收后才能进入定时采集。计划中的源不是生产供数，消费者不得绕过 SharedSignals 直接调用 provider 或本地文件。
 
 **因子边界（2026-07-09）**：`market_factors` 是 SharedSignals 的事实型 read-model 投影，用于保存 provider 已给出的财务、资金流、宏观、参考限制、持仓排名等结构化数据，或必要的字段展开。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；TradingAgent 应从 SharedSignals API 读取行情/事件/事实型因子后，自行完成交易因子提取、标准化、打分、组合、风控和决策。
 
@@ -823,6 +825,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.32 | 新增 `config/source_expansion_priority.yaml` 横向数据源扩展队列，并在 `/agent_config` 的 `data_source_onboarding` 中暴露 planned-only 扩源状态、优先批次和准入门槛；计划源不代表生产 collector 已启用。 |
 | 2026-07-09 | 1.1.31 | 新增 `/source_status` 与 `tools/source_governance_monitor.py`，按 green/yellow/red 输出接口纳管、调度重复、SLA 和能力 registry 治理状态；外部 agent 配置扩展到 22 个 HTTP 路径。 |
 | 2026-07-09 | 1.1.30 | 事件 lane 增加 `news/major_news` 15 分钟 supplemental pilot，公告/研报/CCTV 仍保持 30 分钟 full event lane；明确 `market_factors` 是事实型 read-model 输出，TradingAgent 负责交易因子提取、打分和决策。 |
 | 2026-07-09 | 1.1.29 | 补齐外部 agent 机器配置的完整 21 个 HTTP 路径，新增 `docs/event_lane.md` 与 `docs/data_source_onboarding.md`，明确事件 lane 和未来数据源接入治理规则；P6 生产配置接口补齐 frequency 声明。 |

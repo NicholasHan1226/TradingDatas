@@ -12,6 +12,8 @@
 | [market_capability_matrix.md](market_capability_matrix.md) | 按市场说明现役数据源、接口能力、采集频率、Tushare 白名单与生产采集计划的边界 |
 | [external_agent_api_prompt.md](external_agent_api_prompt.md) | 可复制给外部 agent 的 API 接入 prompt；必须保持 API-only 和 fail-closed 边界 |
 | [tushare_activation_backlog.md](tushare_activation_backlog.md) | 剩余 planned Tushare 接口按市场/模块/频率分批激活计划 |
+| [../config/source_expansion_priority.yaml](../config/source_expansion_priority.yaml) | 新增外部数据源横向扩展优先级；当前只表示 planned 候选，不代表生产 collector 已启用 |
+| [data_source_onboarding.md](data_source_onboarding.md) | 新增数据源准入字段、产物、频率、入库/API/降级验收门槛 |
 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | 基础设施说明 |
 | [repo_structure.md](repo_structure.md) | 仓库结构说明 |
 

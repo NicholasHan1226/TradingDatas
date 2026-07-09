@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.31",
+  "contract_version": "1.1.32",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -201,6 +201,13 @@
   },
   "data_source_onboarding": {
     "doc": "docs/data_source_onboarding.md",
+    "source_expansion_priority_plan": "config/source_expansion_priority.yaml",
+    "horizontal_expansion_status": "planned_only; candidates are not production collectors until onboarding gates pass",
+    "first_priority_batches": [
+      "B1_event_risk_official_sources",
+      "B2_macro_official_sources",
+      "B3_market_redundancy_and_altdata"
+    ],
     "mandatory_fields": [
       "source_id",
       "provider",

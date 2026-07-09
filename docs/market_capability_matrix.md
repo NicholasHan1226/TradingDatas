@@ -82,6 +82,18 @@ The current production host can support the active SharedSignals cadence when ho
 - Run patrol and health SLA on staggered minutes so they do not start on the same minute as market-data writers.
 - New data sources must declare market, cadence, freshness SLA, write path, API endpoint, degraded behavior, and expected write cost before production scheduling.
 
+## Horizontal Expansion Queue
+
+SharedSignals is ready to add new sources horizontally, but new sources are not active merely because they appear in a plan. The active planning file is `config/source_expansion_priority.yaml`; every item in it is `planned` and `production_ready: false` until its collector, read-model mapping, API surface, SLA, rate limit, degraded behavior, tests, and pilot evidence are complete.
+
+| Batch | Market / lane | Candidate sources | Default cadence | Current status |
+| --- | --- | --- | --- | --- |
+| `B1_event_risk_official_sources` | A-share/US event risk | Official exchange announcements, SEC EDGAR filings/company facts | 10-30 minute disclosure-window pilot for announcements; 30-60 minute pilot for filings | Planned only; highest priority because events affect risk monitoring |
+| `B2_macro_official_sources` | Global/US macro and rates | FRED-style macro/rates series, official Treasury yield curve | Daily or provider release schedule | Planned only; low write cost and useful redundancy |
+| `B3_market_redundancy_and_altdata` | Crypto and prediction markets | Secondary crypto exchange, secondary prediction-market/archive source | 30 minutes or slower by default | Planned only; activate after hot paths stay stable |
+
+Horizontal expansion must stay DB-first and API-first: collectors may call providers, but readers, external agents, MarketGraph, and TradingAgent must not bypass SharedSignals or read provider/local files directly.
+
 ## News And Announcement Lane
 
 News and announcements are an independent functional lane inside SharedSignals for trading risk, event monitoring, and external-agent research. The repository includes `cron/tushare_events_collect.sh`, which runs selected P6 event APIs only and avoids high-frequency execution of the whole P6 miscellaneous tier.

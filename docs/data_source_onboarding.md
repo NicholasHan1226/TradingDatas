@@ -8,6 +8,8 @@ This is the minimum governance checklist for adding a new data source or expandi
 
 SharedSignals should scale by market, module, cadence, read-model mapping, and API contract. It should not restore the old generic `collectors/registry.yaml`, CSV/NDJSON staging bridge, provider fallback, or sibling-repo file reads.
 
+The first horizontal expansion queue is tracked in `config/source_expansion_priority.yaml`. Entries in that file are planned-only candidates until their collector, direct SQLite write path, API/read-model exposure, freshness SLA, rate limit, degraded behavior, and tests pass the acceptance gate below.
+
 ## 新增数据源原则
 
 新增数据源必须先进入能力计划和 read-model/API 契约，再进入生产调度。没有直接入库、API 可读、频率声明、降级语义和覆盖测试的源，只能保持 `planned` 或实验状态。
@@ -48,6 +50,18 @@ Production-ready means all of these exist or are explicitly marked not applicabl
 | Health/SLA rule | Freshness and missing/empty behavior are observable. |
 | Tests | Coverage proves config, mapping, API visibility, frequency, and no retired fallback. |
 | Docs | Market matrix, API contract, and external-agent config are updated when consumer-facing. |
+
+## Priority Queue
+
+New external sources should be promoted in this order unless a production incident changes the business priority:
+
+| Batch | Focus | Production rule |
+| --- | --- | --- |
+| `B1_event_risk_official_sources` | Official event, filing, and disclosure coverage. | Pilot first, write only to read-model tables, and observe 1-2 trading days before scheduled mode. |
+| `B2_macro_official_sources` | Official macro, rates, and low-frequency redundancy. | Daily pilot first; stale macro series must degrade by source, not block price feeds. |
+| `B3_market_redundancy_and_altdata` | Crypto and prediction-market redundancy or alternative data. | Keep 30-minute or slower by default; no 5-minute mode without hot-path write-pressure proof. |
+
+Do not install any planned candidate into production cron until it has passed the full gate. Planned source ids are documentation and work-order targets, not active data feeds.
 
 ## Lightweight Registry Pattern
 
