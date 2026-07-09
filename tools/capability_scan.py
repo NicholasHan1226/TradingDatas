@@ -26,8 +26,6 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from runtime_paths import marketdata_sqlite_path
-
 # ---- Path setup ----
 TOOLS_DIR = Path(__file__).resolve().parent
 SHARED_SIGNALS = TOOLS_DIR.parent
@@ -43,6 +41,8 @@ DOC_PATH = DOCS_DIR / "API_CONTRACT.md"
 for _d in (str(SHARED_SIGNALS), str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECTORS_DIR), str(COLLECTORS_DIR / "tushare")):
     if _d not in sys.path:
         sys.path.insert(0, _d)
+
+from runtime_paths import marketdata_sqlite_path
 
 UTC = timezone.utc
 CST = timezone(timedelta(hours=8))
@@ -60,7 +60,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "path": "reference/market_calendar.py",
         "category": "calendar",
         "description": "Check if a given date is an A-share trading day",
-        "smoke_args": [],
+        "smoke_args": ["__LATEST_CALENDAR_DATE__"],
         "version": "1.0.0",
         "fields": ["date", "result"],
         "sla_hours": 24,
@@ -95,7 +95,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "path": "reader.py",
         "category": "market_depth",
         "description": "Read A-share money flow data from the SharedSignals read model",
-        "smoke_kwargs": {"date": "__LATEST_ASHARE_DATE__"},
+        "smoke_kwargs": {"date": "__LATEST_MONEYFLOW_DATE__"},
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "buy_sm_vol", "sell_sm_vol", "net_mf_vol"],
         "sla_hours": 24,
@@ -119,7 +119,7 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "category": "market_depth",
         "description": "Read limit-up/limit-down list from the SharedSignals read model",
         "smoke_args": ["limit_list_d"],
-        "smoke_kwargs": {"trade_date": "__LATEST_ASHARE_DATE__"},
+        "smoke_kwargs": {"trade_date": "__LATEST_LIMIT_LIST_DATE__"},
         "version": "1.0.0",
         "fields": ["ts_code", "trade_date", "limit", "pct_chg", "close"],
         "sla_hours": 24,
@@ -256,6 +256,8 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "version": "1.0.0",
         "fields": ["market", "symbol_count", "earliest_date", "latest_date", "status"],
         "sla_hours": 24,
+        "status_override": "skipped",
+        "skip_reason": "Reference CSV endpoints are retired; use /tushare or explicit read-model endpoints",
     },
 }
 
@@ -315,6 +317,51 @@ def _read_latest_sample(
     return {"symbol": str(row[0] or fallback["symbol"]), "trade_date": str(row[1] or fallback["trade_date"])}
 
 
+def _latest_provider_sample(table: str, provider: str, fallback_symbol: str = "", fallback_date: str = "") -> dict[str, str]:
+    db_path = marketdata_sqlite_path()
+    fallback = {"symbol": fallback_symbol, "trade_date": fallback_date}
+    if not db_path.exists():
+        return fallback
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        cols = [row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()]
+        if not cols or "provider" not in cols:
+            con.close()
+            return fallback
+        symbol_col = "symbol" if "symbol" in cols else "ts_code" if "ts_code" in cols else ""
+        if "trade_date" in cols:
+            date_expr = "trade_date"
+        elif "event_time" in cols:
+            date_expr = "event_time"
+        elif "ann_date" in cols:
+            date_expr = "ann_date"
+        elif "collected_at" in cols:
+            date_expr = "collected_at"
+        else:
+            con.close()
+            return fallback
+        select_symbol = symbol_col if symbol_col else "''"
+        order_by = f"{date_expr} DESC"
+        if "collected_at" in cols and date_expr != "collected_at":
+            order_by += ", collected_at DESC"
+        row = con.execute(
+            f"SELECT {select_symbol}, {date_expr} FROM {table} "
+            "WHERE provider = ? AND COALESCE(" + date_expr + ", '') != '' "
+            f"ORDER BY {order_by} LIMIT 1",
+            (provider,),
+        ).fetchone()
+        con.close()
+    except Exception:
+        return fallback
+    if not row:
+        return fallback
+    raw_date = str(row[1] or fallback["trade_date"])
+    return {
+        "symbol": str(row[0] or fallback["symbol"]),
+        "trade_date": raw_date.replace("-", "")[:8],
+    }
+
+
 def _latest_event_date() -> str:
     db_path = marketdata_sqlite_path()
     fallback = "20260629"
@@ -354,10 +401,16 @@ def _latest_provider_date(table: str, provider: str, fallback: str) -> str:
 
 
 def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
-    ashare = _read_latest_sample(
+    raw_ashare = _read_latest_sample(
         market="Ashare",
         fallback_symbol="000001.SZ",
         fallback_date="20260629",
+    )
+    ashare = _latest_provider_sample(
+        "market_bars_daily",
+        "tushare_daily",
+        fallback_symbol=raw_ashare["symbol"],
+        fallback_date=raw_ashare["trade_date"],
     )
     us = _read_latest_sample(
         market="US",
@@ -372,9 +425,13 @@ def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
         interval="5min",
     )
     event_date = _latest_event_date()
-    margin_date = _latest_provider_date("market_factors", "tushare_margin", ashare["trade_date"])
+    margin_date = _latest_provider_sample("market_factors", "tushare_margin", fallback_date=ashare["trade_date"])["trade_date"]
+    moneyflow_date = _latest_provider_sample("market_factors", "tushare_moneyflow", fallback_date=ashare["trade_date"])["trade_date"]
+    limit_list_date = _latest_provider_sample("market_events", "tushare_limit_list_d", fallback_date=ashare["trade_date"])["trade_date"]
 
     def resolve(value: Any) -> Any:
+        if value == "__LATEST_CALENDAR_DATE__":
+            return ashare["trade_date"]
         if value == "__LATEST_ASHARE_SYMBOL__":
             return ashare["symbol"]
         if value == "__LATEST_ASHARE_DATE__":
@@ -391,6 +448,10 @@ def _resolve_smoke_args(meta: dict[str, Any]) -> tuple[list[Any], dict[str, Any]
             return event_date
         if value == "__LATEST_MARGIN_DATE__":
             return margin_date
+        if value == "__LATEST_MONEYFLOW_DATE__":
+            return moneyflow_date
+        if value == "__LATEST_LIMIT_LIST_DATE__":
+            return limit_list_date
         return value
 
     args = [resolve(value) for value in meta.get("smoke_args", [])]

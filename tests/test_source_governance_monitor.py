@@ -77,3 +77,24 @@ def test_source_governance_monitor_returns_red_for_backlog_or_duplicate_cron() -
     assert "tushare_planned_backlog" in red_checks
     assert "cron_required_lines" in red_checks
     assert "health_sla_summary" in red_checks
+
+
+def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        health_sla_report={
+            "status": "ok",
+            "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
+        },
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        generated_at="2026-07-09T00:05:00+00:00",
+    )
+
+    summary = source_governance_monitor.render_operator_summary(report)
+
+    assert "结论：green" in summary
+    assert "当前状态：外部 API 22 个端点" in summary
+    assert "依据：green 检查 6 项，yellow 0 项，red 0 项" in summary
+    assert "风险：无直接阻断" in summary
+    assert "下一步：保持当前采集频率" in summary

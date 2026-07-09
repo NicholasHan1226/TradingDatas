@@ -266,6 +266,48 @@ def evaluate_source_governance(
     }
 
 
+def render_operator_summary(report: dict[str, Any]) -> str:
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    status = str(report.get("status") or "red")
+    generated_at = str(report.get("generated_at") or "")
+    endpoint_count = int(summary.get("endpoint_count") or 0)
+    allowlisted = int(summary.get("tushare_allowlisted") or 0)
+    active = int(summary.get("tushare_active") or 0)
+    backlog = int(summary.get("tushare_planned_backlog") or 0)
+    green = int(summary.get("green_checks") or 0)
+    yellow = int(summary.get("yellow_checks") or 0)
+    red = int(summary.get("red_checks") or 0)
+
+    if status == "green":
+        risk = "无直接阻断"
+        next_step = "保持当前采集频率，等待下一个交易日自动观察"
+    elif status == "yellow":
+        risk = "存在降级项，下游可继续读取但不应扩频或扩消费方"
+        next_step = "优先处理 yellow 检查项，再扩展数据源或频率"
+    else:
+        risk = "存在红灯项，交易前置检查应按 fail-closed 处理"
+        next_step = "先修复 red 检查项，再恢复下游交易判断"
+
+    checks = report.get("checks") if isinstance(report.get("checks"), list) else []
+    non_green = [
+        f"{check.get('name')}: {check.get('status')} - {check.get('message')}"
+        for check in checks
+        if isinstance(check, dict) and check.get("status") != "green"
+    ]
+    evidence = f"green 检查 {green} 项，yellow {yellow} 项，red {red} 项"
+    if non_green:
+        evidence += "；需关注：" + "；".join(non_green[:5])
+
+    lines = [
+        f"结论：{status}",
+        f"当前状态：外部 API {endpoint_count} 个端点；Tushare {active}/{allowlisted} 个接口已纳入活跃模式；待激活 {backlog} 个；生成时间 {generated_at}",
+        f"依据：{evidence}",
+        f"风险：{risk}",
+        f"下一步：{next_step}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def build_source_governance_report() -> dict[str, Any]:
     agent_config = _json_file(AGENT_CONFIG_PATH, {})
     capability_registry = _json_file(CAPABILITY_REGISTRY_PATH, {})
@@ -282,6 +324,7 @@ def build_source_governance_report() -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate SharedSignals source governance status")
     parser.add_argument("--output", type=Path, default=None, help="Optional JSON output path")
+    parser.add_argument("--summary-output", type=Path, default=None, help="Optional operator summary text output path")
     parser.add_argument("--json", action="store_true", help="Print JSON to stdout")
     args = parser.parse_args()
 
@@ -290,6 +333,9 @@ def main() -> int:
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.summary_output is not None:
+        args.summary_output.parent.mkdir(parents=True, exist_ok=True)
+        args.summary_output.write_text(render_operator_summary(report), encoding="utf-8")
     if args.json or output_path is None:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if report["status"] in {"green", "yellow"} else 2

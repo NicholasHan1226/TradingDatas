@@ -17,6 +17,7 @@ OUTPUT_DIR="${ROOT}/logs/watchdog_inputs"
 LOG_FILE="${LOG_DIR}/source_governance_monitor.log"
 LOCK_FILE="${LOCK_DIR}/source_governance_monitor.lock"
 OUTPUT_FILE="${OUTPUT_DIR}/source_governance.json"
+SUMMARY_FILE="${OUTPUT_DIR}/source_governance_summary.txt"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}" "${OUTPUT_DIR}"
 
@@ -30,6 +31,6 @@ cd "${ROOT}"
 
 {
   echo "[$(date -Iseconds)] START source_governance_monitor"
-  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" tools/source_governance_monitor.py --output "${OUTPUT_FILE}"
+  PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" tools/source_governance_monitor.py --output "${OUTPUT_FILE}" --summary-output "${SUMMARY_FILE}"
   echo "[$(date -Iseconds)] OK source_governance_monitor"
 } >> "${LOG_FILE}" 2>&1
