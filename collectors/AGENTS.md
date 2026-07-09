@@ -12,6 +12,7 @@
 
 ```
 cron/collectors.sh          → tushare/sync_daily.py
+cron/tushare_low_frequency_collect.sh → tushare/sync_daily.py --tier P7_low_frequency
 cron/crypto_collect.sh      → crypto/binance_collect.py
 cron/pm_collect.sh          → polymarket_collect.py
 cron/cn_futures_5min.sh     → tools/collect_cn_futures_5min.py
@@ -48,12 +49,14 @@ RSS/RSSHub 旧 collector 代码已删除。当前主服务器不把 RSS/RSSHub �
 4. **数据不分析**：collector 只负责采集、去重、存储，不做任何投资分析或信号生成
 5. **不碰资金**：本目录代码不涉及任何交易执行、资金操作或账户管理
 6. **旧调度已退役**：通用调度器、文件注册表、文件 staging bridge、parquet loader 均已删除；不得恢复为生产入口
+7. **输出给外部 agent**：collector 只负责增量写库；外部 agent 必须经 HTTP API/reader 读取数据库结果，不得直接调用 collector、provider SDK 或 staging 文件。
 
 ## 运行方式
 
 ```bash
 # A股/期货/Tushare tiers
 cron/collectors.sh --tier P0_trading_5min
+cron/tushare_low_frequency_collect.sh
 
 # Crypto / PM
 cron/crypto_collect.sh

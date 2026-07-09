@@ -110,6 +110,17 @@ def test_no_retired_bridge_or_orchestrator_entrypoints_remain() -> None:
     assert [str(path) for path in retired_paths if path.exists()] == []
 
 
+def test_repo_data_directory_contains_no_production_fallback_files() -> None:
+    forbidden_suffixes = {".csv", ".ndjson", ".sqlite", ".db", ".parquet"}
+    offenders = [
+        str(path)
+        for path in Path("data").rglob("*")
+        if path.is_file() and path.suffix.lower() in forbidden_suffixes
+    ]
+
+    assert offenders == []
+
+
 def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> None:
     banned = (
         "--no-sqlite-bridge",
@@ -217,3 +228,29 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         )
         assert missing == []
         assert missing_tiers == []
+
+
+def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None:
+    docs = {
+        "AGENTS.md": Path("AGENTS.md").read_text(encoding="utf-8"),
+        "README.md": Path("README.md").read_text(encoding="utf-8"),
+        "API_CONTRACT.md": Path("API_CONTRACT.md").read_text(encoding="utf-8"),
+        "STATUS.md": Path("STATUS.md").read_text(encoding="utf-8"),
+        "docs/market_capability_matrix.md": Path("docs/market_capability_matrix.md").read_text(encoding="utf-8"),
+    }
+
+    combined = "\n".join(docs.values())
+    stale_tokens = [
+        "83 个唯一接口",
+        "83 configured interfaces",
+        "P0-P6 分层 83",
+        "P0-P6 Tushare 接口必须",
+        "Tushare(P0-P6",
+        "SharedSignals collector + staging/bridge 契约",
+    ]
+    offenders = [token for token in stale_tokens if token in combined]
+
+    assert offenders == []
+    assert "P0-P7" in docs["README.md"]
+    assert "5 分钟级" in docs["AGENTS.md"]
+    assert "外部 agent" in docs["API_CONTRACT.md"]

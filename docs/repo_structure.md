@@ -36,13 +36,15 @@ SharedSignals owns external data ingestion. Its collectors validate provider
 rows, write them directly into the SQLite read model, mirror analytical data to
 DuckDB when configured, and expose the result through HTTP API contracts.
 
-It does not make trading decisions, run strategies, write TradingAgent queues,
-or maintain MarketGraph research facts.
+It supports minute/5-minute trading data inputs. It does not make trading
+decisions, run strategies, write TradingAgent queues, maintain MarketGraph
+research facts, provide millisecond HFT infrastructure, match orders, or touch
+accounts/funds.
 
 Current production collectors include:
 
 - Tushare tiers for A-share, futures, HK/US daily, funds, ETF, macro, news,
-  announcements, research and reference data.
+  announcements, research, reference data, and P7 weekly/monthly bars.
 - Binance public-market collection for Crypto.
 - Polymarket market and price collection.
 - CN futures 5-minute collection.
@@ -51,6 +53,11 @@ CSV/NDJSON files are not a production read fallback. They may exist only as
 bounded tests, explicit historical migration material, or local audit fixtures.
 Production success means rows reached the read model and can be returned through
 SharedSignals HTTP API access.
+
+External agents consume SharedSignals through HTTP API only. They must not
+call provider SDKs, old CSV/NDJSON folders, sibling repository internals, or
+SQLite files directly unless explicitly doing read-only diagnostics inside the
+SharedSignals repository.
 
 ## MarketGraph
 

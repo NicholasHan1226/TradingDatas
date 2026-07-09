@@ -3,7 +3,7 @@
 ## 服务器
 | 角色 | IP | 规格 | 职责 |
 |------|-----|------|------|
-| 华南3/广州 (主) | 8.138.181.177 | 4核8GB/99GB | SharedSignals、MarketGraph、TradingAgent 生产主节点 |
+| 主服务器 | 8.138.181.177 | 4核8GB/99GB | SharedSignals、MarketGraph、TradingAgent 生产主节点 |
 | 新加坡 | 47.82.153.58 | 30GB | 境外代理 relay（Polymarket/Crypto）；RSS/RSSHub 已退役归档 |
 | Mac Mini | 本地 | — | TradingAgent A股模拟盘可选 Hermes/同花顺 GUI 第二路径；SharedSignals 不依赖 Mini |
 
@@ -30,7 +30,7 @@
 
 ## API Keys
 - 详见 .env (不在此文档记录值)
-- Tushare/Firecrawl/Tavily/DeepSeek 4个key
+- 密钥存在不等于现役生产采集；当前现役采集源和频率以 `STATUS.md`、`collectors/tushare/config.yaml`、cron 和 `/capabilities` 为准。
 
 ## Git Repositories
 - SharedSignals: https://github.com/NicholasHan1226/SharedSignals.git

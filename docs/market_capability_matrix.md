@@ -2,16 +2,17 @@
 
 Last updated: 2026-07-09
 
-This document is the market-facing capability and cadence guide for SharedSignals. It complements the internal Tushare P0-P6 tier config and prevents external consumers from treating every allowlisted provider API as an active production feed.
+This document is the market-facing capability and cadence guide for SharedSignals. It complements the internal Tushare P0-P7 tier config and prevents external consumers from treating every allowlisted provider API as an active production feed.
 
 ## Current Decision
 
 SharedSignals should be managed by market and data-latency need, not by provider name alone.
 
-- `collectors/tushare/config.yaml` is the active Tushare collection plan: 83 configured interfaces.
+- `collectors/tushare/config.yaml` is the active Tushare collection plan: 98 configured interfaces.
 - `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 115 names.
 - `config/tushare_capability_plan.yaml` is the market/module management plan for all 115 allowlisted names.
-- HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API/read-model outputs, not provider APIs or local files.
+- HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
+- SharedSignals supports minute/5-minute trading data inputs, but not millisecond HFT, order matching, order placement, funds, accounts, or execution receipts.
 - A capability is production-ready only when it has provider collection, read-model mapping, HTTP/API visibility, freshness expectations, rate protection, and degraded/empty semantics.
 
 ## Market Matrix
@@ -28,8 +29,9 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | Polymarket | Polymarket markets/prices | `/pm_markets`, `/pm_prices` | Every 5 minutes | Prices <= 30 minutes | Active |
 | US/HK | Tushare `us_daily`, `us_basic`, `hk_daily`, `hk_basic`, HK financials | `/market_data`, `/reference`, `/tushare` | Daily around local close windows | Latest effective trading day | Active but daily |
 | Macro/global | Tushare macro, rates, FX, global indices, repo | `/macro`, `/market_data`, `/tushare` | Daily / low-frequency | Latest expected macro period or trading day | Active, not intraday |
-| ETF/fund/convertible bond | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `cb_daily` | `/reference`, `/market_data`, `/tushare` | Daily | Latest trading day or latest fund NAV date | Active as support data |
-| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | P6 daily plus dedicated 30-minute event lane | Latest collected event row; monitor dedup and provider latency | Active event lane |
+| ETF/fund/convertible bond/options | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `fund_share`, `fund_div`, `cb_daily`, `cb_basic`, `cb_issue`, `opt_basic` | `/reference`, `/market_data`, `/tushare` | Daily | Latest trading day or latest fund/NAV/reference date | Active as support data |
+| Low-frequency A-share/index bars | Tushare `weekly`, `monthly`, `index_weekly`, `index_monthly` | `/tushare` | P7 weekly low-frequency lane | Latest weekly/monthly period | Active low-frequency lane |
+| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | Dedicated 30-minute event lane | Latest collected event row; monitor dedup and provider latency | Active event lane |
 | RSS/RSSHub/Tavily/DeepSeek | Retired/deferred | None as production collector | None | Not applicable | Disabled until re-designed as SharedSignals collectors |
 
 ## Why Not Use Every Tushare Interface

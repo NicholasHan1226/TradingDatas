@@ -10,8 +10,9 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 
 ## Active production groups
 
-- `collectors.sh`: Tushare P0-P6 tiered collection.
-- `tushare_events_collect.sh`: Tushare news/announcement/report event-lane pilot; it runs selected P6 event APIs only and must not be replaced by high-frequency full P6 collection.
+- `collectors.sh`: Tushare P0-P6 daily/trading tiered collection; P7 is handled by `tushare_low_frequency_collect.sh`.
+- `tushare_events_collect.sh`: Tushare news/announcement/report event lane; it runs selected P6 event APIs only and must not be replaced by high-frequency full P6 collection.
+- `tushare_low_frequency_collect.sh`: Tushare P7 weekly/monthly lane; it runs low-frequency bars only and must not be folded into daily P6 collection.
 - `crypto_collect.sh` and `pm_collect.sh`: 5-minute Crypto ticker/PM collection; Crypto 1d klines run separately via `SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d` to keep `market_bars_daily` fresh without pulling every kline interval on the 5-minute cadence.
 - `cn_futures_5min.sh` and `cn_futures_daily.sh`: China futures intraday and settlement data.
 - `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
