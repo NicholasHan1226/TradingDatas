@@ -5,7 +5,7 @@ from tools import source_governance_monitor
 
 def _agent_config() -> dict:
     return {
-        "contract_version": "1.1.32",
+        "contract_version": "1.1.33",
         "primary_endpoints": [{"path": path} for path in sorted(source_governance_monitor.REQUIRED_ENDPOINTS)],
         "market_frequency_labels": {
             "Ashare_intraday": "5min trading-session intraday",

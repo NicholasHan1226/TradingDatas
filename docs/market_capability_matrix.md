@@ -94,6 +94,21 @@ SharedSignals is ready to add new sources horizontally, but new sources are not 
 
 Horizontal expansion must stay DB-first and API-first: collectors may call providers, but readers, external agents, MarketGraph, and TradingAgent must not bypass SharedSignals or read provider/local files directly.
 
+## Module And API Catalog
+
+The module/API planning source is `config/api_module_catalog.yaml`. Use it before adding a collector or a public endpoint.
+
+| Module family | Default API surface | Endpoint policy |
+| --- | --- | --- |
+| Intraday prices | `/realtime_5min`, `/market_data`, `/tushare` | Reuse hot-path endpoints; no new 5-minute endpoint without write-pressure proof. |
+| Daily/reference/fundamentals | `/market_data`, `/reference`, `/industry`, `/fundamentals`, `/capital_flow`, `/tushare` | Reuse read-model tables and endpoint filters before adding any provider-shaped API. |
+| Events/disclosures/filings | `/events`, `/sentiment`, `/fundamentals`, `/tushare` | Add sources into `market_events` or `market_factors`; only add an endpoint for a new query shape. |
+| Macro/rates/FX | `/macro`, `/market_data`, `/tushare` | Degrade by series and reuse `/macro` unless a series family needs a distinct SLA/auth contract. |
+| Crypto and prediction markets | `/crypto`, `/market_data`, `/pm_markets`, `/pm_prices` | Secondary providers enrich or cross-check existing surfaces; lineage must identify the source. |
+| Delegated research projections | `/associations`, `/impacts` | Keep as read-only synced projections; empty/degraded is valid when upstream research has not published. |
+
+New endpoints are allowed only when existing surfaces cannot express the data without ambiguous parameters, mixed freshness semantics, or incorrect auth/rate-limit behavior.
+
 ## News And Announcement Lane
 
 News and announcements are an independent functional lane inside SharedSignals for trading risk, event monitoring, and external-agent research. The repository includes `cron/tushare_events_collect.sh`, which runs selected P6 event APIs only and avoids high-frequency execution of the whole P6 miscellaneous tier.

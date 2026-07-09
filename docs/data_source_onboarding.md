@@ -10,6 +10,8 @@ SharedSignals should scale by market, module, cadence, read-model mapping, and A
 
 The first horizontal expansion queue is tracked in `config/source_expansion_priority.yaml`. Entries in that file are planned-only candidates until their collector, direct SQLite write path, API/read-model exposure, freshness SLA, rate limit, degraded behavior, and tests pass the acceptance gate below.
 
+Before adding a source, map it to `config/api_module_catalog.yaml`. The catalog defines the canonical module, target read-model tables, reusable HTTP surfaces, cadence class, and the narrow conditions for adding a new endpoint.
+
 ## 新增数据源原则
 
 新增数据源必须先进入能力计划和 read-model/API 契约，再进入生产调度。没有直接入库、API 可读、频率声明、降级语义和覆盖测试的源，只能保持 `planned` 或实验状态。
@@ -50,6 +52,17 @@ Production-ready means all of these exist or are explicitly marked not applicabl
 | Health/SLA rule | Freshness and missing/empty behavior are observable. |
 | Tests | Coverage proves config, mapping, API visibility, frequency, and no retired fallback. |
 | Docs | Market matrix, API contract, and external-agent config are updated when consumer-facing. |
+
+## Module And API Planning
+
+Use this decision order for every new source:
+
+1. Choose the closest `module` in `config/api_module_catalog.yaml`.
+2. Confirm the source can write one of that module's canonical read-model tables.
+3. Reuse the module's default HTTP surface unless the dataset has a genuinely new query shape, auth scope, freshness/SLA contract, pagination model, or rate limit.
+4. Add a new API endpoint only after the new surface is documented in `API_CONTRACT.md`, `/agent_config`, capability tests, auth scope checks, and consumer-facing prompt/docs.
+
+This keeps horizontal data expansion broad while keeping the public API stable and understandable.
 
 ## Priority Queue
 

@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.32 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.33 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -32,7 +32,9 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **交易供数边界（2026-07-09）**：SharedSignals 是 5 分钟级/分钟级交易数据供给层，负责采集、整理、增量入库、健康标记和只读 API 输出；不承诺毫秒级 HFT、订单簿撮合、下单、资金、账户、执行回执或交易判断。
 
-**横向扩源边界（2026-07-09）**：新增外部数据源先进入 `config/source_expansion_priority.yaml` 的 planned 队列，再通过 collector、SQLite read model、API/read surface、freshness SLA、限流、降级语义、测试和生产 pilot 验收后才能进入定时采集。计划中的源不是生产供数，消费者不得绕过 SharedSignals 直接调用 provider 或本地文件。
+**横向扩源边界（2026-07-09）**：新增外部数据源先进入 `config/source_expansion_priority.yaml` 的 planned 队列，并按 `config/api_module_catalog.yaml` 归类到模块、read-model 表和默认 HTTP surface；再通过 collector、SQLite read model、API/read surface、freshness SLA、限流、降级语义、测试和生产 pilot 验收后才能进入定时采集。计划中的源不是生产供数，消费者不得绕过 SharedSignals 直接调用 provider 或本地文件。
+
+**新增 API 边界（2026-07-09）**：横向扩源默认复用现有 API。只有当数据具备新的查询形态、独立 freshness/SLA、独立 auth scope、分页/限流模型，且不能由现有 endpoint 清晰表达时，才新增 HTTP endpoint，并同步更新 `/agent_config`、能力测试、auth scope、文档和外部 agent prompt。
 
 **因子边界（2026-07-09）**：`market_factors` 是 SharedSignals 的事实型 read-model 投影，用于保存 provider 已给出的财务、资金流、宏观、参考限制、持仓排名等结构化数据，或必要的字段展开。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；TradingAgent 应从 SharedSignals API 读取行情/事件/事实型因子后，自行完成交易因子提取、标准化、打分、组合、风控和决策。
 
@@ -825,6 +827,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |
 | 2026-07-09 | 1.1.32 | 新增 `config/source_expansion_priority.yaml` 横向数据源扩展队列，并在 `/agent_config` 的 `data_source_onboarding` 中暴露 planned-only 扩源状态、优先批次和准入门槛；计划源不代表生产 collector 已启用。 |
 | 2026-07-09 | 1.1.31 | 新增 `/source_status` 与 `tools/source_governance_monitor.py`，按 green/yellow/red 输出接口纳管、调度重复、SLA 和能力 registry 治理状态；外部 agent 配置扩展到 22 个 HTTP 路径。 |
 | 2026-07-09 | 1.1.30 | 事件 lane 增加 `news/major_news` 15 分钟 supplemental pilot，公告/研报/CCTV 仍保持 30 分钟 full event lane；明确 `market_factors` 是事实型 read-model 输出，TradingAgent 负责交易因子提取、打分和决策。 |

@@ -1,0 +1,132 @@
+version: "2026-07-09"
+status: active_governance
+rule: "Classify new data sources by module first, reuse existing HTTP surfaces by default, and add a new endpoint only when the data shape cannot be represented by current read-model APIs."
+api_extension_policy:
+  default: reuse_existing_endpoint
+  add_endpoint_only_when:
+    - "The dataset has a new query shape that existing endpoints cannot express without ambiguous parameters."
+    - "The dataset needs a distinct freshness/SLA contract that would confuse an existing endpoint."
+    - "The dataset needs a distinct auth scope, pagination model, or rate limit."
+    - "The dataset is a durable product surface, not a one-off provider field."
+  never_add_endpoint_for:
+    - "A new provider that writes the same read-model tables as an existing module."
+    - "A provider-specific alias when /tushare or the module endpoint can expose lineage."
+    - "A temporary pilot that has not passed source governance and SLA checks."
+canonical_modules:
+  - module: ashare_intraday
+    market: Ashare
+    data_class: trading_session_prices
+    default_http_surface:
+      - /realtime_5min
+      - /market_data
+      - /tushare
+    canonical_tables:
+      - market_bars_intraday
+    default_cadence_class: 5min_trading_session
+    expansion_rule: "Only 5-minute capable price sources with proven write pressure may enter this hot path."
+  - module: futures_intraday
+    market: Futures
+    data_class: trading_session_prices
+    default_http_surface:
+      - /realtime_5min
+      - /market_data
+      - /tushare
+    canonical_tables:
+      - market_bars_intraday
+    default_cadence_class: 5min_configured_sessions
+    expansion_rule: "New futures intraday providers must preserve market='Futures' normalization and fail closed on provider errors."
+  - module: daily_bars_and_reference
+    market: MultiMarket
+    data_class: daily_prices_reference_assets
+    default_http_surface:
+      - /market_data
+      - /reference
+      - /industry
+      - /tushare
+    canonical_tables:
+      - market_bars_daily
+      - market_assets
+      - market_relationships
+    default_cadence_class: postclose_daily_or_reference
+    expansion_rule: "Daily/reference sources should not be polled intraday unless their provider publishes intraday changes and a consumer requires them."
+  - module: event_news_announcements_reports
+    market: MultiMarket
+    data_class: events_disclosures_news_reports
+    default_http_surface:
+      - /events
+      - /sentiment
+      - /tushare
+    canonical_tables:
+      - market_events
+    default_cadence_class: event_lane_10_60min
+    expansion_rule: "Event sources must deduplicate by event_hash and expose source/time provenance before scheduled mode."
+  - module: event_filings_fundamentals
+    market: US
+    data_class: filings_and_structured_facts
+    default_http_surface:
+      - /events
+      - /fundamentals
+      - /tushare
+    canonical_tables:
+      - market_events
+      - market_factors
+    default_cadence_class: event_lane_30_60min_or_daily_facts
+    expansion_rule: "Filing metadata belongs in events; structured company facts belong in market_factors unless a dedicated table is justified."
+  - module: fundamentals_financials_factors
+    market: MultiMarket
+    data_class: factual_fundamentals_and_provider_factors
+    default_http_surface:
+      - /fundamentals
+      - /capital_flow
+      - /reference
+      - /tushare
+    canonical_tables:
+      - market_factors
+      - market_fund_portfolio
+    default_cadence_class: daily_reporting_window
+    expansion_rule: "SharedSignals stores factual provider fields only; alpha, scoring, weights, and trade triggers belong to consumers."
+  - module: macro_rates_fx
+    market: Global
+    data_class: macro_rates_fx
+    default_http_surface:
+      - /macro
+      - /market_data
+      - /tushare
+    canonical_tables:
+      - market_factors
+      - market_bars_daily
+    default_cadence_class: daily_or_low_frequency
+    expansion_rule: "Macro sources degrade by series and should not block price-feed health unless explicitly marked critical."
+  - module: crypto_price_redundancy
+    market: Crypto
+    data_class: crypto_prices
+    default_http_surface:
+      - /crypto
+      - /market_data
+    canonical_tables:
+      - market_bars_intraday
+      - market_bars_daily
+    default_cadence_class: 30min_crypto
+    expansion_rule: "Secondary crypto sources must expose provider lineage and must not overwrite primary rows without explicit reconciliation rules."
+  - module: prediction_market_redundancy
+    market: PredictionMarkets
+    data_class: prediction_market_prices
+    default_http_surface:
+      - /pm_markets
+      - /pm_prices
+    canonical_tables:
+      - market_pm_markets
+      - market_pm_prices
+    default_cadence_class: 30min_prediction_market
+    expansion_rule: "Secondary prediction-market sources may enrich or cross-check prices but must not fabricate probability outputs."
+  - module: delegated_research_projections
+    market: MultiMarket
+    data_class: associations_impacts
+    default_http_surface:
+      - /associations
+      - /impacts
+    canonical_tables:
+      - market_associations
+      - market_impacts
+    default_cadence_class: delegated_read_model_projection
+    expansion_rule: "Research projections are read-only synced outputs; degraded or empty is valid when upstream research has not published a projection."

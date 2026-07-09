@@ -6,6 +6,7 @@ import yaml
 
 
 PLAN_PATH = Path("config/source_expansion_priority.yaml")
+CATALOG_PATH = Path("config/api_module_catalog.yaml")
 REQUIRED_FIELDS = {
     "source_id",
     "provider",
@@ -29,6 +30,10 @@ REQUIRED_FIELDS = {
 
 def _plan() -> dict:
     return yaml.safe_load(PLAN_PATH.read_text(encoding="utf-8"))
+
+
+def _catalog() -> dict:
+    return yaml.safe_load(CATALOG_PATH.read_text(encoding="utf-8"))
 
 
 def _candidates() -> list[dict]:
@@ -82,11 +87,55 @@ def test_source_expansion_candidates_are_not_installed_in_production_cron() -> N
     assert offenders == []
 
 
+def test_source_expansion_candidates_map_to_planned_api_modules() -> None:
+    modules = {row["module"]: row for row in _catalog().get("canonical_modules", [])}
+    missing_modules: list[str] = []
+    table_offenders: list[str] = []
+    surface_offenders: list[str] = []
+
+    for item in _candidates():
+        module = modules.get(item["module"])
+        if module is None:
+            missing_modules.append(f"{item['source_id']}:{item['module']}")
+            continue
+
+        allowed_tables = set(module["canonical_tables"])
+        target_tables = set(item["target_tables"])
+        if not target_tables <= allowed_tables:
+            table_offenders.append(f"{item['source_id']}:{sorted(target_tables - allowed_tables)}")
+
+        allowed_surfaces = set(module["default_http_surface"])
+        surfaces = set(item["http_surface"])
+        if not surfaces <= allowed_surfaces:
+            surface_offenders.append(f"{item['source_id']}:{sorted(surfaces - allowed_surfaces)}")
+
+    assert missing_modules == []
+    assert table_offenders == []
+    assert surface_offenders == []
+
+
+def test_api_module_catalog_prefers_endpoint_reuse_before_expansion() -> None:
+    catalog = _catalog()
+
+    assert catalog["status"] == "active_governance"
+    assert catalog["api_extension_policy"]["default"] == "reuse_existing_endpoint"
+    assert "A new provider that writes the same read-model tables as an existing module." in catalog["api_extension_policy"]["never_add_endpoint_for"]
+    assert {row["module"] for row in catalog["canonical_modules"]} >= {
+        "event_news_announcements_reports",
+        "macro_rates_fx",
+        "crypto_price_redundancy",
+        "prediction_market_redundancy",
+    }
+
+
 def test_source_expansion_plan_is_exposed_to_external_agent_config_and_docs() -> None:
     external_config = Path("config/external_agent_api_config.json").read_text(encoding="utf-8")
     onboarding_doc = Path("docs/data_source_onboarding.md").read_text(encoding="utf-8")
     matrix_doc = Path("docs/market_capability_matrix.md").read_text(encoding="utf-8")
 
     assert str(PLAN_PATH) in external_config
+    assert str(CATALOG_PATH) in external_config
     assert str(PLAN_PATH) in onboarding_doc
+    assert str(CATALOG_PATH) in onboarding_doc
     assert "B1_event_risk_official_sources" in matrix_doc
+    assert "Module And API Catalog" in matrix_doc
