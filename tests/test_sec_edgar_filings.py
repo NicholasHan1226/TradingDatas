@@ -122,6 +122,33 @@ def test_company_fact_rows_from_companyfacts_maps_to_market_factors() -> None:
     assert rows[0]["end_date"] == "2026-03-31"
 
 
+def test_company_fact_rows_select_recent_periods_before_latest_filed_comparatives() -> None:
+    payload = _sample_companyfacts_payload()
+    payload["facts"]["us-gaap"]["Revenues"]["units"]["USD"] = [
+        {
+            "end": "2009-12-31",
+            "filed": "2026-05-01",
+            "form": "10-K",
+            "val": 31942000000,
+        },
+        {
+            "end": "2026-03-31",
+            "filed": "2026-05-01",
+            "form": "10-Q",
+            "val": 94500000000,
+        },
+    ]
+
+    rows = sec_edgar_filings.company_fact_rows_from_companyfacts(
+        payload,
+        concepts=["Revenues"],
+        limit_per_concept=1,
+    )
+
+    assert rows[0]["end_date"] == "2026-03-31"
+    assert rows[0]["Revenues"] == 94500000000
+
+
 def test_filing_rows_from_submissions_maps_to_market_events() -> None:
     rows = sec_edgar_filings.filing_rows_from_submissions(_sample_payload(), limit=1)
 

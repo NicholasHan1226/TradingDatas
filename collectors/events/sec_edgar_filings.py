@@ -168,11 +168,7 @@ def company_fact_rows_from_companyfacts(
         for unit, items in units.items():
             if not isinstance(items, list):
                 continue
-            ordered = sorted(
-                (item for item in items if isinstance(item, dict)),
-                key=lambda item: str(item.get("filed") or item.get("end") or ""),
-                reverse=True,
-            )
+            ordered = _recent_company_fact_items(items)
             for item in ordered[: max(limit_per_concept, 0)]:
                 value = item.get("val")
                 if value in (None, ""):
@@ -211,6 +207,19 @@ def company_fact_rows_from_companyfacts(
                     }
                 )
     return rows
+
+
+def _recent_company_fact_items(items: list[Any]) -> list[dict[str, Any]]:
+    valid = [item for item in items if isinstance(item, dict) and item.get("end")]
+    return sorted(
+        valid,
+        key=lambda item: (
+            str(item.get("end") or ""),
+            str(item.get("filed") or ""),
+            str(item.get("accn") or ""),
+        ),
+        reverse=True,
+    )
 
 
 def run_collection(
