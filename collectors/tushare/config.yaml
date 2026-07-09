@@ -52,6 +52,20 @@ priorities:
     params:
       trade_date: '{trade_date}'
     per_stock: false
+  - api_name: cyq_perf
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    fields: ts_code,trade_date,winner_rate,cost_50pct
+  - api_name: cyq_chips
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    fields: ts_code,trade_date,price,percent
   - api_name: adj_factor
     frequency: daily
     params:
@@ -136,6 +150,24 @@ priorities:
     params:
       ts_code: '{ts_code}'
     per_stock: true
+  - api_name: fina_audit
+    frequency: daily
+    lookback_days: 550
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    fields: ts_code,ann_date,end_date,audit_result,audit_fees,audit_agency,audit_sign
+  - api_name: fina_mainbz
+    frequency: daily
+    lookback_days: 550
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: '{ts_code}'
+    per_stock: true
+    fields: ts_code,end_date,bz_item,bz_sales,bz_profit,bz_cost,curr_type
   - api_name: income
     frequency: daily
     params:
@@ -206,6 +238,12 @@ priorities:
     params:
       exchange: ''
     per_stock: false
+  - api_name: bak_basic
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: ts_code,trade_date,name,industry,area,pe,pb,total_share
   - api_name: stk_holdernumber
     frequency: daily
     params:
@@ -286,6 +324,12 @@ priorities:
       ts_code: ''
     per_stock: false
     fields: ts_code,name,con_code,con_name,weight,in_date,out_date,is_new
+  - api_name: ths_hot
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: trade_date,ts_code,ts_name,rank,pct_change,current_price,concept,rank_reason,hot
   - api_name: dc_index
     frequency: daily
     params: {}
@@ -538,6 +582,21 @@ priorities:
   - api_name: fund_nav
     per_stock: false
     fields: ts_code,ann_date,nav_value,accum_nav
+  - api_name: fund_adj
+    frequency: daily
+    params:
+      ts_code: ''
+    per_stock: false
+    fields: ts_code,trade_date,adj_factor
+  - api_name: fund_portfolio
+    frequency: daily
+    lookback_days: 550
+    params:
+      end_date: '{end_date}'
+      start_date: '{start_date}'
+      ts_code: ''
+    per_stock: false
+    fields: ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio
   - api_name: fund_share
     frequency: daily
     params: {}

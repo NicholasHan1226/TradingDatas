@@ -49,8 +49,8 @@ modules:
       - {api_name: top_list, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
       - {api_name: broker_recommend, mode: scheduled, tier: P6_other_daily, cadence: daily_research}
       - {api_name: suspend_d, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
-      - {api_name: cyq_perf, mode: planned, cadence: postclose_daily}
-      - {api_name: cyq_chips, mode: planned, cadence: postclose_daily}
+      - {api_name: cyq_perf, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
+      - {api_name: cyq_chips, mode: scheduled, tier: P1_eod_daily, cadence: postclose_daily}
 
   - module: ashare_fundamentals_filings_and_ownership
     market: Ashare
@@ -62,8 +62,8 @@ modules:
       - {api_name: forecast, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
       - {api_name: express, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
       - {api_name: fina_indicator, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
-      - {api_name: fina_audit, mode: planned, cadence: daily_reporting_window}
-      - {api_name: fina_mainbz, mode: planned, cadence: daily_reporting_window}
+      - {api_name: fina_audit, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
+      - {api_name: fina_mainbz, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
       - {api_name: dividend, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
       - {api_name: top10_holders, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
       - {api_name: top10_floatholders, mode: scheduled, tier: P2_financial_daily, cadence: daily_reporting_window}
@@ -81,7 +81,7 @@ modules:
     apis:
       - {api_name: stock_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stock_company, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: bak_basic, mode: planned, cadence: daily_reference}
+      - {api_name: bak_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: namechange, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stk_managers, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: stk_surv, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
@@ -92,7 +92,7 @@ modules:
       - {api_name: ths_daily, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: ths_hot, mode: planned, cadence: intraday_or_daily_pilot}
+      - {api_name: ths_hot, mode: scheduled, tier: P3_reference_daily, cadence: intraday_or_daily_pilot}
       - {api_name: dc_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: dc_daily, mode: scheduled, tier: P3_reference_daily, cadence: postclose_daily}
       - {api_name: dc_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
@@ -156,8 +156,8 @@ modules:
       - {api_name: fund_daily, mode: scheduled, tier: P6_other_daily, cadence: postclose_daily}
       - {api_name: fund_basic, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
       - {api_name: fund_nav, mode: scheduled, tier: P6_other_daily, cadence: daily_nav}
-      - {api_name: fund_adj, mode: planned, cadence: daily_nav}
-      - {api_name: fund_portfolio, mode: planned, cadence: reporting_window}
+      - {api_name: fund_adj, mode: scheduled, tier: P6_other_daily, cadence: daily_nav}
+      - {api_name: fund_portfolio, mode: scheduled, tier: P6_other_daily, cadence: reporting_window}
       - {api_name: fund_share, mode: scheduled, tier: P6_other_daily, cadence: daily_or_weekly}
       - {api_name: fund_div, mode: scheduled, tier: P6_other_daily, cadence: daily_reporting_window}
       - {api_name: etf_basic, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}

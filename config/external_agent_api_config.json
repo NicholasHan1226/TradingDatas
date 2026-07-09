@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.24",
+  "contract_version": "1.1.25",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -140,9 +140,9 @@
   },
   "tushare_status": {
     "allowlisted_api_names": 115,
-    "scheduled_or_independent_or_event_lane": 107,
-    "configured_in_production_tiers": 106,
-    "planned_activation_backlog": 8,
+    "scheduled_or_independent_or_event_lane": 115,
+    "configured_in_production_tiers": 114,
+    "planned_activation_backlog": 0,
     "planning_doc": "docs/tushare_activation_backlog.md",
     "capability_plan": "config/tushare_capability_plan.yaml"
   },

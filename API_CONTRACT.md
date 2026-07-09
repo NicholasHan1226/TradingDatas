@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.24 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.25 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -567,7 +567,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 5. 按市场和频率理解数据：A股/期货/Crypto/PM 的 5 分钟数据可用于分钟级交易输入；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。剩余 Tushare planned 接口的分批激活计划维护在 `docs/tushare_activation_backlog.md`。
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
 
@@ -578,6 +578,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股日线 OHLCV | Tushare `daily` | DB-first: `reader.get_tushare("daily", ...)` / HTTP `/tushare` |
 | A 股资金流向 | Tushare `moneyflow` | P1 盘后日频全市场采集；DB-first: `reader.get_tushare("moneyflow", ...)` / HTTP `/capital_flow`；collector rows 必须通过 `storage/read_model_store.py` 直接写入 `market_factors`，返回 `moneyflow:*` 展开行 |
 | A 股财务指标 | Tushare `fina_indicator` | P2 collector → `market_factors`; `reader.get_fundamentals(ts_code=...)`（HTTP 也兼容 `symbol`） |
+| A 股审计/主营构成 | Tushare `fina_audit` / `fina_mainbz` | P2 collector → `market_factors`; 报告期优先作为 `event_time`，公告日保留在 `raw_json`；DB-first `/fundamentals` / `/tushare` |
 | A 股利润表 / 资产负债表 | Tushare `income` / `balancesheet` | P2 collector → read model / degraded if no recent rows |
 | A 股复权因子 | Tushare `adj_factor` | P0/P1 collector → read model |
 | A 股融资融券 | Tushare `margin`/`margin_secs` | P0/P1 collector → `market_factors`/read model |
@@ -587,6 +588,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股题材/行业/名称参考 | Tushare `namechange` / `ths_index` / `dc_index` / `index_classify` | P3 collector → `market_events` 或 `market_assets`; 只作为参考/归因维度，不生成交易判断 |
 | A 股主题/指数成分关系 | Tushare `ths_member` / `dc_member` / `index_member` / `index_member_all` | P3 collector → `market_relationships`; 保留 parent/child 多对多关系，DB-first `/tushare` |
 | A 股主题/行业日线 | Tushare `ths_daily` / `dc_daily` | P3 collector → `market_bars_daily`; 日频主题/行业参考，不进入 5 分钟交易通道 |
+| A 股筹码/备用基础/热度 | Tushare `cyq_perf` / `cyq_chips` / `bak_basic` / `ths_hot` | P1/P3 collectors → `market_factors`; 日频或 pilot 因子，不进入 P0 5 分钟快车道 |
 | A 股北向资金/沪深港通资金 | Tushare `moneyflow_hsgt` | P1 collector → `market_factors`; DB-first `/tushare?api_name=moneyflow_hsgt` |
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮从 read model 资产池和显式环境变量优先池选股并轮转补足，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，未传日期时使用该股票最新 intraday 日期；无数据返回 degraded/empty，不回退 CSV 或旧目录 |
 | A 股/指数周月线 | Tushare `weekly` / `monthly` / `index_weekly` / `index_monthly` | P7 low-frequency wrapper → `market_bars_intraday` with interval=`weekly`/`monthly`/`index_weekly`/`index_monthly`; DB-first `/tushare` |
@@ -603,7 +605,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货 5 分钟 OHLCV | AkShare/Sina 默认；Tushare `rt_fut_min` 可显式启用 | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 或 `market=CNFutures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | 期货参考限制 | Tushare `ft_limit` | P6 collector → `market_factors`; DB-first `/tushare?api_name=ft_limit` |
 | 期货持仓排名 | Tushare `fut_holding` | P6 collector → `market_factors`; 日频持仓/席位参考，不作为订单簿或执行数据 |
-| 基金/可转债/期权支持数据 | Tushare `fund_share` / `fund_div` / `cb_basic` / `cb_issue` / `opt_basic` | P3/P6 collectors → `market_factors` / `market_assets` / `market_events`; DB-first `/tushare` |
+| 基金/可转债/期权支持数据 | Tushare `fund_share` / `fund_div` / `fund_adj` / `fund_portfolio` / `cb_basic` / `cb_issue` / `opt_basic` | P3/P6 collectors → `market_factors` / `market_assets` / `market_events`; fund portfolio 使用报告期语义；DB-first `/tushare` |
 | 期权日线 | Tushare `opt_daily` | P6 collector → `market_bars_daily`; 期权 EOD 支持数据，不作为实时盘口 |
 | Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 与 `reader.get_sentiment()` 只读 SQLite `market_events`；旧事件候选/情绪文件不作为 SharedSignals 对外数据源 |
@@ -810,6 +812,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.25 | 启用最后 8 个 planned Tushare 接口：`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`fund_portfolio`、`ths_hot` 全部写入 `market_factors`；Tushare 生产配置接口从 106 增至 114，planned backlog 从 8 降至 0。 |
 | 2026-07-09 | 1.1.24 | 启用 B2 日频支持数据：`ths_daily`、`dc_daily`、`opt_daily` 写入 `market_bars_daily`，`fut_holding` 写入 `market_factors`；Tushare 生产配置接口从 102 增至 106，planned backlog 从 12 降至 8。 |
 | 2026-07-09 | 1.1.23 | 启用 B1 关系/成分数据：新增 `market_relationships` read model，`ths_member`、`dc_member`、`index_member`、`index_member_all` 进入 P3 日频参考层；Tushare 生产配置接口从 98 增至 102，planned backlog 从 16 降至 12。 |
 | 2026-07-09 | 1.1.22 | 新增 `/agent_config` 外部 agent 机器接入配置端点，补充一键复制 prompt 与 16 个 planned Tushare 接口的分批激活 backlog，明确外部 agent 应先读健康/配置再按市场和频率调用。 |

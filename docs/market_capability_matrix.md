@@ -8,10 +8,10 @@ This document is the market-facing capability and cadence guide for SharedSignal
 
 SharedSignals should be managed by market and data-latency need, not by provider name alone.
 
-- `collectors/tushare/config.yaml` is the active Tushare collection plan: 106 configured interfaces.
+- `collectors/tushare/config.yaml` is the active Tushare collection plan: 114 configured interfaces.
 - `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 115 names.
 - `config/tushare_capability_plan.yaml` is the market/module management plan for all 115 allowlisted names.
-- `docs/tushare_activation_backlog.md` is the activation plan for the remaining 8 planned interfaces.
+- `docs/tushare_activation_backlog.md` is the activation ledger; 0 planned interfaces remain after B5 activation.
 - `/agent_config` and `config/external_agent_api_config.json` expose the external-agent integration contract and frequency labels.
 - HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
 - SharedSignals supports minute/5-minute trading data inputs, but not millisecond HFT, order matching, order placement, funds, accounts, or execution receipts.
@@ -23,17 +23,18 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | --- | --- | --- | --- | --- | --- |
 | A-share intraday | Tushare `stk_mins`, `rt_min` | `/realtime_5min`, `/market_data?freq=5m`, `/tushare` | Trading window every 5 minutes | Trading-session latest bar; fail closed outside usable data | Active |
 | A-share daily/technical | Tushare `daily`, `stk_factor`, `stk_factor_pro`, `daily_basic`, `adj_factor` | `/market_data`, `/tushare` | Post-close daily | Latest trading day after EOD collection | Active |
-| A-share flow/depth/events-derived data | Tushare `moneyflow`, `moneyflow_hsgt`, `margin`, `margin_detail`, `top_list`, `limit_list`, `limit_list_d`, `limit_step`, `stk_auction`, `stk_limit`, `block_trade` | `/capital_flow`, `/events`, `/tushare` | Post-close daily | Latest trading day or latest collected event row | Active, not buy/sell logic |
-| A-share fundamentals/reference | Tushare `fina_indicator`, financial statements, holders, pledge, company, concept, index membership, calendar | `/fundamentals`, `/reference`, `/industry`, `/tushare` | Daily/reference windows | Latest available reporting/reference snapshot | Active |
+| A-share flow/depth/events-derived data | Tushare `moneyflow`, `moneyflow_hsgt`, `margin`, `margin_detail`, `top_list`, `limit_list`, `limit_list_d`, `limit_step`, `stk_auction`, `stk_limit`, `block_trade`, `cyq_perf`, `cyq_chips` | `/capital_flow`, `/events`, `/tushare` | Post-close daily | Latest trading day or latest collected event row | Active, not buy/sell logic |
+| A-share fundamentals/reference | Tushare `fina_indicator`, financial statements, holders, pledge, company, concept, index membership, calendar, `fina_audit`, `fina_mainbz`, `bak_basic` | `/fundamentals`, `/reference`, `/industry`, `/tushare` | Daily/reference/reporting windows | Latest available reporting/reference snapshot | Active |
 | A-share theme/index relationships | Tushare `ths_member`, `dc_member`, `index_member`, `index_member_all` | `/tushare` | Daily reference | Latest collected membership snapshot | Active relationship lane |
 | A-share theme/index daily bars | Tushare `ths_daily`, `dc_daily` | `/tushare` | Daily reference / post-close daily | Latest collected theme/index EOD row | Active daily support lane |
+| A-share hotness pilot | Tushare `ths_hot` | `/tushare` | Daily pilot | Latest collected hotness/rank factor row | Active support lane, not 5-minute data |
 | China futures daily | Tushare `fut_basic`, `fut_daily` | `/market_data`, `/tushare` | Daily settlement window | Latest futures trading day after settlement | Active |
 | China futures intraday | AkShare/Sina default; Tushare `rt_fut_min` only when explicitly enabled | `/realtime_5min?market=Futures`, `/realtime_5min?market=CNFutures` | Day/night sessions every 5 minutes | 10 minute default freshness during active session | Active |
 | Crypto | Binance ticker and 1d klines | `/crypto`, `/market_data?market=Crypto` | Ticker every 5 minutes; daily klines hourly | Intraday <= 30 minutes | Active |
 | Polymarket | Polymarket markets/prices | `/pm_markets`, `/pm_prices` | Every 5 minutes | Prices <= 30 minutes | Active |
 | US/HK | Tushare `us_daily`, `us_basic`, `hk_daily`, `hk_basic`, HK financials | `/market_data`, `/reference`, `/tushare` | Daily around local close windows | Latest effective trading day | Active but daily |
 | Macro/global | Tushare macro, rates, FX, global indices, repo | `/macro`, `/market_data`, `/tushare` | Daily / low-frequency | Latest expected macro period or trading day | Active, not intraday |
-| ETF/fund/convertible bond/options | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `fund_share`, `fund_div`, `cb_daily`, `cb_basic`, `cb_issue`, `opt_basic`, `opt_daily` | `/reference`, `/market_data`, `/tushare` | Daily | Latest trading day or latest fund/NAV/reference date | Active as support data |
+| ETF/fund/convertible bond/options | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `fund_adj`, `fund_portfolio`, `fund_share`, `fund_div`, `cb_daily`, `cb_basic`, `cb_issue`, `opt_basic`, `opt_daily` | `/reference`, `/market_data`, `/tushare` | Daily / reporting windows | Latest trading day or latest fund/NAV/reference/reporting date | Active as support data |
 | Low-frequency A-share/index bars | Tushare `weekly`, `monthly`, `index_weekly`, `index_monthly` | `/tushare` | P7 weekly low-frequency lane | Latest weekly/monthly period | Active low-frequency lane |
 | News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | Dedicated 30-minute event lane | Latest collected event row; monitor dedup and provider latency | Active event lane |
 | RSS/RSSHub/Tavily/DeepSeek | Retired/deferred | None as production collector | None | Not applicable | Disabled until re-designed as SharedSignals collectors |
@@ -100,7 +101,7 @@ The event wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with 
 
 Low-frequency bars are a separate lane. `P7_low_frequency` is run by `cron/tushare_low_frequency_collect.sh` and defaults to `weekly,monthly,index_weekly,index_monthly`. Keep these out of daily P6 so weekly/monthly all-market pulls do not run every night.
 
-First planned-to-scheduled batch:
+Completed planned-to-scheduled activation:
 
 | Lane | APIs | Cadence |
 | --- | --- | --- |
@@ -109,8 +110,11 @@ First planned-to-scheduled batch:
 | Funds / convertible bonds / options support | `fund_share`, `fund_div`, `cb_basic`, `cb_issue`, `opt_basic` | Daily reference or daily reporting |
 | Futures reference | `ft_limit` | Daily reference |
 | Low-frequency bars | `weekly`, `monthly`, `index_weekly`, `index_monthly` | Weekly wrapper, with monthly rows included for refresh |
+| Relationship/reference | `ths_member`, `dc_member`, `index_member`, `index_member_all` | Daily reference |
+| Daily supporting bars / holdings | `ths_daily`, `dc_daily`, `opt_daily`, `fut_holding` | Daily reference / post-close / settlement daily |
+| Final factor/reporting support | `bak_basic`, `cyq_perf`, `cyq_chips`, `fina_audit`, `fina_mainbz`, `fund_adj`, `fund_portfolio`, `ths_hot` | Daily reference / post-close / reporting windows / daily pilot |
 
-Still-planned APIs are intentionally held back when they require a many-to-many membership read model, a per-stock financial sharding plan, or a non-empty provider window proof. Do not mark them scheduled merely because they are allowlisted.
+No planned Tushare APIs remain. Future new interfaces must still prove read-model mapping, non-empty or properly degraded provider behavior, HTTP visibility, cadence fit, and rate protection before scheduling.
 
 Before increasing event frequency, run a small live pilot:
 

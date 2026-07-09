@@ -717,6 +717,67 @@ def test_b2_daily_supporting_apis_ingest_to_read_model_tables(tmp_path: Path):
     assert ("Futures", "RB2601.SHF", "fut_holding:long_hld", "20260709", 200.0, "tushare_fut_holding") in factors
 
 
+def test_final_planned_tushare_batch_ingests_to_read_model_tables(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    samples = {
+        "bak_basic": [{"ts_code": "000001.SZ", "trade_date": "20260709", "pe": 8.8, "pb": 0.9, "total_share": 100000}],
+        "cyq_perf": [{"ts_code": "000001.SZ", "trade_date": "20260709", "winner_rate": 0.62, "cost_50pct": 11.2}],
+        "cyq_chips": [{"ts_code": "000001.SZ", "trade_date": "20260709", "price": 10.5, "percent": 0.08}],
+        "fina_audit": [{"ts_code": "600519.SH", "end_date": "20251231", "ann_date": "20260331", "audit_result": "标准无保留意见", "audit_fees": 120.0}],
+        "fina_mainbz": [{"ts_code": "600519.SH", "end_date": "20251231", "bz_item": "酒类", "bz_sales": 1000.0, "bz_profit": 500.0}],
+        "fund_adj": [{"ts_code": "000001.OF", "trade_date": "20260709", "adj_factor": 1.2345}],
+        "fund_portfolio": [{"ts_code": "000001.OF", "ann_date": "20260331", "symbol": "600519.SH", "mkv": 1200.0, "amount": 100.0}],
+        "ths_hot": [{"ts_code": "000001.SZ", "trade_date": "20260709", "rank": 5, "hot": 98.6}],
+    }
+
+    for api_name, rows in samples.items():
+        table = API_TO_TABLE_MAP[api_name]
+        assert table == "market_factors"
+        assert ingest_rows_to_sqlite(db_path, table, api_name, rows, source_name=f"{api_name}_test") > 0
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        factors = conn.execute(
+            """
+            SELECT market, symbol, factor_name, event_time, value, provider
+            FROM market_factors
+            WHERE provider IN (
+                'tushare_bak_basic',
+                'tushare_cyq_perf',
+                'tushare_cyq_chips',
+                'tushare_fina_audit',
+                'tushare_fina_mainbz',
+                'tushare_fund_adj',
+                'tushare_fund_portfolio',
+                'tushare_ths_hot'
+            )
+            ORDER BY provider, factor_name
+            """
+        ).fetchall()
+        fund_portfolio_raw = conn.execute(
+            """
+            SELECT raw_json
+            FROM market_factors
+            WHERE provider = 'tushare_fund_portfolio'
+              AND factor_name = 'fund_portfolio:mkv'
+            """
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert ("Ashare", "000001.SZ", "bak_basic:pe", "20260709", 8.8, "tushare_bak_basic") in factors
+    assert ("Ashare", "000001.SZ", "cyq_perf:winner_rate", "20260709", 0.62, "tushare_cyq_perf") in factors
+    assert ("Ashare", "000001.SZ", "cyq_chips:percent", "20260709", 0.08, "tushare_cyq_chips") in factors
+    assert ("Ashare", "600519.SH", "fina_audit:audit_fees", "20251231", 120.0, "tushare_fina_audit") in factors
+    assert ("Ashare", "600519.SH", "fina_mainbz:bz_profit", "20251231", 500.0, "tushare_fina_mainbz") in factors
+    assert ("Fund", "000001.OF", "fund_adj:adj_factor", "20260709", 1.2345, "tushare_fund_adj") in factors
+    assert ("Fund", "000001.OF", "fund_portfolio:mkv", "20260331", 1200.0, "tushare_fund_portfolio") in factors
+    assert '"holding_symbol": "600519.SH"' in fund_portfolio_raw
+    assert ("Ashare", "000001.SZ", "ths_hot:hot", "20260709", 98.6, "tushare_ths_hot") in factors
+
+
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

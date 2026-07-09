@@ -59,6 +59,7 @@ def _sqlite_bridge_lock(db_path: Path):
 API_TO_TABLE_MAP = {
     "adj_factor": "market_bars_daily",
     "anns_d": "market_events",
+    "bak_basic": "market_factors",
     "balancesheet": "market_factors",
     "block_trade": "market_events",
     "broker_recommend": "market_events",
@@ -71,6 +72,8 @@ API_TO_TABLE_MAP = {
     "cn_m": "market_factors",
     "cn_pmi": "market_factors",
     "cn_ppi": "market_factors",
+    "cyq_chips": "market_factors",
+    "cyq_perf": "market_factors",
     "libor": "market_factors",
     "hibor": "market_factors",
     "us_tltr": "market_factors",
@@ -82,13 +85,17 @@ API_TO_TABLE_MAP = {
     "daily_basic": "market_factors",
     "dividend": "market_factors",
     "express": "market_factors",
+    "fina_audit": "market_factors",
     "fina_indicator": "market_factors",
+    "fina_mainbz": "market_factors",
     "forecast": "market_factors",
     "etf_basic": "market_assets",
+    "fund_adj": "market_factors",
     "fund_basic": "market_assets",
     "fund_daily": "market_bars_daily",
     "fund_div": "market_factors",
     "fund_nav": "market_assets",
+    "fund_portfolio": "market_factors",
     "fund_share": "market_factors",
     "fut_basic": "market_assets",
     "fut_daily": "market_bars_daily",
@@ -149,6 +156,7 @@ API_TO_TABLE_MAP = {
     "stock_basic": "market_assets",
     "stock_company": "market_assets",
     "suspend_d": "market_events",
+    "ths_hot": "market_factors",
     "ths_index": "market_assets",
     "ths_member": "market_relationships",
     "dc_member": "market_relationships",
@@ -200,10 +208,16 @@ def _market_for(api_name, symbol):
         "repo_daily",
         "concept",
         "concept_detail",
+        "bak_basic",
+        "cyq_chips",
+        "cyq_perf",
+        "fina_audit",
+        "fina_mainbz",
         "hs_const",
         "ths_index",
         "dc_index",
         "ths_member",
+        "ths_hot",
         "dc_member",
         "index_member",
         "index_member_all",
@@ -221,7 +235,7 @@ def _market_for(api_name, symbol):
         return "Futures"
     if api_name in ("ft_limit",):
         return "Futures"
-    if api_name in ("fund_share", "fund_div"):
+    if api_name in ("fund_adj", "fund_portfolio", "fund_share", "fund_div"):
         return "Fund"
     if api_name in ("opt_basic", "opt_daily"):
         return "Options"
@@ -258,6 +272,7 @@ _FACTOR_BASE_COLUMNS = {
 }
 _FACTOR_PRICE_COLUMNS = {"open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "volume", "amount"}
 _FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period", "month", "quarter", "year")
+_REPORTING_PERIOD_APIS = {"fina_audit", "fina_mainbz", "fund_portfolio"}
 _FACTOR_INSERT_COLUMNS = (
     "factor_hash",
     "market",
@@ -310,8 +325,11 @@ def _coerce_float(value):
         return None
 
 
-def _factor_event_time(row):
-    for col in _FACTOR_DATE_COLUMNS:
+def _factor_event_time(row, api_name=""):
+    date_columns = _FACTOR_DATE_COLUMNS
+    if api_name in _REPORTING_PERIOD_APIS:
+        date_columns = ("end_date", "period", "report_date", "ann_date", "trade_date", "date", "month", "quarter", "year")
+    for col in date_columns:
         value = str(row.get(col) or "").strip()
         if value:
             return value
@@ -324,10 +342,13 @@ def _factor_hash(api_name, symbol, event_time, factor_name, raw_json):
 
 
 def _factor_rows(row, api_name, csv_path):
+    if api_name == "fund_portfolio" and row.get("ts_code") and row.get("symbol"):
+        row = dict(row)
+        row.setdefault("holding_symbol", row.get("symbol"))
     row = _canonical_row("market_factors", dict(row), api_name, csv_path)
     raw_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
     symbol = row.get("symbol") or row.get("ts_code") or ""
-    event_time = _factor_event_time(row) or _csv_collected_at(csv_path)
+    event_time = _factor_event_time(row, api_name) or _csv_collected_at(csv_path)
     collected_at = row.get("collected_at") or _csv_collected_at(csv_path)
     provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
     source_file = row.get("source_file") or Path(csv_path).name

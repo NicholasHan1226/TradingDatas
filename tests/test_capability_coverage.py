@@ -211,6 +211,29 @@ def test_b2_daily_supporting_apis_are_scheduled_and_mapped() -> None:
         assert by_name[api_name]["cadence"] == cadence
 
 
+def test_final_planned_tushare_batch_is_scheduled_and_mapped() -> None:
+    configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
+    planned_rows = _planned_tushare_apis()
+    by_name = {row["api_name"]: row for row in planned_rows}
+
+    expected = {
+        "bak_basic": "daily_reference",
+        "cyq_perf": "postclose_daily",
+        "cyq_chips": "postclose_daily",
+        "fina_audit": "daily_reporting_window",
+        "fina_mainbz": "daily_reporting_window",
+        "fund_adj": "daily_nav",
+        "fund_portfolio": "reporting_window",
+        "ths_hot": "intraday_or_daily_pilot",
+    }
+
+    assert set(expected) <= configured
+    for api_name, cadence in expected.items():
+        assert API_TO_TABLE_MAP[api_name] == "market_factors"
+        assert by_name[api_name]["mode"] == "scheduled"
+        assert by_name[api_name]["cadence"] == cadence
+
+
 def test_tushare_event_wrapper_runs_only_event_apis() -> None:
     wrapper = Path("cron/tushare_events_collect.sh").read_text(encoding="utf-8")
 
@@ -291,7 +314,7 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
     assert "外部 agent" in docs["API_CONTRACT.md"]
     assert "/agent_config" in docs["API_CONTRACT.md"]
     assert "不要绕过 SharedSignals" in docs["docs/external_agent_api_prompt.md"]
-    assert "8 planned" in docs["docs/tushare_activation_backlog.md"]
+    assert "0 planned" in docs["docs/tushare_activation_backlog.md"]
 
 
 def test_external_agent_config_matches_current_capability_counts() -> None:
@@ -303,7 +326,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.24"
+    assert config["contract_version"] == "1.1.25"
     assert config["tushare_status"]["allowlisted_api_names"] == len(ALLOWED_TUSHARE_APIS)
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)
