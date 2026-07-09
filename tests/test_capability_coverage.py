@@ -256,6 +256,7 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "7 */6 * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh",
         "1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
         "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
+        "15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
         "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
         "12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
@@ -280,6 +281,8 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         )
         assert missing == []
         assert missing_tiers == []
+        assert text.count("*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh") == 1
+        assert text.count("15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh") == 1
 
 
 def test_production_cron_keeps_heavy_jobs_out_of_trading_hot_path() -> None:
@@ -342,9 +345,10 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.29"
+    assert config["contract_version"] == "1.1.30"
     assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
     assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
+    assert config["market_frequency_labels"]["Events"] == "30min full event lane plus 15min news/major_news pilot refresh"
     cadence_by_path = {item["path"]: item["cadence_class"] for item in config["primary_endpoints"]}
     assert cadence_by_path["/crypto"] == "30min_crypto"
     assert cadence_by_path["/pm_markets"] == "30min_prediction_market"

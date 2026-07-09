@@ -36,7 +36,7 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | Macro/global | Tushare macro, rates, FX, global indices, repo | `/macro`, `/market_data`, `/tushare` | Daily / low-frequency | Latest expected macro period or trading day | Active, not intraday |
 | ETF/fund/convertible bond/options | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `fund_adj`, `fund_portfolio`, `fund_share`, `fund_div`, `cb_daily`, `cb_basic`, `cb_issue`, `opt_basic`, `opt_daily` | `/reference`, `/market_data`, `/tushare` | Daily / reporting windows | Latest trading day or latest fund/NAV/reference/reporting date | Active as support data |
 | Low-frequency A-share/index bars | Tushare `weekly`, `monthly`, `index_weekly`, `index_monthly` | `/tushare` | P7 weekly low-frequency lane | Latest weekly/monthly period | Active low-frequency lane |
-| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | Dedicated 30-minute event lane | Latest collected event row; monitor dedup and provider latency | Active event lane |
+| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | 30-minute full event lane; 15-minute supplemental pilot for `news,major_news` only | Latest collected event row; monitor dedup and provider latency | Active event lane |
 | RSS/RSSHub/Tavily/DeepSeek | Retired/deferred | None as production collector | None | Not applicable | Disabled until re-designed as SharedSignals collectors |
 
 ## Why Not Use Every Tushare Interface

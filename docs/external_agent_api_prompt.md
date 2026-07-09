@@ -58,7 +58,8 @@ Allowed behavior:
 Frequency interpretation:
 - A-share intraday and China futures intraday: 5-minute trading-session data when available.
 - Crypto and Polymarket: 30-minute collection lanes on the current production server.
-- News, announcements, CCTV news, major news, and research reports: event lane, currently 30-minute active-window collection.
+- News and major news: 30-minute full event lane plus 15-minute supplemental pilot refresh.
+- Announcements, CCTV news, and research reports: 30-minute full event lane; not 5-minute trading data.
 - Daily bars, capital flow, fundamentals, macro, funds, ETF, convertible bonds, options, reference data: daily or reporting-window data.
 - Weekly/monthly A-share and index bars: low-frequency lane, not a 5-minute feed.
 - /associations and /impacts are delegated read-model projections; degraded or empty is valid when research projections have not been synced.

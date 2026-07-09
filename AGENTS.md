@@ -18,6 +18,7 @@
 ## 三系统协作边界
 
 - SharedSignals 是供数层，只负责采集、去重、缓存和健康巡查；不做投资分析、交易判断、执行路由或回执处理。
+- `market_factors` 只表示事实型 read-model 投影：provider 原始财务/资金/宏观/参考字段、必要字段展开和来源留痕。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；这些交易因子提取、标准化、组合、风控和决策属于 TradingAgent。
 - MarketGraph 和 TradingAgent 生产运行只能消费 SharedSignals 暴露的 HTTP API；SQLite/DuckDB read model 是 SharedSignals 内部存储和本仓只读诊断/批处理入口，不是跨系统生产兜底。
 - 对 TradingAgent 而言，SharedSignals/ShareChannel API 是唯一生产市场数据入口。生产 reader/API 不得回退旧 CSV、NDJSON、旧目录或其它系统内部文件；缺表、缺数据或缺映射必须返回 degraded/fail-closed，不能把旧文件当兜底。
 - 未来对外提供服务接口时，默认只暴露数据读取、健康状态和来源留痕；任何交易信号、下单、模拟执行或邮件通知都属于 TradingAgent/Hermes 边界。SharedSignals 支撑分钟级/5 分钟级供数，不承诺毫秒级 HFT、订单簿撮合、下单或资金执行。

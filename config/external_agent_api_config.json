@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.29",
+  "contract_version": "1.1.30",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -190,7 +190,7 @@
     "US_HK": "daily after local close windows",
     "Macro": "daily or low-frequency",
     "Funds_ETF_CB_Options": "daily/reference/reporting windows",
-    "Events": "30min event lane for active windows",
+    "Events": "30min full event lane plus 15min news/major_news pilot refresh",
     "Low_frequency_bars": "weekly wrapper for weekly/monthly refresh"
   },
   "data_source_onboarding": {

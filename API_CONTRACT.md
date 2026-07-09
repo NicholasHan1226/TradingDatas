@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.29 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.30 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -31,6 +31,8 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 **入库完整性边界（2026-07-09）**：`collectors/tushare/config.yaml` 中已启用的 P0-P7 Tushare 接口必须全部有 read model 表映射、API 白名单、采集频率声明和限流保护。非空 provider rows 直接写入 SQLite 为 0 行时必须标记为 `failed` 并计入 tier `sqlite_failure_count`；不能把“采集成功但未入库”当作正常空返回。
 
 **交易供数边界（2026-07-09）**：SharedSignals 是 5 分钟级/分钟级交易数据供给层，负责采集、整理、增量入库、健康标记和只读 API 输出；不承诺毫秒级 HFT、订单簿撮合、下单、资金、账户、执行回执或交易判断。
+
+**因子边界（2026-07-09）**：`market_factors` 是 SharedSignals 的事实型 read-model 投影，用于保存 provider 已给出的财务、资金流、宏观、参考限制、持仓排名等结构化数据，或必要的字段展开。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；TradingAgent 应从 SharedSignals API 读取行情/事件/事实型因子后，自行完成交易因子提取、标准化、打分、组合、风控和决策。
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
@@ -81,7 +83,7 @@ marketdata.sqlite (13 表)
 ├── market_events              —— 新闻/事件流
 ├── market_pm_markets          —— 预测市场元数据
 ├── market_pm_prices           —— 预测市场价格快照
-├── market_factors             —— 派生因子
+├── market_factors             —— 事实型因子/结构化参考
 ├── market_fund_portfolio      —— 基金持仓披露明细
 ├── market_ingest_runs         —— 采集运行审计
 ├── market_coverage_status     —— 逐股覆盖状态
@@ -560,7 +562,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 **错误处理**: read model 未映射、无缓存、DB 不可用或数据为空时返回 degraded 包装，不抛异常，不现场补采。
 
-**数据新鲜度**: Tushare 数据由 P0-P7 定时 collector 维护；A 股 P0 和 China futures 交易时段保留 5 分钟级，Crypto/Polymarket 在当前服务器上按 30 分钟供数，P1-P7 按日频、研究频率或低频参考频率维护，其中 P7 周/月线按低频 wrapper 独立维护；新闻/公告/研报事件通过 30 分钟 event lane 维护。
+**数据新鲜度**: Tushare 数据由 P0-P7 定时 collector 维护；A 股 P0 和 China futures 交易时段保留 5 分钟级，Crypto/Polymarket 在当前服务器上按 30 分钟供数，P1-P7 按日频、研究频率或低频参考频率维护，其中 P7 周/月线按低频 wrapper 独立维护；新闻/公告/研报事件通过 30 分钟 full event lane 维护，`news/major_news` 另有 15 分钟 supplemental pilot。
 
 ### 外部 Agent 调用规则
 
@@ -601,7 +603,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮从 read model 资产池和显式环境变量优先池选股并轮转补足，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，未传日期时使用该股票最新 intraday 日期；无数据返回 degraded/empty，不回退 CSV 或旧目录 |
 | A 股/指数周月线 | Tushare `weekly` / `monthly` / `index_weekly` / `index_monthly` | P7 low-frequency wrapper → `market_bars_intraday` with interval=`weekly`/`monthly`/`index_weekly`/`index_monthly`; DB-first `/tushare` |
 | A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
-| A 股新闻/公告/研报 | Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` | 30min event lane → `market_events`; `/events` 与 `/tushare` 均 DB-first；no live provider fallback |
+| A 股新闻/公告/研报 | Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` | 30min full event lane → `market_events`; `news/major_news` 另有 15min supplemental pilot；`/events` 与 `/tushare` 均 DB-first；no live provider fallback |
 | Crypto klines/ticker | Binance collector → marketdata.sqlite | Direct DB: `/crypto`, `read_daily("Crypto", ...)` |
 | Crypto markets | marketdata.sqlite | Direct DB: `read_crypto_markets()` |
 | US 日线 | marketdata.sqlite | Direct DB: `read_daily("US", ...)` |
@@ -820,6 +822,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.30 | 事件 lane 增加 `news/major_news` 15 分钟 supplemental pilot，公告/研报/CCTV 仍保持 30 分钟 full event lane；明确 `market_factors` 是事实型 read-model 输出，TradingAgent 负责交易因子提取、打分和决策。 |
 | 2026-07-09 | 1.1.29 | 补齐外部 agent 机器配置的完整 21 个 HTTP 路径，新增 `docs/event_lane.md` 与 `docs/data_source_onboarding.md`，明确事件 lane 和未来数据源接入治理规则；P6 生产配置接口补齐 frequency 声明。 |
 | 2026-07-09 | 1.1.28 | 生产热路径降载：Crypto ticker 与 Polymarket markets/prices 从 5 分钟改为 30 分钟，Crypto 1d support bars 改为 6 小时；DuckDB mirror 与 capability scan 避开 09:00-15:59 中国交易高峰，patrol/health_sla 改为错峰运行。 |
 | 2026-07-09 | 1.1.27 | `/tushare?api_name=daily` 无代码/无日期请求改为限定 A股最新交易日和 `provider=tushare_daily` 后读取，避免生产大日线表无界排序超时；用于 TradingAgent 盘前批量日线覆盖和流动性排序。 |

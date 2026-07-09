@@ -20,17 +20,17 @@ It does not classify trades, generate signals, score impact, place orders, or wr
 
 ## Cadence
 
-The active production event lane runs every 30 minutes from 08:00 to 23:59 Monday through Saturday. This cadence is a collection window for event freshness, not a 5-minute price feed.
+The active production event lane runs every 30 minutes from 08:00 to 23:59 Monday through Saturday. A supplemental pilot runs only `news,major_news` at minute 15 and 45 in the same active window. This cadence is a collection window for event freshness, not a 5-minute price feed.
 
 | Event type | Current cadence | Operating note |
 | --- | --- | --- |
-| `news` | 30-minute active window | Useful for market event monitoring and external-agent research. |
-| `major_news` | 30-minute active window | Same lane as general news. |
+| `news` | 30-minute full lane + 15-minute supplemental pilot | Useful for market event monitoring and external-agent research. |
+| `major_news` | 30-minute full lane + 15-minute supplemental pilot | Same lane as general news. |
 | `cctv_news` | 30-minute active window in the current wrapper | Candidate for future broadcast-window optimization after production observation. |
 | `anns_d` | 30-minute active window in the current wrapper | Announcement rows may arrive in batches; do not treat as intraday price data. |
 | `report_rc` | 30-minute active window in the current wrapper | Research-report context; not immediate execution input. |
 
-Before increasing frequency, prove provider latency, dedup ratio, SQLite write cost, API read latency, and freshness SLA behavior on one source first.
+Before expanding the pilot, prove provider latency, dedup ratio, SQLite write cost, API read latency, and freshness SLA behavior on one source first. Do not increase `anns_d`, `report_rc`, or `cctv_news` without separate evidence.
 
 ## Consumer Rules
 
