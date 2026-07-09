@@ -80,7 +80,7 @@ Do not install any planned candidate into production cron until it has passed th
 
 | Source | Script | Status | Production rule |
 | --- | --- | --- | --- |
-| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 filing rows for Apple/Microsoft CIKs and API readback passed; companyfacts mode available for selected concepts | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events` or selected company facts to `market_factors`; not installed in cron. |
+| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 filing rows and 16 selected companyfacts rows for Apple/Microsoft CIKs; `/events` and `/fundamentals` readback passed | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events` or selected company facts to `market_factors`; not installed in cron. |
 
 SEC EDGAR pilot example:
 
@@ -112,7 +112,7 @@ API readback example after a pilot write:
 curl "http://127.0.0.1:8082/events?market=US&event_type=sec_edgar:4&subject_code=CIK0000320193&limit=5"
 ```
 
-Keep `sec_edgar_filings` in `planned` mode until the pilot has 1-2 trading days of Green Gate/source_status observation and an explicit cadence/SLA decision.
+Keep `sec_edgar_filings` in `planned` mode until the pilot has 1-2 trading days of Green Gate/source_status observation and an explicit cadence/SLA decision. Prefer SEC sources over duplicating Tushare-covered China news/announcement/report feeds.
 
 ## Lightweight Registry Pattern
 

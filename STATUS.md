@@ -40,7 +40,7 @@
 
 ## 四、当前风险与未完成项
 
-- **B1 扩源仍是 planned**：SEC EDGAR filings 已完成一次生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`，API 可读），并新增 companyfacts selected-concept 手动模式用于补 Tushare 没有的 SEC 结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
+- **B1 扩源仍是 planned**：SEC EDGAR 已完成生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`、16 条 selected companyfacts 写入 `market_factors`，`/events` 与 `/fundamentals` API 可读），用于补 Tushare 没有的美国官方披露/结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
 - **`reader.py` / `api_server.py` 仍偏大**：当前测试覆盖通过，但长期应继续按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。
 - **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
 - **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
