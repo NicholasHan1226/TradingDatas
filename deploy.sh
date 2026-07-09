@@ -19,10 +19,32 @@ success() { echo "[OK] $*" | tee -a "$LOG_FILE"; }
 warn() { echo "[WARN] $*" | tee -a "$LOG_FILE"; }
 error() { echo "[ERROR] $*" | tee -a "$LOG_FILE"; }
 
+validate_sqlite_snapshot() {
+    local path="$1"
+    PYTHONPATH="${REPO_DIR}" "$VENV_PYTHON" - "$path" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists() or path.stat().st_size == 0:
+    raise SystemExit("snapshot missing or empty")
+conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+check = conn.execute("PRAGMA quick_check").fetchone()[0]
+if check != "ok":
+    raise SystemExit(f"quick_check failed: {check}")
+for table in ("market_assets", "market_bars_daily"):
+    rows = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    if rows <= 0:
+        raise SystemExit(f"{table} is empty")
+conn.close()
+PY
+}
+
 rollback_deploy() {
     error "DEPLOY FAILED - rolling back"
     if [ -f "${REPO_DIR}/rollback.sh" ]; then
-        bash "${REPO_DIR}/rollback.sh" "$TAG" || true
+        bash "${REPO_DIR}/rollback.sh" "$TAG" "$TIMESTAMP" || true
     else
         error "rollback.sh not found - manual recovery required"
     fi
@@ -45,8 +67,20 @@ success "Git tag: $TAG"
 DB_BACKUP=""
 if [ -f "$SQLITE_DB" ]; then
     DB_BACKUP="${BACKUP_DIR}/marketdata_${TIMESTAMP}.sqlite"
-    cp "$SQLITE_DB" "$DB_BACKUP"
-    success "SQLite snapshot saved"
+    DB_BACKUP_TMP="${DB_BACKUP}.tmp"
+    DB_SIZE=$(stat -c%s "$SQLITE_DB")
+    DB_AVAIL=$(df -PB1 "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+    MIN_AVAIL=$((DB_SIZE + 2147483648))
+    if [ "$DB_AVAIL" -lt "$MIN_AVAIL" ]; then
+        warn "Insufficient free space for SQLite snapshot (need ${MIN_AVAIL} bytes, available ${DB_AVAIL}); skipping DB snapshot"
+        DB_BACKUP=""
+    else
+        rm -f "$DB_BACKUP_TMP"
+        cp "$SQLITE_DB" "$DB_BACKUP_TMP"
+        validate_sqlite_snapshot "$DB_BACKUP_TMP"
+        mv "$DB_BACKUP_TMP" "$DB_BACKUP"
+        success "SQLite snapshot saved and validated"
+    fi
 else
     warn "No SQLite database at $SQLITE_DB - skipping snapshot"
 fi
@@ -127,9 +161,9 @@ fi
 log "Phase 6: Switch"
 
 # Restart any services if needed
-SERVICE_FILE="/etc/systemd/system/sharedsignals.service"
+SERVICE_FILE="/etc/systemd/system/sharedsignals-api.service"
 if [ -f "$SERVICE_FILE" ]; then
-    sudo systemctl restart sharedsignals 2>/dev/null || warn "Could not restart sharedsignals service"
+    sudo systemctl restart sharedsignals-api 2>/dev/null || warn "Could not restart sharedsignals-api service"
     success "Service restarted"
 else
     log "No systemd service found - skipping restart"

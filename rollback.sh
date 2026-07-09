@@ -13,6 +13,28 @@ success() { echo "[OK] $*"; }
 warn() { echo "[WARN] $*"; }
 error() { echo "[ERROR] $*"; }
 
+validate_sqlite_snapshot() {
+    local path="$1"
+    PYTHONPATH="${REPO_DIR}" "$VENV_PYTHON" - "$path" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists() or path.stat().st_size == 0:
+    raise SystemExit("snapshot missing or empty")
+conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+check = conn.execute("PRAGMA quick_check").fetchone()[0]
+if check != "ok":
+    raise SystemExit(f"quick_check failed: {check}")
+for table in ("market_assets", "market_bars_daily"):
+    rows = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    if rows <= 0:
+        raise SystemExit(f"{table} is empty")
+conn.close()
+PY
+}
+
 # ---- Parse arguments ----
 TAG="${1:-}"
 TIMESTAMP="${2:-$(date +%Y%m%d_%H%M%S)}"
@@ -53,32 +75,48 @@ fi
 # ---- Phase 2: Restore SQLite snapshot ----
 log "Phase 2: Restore SQLite snapshot"
 
-# Find the matching backup (try tag timestamp, then latest)
+# Find the exact backup for this deploy tag only. Never fall back to an
+# unrelated latest backup; restoring the wrong SQLite snapshot is worse than
+# leaving the current database unchanged.
 TAG_TS=$(echo "$TAG" | sed 's/^deploy-//')
 DB_BACKUP="${BACKUP_DIR}/marketdata_${TAG_TS}.sqlite"
 
-if [ ! -f "$DB_BACKUP" ]; then
-    # Try to find closest backup
-    DB_BACKUP=$(ls -t "${BACKUP_DIR}"/marketdata_*.sqlite 2>/dev/null | head -1 || echo "")
-fi
+if [ -f "$DB_BACKUP" ]; then
+    if ! validate_sqlite_snapshot "$DB_BACKUP"; then
+        warn "SQLite backup failed validation; database unchanged: $DB_BACKUP"
+    else
+        SERVICE_FILE="/etc/systemd/system/sharedsignals-api.service"
+        if [ -f "$SERVICE_FILE" ]; then
+            sudo systemctl stop sharedsignals-api 2>/dev/null || warn "Could not stop sharedsignals-api service"
+        fi
 
-if [ -n "$DB_BACKUP" ] && [ -f "$DB_BACKUP" ]; then
     # Backup current before replacing
-    if [ -f "$SQLITE_DB" ]; then
-        cp "$SQLITE_DB" "${BACKUP_DIR}/marketdata_pre_rollback_${TIMESTAMP}.sqlite" 2>/dev/null || true
+        if [ -f "$SQLITE_DB" ]; then
+            PRE_ROLLBACK_BACKUP="${BACKUP_DIR}/marketdata_pre_rollback_${TIMESTAMP}.sqlite"
+            DB_SIZE=$(stat -c%s "$SQLITE_DB")
+            DB_AVAIL=$(df -PB1 "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+            if [ "$DB_AVAIL" -gt "$DB_SIZE" ]; then
+                cp "$SQLITE_DB" "$PRE_ROLLBACK_BACKUP" 2>/dev/null || warn "Could not save pre-rollback SQLite snapshot"
+            else
+                warn "Insufficient free space for pre-rollback SQLite snapshot; skipping"
+            fi
+        fi
+        rm -f "${SQLITE_DB}-wal" "${SQLITE_DB}-shm"
+        cp "$DB_BACKUP" "$SQLITE_DB"
+        chown marketgraph:marketgraph "$SQLITE_DB" 2>/dev/null || true
+        validate_sqlite_snapshot "$SQLITE_DB"
+        success "SQLite restored from $DB_BACKUP"
     fi
-    cp "$DB_BACKUP" "$SQLITE_DB"
-    success "SQLite restored from $DB_BACKUP"
 else
-    warn "No SQLite backup found - database unchanged"
+    warn "No exact SQLite backup found for $TAG - database unchanged"
 fi
 
 # ---- Phase 3: Restart service ----
 log "Phase 3: Restart service"
 
-SERVICE_FILE="/etc/systemd/system/sharedsignals.service"
+SERVICE_FILE="/etc/systemd/system/sharedsignals-api.service"
 if [ -f "$SERVICE_FILE" ]; then
-    sudo systemctl restart sharedsignals 2>/dev/null || warn "Could not restart sharedsignals service"
+    sudo systemctl restart sharedsignals-api 2>/dev/null || warn "Could not restart sharedsignals-api service"
     success "Service restarted"
 else
     log "No systemd service - skipping restart"
