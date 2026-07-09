@@ -112,7 +112,7 @@ Completed planned-to-scheduled activation:
 | Low-frequency bars | `weekly`, `monthly`, `index_weekly`, `index_monthly` | Weekly wrapper, with monthly rows included for refresh |
 | Relationship/reference | `ths_member`, `dc_member`, `index_member`, `index_member_all` | Daily reference |
 | Daily supporting bars / holdings | `ths_daily`, `dc_daily`, `opt_daily`, `fut_holding` | Daily reference / post-close / settlement daily |
-| Final factor/reporting support | `bak_basic`, `cyq_perf`, `cyq_chips`, `fina_audit`, `fina_mainbz`, `fund_adj`, `fund_portfolio`, `ths_hot` | Daily reference / post-close / reporting windows / daily pilot |
+| Final factor/reporting support | `bak_basic`, `cyq_perf`, `cyq_chips`, `fina_audit`, `fina_mainbz`, `fund_adj`, `ths_hot` as factors; `fund_portfolio` as fund holding details | Daily reference / post-close / reporting windows / daily pilot |
 
 No planned Tushare APIs remain. Future new interfaces must still prove read-model mapping, non-empty or properly degraded provider behavior, HTTP visibility, cadence fit, and rate protection before scheduling.
 

@@ -95,7 +95,7 @@ API_TO_TABLE_MAP = {
     "fund_daily": "market_bars_daily",
     "fund_div": "market_factors",
     "fund_nav": "market_assets",
-    "fund_portfolio": "market_factors",
+    "fund_portfolio": "market_fund_portfolio",
     "fund_share": "market_factors",
     "fut_basic": "market_assets",
     "fut_daily": "market_bars_daily",
@@ -272,7 +272,7 @@ _FACTOR_BASE_COLUMNS = {
 }
 _FACTOR_PRICE_COLUMNS = {"open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "volume", "amount"}
 _FACTOR_DATE_COLUMNS = ("trade_date", "ann_date", "end_date", "report_date", "date", "period", "month", "quarter", "year")
-_REPORTING_PERIOD_APIS = {"fina_audit", "fina_mainbz", "fund_portfolio"}
+_REPORTING_PERIOD_APIS = {"fina_audit", "fina_mainbz"}
 _FACTOR_INSERT_COLUMNS = (
     "factor_hash",
     "market",
@@ -341,10 +341,12 @@ def _factor_hash(api_name, symbol, event_time, factor_name, raw_json):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _fund_portfolio_hash(api_name, symbol, holding_symbol, ann_date, end_date, raw_json):
+    payload = "|".join(str(part or "") for part in (api_name, symbol, holding_symbol, ann_date, end_date, raw_json))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _factor_rows(row, api_name, csv_path):
-    if api_name == "fund_portfolio" and row.get("ts_code") and row.get("symbol"):
-        row = dict(row)
-        row.setdefault("holding_symbol", row.get("symbol"))
     row = _canonical_row("market_factors", dict(row), api_name, csv_path)
     raw_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
     symbol = row.get("symbol") or row.get("ts_code") or ""
@@ -444,6 +446,22 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
         ):
             if col in target_columns:
                 derived_columns.append(col)
+    if table == "market_fund_portfolio":
+        for col in (
+            "portfolio_hash",
+            "market",
+            "symbol",
+            "holding_symbol",
+            "ann_date",
+            "end_date",
+            "market_value",
+            "amount",
+            "stk_mkv_ratio",
+            "stk_float_ratio",
+            "raw_json",
+        ):
+            if col in target_columns:
+                derived_columns.append(col)
     if api_name and "provider" in target_columns:
         derived_columns.append("provider")
     if "collected_at" in target_columns:
@@ -511,6 +529,7 @@ def _event_hash(provider, event_type, event_time, row):
 
 
 def _canonical_row(table, row, api_name, csv_path):
+    original_symbol = row.get("symbol")
     symbol = row.get("ts_code") or row.get("symbol") or row.get("code") or row.get("index_code")
     if symbol:
         row["symbol"] = symbol
@@ -636,6 +655,38 @@ def _canonical_row(table, row, api_name, csv_path):
             row.get("child_symbol"),
             row.get("relationship_type"),
             row.get("trade_date"),
+            raw_json,
+        )
+
+    if table == "market_fund_portfolio":
+        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        fund_symbol = _first_present(row, "ts_code", "fund_code", "symbol")
+        holding_symbol = _first_present(row, "holding_symbol", "holding_code", "stock_code", "stk_code") or original_symbol
+        ann_date = _first_present(row, "ann_date", "trade_date", "date")
+        end_date = _first_present(row, "end_date", "period", "report_date")
+        raw_json = row.get("raw_json") or json.dumps(
+            {**row, "holding_symbol": holding_symbol},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        if provider and not row.get("provider"):
+            row["provider"] = provider
+        row["market"] = row.get("market") or "Fund"
+        row["symbol"] = fund_symbol
+        row["holding_symbol"] = holding_symbol
+        row["ann_date"] = ann_date
+        row["end_date"] = end_date
+        row["market_value"] = _coerce_float(_first_present(row, "market_value", "mkv"))
+        row["amount"] = _coerce_float(row.get("amount"))
+        row["stk_mkv_ratio"] = _coerce_float(row.get("stk_mkv_ratio"))
+        row["stk_float_ratio"] = _coerce_float(row.get("stk_float_ratio"))
+        row["raw_json"] = raw_json
+        row["portfolio_hash"] = row.get("portfolio_hash") or _fund_portfolio_hash(
+            api_name,
+            row.get("symbol"),
+            row.get("holding_symbol"),
+            row.get("ann_date"),
+            row.get("end_date"),
             raw_json,
         )
 

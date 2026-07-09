@@ -1110,7 +1110,19 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
         elif code and "symbol" in cols:
             where.append("symbol = ?")
             vals.append(code)
-        date_col = "trade_date" if "trade_date" in cols else "event_time" if "event_time" in cols else "updated_at" if "updated_at" in cols else "collected_at" if "collected_at" in cols else ""
+        date_col = (
+            "trade_date"
+            if "trade_date" in cols
+            else "ann_date"
+            if "ann_date" in cols
+            else "event_time"
+            if "event_time" in cols
+            else "updated_at"
+            if "updated_at" in cols
+            else "collected_at"
+            if "collected_at" in cols
+            else ""
+        )
         if start and date_col:
             where.append(f"{date_col} >= ?")
             vals.append(start)

@@ -36,3 +36,4 @@ def test_schema_contract_table_without_pk_renders_without_primary_key() -> None:
 def test_duckdb_schema_exports_primary_keys() -> None:
     assert duckdb_schema.TABLE_PRIMARY_KEYS == table_primary_keys()
     assert duckdb_schema.TABLE_PRIMARY_KEYS["market_relationships"] == ["relationship_hash"]
+    assert duckdb_schema.TABLE_PRIMARY_KEYS["market_fund_portfolio"] == ["portfolio_hash"]

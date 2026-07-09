@@ -217,19 +217,19 @@ def test_final_planned_tushare_batch_is_scheduled_and_mapped() -> None:
     by_name = {row["api_name"]: row for row in planned_rows}
 
     expected = {
-        "bak_basic": "daily_reference",
-        "cyq_perf": "postclose_daily",
-        "cyq_chips": "postclose_daily",
-        "fina_audit": "daily_reporting_window",
-        "fina_mainbz": "daily_reporting_window",
-        "fund_adj": "daily_nav",
-        "fund_portfolio": "reporting_window",
-        "ths_hot": "intraday_or_daily_pilot",
+        "bak_basic": ("market_factors", "daily_reference"),
+        "cyq_perf": ("market_factors", "postclose_daily"),
+        "cyq_chips": ("market_factors", "postclose_daily"),
+        "fina_audit": ("market_factors", "daily_reporting_window"),
+        "fina_mainbz": ("market_factors", "daily_reporting_window"),
+        "fund_adj": ("market_factors", "daily_nav"),
+        "fund_portfolio": ("market_fund_portfolio", "reporting_window"),
+        "ths_hot": ("market_factors", "intraday_or_daily_pilot"),
     }
 
     assert set(expected) <= configured
-    for api_name, cadence in expected.items():
-        assert API_TO_TABLE_MAP[api_name] == "market_factors"
+    for api_name, (table, cadence) in expected.items():
+        assert API_TO_TABLE_MAP[api_name] == table
         assert by_name[api_name]["mode"] == "scheduled"
         assert by_name[api_name]["cadence"] == cadence
 
@@ -326,7 +326,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.25"
+    assert config["contract_version"] == "1.1.26"
     assert config["tushare_status"]["allowlisted_api_names"] == len(ALLOWED_TUSHARE_APIS)
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)

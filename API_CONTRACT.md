@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.25 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.26 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -73,7 +73,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 ### 存储概览
 
 ```
-marketdata.sqlite (12 表)
+marketdata.sqlite (13 表)
 ├── market_assets              —— 品种主表
 ├── market_relationships       —— 指数/主题/行业成分关系
 ├── market_bars_daily          —— 日线 OHLCV
@@ -82,6 +82,7 @@ marketdata.sqlite (12 表)
 ├── market_pm_markets          —— 预测市场元数据
 ├── market_pm_prices           —— 预测市场价格快照
 ├── market_factors             —— 派生因子
+├── market_fund_portfolio      —— 基金持仓披露明细
 ├── market_ingest_runs         —— 采集运行审计
 ├── market_coverage_status     —— 逐股覆盖状态
 ├── market_backfill_status     —— 回填进度
@@ -605,7 +606,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | 期货 5 分钟 OHLCV | AkShare/Sina 默认；Tushare `rt_fut_min` 可显式启用 | CNFutures 5 分钟 collector → `market_bars_intraday`，market=`Futures`，interval=`5min`；HTTP `/realtime_5min?market=Futures` 或 `market=CNFutures` 可读取同一 read model 并透传可空 bid/ask/size 字段；独立调度，不进入日频 `P6_other_daily` |
 | 期货参考限制 | Tushare `ft_limit` | P6 collector → `market_factors`; DB-first `/tushare?api_name=ft_limit` |
 | 期货持仓排名 | Tushare `fut_holding` | P6 collector → `market_factors`; 日频持仓/席位参考，不作为订单簿或执行数据 |
-| 基金/可转债/期权支持数据 | Tushare `fund_share` / `fund_div` / `fund_adj` / `fund_portfolio` / `cb_basic` / `cb_issue` / `opt_basic` | P3/P6 collectors → `market_factors` / `market_assets` / `market_events`; fund portfolio 使用报告期语义；DB-first `/tushare` |
+| 基金/可转债/期权支持数据 | Tushare `fund_share` / `fund_div` / `fund_adj` / `fund_portfolio` / `cb_basic` / `cb_issue` / `opt_basic` | P3/P6 collectors → `market_factors` / `market_fund_portfolio` / `market_assets` / `market_events`; fund portfolio 保留基金代码、持仓股票、公告日、报告期和持仓市值明细，不展开为通用因子；DB-first `/tushare` |
 | 期权日线 | Tushare `opt_daily` | P6 collector → `market_bars_daily`; 期权 EOD 支持数据，不作为实时盘口 |
 | Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 与 `reader.get_sentiment()` 只读 SQLite `market_events`；旧事件候选/情绪文件不作为 SharedSignals 对外数据源 |
@@ -812,6 +813,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.26 | 将 Tushare `fund_portfolio` 从 `market_factors` 因子展开迁移到专用 `market_fund_portfolio` 明细表，保留 `symbol` 基金代码、`holding_symbol` 持仓股票、`ann_date`、`end_date`、市值和占比字段；减少单公告日写入放大和大表索引压力。 |
 | 2026-07-09 | 1.1.25 | 启用最后 8 个 planned Tushare 接口：`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`fund_portfolio`、`ths_hot` 全部写入 `market_factors`；Tushare 生产配置接口从 106 增至 114，planned backlog 从 8 降至 0。 |
 | 2026-07-09 | 1.1.24 | 启用 B2 日频支持数据：`ths_daily`、`dc_daily`、`opt_daily` 写入 `market_bars_daily`，`fut_holding` 写入 `market_factors`；Tushare 生产配置接口从 102 增至 106，planned backlog 从 12 降至 8。 |
 | 2026-07-09 | 1.1.23 | 启用 B1 关系/成分数据：新增 `market_relationships` read model，`ths_member`、`dc_member`、`index_member`、`index_member_all` 进入 P3 日频参考层；Tushare 生产配置接口从 98 增至 102，planned backlog 从 16 降至 12。 |

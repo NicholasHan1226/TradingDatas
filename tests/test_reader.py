@@ -30,14 +30,14 @@ class TestSchemaSQL:
         assert isinstance(SCHEMA_SQL, str)
         assert len(SCHEMA_SQL) > 100
 
-    def test_schema_contains_all_12_tables(self):
+    def test_schema_contains_all_expected_tables(self):
         from storage.schema import SCHEMA_SQL
         required_tables = [
             "market_assets", "market_bars_daily", "market_bars_intraday",
             "market_events", "market_pm_markets", "market_pm_prices",
             "market_factors", "market_ingest_runs", "market_coverage_status",
             "market_backfill_status", "provider_interface_matrix",
-            "market_relationships",
+            "market_relationships", "market_fund_portfolio",
         ]
         schema_upper = SCHEMA_SQL.upper()
         for table in required_tables:
@@ -180,6 +180,55 @@ class TestReaderEvents:
         assert [row["data"]["symbol"] for row in futures_alias] == ["RB2609.SHF"]
         assert all(row["data"]["market"] == "Futures" for row in futures)
         assert [row["data"]["symbol"] for row in stocks] == ["000001.SZ"]
+
+    def test_get_tushare_fund_portfolio_reads_dedicated_table(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.execute(
+                """
+                INSERT INTO market_fund_portfolio (
+                    portfolio_hash, market, symbol, holding_symbol, ann_date, end_date,
+                    market_value, amount, stk_mkv_ratio, stk_float_ratio,
+                    provider, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "pf-1",
+                    "Fund",
+                    "000001.OF",
+                    "600519.SH",
+                    "20260422",
+                    "20260331",
+                    1200.0,
+                    100.0,
+                    3.5,
+                    0.02,
+                    "tushare_fund_portfolio",
+                    "fund_portfolio_20260422",
+                    "2026-07-09T15:00:00+00:00",
+                    "{}",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        rows = reader.get_tushare("fund_portfolio", ts_code="000001.OF", start_date="20260401", end_date="20260430")
+
+        assert len(rows) == 1
+        assert rows[0]["data"]["symbol"] == "000001.OF"
+        assert rows[0]["data"]["holding_symbol"] == "600519.SH"
+        assert rows[0]["data"]["market_value"] == 1200.0
+        assert rows[0]["provenance"]["source_id"] == "tushare_fund_portfolio"
+        assert rows[0]["lineage"]["source"] == "db:market_fund_portfolio"
 
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader

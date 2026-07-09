@@ -728,7 +728,6 @@ def test_final_planned_tushare_batch_ingests_to_read_model_tables(tmp_path: Path
         "fina_audit": [{"ts_code": "600519.SH", "end_date": "20251231", "ann_date": "20260331", "audit_result": "标准无保留意见", "audit_fees": 120.0}],
         "fina_mainbz": [{"ts_code": "600519.SH", "end_date": "20251231", "bz_item": "酒类", "bz_sales": 1000.0, "bz_profit": 500.0}],
         "fund_adj": [{"ts_code": "000001.OF", "trade_date": "20260709", "adj_factor": 1.2345}],
-        "fund_portfolio": [{"ts_code": "000001.OF", "ann_date": "20260331", "symbol": "600519.SH", "mkv": 1200.0, "amount": 100.0}],
         "ths_hot": [{"ts_code": "000001.SZ", "trade_date": "20260709", "rank": 5, "hot": 98.6}],
     }
 
@@ -750,20 +749,11 @@ def test_final_planned_tushare_batch_ingests_to_read_model_tables(tmp_path: Path
                 'tushare_fina_audit',
                 'tushare_fina_mainbz',
                 'tushare_fund_adj',
-                'tushare_fund_portfolio',
                 'tushare_ths_hot'
             )
             ORDER BY provider, factor_name
             """
         ).fetchall()
-        fund_portfolio_raw = conn.execute(
-            """
-            SELECT raw_json
-            FROM market_factors
-            WHERE provider = 'tushare_fund_portfolio'
-              AND factor_name = 'fund_portfolio:mkv'
-            """
-        ).fetchone()[0]
     finally:
         conn.close()
 
@@ -773,9 +763,66 @@ def test_final_planned_tushare_batch_ingests_to_read_model_tables(tmp_path: Path
     assert ("Ashare", "600519.SH", "fina_audit:audit_fees", "20251231", 120.0, "tushare_fina_audit") in factors
     assert ("Ashare", "600519.SH", "fina_mainbz:bz_profit", "20251231", 500.0, "tushare_fina_mainbz") in factors
     assert ("Fund", "000001.OF", "fund_adj:adj_factor", "20260709", 1.2345, "tushare_fund_adj") in factors
-    assert ("Fund", "000001.OF", "fund_portfolio:mkv", "20260331", 1200.0, "tushare_fund_portfolio") in factors
-    assert '"holding_symbol": "600519.SH"' in fund_portfolio_raw
     assert ("Ashare", "000001.SZ", "ths_hot:hot", "20260709", 98.6, "tushare_ths_hot") in factors
+
+
+def test_fund_portfolio_ingests_to_dedicated_holdings_table(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    rows = [
+        {
+            "ts_code": "000001.OF",
+            "ann_date": "20260422",
+            "end_date": "20260331",
+            "symbol": "600519.SH",
+            "mkv": 1200.0,
+            "amount": 100.0,
+            "stk_mkv_ratio": 3.5,
+            "stk_float_ratio": 0.02,
+        },
+        {
+            "ts_code": "000001.OF",
+            "ann_date": "20260422",
+            "end_date": "20260331",
+            "symbol": "000858.SZ",
+            "mkv": 800.0,
+            "amount": 50.0,
+            "stk_mkv_ratio": 2.1,
+            "stk_float_ratio": 0.01,
+        },
+    ]
+
+    assert API_TO_TABLE_MAP["fund_portfolio"] == "market_fund_portfolio"
+    assert ingest_rows_to_sqlite(
+        db_path,
+        API_TO_TABLE_MAP["fund_portfolio"],
+        "fund_portfolio",
+        rows,
+        source_name="fund_portfolio_test",
+    ) == 2
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        holdings = conn.execute(
+            """
+            SELECT market, symbol, holding_symbol, ann_date, end_date, market_value, amount,
+                   stk_mkv_ratio, stk_float_ratio, provider
+            FROM market_fund_portfolio
+            ORDER BY holding_symbol
+            """
+        ).fetchall()
+        factor_count = conn.execute(
+            "SELECT COUNT(*) FROM market_factors WHERE provider = 'tushare_fund_portfolio'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert holdings == [
+        ("Fund", "000001.OF", "000858.SZ", "20260422", "20260331", 800.0, 50.0, 2.1, 0.01, "tushare_fund_portfolio"),
+        ("Fund", "000001.OF", "600519.SH", "20260422", "20260331", 1200.0, 100.0, 3.5, 0.02, "tushare_fund_portfolio"),
+    ]
+    assert factor_count == 0
 
 
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):

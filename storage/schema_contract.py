@@ -1,6 +1,6 @@
 """Canonical storage schema contract for SQLite and DuckDB.
 
-This module is the single source of truth for the SharedSignals 12-table
+This module is the single source of truth for the SharedSignals table
 storage contract.  SQLite remains the authoritative write model; DuckDB mirrors
 the same logical structure with dialect-specific column types.
 """
@@ -227,6 +227,32 @@ TABLES: tuple[Table, ...] = (
             ("idx_market_factors_provider_event_time", ("provider", "event_time")),
             ("idx_market_factors_market_event_time", ("market", "event_time")),
             ("idx_market_factors_collected_at", ("collected_at",)),
+        ),
+    ),
+    Table(
+        name="market_fund_portfolio",
+        columns=(
+            Column("portfolio_hash", "text"),
+            Column("market", "text"),
+            Column("symbol", "text"),
+            Column("holding_symbol", "text"),
+            Column("ann_date", "text"),
+            Column("end_date", "text"),
+            Column("market_value", "float"),
+            Column("amount", "float"),
+            Column("stk_mkv_ratio", "float"),
+            Column("stk_float_ratio", "float"),
+            Column("provider", "text"),
+            Column("source_file", "text"),
+            Column("collected_at", "text"),
+            Column("raw_json", "text"),
+        ),
+        primary_key=("portfolio_hash",),
+        indexes=(
+            ("idx_market_fund_portfolio_symbol_ann", ("symbol", "ann_date")),
+            ("idx_market_fund_portfolio_holding_ann", ("holding_symbol", "ann_date")),
+            ("idx_market_fund_portfolio_provider_ann", ("provider", "ann_date")),
+            ("idx_market_fund_portfolio_collected_at", ("collected_at",)),
         ),
     ),
     Table(

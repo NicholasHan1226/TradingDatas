@@ -26,7 +26,7 @@ Completed:
 | --- | --- | --- | --- | --- | --- |
 | B1 relationship/reference | `ths_member`, `dc_member`, `index_member`, `index_member_all` | A-share themes and index membership | `market_relationships` | daily_reference | Scheduled in P3 reference lane |
 | B2 daily supporting bars | `ths_daily`, `dc_daily`, `opt_daily`, `fut_holding` | A-share themes, options, futures | `market_bars_daily` / `market_factors` | daily_reference / postclose_daily / futures_settlement_daily | Scheduled in P3/P6 daily lanes |
-| B3 financial/reporting details | `fina_audit`, `fina_mainbz`, `fund_portfolio` | A-share filings and fund holdings | `market_factors` with report-period event keys and raw row lineage | daily_reporting_window / reporting_window | Scheduled in P2/P6 reporting lanes |
+| B3 financial/reporting details | `fina_audit`, `fina_mainbz`, `fund_portfolio` | A-share filings and fund holdings | `market_factors` for financial factors; `market_fund_portfolio` for fund holding details | daily_reporting_window / reporting_window | Scheduled in P2/P6 reporting lanes |
 | B4 adjustments/reference enhancements | `bak_basic`, `fund_adj`, `cyq_perf`, `cyq_chips` | A-share reference, fund NAV support, chips | `market_factors` | daily_reference / postclose_daily / daily_nav | Scheduled in P1/P3/P6 supporting lanes |
 | B5 hotness pilot | `ths_hot` | A-share theme/hotness | `market_factors` | intraday_or_daily_pilot | Scheduled in P3 daily pilot lane; do not promote to 5-minute until provider limits and consumer need are proven |
 
