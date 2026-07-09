@@ -1153,6 +1153,44 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
         if end and date_col:
             where.append(f"{date_col} <= ?")
             vals.append(end)
+        if table == "market_bars_daily" and "market" in cols:
+            market_filter = str(params.get("market") or "").strip()
+            if not market_filter:
+                market_filter = {
+                    "daily": "Ashare",
+                    "hk_daily": "HK",
+                    "us_daily": "US",
+                    "fut_daily": "Futures",
+                    "index_global": "Global",
+                    "opt_daily": "Options",
+                    "fund_daily": "Fund",
+                }.get(api_name, "")
+            if market_filter:
+                market_filter = _canonical_market_key(market_filter)
+                where.append("market = ?")
+                vals.append(market_filter)
+        if (
+            table == "market_bars_daily"
+            and date_col
+            and not code
+            and not start
+            and not end
+            and "provider" in cols
+            and "market" in cols
+        ):
+            latest_where = list(where)
+            latest_vals = list(vals)
+            provider_value = f"tushare_{api_name}"
+            latest_where.append("provider = ?")
+            latest_vals.append(provider_value)
+            latest_row = conn.execute(
+                f"SELECT MAX({date_col}) AS latest_date FROM {table} WHERE {' AND '.join(latest_where)}",
+                latest_vals,
+            ).fetchone()
+            latest_date = str((latest_row or {})["latest_date"] or "") if latest_row else ""
+            if latest_date:
+                where.append(f"{date_col} = ?")
+                vals.append(latest_date)
         if table == "market_assets" and "market" in cols:
             market_filter = str(params.get("market") or "").strip()
             if not market_filter:

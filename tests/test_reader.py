@@ -230,6 +230,40 @@ class TestReaderEvents:
         assert rows[0]["provenance"]["source_id"] == "tushare_fund_portfolio"
         assert rows[0]["lineage"]["source"] == "db:market_fund_portfolio"
 
+    def test_get_tushare_daily_without_dates_reads_latest_ashare_day(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_bars_daily (
+                    market, symbol, trade_date, open, high, low, close,
+                    volume, amount, provider, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("Ashare", "000001.SZ", "20260707", 10.0, 10.5, 9.9, 10.2, 1000.0, 999999.0, "tushare_daily", "old.csv", "2026-07-07T08:00:00+00:00", "{}"),
+                    ("Ashare", "600000.SH", "20260708", 9.0, 9.1, 8.9, 9.0, 2000.0, 488055.0, "tushare_daily", "latest.csv", "2026-07-08T08:00:00+00:00", "{}"),
+                    ("US", "AAPL", "20260708", 200.0, 201.0, 199.0, 200.5, 100.0, 20050.0, "tushare_us_daily", "us.csv", "2026-07-08T08:00:00+00:00", "{}"),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        rows = reader.get_tushare("daily", limit=10)
+
+        assert [row["data"]["symbol"] for row in rows] == ["600000.SH"]
+        assert rows[0]["data"]["trade_date"] == "20260708"
+        assert rows[0]["data"]["market"] == "Ashare"
+
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader
         from storage.schema import SCHEMA_SQL

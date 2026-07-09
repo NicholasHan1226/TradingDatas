@@ -531,6 +531,13 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 
 **返回**: `list[dict]` — 每条含 `data` / `provenance` / `freshness` / `quality` / `degraded` / `lineage`
 
+**日线批量读取边界**：`get_tushare("daily")` / `GET /tushare?api_name=daily`
+在未传 `ts_code`、`start_date`、`end_date` 时，只读取
+`market_bars_daily` 中 `market="Ashare"` 且 `provider="tushare_daily"`
+的最新交易日 rows，并将 `limit` 下推到 SQL。该路径用于 TradingAgent
+盘前覆盖检查、流动性排序和外部 API 批量读取，不现场调用 Tushare，也不扫全量
+历史日线表。
+
 **示例**:
 ```python
 from reader import get_tushare
@@ -813,6 +820,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.27 | `/tushare?api_name=daily` 无代码/无日期请求改为限定 A股最新交易日和 `provider=tushare_daily` 后读取，避免生产大日线表无界排序超时；用于 TradingAgent 盘前批量日线覆盖和流动性排序。 |
 | 2026-07-09 | 1.1.26 | 将 Tushare `fund_portfolio` 从 `market_factors` 因子展开迁移到专用 `market_fund_portfolio` 明细表，保留 `symbol` 基金代码、`holding_symbol` 持仓股票、`ann_date`、`end_date`、市值和占比字段；减少单公告日写入放大和大表索引压力。 |
 | 2026-07-09 | 1.1.25 | 启用最后 8 个 planned Tushare 接口：`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`fund_portfolio`、`ths_hot` 全部写入 `market_factors`；Tushare 生产配置接口从 106 增至 114，planned backlog 从 8 降至 0。 |
 | 2026-07-09 | 1.1.24 | 启用 B2 日频支持数据：`ths_daily`、`dc_daily`、`opt_daily` 写入 `market_bars_daily`，`fut_holding` 写入 `market_factors`；Tushare 生产配置接口从 102 增至 106，planned backlog 从 12 降至 8。 |
