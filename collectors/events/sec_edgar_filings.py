@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,10 @@ from typing import Any
 from urllib.parse import quote
 
 import requests
+
+ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parents[2]))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from runtime_paths import marketdata_sqlite_path
 from storage.read_model_store import ingest_rows_to_sqlite

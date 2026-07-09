@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -46,6 +48,18 @@ def test_normalize_cik_zero_pads_and_rejects_empty() -> None:
 def test_sec_headers_requires_user_agent() -> None:
     with pytest.raises(ValueError, match="User-Agent"):
         sec_edgar_filings.sec_headers("")
+
+
+def test_sec_edgar_cli_entrypoint_imports_from_repo_root() -> None:
+    result = subprocess.run(
+        [sys.executable, "collectors/events/sec_edgar_filings.py", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Collect SEC EDGAR filing metadata" in result.stdout
 
 
 def test_filing_rows_from_submissions_maps_to_market_events() -> None:
