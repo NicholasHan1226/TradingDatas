@@ -58,6 +58,52 @@ def test_get_sentiment_without_dates_returns_recent_rows(tmp_path: Path) -> None
     assert rows[0]["data"]["event_hash"] == "sentiment-1"
 
 
+def test_get_market_data_without_dates_uses_latest_daily_bar(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT INTO market_bars_daily
+            (market, symbol, trade_date, open, high, low, close, volume, amount, provider, source_file, collected_at, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "Ashare",
+                "000001.SZ",
+                "20260703",
+                10.0,
+                10.3,
+                9.9,
+                10.2,
+                1000.0,
+                10200.0,
+                "tushare",
+                "daily.csv",
+                "2026-07-03T08:00:00+00:00",
+                "{}",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    rows = reader.get_market_data("000001.SZ")
+
+    assert rows
+    assert rows[0]["degraded"] is False
+    assert rows[0]["data"]["trade_date"] == "20260703"
+    assert rows[0]["lineage"]["filters"]["start"] == "20260703"
+    assert rows[0]["lineage"]["filters"]["end"] == "20260703"
+
+
 def test_get_realtime_5min_without_date_uses_latest_intraday_date(tmp_path: Path) -> None:
     import reader
     from storage.schema import SCHEMA_SQL

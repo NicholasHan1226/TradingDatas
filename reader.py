@@ -688,16 +688,38 @@ def _get_market_data_cached(_generation: int, ts_code: str, start: str, end: str
     market, symbols = _market_symbols_for_code(ts_code)
     if freq_key != "daily":
         return _get_market_intraday_cached(ts_code, start, end, freq_key, adjusted, market, symbols)
-    start_key = _date_key(start)
-    end_key = _date_key(end)
-    if start_key > end_key:
-        start_key, end_key = end_key, start_key
     if market == "US":
         base = ts_code[:-3] if ts_code.endswith(".US") else ts_code
         symbols = [base, f"{base}.US"]
         if ts_code.endswith(".US"):
             symbols = [f"{base}.US", base]
     placeholders = ",".join("?" for _ in symbols)
+    start_key = _optional_date_key(start)
+    end_key = _optional_date_key(end)
+    if start_key is None and end_key is None:
+        latest_rows, latest_degraded = _sqlite_rows(
+            f"SELECT MAX(trade_date) AS trade_date FROM market_bars_daily WHERE market = ? AND symbol IN ({placeholders})",
+            (market, *symbols),
+            "market_bars_daily",
+        )
+        if latest_degraded is not None:
+            return _json_cached(lambda: latest_degraded)
+        latest_trade_date = str((latest_rows or [{}])[0].get("trade_date") or "")
+        start_key = end_key = _optional_date_key(latest_trade_date)
+    elif start_key is None:
+        start_key = end_key
+    elif end_key is None:
+        end_key = start_key
+    if start_key is None or end_key is None:
+        lineage = {
+            "reader": "get_market_data",
+            "db_path": str(SQLITE_PATH),
+            "table": "market_bars_daily",
+            "filters": {"ts_code": ts_code, "symbols": symbols, "start": start, "end": end, "freq": freq, "adjusted": adjusted},
+        }
+        return _json_cached(lambda: _degraded_empty("sqlite:market_bars_daily", "no latest daily bar found", lineage=lineage))
+    if start_key > end_key:
+        start_key, end_key = end_key, start_key
     query = """
         SELECT * FROM market_bars_daily
         WHERE market = ? AND symbol IN ({placeholders}) AND trade_date >= ? AND trade_date <= ?
@@ -864,7 +886,9 @@ def _as_of_filter(rows: list[dict[str, Any]], as_of: str) -> list[dict[str, Any]
 
 def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str = "daily", adjusted: bool = True, **kwargs: Any) -> list[dict[str, Any]]:
     lineage = {"reader": "get_market_data", "filters": {"ts_code": ts_code, "start": start, "end": end, "freq": freq, "adjusted": adjusted}}
-    return _safe_public("sqlite:market_bars_daily", lineage, lambda generation: _get_market_data_cached(generation, str(ts_code), str(start), str(end), str(freq), bool(adjusted)))
+    start_arg = "" if _blank_date_value(start) else str(start)
+    end_arg = "" if _blank_date_value(end) else str(end)
+    return _safe_public("sqlite:market_bars_daily", lineage, lambda generation: _get_market_data_cached(generation, str(ts_code), start_arg, end_arg, str(freq), bool(adjusted)))
 
 
 @_register_cached
