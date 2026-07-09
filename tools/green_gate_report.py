@@ -20,9 +20,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import patrol
-from tools import email_sender, source_governance_monitor
+from tools import source_governance_monitor
 
-DEFAULT_TO = os.getenv("SHAREDSIGNALS_GREEN_GATE_TO") or email_sender.TO_SYSTEM
+DEFAULT_TO = os.getenv("SHAREDSIGNALS_GREEN_GATE_TO") or os.getenv("EMAIL_TO_SYSTEM") or os.getenv("EMAIL_SYSTEM_TO") or "soc@coze.email"
 DEFAULT_OUTPUT_PATH = Path("logs/watchdog_inputs/green_gate_report.json")
 DEFAULT_BODY_OUTPUT_PATH = Path("logs/watchdog_inputs/green_gate_report.html")
 
@@ -160,7 +160,7 @@ def send_green_gate_report(*, to: str = DEFAULT_TO, dry_run: bool = False) -> di
         payload["delivery"] = {"status": "dry_run", "to": to}
         return payload
 
-    delivery = email_sender.send_email(
+    delivery = _send_email(
         to=to,
         subject=payload["subject"],
         html_body=body,
@@ -168,6 +168,12 @@ def send_green_gate_report(*, to: str = DEFAULT_TO, dry_run: bool = False) -> di
     )
     payload["delivery"] = delivery
     return payload
+
+
+def _send_email(*, to: str, subject: str, html_body: str, channel: str) -> dict[str, Any]:
+    from tools import email_sender  # noqa: WPS433
+
+    return email_sender.send_email(to=to, subject=subject, html_body=html_body, channel=channel)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

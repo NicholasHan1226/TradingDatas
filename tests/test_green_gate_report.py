@@ -65,7 +65,7 @@ def test_green_gate_report_sends_to_system_channel(monkeypatch) -> None:
         sent.update({"to": to, "subject": subject, "html_body": html_body, "channel": channel})
         return {"status": "sent", "provider": "test", "to": to}
 
-    monkeypatch.setattr(green_gate_report.email_sender, "send_email", fake_send_email)
+    monkeypatch.setattr(green_gate_report, "_send_email", fake_send_email)
 
     payload = green_gate_report.send_green_gate_report(to="soc@coze.email", dry_run=False)
 
