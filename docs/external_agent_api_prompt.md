@@ -18,6 +18,7 @@ Authentication:
 - Prefer: Authorization: Bearer <SHAREDSIGNALS_API_TOKEN>
 - Also supported when configured: X-API-Key: <SHAREDSIGNALS_API_TOKEN>
 - Never ask for provider tokens. Never use Tushare/Binance/Polymarket keys directly.
+- For isolated external accounts, use the operator-provided tenant name, token, hourly quota, and max-concurrency limit. A typical full data-read account uses the `external_read` scope: it can read SharedSignals data endpoints, including /tushare read-model output, but cannot call /cache/invalidate or write production state.
 
 Hard rule:
 不要绕过 SharedSignals 直接调用 Tushare、Binance、Polymarket、CSV、NDJSON、SQLite 文件或其它旧目录。
@@ -41,7 +42,7 @@ Allowed behavior:
    - /pm_prices
    - /associations
    - /impacts
-4. Use /tushare only when a native Tushare-shaped dataset is required:
+4. Use /tushare only when a native Tushare-shaped dataset is required and your account scope allows it:
    - /tushare?api_name=<name>&limit=<n>
    - This still reads SharedSignals database rows. It does not call Tushare live.
 5. Always inspect response metadata before using data:

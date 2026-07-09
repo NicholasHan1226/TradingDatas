@@ -51,8 +51,11 @@ RATE_MAX_TENANTS = env_int("SHAREDSIGNALS_RATE_MAX_TENANTS", 1024, min_value=1)
 RATE_MAX_EVENTS_PER_TENANT = env_int("SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1)
 
 # Scope presets — which endpoints each scope grants access to
+STATUS_ENDPOINTS = {"/health", "/capabilities", "/agent_config", "/source_status", "/cache/status"}
+
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
-    "health": {"/health", "/capabilities", "/agent_config", "/source_status", "/cache/invalidate", "/cache/status"},
+    "status": STATUS_ENDPOINTS,
+    "health": {*STATUS_ENDPOINTS, "/cache/invalidate"},
     "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
     "fundamentals": {"/fundamentals", "/reference", "/industry"},
     "macro": {"/macro", "/capital_flow"},
@@ -63,6 +66,17 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "tushare": {"/tushare"},
     "full": {"*"},
 }
+SCOPE_ENDPOINTS["external_read"] = set().union(
+    SCOPE_ENDPOINTS["status"],
+    SCOPE_ENDPOINTS["market_data"],
+    SCOPE_ENDPOINTS["fundamentals"],
+    SCOPE_ENDPOINTS["macro"],
+    SCOPE_ENDPOINTS["events"],
+    SCOPE_ENDPOINTS["crypto"],
+    SCOPE_ENDPOINTS["pm"],
+    SCOPE_ENDPOINTS["associations"],
+    SCOPE_ENDPOINTS["tushare"],
+)
 # "read" scope grants access to all read endpoints
 SCOPE_ENDPOINTS["read"] = set().union(
     *(v for k, v in SCOPE_ENDPOINTS.items() if k not in ("full",))
@@ -380,11 +394,14 @@ def _parse_jwt(token: str) -> dict[str, Any] | None:
 
 def _extract_bearer_token(headers: Any) -> str:
     header = headers.get("Authorization", "") if headers else ""
-    if not header.startswith("Bearer "):
-        raise AuthError("missing bearer token")
-    token = header.split(" ", 1)[1].strip()
-    if not token:
-        raise AuthError("empty bearer token")
+    if header.startswith("Bearer "):
+        token = header.split(" ", 1)[1].strip()
+        if not token:
+            raise AuthError("empty bearer token")
+    else:
+        token = (headers.get("X-API-Key", "") if headers else "").strip()
+        if not token:
+            raise AuthError("missing bearer token")
     return token
 
 

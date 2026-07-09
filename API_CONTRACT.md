@@ -42,7 +42,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
-**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
+**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
 
 ### HTTP API 端点概览
 
@@ -588,6 +588,8 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 5. 按市场和频率理解数据：A股/期货保留 5 分钟交易输入；Crypto/PM 当前是 30 分钟供数；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
+隔离外部账号建议使用 `external_read` scope。它覆盖完整数据读取面，包括 `/health`、`/agent_config`、`/source_status`、业务端点和 `/tushare` 数据库输出；不覆盖 `/cache/invalidate`、生产写入、provider key、数据库文件或运维权限。
+
 复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 22 个可发现路径，并用 `cadence_class` 区分交易、研究、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
@@ -833,6 +835,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-10 | 1.1.35 | 新增外部隔离账号 `external_read` scope，并让 token 鉴权支持 `X-API-Key` header；该 scope 提供完整数据读权限（含 `/tushare` read-model 输出），但不含 `/cache/invalidate` 运维控制。 |
 | 2026-07-09 | 1.1.34 | `/source_status` 增加 API/module catalog 与 source expansion plan 映射检查，确认 planned 数据源没有误启用、候选模块能映射到默认 HTTP surface 和 read-model 表、扩源默认复用现有 API。 |
 | 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |
 | 2026-07-09 | 1.1.32 | 新增 `config/source_expansion_priority.yaml` 横向数据源扩展队列，并在 `/agent_config` 的 `data_source_onboarding` 中暴露 planned-only 扩源状态、优先批次和准入门槛；计划源不代表生产 collector 已启用。 |

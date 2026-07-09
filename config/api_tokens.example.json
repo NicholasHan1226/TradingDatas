@@ -14,6 +14,13 @@
       "scopes": ["health", "market_data", "macro", "fundamentals", "read"],
       "max_concurrent": 16,
       "token_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "tenant_id": "external_friend_example",
+      "tier": "free",
+      "scopes": ["external_read"],
+      "max_concurrent": 2,
+      "token_hash": "2222222222222222222222222222222222222222222222222222222222222222"
     }
   ]
 }

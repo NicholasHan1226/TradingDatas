@@ -153,6 +153,60 @@ def test_token_account_max_concurrent_is_enforced(monkeypatch: pytest.MonkeyPatc
     auth_module.release_concurrency(account["tenant_id"])
 
 
+def test_x_api_key_header_authenticates_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("x-api-key-token", "tenant-x-api-key", ["external_read"])]}
+        ),
+    )
+
+    account = auth_module.authenticate({"X-API-Key": "x-api-key-token"}, "203.0.113.10")
+
+    assert account["tenant_id"] == "tenant-x-api-key"
+    assert auth_module.check_endpoint_scope(account, "/agent_config")
+
+
+def test_external_read_scope_allows_full_data_surface_without_operator_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("external-token", "tenant-external", ["external_read"])]}
+        ),
+    )
+
+    account = auth_module.authenticate(
+        {"Authorization": "Bearer external-token"}, "203.0.113.10"
+    )
+    allowed_paths = [
+        "/health",
+        "/capabilities",
+        "/agent_config",
+        "/source_status",
+        "/cache/status",
+        "/market_data",
+        "/realtime_5min",
+        "/is_trading_day",
+        "/fundamentals",
+        "/reference",
+        "/industry",
+        "/macro",
+        "/capital_flow",
+        "/events",
+        "/sentiment",
+        "/crypto",
+        "/pm_markets",
+        "/pm_prices",
+        "/associations",
+        "/impacts",
+        "/tushare",
+    ]
+
+    for path in allowed_paths:
+        assert auth_module.check_endpoint_scope(account, path), path
+    assert not auth_module.check_endpoint_scope(account, "/cache/invalidate")
+
+
 def test_api_tokens_example_matches_loader_schema() -> None:
     payload = json.loads((ROOT / "config" / "api_tokens.example.json").read_text(encoding="utf-8"))
     tokens = payload.get("tokens")
