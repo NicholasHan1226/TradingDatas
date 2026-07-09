@@ -49,8 +49,9 @@ Current production collectors include:
 - Polymarket market and price collection.
 - CN futures 5-minute collection.
 
-CSV/NDJSON files are not a production read fallback. They may exist only as
-bounded tests, explicit historical migration material, or local audit fixtures.
+CSV/NDJSON/Parquet files are not a production read fallback and are not tracked
+as repository data artifacts. New collectors pass validated provider rows
+directly to the read model.
 Production success means rows reached the read model and can be returned through
 SharedSignals HTTP API access.
 

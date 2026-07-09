@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""SharedSignals patrol: periodic health checks across sources, data, staging,
-SQLite, disk, and schema drift. Outputs JSON suitable for heal.py consumption.
+"""SharedSignals patrol: periodic health checks across sources, data,
+SQLite, disk, and retired file artifacts. Outputs JSON suitable for heal.py consumption.
 
 Usage:
-    python3 patrol.py [--json] [--check source_health|data_freshness|staging_backpressure|sqlite_health|disk_usage|field_drift|all]
-    python3 patrol.py --self-test staging_backpressure  # simulate backpressure
+    python3 patrol.py [--json] [--check source_health|data_freshness|data_artifact_guard|sqlite_health|disk_usage|all]
+    python3 patrol.py --self-test data_artifact_guard  # simulate retired file artifacts
 
 Checks:
     source_health    — each source's last collection time vs staleness threshold
     data_freshness   — latest trade_date in marketdata.sqlite vs max gap
-    staging_backpressure — pending NDJSON file count vs limit
+    data_artifact_guard — retired CSV/NDJSON/Parquet file artifacts vs zero tolerance
     sqlite_health    — WAL size, lock contention, integrity
     disk_usage       — partition usage % vs thresholds
-    field_drift      — actual CSV headers vs expected_fields registry
 """
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import shutil
@@ -40,7 +38,7 @@ RUNTIME_ROOT = runtime_root()
 
 DB_PATH = marketdata_sqlite_path()
 STAGING_ROOT = RUNTIME_ROOT / "staging"
-ARCHIVE_DIR = RUNTIME_ROOT / "archive"
+COLD_STORAGE_ROOT = SHARED_ROOT / "storage" / "cold"
 
 LOG_DIR = SHARED_ROOT / "logs"
 PATROL_HISTORY = LOG_DIR / "patrol_history.jsonl"
@@ -50,7 +48,6 @@ PATROL_HISTORY = LOG_DIR / "patrol_history.jsonl"
 # ---------------------------------------------------------------------------
 STALE_SOURCE_HOURS = env_int("PATROL_STALE_SOURCE_HOURS", 6, min_value=1, max_value=168)
 DATA_FRESHNESS_MAX_DAYS = env_int("PATROL_DATA_FRESHNESS_MAX_DAYS", 1, min_value=0, max_value=30)
-MAX_STAGING_FILES = env_int("PATROL_MAX_STAGING_FILES", 100, min_value=10, max_value=10000)
 WAL_SIZE_WARN_MB = env_int("PATROL_WAL_SIZE_WARN_MB", 100, min_value=1, max_value=10240)
 DISK_WARN_PCT = env_float("PATROL_DISK_WARN_PCT", 80.0, min_value=10.0, max_value=99.0)
 DISK_STOP_PCT = env_float("PATROL_DISK_STOP_PCT", 90.0, min_value=11.0, max_value=99.0)
@@ -234,34 +231,28 @@ def check_data_freshness() -> dict[str, Any]:
     }
 
 
-def check_staging_backpressure() -> dict[str, Any]:
-    """Count pending NDJSON files in staging directory tree.
+def check_data_artifact_guard() -> dict[str, Any]:
+    """Detect retired file-bridge artifacts.
 
-    Returns:
-        {status, value, threshold, per_stream: {...}, alert}
+    Runtime CSV/NDJSON/parquet files and retired cold-storage artifacts are not a valid
+    SharedSignals read path. They should be removed or converted to direct rows
+    before collection succeeds.
     """
-    per_stream: dict[str, int] = {}
-    total = 0
-    if STAGING_ROOT.exists():
-        for stream_dir in sorted(STAGING_ROOT.iterdir()):
-            if stream_dir.is_dir():
-                n = len(list(stream_dir.glob("*.ndjson")))
-                per_stream[stream_dir.name] = n
-                total += n
+    offenders: list[str] = []
+    for root in (STAGING_ROOT, COLD_STORAGE_ROOT):
+        if not root.exists():
+            continue
+        for pattern in ("*.csv", "*.ndjson", "*.parquet", "*.sqlite", "*.db"):
+            offenders.extend(str(path) for path in sorted(root.rglob(pattern)) if path.is_file())
 
-    if total > MAX_STAGING_FILES:
-        status = "backpressure"
-    elif total > MAX_STAGING_FILES * 0.7:
-        status = "degrade"
-    else:
-        status = "ok"
-
+    status = "ok" if not offenders else "alert"
     return {
-        "name": "staging_backpressure",
+        "name": "data_artifact_guard",
         "status": status,
-        "value": total,
-        "threshold": MAX_STAGING_FILES,
-        "per_stream": per_stream,
+        "value": len(offenders),
+        "threshold": 0,
+        "offenders": offenders[:50],
+        "truncated": len(offenders) > 50,
         "alert": status != "ok",
         "checked_at": utc_now(),
     }
@@ -403,79 +394,6 @@ def check_disk_usage() -> dict[str, Any]:
     }
 
 
-def check_field_drift() -> dict[str, Any]:
-    """Compare actual NDJSON field keys in staging dir against expected_fields.
-
-    Expected fields are loaded from SHARED_ROOT/reference/expected_fields.json
-    if present; otherwise built from the existing NDJSON keys on first run.
-
-    Samples up to one NDJSON file per stream directory to avoid I/O waste.
-
-    Returns:
-        {status, value, drift_count, drifts: [...], alert}
-    """
-    expected_path = SHARED_ROOT / "reference" / "expected_fields.json"
-    expected: dict[str, list[str]] = {}
-    if expected_path.exists():
-        with open(expected_path) as f:
-            expected = json.load(f)
-
-    drifts = []
-
-    if not STAGING_ROOT.exists():
-        return {
-            "name": "field_drift",
-            "status": "ok",
-            "value": 0,
-            "threshold": 0,
-            "drifts": [],
-            "alert": False,
-            "checked_at": utc_now(),
-            "reason": "staging_dir_not_found",
-        }
-
-    # Sample one NDJSON per stream directory
-    for ndjson_file in sorted(STAGING_ROOT.rglob("*.ndjson")):
-        stream = ndjson_file.stem  # base filename without .ndjson
-        # Skip tmp/ and sample files
-        if stream.startswith("tmp") or "_sample_" in stream.lower():
-            continue
-        try:
-            with open(ndjson_file, encoding="utf-8") as f:
-                first_line = f.readline().strip()
-                if not first_line:
-                    continue
-                record = json.loads(first_line)
-                actual = sorted(record.keys())
-        except Exception:
-            continue
-
-        if stream in expected:
-            exp = expected[stream]
-            missing = [f for f in exp if f not in actual]
-            extra = [f for f in actual if f not in exp]
-            if missing or extra:
-                drifts.append({
-                    "stream": stream,
-                    "expected": exp,
-                    "actual": actual,
-                    "missing": missing,
-                    "extra": extra,
-                })
-        # First time seen: record as expected silently (no drift)
-
-    status = "ok" if len(drifts) == 0 else "alert"
-    return {
-        "name": "field_drift",
-        "status": status,
-        "value": len(drifts),
-        "threshold": 0,
-        "drifts": drifts,
-        "alert": status != "ok",
-        "checked_at": utc_now(),
-    }
-
-
 # ============================================================
 # Overall score
 # ============================================================
@@ -483,13 +401,12 @@ def check_field_drift() -> dict[str, Any]:
 CHECKS_MAP = {
     "source_health": check_source_health,
     "data_freshness": check_data_freshness,
-    "staging_backpressure": check_staging_backpressure,
+    "data_artifact_guard": check_data_artifact_guard,
     "sqlite_health": check_sqlite_health,
     "disk_usage": check_disk_usage,
-    "field_drift": check_field_drift,
 }
 
-STATUS_SCORE = {"ok": 10, "degrade": 5, "warn": 5, "alert": 0, "stop": 0, "backpressure": 3, "stale": 3}
+STATUS_SCORE = {"ok": 10, "degrade": 5, "warn": 5, "alert": 0, "stop": 0, "stale": 3}
 
 
 def compute_overall_score(checks: list[dict]) -> int:
@@ -541,7 +458,7 @@ def record_patrol(result: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description="SharedSignals patrol health check")
     parser.add_argument("--check", default="all",
-                        help="Check to run: source_health|data_freshness|staging_backpressure|sqlite_health|disk_usage|field_drift|all")
+                        help="Check to run: source_health|data_freshness|data_artifact_guard|sqlite_health|disk_usage|all")
     parser.add_argument("--json", action="store_true", default=True,
                         help="Output JSON (default)")
     parser.add_argument("--no-record", action="store_true",
@@ -551,21 +468,20 @@ def main():
     args = parser.parse_args()
 
     if args.self_test:
-        # Simulate a specific backpressure/failure scenario
+        # Simulate a specific failure scenario
         check_name = args.self_test
-        if check_name == "staging_backpressure":
-            # Fake a high staging count
+        if check_name == "data_artifact_guard":
             result = {
-                "name": "staging_backpressure",
-                "status": "backpressure",
-                "value": MAX_STAGING_FILES + 50,
-                "threshold": MAX_STAGING_FILES,
-                "per_stream": {"collection_runs": 50, "sentiment_signals": 50, "event_candidates": 50},
+                "name": "data_artifact_guard",
+                "status": "alert",
+                "value": 1,
+                "threshold": 0,
+                "offenders": [str(STAGING_ROOT / "retired.ndjson")],
                 "alert": True,
                 "checked_at": utc_now(),
                 "self_test": True,
             }
-            output = {"checks": [result], "overall_score": 3, "max_score": 10, "score_pct": 30.0, "patrol_at": utc_now()}
+            output = {"checks": [result], "overall_score": 0, "max_score": 10, "score_pct": 0.0, "patrol_at": utc_now()}
         else:
             fn = CHECKS_MAP.get(check_name)
             if fn:

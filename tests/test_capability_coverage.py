@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from collectors.tushare.collector import TushareCollector
@@ -100,6 +101,9 @@ def test_no_retired_bridge_or_orchestrator_entrypoints_remain() -> None:
         Path("collectors/polymarket/collector.py"),
         Path("collectors/polymarket/parquet_loader.py"),
         Path("source_failover.py"),
+        Path("storage/archive_manager.py"),
+        Path("storage/query_router.py"),
+        Path("storage/cold"),
     ]
     assert [str(path) for path in retired_paths if path.exists()] == []
 
@@ -115,6 +119,45 @@ def test_repo_data_directory_contains_no_production_fallback_files() -> None:
     assert offenders == []
 
 
+def test_repository_contains_no_tracked_runtime_data_artifacts() -> None:
+    forbidden_suffixes = {".csv", ".ndjson", ".sqlite", ".db", ".parquet"}
+    allowed_prefixes = ("tests/",)
+    tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+    offenders = [
+        path
+        for path in tracked
+        if Path(path).suffix.lower() in forbidden_suffixes
+        and not path.startswith(allowed_prefixes)
+    ]
+
+    assert offenders == []
+
+
+def test_polymarket_config_has_no_retired_parquet_loader_settings() -> None:
+    config_path = Path("collectors/polymarket/config.yaml")
+    if not config_path.exists():
+        return
+    text = config_path.read_text(encoding="utf-8")
+    assert "parquet:" not in text
+    assert "glob_pattern" not in text
+
+
+def test_read_model_store_has_no_file_bridge_ingestion_entrypoints() -> None:
+    text = Path("storage/read_model_store.py").read_text(encoding="utf-8")
+    banned = [
+        "import csv",
+        "ingest_csv_to_sqlite",
+        "ingest_date_partition",
+        "CSV_BRIDGE",
+        "CSV_ADDITIONAL_TABLES",
+        "read_csv",
+        "glob(\"*.csv\")",
+    ]
+    offenders = [token for token in banned if token in text]
+
+    assert offenders == []
+
+
 def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> None:
     banned = (
         "--no-sqlite-bridge",
@@ -125,6 +168,12 @@ def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> Non
         "sentiment_signals.csv",
         "collection_runs.csv",
         "MarketGraphRuntime/read_model/" + "marketdata.sqlite",
+        "ingest_csv_to_sqlite",
+        "ingest_date_partition",
+        "CSV_BRIDGE",
+        "storage/archive_manager.py",
+        "storage/query_router.py",
+        "storage/cold",
     )
     offenders: list[str] = []
     for pattern in PRODUCTION_CODE_GLOBS:

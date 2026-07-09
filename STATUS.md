@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档）
+> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役）
 
 ---
 
@@ -14,6 +14,7 @@
 - **交易边界**：支持分钟级/5 分钟级交易供数，不承诺毫秒级 HFT、订单簿撮合或执行系统能力。
 - **现役数据源**：Tushare、Binance、Polymarket、CNFutures；RSS/RSSHub/Tavily/DeepSeek 不作为现役生产 collector。
 - **存储边界**：SQLite read model 是权威读模型；DuckDB 是分析镜像；CSV/NDJSON/旧目录只能作为历史迁移或审计材料，不能作为生产读取兜底。
+- **仓库数据边界**：仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；冷归档样本、CSV bridge、旧 query_router/archive_manager 不作为当前 read path 或交接材料，且由测试门禁阻止恢复。
 - **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
 
 ## 二、生产频率

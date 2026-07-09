@@ -1,17 +1,15 @@
-"""SQLite read-model writer and historical CSV migration helper.
+"""SQLite read-model writer.
 
-现役采集使用 `ingest_rows_to_sqlite()` 直接写入 read model。`ingest_csv_to_sqlite()`
-及 CSV 相关 helper 仅保留为历史迁移/审计工具，不得作为生产采集成功路径。
+Production collectors pass validated provider rows to `ingest_rows_to_sqlite()`.
+CSV/NDJSON/parquet file bridges are retired and must not be restored here.
 """
 
 from __future__ import annotations
 
-import csv
 import fcntl
 import hashlib
 import json
 import logging
-import os
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -25,20 +23,20 @@ from runtime_paths import marketdata_sqlite_path
 
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
-MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_CSV_BRIDGE_MAX_TRANSACTION_ROWS", 0, min_value=0)
-DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_CSV_BRIDGE_DB_RETRIES", 3, min_value=1)
+MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_READ_MODEL_MAX_TRANSACTION_ROWS", 0, min_value=0)
+DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_READ_MODEL_DB_RETRIES", 3, min_value=1)
 
 DEFAULT_SQLITE_PATH = marketdata_sqlite_path()
 
 
-def _bridge_lock_path(db_path: Path) -> Path:
+def _read_model_lock_path(db_path: Path) -> Path:
     return db_path.parent / f".{db_path.name}.read_model_store.lock"
 
 
 @contextmanager
-def _sqlite_bridge_lock(db_path: Path):
-    timeout = env_int("SHAREDSIGNALS_CSV_BRIDGE_LOCK_TIMEOUT", 180, min_value=0)
-    lock_path = _bridge_lock_path(db_path)
+def _read_model_lock(db_path: Path):
+    timeout = env_int("SHAREDSIGNALS_READ_MODEL_LOCK_TIMEOUT", 180, min_value=0)
+    lock_path = _read_model_lock_path(db_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
     with lock_path.open("a+") as handle:
@@ -174,7 +172,7 @@ API_TO_TABLE_MAP = {
     "weekly": "market_bars_intraday",
 }
 
-CSV_ADDITIONAL_TABLES = {
+ADDITIONAL_TABLES = {
     "repo_daily": ("market_bars_daily",),
     "stk_factor": ("market_factors",),
 }
@@ -187,11 +185,6 @@ def _quote_identifier(identifier):
 def _table_columns(conn, table):
     rows = conn.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()
     return [row[1] for row in rows]
-
-
-def _api_name_from_path(csv_path):
-    parent = csv_path.parent.parent.name
-    return parent if parent in API_TO_TABLE_MAP else ""
 
 
 def _market_for(api_name, symbol):
@@ -346,14 +339,14 @@ def _fund_portfolio_hash(api_name, symbol, holding_symbol, ann_date, end_date, r
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _factor_rows(row, api_name, csv_path):
-    row = _canonical_row("market_factors", dict(row), api_name, csv_path)
+def _factor_rows(row, api_name, source_ref):
+    row = _canonical_row("market_factors", dict(row), api_name, source_ref)
     raw_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
     symbol = row.get("symbol") or row.get("ts_code") or ""
-    event_time = _factor_event_time(row, api_name) or _csv_collected_at(csv_path)
-    collected_at = row.get("collected_at") or _csv_collected_at(csv_path)
+    event_time = _factor_event_time(row, api_name) or _source_collected_at(source_ref)
+    collected_at = row.get("collected_at") or _source_collected_at(source_ref)
     provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
-    source_file = row.get("source_file") or Path(csv_path).name
+    source_file = row.get("source_file") or Path(source_ref).name
     market = row.get("market") or _market_for(api_name, symbol)
 
     metrics = []
@@ -389,28 +382,28 @@ def _factor_rows(row, api_name, csv_path):
     return expanded
 
 
-def _columns_for_insert(table, csv_columns, target_columns, api_name):
-    columns = [col for col in csv_columns if col in target_columns]
-    csv_column_set = set(csv_columns)
+def _columns_for_insert(table, row_columns, target_columns, api_name):
+    columns = [col for col in row_columns if col in target_columns]
+    row_column_set = set(row_columns)
 
     derived_columns = []
-    if {"ts_code", "symbol", "code"} & csv_column_set and "symbol" in target_columns:
+    if {"ts_code", "symbol", "code"} & row_column_set and "symbol" in target_columns:
         derived_columns.append("symbol")
-    if "vol" in csv_column_set and "volume" in target_columns:
+    if "vol" in row_column_set and "volume" in target_columns:
         derived_columns.append("volume")
     if "market" in target_columns and (
-        api_name or "ts_code" in csv_column_set or "symbol" in csv_column_set
+        api_name or "ts_code" in row_column_set or "symbol" in row_column_set
     ):
         derived_columns.append("market")
     if table == "market_bars_intraday":
-        if "trade_date" in csv_column_set and "bar_time" in target_columns:
+        if "trade_date" in row_column_set and "bar_time" in target_columns:
             derived_columns.append("bar_time")
-        if "trade_time" in csv_column_set:
+        if "trade_time" in row_column_set:
             if "bar_time" in target_columns:
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
                 derived_columns.append("trade_date")
-        if "time" in csv_column_set:
+        if "time" in row_column_set:
             if "bar_time" in target_columns:
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
@@ -419,7 +412,7 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
             derived_columns.append("interval")
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
-                if canonical in target_columns and (set(aliases) & csv_column_set or canonical in {"last_trade_date", "expiry_date"}):
+                if canonical in target_columns and (set(aliases) & row_column_set or canonical in {"last_trade_date", "expiry_date"}):
                     derived_columns.append(canonical)
     if table == "market_assets":
         for col in ("name", "asset_type", "sector", "status", "updated_at", "raw_json", "last_trade_date", "expiry_date"):
@@ -475,9 +468,9 @@ def _columns_for_insert(table, csv_columns, target_columns, api_name):
     return columns
 
 
-def _csv_collected_at(csv_path):
+def _source_collected_at(source_ref):
     try:
-        return datetime.fromtimestamp(Path(csv_path).stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
+        return datetime.fromtimestamp(Path(source_ref).stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
     except OSError:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -528,7 +521,7 @@ def _event_hash(provider, event_type, event_time, row):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _canonical_row(table, row, api_name, csv_path):
+def _canonical_row(table, row, api_name, source_ref):
     original_symbol = row.get("symbol")
     symbol = row.get("ts_code") or row.get("symbol") or row.get("code") or row.get("index_code")
     if symbol:
@@ -598,7 +591,7 @@ def _canonical_row(table, row, api_name, csv_path):
         if not row.get("expiry_date"):
             row["expiry_date"] = _first_present(row, "expiry_date", "delist_date", "delivery_date", "end_date")
         if not row.get("updated_at"):
-            row["updated_at"] = _csv_collected_at(csv_path)
+            row["updated_at"] = _source_collected_at(source_ref)
         if not row.get("raw_json"):
             row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
 
@@ -693,9 +686,9 @@ def _canonical_row(table, row, api_name, csv_path):
     if api_name and not row.get("provider"):
         row["provider"] = f"tushare_{api_name}"
     if not row.get("collected_at"):
-        row["collected_at"] = _csv_collected_at(csv_path)
+        row["collected_at"] = _source_collected_at(source_ref)
     if not row.get("source_file"):
-        row["source_file"] = csv_path.name
+        row["source_file"] = Path(source_ref).name
 
     return _normalize_numeric_values(table, row)
 
@@ -781,12 +774,12 @@ def _required_columns(table, target_columns):
     ]
 
 
-def _row_values(row, columns, required_columns, csv_path, row_number):
+def _row_values(row, columns, required_columns, source_ref, row_number):
     missing = [col for col in required_columns if row.get(col) in (None, "")]
     if missing:
         logger.warning(
-            "read model store skipped bad row: file=%s row=%s missing required columns=%s",
-            csv_path,
+            "read model store skipped bad row: source=%s row=%s missing required columns=%s",
+            source_ref,
             row_number,
             ",".join(missing),
         )
@@ -847,108 +840,6 @@ def _prepare_sqlite_connection(conn: sqlite3.Connection) -> None:
         if not _sqlite_lock_error(exc):
             raise
     conn.execute("PRAGMA synchronous=NORMAL")
-
-
-def _ingest_csv_to_sqlite_once(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
-    """Ingest one CSV file into an existing SQLite table (migration-only).
-
-    The helper is defensive: it never creates target tables. If the database or
-    table is missing, it logs and returns 0. CSV ingestion is retained only for
-    historical migration/audit; production collectors must use
-    `ingest_rows_to_sqlite()`.
-    """
-    db_path = Path(db_path)
-    csv_path = Path(csv_path)
-
-    if not csv_path.exists():
-        raise FileNotFoundError(str(csv_path))
-
-    if not db_path.exists():
-        logger.warning("read model store skipped: database does not exist: %s", db_path)
-        return 0
-
-    rows_written = 0
-    transaction_open = False
-    transaction_rows = 0
-    max_rows_per_transaction = MAX_TRANSACTION_ROWS if max_transaction_rows is None else int(max_transaction_rows)
-    conn = sqlite3.connect(str(db_path), timeout=30)
-    try:
-        _prepare_sqlite_connection(conn)
-
-        target_columns = _table_columns(conn, table)
-        if not target_columns:
-            logger.warning("read model store skipped: table does not exist: %s", table)
-            return 0
-
-        with csv_path.open("r", encoding=encoding, newline="") as fh:
-            reader = csv.DictReader(line.replace("\0", "") for line in fh)
-            csv_columns = reader.fieldnames or []
-            api_name = _api_name_from_path(csv_path)
-            if table == "market_factors":
-                columns = [col for col in _FACTOR_INSERT_COLUMNS if col in target_columns]
-                skipped = [col for col in csv_columns if col in _FACTOR_BASE_COLUMNS]
-            else:
-                columns = _columns_for_insert(table, csv_columns, target_columns, api_name)
-                skipped = [col for col in csv_columns if col not in target_columns]
-            if skipped:
-                logger.debug(
-                    "read model store skipped unknown columns for %s: %s",
-                    table,
-                    ", ".join(skipped),
-                )
-            if not columns:
-                logger.warning("read model store skipped: no matching columns for %s in %s", table, csv_path)
-                return 0
-
-            pk_columns = [
-                col
-                for col in table_primary_keys().get(table, [])
-                if col in target_columns
-            ]
-            for pk_col in pk_columns:
-                if pk_col not in columns:
-                    columns.append(pk_col)
-            required_columns = _required_columns(table, target_columns)
-            sql = _insert_sql(table, columns, pk_columns)
-            chunk: list[list[Any]] = []
-            conn.execute("BEGIN IMMEDIATE")
-            transaction_open = True
-
-            for row_number, row in enumerate(reader, start=2):
-                canonical_rows = _factor_rows(row, api_name, csv_path) if table == "market_factors" else [_canonical_row(table, row, api_name, csv_path)]
-                for canonical_row in canonical_rows:
-                    if table == "market_bars_intraday" and api_name == "rt_fut_min":
-                        canonical_row = _enrich_futures_intraday_from_assets(conn, canonical_row)
-                    values = _row_values(canonical_row, columns, required_columns, csv_path, row_number)
-                    if values is None:
-                        continue
-                    chunk.append(values)
-                    if len(chunk) >= CHUNK_SIZE:
-                        chunk_written = _flush_chunk(conn, sql, chunk)
-                        rows_written += chunk_written
-                        transaction_rows += len(chunk)
-                        chunk.clear()
-                        if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
-                            conn.commit()
-                            transaction_open = False
-                            conn.execute("BEGIN IMMEDIATE")
-                            transaction_open = True
-                            transaction_rows = 0
-
-            if chunk:
-                chunk_written = _flush_chunk(conn, sql, chunk)
-                rows_written += chunk_written
-                transaction_rows += len(chunk)
-            conn.commit()
-            transaction_open = False
-    except Exception:
-        if transaction_open:
-            conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-    return rows_written
 
 
 def _ingest_rows_to_sqlite_once(
@@ -1052,15 +943,24 @@ def _ingest_rows_to_sqlite_once(
     return rows_written
 
 
-def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
+def _ingest_rows_to_sqlite_unlocked(
+    db_path,
+    table,
+    api_name,
+    rows,
+    *,
+    source_name: str,
+    max_transaction_rows: int | None = None,
+):
     last_error: Exception | None = None
     for attempt in range(1, DB_BUSY_RETRIES + 1):
         try:
-            return _ingest_csv_to_sqlite_once(
+            return _ingest_rows_to_sqlite_once(
                 db_path,
                 table,
-                csv_path,
-                encoding=encoding,
+                api_name,
+                rows,
+                source_name=source_name,
                 max_transaction_rows=max_transaction_rows,
             )
         except sqlite3.OperationalError as exc:
@@ -1070,29 +970,6 @@ def _ingest_csv_to_sqlite_unlocked(db_path, table, csv_path, encoding="utf-8-sig
                 continue
             raise
     raise RuntimeError(f"read model store sqlite write failed after {DB_BUSY_RETRIES} attempts: {last_error}") from last_error
-
-
-def ingest_csv_to_sqlite(db_path, table, csv_path, encoding="utf-8-sig", max_transaction_rows: int | None = None):
-    db_path_obj = Path(db_path)
-    with _sqlite_bridge_lock(db_path_obj):
-        rows_written = _ingest_csv_to_sqlite_unlocked(
-            db_path_obj,
-            table,
-            csv_path,
-            encoding=encoding,
-            max_transaction_rows=max_transaction_rows,
-        )
-        api_name = _api_name_from_path(Path(csv_path))
-        if API_TO_TABLE_MAP.get(api_name) == table:
-            for additional_table in CSV_ADDITIONAL_TABLES.get(api_name, ()):
-                rows_written += _ingest_csv_to_sqlite_unlocked(
-                    db_path_obj,
-                    additional_table,
-                    csv_path,
-                    encoding=encoding,
-                    max_transaction_rows=max_transaction_rows,
-                )
-        return rows_written
 
 
 def ingest_rows_to_sqlite(
@@ -1106,8 +983,8 @@ def ingest_rows_to_sqlite(
 ):
     db_path_obj = Path(db_path)
     source = source_name or f"{api_name}_direct"
-    with _sqlite_bridge_lock(db_path_obj):
-        rows_written = _ingest_rows_to_sqlite_once(
+    with _read_model_lock(db_path_obj):
+        rows_written = _ingest_rows_to_sqlite_unlocked(
             db_path_obj,
             table,
             api_name,
@@ -1116,8 +993,8 @@ def ingest_rows_to_sqlite(
             max_transaction_rows=max_transaction_rows,
         )
         if API_TO_TABLE_MAP.get(api_name) == table:
-            for additional_table in CSV_ADDITIONAL_TABLES.get(api_name, ()):
-                rows_written += _ingest_rows_to_sqlite_once(
+            for additional_table in ADDITIONAL_TABLES.get(api_name, ()):
+                rows_written += _ingest_rows_to_sqlite_unlocked(
                     db_path_obj,
                     additional_table,
                     api_name,
@@ -1126,29 +1003,3 @@ def ingest_rows_to_sqlite(
                     max_transaction_rows=max_transaction_rows,
                 )
         return rows_written
-
-
-def ingest_date_partition(db_path, api_name, trade_date, data_dir):
-    """Ingest CSV files for one Tushare API/date partition."""
-    table = API_TO_TABLE_MAP.get(api_name)
-    summary = {
-        "api_name": api_name,
-        "trade_date": trade_date,
-        "files_processed": 0,
-        "total_rows": 0,
-    }
-    if not table:
-        logger.warning("read model store skipped: no table mapping for api_name=%s", api_name)
-        return summary
-
-    partition_dir = Path(data_dir) / "tushare" / api_name / str(trade_date)
-    if not partition_dir.exists():
-        logger.warning("read model store skipped: partition does not exist: %s", partition_dir)
-        return summary
-
-    for csv_file in sorted(partition_dir.glob("*.csv")):
-        rows = ingest_csv_to_sqlite(db_path, table, csv_file)
-        summary["files_processed"] += 1
-        summary["total_rows"] += rows
-
-    return summary

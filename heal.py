@@ -9,10 +9,9 @@ Usage:
 Healing strategies:
     source_health   → alert stale collector/source; owning cron must rerun direct DB collector
     data_freshness  → trigger backfill collector re-run
-    staging_backpressure → alert; retired CSV runtime bridge is not used
+    data_artifact_guard → alert on retired CSV/NDJSON/Parquet file artifacts
     sqlite_health    → backup-switch / DuckDB rebuild for corrupt DB, WAL checkpoint, lock retry
-    disk_usage       → clean old archive (>30d Parquet), stop collectors
-    field_drift      → update expected_fields.json + alert
+    disk_usage       → clean logs/cache where safe, stop collectors at hard threshold
 """
 from __future__ import annotations
 
@@ -62,10 +61,9 @@ SEVERITY = {
 ACTION_SEVERITY = {
     "source_health": "high",
     "data_freshness": "medium",
-    "staging_backpressure": "medium",
+    "data_artifact_guard": "medium",
     "sqlite_health": "critical",
     "disk_usage": "high",
-    "field_drift": "low",
 }
 
 
@@ -233,14 +231,10 @@ def _verify_heal(action_name: str, action: dict) -> dict:
         except Exception as e:
             verify["details"] = f"verification_error: {e}"
 
-    elif action_name == "staging_backpressure":
-        remaining = 0
-        if STAGING_ROOT.exists():
-            for d in STAGING_ROOT.iterdir():
-                if d.is_dir():
-                    remaining += len(list(d.glob("*.ndjson")))
-        verify["verified"] = remaining < action.get("remaining_after", 100)
-        verify["details"] = f"staging_files_remaining={remaining}"
+    elif action_name == "data_artifact_guard":
+        offenders = action.get("offenders", [])
+        verify["verified"] = not offenders
+        verify["details"] = f"retired_artifacts={len(offenders)}"
 
     elif action_name == "disk_usage":
         try:
@@ -268,11 +262,6 @@ def _verify_heal(action_name: str, action: dict) -> dict:
                 verify["details"] = "no_data_found"
         except Exception as e:
             verify["details"] = f"verification_error: {e}"
-
-    elif action_name == "field_drift":
-        expected_path = SHARED_ROOT / "reference" / "expected_fields.json"
-        verify["verified"] = expected_path.exists()
-        verify["details"] = f"expected_fields_exists={expected_path.exists()}"
 
     elif action_name == "source_health":
         verify["verified"] = action.get("healed", False)
@@ -361,16 +350,17 @@ def heal_data_freshness(check_result: dict, dry_run: bool = False) -> dict:
     return action
 
 
-def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict:
-    """Report staging backpressure without invoking retired CSV runtime bridge."""
+def heal_data_artifact_guard(check_result: dict, dry_run: bool = False) -> dict:
+    """Report retired file artifacts without restoring file-bridge behavior."""
     total = check_result.get("value", 0)
     action = {
-        "action": "staging_backpressure",
-        "action_type": "staging_owner_required",
-        "target": str(STAGING_ROOT),
-        "from_val": f"{total}_pending",
-        "to_val": "manual_owner_review",
-        "reason": f"{total} pending staging files (threshold: {check_result.get('threshold', 100)})",
+        "action": "data_artifact_guard",
+        "action_type": "retired_artifact_cleanup_required",
+        "target": "retired_file_artifacts",
+        "from_val": f"{total}_offenders",
+        "to_val": "zero_file_artifacts",
+        "reason": f"{total} retired file artifact(s) detected",
+        "offenders": list(check_result.get("offenders", [])),
         "reversible": False,
         "healed_at": utc_now(),
     }
@@ -379,29 +369,23 @@ def heal_staging_backpressure(check_result: dict, dry_run: bool = False) -> dict
         action["dry_run"] = True
         return action
 
-    if not _check_cooldown("bridge_merge", dry_run=dry_run):
+    if not _check_cooldown("data_artifact_guard", dry_run=dry_run):
         action["cooldown_skipped"] = True
         action["healed"] = False
         action["error"] = "rate_limited"
         record_action(action)
         return action
 
-    remaining = 0
-    if STAGING_ROOT.exists():
-        for d in STAGING_ROOT.iterdir():
-            if d.is_dir():
-                remaining += len(list(d.glob("*.ndjson")))
-    action["remaining_after"] = remaining
     action["healed"] = False
-    action["error"] = "runtime CSV bridge retired; staging owner must ingest directly to read model or archive stale files"
-    action["next_action"] = "Identify the owning collector/stream and implement direct SQLite ingestion; do not merge into MarketGraph CSV from SharedSignals."
+    action["error"] = "retired file artifacts must be removed at source; file bridge recovery is not supported"
+    action["next_action"] = "Delete or quarantine the artifact after confirming it is not a production database; collectors must write provider rows directly to the SQLite read model."
 
     record_action(action)
     if not action.get("healed"):
-        sev = ACTION_SEVERITY.get("staging_backpressure", "medium")
-        alert("staging_merge_failed", action, severity=sev)
+        sev = ACTION_SEVERITY.get("data_artifact_guard", "medium")
+        alert("data_artifact_guard_failed", action, severity=sev)
 
-    action["_verify"] = _verify_heal("staging_backpressure", action)
+    action["_verify"] = _verify_heal("data_artifact_guard", action)
     return action
 
 
@@ -604,85 +588,6 @@ def heal_disk_usage(check_result: dict, dry_run: bool = False) -> dict:
     return action
 
 
-def heal_field_drift(check_result: dict, dry_run: bool = False) -> dict:
-    """Update expected_fields.json when field drift is detected.
-
-    This records the actual fields as the new expected, emitting an alert
-    so a human can verify the change is intentional.
-    """
-    drifts = check_result.get("drifts", [])
-    action = {
-        "action": "field_drift",
-        "action_type": "update_expected",
-        "target": "expected_fields.json",
-        "from_val": "drifted",
-        "to_val": "updated",
-        "reason": f"{len(drifts)} stream(s) with field drift",
-        "reversible": True,
-        "healed_at": utc_now(),
-    }
-
-    if dry_run:
-        action["dry_run"] = True
-        return action
-
-    if not _check_cooldown("update_expected", dry_run=dry_run):
-        action["cooldown_skipped"] = True
-        action["healed"] = False
-        action["error"] = "rate_limited"
-        record_action(action)
-        return action
-
-    expected_path = SHARED_ROOT / "reference" / "expected_fields.json"
-    expected: dict[str, list[str]] = {}
-
-    # Load existing
-    if expected_path.exists():
-        with open(expected_path) as f:
-            expected = json.load(f)
-
-    # Validate actual field names before accepting them as expected.
-    # A valid field name: starts with letter/underscore, only contains
-    # alphanumeric + underscore, no control characters, at least 1 char.
-    import re
-    valid_field = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-    for drift in drifts:
-        actual_fields = drift.get("actual", [])
-        bad_fields = [
-            f for f in actual_fields
-            if not f or not isinstance(f, str) or not valid_field.match(str(f))
-        ]
-        if bad_fields:
-            action["healed"] = False
-            action["error"] = "field_name_validation_failed"
-            action["invalid_fields"] = bad_fields
-            action["stream"] = drift["stream"]
-            record_action(action)
-            alert(
-                "field_name_validation_failed",
-                {"stream": drift["stream"], "bad_fields": bad_fields, "all_actual": actual_fields},
-                severity="low",
-            )
-            return action
-
-    # Update drifted streams with actual fields (validated)
-    for drift in drifts:
-        expected[drift["stream"]] = drift["actual"]
-
-    # Save
-    expected_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(expected_path, "w") as f:
-        json.dump(expected, f, ensure_ascii=False, indent=2)
-
-    action["updated_streams"] = [d["stream"] for d in drifts]
-    action["healed"] = True
-
-    record_action(action)
-    action["_verify"] = _verify_heal("field_drift", action)
-    return action
-
-
 # ============================================================
 # Heal dispatch
 # ============================================================
@@ -690,10 +595,9 @@ def heal_field_drift(check_result: dict, dry_run: bool = False) -> dict:
 HEAL_MAP = {
     "source_health": heal_source_health,
     "data_freshness": heal_data_freshness,
-    "staging_backpressure": heal_staging_backpressure,
+    "data_artifact_guard": heal_data_artifact_guard,
     "sqlite_health": heal_sqlite_health,
     "disk_usage": heal_disk_usage,
-    "field_drift": heal_field_drift,
 }
 
 
@@ -743,10 +647,11 @@ def main():
 
     if args.self_test:
         test_mode = args.self_test
-        if test_mode == "staging_backpressure":
-            check = {"name": "staging_backpressure", "value": 150, "threshold": 100,
-                     "status": "backpressure", "alert": True}
-            action = heal_staging_backpressure(check, dry_run=args.dry_run)
+        if test_mode == "data_artifact_guard":
+            check = {"name": "data_artifact_guard", "value": 1, "threshold": 0,
+                     "offenders": [str(STAGING_ROOT / "retired.ndjson")],
+                     "status": "alert", "alert": True}
+            action = heal_data_artifact_guard(check, dry_run=args.dry_run)
             actions = [action]
         elif test_mode in HEAL_MAP:
             check = {"name": test_mode, "value": 1, "threshold": 0, "status": "alert", "alert": True}

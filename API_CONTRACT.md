@@ -842,6 +842,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 2026-07-09 | 1.1.22 | 新增 `/agent_config` 外部 agent 机器接入配置端点，补充一键复制 prompt 与 16 个 planned Tushare 接口的分批激活 backlog，明确外部 agent 应先读健康/配置再按市场和频率调用。 |
 | 2026-07-09 | 1.1.21 | 明确 SharedSignals 是分钟级/5 分钟级交易数据供给层，不是毫秒级 HFT 或执行系统；Tushare 生产 tier 扩展到 P0-P7，新增 P7 周/月线低频 lane、事件 30 分钟 lane、第一批 planned-to-scheduled 数据维度和外部 agent 调用规则。 |
 | 2026-07-09 | 1.1.20 | 补齐 HTTP `/capabilities` 与 `/cache/status` 合同；澄清 `/associations`、`/impacts` 是 SharedSignals API/read-model 输出，消费者不得直接读取 MarketGraph 仓库文件；保留 localhost bypass 默认关闭的安全边界。 |
+| 2026-07-09 | 1.1.20-cleanup | 删除仓库跟踪的旧 Parquet 冷归档样本、旧 `storage/archive_manager.py` / `storage/query_router.py` cold path、Polymarket parquet loader 配置和 `ingest_csv_to_sqlite` 文件桥入口；read-model 写入只保留 rows-only `ingest_rows_to_sqlite()`，并加测试门禁防恢复。 |
 | 2026-07-09 | 1.1.19 | 统一 reader/API 市场名规范化：`CNFutures`、`cn_futures` 等别名映射到 `Futures`，`PM`/`Polymarket` 映射到 `PredictionMarkets`；`/realtime_5min`、`/tushare` 资产读取和事件过滤共用同一市场识别规则。同步更正 CNFutures 5 分钟默认 provider 为 AkShare/Sina，Tushare `rt_fut_min` 仅保留为显式可选 provider。 |
 | 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 HTTP API 输出。 |
 | 2026-07-08 | 1.1.17 | `/tushare?api_name=fut_basic`、`hk_basic`、`us_basic`、`etf_basic` 等资产类接口按对应 market 过滤 `market_assets`，不再把所有资产接口默认限定为 A股；TradingAgent/CNFutures 可通过 SharedSignals API 获取期货合约资产列表。 |

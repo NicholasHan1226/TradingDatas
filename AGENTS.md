@@ -25,10 +25,10 @@
 ## 边界
 - 做什么: 采集行情/事件/基本面/资金/宏观, 去重入库
 - 不做什么: 不分析, 不分类, 不做交易决策
-- 存储: SQLite read model + DuckDB mirror；CSV/NDJSON 只允许作为 collector staging、审计或历史迁移材料，不是生产读取兜底。
+- 存储: SQLite read model + DuckDB mirror；仓库和生产 reader/API 不保留 CSV/NDJSON/Parquet 文件桥、冷归档读路由或旧样本数据。
 
 ## 现状
-- 行情: Tushare/Binance/PM(markets/prices) → SQLite read model + DuckDB mirror；具体接口数以 `collectors/tushare/config.yaml` 和 `STATUS.md` 当前记录为准。CSV/NDJSON 只作为 collector staging、审计或历史迁移材料，不作为生产消费兜底。
+- 行情: Tushare/Binance/PM(markets/prices) → SQLite read model + DuckDB mirror；具体接口数以 `collectors/tushare/config.yaml` 和 `STATUS.md` 当前记录为准。采集结果必须以 rows 直接写入 read model，不得恢复 CSV/NDJSON/Parquet staging 或样本文件路径。
 - 事件: RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；恢复前必须走新的 SharedSignals collector 直接写 SQLite read model，不得恢复旧文件 staging、旧 bridge 或跨系统运行层入口
 - 基本面: Tushare 财务/分红/融资融券等由分层定时任务采集落库，写入 `market_factors`；reader/API 只读缓存，不现场调用 provider
 - 运行审计: collector 写入 `market_ingest_runs`，cron/watchdog/health_sla 读取数据库和日志
@@ -51,19 +51,19 @@
 检查6个维度:
 - source_health: 每个source最近采集时间, 超时→stale (只标记已采集过的源)
 - data_freshness: marketdata.sqlite最新trade_date, 超过1天→stale
-- staging_backpressure: pending NDJSON文件数, >100→backpressure
+- data_artifact_guard: 仓库和 runtime 不应出现被当成 read path 的 CSV/NDJSON/Parquet 文件；出现时告警并清理来源
 - sqlite_health: WAL文件大小(>100MB→checkpoint), 锁等待→告警, 完整性检查
 - disk_usage: >80%告警, >90%停止采集
-- field_drift: 实际CSV字段 vs expected_fields不匹配→告警
+- schema_contract: provider rows 字段与 read-model schema / expected_fields 契约不匹配→告警
 
 输出: JSON {checks: [{name, status, value, threshold, alert}], overall_score}
 
 ### heal.py — 自愈动作
 - source stale → 记录 stale collector 告警，要求重跑对应 direct-DB collector；不做旧 RSS/source failover
 - 数据缺失 → 触发补采(重跑marketdata_db --ingest)
-- staging积压 → 告警并记录；要求所属 collector 直接入库或归档旧 staging，不再运行旧 runtime bridge
+- 文件桥残留 → 告警并清理；要求所属 collector 改为 provider rows 直接入库，不运行旧 runtime bridge
 - SQLite锁 → 等待5s重试, 清理WAL(PRAGMA wal_checkpoint)
-- 磁盘满 → 清理旧archive(>30天Parquet), >90%发出停止采集信号
+- 磁盘满 → 清理日志、缓存和运行产物；不得引入 Parquet 冷归档 read path
 - 字段漂变 → 更新expected_fields.json + 告警
 - 自愈失败 → 紧急告警(emergency_alerts.log) → 人工介入
 
@@ -79,7 +79,7 @@
 - bridge/ — read-model 兼容辅助模块；旧跨仓 CSV/staging bridge 已退役
 - reference/ — 参考数据、expected_fields.json 与只读缓存辅助工具；不得放回旧 Ashare/RSSCollector 软链入口
 - memory/ — 采集层记忆 + 巡查/自愈历史
-- staging/ — 本层staging缓冲
+- staging/ — 退役目录名；不得作为生产采集成功路径或 reader/API 兜底
 - patrol.py — 10min巡查 (6维度健康检查)
 - heal.py — 自愈引擎 (failover/backfill/merge/checkpoint/cleanup/drift)
 - logs/ — 紧急告警 (emergency_alerts.log)
@@ -92,6 +92,7 @@
 - 开发前检查 `git status -sb`、`git remote -v`、当前分支和是否落后远端；发现采集、存储、桥接或其它 agent 的未提交改动时，先确认来源，不得覆盖。
 - 涉及采集源、SQLite read model、schema、API contract、patrol/heal 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md`、`LOG.md` 或 `docs/` 下对应说明。
 - 提交时只暂存本次审计过的文件；数据库、缓存、日志、staging、密钥和本机运行产物默认不提交，除非项目文档明确要求并已审计。
+- 不得提交或恢复 CSV/NDJSON/SQLite/DB/Parquet/冷归档样本、`storage/cold`、`storage/archive_manager.py`、`storage/query_router.py`、Polymarket parquet loader 配置或 `ingest_csv_to_sqlite` 一类文件桥入口；测试门禁必须阻止这些内容回归。
 - 从旧 `Desktop/Works/02.AI_Projects` 或其它 iCloud 管理目录迁移时，优先使用当前 Projects 下真实 clone；旧目录只作为对照和补漏来源。
 
 ## 2026-07-01 定时采集与 Tushare tier 口径修正

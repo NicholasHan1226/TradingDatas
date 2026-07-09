@@ -1,7 +1,7 @@
 # SharedSignals Log
 | 时间 | 动作 | 结果 |
 |------|------|------|
-| 2026-07-08 | 退役 CNFutures 5 分钟隐式备源 | 删除 AKShare/Sina fallback；`rt_fut_min` provider 错误以 failed 退出，正常 0 行只标记 empty，非空写库 0 行仍 failed |
+| 2026-07-08 | 退役 CNFutures 5 分钟隐式备源 | 禁止 provider 错误后自动换源伪装成功；明确配置的 SharedSignals-owned provider 可独立运行，provider 错误以 failed 退出，正常 0 行只标记 empty，非空写库 0 行仍 failed |
 | 2026-07-06 | 加强 CNFutures 5 分钟采集失败语义 | `rt_fut_min` 采集会保留 provider 错误码/权限错误并以 failed 退出；非空行情桥接 SQLite 写入 0 行时不再标记 ok；API 白名单补入 `rt_fut_min` 便于只读接口自检 |
 | 2026-07-05 | 修复 DuckDB 同步空数值失败 | CSV bridge 将数值列空字符串规范化为 NULL；DuckDB sqlite_scan 先按 VARCHAR 读取 SQLite，再用 `TRY_CAST(NULLIF(...,''))` 处理历史空字符串，避免 `market_bars_daily` 单列脏值导致整表同步失败 |
 | 2026-07-05 | 修复 A股资产合并覆盖问题 | `stock_company` 后写入不再用空字段覆盖 `stock_basic` 名称、行业、上市日期等字段；`industry` 规范化进入 `sector`；`get_tushare(stock_basic, ts_code=...)` 可读取合并后的 A股资产视图 |

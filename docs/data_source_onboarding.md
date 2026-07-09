@@ -46,7 +46,7 @@ Production-ready means all of these exist or are explicitly marked not applicabl
 | --- | --- |
 | Collector config | Provider params, frequency, rate guard, timeout, retry, fields. |
 | Capability plan row | Market/module/cadence/activation mode are registered. |
-| Read-model mapping | Rows write directly to SQLite read model; no CSV-only success. |
+| Read-model mapping | Rows write directly to SQLite read model; no CSV/NDJSON/Parquet bridge or file-only success. |
 | HTTP/API visibility | Consumer can read through SharedSignals API/reader or sees explicit degraded semantics. |
 | Cron wrapper | Scheduled jobs use flock, logs, timeout, env loading, and clear ownership. |
 | Health/SLA rule | Freshness and missing/empty behavior are observable. |
@@ -98,7 +98,7 @@ Do not create a new central registry unless the existing files become unmaintain
 
 - `collectors/<source>/config.yaml`,
 - `config/<source>_capability_plan.yaml` or the existing source capability plan,
-- `storage/read_model_store.py` table mapping,
+- `storage/read_model_store.py` table mapping and rows-only writer,
 - `api_server.py` endpoint/allowlist,
 - `config/external_agent_api_config.json` when externally consumable,
 - `docs/market_capability_matrix.md`,
@@ -112,7 +112,7 @@ A dataset is not production-ready until it can:
 
 1. collect provider rows with rate protection,
 2. validate/deduplicate rows,
-3. write non-empty provider rows into SQLite read-model tables,
+3. write non-empty provider rows into SQLite read-model tables without file staging,
 4. expose DB-first reader/API output or intentional degraded behavior,
 5. report freshness and collection status,
 6. pass coverage tests,

@@ -19,7 +19,7 @@
   Tushare(P0-P7分层接口) → marketdata.sqlite
   Binance(9 symbols, ticker 30min + 6h klines) → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
-  RSS/RSSHub      → retired/deferred（恢复前需重建直接入库 collector）
+  事件(news/announcements) → Tushare event lane → market_events
   Tavily/DeepSeek → disabled（不属于当前生产采集）
   基本面           → 预计算落库后只读
 ```
@@ -42,7 +42,7 @@
 
 ## 采集频率
 - 行情: A股与期货盘中 5min / Crypto 与 Polymarket 30min / 日级（盘后）
-- 事件: RSS/RSSHub/Tavily 当前不作为现役生产采集；恢复前必须走 SharedSignals collector 直接入库契约
+- 事件: Tushare event lane 30min 写入 `market_events`；RSS/RSSHub/Tavily 当前不作为现役生产采集，恢复前必须走 SharedSignals collector 直接入库契约
 - 基本面: 日级预计算
 - 宏观: 日级
 - 低频参考: 周/月线通过 P7 低频 lane 每周独立刷新，不混入每日 P6
@@ -53,6 +53,7 @@
 - 外部应用通过 SharedSignals HTTP API 读取数据；TradingAgent、MarketGraph 和外部 agent 不直接调用 provider 或旧目录。
 - 外部 agent 接入先读 `/health`、`/agent_config` 与 `/source_status`；复制用 prompt 见 `docs/external_agent_api_prompt.md`，机器配置见 `config/external_agent_api_config.json`。
 - 事件 lane 说明见 `docs/event_lane.md`；新增数据源接入规则见 `docs/data_source_onboarding.md`。
+- 仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；不保留 CSV bridge、冷归档 query router 或旧 loader 配置；生产事实源是 SQLite read model、DuckDB 分析镜像和 live API。
 
 ## 服务器
 - 主服务器 8.138.181.177: 境内采集 + 存储 + 只读 API
