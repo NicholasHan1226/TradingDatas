@@ -590,11 +590,8 @@ priorities:
     fields: ts_code,trade_date,adj_factor
   - api_name: fund_portfolio
     frequency: daily
-    lookback_days: 550
     params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: ''
+      ann_date: '{trade_date}'
     per_stock: false
     fields: ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio
   - api_name: fund_share
