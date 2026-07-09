@@ -41,7 +41,7 @@ def _insert_sample_data(conn: sqlite3.Connection) -> None:
 
 def _create_duckdb_mirror(path: Path) -> None:
     """Create a DuckDB mirror with the same schema and a small row set."""
-    import duckdb
+    duckdb = pytest.importorskip("duckdb")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(path))

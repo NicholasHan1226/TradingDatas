@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.16 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.20 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -33,6 +33,31 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
 **HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass；外部账号必须配置 token/JWT，账号可设置 `max_concurrent`，未配置时按 scope 默认并发限制执行。
+
+### HTTP API 端点概览
+
+| 端点 | scope | 说明 |
+|------|-------|------|
+| `GET /health` | `health` | 服务、cron、SLA 和 read model 健康状态 |
+| `GET /capabilities` | `health` | 返回当前 API/read-model 能力登记；能力登记缺失时返回 degraded fallback，帮助消费者发现可用端点 |
+| `GET /cache/status` | `health` | 返回 API 进程内 cache generation、TTL、容量、条目数和鉴权去重缓存摘要 |
+| `GET/POST /cache/invalidate` | `health` | 清理 API 进程内缓存；仅影响 API cache，不删除 read model 数据 |
+| `GET /market_data` | `market_data` | 日线/分钟行情，只读 SQLite read model |
+| `GET /realtime_5min` | `market_data` | A股/期货 5 分钟 read model 输出 |
+| `GET /is_trading_day` | `market_data` | 交易日判断，优先 read model，未来/周末使用 weekday fallback |
+| `GET /fundamentals` | `fundamentals` | 基本面/财务因子 read model |
+| `GET /reference` | `fundamentals` | 明确参考表读取；旧 CSV reference 返回 degraded |
+| `GET /industry` | `fundamentals` | 行业/产业链/板块基础字段 |
+| `GET /macro` | `macro` | 宏观因子 read model |
+| `GET /capital_flow` | `macro` | A股资金流向因子 read model |
+| `GET /events` | `events` | 新闻/公告/事件 read model |
+| `GET /sentiment` | `events` | 事件/情绪类 read model |
+| `GET /crypto` | `crypto` | Crypto 行情 read model |
+| `GET /pm_markets` | `pm` | Polymarket 市场元数据和最新价 |
+| `GET /pm_prices` | `pm` | Polymarket 价格快照 |
+| `GET /associations` | `associations` | 事件和标的关联查询，只读已同步的 research/read-model 投影 |
+| `GET /impacts` | `associations` | 影响关系查询，只读已同步的 research/read-model 投影 |
+| `GET /tushare` | `tushare` | 白名单 Tushare 能力的 DB-first 输出；不现场调用 provider |
 
 
 | 入口 | 实现文件 | 适用场景 |
@@ -591,7 +616,7 @@ if rows and not rows[0].get("degraded"):
 
 **NEW** — 查询事件↔股票关联关系。
 
-读取 MarketGraph `event_signal_associations.csv`（1,374 条 event→stock 映射）和 `target_stock_map.csv`（71 条 target→stock 映射）。
+读取 SharedSignals 暴露的 associations read-model 投影。该投影可由 MarketGraph 研究图谱生成并同步到 SharedSignals，但消费者只能通过 SharedSignals API/reader 查询，不直接读取 MarketGraph 仓库文件。
 
 - 传入 `ts_code`：通过 target_stock_map 逆向查找哪些事件影响了该股票
 - 传入 `event_id`：查找事件影响了哪些股票（自动关联 target_stock_map 补全 ts_codes）
@@ -625,7 +650,7 @@ rows = get_associations(ts_code="600519.SH")
 
 **NEW** — 查询影响关系边（31,206 条）。
 
-读取 MarketGraph `impact_relations.csv`，支持按事件类型和/或目标筛选。
+读取 SharedSignals 暴露的 impacts read-model 投影。该投影可由 MarketGraph 研究图谱生成并同步到 SharedSignals，但消费者只能通过 SharedSignals API/reader 查询，不直接读取 MarketGraph 仓库文件。
 
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
@@ -757,6 +782,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.20 | 补齐 HTTP `/capabilities` 与 `/cache/status` 合同；澄清 `/associations`、`/impacts` 是 SharedSignals API/read-model 输出，消费者不得直接读取 MarketGraph 仓库文件；保留 localhost bypass 默认关闭的安全边界。 |
 | 2026-07-09 | 1.1.19 | 统一 reader/API 市场名规范化：`CNFutures`、`cn_futures` 等别名映射到 `Futures`，`PM`/`Polymarket` 映射到 `PredictionMarkets`；`/realtime_5min`、`/tushare` 资产读取和事件过滤共用同一市场识别规则。同步更正 CNFutures 5 分钟默认 provider 为 AkShare/Sina，Tushare `rt_fut_min` 仅保留为显式可选 provider。 |
 | 2026-07-08 | 1.1.18 | 删除 SharedSignals 仓库内旧 `data/*.csv` 样本和 Tushare wrapper 的 repo CSV cache；现役采集结果必须直接写 SQLite/DuckDB read model，再通过 HTTP API 输出。 |
 | 2026-07-08 | 1.1.17 | `/tushare?api_name=fut_basic`、`hk_basic`、`us_basic`、`etf_basic` 等资产类接口按对应 market 过滤 `market_assets`，不再把所有资产接口默认限定为 A股；TradingAgent/CNFutures 可通过 SharedSignals API 获取期货合约资产列表。 |

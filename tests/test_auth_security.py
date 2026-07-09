@@ -40,6 +40,7 @@ def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
         "SHAREDSIGNALS_JWT_PUBLIC_KEY",
         "SHAREDSIGNALS_JWT_ISSUER",
         "SHAREDSIGNALS_TOKEN_HASHES_JSON",
+        "SHAREDSIGNALS_LOCALHOST_BYPASS",
     ):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
@@ -252,3 +253,23 @@ def test_scope_isolation_limits_endpoint_access(monkeypatch: pytest.MonkeyPatch)
     assert auth_module.check_endpoint_scope(account, "/health")
     assert not auth_module.check_endpoint_scope(account, "/market_data")
     assert not auth_module.check_endpoint_scope(account, "/tushare")
+
+
+def test_localhost_bypass_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+
+    with pytest.raises(auth_module.AuthError):
+        auth_module.authenticate({}, "127.0.0.1")
+
+
+def test_localhost_bypass_requires_explicit_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+    )
+
+    account = auth_module.authenticate({}, "127.0.0.1")
+
+    assert account["auth_method"] == "localhost"
+    assert account["scopes"] == ["full"]
