@@ -76,6 +76,22 @@ New external sources should be promoted in this order unless a production incide
 
 Do not install any planned candidate into production cron until it has passed the full gate. Planned source ids are documentation and work-order targets, not active data feeds.
 
+## Current Pilot Collectors
+
+| Source | Script | Status | Production rule |
+| --- | --- | --- | --- |
+| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events`; not installed in cron. |
+
+SEC EDGAR pilot example:
+
+```bash
+SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
+  ./.venv/bin/python3 collectors/events/sec_edgar_filings.py \
+  --cik 0000320193 --limit-per-cik 20 --dry-run
+```
+
+Remove `--dry-run` only after validating the target SQLite path and expected row shape. Scheduled mode requires source governance to remain green after pilot evidence is reviewed.
+
 ## Lightweight Registry Pattern
 
 Do not create a new central registry unless the existing files become unmaintainable. The current lightweight registry is the combination of:

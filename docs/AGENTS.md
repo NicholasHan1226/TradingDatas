@@ -9,6 +9,7 @@
 | 文件 | 用途 |
 |------|------|
 | [../API_CONTRACT.md](../API_CONTRACT.md) | SharedSignals 当前对外 API 契约（reader 函数、数据格式、生产边界） |
+| [status_history_2026-07.md](status_history_2026-07.md) | 2026-07 生产化历史状态归档；只作追溯，当前事实以根层 `STATUS.md` 和 live API 为准 |
 | [market_capability_matrix.md](market_capability_matrix.md) | 按市场说明现役数据源、接口能力、采集频率、Tushare 白名单与生产采集计划的边界 |
 | [external_agent_api_prompt.md](external_agent_api_prompt.md) | 可复制给外部 agent 的 API 接入 prompt；必须保持 API-only 和 fail-closed 边界 |
 | [tushare_activation_backlog.md](tushare_activation_backlog.md) | 剩余 planned Tushare 接口按市场/模块/频率分批激活计划 |

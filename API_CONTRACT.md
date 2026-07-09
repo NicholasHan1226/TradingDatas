@@ -194,7 +194,7 @@ CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免
 | `source` | TEXT | 源名称 |
 | `collected_at` | TEXT | 采集时间 |
 
-Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由直接入库层补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。`/events` 只读取 SQLite `market_events`，不再回退旧事件候选文件。
+Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` 进入 `market_events` 时由直接入库层补齐 `event_hash`、`event_type`、`event_time`、`trade_date`、`provider` 和 `source_file`。SEC EDGAR filings manual pilot collector 也写入 `market_events`，provider 为 `sec_edgar`，event_type 形如 `sec_edgar:10-K`。`/events` 只读取 SQLite `market_events`，不再回退旧事件候选文件。
 
 #### market_factors (因子/宏观/资金)
 

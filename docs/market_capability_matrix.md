@@ -88,7 +88,7 @@ SharedSignals is ready to add new sources horizontally, but new sources are not 
 
 | Batch | Market / lane | Candidate sources | Default cadence | Current status |
 | --- | --- | --- | --- | --- |
-| `B1_event_risk_official_sources` | A-share/US event risk | Official exchange announcements, SEC EDGAR filings/company facts | 10-30 minute disclosure-window pilot for announcements; 30-60 minute pilot for filings | Planned only; highest priority because events affect risk monitoring |
+| `B1_event_risk_official_sources` | A-share/US event risk | Official exchange announcements, SEC EDGAR filings/company facts | 10-30 minute disclosure-window pilot for announcements; 30-60 minute pilot for filings | Planned only; SEC EDGAR has a manual pilot collector, not scheduled |
 | `B2_macro_official_sources` | Global/US macro and rates | FRED-style macro/rates series, official Treasury yield curve | Daily or provider release schedule | Planned only; low write cost and useful redundancy |
 | `B3_market_redundancy_and_altdata` | Crypto and prediction markets | Secondary crypto exchange, secondary prediction-market/archive source | 30 minutes or slower by default | Planned only; activate after hot paths stay stable |
 
