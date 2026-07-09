@@ -16,7 +16,7 @@ from tools import health_check
 
 class _FakeAuth:
     SCOPE_ENDPOINTS = {
-        "health": {"/health", "/capabilities", "/cache/status", "/cache/invalidate"},
+        "health": {"/health", "/capabilities", "/agent_config", "/cache/status", "/cache/invalidate"},
         "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
         "full": {"*"},
     }
@@ -441,6 +441,21 @@ def test_capabilities_falls_back_when_registry_missing(api_edge_server, monkeypa
     assert payload["metadata"]["degraded"] is True
     assert payload["data"]["status"] == "degraded"
     assert any(item["path"] == "/market_data" for item in payload["data"]["endpoints"])
+    assert any(item["path"] == "/agent_config" for item in payload["data"]["endpoints"])
+
+
+def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) -> None:
+    base_url, _reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/agent_config")
+
+    assert status == 200
+    assert payload["source"] == "external_agent_api_config.json"
+    assert payload["data"]["contract_version"] == "1.1.22"
+    assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 115
+    assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 16
+    assert payload["metadata"]["degraded"] is False
+    assert payload["metadata"]["lineage"]["source"] == "config/external_agent_api_config.json"
 
 
 def test_api_health_defaults_to_lightweight_cached_checks(monkeypatch) -> None:

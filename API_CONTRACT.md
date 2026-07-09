@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.20 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.22 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -42,6 +42,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 |------|-------|------|
 | `GET /health` | `health` | 服务、cron、SLA 和 read model 健康状态 |
 | `GET /capabilities` | `health` | 返回当前 API/read-model 能力登记；能力登记缺失时返回 degraded fallback，帮助消费者发现可用端点 |
+| `GET /agent_config` | `health` | 返回外部 agent 接入机器配置、频率标签、禁止绕过规则和推荐调用端点 |
 | `GET /cache/status` | `health` | 返回 API 进程内 cache generation、TTL、容量、条目数和鉴权去重缓存摘要 |
 | `GET/POST /cache/invalidate` | `health` | 清理 API 进程内缓存；仅影响 API cache，不删除 read model 数据 |
 | `GET /market_data` | `market_data` | 日线/分钟行情，只读 SQLite read model |
@@ -558,11 +559,14 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 调用时必须：
 
-1. 优先使用业务端点：`/market_data`、`/realtime_5min`、`/events`、`/fundamentals`、`/macro`、`/pm_markets`、`/pm_prices`。
-2. 需要 Tushare 原生维度时使用 `/tushare?api_name=...&limit=...`；该接口仍然只读数据库，不现场调用 Tushare。
-3. 每次读取都检查 `metadata.degraded`、`metadata.degraded_reasons`、`freshness`、`provenance.source_id`、行内 `trade_date/event_time/collected_at`。
-4. 按市场和频率理解数据：A股/期货/Crypto/PM 的 5 分钟数据可用于分钟级交易输入；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
-5. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
+1. 先读取 `/health` 与 `/agent_config`，确认服务健康、接入规则、频率标签和禁止绕过边界。
+2. 优先使用业务端点：`/market_data`、`/realtime_5min`、`/events`、`/fundamentals`、`/macro`、`/pm_markets`、`/pm_prices`。
+3. 需要 Tushare 原生维度时使用 `/tushare?api_name=...&limit=...`；该接口仍然只读数据库，不现场调用 Tushare。
+4. 每次读取都检查 `metadata.degraded`、`metadata.degraded_reasons`、`freshness`、`provenance.source_id`、行内 `trade_date/event_time/collected_at`。
+5. 按市场和频率理解数据：A股/期货/Crypto/PM 的 5 分钟数据可用于分钟级交易输入；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
+6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
+
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。剩余 Tushare planned 接口的分批激活计划维护在 `docs/tushare_activation_backlog.md`。
 
 ### 数据维度来源标注
 
@@ -801,6 +805,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.22 | 新增 `/agent_config` 外部 agent 机器接入配置端点，补充一键复制 prompt 与 16 个 planned Tushare 接口的分批激活 backlog，明确外部 agent 应先读健康/配置再按市场和频率调用。 |
 | 2026-07-09 | 1.1.21 | 明确 SharedSignals 是分钟级/5 分钟级交易数据供给层，不是毫秒级 HFT 或执行系统；Tushare 生产 tier 扩展到 P0-P7，新增 P7 周/月线低频 lane、事件 30 分钟 lane、第一批 planned-to-scheduled 数据维度和外部 agent 调用规则。 |
 | 2026-07-09 | 1.1.20 | 补齐 HTTP `/capabilities` 与 `/cache/status` 合同；澄清 `/associations`、`/impacts` 是 SharedSignals API/read-model 输出，消费者不得直接读取 MarketGraph 仓库文件；保留 localhost bypass 默认关闭的安全边界。 |
 | 2026-07-09 | 1.1.19 | 统一 reader/API 市场名规范化：`CNFutures`、`cn_futures` 等别名映射到 `Futures`，`PM`/`Polymarket` 映射到 `PredictionMarkets`；`/realtime_5min`、`/tushare` 资产读取和事件过滤共用同一市场识别规则。同步更正 CNFutures 5 分钟默认 provider 为 AkShare/Sina，Tushare `rt_fut_min` 仅保留为显式可选 provider。 |

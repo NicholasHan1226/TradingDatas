@@ -11,6 +11,8 @@ SharedSignals should be managed by market and data-latency need, not by provider
 - `collectors/tushare/config.yaml` is the active Tushare collection plan: 98 configured interfaces.
 - `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 115 names.
 - `config/tushare_capability_plan.yaml` is the market/module management plan for all 115 allowlisted names.
+- `docs/tushare_activation_backlog.md` is the activation plan for the remaining 16 planned interfaces.
+- `/agent_config` and `config/external_agent_api_config.json` expose the external-agent integration contract and frequency labels.
 - HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
 - SharedSignals supports minute/5-minute trading data inputs, but not millisecond HFT, order matching, order placement, funds, accounts, or execution receipts.
 - A capability is production-ready only when it has provider collection, read-model mapping, HTTP/API visibility, freshness expectations, rate protection, and degraded/empty semantics.
@@ -121,3 +123,9 @@ Before increasing event frequency, run a small live pilot:
 External agents should receive this simplified rule:
 
 Use SharedSignals HTTP API by market and endpoint. Do not infer that all Tushare allowlisted names are production-fresh. Always check `metadata.degraded`, `degraded_reasons`, row timestamps, and market-specific freshness expectations.
+
+Operational handoff:
+
+- Copy-paste prompt: `docs/external_agent_api_prompt.md`
+- Machine-readable config: `GET /agent_config`
+- Remaining Tushare activation plan: `docs/tushare_activation_backlog.md`

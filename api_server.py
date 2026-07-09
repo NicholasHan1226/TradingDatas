@@ -30,6 +30,7 @@ VERSION = os.environ.get("SHAREDSIGNALS_API_VERSION", "1.0.0")
 REQUEST_TIMEOUT = env_float("SHAREDSIGNALS_REQUEST_TIMEOUT", 30.0, min_value=1.0, max_value=300.0)
 MAX_THREADS = env_int("SHAREDSIGNALS_MAX_THREADS", 20, min_value=1, max_value=512)
 CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
+AGENT_CONFIG_PATH = ROOT / "config" / "external_agent_api_config.json"
 HEALTH_CACHE_SECONDS = 60
 HEALTH_DEEP_CHECKS_ENV = "SHAREDSIGNALS_HEALTH_DEEP_CHECKS"
 
@@ -493,6 +494,14 @@ class Handler(BaseHTTPRequestHandler):
                 payload, metadata, source = file_payload(CAPABILITY_PATH)
             else:
                 payload, metadata, source = capability_fallback_payload()
+            return wrap_response(payload, metadata, source)
+
+        if path == "/agent_config":
+            payload, metadata, source = file_payload(AGENT_CONFIG_PATH)
+            metadata["lineage"] = {
+                "source": "config/external_agent_api_config.json",
+                "contract_version": payload.get("contract_version"),
+            }
             return wrap_response(payload, metadata, source)
 
         if path == "/market_data":

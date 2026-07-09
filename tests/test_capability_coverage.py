@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from collectors.tushare.collector import TushareCollector
@@ -237,6 +238,8 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
         "API_CONTRACT.md": Path("API_CONTRACT.md").read_text(encoding="utf-8"),
         "STATUS.md": Path("STATUS.md").read_text(encoding="utf-8"),
         "docs/market_capability_matrix.md": Path("docs/market_capability_matrix.md").read_text(encoding="utf-8"),
+        "docs/external_agent_api_prompt.md": Path("docs/external_agent_api_prompt.md").read_text(encoding="utf-8"),
+        "docs/tushare_activation_backlog.md": Path("docs/tushare_activation_backlog.md").read_text(encoding="utf-8"),
     }
 
     combined = "\n".join(docs.values())
@@ -254,3 +257,24 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
     assert "P0-P7" in docs["README.md"]
     assert "5 分钟级" in docs["AGENTS.md"]
     assert "外部 agent" in docs["API_CONTRACT.md"]
+    assert "/agent_config" in docs["API_CONTRACT.md"]
+    assert "不要绕过 SharedSignals" in docs["docs/external_agent_api_prompt.md"]
+    assert "16 planned" in docs["docs/tushare_activation_backlog.md"]
+
+
+def test_external_agent_config_matches_current_capability_counts() -> None:
+    from api_server import ALLOWED_TUSHARE_APIS
+
+    config = json.loads(Path("config/external_agent_api_config.json").read_text(encoding="utf-8"))
+    planned_rows = _planned_tushare_apis()
+    configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
+    planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
+    active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
+
+    assert config["contract_version"] == "1.1.22"
+    assert config["tushare_status"]["allowlisted_api_names"] == len(ALLOWED_TUSHARE_APIS)
+    assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
+    assert config["tushare_status"]["planned_activation_backlog"] == len(planned)
+    assert config["tushare_status"]["scheduled_or_independent_or_event_lane"] == len(active)
+    assert "/agent_config" in [item["path"] for item in config["primary_endpoints"]]
+    assert "Do not call Tushare" in " ".join(config["boundary"]["hard_forbidden"])

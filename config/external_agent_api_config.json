@@ -1,0 +1,158 @@
+{
+  "name": "SharedSignals External Agent API",
+  "contract_version": "1.1.22",
+  "base_url": "http://127.0.0.1:8082",
+  "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
+  "boundary": {
+    "role": "Read-only trading data supply layer for minute and 5-minute workflows.",
+    "not_supported": [
+      "millisecond HFT",
+      "order book matching",
+      "order placement",
+      "funds or account operations",
+      "trade signal generation",
+      "execution receipts"
+    ],
+    "hard_forbidden": [
+      "Do not call Tushare, Binance, Polymarket, CSV, NDJSON, SQLite files, old RSS directories, or sibling repository internals directly.",
+      "Do not treat allowlisted Tushare names as production-fresh unless the endpoint metadata and capability plan show active collection.",
+      "Do not fallback to provider or local files when SharedSignals returns empty or degraded data."
+    ]
+  },
+  "auth": {
+    "headers": [
+      "Authorization: Bearer <token>",
+      "X-API-Key: <token>"
+    ],
+    "required_for_external_accounts": true,
+    "localhost_bypass_only_when_explicitly_enabled": true
+  },
+  "required_response_checks": [
+    "metadata.degraded",
+    "metadata.degraded_reasons",
+    "metadata.freshness",
+    "metadata.lineage",
+    "row provenance.source_id",
+    "row trade_date, event_time, bar_time, collected_at"
+  ],
+  "fail_closed_rule": "If data is empty, stale, degraded, outside the expected cadence, or missing provenance, return data_unavailable instead of routing around SharedSignals.",
+  "primary_endpoints": [
+    {
+      "path": "/health",
+      "scope": "health",
+      "cadence_class": "service_health",
+      "use": "Check API, cron, SLA, and read-model health before trading data reads."
+    },
+    {
+      "path": "/capabilities",
+      "scope": "health",
+      "cadence_class": "capability_registry",
+      "use": "Discover currently registered endpoint capabilities."
+    },
+    {
+      "path": "/agent_config",
+      "scope": "health",
+      "cadence_class": "integration_contract",
+      "use": "Fetch this external-agent integration contract."
+    },
+    {
+      "path": "/market_data",
+      "scope": "market_data",
+      "params": ["ts_code", "start", "end", "freq"],
+      "cadence_class": "daily_or_intraday",
+      "use": "Daily or intraday OHLCV from the read model."
+    },
+    {
+      "path": "/realtime_5min",
+      "scope": "market_data",
+      "params": ["market", "ts_code", "date", "limit"],
+      "cadence_class": "5min_trading_session",
+      "use": "A-share or Futures 5-minute bars only."
+    },
+    {
+      "path": "/events",
+      "scope": "events",
+      "params": ["market", "symbol", "subject_type", "event_type", "start", "end", "limit"],
+      "cadence_class": "event_lane_30min",
+      "use": "News, announcements, reports, and event rows from market_events."
+    },
+    {
+      "path": "/fundamentals",
+      "scope": "fundamentals",
+      "params": ["ts_code", "limit"],
+      "cadence_class": "daily_reporting_window",
+      "use": "Financial and fundamental factors from market_factors."
+    },
+    {
+      "path": "/macro",
+      "scope": "macro",
+      "params": ["start", "end", "limit"],
+      "cadence_class": "daily_or_low_frequency",
+      "use": "Macro, rates, FX, repo, and global factor rows."
+    },
+    {
+      "path": "/capital_flow",
+      "scope": "macro",
+      "params": ["ts_code", "date", "start", "end"],
+      "cadence_class": "postclose_daily",
+      "use": "A-share flow factors; not a 5-minute price feed."
+    },
+    {
+      "path": "/crypto",
+      "scope": "crypto",
+      "params": ["symbol", "limit"],
+      "cadence_class": "5min_or_daily_crypto",
+      "use": "Crypto read-model output from Binance collector."
+    },
+    {
+      "path": "/pm_markets",
+      "scope": "pm",
+      "params": ["limit"],
+      "cadence_class": "5min_prediction_market",
+      "use": "Polymarket market metadata with latest price join."
+    },
+    {
+      "path": "/pm_prices",
+      "scope": "pm",
+      "params": ["market_id", "limit"],
+      "cadence_class": "5min_prediction_market",
+      "use": "Polymarket price snapshots."
+    },
+    {
+      "path": "/tushare",
+      "scope": "tushare",
+      "params": ["api_name", "ts_code", "start_date", "end_date", "market", "limit"],
+      "cadence_class": "depends_on_api_name",
+      "use": "Native Tushare-shaped read-model output. This never calls Tushare live."
+    }
+  ],
+  "market_frequency_labels": {
+    "Ashare_intraday": "5min during A-share trading sessions",
+    "Futures_intraday": "5min during configured day/night futures sessions",
+    "Crypto": "5min ticker/intraday and hourly/daily supporting bars",
+    "PredictionMarkets": "5min markets/prices",
+    "Ashare_daily": "post-close daily",
+    "US_HK": "daily after local close windows",
+    "Macro": "daily or low-frequency",
+    "Funds_ETF_CB_Options": "daily/reference/reporting windows",
+    "Events": "30min event lane for active windows",
+    "Low_frequency_bars": "weekly wrapper for weekly/monthly refresh"
+  },
+  "tushare_status": {
+    "allowlisted_api_names": 115,
+    "scheduled_or_independent_or_event_lane": 99,
+    "configured_in_production_tiers": 98,
+    "planned_activation_backlog": 16,
+    "planning_doc": "docs/tushare_activation_backlog.md",
+    "capability_plan": "config/tushare_capability_plan.yaml"
+  },
+  "minimal_examples": [
+    "GET /health",
+    "GET /agent_config",
+    "GET /realtime_5min?market=Ashare&ts_code=000001.SZ&limit=50",
+    "GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50",
+    "GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708",
+    "GET /events?event_type=news&limit=20",
+    "GET /tushare?api_name=index_weekly&limit=20"
+  ]
+}
