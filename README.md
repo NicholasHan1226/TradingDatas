@@ -54,6 +54,7 @@
 - 外部 agent 接入先读 `/health`、`/agent_config` 与 `/source_status`；复制用 prompt 见 `docs/external_agent_api_prompt.md`，机器配置见 `config/external_agent_api_config.json`。
 - 事件 lane 说明见 `docs/event_lane.md`；新增数据源接入规则见 `docs/data_source_onboarding.md`。
 - 仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；不保留 CSV bridge、冷归档 query router 或旧 loader 配置；生产事实源是 SQLite read model、DuckDB 分析镜像和 live API。
+- 每日 08:10 发送 Green Gate 系统日报到 `soc@coze.email`，复用 `/source_status` 治理检查并追加旧文件产物守门；green 表示无需人工重复追问接口、频率、模块和扩源边界，yellow/red 按邮件原因处理。
 
 ## 服务器
 - 主服务器 8.138.181.177: 境内采集 + 存储 + 只读 API

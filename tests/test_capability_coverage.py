@@ -311,6 +311,7 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
         "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
         "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
+        "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
         "17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh",
         "52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
     }

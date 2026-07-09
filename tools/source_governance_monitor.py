@@ -69,6 +69,7 @@ REQUIRED_CRON_LINES = {
     "low_frequency_weekly": "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
     "health_sla_15min": "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
     "source_governance_daily": "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
+    "green_gate_daily": "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
 }
 
 STATUS_ORDER = {"green": 0, "yellow": 1, "red": 2}

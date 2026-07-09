@@ -96,6 +96,7 @@ def _crontab_text() -> str:
             "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
             "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
             "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
+            "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
         ]
     )
 

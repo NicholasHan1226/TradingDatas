@@ -36,6 +36,8 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **新增 API 边界（2026-07-09）**：横向扩源默认复用现有 API。只有当数据具备新的查询形态、独立 freshness/SLA、独立 auth scope、分页/限流模型，且不能由现有 endpoint 清晰表达时，才新增 HTTP endpoint，并同步更新 `/agent_config`、能力测试、auth scope、文档和外部 agent prompt。
 
+**Green Gate 维护边界（2026-07-09）**：`/source_status` 是外部 agent 与运行人员判断接口、频率、模块、Tushare active、扩源 planned 队列、cron、SLA 和 capability registry 的 API 事实源。每日 Green Gate 邮件只复用该事实源并追加旧文件产物守门，不新增交易判断或 provider 直连能力。
+
 **因子边界（2026-07-09）**：`market_factors` 是 SharedSignals 的事实型 read-model 投影，用于保存 provider 已给出的财务、资金流、宏观、参考限制、持仓排名等结构化数据，或必要的字段展开。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；TradingAgent 应从 SharedSignals API 读取行情/事件/事实型因子后，自行完成交易因子提取、标准化、打分、组合、风控和决策。
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。

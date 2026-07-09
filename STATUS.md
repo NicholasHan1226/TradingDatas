@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役）
+> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役、Green Gate 日报接入）
 
 ---
 
@@ -34,6 +34,7 @@
 - **HTTP surface**：`/health`、`/capabilities`、`/agent_config`、`/source_status`、`/cache/status`、`/cache/invalidate`、`/market_data`、`/realtime_5min`、`/is_trading_day`、`/events`、`/sentiment`、`/fundamentals`、`/reference`、`/industry`、`/macro`、`/capital_flow`、`/crypto`、`/pm_markets`、`/pm_prices`、`/associations`、`/impacts`、`/tushare`。
 - **外部 agent 合同**：`GET /agent_config`，当前合同版本 `1.1.34`。
 - **数据源治理状态**：`GET /source_status`，检查 API surface、频率标签、Tushare 115/115 active、API/module catalog、planned 扩源队列、cron、health SLA 和 capability registry。
+- **Green Gate 日报**：每日 08:10 `cron/green_gate_report.sh` 发送系统邮件到 `soc@coze.email`，口径复用 `/source_status` 并追加 `data_artifact_guard`。green 时不需要 Nicholas 每天人工追问接口、数据源、频率和扩源边界；yellow/red 时先看邮件列出的检查项。
 - **新增数据源规则**：先进入 [config/source_expansion_priority.yaml](config/source_expansion_priority.yaml) planned 队列，再按 [config/api_module_catalog.yaml](config/api_module_catalog.yaml) 映射模块、表和默认 API；通过 collector、直接入库、API 可读、SLA、限流、降级、测试和 pilot 后才能 scheduled。
 - **新增 API 规则**：默认复用现有 API。只有新查询形态、独立 SLA/auth、分页/限流模型或明确新数据产品无法由现有 endpoint 表达时，才新增 endpoint。
 
@@ -51,6 +52,7 @@
 ```bash
 ./.venv/bin/python3 -m pytest -q
 ./.venv/bin/python3 tools/source_governance_monitor.py --json
+./.venv/bin/python3 tools/green_gate_report.py --dry-run --to soc@coze.email
 ```
 
 生产常用验证：
@@ -70,4 +72,4 @@ curl -s http://127.0.0.1:8082/agent_config
 
 1. [ ] B1 official event pilot：用 `collectors/events/sec_edgar_filings.py` 对少量 CIK 做 dry-run/手动写库验证；再评估官方交易所公告 collector。
 2. [ ] 继续拆小 reader/API：优先抽离无状态配置读取和 response helpers，再逐步拆业务 endpoint。
-3. [ ] 生产观察：继续看 `/source_status` 是否保持 green，尤其是 `api_module_catalog`、`health_sla_summary`、`capability_registry`。
+3. [ ] 生产观察：继续看 `/source_status` 和 Green Gate 日报是否保持 green，尤其是 `api_module_catalog`、`health_sla_summary`、`capability_registry` 和 `data_artifact_guard`。
