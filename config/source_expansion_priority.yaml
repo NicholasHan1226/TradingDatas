@@ -48,7 +48,7 @@ priority_batches:
         api_name_or_dataset: company_filings_and_facts
         activation_mode: planned
         implementation_status: manual_pilot_collector_available
-        latest_pilot_evidence: "2026-07-09: production manual pilot wrote 6 filing metadata rows for CIK0000320193 and CIK0000789019 to market_events; /events returned sec_edgar rows; not scheduled."
+        latest_pilot_evidence: "2026-07-09: production manual pilot wrote 6 filing metadata rows for CIK0000320193 and CIK0000789019 to market_events; /events returned sec_edgar rows; companyfacts mode added for market_factors pilot; not scheduled."
         cadence_class: event_lane_30_60min_pilot
         freshness_sla: "30-60 minutes for filings; daily for company facts"
         target_tables:
@@ -65,7 +65,7 @@ priority_batches:
           - TradingAgent
           - MarketGraph
           - external_agent
-        expected_write_cost: "medium; filing metadata first, company facts after pilot"
+        expected_write_cost: "medium; filing metadata and selected companyfacts concepts only during manual pilot"
         priority: P1
         production_ready: false
   - batch: B2_macro_official_sources

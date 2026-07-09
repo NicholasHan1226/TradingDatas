@@ -80,7 +80,7 @@ Do not install any planned candidate into production cron until it has passed th
 
 | Source | Script | Status | Production rule |
 | --- | --- | --- | --- |
-| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 rows for Apple/Microsoft CIKs and API readback passed | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events`; not installed in cron. |
+| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 filing rows for Apple/Microsoft CIKs and API readback passed; companyfacts mode available for selected concepts | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events` or selected company facts to `market_factors`; not installed in cron. |
 
 SEC EDGAR pilot example:
 
@@ -91,6 +91,20 @@ SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
 ```
 
 Remove `--dry-run` only after validating the target SQLite path and expected row shape. Scheduled mode requires source governance to remain green after pilot evidence is reviewed.
+
+SEC companyfacts selected-concept pilot example:
+
+```bash
+SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
+  ./.venv/bin/python3 collectors/events/sec_edgar_filings.py \
+  --mode companyfacts \
+  --ciks 0000320193,0000789019 \
+  --concepts Assets,Revenues,NetIncomeLoss,EarningsPerShareDiluted \
+  --limit-per-cik 2 \
+  --dry-run
+```
+
+Companyfacts rows are written to `market_factors` with factor names such as `sec_edgar_companyfacts:Assets`. Keep the concept allowlist small during pilot; do not bulk-load all SEC facts into the shared read model.
 
 API readback example after a pilot write:
 

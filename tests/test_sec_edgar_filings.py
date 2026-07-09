@@ -39,6 +39,49 @@ def _sample_payload() -> dict:
     }
 
 
+def _sample_companyfacts_payload() -> dict:
+    return {
+        "cik": "320193",
+        "entityName": "Apple Inc.",
+        "facts": {
+            "us-gaap": {
+                "Assets": {
+                    "label": "Assets",
+                    "units": {
+                        "USD": [
+                            {
+                                "end": "2026-03-31",
+                                "filed": "2026-05-01",
+                                "fy": 2026,
+                                "fp": "Q2",
+                                "form": "10-Q",
+                                "accn": "0000320193-26-000010",
+                                "val": 331000000000,
+                            }
+                        ]
+                    },
+                },
+                "Revenues": {
+                    "label": "Revenue",
+                    "units": {
+                        "USD": [
+                            {
+                                "end": "2026-03-31",
+                                "filed": "2026-05-01",
+                                "fy": 2026,
+                                "fp": "Q2",
+                                "form": "10-Q",
+                                "accn": "0000320193-26-000010",
+                                "val": 94500000000,
+                            }
+                        ]
+                    },
+                },
+            }
+        },
+    }
+
+
 def test_normalize_cik_zero_pads_and_rejects_empty() -> None:
     assert sec_edgar_filings.normalize_cik("320193") == "0000320193"
     with pytest.raises(ValueError, match="CIK must contain digits"):
@@ -62,6 +105,23 @@ def test_sec_edgar_cli_entrypoint_imports_from_repo_root() -> None:
     assert "Collect SEC EDGAR filing metadata" in result.stdout
 
 
+def test_company_fact_rows_from_companyfacts_maps_to_market_factors() -> None:
+    rows = sec_edgar_filings.company_fact_rows_from_companyfacts(
+        _sample_companyfacts_payload(),
+        concepts=["Assets", "Revenues"],
+        limit_per_concept=1,
+    )
+
+    assert len(rows) == 2
+    assert rows[0]["provider"] == "sec_edgar_companyfacts"
+    assert rows[0]["market"] == "US"
+    assert rows[0]["symbol"] == "CIK0000320193"
+    assert rows[0]["concept"] == "Assets"
+    assert rows[0]["unit"] == "USD"
+    assert rows[0]["Assets"] == 331000000000
+    assert rows[0]["end_date"] == "2026-03-31"
+
+
 def test_filing_rows_from_submissions_maps_to_market_events() -> None:
     rows = sec_edgar_filings.filing_rows_from_submissions(_sample_payload(), limit=1)
 
@@ -73,6 +133,42 @@ def test_filing_rows_from_submissions_maps_to_market_events() -> None:
     assert row["symbol"] == "CIK0000320193"
     assert row["trade_date"] == "20260130"
     assert "Archives/edgar/data/320193/000032019326000001/aapl-20251231.htm" in row["url"]
+
+
+def test_run_collection_writes_companyfacts_to_market_factors(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    monkeypatch.setattr(
+        sec_edgar_filings,
+        "fetch_company_facts",
+        lambda cik, *, user_agent, timeout=20.0: _sample_companyfacts_payload(),
+    )
+
+    summary = sec_edgar_filings.run_collection(
+        ciks=["320193"],
+        db_path=db_path,
+        user_agent="SharedSignals test contact@example.com",
+        mode="companyfacts",
+        concepts=["Assets", "Revenues"],
+        limit_per_cik=1,
+        dry_run=False,
+    )
+
+    assert summary["rows_read"] == 2
+    assert summary["rows_written"] == 2
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute(
+            "SELECT market, symbol, factor_name, event_time, value, provider FROM market_factors ORDER BY factor_name"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("US", "CIK0000320193", "sec_edgar_companyfacts:Assets", "2026-03-31", 331000000000.0, "sec_edgar_companyfacts"),
+        ("US", "CIK0000320193", "sec_edgar_companyfacts:Revenues", "2026-03-31", 94500000000.0, "sec_edgar_companyfacts"),
+    ]
 
 
 def test_run_collection_writes_market_events(tmp_path: Path, monkeypatch) -> None:
