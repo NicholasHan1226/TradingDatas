@@ -11,7 +11,7 @@
 - tradingagent.cc — 统一域名
 - dashboard.tradingagent.cc — Cloudflare前端看板 (未来)
 - api.tradingagent.cc — API反代 (未来)
-- signals.tradingagent.cc — SharedSignals 外部受控 API 入口；目标 origin 为主服务器 `127.0.0.1:8082`，必须通过 Cloudflare Tunnel/Access + SharedSignals API key 双层鉴权。当前需在 Cloudflare 远程 tunnel 配置中新增 hostname/ingress 后才可用。
+- signals.tradingagent.cc — SharedSignals 外部受控 API 入口；目标 origin 为主服务器 `127.0.0.1:8082`，必须通过 Cloudflare Tunnel/Access + SharedSignals API key 双层鉴权。当前仍不可用：公共 DNS 无记录，现有可操作的本机 Cloudflare origin certificate 只覆盖 `vorra.cc`，不能写 `tradingagent.cc` zone；需 `tradingagent.cc` DNS Edit + Tunnel Edit 权限后再新增 hostname/ingress。
 
 ## 邮件
 - 交易类: notice@tradingagent.cc → tradingadviser@coze.email

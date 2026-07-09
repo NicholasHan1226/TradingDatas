@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-09（生产配置频率收口、API/module catalog 纳入 `/source_status`、旧事件源文档口径修正、状态历史归档、旧 Parquet 冷归档样本/旧 cold query/CSV bridge 入口退役、Green Gate 日报接入、SEC EDGAR 手动 pilot 入库/API 验证）
+> 最后更新：2026-07-10（外部账号分层与 `signals.tradingagent.cc` 入口状态复核；SharedSignals API/账号已就绪，但 `tradingagent.cc` Cloudflare DNS/Tunnel 写权限仍未到位）
 
 ---
 
@@ -16,6 +16,7 @@
 - **存储边界**：SQLite read model 是权威读模型；DuckDB 是分析镜像；CSV/NDJSON/旧目录只能作为历史迁移或审计材料，不能作为生产读取兜底。
 - **仓库数据边界**：仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；冷归档样本、CSV bridge、旧 query_router/archive_manager 不作为当前 read path 或交接材料，且由测试门禁阻止恢复。
 - **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
+- **外部域名状态**：Wangzhi/internal tier 这类外部账号已在 SharedSignals 侧可控；正式域名 `https://signals.tradingagent.cc` 仍不可用。当前可操作的 Cloudflare origin certificate 只能写 `vorra.cc` DNS zone，不能写 `tradingagent.cc`；不要用该证书创建 `signals.tradingagent.cc` 路由，需拿到 `tradingagent.cc` zone 的 DNS Edit + Tunnel Edit 权限后再执行。
 
 ## 二、生产频率
 
@@ -32,7 +33,7 @@
 ## 三、API 与扩展治理
 
 - **HTTP surface**：`/health`、`/capabilities`、`/agent_config`、`/source_status`、`/cache/status`、`/cache/invalidate`、`/market_data`、`/realtime_5min`、`/is_trading_day`、`/events`、`/sentiment`、`/fundamentals`、`/reference`、`/industry`、`/macro`、`/capital_flow`、`/crypto`、`/pm_markets`、`/pm_prices`、`/associations`、`/impacts`、`/tushare`。
-- **外部 agent 合同**：`GET /agent_config`，当前合同版本 `1.1.34`。
+- **外部 agent 合同**：`GET /agent_config`，当前合同版本 `1.1.36`。
 - **数据源治理状态**：`GET /source_status`，检查 API surface、频率标签、Tushare 115/115 active、API/module catalog、planned 扩源队列、cron、health SLA 和 capability registry。
 - **Green Gate 日报**：每日 08:10 `cron/green_gate_report.sh` 发送系统邮件到 `soc@coze.email`，口径复用 `/source_status` 并追加 `data_artifact_guard`。green 时不需要 Nicholas 每天人工追问接口、数据源、频率和扩源边界；yellow/red 时先看邮件列出的检查项。
 - **新增数据源规则**：先进入 [config/source_expansion_priority.yaml](config/source_expansion_priority.yaml) planned 队列，再按 [config/api_module_catalog.yaml](config/api_module_catalog.yaml) 映射模块、表和默认 API；通过 collector、直接入库、API 可读、SLA、限流、降级、测试和 pilot 后才能 scheduled。
@@ -40,6 +41,7 @@
 
 ## 四、当前风险与未完成项
 
+- **外部域名未完成**：`signals.tradingagent.cc` 仍无公共 DNS 记录；`curl https://signals.tradingagent.cc/health` 会在 DNS 层失败。SharedSignals 生产 API 本机 `/health` 正常，`/agent_config` 仍标记 `access_status=pending_cloudflare_route`。
 - **B1 扩源仍是 planned**：SEC EDGAR 已完成生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`、16 条 selected companyfacts 写入 `market_factors`，`/events` 与 `/fundamentals` API 可读），用于补 Tushare 没有的美国官方披露/结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
 - **`reader.py` / `api_server.py` 仍偏大**：当前测试覆盖通过，但长期应继续按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。
 - **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
