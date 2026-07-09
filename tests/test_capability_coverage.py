@@ -390,3 +390,19 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     assert config["data_source_onboarding"]["mandatory_fields"]
     assert "docs/data_source_onboarding.md" in config["data_source_onboarding"]["doc"]
     assert "Do not call Tushare" in " ".join(config["boundary"]["hard_forbidden"])
+
+
+def test_production_config_matches_current_frequency_policy() -> None:
+    import yaml
+
+    prod = yaml.safe_load(Path("config/prod.yaml").read_text(encoding="utf-8"))
+    collectors = prod["collectors"]
+
+    assert "P7_low_frequency" in collectors["tushare"]["tiers"]
+    assert collectors["binance"]["frequency"] == "30min"
+    assert collectors["binance"]["daily_bar_frequency"] == "6h"
+    assert collectors["polymarket"]["frequency"] == "30min"
+    assert "rss" not in collectors
+    assert "tavily" not in collectors
+    assert "deepseek" not in collectors
+    assert collectors["retired_or_deferred_sources"]["rss_rsshub"].startswith("retired")

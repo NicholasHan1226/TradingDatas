@@ -17,21 +17,21 @@ sources:
   tushare:sqlite:market_bars_daily:
     stale_after_hours: 24
 
-  # Crypto — real-time
+  # Crypto — 30-minute production lane with 45-minute reader freshness budget
   crypto:
-    stale_after_hours: 1
+    stale_after_hours: 0.75
   binance:
-    stale_after_hours: 1
+    stale_after_hours: 0.75
   sqlite:market_crypto_klines:
-    stale_after_hours: 1
+    stale_after_hours: 0.75
 
-  # Polymarket prediction markets
+  # Polymarket prediction markets — 30-minute production lane with 45-minute freshness budget
   polymarket:
-    stale_after_hours: 2
+    stale_after_hours: 0.75
   sqlite:market_pm_markets:
-    stale_after_hours: 2
+    stale_after_hours: 0.75
   sqlite:market_pm_prices:
-    stale_after_hours: 2
+    stale_after_hours: 0.75
 
   # Events / sentiment
   sqlite:market_events:
