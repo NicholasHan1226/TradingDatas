@@ -8,7 +8,7 @@ purpose: >
 activation_modes:
   scheduled: Runs through collectors/tushare/config.yaml production tiers.
   independent: Runs through a dedicated collector wrapper outside P0-P6.
-  event_pilot: Event lane candidate that can run more frequently through cron/tushare_events_collect.sh.
+  event_lane: Event/news lane that runs through cron/tushare_events_collect.sh.
   planned: Assigned to a market/module and cadence, but needs mapping, tests, and pilot proof before scheduled production.
 
 modules:
@@ -171,9 +171,8 @@ modules:
     market: Events
     default_cadence: event_lane_pilot
     apis:
-      - {api_name: news, mode: event_pilot, tier: P6_other_daily, cadence: 15_to_60min_pilot}
-      - {api_name: major_news, mode: event_pilot, tier: P6_other_daily, cadence: 15_to_60min_pilot}
-      - {api_name: cctv_news, mode: event_pilot, tier: P6_other_daily, cadence: hourly_or_daily}
-      - {api_name: anns_d, mode: event_pilot, tier: P6_other_daily, cadence: 10_to_30min_disclosure_windows}
-      - {api_name: report_rc, mode: event_pilot, tier: P6_other_daily, cadence: daily_or_multi_daily}
-
+      - {api_name: news, mode: event_lane, tier: P6_other_daily, cadence: 30min_active_window}
+      - {api_name: major_news, mode: event_lane, tier: P6_other_daily, cadence: 30min_active_window}
+      - {api_name: cctv_news, mode: event_lane, tier: P6_other_daily, cadence: 30min_active_window}
+      - {api_name: anns_d, mode: event_lane, tier: P6_other_daily, cadence: 30min_active_window}
+      - {api_name: report_rc, mode: event_lane, tier: P6_other_daily, cadence: 30min_active_window}

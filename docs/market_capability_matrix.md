@@ -29,7 +29,7 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | US/HK | Tushare `us_daily`, `us_basic`, `hk_daily`, `hk_basic`, HK financials | `/market_data`, `/reference`, `/tushare` | Daily around local close windows | Latest effective trading day | Active but daily |
 | Macro/global | Tushare macro, rates, FX, global indices, repo | `/macro`, `/market_data`, `/tushare` | Daily / low-frequency | Latest expected macro period or trading day | Active, not intraday |
 | ETF/fund/convertible bond | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `cb_daily` | `/reference`, `/market_data`, `/tushare` | Daily | Latest trading day or latest fund NAV date | Active as support data |
-| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | P6 daily plus dedicated pilot wrapper available | Latest collected event row; high-frequency requires pilot proof | Active event lane pilot |
+| News/announcements/reports | Tushare `news`, `major_news`, `cctv_news`, `anns_d`, `report_rc` | `/events`, `/sentiment`, `/tushare` | P6 daily plus dedicated 30-minute event lane | Latest collected event row; monitor dedup and provider latency | Active event lane |
 | RSS/RSSHub/Tavily/DeepSeek | Retired/deferred | None as production collector | None | Not applicable | Disabled until re-designed as SharedSignals collectors |
 
 ## Why Not Use Every Tushare Interface
@@ -67,7 +67,7 @@ New provider interfaces should be promoted only after this checklist is satisfie
 
 ## News And Announcement Lane
 
-News and announcements should become an independent functional lane inside SharedSignals if they are used for trading risk, event monitoring, or external-agent research. The repository now includes `cron/tushare_events_collect.sh`, which runs selected P6 event APIs only and avoids high-frequency execution of the whole P6 miscellaneous tier.
+News and announcements are an independent functional lane inside SharedSignals for trading risk, event monitoring, and external-agent research. The repository includes `cron/tushare_events_collect.sh`, which runs selected P6 event APIs only and avoids high-frequency execution of the whole P6 miscellaneous tier.
 
 This should not become a separate repository and should not generate trading decisions. It should stay in SharedSignals as an event collection and normalization lane.
 
@@ -90,7 +90,7 @@ Suggested event cadences for evaluation:
 | CCTV/major scheduled news | Hourly or daily | Often not a 5-minute trading signal |
 | Research reports | Daily or several times per day | Usually research context, not immediate execution input |
 
-The pilot wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with a 2-day lookback. It can be narrowed through `SHAREDSIGNALS_EVENT_APIS` and `SHAREDSIGNALS_EVENT_LOOKBACK_DAYS`.
+The event wrapper defaults to `anns_d,news,major_news,cctv_news,report_rc` with a 2-day lookback. It can be narrowed through `SHAREDSIGNALS_EVENT_APIS` and `SHAREDSIGNALS_EVENT_LOOKBACK_DAYS`.
 
 Before increasing event frequency, run a small live pilot:
 

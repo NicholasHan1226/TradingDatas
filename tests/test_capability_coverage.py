@@ -146,7 +146,7 @@ def test_tushare_capability_plan_covers_every_allowlisted_api() -> None:
     planned_rows = _planned_tushare_apis()
     planned = [row["api_name"] for row in planned_rows]
     allowed = set(ALLOWED_TUSHARE_APIS)
-    allowed_modes = {"scheduled", "independent", "event_pilot", "planned"}
+    allowed_modes = {"scheduled", "independent", "event_lane", "planned"}
 
     assert sorted(name for name in set(planned) if planned.count(name) > 1) == []
     assert set(planned) == allowed
@@ -162,7 +162,7 @@ def test_tushare_capability_plan_marks_current_collection_paths() -> None:
     planned_rows = _planned_tushare_apis()
     by_name = {row["api_name"]: row for row in planned_rows}
 
-    missing = sorted(name for name in configured if by_name[name]["mode"] not in {"scheduled", "event_pilot"})
+    missing = sorted(name for name in configured if by_name[name]["mode"] not in {"scheduled", "event_lane"})
     assert missing == []
     assert by_name["rt_fut_min"]["mode"] == "independent"
 
@@ -184,6 +184,7 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "*/5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh",
         "2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
+        "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
         "3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
         "17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
