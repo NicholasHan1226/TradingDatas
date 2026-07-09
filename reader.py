@@ -117,6 +117,8 @@ REFERENCE_ROOT = _LazyPath(lambda: Path(os.environ.get("SHAREDSIGNALS_REFERENCE_
 
 CACHE_TTL_SECONDS = env_float("SHAREDSIGNALS_CACHE_TTL", 300.0, min_value=1.0, max_value=86400.0)
 CACHE_MAX_BYTES = env_int("SHAREDSIGNALS_CACHE_MAX_BYTES", 50 * 1024 * 1024, min_value=0)
+SQLITE_BUSY_TIMEOUT_MS = env_int("SHAREDSIGNALS_SQLITE_BUSY_TIMEOUT_MS", 1000, min_value=100, max_value=30000)
+SQLITE_QUERY_TIMEOUT_MS = env_int("SHAREDSIGNALS_SQLITE_QUERY_TIMEOUT_MS", 2500, min_value=250, max_value=60000)
 _CACHE_GENERATION = 0
 _CACHE_LAST_RESET = 0.0
 _CACHE_TOTAL_BYTES = 0
@@ -488,6 +490,32 @@ def _clean_row(row: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def _bounded_limit(value: Any, default: int, *, max_value: int = 5000) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        limit = int(default)
+    return max(1, min(limit, int(max_value)))
+
+
+def _connect_sqlite_ro() -> sqlite3.Connection:
+    conn = sqlite3.connect(
+        f"file:{SQLITE_PATH}?mode=ro",
+        uri=True,
+        timeout=max(SQLITE_BUSY_TIMEOUT_MS / 1000.0, 0.1),
+    )
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.row_factory = sqlite3.Row
+    if SQLITE_QUERY_TIMEOUT_MS > 0:
+        deadline = time.monotonic() + (SQLITE_QUERY_TIMEOUT_MS / 1000.0)
+
+        def _abort_if_slow() -> int:
+            return 1 if time.monotonic() > deadline else 0
+
+        conn.set_progress_handler(_abort_if_slow, 10000)
+    return conn
+
+
 def _wrap(
     data: dict[str, Any],
     *,
@@ -543,9 +571,7 @@ def _sqlite_rows(query: str, params: tuple[Any, ...], table: str) -> tuple[list[
     try:
         if not SQLITE_PATH.exists():
             return None, _degraded_empty(f"sqlite:{table}", f"missing sqlite db: {SQLITE_PATH}", lineage=lineage)
-        conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.row_factory = sqlite3.Row
+        conn = _connect_sqlite_ro()
         try:
             rows = [_clean_row(dict(row)) for row in conn.execute(query, params).fetchall()]
         finally:
@@ -843,7 +869,7 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_events_cached(_generation: int, start: str, end: str, event_type: str | None) -> str:
+def _get_events_cached(_generation: int, start: str, end: str, event_type: str | None, limit: int) -> str:
     start_key = _optional_date_key(start)
     end_key = _optional_date_key(end)
     if start_key and end_key and start_key > end_key:
@@ -870,8 +896,8 @@ def _get_events_cached(_generation: int, start: str, end: str, event_type: str |
     rows, db_degraded = _sqlite_rows(
         "SELECT * FROM market_events "
         f"WHERE {' AND '.join(where)} "
-        "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT 5000",
-        tuple(params),
+        "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT ?",
+        (*tuple(params), _bounded_limit(limit, 500)),
         "market_events",
     )
     if db_degraded is None and rows:
@@ -945,8 +971,9 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
         start = kwargs.get("date")
     if end is None:
         end = start
+    limit = _bounded_limit(kwargs.get("limit"), 500)
     lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
-    rows = _safe_public("sqlite:market_events", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type))
+    rows = _safe_public("sqlite:market_events", lineage, lambda generation: _get_events_cached(generation, str(start), str(end), event_type, limit))
     if rows and all(
         isinstance(row, dict) and bool(row.get("degraded")) and row.get("data") in ({}, None)
         for row in rows
@@ -1030,7 +1057,7 @@ def get_sentiment(start: Any = None, end: Any = None, tier: str | None = None, *
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "") -> str:
+def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "", limit: int = 200) -> str:
     clauses = ["symbol = ?"]
     values: list[Any] = [ts_code]
     if end_date:
@@ -1039,8 +1066,9 @@ def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "")
     query = (
         "SELECT * FROM market_factors "
         f"WHERE {' AND '.join(clauses)} "
-        "ORDER BY event_time DESC, collected_at DESC"
+        "ORDER BY event_time DESC, collected_at DESC LIMIT ?"
     )
+    values.append(_bounded_limit(limit, 200))
     rows, degraded = _sqlite_rows(query, tuple(values), "market_factors")
     if degraded is not None:
         return _json_cached(lambda: degraded)
@@ -1050,10 +1078,10 @@ def _get_fundamentals_cached(_generation: int, ts_code: str, end_date: str = "")
     return _json_cached(lambda: _rows_to_wrappers(rows or [], source_id="sqlite:market_factors", source_tier="marketdata", lineage=lineage, stale_after_hours=168.0))
 
 
-def get_fundamentals(ts_code: str, end_date: str | None = None) -> list[dict[str, Any]]:
+def get_fundamentals(ts_code: str, end_date: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
     lineage = {"reader": "get_fundamentals", "filters": {"ts_code": ts_code}}
     ed = end_date or _now().strftime("%Y%m%d")
-    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_fundamentals_cached(generation, str(ts_code), ed))
+    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_fundamentals_cached(generation, str(ts_code), ed, _bounded_limit(limit, 200)))
 
 
 @_register_cached
@@ -1069,9 +1097,7 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
     if not SQLITE_PATH.exists():
         return _json_cached(lambda: _degraded_empty(f"db:{table}", f"missing sqlite db: {SQLITE_PATH}", lineage=lineage))
     try:
-        import sqlite3
-        conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
-        conn.execute("PRAGMA busy_timeout = 5000")
+        conn = _connect_sqlite_ro()
         cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
         code = ts_code or params.get("ts_code", "") or params.get("symbol", "")
         start = start_date or params.get("start_date", "") or params.get("trade_date", "")
@@ -1121,11 +1147,14 @@ def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, st
                 vals.append(f"tushare_{api_name}")
         where_sql = " AND ".join(where) if where else "1=1"
         order_col = date_col or cols[0]
-        sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_col} DESC LIMIT 5000"
+        default_limit = 6000 if api_name == "stock_basic" else 500
+        row_limit = _bounded_limit(params.get("limit"), default_limit)
+        sql = f"SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_col} DESC LIMIT ?"
+        vals.append(row_limit)
         rows_raw = conn.execute(sql, vals).fetchall()
         conn.close()
         if rows_raw:
-            rows = [dict(zip(cols, row)) for row in rows_raw]
+            rows = [_clean_row(dict(row)) for row in rows_raw]
             return _json_cached(lambda: _rows_to_wrappers(rows, source_id=f"db:{table}", source_tier="collector", lineage=lineage, stale_after_hours=48.0))
         return _json_cached(lambda: _degraded_empty(f"db:{table}", f"no rows in SharedSignals read model for Tushare api_name={api_name}", lineage=lineage))
     except Exception as exc:
@@ -1173,7 +1202,7 @@ def get_capital_flow(date: str | None = None, ts_code: str | None = None, **kwar
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_macro_factors_cached(_generation: int, start: str, end: str) -> str:
+def _get_macro_factors_cached(_generation: int, start: str, end: str, limit: int) -> str:
     start_key = _optional_date_key(start)
     end_key = _optional_date_key(end)
     if start_key and end_key and start_key > end_key:
@@ -1199,8 +1228,8 @@ def _get_macro_factors_cached(_generation: int, start: str, end: str) -> str:
     rows, degraded = _sqlite_rows(
         "SELECT * FROM market_factors "
         f"WHERE {' AND '.join(where)} "
-        "ORDER BY event_time DESC, collected_at DESC LIMIT 5000",
-        tuple(params),
+        "ORDER BY event_time DESC, collected_at DESC LIMIT ?",
+        (*tuple(params), _bounded_limit(limit, 500)),
         "market_factors",
     )
     if degraded is not None:
@@ -1213,8 +1242,9 @@ def get_macro_factors(start: Any = None, end: Any = None, **kwargs: Any) -> list
         start = kwargs.get("date")
     if end is None:
         end = start
+    limit = _bounded_limit(kwargs.get("limit"), 500)
     lineage = {"reader": "get_macro_factors", "filters": {"start": start, "end": end, **kwargs}}
-    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_macro_factors_cached(generation, str(start), str(end)))
+    return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_macro_factors_cached(generation, str(start), str(end), limit))
 
 
 @_register_cached

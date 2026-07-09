@@ -11,6 +11,7 @@
 - 消除重复采集（节省API成本+避免数据不一致）
 - 统一存储格式（SQLite read model + DuckDB 分析镜像）
 - 单一数据出口（两线不直接调外部API，只读SharedSignals）
+- API 读侧有限行、短超时和大表索引保护；慢查询返回 degraded，不阻塞交易/研究调用方
 
 ## 架构
 ```
@@ -43,6 +44,11 @@
 - 事件: RSS/RSSHub/Tavily 当前不作为现役生产采集；恢复前必须走 SharedSignals collector 直接入库契约
 - 基本面: 日级预计算
 - 宏观: 日级
+
+## API 输出保护
+- `/events`、`/fundamentals`、`/macro`、`/tushare` 等大表接口必须把 `limit` 下推到数据库查询。
+- SQLite read model 只读查询设置短 busy timeout 和查询超时；超时返回 degraded 元数据，不回退旧 CSV/旧目录。
+- 外部应用通过 SharedSignals HTTP API 读取数据；TradingAgent 和 MarketGraph 不直接调用 provider。
 
 ## 服务器
 - 华南3/广州 8.138.181.177: 境内采集 + 存储 + 只读 API

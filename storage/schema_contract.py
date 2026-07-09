@@ -59,6 +59,10 @@ TABLES: tuple[Table, ...] = (
             Column("raw_json", "text"),
         ),
         primary_key=("market", "symbol"),
+        indexes=(
+            ("idx_market_assets_provider_market_symbol", ("provider", "market", "symbol")),
+            ("idx_market_assets_updated_at", ("updated_at",)),
+        ),
     ),
     Table(
         name="market_bars_daily",
@@ -110,6 +114,8 @@ TABLES: tuple[Table, ...] = (
         primary_key=("market", "symbol", "bar_time", "interval", "provider"),
         indexes=(
             ("idx_market_bars_intraday_lookup", ("market", "symbol", "trade_date", "interval")),
+            ("idx_market_bars_intraday_market_date_time", ("market", "trade_date", "interval", "bar_time")),
+            ("idx_market_bars_intraday_collected_at", ("market", "collected_at")),
         ),
     ),
     Table(
@@ -133,6 +139,9 @@ TABLES: tuple[Table, ...] = (
         primary_key=("event_hash",),
         indexes=(
             ("idx_market_events_lookup", ("provider", "event_type", "event_time")),
+            ("idx_market_events_trade_date", ("trade_date",)),
+            ("idx_market_events_market_symbol_trade_date", ("market", "symbol", "trade_date")),
+            ("idx_market_events_collected_at", ("collected_at",)),
         ),
     ),
     Table(
@@ -188,6 +197,9 @@ TABLES: tuple[Table, ...] = (
         primary_key=("factor_hash",),
         indexes=(
             ("idx_market_factors_symbol", ("symbol", "event_time")),
+            ("idx_market_factors_provider_event_time", ("provider", "event_time")),
+            ("idx_market_factors_market_event_time", ("market", "event_time")),
+            ("idx_market_factors_collected_at", ("collected_at",)),
         ),
     ),
     Table(

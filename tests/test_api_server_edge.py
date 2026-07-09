@@ -70,6 +70,7 @@ class _FakeReader:
         symbol: str | None = None,
         subject_code: str | None = None,
         subject_type: str | None = None,
+        limit: int = 500,
     ) -> list[dict[str, Any]]:
         self.calls.append((
             "get_events",
@@ -81,6 +82,7 @@ class _FakeReader:
                 "symbol": symbol,
                 "subject_code": subject_code,
                 "subject_type": subject_type,
+                "limit": limit,
             },
         ))
         return []
@@ -156,6 +158,14 @@ class _FakeReader:
             {"data": {"title": "news-3"}, "degraded": False, "provenance": {"source_id": "tushare_news"}},
         ]
 
+    def get_fundamentals(self, ts_code: str, limit: int = 200) -> list[dict[str, Any]]:
+        self.calls.append(("get_fundamentals", {"ts_code": ts_code, "limit": limit}))
+        return [{"data": {"symbol": ts_code, "factor_name": "unit"}, "degraded": False}]
+
+    def get_macro_factors(self, start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
+        self.calls.append(("get_macro_factors", {"start": start, "end": end, "limit": limit}))
+        return [{"data": {"factor_name": "macro"}, "degraded": False}]
+
     def clear_caches(self) -> None:
         with self._lock:
             self.clear_count += 1
@@ -228,6 +238,7 @@ def test_api_events_passes_filter_params_to_reader(api_edge_server) -> None:
             "symbol": "600000.SH",
             "subject_code": "600000.SH",
             "subject_type": "stock",
+            "limit": 5,
         },
     )
 
@@ -251,6 +262,26 @@ def test_api_crypto_applies_limit(api_edge_server) -> None:
     assert status == 200
     assert [row["close"] for row in payload["data"]] == [100.0, 101.0]
     assert reader.calls[-1] == ("get_crypto_klines", {"symbol": "BTCUSDT"})
+
+
+def test_api_fundamentals_passes_limit_to_reader(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/fundamentals?ts_code=000001.SZ&limit=7")
+
+    assert status == 200
+    assert payload["data"] == [{"symbol": "000001.SZ", "factor_name": "unit"}]
+    assert reader.calls[-1] == ("get_fundamentals", {"ts_code": "000001.SZ", "limit": 7})
+
+
+def test_api_macro_passes_limit_to_reader(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/macro?start=20260701&end=20260708&limit=9")
+
+    assert status == 200
+    assert payload["data"] == [{"factor_name": "macro"}]
+    assert reader.calls[-1] == ("get_macro_factors", {"start": "20260701", "end": "20260708", "limit": 9})
 
 
 def test_aggregate_metadata_drops_degraded_empty_data_rows() -> None:

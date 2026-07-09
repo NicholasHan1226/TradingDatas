@@ -522,6 +522,7 @@ class Handler(BaseHTTPRequestHandler):
                 symbol=symbol or None,
                 subject_code=params.get("subject_code", "").strip() or symbol or None,
                 subject_type=params.get("subject_type", "").strip() or None,
+                limit=to_int(params.get("limit"), 500),
             )
             rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
@@ -537,7 +538,7 @@ class Handler(BaseHTTPRequestHandler):
             ts_code = (params.get("ts_code", "") or params.get("symbol", "")).strip()
             if not ts_code:
                 raise ValueError("ts_code is required")
-            rows = reader.get_fundamentals(ts_code=ts_code)
+            rows = reader.get_fundamentals(ts_code=ts_code, limit=to_int(params.get("limit"), 200))
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
@@ -558,7 +559,11 @@ class Handler(BaseHTTPRequestHandler):
             return wrap_response(payload, metadata, source)
 
         if path == "/macro":
-            rows = reader.get_macro_factors(start=params.get("start"), end=params.get("end"))
+            rows = reader.get_macro_factors(
+                start=params.get("start"),
+                end=params.get("end"),
+                limit=to_int(params.get("limit"), 500),
+            )
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

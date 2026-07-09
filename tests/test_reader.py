@@ -351,6 +351,54 @@ class TestReaderEvents:
         assert rows[0]["provenance"]["source_id"] == "tushare_anns_d"
         assert rows[0]["lineage"]["source"] == "sqlite:market_events"
 
+    def test_get_events_honors_reader_limit(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, provider, event_type, event_time, trade_date,
+                    market, symbol, title, content, url, source, source_file,
+                    collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"event-{idx}",
+                        "tushare_news",
+                        "news",
+                        f"2026070{idx}",
+                        f"2026070{idx}",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "tushare_news",
+                        "unit.csv",
+                        datetime.now(timezone.utc).isoformat(),
+                        "{}",
+                    )
+                    for idx in range(1, 4)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        rows = reader.get_events(limit=2)
+
+        assert len(rows) == 2
+        assert [row["data"]["title"] for row in rows] == ["event 3", "event 2"]
+
     def test_degraded_empty_is_stale_and_unfresh(self):
         import reader
 
