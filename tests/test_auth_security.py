@@ -292,6 +292,22 @@ def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module.enforce_rate_limit(account_b["tenant_id"], account_b["tier"])
 
 
+def test_account_tiers_define_internal_and_future_packages(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+
+    assert auth_module.RATE_LIMITS["internal"] is None
+    assert auth_module.CONCURRENCY_LIMITS["internal"] is None
+    assert auth_module.RATE_LIMITS["starter"] == 60
+    assert auth_module.CONCURRENCY_LIMITS["starter"] == 2
+    assert auth_module.RATE_LIMITS["research"] == 300
+    assert auth_module.CONCURRENCY_LIMITS["research"] == 4
+    assert auth_module.RATE_LIMITS["pro"] == 600
+    assert auth_module.CONCURRENCY_LIMITS["pro"] == 8
+    # Backward-compatible alias for older configs.
+    assert auth_module.RATE_LIMITS["free"] == auth_module.RATE_LIMITS["starter"]
+    assert auth_module.CONCURRENCY_LIMITS["free"] == auth_module.CONCURRENCY_LIMITS["starter"]
+
+
 def test_scope_isolation_limits_endpoint_access(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,

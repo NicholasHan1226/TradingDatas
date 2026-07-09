@@ -42,7 +42,9 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
-**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
+**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。正式外部入口规划为 `https://signals.tradingagent.cc`；该域名必须先完成 Cloudflare Tunnel ingress/DNS/Access 绑定后才能对外使用。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
+
+**账号层级**：内部账号使用 `internal` tier，面向 Nicholas 批准的内部用户或可信内部 agent，可设置较高 `max_concurrent` 且无小时额度；仍不等于运维权限。未来外部套餐使用 `starter`（60/hour, 2 concurrent）、`research`（300/hour, 4 concurrent）、`pro`（600/hour, 8 concurrent）和 `enterprise`（定制，需容量和审计评估）。旧 `free` tier 保留为 `starter` 等价兼容口径。
 
 ### HTTP API 端点概览
 
@@ -835,6 +837,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-10 | 1.1.36 | 外部入口规划统一为 `https://signals.tradingagent.cc`；API 账号层级拆分为 `internal` 内部使用与未来 `starter/research/pro/enterprise` 分级套餐，`free` 保留兼容。 |
 | 2026-07-10 | 1.1.35 | 新增外部隔离账号 `external_read` scope，并让 token 鉴权支持 `X-API-Key` header；该 scope 提供完整数据读权限（含 `/tushare` read-model 输出），但不含 `/cache/invalidate` 运维控制。 |
 | 2026-07-09 | 1.1.34 | `/source_status` 增加 API/module catalog 与 source expansion plan 映射检查，确认 planned 数据源没有误启用、候选模块能映射到默认 HTTP surface 和 read-model 表、扩源默认复用现有 API。 |
 | 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |

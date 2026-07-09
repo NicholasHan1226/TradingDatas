@@ -22,12 +22,16 @@ ROOT = Path(__file__).resolve().parent
 TOKEN_HASH_FILE = Path(os.environ.get("SHAREDSIGNALS_TOKEN_HASH_FILE", ROOT / "config" / "api_tokens.json"))
 RATE_LIMITS = {
     "free": 60,
+    "starter": 60,
+    "research": 300,
     "pro": 600,
     "enterprise": None,
     "internal": None,
 }
 CONCURRENCY_LIMITS = {
     "free": 2,
+    "starter": 2,
+    "research": 4,
     "pro": 8,
     "enterprise": None,
     "internal": None,

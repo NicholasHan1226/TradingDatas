@@ -11,6 +11,7 @@
 - tradingagent.cc — 统一域名
 - dashboard.tradingagent.cc — Cloudflare前端看板 (未来)
 - api.tradingagent.cc — API反代 (未来)
+- signals.tradingagent.cc — SharedSignals 外部受控 API 入口；目标 origin 为主服务器 `127.0.0.1:8082`，必须通过 Cloudflare Tunnel/Access + SharedSignals API key 双层鉴权。当前需在 Cloudflare 远程 tunnel 配置中新增 hostname/ingress 后才可用。
 
 ## 邮件
 - 交易类: notice@tradingagent.cc → tradingadviser@coze.email
@@ -23,7 +24,8 @@
 - 旧 RSS/RSSHub 资产仅作历史审计，不作为当前生产采集或 API 数据源。
 
 ## 网络
-- Nginx :80 → 127.0.0.1:8082 (API server)
+- SharedSignals API：`127.0.0.1:8082`，计划通过 `signals.tradingagent.cc` 受控暴露；不得直接开放公网端口
+- Nginx :80 → 当前 Cloudflare tunnel 站点入口；不要把它当作 SharedSignals 专用外部 API 入口
 - RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新设计 SharedSignals collector 并直接写入 read model
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)
 - 新加坡仅作为 Polymarket/Crypto 境外代理 relay，不运行 RSSHub/rsync staging；主服务器通过 SSH 隧道连接新加坡 127.0.0.1:18888

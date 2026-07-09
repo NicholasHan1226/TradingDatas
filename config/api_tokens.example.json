@@ -17,10 +17,17 @@
     },
     {
       "tenant_id": "external_friend_example",
-      "tier": "free",
+      "tier": "starter",
       "scopes": ["external_read"],
       "max_concurrent": 2,
       "token_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "tenant_id": "internal_user_example",
+      "tier": "internal",
+      "scopes": ["external_read"],
+      "max_concurrent": 16,
+      "token_hash": "3333333333333333333333333333333333333333333333333333333333333333"
     }
   ]
 }

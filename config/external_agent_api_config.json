@@ -1,8 +1,10 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.35",
-  "base_url": "http://127.0.0.1:8082",
-  "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
+  "contract_version": "1.1.36",
+  "base_url": "https://signals.tradingagent.cc",
+  "local_base_url": "http://127.0.0.1:8082",
+  "access_status": "pending_cloudflare_route",
+  "production_host_note": "Production listens on localhost behind the SharedSignals server boundary. The intended external hostname is https://signals.tradingagent.cc, but it is usable only after Cloudflare Tunnel ingress/DNS and Access policy are bound to the SharedSignals origin.",
   "boundary": {
     "role": "Read-only trading data supply layer for minute and 5-minute workflows.",
     "not_supported": [
@@ -28,6 +30,40 @@
     "localhost_bypass_only_when_explicitly_enabled": true,
     "external_read_scope": "Full SharedSignals data read surface including /tushare read-model output. Excludes /cache/invalidate, provider keys, file/database access, and production writes.",
     "forwarded_external_requests_require_auth": true
+  },
+  "account_tiers": {
+    "internal": {
+      "audience": "Nicholas-approved internal users and trusted internal agents",
+      "hourly_limit": null,
+      "default_max_concurrent": 16,
+      "recommended_scope": "external_read",
+      "notes": "Full SharedSignals data read surface without hourly quota; still excludes provider keys, database/file access, production writes, and /cache/invalidate unless explicitly granted."
+    },
+    "starter": {
+      "audience": "future external starter package",
+      "hourly_limit": 60,
+      "default_max_concurrent": 2,
+      "recommended_scope": "external_read"
+    },
+    "research": {
+      "audience": "future external research package",
+      "hourly_limit": 300,
+      "default_max_concurrent": 4,
+      "recommended_scope": "external_read"
+    },
+    "pro": {
+      "audience": "future external pro package",
+      "hourly_limit": 600,
+      "default_max_concurrent": 8,
+      "recommended_scope": "external_read"
+    },
+    "enterprise": {
+      "audience": "future custom package",
+      "hourly_limit": null,
+      "default_max_concurrent": null,
+      "recommended_scope": "custom",
+      "notes": "Requires explicit contract, gateway policy, audit, and capacity review."
+    }
   },
   "required_response_checks": [
     "metadata.degraded",

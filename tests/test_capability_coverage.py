@@ -396,7 +396,14 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.35"
+    assert config["contract_version"] == "1.1.36"
+    assert config["base_url"] == "https://signals.tradingagent.cc"
+    assert config["access_status"] == "pending_cloudflare_route"
+    assert config["account_tiers"]["internal"]["hourly_limit"] is None
+    assert config["account_tiers"]["internal"]["default_max_concurrent"] == 16
+    assert config["account_tiers"]["starter"]["hourly_limit"] == 60
+    assert config["account_tiers"]["research"]["hourly_limit"] == 300
+    assert config["account_tiers"]["pro"]["hourly_limit"] == 600
     assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
     assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
     assert config["market_frequency_labels"]["Events"] == "30min full event lane plus 15min news/major_news pilot refresh"
