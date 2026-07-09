@@ -567,6 +567,7 @@ class Handler(BaseHTTPRequestHandler):
             if not symbol:
                 raise ValueError("symbol is required")
             rows = reader.get_crypto_klines(symbol=symbol)
+            rows = apply_row_limit(rows, params)
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
