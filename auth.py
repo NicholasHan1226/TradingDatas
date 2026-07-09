@@ -405,10 +405,34 @@ def _extract_bearer_token(headers: Any) -> str:
     return token
 
 
+def _has_external_auth_header(headers: Any) -> bool:
+    if not headers:
+        return False
+    authorization = headers.get("Authorization", "")
+    api_key = headers.get("X-API-Key", "")
+    return bool(str(authorization).strip() or str(api_key).strip())
+
+
+def _has_forwarded_client_header(headers: Any) -> bool:
+    if not headers:
+        return False
+    forwarded_headers = (
+        "Forwarded",
+        "X-Forwarded-For",
+        "X-Real-IP",
+        "X-Client-IP",
+    )
+    return any(bool(str(headers.get(header, "")).strip()) for header in forwarded_headers)
+
 
 def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
     host = (client_host or "").strip()
-    if host in LOCALHOSTS and LOCALHOST_BYPASS:
+    if (
+        host in LOCALHOSTS
+        and LOCALHOST_BYPASS
+        and not _has_external_auth_header(headers)
+        and not _has_forwarded_client_header(headers)
+    ):
         return {
             "tenant_id": "internal",
             "tier": "internal",

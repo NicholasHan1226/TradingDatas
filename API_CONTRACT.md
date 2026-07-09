@@ -42,7 +42,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
-**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
+**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
 
 ### HTTP API 端点概览
 

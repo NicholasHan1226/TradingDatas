@@ -327,3 +327,33 @@ def test_localhost_bypass_requires_explicit_env(monkeypatch: pytest.MonkeyPatch)
 
     assert account["auth_method"] == "localhost"
     assert account["scopes"] == ["full"]
+
+
+def test_localhost_request_with_token_does_not_use_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("local-token", "tenant-local-token", ["external_read"])]}
+        ),
+        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+    )
+
+    account = auth_module.authenticate(
+        {"Authorization": "Bearer local-token"}, "127.0.0.1"
+    )
+
+    assert account["auth_method"] == "token_hash"
+    assert account["tenant_id"] == "tenant-local-token"
+    assert auth_module.check_endpoint_scope(account, "/tushare")
+    assert not auth_module.check_endpoint_scope(account, "/cache/invalidate")
+
+
+def test_forwarded_localhost_request_requires_real_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+    )
+
+    with pytest.raises(auth_module.AuthError):
+        auth_module.authenticate({"X-Forwarded-For": "203.0.113.20"}, "127.0.0.1")
