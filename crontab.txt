@@ -13,11 +13,11 @@
 SHELL=/bin/bash
 PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-# Crypto 24/7 freshness. Ticker runs every 5 minutes into intraday; a separate
-# hourly 1d kline job keeps market_bars_daily fresh without full all-interval
-# pulls on every 5-minute tick.
-2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
-4 * * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh
+# Crypto 24/7 freshness. Ticker runs every 30 minutes into intraday; a separate
+# 6-hour 1d kline job keeps market_bars_daily fresh without pulling every
+# interval during trading hot paths.
+2,32 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
+7 */6 * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh
 
 # Tushare tier split owned by SharedSignals.
 */5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min
@@ -41,16 +41,16 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Read model sync and health loop.
 # DuckDB is an analytics mirror, not the 5-minute trading read path. Keep it
 # off the 5-minute cadence so it cannot full-scan SQLite during trading loops.
-17 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
-*/10 * * * * /opt/investment/SharedSignals/cron/patrol.sh
+17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
-3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
-17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh
+7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
+52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh
 
 # Polymarket markets/prices collection belongs here, not in TradingAgent or
 # MarketGraph.
-*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
+1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
 
 # Tushare event/news lane. This runs only selected P6 event APIs and must not
 # be replaced by high-frequency full P6 collection.

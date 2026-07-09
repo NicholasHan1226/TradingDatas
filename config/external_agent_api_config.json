@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.26",
+  "contract_version": "1.1.28",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -101,21 +101,21 @@
       "path": "/crypto",
       "scope": "crypto",
       "params": ["symbol", "limit"],
-      "cadence_class": "5min_or_daily_crypto",
+      "cadence_class": "30min_crypto",
       "use": "Crypto read-model output from Binance collector."
     },
     {
       "path": "/pm_markets",
       "scope": "pm",
       "params": ["limit"],
-      "cadence_class": "5min_prediction_market",
+      "cadence_class": "30min_prediction_market",
       "use": "Polymarket market metadata with latest price join."
     },
     {
       "path": "/pm_prices",
       "scope": "pm",
       "params": ["market_id", "limit"],
-      "cadence_class": "5min_prediction_market",
+      "cadence_class": "30min_prediction_market",
       "use": "Polymarket price snapshots."
     },
     {
@@ -129,8 +129,8 @@
   "market_frequency_labels": {
     "Ashare_intraday": "5min during A-share trading sessions",
     "Futures_intraday": "5min during configured day/night futures sessions",
-    "Crypto": "5min ticker/intraday and hourly/daily supporting bars",
-    "PredictionMarkets": "5min markets/prices",
+    "Crypto": "30min ticker/intraday and 6-hour daily-bar support refresh",
+    "PredictionMarkets": "30min markets/prices",
     "Ashare_daily": "post-close daily",
     "US_HK": "daily after local close windows",
     "Macro": "daily or low-frequency",

@@ -4,29 +4,29 @@
 >
 > **⚠️ 变更后必须更新本文件。**
 >
-> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取)
+> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取)
 
 ---
 
 ## 一、当前状态
 
-- **行情采集**：稳定运行 — Tushare（P0-P7 分层 114 个唯一生产配置接口，全部要求有 SQLite read model 映射且全部开放 `/tushare` 只读 API；另有 `rt_fut_min` 独立期货 5 分钟入口，115 个 allowlisted 接口已全部按模块/频率纳管，0 planned backlog）+ Binance（9 symbols，ticker 5min 写 `market_bars_intraday`，每小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite read model + DuckDB mirror；SharedSignals 支撑分钟级/5 分钟级交易供数，不是毫秒级 HFT、撮合、下单或资金执行系统。2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先池只来自 SharedSignals read model 和显式环境变量，只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；CNFutures 5 分钟新鲜度检查把 11:31-11:59 识别为 lunch、12:00-12:59 识别为 lunch_preopen，午休期间不因 11:30 bar 自然老化误报 stale，13:00 起恢复交易时段 stale 检查；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P6 杂项/日频层改为盘后夜间运行，P7 低频层每周独立维护 A股/指数周月线；`news`/`major_news`/`cctv_news`/`anns_d`/`report_rc` 通过 30 分钟事件 lane 统一落 `market_events`；`ths_member`/`dc_member`/`index_member`/`index_member_all` 进入 `market_relationships` 保留成分关系；`ths_daily`/`dc_daily`/`opt_daily` 进入日线表，`fund_portfolio` 进入 `market_fund_portfolio` 明细表，其余 `fut_holding`、`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`ths_hot` 进入因子表；采集结果直接写入 SQLite，CSV/NDJSON 只作为审计或历史迁移材料，不作为生产读取兜底。
+- **行情采集**：稳定运行 — Tushare（P0-P7 分层 114 个唯一生产配置接口，全部要求有 SQLite read model 映射且全部开放 `/tushare` 只读 API；另有 `rt_fut_min` 独立期货 5 分钟入口，115 个 allowlisted 接口已全部按模块/频率纳管，0 planned backlog）+ Binance（9 symbols，ticker 30min 写 `market_bars_intraday`，每 6 小时 `klines 1d` 写 `market_bars_daily`）+ Polymarket（markets+prices 30min，经新加坡 SSH relay 优先、本地 Mihomo/Clash 兜底，默认不直连兜底）→ SQLite read model + DuckDB mirror；SharedSignals 支撑分钟级/5 分钟级交易供数，不是毫秒级 HFT、撮合、下单或资金执行系统。2026-07-08 起 P0 只保留 A股盘中分钟线 `stk_mins/rt_min`，默认每轮 30 只且优先池只来自 SharedSignals read model 和显式环境变量，只有 09:30-11:30、13:00-15:00 推进游标，跨交易日自动重置，避免盘前/午休空跑和日频/因子接口拖住 5 分钟交易读数；2026-07-09 起 Crypto/PM 改为 30 分钟供数，A股 P0 与 CNFutures 继续保留 5 分钟交易热路径，DuckDB/capability scan 避开 09:00-15:59 中国交易高峰，patrol/health_sla 错峰运行以降低 SQLite 写锁争用；CNFutures 5 分钟新鲜度检查把 11:31-11:59 识别为 lunch、12:00-12:59 识别为 lunch_preopen，午休期间不因 11:30 bar 自然老化误报 stale，13:00 起恢复交易时段 stale 检查；服务 A股评分/候选池的 `daily`、`stk_factor`、`stk_factor_pro` 移到 P1 盘后日频并保留 90 天 lookback，保证 TradingAgent 技术面/估值类评分有足够历史；A股 `moneyflow` 已从 P0 盘中逐股轮询移到 P1 盘后日频全市场采集，避免日频接口在 5 分钟层返回 0 行和浪费限流；P6 杂项/日频层改为盘后夜间运行，P7 低频层每周独立维护 A股/指数周月线；`news`/`major_news`/`cctv_news`/`anns_d`/`report_rc` 通过 30 分钟事件 lane 统一落 `market_events`；`ths_member`/`dc_member`/`index_member`/`index_member_all` 进入 `market_relationships` 保留成分关系；`ths_daily`/`dc_daily`/`opt_daily` 进入日线表，`fund_portfolio` 进入 `market_fund_portfolio` 明细表，其余 `fut_holding`、`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`ths_hot` 进入因子表；采集结果直接写入 SQLite，CSV/NDJSON 只作为审计或历史迁移材料，不作为生产读取兜底。
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走新的 SharedSignals collector 直接写 SQLite read model，不得恢复旧文件 staging、旧 bridge 或跨系统运行层入口。
-- **现役数据源/同步管线**：Tushare、Binance、Polymarket、CNFutures 采集 + DuckDB 分析镜像同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮 5 分钟采集跳过
+- **现役数据源/同步管线**：Tushare、Binance、Polymarket、CNFutures 采集 + DuckDB 分析镜像同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护，当前生产频率为 30 分钟；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮采集跳过
 - **DB/API-only 架构**：采集器先落 SQLite/DuckDB read model，再由 SharedSignals API 对 TradingAgent/MarketGraph 提供只读消费；生产 reader/API 不再读取 CSV/NDJSON/旧目录作为兜底。
 - **repo 数据文件边界**：仓库根 `data/*.csv` 旧样本已删除并加入忽略；现役采集不得把 CSV cache 当成功路径。Tushare wrapper 只允许进程内 LRU 短缓存，结果必须由 collector 直接写 SQLite read model 后再输出。
 - **reader/API 缓存失效**：读取缓存监听 `marketdata.sqlite`、`marketdata.sqlite-wal`、`marketdata.sqlite-shm`；SQLite WAL 模式下 5 分钟新写入不会因主 DB 文件未 checkpoint 而继续返回旧缓存
-- **巡查自愈**：patrol.py（6 维度 10 分钟）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 与 `proxy_relay_health` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
-- **健康口径**：2026-07-07 起 `/health` 会聚合 `tools/health_sla.py` per-table SLA 结果；API 请求只读取 `logs/watchdog_inputs/health_sla.json` 的定时产物，不在请求内重新扫大库。交易关键表 critical 保留为 `sla_status=critical` 并让 `/health` degraded，但不映射为 API error，避免数据新鲜度问题触发 API 进程误重启。研究事件“过期”仍只记 notice，不影响交易供数健康；但 tracked table 缺表/空表会至少降级为 degraded，避免 `health_sla` 出现 missing/empty 时整体仍显示 ok。`patrol.py` 的 PM freshness 已改用 `market_pm_prices.collected_at`，与现役 schema 对齐；`health_sla.py` critical 邮件发送器输出不再污染 watchdog JSON；2026-07-08 起 Crypto 不再按 `market_bars_daily.trade_date` 判定 24/7 交易新鲜度，改用 `market_bars_intraday.collected_at` 30 分钟 SLA，避免日线旧样本把正常 5 分钟采集误报 critical；同日起 `health_sla.py` 对 `market_factors`、`market_events`、`market_pm_prices`、`market_bars_intraday` 采用最近写入样本判断 freshness，并设置只读连接 busy timeout，避免 10 分钟健康任务在生产大表上全表扫描并拖到 wrapper timeout。2026-07-09 起 reader 只读连接增加短 busy timeout 与 SQL progress 超时保护，`/events`、`/fundamentals`、`/macro`、`/tushare` 的 `limit` 会下推到 SQL，避免能力扫描、盘前验收或外部 API 请求在 26GB 生产库上无边界扫表。
+- **巡查自愈**：patrol.py（6 维度，生产错峰半小时运行）+ heal.py（failover/backfill/checkpoint）；patrol 阈值支持 `PATROL_*` 环境变量调优，data freshness 覆盖 daily/intraday/events/factors/PM prices；watchdog 闭环监控 API/DB/cron log/disk/memory，并纳入 `health_sla` 与 `proxy_relay_health` 外部报告扣分，低分触发 heal、critical 触发 auto_restart，重启失败才升级邮件，连续失败写 halt
+- **健康口径**：2026-07-07 起 `/health` 会聚合 `tools/health_sla.py` per-table SLA 结果；API 请求只读取 `logs/watchdog_inputs/health_sla.json` 的定时产物，不在请求内重新扫大库。交易关键表 critical 保留为 `sla_status=critical` 并让 `/health` degraded，但不映射为 API error，避免数据新鲜度问题触发 API 进程误重启。研究事件“过期”仍只记 notice，不影响交易供数健康；但 tracked table 缺表/空表会至少降级为 degraded，避免 `health_sla` 出现 missing/empty 时整体仍显示 ok。`patrol.py` 的 PM freshness 已改用 `market_pm_prices.collected_at`，与现役 schema 对齐；`health_sla.py` critical 邮件发送器输出不再污染 watchdog JSON；2026-07-08 起 Crypto 不再按 `market_bars_daily.trade_date` 判定 24/7 交易新鲜度，改用 `market_bars_intraday.collected_at` 30 分钟 SLA；2026-07-09 起 Crypto/PM 生产采集改为 30 分钟，后续 SLA 阈值应随生产观察再校准到 45 分钟；同日起 `health_sla.py` 对 `market_factors`、`market_events`、`market_pm_prices`、`market_bars_intraday` 采用最近写入样本判断 freshness，并设置只读连接 busy timeout，避免健康任务在生产大表上全表扫描并拖到 wrapper timeout。2026-07-09 起 reader 只读连接增加短 busy timeout 与 SQL progress 超时保护，`/events`、`/fundamentals`、`/macro`、`/tushare` 的 `limit` 会下推到 SQL，避免能力扫描、盘前验收或外部 API 请求在 26GB 生产库上无边界扫表。
 - **US/Global 日线 SLA**：2026-07-07 起 `market_bars_daily` 中 `US` 与 `Global` 不再只按自然小时数判断 stale，而是按“应产生并采集到的最近有效交易日”计算。US 识别常见 NYSE 假期与 P5 06:10 CST/18:10 ET 后采集窗口；Global 按 P4 08:45 CST 采集窗口处理。两者落后 1 个有效交易日以内不触发 critical，落后 2 个有效交易日仍 critical，避免美国假期/长周末后把正常休市误判为供数故障。
-- **`/health` data_freshness 对齐**：2026-07-07 起旧 `data_freshness` 检查不再用另一套自然日规则判定 US/Global；Ashare/US/Global 跟随 `health_sla` 的日线判定，Crypto 改看 `market_bars_intraday.collected_at` 30 分钟新鲜度，避免 Crypto daily 旧样本和 US/Global 假期样本把 `/health` 误打 degraded。
+- **`/health` data_freshness 对齐**：2026-07-07 起旧 `data_freshness` 检查不再用另一套自然日规则判定 US/Global；Ashare/US/Global 跟随 `health_sla` 的日线判定，Crypto 改看 `market_bars_intraday.collected_at`，当前 30 分钟采集对应 45 分钟健康阈值，避免 Crypto daily 旧样本和 US/Global 假期样本把 `/health` 误打 degraded。
 - **采集器架构**：BaseCollector + 6 mixins + 4 采集器实现，完整生命周期（health→plan→collect→validate→dedup→save→audit→coverage）
 - **旧采集器清理**：`collectors/tushare_old/`、旧 RSS/RSSHub collector、旧 Alpaca US collector 和 legacy `tools/api_server.py` 已确认无现役引用并删除；现役采集入口保留 Tushare、Binance、Polymarket 与 DuckDB 同步，不得恢复旧 Ashare/RSS/Alpaca 接口副本。
 - **旧 MarketGraph 软链清理**：`bridge/marketgraph_marketdata_db.py` 仅作为 SharedSignals 本仓库兼容辅助模块，不暴露为跨系统生产入口；`data/association/` 和 `data/intake/` 已从断链软链改为本地目录，避免部署和 reader 默认路径依赖 MarketGraph 内部目录。
 - **DuckDB 迁移**：SQLite (116MB) → sqlite_scan → DuckDB (54MB, 列存压缩)，DuckDB 只作为分析镜像，不是 5 分钟交易 read path；2026-07-07 起定时同步降为每小时一次，并用低 IO/CPU 优先级与 10 分钟超时运行，避免全量 sqlite_scan 与交易采集/模拟任务抢占主库。同步层会把 SQLite 历史空字符串数值列安全转换为 NULL，避免单列脏值导致整表镜像失败；只读查询连接不再尝试写 schema，避免 DuckDB read-only 打开失败后误回落 SQLite 导致类型口径退化
 - **测试解释器口径**：DuckDB 相关测试必须使用项目/生产 venv（本地 `.venv/bin/python`，生产默认 `/opt/sharedsignals/venv/bin/python3`）。系统 Python 可能缺 `duckdb`，不能据此判断 SharedSignals DuckDB 链路失败。
 - **环境与邮件边界**：SharedSignals 只读取 `SHAREDSIGNALS_ENV_FILE`、`/opt/sharedsignals/.env`、`/opt/investment/SharedSignals/.env` 或本仓 `.env`；不得再读取 MarketGraph env 或 TradingAgent env。系统邮件发件入口统一由本仓配置提供，缺配置时只落本地 fallback 记录并触发告警。
-- **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/proxy_relay_health.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已收口为现役入口，分别负责 Tushare tier、Crypto 5 分钟 ticker/按需 klines、Polymarket markets/prices、DuckDB 同步、patrol/heal、新加坡 relay 健康、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
+- **cron 解耦入口**：`cron/collectors.sh`、`cron/crypto_collect.sh`、`cron/pm_collect.sh`、`cron/duckdb_sync.sh`、`cron/patrol.sh`、`cron/proxy_relay_health.sh`、`cron/watchdog.sh`、`cron/capability_scan.sh`、`cron/cn_futures_daily.sh` 已收口为现役入口，分别负责 Tushare tier、Crypto 30 分钟 ticker/6 小时 klines、Polymarket 30 分钟 markets/prices、DuckDB 非交易高峰同步、patrol/heal、新加坡 relay 健康、5 分钟 watchdog、API 能力清单刷新和期货日线单独采集，均带 flock 与独立日志
 - **港股采集**：hk_income/hk_balancesheet/hk_cashflow 通过 stock_list: hk 路由接入
 - **全球宏观**：us_tycr/us_tbr/us_tltr 美国国债收益率曲线数据
 - **存储**：`/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb`，SQLite 为权威 read model，DuckDB 为分析镜像；collector 成功定义为 provider rows 直接写入 SQLite
@@ -39,8 +39,8 @@
 - **直接入库门禁**：`storage/read_model_store.py` 现役写入路径为 `ingest_rows_to_sqlite()`，Tushare/CNFutures 等生产 collector 必须把 provider rows 直接写入 SQLite read model；`ingest_csv_to_sqlite()` 及 CSV 相关 helper 仅保留为历史迁移/审计工具，不得作为生产采集成功路径；Tushare P0-P7 已配置接口必须全部有 read model 映射，非空 provider rows 写入 SQLite 0 行会标记 `failed` 并计入 tier `sqlite_failure_count`，避免“采集成功但数据库/API 无数据”被误判为正常；低频宏观、Tushare 新闻事件、全球指数、ETF/期货资产、周月线和第一批 planned-to-scheduled 接口已补齐 read model 映射；A股 `market_assets` 合并时不再用后续 `stock_company` 空字段覆盖 `stock_basic` 的名称、行业、上市日期等基础字段，`industry` 会规范化写入 `sector`，数值列空字符串会规范化为 NULL
 - **生产部署**：主服务器 `8.138.181.177` 上 SharedSignals API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）；本机消费者仅在 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 时走 localhost bypass，外部账号必须走 token/JWT；旧 `tools/api_server.py` 已删除，当前唯一数据 API 入口为仓库根目录 `api_server.py`
 - **服务器与网络路径**：杭州 `8.138.181.177`（境内采集+存储），新加坡 `47.82.153.58`（境外代理 relay；旧 RSS/RSSHub 路径已退役）。PM/Crypto 当前优先走杭州本机 `127.0.0.1:18889` → SSH tunnel → 新加坡本机 tinyproxy `127.0.0.1:18888`，失败后回落杭州本地 Mihomo/Clash `127.0.0.1:7890`；不暴露公网代理端口，不直连兜底。
-- **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 10 分钟写入 `logs/watchdog_inputs/health_sla.json`。
-- **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-04 主服务器实际边界重写；SharedSignals owns Tushare P0-P7、Crypto 5 分钟 ticker、Crypto 每小时 1d klines、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
+- **SLA 监控**：watchdog + auto_restart + halt 文件形成 5 分钟闭环；SLA monitor 消费 API/DB/cron log/disk/memory、`health_sla` per-table freshness 和 TradingAgent 跨系统健康输入；`health_sla` 输出 `summary.critical/warning/notice`，critical/degraded 会影响 watchdog 健康分，并每 15 分钟错峰写入 `logs/watchdog_inputs/health_sla.json`。
+- **生产 crontab 文档**：`crontab.txt` 与 `cron/crontab.txt` 已按 2026-07-09 主服务器降载边界更新；SharedSignals owns Tushare P0-P7、Crypto 30 分钟 ticker、Crypto 每 6 小时 1d klines、Polymarket 30 分钟、DuckDB 非交易高峰 sync、patrol、watchdog。TradingAgent/MarketGraph 不应重新启用旧直接采集 cron。
 - **市场能力治理**：`docs/market_capability_matrix.md` 把现役数据源、HTTP/read surface、采集频率、Tushare 114 个生产配置接口与 115 个 `/tushare` 白名单的边界、以及新闻/公告事件 lane 的拆分建议分开记录；`docs/tushare_activation_backlog.md` 作为已完成激活台账保留，当前 0 planned；外部 agent 接入应按市场和 freshness 读取，不把日频/披露/参考接口误当 5 分钟交易数据。
 - **外部 agent 接入**：`GET /agent_config` 输出机器可读 API 配置、频率标签和禁止绕过规则；`docs/external_agent_api_prompt.md` 提供可复制 prompt。外部 agent 必须先读 `/health`/`/agent_config`，再通过业务端点或 `/tushare` 读取数据库输出。
 - **Tushare 全量能力计划**：新增 `config/tushare_capability_plan.yaml` 覆盖 115 个 `/tushare` 白名单接口，按市场/模块分配 scheduled、independent、event_lane 或 planned 状态；新增 `cron/tushare_events_collect.sh` 作为新闻/公告/研报事件 lane wrapper，默认只跑 P6 中的事件 API，不高频运行整个 P6 杂项层。
@@ -55,7 +55,7 @@
 - `market_bars_daily` provider 已从主键移除；服务器迁移已执行，保留 provider 作为普通来源字段
 - [x] R15 故障注入新增：主 `marketdata.sqlite` 损坏/丢失后，`tools/sqlite_recovery.py` + `patrol.py`/`heal.py` 已实现只读检测、备份切换或 DuckDB mirror 重建，默认 dry-run/fail-safe；详见 `docs/sqlite_recovery_runbook.md`。普通 WAL crash recovery 仍覆盖主 DB 完整场景。
 - R15 故障注入新增：`env_bootstrap` 默认一次性加载，运行中 `.env` 变更不会自动热加载；当前恢复方式是重启进程或显式 `override=True`。
-- Crypto 生产 5 分钟行情已切到 `CryptoCollector → SQLite` 直接入库；旧 staging/bridge 绕过路径已退役。
+- Crypto 生产行情已切到 `CryptoCollector → SQLite` 直接入库；当前生产频率为 30 分钟 ticker 与每 6 小时 1d support bars，旧 staging/bridge 绕过路径已退役。
 - 生产活跃 `data/` 目录已清除旧 Tushare CSV staging 文件；旧文件已从 `/opt/investment/SharedSignals/data/tushare` 移到 `/opt/investment/_archive/sharedsignals_retired_data_tushare_20260709T044641Z/tushare`，仅作回退/审计，不作为 API 或 collector 成功路径。
 - P0 A 股 5 分钟采集已加轮转批次保护，默认每轮 30 只股票，并只运行 `stk_mins`/`rt_min` 分钟接口；P0 优先池只允许来自 SharedSignals read model 或显式环境变量，不再读取 TradingAgent/MarketGraph 内部候选、回执或输出文件；A股连续交易窗口外直接跳过且不推进游标，游标按 `trade_date` 自动重置，避免盘前、午休或跨日空跑污染开盘覆盖。
 - A股评分相关日频接口已从默认 7 天窗口提高到 90 天，并移到 P1 盘后日频：`daily`/`stk_factor`/`stk_factor_pro` 负责给 TradingAgent 候选池提供足够日线与估值历史，并已用测试锁定三者均按单股票 `ts_code/start_date/end_date` 参数采集；P0 A股清单读取 `market_assets` 中有名称、非退市、非基金的沪深代码，read model 不可用时 fail-closed，不回退 `reference/stock_master.csv`；该窗口不应用到 `stk_mins`/`rt_min` 分钟接口。生产部署后需观察每只活跃股票 `market_bars_daily` 是否从 7 条逐步提高到 20 条以上，直到覆盖 90 天窗口；同时检查 `market_factors` 中 `stk_factor:*`、`stk_factor_pro:*`、`daily_basic:*` 行是否增长，确保数据进入 read model/API。
@@ -107,7 +107,7 @@
 12. [x] **P3：自动恢复 runbook** — 主 DB 损坏后的备份切换/ DuckDB 重建流程已实现，默认 dry-run/fail-safe，详见 `docs/sqlite_recovery_runbook.md`；env 运行中热加载仍待后续迭代。
 13. [x] **P3：watchdog 生产接入验证** — 服务器 crontab 已接入，已完成 API auto_restart 恢复演练、TradingAgent 回执刷新和 watchdog 100 分验证；邮件通道实发仍按系统邮件专项单独验证
 14. [x] **CNFutures：期货日线每日入口与历史回补工具** — `tools/collect_cn_futures_daily.py`、`cron/cn_futures_daily.sh` 和 `collectors/tushare/backfill_fut_daily.py` 已提供单日采集、cron 调度和区间回补入口；只采集/桥接 Futures 日线，不做交易判断。
-15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 5 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API。
+15. [x] **Polymarket：markets/prices 生产采集闭环** — `collectors/polymarket_collect.py` 写入 `market_pm_markets` 与 `market_pm_prices`，`cron/pm_collect.sh` 以 30 分钟频率运行，TradingAgent/MarketGraph 继续只读 SharedSignals API。
 16. [x] **CNFutures：期货 5 分钟行情入口** — `tools/collect_cn_futures_5min.py` 与 `cron/cn_futures_5min.sh` 已支持 Tushare `rt_fut_min` 直接写入 `market_bars_intraday`；默认合约池覆盖 `rb/cu/i/m/if/ih/ic/im` 并按产品轮询选合约，生产 cron 独立于 `P6_other_daily` 支持日盘、夜盘和跨午夜 5 分钟采集；`market_bars_intraday` 已扩展可空一级 bid/ask、盘口量、last_trade_date/expiry_date 字段，`/realtime_5min?market=Futures` 可通过 API 读取并透传这些字段，供 TradingAgent 在字段存在时增强模拟成交。
 17. [x] **CNFutures：期货 5 分钟数据新鲜度验收** — `tools/check_cn_futures_5min_freshness.py` 已支持只读检查 Futures 5 分钟 bar 的 `fresh/stale/no_data/error` 状态，默认 10 分钟阈值，供 TradingAgent 5 分钟模拟交易前做数据健康依据。
 18. [x] **RSS/RSSHub 退役收口** — RSS/RSSHub 不作为现役 collector；恢复事件采集前必须按 SharedSignals direct-DB collector 重新接入。
@@ -117,7 +117,7 @@
 22. [x] **Capability smoke 与 read model 对齐** — `tools/capability_scan.py` 的现役能力 smoke 已收口到 `reader.py` / `reference.market_calendar`，不再现场调用 Tushare wrapper；当前暂停的 HK/cross-border 端点显式标记 skipped，避免把架构延期误判成数据故障。
 23. [x] **5 分钟 read API 市场参数化** — `reader.get_realtime_5min()` 与 HTTP `/realtime_5min` 支持 `market` 参数，默认 `Ashare`；`market=Futures`、`market=CNFutures`、`market=cn_futures` 等期货别名统一读取 `market_bars_intraday.market='Futures'`，不再被硬编码挡住。
 24. [x] **reader WAL 缓存失效修复** — `reader.py` 的缓存文件指纹已动态解析当前路径，并纳入 SQLite `-wal`/`-shm` sidecar；测试覆盖 sidecar mtime 更新后触发 `_files_changed()`，降低 5 分钟交易读取旧数据风险。
-25. [x] **health_sla 交易/研究分层与定时启用** — `market_bars_daily` 与 `market_pm_prices` 属交易关键 freshness，超阈值影响健康；`market_factors` 为 warning；`market_events` 属研究 lane，过期只记录 notice，不再把研究事件暂停误判为 SharedSignals 交易供数故障；周末/周一开盘前会扩大非 PM/Crypto 表的有效 freshness 窗口；`cron/health_sla.sh` 每 10 分钟运行并写入 watchdog input，critical/degraded 外部报告会纳入 watchdog 分数。
+25. [x] **health_sla 交易/研究分层与定时启用** — `market_bars_daily` 与 `market_pm_prices` 属交易关键 freshness，超阈值影响健康；`market_factors` 为 warning；`market_events` 属研究 lane，过期只记录 notice，不再把研究事件暂停误判为 SharedSignals 交易供数故障；周末/周一开盘前会扩大非 PM/Crypto 表的有效 freshness 窗口；`cron/health_sla.sh` 每 15 分钟错峰运行并写入 watchdog input，critical/degraded 外部报告会纳入 watchdog 分数。
 26. [x] **A股 rt_min 与逆回购读模型修复** — P0 实时分钟配置收口到实测可用的 `rt_min`，旧分钟接口映射和 reader CSV fallback 已退役；`repo_daily` 不再裁剪字段，并在保留 `market_factors` 的同时额外投影到 `market_bars_daily`，供 TradingAgent 以 `204001.SH` 日线收益率读取。
 
 ### 2026-07-09 市场参数与 CNFutures 5分钟口径收口
@@ -161,7 +161,7 @@
 - [x] `market_events` 过期只作为 research notice，不再导致整体 `degraded`；`market_pm_prices` 过期仍是交易关键 critical。
 - [x] 周末/周一开盘前对非 24/7 日频表扩大有效阈值；PM/Crypto 不放宽，防止周末仍交易市场被误放过。
 - [x] `health_sla` 不再静默吞掉表查询异常；表缺失、日期列缺失或查询失败会进入 violations，并按表 severity 影响整体状态。
-- [x] 新增 `cron/health_sla.sh`，每 10 分钟运行 per-table SLA，输出 `logs/watchdog_inputs/health_sla.json` 供 watchdog 汇总并参与健康扣分。
+- [x] 新增 `cron/health_sla.sh`，当前每 15 分钟错峰运行 per-table SLA，输出 `logs/watchdog_inputs/health_sla.json` 供 watchdog 汇总并参与健康扣分。
 - [x] 新增 `tests/test_health_sla.py` 覆盖研究事件过期不降级、PM 价格过期 critical、周末日频表放宽但 PM 不放宽、表错误不返回 ok 四个场景。
 
 ### 2026-07-04 CNFutures 期货 5 分钟行情入口
@@ -179,14 +179,14 @@
 
 - [x] `collectors/polymarket_collect.py` 从 Polymarket Gamma 拉取 active markets，并从 `outcomePrices`/`bestBid`/`bestAsk`/`lastTradePrice` 派生价格快照，写入统一 read model 的 `market_pm_markets` 与 `market_pm_prices`。
 - [x] 每次采集写入 `market_ingest_runs`，source 固定为 `polymarket_gamma`，便于 freshness、失败和回放审计。
-- [x] 新增 `cron/pm_collect.sh`，带 `flock`、生产 venv、proxy、`.env` bootstrap 和独立日志 `logs/cron/pm_collect.log`；生产 crontab 每 5 分钟运行。
+- [x] 新增 `cron/pm_collect.sh`，带 `flock`、生产 venv、proxy、`.env` bootstrap 和独立日志 `logs/cron/pm_collect.log`；当前生产 crontab 每 30 分钟运行。
 - [x] 边界：PM 上游 API 只允许在 SharedSignals collector 层调用；TradingAgent PM 模拟/影子盘只读 `/pm_markets`、`/pm_prices` 或 read model，不直接访问 Polymarket。
 
 ### 2026-07-04 production cron and consumer-boundary audit
 
 - [x] 主服务器 `/opt/investment/SharedSignals` 已确认 API health OK、functions 15/15、A股/加密/美股 freshness OK；A股最新交易日为 20260703，当前 2026-07-04 为周六，属合理状态。
 - [x] 统一 read model 已确认写入：Ashare daily/intraday、Crypto daily、US daily、Futures daily、Global daily、Events、Factors、PM markets/prices；PM prices 最新 `price_time` 为 2026-07-04T14:30:02+00:00。
-- [x] 生产 crontab 已确认 SharedSignals 负责数据采集与同步：Tushare P0 5 分钟、P1-P7 分层、事件 30 分钟 lane、Crypto 5 分钟、Polymarket 5 分钟、DuckDB sync、patrol、watchdog。
+- [x] 生产 crontab 已确认 SharedSignals 负责数据采集与同步：Tushare P0 5 分钟、P1-P7 分层、事件 30 分钟 lane、Crypto 30 分钟、Polymarket 30 分钟、DuckDB 非交易高峰 sync、patrol、watchdog。
 - [x] `crontab.txt` 与 `cron/crontab.txt` 已按生产边界更新；旧 2026-07-03 模板不再作为当前事实。
 
 ## 五、最近完成

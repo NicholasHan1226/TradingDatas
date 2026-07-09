@@ -17,7 +17,7 @@
 ```
 采集层 → 校验/去重 → SQLite read model → DuckDB 分析镜像
   Tushare(P0-P7分层接口) → marketdata.sqlite
-  Binance(9 symbols, ticker 5min + klines) → marketdata.sqlite
+  Binance(9 symbols, ticker 30min + 6h klines) → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
   RSS/RSSHub      → retired/deferred（恢复前需重建直接入库 collector）
   Tavily/DeepSeek → disabled（不属于当前生产采集）
@@ -40,7 +40,7 @@
 - ← 不接收: 不接收研究结论或交易结果（单向输出）
 
 ## 采集频率
-- 行情: A股盘中 5min / Crypto 与 Polymarket 5min / 日级（盘后）
+- 行情: A股与期货盘中 5min / Crypto 与 Polymarket 30min / 日级（盘后）
 - 事件: RSS/RSSHub/Tavily 当前不作为现役生产采集；恢复前必须走 SharedSignals collector 直接入库契约
 - 基本面: 日级预计算
 - 宏观: 日级

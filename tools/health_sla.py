@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - Python fallback for constrained runtimes
 SLA_THRESHOLDS = {
     'market_bars_daily': {'max_age_hours': 72, 'market': 'all', 'lane': 'trading', 'severity': 'critical'},
     'market_factors': {'max_age_hours': 72, 'market': 'all', 'lane': 'trading', 'severity': 'warning'},
-    'market_pm_prices': {'max_age_hours': 6, 'market': 'PM', 'lane': 'trading', 'severity': 'critical'},
+    'market_pm_prices': {'max_age_hours': 0.75, 'market': 'PM', 'lane': 'trading', 'severity': 'critical'},
     'market_events': {'max_age_hours': 36, 'market': 'all', 'lane': 'research', 'severity': 'notice'},
 }
 SLA_DATE_COLUMNS = {
@@ -22,7 +22,7 @@ SLA_DATE_COLUMNS = {
     'market_pm_prices': ['collected_at', 'updated_at'],
     'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
 }
-CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "30")) / 60.0
+CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "45")) / 60.0
 RECENT_SAMPLE_LIMIT = int(os.getenv("SHAREDSIGNALS_HEALTH_SLA_RECENT_SAMPLE_LIMIT", "50000"))
 RECENT_SAMPLE_TABLES = {
     "market_bars_daily",
@@ -44,8 +44,8 @@ def _table_violation(table: str, sla: dict, *, status: str, message: str, now: d
     }
 
 
-def _effective_max_age_hours(sla: dict, now: datetime) -> int:
-    threshold = int(sla['max_age_hours'])
+def _effective_max_age_hours(sla: dict, now: datetime) -> float:
+    threshold = float(sla['max_age_hours'])
     cn_now = now.astimezone(timezone(timedelta(hours=8)))
     market = str(sla.get('market') or '').lower()
     lane = str(sla.get('lane') or '').lower()

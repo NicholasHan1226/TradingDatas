@@ -259,13 +259,16 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "*/5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min",
         "*/5 9-15,21-23 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_5min.sh",
         "*/5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh",
-        "2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
-        "*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
+        "2,32 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
+        "7 */6 * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh",
+        "1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
         "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
         "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
         "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
-        "3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
-        "17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
+        "12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
+        "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
+        "17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh",
+        "52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
     }
     tier_lines = {
         "P1_eod_daily",
@@ -284,6 +287,22 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         )
         assert missing == []
         assert missing_tiers == []
+
+
+def test_production_cron_keeps_heavy_jobs_out_of_trading_hot_path() -> None:
+    forbidden_lines = {
+        "2-59/5 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
+        "*/5 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
+        "17 * * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh",
+        "*/10 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
+        "3-59/10 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
+        "17 * * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
+    }
+
+    for crontab_path in CRONTAB_FILES:
+        text = crontab_path.read_text(encoding="utf-8")
+        offenders = sorted(line for line in forbidden_lines if line in text)
+        assert offenders == []
 
 
 def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None:
@@ -326,7 +345,13 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.26"
+    assert config["contract_version"] == "1.1.28"
+    assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
+    assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
+    cadence_by_path = {item["path"]: item["cadence_class"] for item in config["primary_endpoints"]}
+    assert cadence_by_path["/crypto"] == "30min_crypto"
+    assert cadence_by_path["/pm_markets"] == "30min_prediction_market"
+    assert cadence_by_path["/pm_prices"] == "30min_prediction_market"
     assert config["tushare_status"]["allowlisted_api_names"] == len(ALLOWED_TUSHARE_APIS)
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)

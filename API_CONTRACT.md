@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.26 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.28 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -485,9 +485,9 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 
 | 数据类型 | 采集频率 | 预期延迟 | fresh 阈值 |
 |---------|--------|---------|-----------|
-| Crypto 行情 | 5min | ~5min DB sync | ≤ 30min |
-| Polymarket 价格 | 5min | ~5min DB sync | ≤ 30min |
-| Crypto 因子 | 按需/低频 | ~5min DB sync | ≤ 60min |
+| Crypto 行情 | 30min | SQLite read model | ≤ 45min |
+| Polymarket 价格 | 30min | SQLite read model | ≤ 45min |
+| Crypto 因子 | 按需/低频 | SQLite read model | ≤ 6h |
 | A 股日线 | 盘后 EOD | 日级 | 最新交易日 |
 | 美股日线 | 盘后 EOD | 日级 | 最新交易日 |
 | Tushare 新闻/公告事件 | 30min event lane | SQLite read model | 最新 collected_at |
@@ -560,7 +560,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 **错误处理**: read model 未映射、无缓存、DB 不可用或数据为空时返回 degraded 包装，不抛异常，不现场补采。
 
-**数据新鲜度**: Tushare 数据由 P0-P7 定时 collector 维护；A 股 P0 交易时段 5 分钟级，P1-P7 按日频、研究频率或低频参考频率维护，其中 P7 周/月线按低频 wrapper 独立维护；新闻/公告/研报事件通过 30 分钟 event lane 维护。
+**数据新鲜度**: Tushare 数据由 P0-P7 定时 collector 维护；A 股 P0 和 China futures 交易时段保留 5 分钟级，Crypto/Polymarket 在当前服务器上按 30 分钟供数，P1-P7 按日频、研究频率或低频参考频率维护，其中 P7 周/月线按低频 wrapper 独立维护；新闻/公告/研报事件通过 30 分钟 event lane 维护。
 
 ### 外部 Agent 调用规则
 
@@ -572,7 +572,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 2. 优先使用业务端点：`/market_data`、`/realtime_5min`、`/events`、`/fundamentals`、`/macro`、`/pm_markets`、`/pm_prices`。
 3. 需要 Tushare 原生维度时使用 `/tushare?api_name=...&limit=...`；该接口仍然只读数据库，不现场调用 Tushare。
 4. 每次读取都检查 `metadata.degraded`、`metadata.degraded_reasons`、`freshness`、`provenance.source_id`、行内 `trade_date/event_time/collected_at`。
-5. 按市场和频率理解数据：A股/期货/Crypto/PM 的 5 分钟数据可用于分钟级交易输入；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
+5. 按市场和频率理解数据：A股/期货保留 5 分钟交易输入；Crypto/PM 当前是 30 分钟供数；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
 复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
@@ -820,6 +820,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.28 | 生产热路径降载：Crypto ticker 与 Polymarket markets/prices 从 5 分钟改为 30 分钟，Crypto 1d support bars 改为 6 小时；DuckDB mirror 与 capability scan 避开 09:00-15:59 中国交易高峰，patrol/health_sla 改为错峰运行。 |
 | 2026-07-09 | 1.1.27 | `/tushare?api_name=daily` 无代码/无日期请求改为限定 A股最新交易日和 `provider=tushare_daily` 后读取，避免生产大日线表无界排序超时；用于 TradingAgent 盘前批量日线覆盖和流动性排序。 |
 | 2026-07-09 | 1.1.26 | 将 Tushare `fund_portfolio` 从 `market_factors` 因子展开迁移到专用 `market_fund_portfolio` 明细表，保留 `symbol` 基金代码、`holding_symbol` 持仓股票、`ann_date`、`end_date`、市值和占比字段；减少单公告日写入放大和大表索引压力。 |
 | 2026-07-09 | 1.1.25 | 启用最后 8 个 planned Tushare 接口：`bak_basic`、`cyq_perf`、`cyq_chips`、`fina_audit`、`fina_mainbz`、`fund_adj`、`fund_portfolio`、`ths_hot` 全部写入 `market_factors`；Tushare 生产配置接口从 106 增至 114，planned backlog 从 8 降至 0。 |

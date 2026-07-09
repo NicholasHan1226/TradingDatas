@@ -12,7 +12,7 @@ def _db(
     now: datetime | None = None,
     daily_age_hours: int = 1,
     event_age_hours: int = 40,
-    pm_age_hours: int = 1,
+    pm_age_hours: float = 0.1,
 ):
     path = tmp_path / "marketdata.sqlite"
     now = now or datetime.now(timezone.utc)
@@ -32,7 +32,7 @@ def _db(
 
 def test_research_event_staleness_is_notice_not_degraded(tmp_path, monkeypatch):
     now = datetime.fromisoformat("2026-07-01T04:00:00+00:00")
-    db_path = _db(tmp_path, now=now, event_age_hours=40, pm_age_hours=1)
+    db_path = _db(tmp_path, now=now, event_age_hours=40, pm_age_hours=0.1)
     monkeypatch.setenv("MARKETDATA_SQLITE", str(db_path))
 
     report = health_sla.check_sla(now=now)
@@ -53,7 +53,7 @@ def test_research_event_missing_or_empty_degrades_health(tmp_path, monkeypatch):
     conn.execute("CREATE TABLE market_pm_prices (collected_at TEXT)")
     conn.execute("INSERT INTO market_bars_daily VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -68,7 +68,7 @@ def test_research_event_missing_or_empty_degrades_health(tmp_path, monkeypatch):
 
 
 def test_trading_price_staleness_is_critical(tmp_path, monkeypatch):
-    db_path = _db(tmp_path, event_age_hours=1, pm_age_hours=8)
+    db_path = _db(tmp_path, event_age_hours=1, pm_age_hours=1)
     monkeypatch.setenv("MARKETDATA_SQLITE", str(db_path))
 
     report = health_sla.check_sla()
@@ -77,6 +77,17 @@ def test_trading_price_staleness_is_critical(tmp_path, monkeypatch):
     assert report["summary"]["critical"] == 1
     assert report["violations"][0]["table"] == "market_pm_prices"
     assert report["violations"][0]["severity"] == "critical"
+
+
+def test_prediction_market_prices_within_45_minutes_are_fresh(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-01T04:00:00+00:00")
+    db_path = _db(tmp_path, now=now, event_age_hours=1, pm_age_hours=40 / 60)
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(db_path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not [item for item in report["violations"] if item["table"] == "market_pm_prices"]
 
 
 def test_us_independence_day_observed_gap_does_not_false_alarm(tmp_path, monkeypatch):
@@ -97,7 +108,7 @@ def test_us_independence_day_observed_gap_does_not_false_alarm(tmp_path, monkeyp
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -125,7 +136,7 @@ def test_us_daily_still_critical_after_two_trading_days_lag(tmp_path, monkeypatc
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -158,7 +169,7 @@ def test_global_daily_waits_until_scheduled_collection_window(tmp_path, monkeypa
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -205,7 +216,7 @@ def test_market_factors_uses_collected_at_before_period_event_time(tmp_path, mon
     conn.execute("INSERT INTO market_bars_daily VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?, ?)", ("2026Q1", (now - timedelta(hours=1)).isoformat()))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -233,7 +244,7 @@ def test_market_bars_daily_checks_us_freshness_by_market(tmp_path, monkeypatch):
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -264,7 +275,7 @@ def test_us_daily_sla_allows_monday_before_us_session_updates(tmp_path, monkeypa
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -292,7 +303,7 @@ def test_daily_sla_allows_monday_intraday_before_eod_daily_update(tmp_path, monk
     )
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -316,7 +327,7 @@ def test_crypto_daily_stale_uses_intraday_freshness(tmp_path, monkeypatch):
     conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", (now - timedelta(minutes=10)).isoformat()))
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
@@ -325,6 +336,30 @@ def test_crypto_daily_stale_uses_intraday_freshness(tmp_path, monkeypatch):
 
     assert report["status"] == "ok"
     assert not report["violations"]
+
+
+def test_crypto_intraday_within_45_minutes_is_fresh(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-08T04:00:00+00:00")
+    path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE market_bars_daily (market TEXT, trade_date TEXT)")
+    conn.execute("CREATE TABLE market_bars_intraday (market TEXT, collected_at TEXT)")
+    conn.execute("CREATE TABLE market_events (event_time TEXT)")
+    conn.execute("CREATE TABLE market_factors (trade_date TEXT)")
+    conn.execute("CREATE TABLE market_pm_prices (updated_at TEXT)")
+    conn.execute("INSERT INTO market_bars_daily VALUES (?, ?)", ("Crypto", "20260708"))
+    conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", (now - timedelta(minutes=40)).isoformat()))
+    conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not [item for item in report["violations"] if item.get("market") == "Crypto"]
 
 
 def test_crypto_intraday_staleness_is_critical(tmp_path, monkeypatch):
@@ -340,7 +375,7 @@ def test_crypto_intraday_staleness_is_critical(tmp_path, monkeypatch):
     conn.execute("INSERT INTO market_bars_intraday VALUES (?, ?)", ("Crypto", (now - timedelta(hours=2)).isoformat()))
     conn.execute("INSERT INTO market_events VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
     conn.execute("INSERT INTO market_factors VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
-    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(hours=1)).isoformat(),))
+    conn.execute("INSERT INTO market_pm_prices VALUES (?)", ((now - timedelta(minutes=10)).isoformat(),))
     conn.commit()
     conn.close()
     monkeypatch.setenv("MARKETDATA_SQLITE", str(path))

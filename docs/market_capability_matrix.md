@@ -30,8 +30,8 @@ SharedSignals should be managed by market and data-latency need, not by provider
 | A-share hotness pilot | Tushare `ths_hot` | `/tushare` | Daily pilot | Latest collected hotness/rank factor row | Active support lane, not 5-minute data |
 | China futures daily | Tushare `fut_basic`, `fut_daily` | `/market_data`, `/tushare` | Daily settlement window | Latest futures trading day after settlement | Active |
 | China futures intraday | AkShare/Sina default; Tushare `rt_fut_min` only when explicitly enabled | `/realtime_5min?market=Futures`, `/realtime_5min?market=CNFutures` | Day/night sessions every 5 minutes | 10 minute default freshness during active session | Active |
-| Crypto | Binance ticker and 1d klines | `/crypto`, `/market_data?market=Crypto` | Ticker every 5 minutes; daily klines hourly | Intraday <= 30 minutes | Active |
-| Polymarket | Polymarket markets/prices | `/pm_markets`, `/pm_prices` | Every 5 minutes | Prices <= 30 minutes | Active |
+| Crypto | Binance ticker and 1d klines | `/crypto`, `/market_data?market=Crypto` | Ticker every 30 minutes; daily klines every 6 hours | Intraday <= 45 minutes | Active, reduced hot-path load |
+| Polymarket | Polymarket markets/prices | `/pm_markets`, `/pm_prices` | Every 30 minutes | Prices <= 45 minutes | Active, reduced hot-path load |
 | US/HK | Tushare `us_daily`, `us_basic`, `hk_daily`, `hk_basic`, HK financials | `/market_data`, `/reference`, `/tushare` | Daily around local close windows | Latest effective trading day | Active but daily |
 | Macro/global | Tushare macro, rates, FX, global indices, repo | `/macro`, `/market_data`, `/tushare` | Daily / low-frequency | Latest expected macro period or trading day | Active, not intraday |
 | ETF/fund/convertible bond/options | Tushare `etf_basic`, `fund_basic`, `fund_daily`, `fund_nav`, `fund_adj`, `fund_portfolio`, `fund_share`, `fund_div`, `cb_daily`, `cb_basic`, `cb_issue`, `opt_basic`, `opt_daily` | `/reference`, `/market_data`, `/tushare` | Daily / reporting windows | Latest trading day or latest fund/NAV/reference/reporting date | Active as support data |
@@ -64,13 +64,23 @@ New provider interfaces should be promoted only after this checklist is satisfie
 | Data class | Recommended cadence | Reason |
 | --- | --- | --- |
 | Trading-session prices | 5 minutes or faster only when a proven collector supports it | Trading decisions need fresh bars, but collection must not block other lanes |
-| Prediction market / crypto prices | 5 minutes | 24/7 market freshness is useful and current collectors support it |
+| Prediction market / crypto prices | 30 minutes by default | Useful for research and slower trading workflows, but should not compete with A-share/Futures 5-minute write paths on the current server |
 | Daily market bars | Post-close daily | Intraday polling does not improve final EOD data |
 | Fundamentals and financial statements | Daily or after reporting windows | Provider data updates by filing/reporting cycle |
 | Macro and rates | Daily / low-frequency | Most series do not update intraday |
 | Reference data | Daily or slower | Symbols, concepts, calendars, and metadata rarely need intraday refresh |
 | News and announcements | Separate event lane; not mixed into P6 daily if trading/event risk depends on it | Event freshness has different dedup, source, and alert requirements |
 | DuckDB mirror | Hourly or slower | Analytics mirror must not compete with 5-minute trading reads |
+
+## Server Load Policy
+
+The current production host can support the active SharedSignals cadence when hot paths are separated. It should not run every source at 5-minute frequency.
+
+- Keep A-share P0 and China futures intraday on 5-minute schedules because they feed minute-level trading workflows.
+- Keep Crypto and Polymarket on 30-minute schedules unless a stronger storage/write-queue layer is introduced.
+- Keep DuckDB mirror and capability scan outside 09:00-15:59 China trading hours.
+- Run patrol and health SLA on staggered minutes so they do not start on the same minute as market-data writers.
+- New data sources must declare market, cadence, freshness SLA, write path, API endpoint, degraded behavior, and expected write cost before production scheduling.
 
 ## News And Announcement Lane
 
