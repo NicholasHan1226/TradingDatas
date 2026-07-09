@@ -470,9 +470,10 @@ def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) 
 
     assert status == 200
     assert payload["source"] == "external_agent_api_config.json"
-    assert payload["data"]["contract_version"] == "1.1.23"
+    assert payload["data"]["contract_version"] == "1.1.24"
     assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 115
-    assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 12
+    assert payload["data"]["tushare_status"]["configured_in_production_tiers"] == 106
+    assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 8
     assert payload["metadata"]["degraded"] is False
     assert payload["metadata"]["lineage"]["source"] == "config/external_agent_api_config.json"
 

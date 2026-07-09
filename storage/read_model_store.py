@@ -157,6 +157,10 @@ API_TO_TABLE_MAP = {
     "top10_holders": "market_assets",
     "top_inst": "market_assets",
     "trade_cal": "market_assets",
+    "ths_daily": "market_bars_daily",
+    "dc_daily": "market_bars_daily",
+    "opt_daily": "market_bars_daily",
+    "fut_holding": "market_factors",
     "us_basic": "market_assets",
     "us_daily": "market_bars_daily",
     "weekly": "market_bars_intraday",
@@ -203,6 +207,8 @@ def _market_for(api_name, symbol):
         "dc_member",
         "index_member",
         "index_member_all",
+        "ths_daily",
+        "dc_daily",
     ):
         return "Ashare"
     if api_name in ("hk_daily", "hk_basic"):
@@ -211,13 +217,13 @@ def _market_for(api_name, symbol):
         return "US"
     if api_name == "index_global":
         return "Global"
-    if api_name in ("fut_basic", "fut_daily", "rt_fut_min"):
+    if api_name in ("fut_basic", "fut_daily", "fut_holding", "rt_fut_min"):
         return "Futures"
     if api_name in ("ft_limit",):
         return "Futures"
     if api_name in ("fund_share", "fund_div"):
         return "Fund"
-    if api_name in ("opt_basic",):
+    if api_name in ("opt_basic", "opt_daily"):
         return "Options"
     if api_name == "etf_basic":
         return "ETF"

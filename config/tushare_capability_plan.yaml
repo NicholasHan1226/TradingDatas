@@ -89,12 +89,12 @@ modules:
       - {api_name: concept, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: concept_detail, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: hs_const, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: ths_daily, mode: planned, cadence: daily_reference}
+      - {api_name: ths_daily, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: ths_hot, mode: planned, cadence: intraday_or_daily_pilot}
       - {api_name: dc_index, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: dc_daily, mode: planned, cadence: postclose_daily}
+      - {api_name: dc_daily, mode: scheduled, tier: P3_reference_daily, cadence: postclose_daily}
       - {api_name: dc_member, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
 
   - module: index_global_and_macro
@@ -146,7 +146,7 @@ modules:
       - {api_name: fut_basic, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
       - {api_name: fut_daily, mode: scheduled, tier: P6_other_daily, cadence: futures_settlement_daily}
       - {api_name: rt_fut_min, mode: independent, cadence: futures_session_5min}
-      - {api_name: fut_holding, mode: planned, cadence: futures_settlement_daily}
+      - {api_name: fut_holding, mode: scheduled, tier: P6_other_daily, cadence: futures_settlement_daily}
       - {api_name: ft_limit, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
 
   - module: funds_etf_convertible_bonds_options
@@ -165,7 +165,7 @@ modules:
       - {api_name: cb_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
       - {api_name: cb_issue, mode: scheduled, tier: P6_other_daily, cadence: daily_reference}
       - {api_name: opt_basic, mode: scheduled, tier: P3_reference_daily, cadence: daily_reference}
-      - {api_name: opt_daily, mode: planned, cadence: postclose_daily}
+      - {api_name: opt_daily, mode: scheduled, tier: P6_other_daily, cadence: postclose_daily}
 
   - module: event_news_announcements_reports
     market: Events

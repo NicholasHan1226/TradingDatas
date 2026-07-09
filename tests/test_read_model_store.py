@@ -675,6 +675,48 @@ def test_relationship_member_apis_ingest_to_market_relationships(tmp_path: Path)
     assert ("tushare_ths_member", "ths_member", "Ashare", "885001.TI", "000001.SZ", "平安银行", 1.5) in rows
 
 
+def test_b2_daily_supporting_apis_ingest_to_read_model_tables(tmp_path: Path):
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    samples = {
+        "ths_daily": [{"ts_code": "885001.TI", "trade_date": "20260709", "open": 100, "high": 105, "low": 99, "close": 103, "vol": 12345, "amount": 67890}],
+        "dc_daily": [{"ts_code": "BK0420.DC", "trade_date": "20260709", "open": 200, "high": 210, "low": 198, "close": 205, "vol": 22345, "amount": 77890}],
+        "opt_daily": [{"ts_code": "10000001.SH", "trade_date": "20260709", "open": 1.2, "high": 1.5, "low": 1.0, "close": 1.4, "vol": 1000, "amount": 1400}],
+        "fut_holding": [{"symbol": "RB2601.SHF", "trade_date": "20260709", "broker": "期货公司A", "vol": 100, "long_hld": 200, "short_hld": 150}],
+    }
+
+    for api_name, rows in samples.items():
+        table = API_TO_TABLE_MAP[api_name]
+        assert ingest_rows_to_sqlite(db_path, table, api_name, rows, source_name=f"{api_name}_test") > 0
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        bars = conn.execute(
+            """
+            SELECT market, symbol, trade_date, close, volume, provider
+            FROM market_bars_daily
+            WHERE provider IN ('tushare_ths_daily', 'tushare_dc_daily', 'tushare_opt_daily')
+            ORDER BY provider
+            """
+        ).fetchall()
+        factors = conn.execute(
+            """
+            SELECT market, symbol, factor_name, event_time, value, provider
+            FROM market_factors
+            WHERE provider = 'tushare_fut_holding'
+            ORDER BY factor_name
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert ("Ashare", "885001.TI", "20260709", 103.0, 12345.0, "tushare_ths_daily") in bars
+    assert ("Ashare", "BK0420.DC", "20260709", 205.0, 22345.0, "tushare_dc_daily") in bars
+    assert ("Options", "10000001.SH", "20260709", 1.4, 1000.0, "tushare_opt_daily") in bars
+    assert ("Futures", "RB2601.SHF", "fut_holding:long_hld", "20260709", 200.0, "tushare_fut_holding") in factors
+
+
 def test_monthly_macro_factor_uses_month_as_event_time(tmp_path: Path):
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

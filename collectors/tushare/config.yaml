@@ -297,6 +297,18 @@ priorities:
       ts_code: ''
     per_stock: false
     fields: ts_code,name,con_code,con_name,weight,in_date,out_date
+  - api_name: ths_daily
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: ts_code,trade_date,open,high,low,close,pre_close,avg_price,change,pct_change,vol,turnover_rate,total_mv,float_mv
+  - api_name: dc_daily
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: ts_code,trade_date,open,high,low,close,pre_close,avg_price,change,pct_change,vol,turnover_rate,total_mv,float_mv
   - api_name: index_classify
     frequency: daily
     params:
@@ -517,6 +529,12 @@ priorities:
   - api_name: fut_basic
     per_stock: false
     fields: ts_code,name,exchange,list_date,last_ddate,delist_date
+  - api_name: fut_holding
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: trade_date,symbol,broker,vol,vol_chg,long_hld,long_chg,short_hld,short_chg,exchange
   - api_name: fund_nav
     per_stock: false
     fields: ts_code,ann_date,nav_value,accum_nav
@@ -543,6 +561,12 @@ priorities:
       start_date: '{start_date}'
     per_stock: false
     fields: ts_code,ann_date,res_ann_date,plan_issue_size,issue_size,issue_price,issue_type,onl_code,onl_name,onl_date,onl_size
+  - api_name: opt_daily
+    frequency: daily
+    params:
+      trade_date: '{trade_date}'
+    per_stock: false
+    fields: ts_code,trade_date,open,high,low,close,settle,pre_settle,pre_close,vol,amount,oi
   - api_name: ft_limit
     frequency: daily
     params:
