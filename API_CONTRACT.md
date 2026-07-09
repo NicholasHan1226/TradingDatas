@@ -183,7 +183,7 @@ CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `event_hash` | TEXT PK | 事件唯一哈希 |
-| `provider` | TEXT | 来源 (rss / tavily / agents) |
+| `provider` | TEXT | 来源，例如 `tushare_news`、`tushare_anns_d`、`tushare_report_rc`；RSS/Tavily/agent 文件源不是现役生产 collector |
 | `event_type` | TEXT | 事件类型 |
 | `event_time` | TEXT | 事件时间 |
 | `market` | TEXT | 相关市场 |
@@ -297,7 +297,7 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `provider` | `str` | `""` | 来源: `rss` / `tavily` / `agents` |
+| `provider` | `str` | `""` | 来源过滤，例如 `tushare_news`、`tushare_anns_d`、`tushare_report_rc`；RSS/Tavily/agent 文件源不是现役生产 collector |
 | `event_type` | `str` | `""` | 事件类型 |
 | `market` | `str` | `""` | 过滤市场，如 `Ashare`、`US`、`Futures` |
 | `symbol` | `str` | `""` | 过滤标的代码 |
@@ -310,8 +310,8 @@ rows = read_intraday("Ashare", symbol="600519.SH", trade_date="20260630", interv
 ```python
 from marketgraph_marketdata_db import read_events
 
-# 最近 100 条新闻/公告事件（事件采集当前由 Tushare news/announcements 提供；RSS/RSSHub 已退役，恢复前需按 SharedSignals collector 重新接入）
-events = read_events(provider="rss", limit=100)
+# 最近 100 条新闻/公告事件（事件采集当前由 Tushare event lane 提供；RSS/RSSHub 已退役，恢复前需按 SharedSignals collector 重新接入）
+events = read_events(provider="tushare_news", limit=100)
 ```
 
 ---
