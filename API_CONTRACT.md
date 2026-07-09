@@ -217,7 +217,7 @@ SEC EDGAR pilot rows use `market="US"` and `symbol="CIK##########"`; for example
 
 低频宏观接口（`cn_cpi`、`cn_pmi`、`cn_m`、`cn_ppi`、`cn_gdp`、`sf_month`、`shibor`、`shibor_lpr`、`us_tycr`、`us_tbr`、`us_tltr`、`repo_daily`）由 P4/P6 定时采集直接写入 read model，再展开为 `market_factors`；CSV 仅作为 staging/历史迁移材料。A股 `moneyflow` 是盘后日频资金流，按 P1 全市场采集后展开为 `moneyflow:*` 因子；盘中 5 分钟交易不依赖当天 `moneyflow` 即时更新。月度/季度字段只作为 `event_time`，不作为数值因子。
 
-SEC EDGAR `companyfacts` 手动 pilot 写入 `market_factors`，provider 为 `sec_edgar_companyfacts`，symbol 使用 `CIK##########`，factor_name 形如 `sec_edgar_companyfacts:Assets`、`sec_edgar_companyfacts:Revenues`。该模式只采集显式 allowlist 概念，不批量导入全部 XBRL facts；通过 `/fundamentals?ts_code=CIK0000320193&limit=20` 读取。
+SEC EDGAR `companyfacts` 手动 pilot 写入 `market_factors`，provider 为 `sec_edgar_companyfacts`，symbol 使用 `CIK##########`，factor_name 形如 `sec_edgar_companyfacts:Assets`、`sec_edgar_companyfacts:RevenueFromContractWithCustomerExcludingAssessedTax`。该模式只采集显式 allowlist 概念，不批量导入全部 XBRL facts；通过 `/fundamentals?ts_code=CIK0000320193&limit=20` 读取。
 
 #### market_coverage_status (覆盖状态)
 

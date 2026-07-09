@@ -34,7 +34,7 @@ DEFAULT_COMPANY_FACT_CONCEPTS = (
     "Assets",
     "Liabilities",
     "StockholdersEquity",
-    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
     "NetIncomeLoss",
     "EarningsPerShareDiluted",
     "NetCashProvidedByUsedInOperatingActivities",

@@ -99,7 +99,7 @@ SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
   ./.venv/bin/python3 collectors/events/sec_edgar_filings.py \
   --mode companyfacts \
   --ciks 0000320193,0000789019 \
-  --concepts Assets,Revenues,NetIncomeLoss,EarningsPerShareDiluted \
+  --concepts Assets,RevenueFromContractWithCustomerExcludingAssessedTax,NetIncomeLoss,EarningsPerShareDiluted \
   --limit-per-cik 2 \
   --dry-run
 ```
