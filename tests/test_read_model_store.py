@@ -588,7 +588,7 @@ def test_first_batch_planned_api_rows_ingest_to_sqlite(tmp_path: Path):
         "fund_share": [{"ts_code": "000001.OF", "trade_date": "20260709", "fd_share": 123.4}],
         "ft_limit": [{"ts_code": "IF2607.CFE", "trade_date": "20260709", "up_limit": 4100, "down_limit": 3900}],
         "weekly": [{"ts_code": "000001.SZ", "trade_date": "20260703", "open": 10, "close": 11}],
-        "index_weekly": [{"ts_code": "000001.SH", "trade_date": "20260703", "open": 4000, "close": 4050}],
+        "index_weekly": [{"ts_code": "H11001", "trade_date": "20260703", "open": 4000, "close": 4050}],
     }
 
     for api_name, rows in samples.items():

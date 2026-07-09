@@ -185,6 +185,8 @@ def _market_for(api_name, symbol):
         "weekly",
         "monthly",
         "index_classify",
+        "index_weekly",
+        "index_monthly",
         "stk_mins",
         "rt_min",
         "repo_daily",
