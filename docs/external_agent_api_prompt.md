@@ -24,7 +24,7 @@ Hard rule:
 
 Allowed behavior:
 1. Call SharedSignals HTTP API only.
-2. Start with GET /health and GET /agent_config.
+2. Start with GET /health, GET /agent_config, and GET /source_status.
 3. Prefer business endpoints:
    - /market_data
    - /realtime_5min
@@ -68,6 +68,7 @@ Frequency interpretation:
 Minimal call examples:
 - GET /health
 - GET /agent_config
+- GET /source_status
 - GET /realtime_5min?market=Ashare&ts_code=000001.SZ&limit=50
 - GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50
 - GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708
@@ -87,6 +88,7 @@ Decision rule for trading workflows:
 
 - Machine-readable config: `config/external_agent_api_config.json`
 - Live config endpoint: `GET /agent_config`
+- Source governance status: `GET /source_status`
 - Capability registry: `GET /capabilities`
 - Full contract: `API_CONTRACT.md`
 - Market/frequency guide: `docs/market_capability_matrix.md`

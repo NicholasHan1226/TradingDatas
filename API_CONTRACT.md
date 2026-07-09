@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.30 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.31 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -45,6 +45,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 | `GET /health` | `health` | 服务、cron、SLA 和 read model 健康状态 |
 | `GET /capabilities` | `health` | 返回当前 API/read-model 能力登记；能力登记缺失时返回 degraded fallback，帮助消费者发现可用端点 |
 | `GET /agent_config` | `health` | 返回外部 agent 接入机器配置、频率标签、禁止绕过规则和推荐调用端点 |
+| `GET /source_status` | `health` | 返回数据源治理 green/yellow/red 状态，检查接口纳管、调度重复、SLA 和能力 registry |
 | `GET /cache/status` | `health` | 返回 API 进程内 cache generation、TTL、容量、条目数和鉴权去重缓存摘要 |
 | `GET/POST /cache/invalidate` | `health` | 清理 API 进程内缓存；仅影响 API cache，不删除 read model 数据 |
 | `GET /market_data` | `market_data` | 日线/分钟行情，只读 SQLite read model |
@@ -570,14 +571,14 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 调用时必须：
 
-1. 先读取 `/health` 与 `/agent_config`，确认服务健康、接入规则、频率标签和禁止绕过边界。
+1. 先读取 `/health`、`/agent_config` 与 `/source_status`，确认服务健康、接入规则、频率标签、接口纳管状态和禁止绕过边界。
 2. 优先使用业务端点：`/market_data`、`/realtime_5min`、`/events`、`/fundamentals`、`/macro`、`/pm_markets`、`/pm_prices`。
 3. 需要 Tushare 原生维度时使用 `/tushare?api_name=...&limit=...`；该接口仍然只读数据库，不现场调用 Tushare。
 4. 每次读取都检查 `metadata.degraded`、`metadata.degraded_reasons`、`freshness`、`provenance.source_id`、行内 `trade_date/event_time/collected_at`。
 5. 按市场和频率理解数据：A股/期货保留 5 分钟交易输入；Crypto/PM 当前是 30 分钟供数；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 21 个可发现路径，并用 `cadence_class` 区分交易、研究、delegated projection 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 22 个可发现路径，并用 `cadence_class` 区分交易、研究、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
 
@@ -822,6 +823,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-09 | 1.1.31 | 新增 `/source_status` 与 `tools/source_governance_monitor.py`，按 green/yellow/red 输出接口纳管、调度重复、SLA 和能力 registry 治理状态；外部 agent 配置扩展到 22 个 HTTP 路径。 |
 | 2026-07-09 | 1.1.30 | 事件 lane 增加 `news/major_news` 15 分钟 supplemental pilot，公告/研报/CCTV 仍保持 30 分钟 full event lane；明确 `market_factors` 是事实型 read-model 输出，TradingAgent 负责交易因子提取、打分和决策。 |
 | 2026-07-09 | 1.1.29 | 补齐外部 agent 机器配置的完整 21 个 HTTP 路径，新增 `docs/event_lane.md` 与 `docs/data_source_onboarding.md`，明确事件 lane 和未来数据源接入治理规则；P6 生产配置接口补齐 frequency 声明。 |
 | 2026-07-09 | 1.1.28 | 生产热路径降载：Crypto ticker 与 Polymarket markets/prices 从 5 分钟改为 30 分钟，Crypto 1d support bars 改为 6 小时；DuckDB mirror 与 capability scan 避开 09:00-15:59 中国交易高峰，patrol/health_sla 改为错峰运行。 |

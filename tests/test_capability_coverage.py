@@ -261,6 +261,7 @@ def test_production_cron_declares_required_collection_and_health_cadence() -> No
         "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
         "12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
         "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
+        "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
         "17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh",
         "52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
     }
@@ -345,7 +346,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.30"
+    assert config["contract_version"] == "1.1.31"
     assert config["market_frequency_labels"]["Crypto"] == "30min ticker/intraday and 6-hour daily-bar support refresh"
     assert config["market_frequency_labels"]["PredictionMarkets"] == "30min markets/prices"
     assert config["market_frequency_labels"]["Events"] == "30min full event lane plus 15min news/major_news pilot refresh"
@@ -362,6 +363,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
         "/health",
         "/capabilities",
         "/agent_config",
+        "/source_status",
         "/cache/status",
         "/cache/invalidate",
         "/market_data",

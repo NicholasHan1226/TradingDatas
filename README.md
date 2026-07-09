@@ -51,7 +51,7 @@
 - `/events`、`/fundamentals`、`/macro`、`/tushare` 等大表接口必须把 `limit` 下推到数据库查询。
 - SQLite read model 只读查询设置短 busy timeout 和查询超时；超时返回 degraded 元数据，不回退旧 CSV/旧目录。
 - 外部应用通过 SharedSignals HTTP API 读取数据；TradingAgent、MarketGraph 和外部 agent 不直接调用 provider 或旧目录。
-- 外部 agent 接入先读 `/health` 与 `/agent_config`；复制用 prompt 见 `docs/external_agent_api_prompt.md`，机器配置见 `config/external_agent_api_config.json`。
+- 外部 agent 接入先读 `/health`、`/agent_config` 与 `/source_status`；复制用 prompt 见 `docs/external_agent_api_prompt.md`，机器配置见 `config/external_agent_api_config.json`。
 - 事件 lane 说明见 `docs/event_lane.md`；新增数据源接入规则见 `docs/data_source_onboarding.md`。
 
 ## 服务器

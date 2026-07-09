@@ -36,7 +36,7 @@ Before expanding the pilot, prove provider latency, dedup ratio, SQLite write co
 
 Consumers must:
 
-1. Read `/health` and `/agent_config` before using event rows.
+1. Read `/health`, `/agent_config`, and `/source_status` before using event rows.
 2. Read `/events` for news, announcements, reports, and event rows.
 3. Treat `/sentiment` as a derived event projection that may be degraded or empty until a sentiment source is explicitly enabled.
 4. Check `metadata.degraded`, `metadata.degraded_reasons`, `metadata.freshness`, row `event_time`, row `collected_at`, and `provenance.source_id`.

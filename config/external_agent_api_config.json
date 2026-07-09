@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.30",
+  "contract_version": "1.1.31",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -54,6 +54,12 @@
       "scope": "health",
       "cadence_class": "integration_contract",
       "use": "Fetch this external-agent integration contract."
+    },
+    {
+      "path": "/source_status",
+      "scope": "health",
+      "cadence_class": "source_governance",
+      "use": "Read green/yellow/red source governance status before relying on market data."
     },
     {
       "path": "/cache/status",

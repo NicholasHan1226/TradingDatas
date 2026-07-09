@@ -504,6 +504,23 @@ class Handler(BaseHTTPRequestHandler):
             }
             return wrap_response(payload, metadata, source)
 
+        if path == "/source_status":
+            from tools.source_governance_monitor import build_source_governance_report
+
+            payload = build_source_governance_report()
+            metadata = {
+                "freshness": None,
+                "quality": {"score": 1.0 if payload.get("status") == "green" else 0.75},
+                "degraded": payload.get("status") != "green",
+                "degraded_reasons": [
+                    check["name"]
+                    for check in payload.get("checks", [])
+                    if check.get("status") in {"yellow", "red"}
+                ],
+                "lineage": {"source": "tools/source_governance_monitor.py"},
+            }
+            return wrap_response(payload, metadata, "source_governance_monitor")
+
         if path == "/market_data":
             ts_code = params.get("ts_code", "").strip()
             if not ts_code:

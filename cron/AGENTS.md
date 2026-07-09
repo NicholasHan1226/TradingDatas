@@ -18,7 +18,7 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 - `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
   not the trading read path; keep it off 5-minute cadence unless the merge is
   incremental and load-tested.
-- `patrol.sh`, `health_sla.sh`, `watchdog.sh`: health checks and bounded self-heal loop.
+- `patrol.sh`, `health_sla.sh`, `source_governance_monitor.sh`, `watchdog.sh`: health checks, source governance status, and bounded self-heal loop.
 - `capability_scan.sh`: API capability registry refresh.
 
 ## Environment surface
