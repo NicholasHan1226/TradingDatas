@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.34",
+  "contract_version": "1.1.35",
   "base_url": "http://127.0.0.1:8082",
   "production_host_note": "Production currently listens on localhost behind the SharedSignals server boundary. External accounts must use the approved proxy/domain and API token/JWT configured by the operator.",
   "boundary": {
@@ -25,7 +25,9 @@
       "X-API-Key: <token>"
     ],
     "required_for_external_accounts": true,
-    "localhost_bypass_only_when_explicitly_enabled": true
+    "localhost_bypass_only_when_explicitly_enabled": true,
+    "external_read_scope": "Full SharedSignals data read surface including /tushare read-model output. Excludes /cache/invalidate, provider keys, file/database access, and production writes.",
+    "forwarded_external_requests_require_auth": true
   },
   "required_response_checks": [
     "metadata.degraded",
