@@ -31,6 +31,7 @@ from storage.storage_adapter import StorageAdapter
 logger = logging.getLogger("duckdb_merge")
 LOG_DIR = _THIS / "logs"
 MERGE_LOG = LOG_DIR / "duckdb_merge.jsonl"
+STATUS_PATH = Path(os.environ.get("WATCHDOG_INPUT_DIR", LOG_DIR / "watchdog_inputs")) / "duckdb_sync.json"
 
 
 def utc_now() -> str:
@@ -50,6 +51,10 @@ def record_result(result: dict) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     with open(MERGE_LOG, "a") as f:
         f.write(json.dumps(result, ensure_ascii=False) + "\n")
+    STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = STATUS_PATH.with_suffix(f".{os.getpid()}.tmp")
+    temp.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp.replace(STATUS_PATH)
 
 
 def run_merge(
@@ -86,6 +91,11 @@ def run_merge(
             counts = adapter.sync_all_to_duckdb()
             result["results"] = counts
             result["total_rows"] = sum(v for v in counts.values() if v > 0)
+            failed_tables = sorted(table_name for table_name, count in counts.items() if count < 0)
+            if failed_tables:
+                result["status"] = "error"
+                result["failed_tables"] = failed_tables
+                result["error"] = "DuckDB sync failed for: " + ", ".join(failed_tables)
     except Exception as exc:
         logger.exception("merge failed")
         result["status"] = "error"

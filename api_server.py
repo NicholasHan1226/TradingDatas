@@ -34,6 +34,7 @@ CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 AGENT_CONFIG_PATH = ROOT / "config" / "external_agent_api_config.json"
 HEALTH_CACHE_SECONDS = 60
 HEALTH_DEEP_CHECKS_ENV = "SHAREDSIGNALS_HEALTH_DEEP_CHECKS"
+LIVE_CONTROL_PLANE_ENDPOINTS = {"/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status"}
 
 
 def _ensure_runtime_loaded() -> None:
@@ -377,10 +378,11 @@ class Handler(BaseHTTPRequestHandler):
         if not auth.check_endpoint_scope(account, path):
             return self._error(403, f"scope does not grant access to {path}")
 
-        fingerprint = auth.request_fingerprint(path, params)
-        cached = auth.get_cached_response(fingerprint)
-        if cached is not None:
-            return self._send_json(cached)
+        fingerprint = None if path in LIVE_CONTROL_PLANE_ENDPOINTS else auth.request_fingerprint(path, params)
+        if fingerprint is not None:
+            cached = auth.get_cached_response(fingerprint)
+            if cached is not None:
+                return self._send_json(cached)
 
         try:
             auth.enforce_rate_limit(account["tenant_id"], account["tier"])
@@ -416,7 +418,8 @@ class Handler(BaseHTTPRequestHandler):
             if concurrency_claimed and release_concurrency is not None:
                 release_concurrency(account["tenant_id"])
 
-        auth.store_cached_response(fingerprint, response)
+        if fingerprint is not None:
+            auth.store_cached_response(fingerprint, response)
         self._send_json(response)
 
     def _dispatch(self, path: str, params: dict[str, str]) -> dict[str, Any]:

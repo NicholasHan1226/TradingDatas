@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
@@ -34,9 +35,17 @@ def _date_key(value: Any) -> str:
 
 
 def _bar_minutes(value: Any) -> int | None:
-    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
-    if len(digits) >= 12:
-        digits = digits[-4:]
+    text = str(value or "").strip()
+    clock_matches = re.findall(r"(?:^|[T\s])(\d{1,2}):(\d{2})(?::\d{2})?", text)
+    if clock_matches:
+        hour, minute = (int(part) for part in clock_matches[-1])
+        return hour * 60 + minute if hour <= 23 and minute <= 59 else None
+
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 14:
+        digits = digits[-6:-2]
+    elif len(digits) == 6:
+        digits = digits[:4]
     elif len(digits) >= 4:
         digits = digits[-4:]
     else:

@@ -194,3 +194,20 @@ def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
     assert "依据：green 检查 7 项，yellow 0 项，red 0 项" in summary
     assert "风险：无直接阻断" in summary
     assert "下一步：保持当前采集频率" in summary
+
+
+def test_source_governance_reports_runtime_control_failures() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        opening_gate_report={"status": "red", "gate": "closed", "phase": "morning_first_sample"},
+        duckdb_sync_report={"status": "error", "failed_tables": ["market_events"]},
+    )
+
+    assert report["status"] == "red"
+    red_checks = {check["name"] for check in report["checks"] if check["status"] == "red"}
+    assert {"opening_gate", "duckdb_sync"} <= red_checks

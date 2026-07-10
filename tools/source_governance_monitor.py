@@ -23,6 +23,8 @@ API_MODULE_CATALOG_PATH = ROOT / "config" / "api_module_catalog.yaml"
 SOURCE_EXPANSION_PRIORITY_PATH = ROOT / "config" / "source_expansion_priority.yaml"
 CAPABILITY_REGISTRY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_SLA_PATH = ROOT / "logs" / "watchdog_inputs" / "health_sla.json"
+OPENING_GATE_PATH = ROOT / "logs" / "watchdog_inputs" / "opening_gate.json"
+DUCKDB_SYNC_PATH = ROOT / "logs" / "watchdog_inputs" / "duckdb_sync.json"
 CRONTAB_PATH = ROOT / "crontab.txt"
 DEFAULT_OUTPUT_PATH = ROOT / "logs" / "watchdog_inputs" / "source_governance.json"
 
@@ -362,6 +364,21 @@ def _evaluate_capability_registry(capability_registry: dict[str, Any] | None) ->
     )
 
 
+def _evaluate_runtime_report(name: str, report: dict[str, Any] | None, healthy_status: str) -> dict[str, Any]:
+    if not isinstance(report, dict) or not report:
+        return _check(name, "red", f"{name} report is missing")
+    raw_status = str(report.get("status") or "missing")
+    status = "green" if raw_status == healthy_status else "red"
+    return _check(
+        name,
+        status,
+        f"{name} is healthy" if status == "green" else f"{name} requires operator attention",
+        runtime_status=raw_status,
+        phase=report.get("phase"),
+        failed_tables=report.get("failed_tables") or [],
+    )
+
+
 def evaluate_source_governance(
     *,
     agent_config: dict[str, Any],
@@ -370,6 +387,8 @@ def evaluate_source_governance(
     source_expansion_plan: dict[str, Any] | None = None,
     health_sla_report: dict[str, Any] | None = None,
     capability_registry: dict[str, Any] | None = None,
+    opening_gate_report: dict[str, Any] | None = None,
+    duckdb_sync_report: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     checks = []
@@ -385,6 +404,10 @@ def evaluate_source_governance(
     checks.append(_evaluate_cron(crontab_text))
     checks.append(_evaluate_health_sla(health_sla_report))
     checks.append(_evaluate_capability_registry(capability_registry))
+    if opening_gate_report is not None:
+        checks.append(_evaluate_runtime_report("opening_gate", opening_gate_report, "green"))
+    if duckdb_sync_report is not None:
+        checks.append(_evaluate_runtime_report("duckdb_sync", duckdb_sync_report, "ok"))
     status = _overall(checks)
     tushare = agent_config.get("tushare_status") or {}
     endpoints = _endpoint_paths(agent_config)
@@ -409,6 +432,8 @@ def evaluate_source_governance(
             "crontab": str(CRONTAB_PATH),
             "health_sla": str(HEALTH_SLA_PATH),
             "capability_registry": str(CAPABILITY_REGISTRY_PATH),
+            "opening_gate": str(OPENING_GATE_PATH),
+            "duckdb_sync": str(DUCKDB_SYNC_PATH),
         },
     }
 
@@ -461,6 +486,8 @@ def build_source_governance_report() -> dict[str, Any]:
     source_expansion_plan = _yaml_file(SOURCE_EXPANSION_PRIORITY_PATH, {})
     capability_registry = _json_file(CAPABILITY_REGISTRY_PATH, {})
     health_sla_report = _json_file(HEALTH_SLA_PATH, {})
+    opening_gate_report = _json_file(OPENING_GATE_PATH, {})
+    duckdb_sync_report = _json_file(DUCKDB_SYNC_PATH, {})
     crontab_text = CRONTAB_PATH.read_text(encoding="utf-8", errors="replace") if CRONTAB_PATH.exists() else ""
     return evaluate_source_governance(
         agent_config=agent_config,
@@ -469,6 +496,8 @@ def build_source_governance_report() -> dict[str, Any]:
         source_expansion_plan=source_expansion_plan,
         health_sla_report=health_sla_report,
         capability_registry=capability_registry,
+        opening_gate_report=opening_gate_report,
+        duckdb_sync_report=duckdb_sync_report,
     )
 
 

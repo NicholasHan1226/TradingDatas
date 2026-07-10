@@ -1,10 +1,10 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.37",
+  "contract_version": "1.1.38",
   "base_url": "https://signals.tradingagent.cc",
   "local_base_url": "http://127.0.0.1:8082",
-  "access_status": "live_cloudflare_route",
-  "production_host_note": "Production listens on localhost behind the SharedSignals server boundary. The external hostname https://signals.tradingagent.cc is routed through Cloudflare Tunnel to the SharedSignals origin and still requires SharedSignals API token auth.",
+  "access_status": "live_cloudflare_proxied_origin",
+  "production_host_note": "Production listens on localhost behind the SharedSignals server boundary. Cloudflare proxied DNS points https://signals.tradingagent.cc to the server Nginx origin, which proxies to 127.0.0.1:8082. SharedSignals token auth remains mandatory.",
   "boundary": {
     "role": "Read-only trading data supply layer for minute and 5-minute workflows.",
     "not_supported": [

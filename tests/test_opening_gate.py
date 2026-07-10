@@ -53,6 +53,46 @@ def test_first_sample_gate_opens_for_recent_today_a_share_bar() -> None:
     assert result["checks"]["a_share_intraday"]["sample_count"] == 1
 
 
+def test_first_sample_gate_opens_for_sql_datetime_bar_time() -> None:
+    result = evaluate_phase(
+        "morning_first_sample",
+        now=datetime(2026, 7, 10, 1, 35, tzinfo=timezone.utc),
+        db_ready=True,
+        health_sla_ready=True,
+        intraday_rows=[
+            {
+                "market": "Ashare",
+                "trade_date": "20260710",
+                "bar_time": "2026-07-10 09:30:00",
+                "collected_at": "2026-07-10T01:34:00+00:00",
+            }
+        ],
+    )
+
+    assert result["status"] == "green"
+    assert result["checks"]["a_share_intraday"]["sample_count"] == 1
+
+
+def test_first_sample_gate_opens_for_clock_with_seconds() -> None:
+    result = evaluate_phase(
+        "morning_first_sample",
+        now=datetime(2026, 7, 10, 1, 35, tzinfo=timezone.utc),
+        db_ready=True,
+        health_sla_ready=True,
+        intraday_rows=[
+            {
+                "market": "Ashare",
+                "trade_date": "20260710",
+                "bar_time": "09:30:00",
+                "collected_at": "2026-07-10T01:34:00+00:00",
+            }
+        ],
+    )
+
+    assert result["status"] == "green"
+    assert result["checks"]["a_share_intraday"]["sample_count"] == 1
+
+
 def test_preopen_gate_is_yellow_when_sla_artifact_is_missing() -> None:
     result = evaluate_phase(
         "preopen",

@@ -52,6 +52,7 @@ def get_health_status(
     check_data_freshness: bool = True,
     check_cron: bool = True,
     check_sla: bool = True,
+    check_runtime_controls: bool = True,
     check_arch: bool = True,
     check_compile: bool = True,
 ) -> dict[str, Any]:
@@ -110,7 +111,17 @@ def get_health_status(
             checks["sla"] = {"status": "error", "message": str(exc)}
             overall = _worse(overall, "error")
 
-    # 5. Architecture compliance -------------------------------------------
+    # 5. Opening gate and analytics mirror ---------------------------------
+    if check_runtime_controls:
+        try:
+            runtime_controls = _load_runtime_control_reports()
+            checks["runtime_controls"] = runtime_controls
+            overall = _worse(overall, runtime_controls["status"])
+        except Exception as exc:
+            checks["runtime_controls"] = {"status": "error", "message": str(exc)}
+            overall = _worse(overall, "error")
+
+    # 6. Architecture compliance -------------------------------------------
     if check_arch:
         try:
             arch = _check_architecture()
@@ -120,7 +131,7 @@ def get_health_status(
             checks["architecture"] = {"status": "error", "message": str(exc)}
             overall = _worse(overall, "error")
 
-    # 6. Compile -----------------------------------------------------------
+    # 7. Compile -----------------------------------------------------------
     if check_compile:
         try:
             comp = _check_compile()
@@ -187,6 +198,38 @@ def _load_health_sla_report() -> dict[str, Any]:
     if not isinstance(raw, dict) or "summary" not in raw:
         return _normalize_sla_report({"status": "invalid", "message": "health_sla report is not a valid SLA payload"}, path=path)
     return _normalize_sla_report(raw, path=path)
+
+
+def _load_json_report(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"status": "degraded", "message": f"report not found: {path}", "report_path": str(path)}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "degraded", "message": str(exc), "report_path": str(path)}
+    if not isinstance(raw, dict):
+        return {"status": "degraded", "message": "invalid report payload", "report_path": str(path)}
+    return raw
+
+
+def _load_runtime_control_reports() -> dict[str, Any]:
+    base = Path(os.environ.get("WATCHDOG_INPUT_DIR", SS / "logs" / "watchdog_inputs"))
+    opening_raw = _load_json_report(base / "opening_gate.json")
+    duckdb_raw = _load_json_report(base / "duckdb_sync.json")
+    opening_status = str(opening_raw.get("status") or "missing")
+    sync_status = str(duckdb_raw.get("status") or "missing")
+    opening = {
+        **opening_raw,
+        "gate_status": opening_status,
+        "status": "ok" if opening_status == "green" else "degraded",
+    }
+    duckdb_sync = {
+        **duckdb_raw,
+        "sync_status": sync_status,
+        "status": "ok" if sync_status == "ok" else "degraded",
+    }
+    status = "ok" if opening["status"] == "ok" and duckdb_sync["status"] == "ok" else "degraded"
+    return {"status": status, "opening_gate": opening, "duckdb_sync": duckdb_sync}
 
 
 def _reader_samples() -> dict[str, str]:

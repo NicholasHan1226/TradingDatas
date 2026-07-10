@@ -396,9 +396,9 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.37"
+    assert config["contract_version"] == "1.1.38"
     assert config["base_url"] == "https://signals.tradingagent.cc"
-    assert config["access_status"] == "live_cloudflare_route"
+    assert config["access_status"] == "live_cloudflare_proxied_origin"
     assert config["account_tiers"]["internal"]["hourly_limit"] is None
     assert config["account_tiers"]["internal"]["default_max_concurrent"] == 16
     assert config["account_tiers"]["starter"]["hourly_limit"] == 60

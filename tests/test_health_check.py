@@ -68,6 +68,30 @@ def test_health_status_includes_per_table_sla(monkeypatch) -> None:
     assert result["checks"]["sla"]["sla_status"] == "degraded"
 
 
+def test_health_status_exposes_failed_duckdb_sync(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_check,
+        "_load_runtime_control_reports",
+        lambda: {
+            "status": "degraded",
+            "opening_gate": {"status": "ok", "gate_status": "green"},
+            "duckdb_sync": {"status": "degraded", "sync_status": "error", "failed_tables": ["market_events"]},
+        },
+    )
+
+    result = health_check.get_health_status(
+        check_functions=False,
+        check_data_freshness=False,
+        check_cron=False,
+        check_sla=False,
+        check_arch=False,
+        check_compile=False,
+    )
+
+    assert result["status"] == "degraded"
+    assert result["checks"]["runtime_controls"]["duckdb_sync"]["failed_tables"] == ["market_events"]
+
+
 def test_health_sla_report_reader_uses_last_valid_payload(tmp_path, monkeypatch) -> None:
     root = tmp_path / "SharedSignals"
     report = root / "logs" / "watchdog_inputs" / "health_sla.json"

@@ -470,7 +470,7 @@ def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) 
 
     assert status == 200
     assert payload["source"] == "external_agent_api_config.json"
-    assert payload["data"]["contract_version"] == "1.1.37"
+    assert payload["data"]["contract_version"] == "1.1.38"
     assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 115
     assert payload["data"]["tushare_status"]["configured_in_production_tiers"] == 114
     assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 0
@@ -504,6 +504,29 @@ def test_opening_gate_endpoint_returns_latest_session_gate(api_edge_server, monk
     assert status == 200
     assert payload["data"]["gate"] == "open"
     assert payload["source"] == "opening_gate.json"
+
+
+def test_opening_gate_endpoint_bypasses_response_dedup_cache(api_edge_server, monkeypatch) -> None:
+    base_url, _reader = api_edge_server
+    current = {"phase": "morning_first_sample"}
+
+    def payload():
+        return (
+            {"status": "green", "gate": "open", "phase": current["phase"]},
+            {"degraded": False},
+            "opening_gate.json",
+        )
+
+    monkeypatch.setattr(api_server.api_control_plane, "opening_gate_payload", payload)
+
+    first_status, first = _get_json(base_url, "/opening_gate")
+    current["phase"] = "afternoon_resume"
+    second_status, second = _get_json(base_url, "/opening_gate")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first["data"]["phase"] == "morning_first_sample"
+    assert second["data"]["phase"] == "afternoon_resume"
 
 
 def test_api_health_defaults_to_lightweight_cached_checks(monkeypatch) -> None:

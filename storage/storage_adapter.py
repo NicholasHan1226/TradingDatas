@@ -10,6 +10,7 @@ Provides:
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SQLITE_PATH = str(marketdata_sqlite_path())
 DEFAULT_DUCKDB_PATH = str(marketdata_duckdb_path())
+APPEND_ONLY_HASH_TABLES = {"market_events", "market_factors"}
 
 
 class StorageAdapter:
@@ -49,6 +51,14 @@ class StorageAdapter:
         path = str(self._duckdb_path)
         conn = duckdb.connect(path, read_only=read_only)
         if not read_only:
+            temp_dir = self._duckdb_path.parent / ".duckdb_tmp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            memory_limit = os.environ.get("SHAREDSIGNALS_DUCKDB_MEMORY_LIMIT", "3GB")
+            threads = max(1, int(os.environ.get("SHAREDSIGNALS_DUCKDB_THREADS", "2")))
+            conn.execute(f"SET memory_limit = {_quote_literal(memory_limit)}")
+            conn.execute(f"SET threads = {threads}")
+            conn.execute("SET preserve_insertion_order = false")
+            conn.execute(f"SET temp_directory = {_quote_literal(str(temp_dir))}")
             create_schema(conn)
         # Install sqlite extension for direct ATTACH (Bug #1 fix — skip Python memory round-trip)
         if not read_only:
@@ -79,7 +89,28 @@ class StorageAdapter:
             select_col_str = ", ".join(_sqlite_scan_select_expr(table, col) for col in cols)
             where_clause = f" WHERE {where}" if where else ""
 
-            if pk:
+            if pk and table in APPEND_ONLY_HASH_TABLES:
+                watermark_row = conn_dk.execute(
+                    f"SELECT MAX(collected_at) FROM {_quote_identifier(table)}"
+                ).fetchone()
+                watermark = watermark_row[0] if watermark_row else None
+                incremental_where = where
+                if watermark:
+                    watermark_filter = f"collected_at >= {_quote_literal(str(watermark))}"
+                    incremental_where = f"({where}) AND {watermark_filter}" if where else watermark_filter
+                incremental_clause = f" WHERE {incremental_where}" if incremental_where else ""
+                source_cols = ", ".join(f"src.{_quote_identifier(col)}" for col in cols)
+                pk_match = " AND ".join(
+                    f"dst.{_quote_identifier(col)} = src.{_quote_identifier(col)}" for col in pk
+                )
+                sql = (
+                    f"INSERT INTO {table} ({col_str}) "
+                    f"SELECT {source_cols} FROM ("
+                    f"SELECT {select_col_str} FROM sqlite_scan('{sqlite_path}', '{table}')"
+                    f"{incremental_clause}) AS src "
+                    f"WHERE NOT EXISTS (SELECT 1 FROM {table} AS dst WHERE {pk_match})"
+                )
+            elif pk:
                 pk_str = ", ".join(_quote_identifier(col) for col in pk)
                 non_pk_cols = [c for c in cols if c not in pk]
                 update_set = ", ".join(
@@ -155,6 +186,10 @@ def _pk_for_table(table: str) -> list[str]:
 
 def _quote_identifier(identifier: str) -> str:
     return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _quote_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _sqlite_scan_select_expr(table: str, column: str) -> str:
