@@ -268,7 +268,7 @@ def check_sqlite_health() -> dict[str, Any]:
     # First: fail-fast corruption / missing detection.  This is the gate that
     # triggers backup-switch / DuckDB rebuild in heal.py.
     try:
-        corruption = sqlite_recovery.check_sqlite_corruption(DB_PATH)
+        corruption = sqlite_recovery.check_sqlite_corruption(DB_PATH, deep_check=False)
     except Exception as e:
         corruption = {
             "status": "unknown",
@@ -317,20 +317,8 @@ def check_sqlite_health() -> dict[str, Any]:
         if conn:
             conn.close()
 
-    # Integrity check (lightweight: pragma quick_check)
-    integrity_ok = True
-    integrity_msg = ""
-    try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
-        r = conn.execute("PRAGMA quick_check").fetchone()
-        integrity_ok = r[0] == "ok" if r and r[0] else False
-        integrity_msg = r[0] if r else ""
-    except Exception as e:
-        integrity_ok = False
-        integrity_msg = str(e)
-    finally:
-        if conn:
-            conn.close()
+    integrity_ok = bool(corruption.get("integrity_ok", True))
+    integrity_msg = str(corruption.get("integrity_msg") or "shallow_open_ok")
 
     issues = []
     if wal_size_mb > WAL_SIZE_WARN_MB:

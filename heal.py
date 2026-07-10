@@ -219,15 +219,12 @@ def _verify_heal(action_name: str, action: dict) -> dict:
 
     if action_name == "sqlite_health":
         try:
-            import sqlite3
-            conn = sqlite3.connect(str(DB_PATH), timeout=5)
-            r = conn.execute("PRAGMA integrity_check").fetchone()
-            ok = r and r[0] == "ok"
-            conn.close()
+            probe = sqlite_recovery.check_sqlite_corruption(DB_PATH, deep_check=False)
+            ok = probe.get("status") == "ok"
             wal_path = Path(str(DB_PATH) + "-wal")
             wal_ok = not wal_path.exists() or wal_path.stat().st_size < 10 * 1024 * 1024
             verify["verified"] = ok and wal_ok
-            verify["details"] = f"integrity={ok} wal_ok={wal_ok}"
+            verify["details"] = f"shallow_open={ok} wal_ok={wal_ok}"
         except Exception as e:
             verify["details"] = f"verification_error: {e}"
 

@@ -90,6 +90,18 @@ class TestCorruptionDetection:
         assert result["missing"] is False
         assert result["integrity_ok"] is True
 
+    def test_check_sqlite_corruption_shallow_mode_skips_full_scan(self, tmp_path: Path):
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = _create_db(db_path)
+        _insert_sample_data(conn)
+        conn.close()
+
+        result = check_sqlite_corruption(db_path, deep_check=False)
+
+        assert result["status"] == "ok"
+        assert result["deep_check"] is False
+        assert result["integrity_msg"] == "shallow_open_ok"
+
     def test_check_sqlite_corruption_empty_file(self, tmp_path: Path):
         db_path = tmp_path / "marketdata.sqlite"
         db_path.write_text("")

@@ -62,8 +62,12 @@ def _timestamp_tag() -> str:
 # Corruption / health detection
 # ---------------------------------------------------------------------------
 
-def check_sqlite_corruption(db_path: Path | str) -> dict[str, Any]:
+def check_sqlite_corruption(db_path: Path | str, *, deep_check: bool = True) -> dict[str, Any]:
     """Read-only corruption probe for a SQLite file.
+
+    Routine patrols should set ``deep_check=False`` so large production files
+    are not fully scanned. Recovery and backup validation keep the default
+    deep check.
 
     Returns a dict with keys:
       - status: "ok" | "corrupt" | "missing" | "unknown"
@@ -88,6 +92,7 @@ def check_sqlite_corruption(db_path: Path | str) -> dict[str, Any]:
         "size": 0,
         "reason": "",
         "checked_at": utc_now(),
+        "deep_check": deep_check,
     }
 
     if not db_path.exists():
@@ -126,24 +131,31 @@ def check_sqlite_corruption(db_path: Path | str) -> dict[str, Any]:
         )
         return result
 
-    # Try to open and run a lightweight integrity check.
+    # Opening the schema catches malformed headers/pages without a full scan.
+    # A full quick_check remains available for recovery and release gates.
     conn: Optional[sqlite3.Connection] = None
     try:
         conn = sqlite3.connect(str(db_path), timeout=5)
         conn.execute("SELECT 1").fetchone()
-        quick = conn.execute("PRAGMA quick_check").fetchone()
-        if quick is None or quick[0] != "ok":
-            msg = quick[0] if quick else "no_quick_check_result"
-            result.update(
-                status="corrupt",
-                corrupt=True,
-                integrity_ok=False,
-                integrity_msg=msg,
-                reason=f"integrity_check_failed: {msg}",
-            )
-            return result
-        result["integrity_ok"] = True
-        result["integrity_msg"] = "ok"
+        conn.execute("PRAGMA schema_version").fetchone()
+        conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+        if deep_check:
+            quick = conn.execute("PRAGMA quick_check").fetchone()
+            if quick is None or quick[0] != "ok":
+                msg = quick[0] if quick else "no_quick_check_result"
+                result.update(
+                    status="corrupt",
+                    corrupt=True,
+                    integrity_ok=False,
+                    integrity_msg=msg,
+                    reason=f"integrity_check_failed: {msg}",
+                )
+                return result
+            result["integrity_ok"] = True
+            result["integrity_msg"] = "ok"
+        else:
+            result["integrity_ok"] = True
+            result["integrity_msg"] = "shallow_open_ok"
     except sqlite3.DatabaseError as exc:
         result.update(
             status="corrupt",

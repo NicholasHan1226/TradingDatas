@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import patrol
+import heal
 
 
 def test_data_artifact_guard_detects_retired_files(tmp_path, monkeypatch):
@@ -42,3 +43,47 @@ def test_data_freshness_checks_pm_prices_and_iso_dates(tmp_path, monkeypatch):
     assert result["status"] == "stale"
     assert result["latest_date"] == stale_iso
     assert result["days_behind"] >= 2
+
+
+def test_sqlite_patrol_uses_shallow_corruption_probe(tmp_path, monkeypatch):
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE sample (id INTEGER)")
+    conn.commit()
+    conn.close()
+    calls = []
+
+    def fake_probe(path, *, deep_check=True):
+        calls.append((path, deep_check))
+        return {
+            "status": "ok",
+            "integrity_ok": True,
+            "integrity_msg": "shallow_open_ok",
+        }
+
+    monkeypatch.setattr(patrol, "DB_PATH", db_path)
+    monkeypatch.setattr(patrol.sqlite_recovery, "check_sqlite_corruption", fake_probe)
+
+    result = patrol.check_sqlite_health()
+
+    assert calls == [(db_path, False)]
+    assert result["status"] == "ok"
+    assert result["integrity_msg"] == "shallow_open_ok"
+
+
+def test_heal_verification_uses_shallow_corruption_probe(tmp_path, monkeypatch):
+    db_path = tmp_path / "marketdata.sqlite"
+    db_path.write_bytes(b"sqlite-placeholder")
+    calls = []
+
+    def fake_probe(path, *, deep_check=True):
+        calls.append((path, deep_check))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(heal, "DB_PATH", db_path)
+    monkeypatch.setattr(heal.sqlite_recovery, "check_sqlite_corruption", fake_probe)
+
+    result = heal._verify_heal("sqlite_health", {})
+
+    assert calls == [(db_path, False)]
+    assert result["verified"] is True

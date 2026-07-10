@@ -838,7 +838,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-07-10 | 1.1.40 | Crypto `limit` 直接传给 reader 并返回最新记录；周/月线 `bar_time` 统一为 SQL 时间；DuckDB 权威快照支持删除传播并执行全表计数核对；新增 Tushare 逐接口运行台账和 5 分钟公网探针；API systemd 固定使用 SharedSignals venv；外部入口改为新加坡 connector 承载的 Cloudflare Tunnel CNAME。P1 `daily` 改为全市场 trade-date 单次采集并要求 >=90% active-universe 唯一代码覆盖；未验证批量能力的研究接口使用每日 300 只单股轮转；修复 `repurchase/pledge_*` 及 P2/P3 六个逐股接口的空参数重复请求，并增加 provider 行上限截断门。 |
+| 2026-07-10 | 1.1.40 | Crypto `limit` 直接传给 reader 并返回最新记录；周/月线 `bar_time` 统一为 SQL 时间；DuckDB 权威快照支持删除传播并执行全表计数核对；新增 Tushare 逐接口运行台账和 5 分钟公网探针；API systemd 固定使用 SharedSignals venv；外部入口改为新加坡 connector 承载的 Cloudflare Tunnel CNAME。P1 `daily` 改为全市场 trade-date 单次采集并要求 >=90% active-universe 唯一代码覆盖；未验证批量能力的研究接口使用每日 300 只单股轮转；修复 `repurchase/pledge_*` 及 P2/P3 六个逐股接口的空参数重复请求，并增加 provider 行上限截断门。日常 patrol/heal 改为浅层 SQLite 可用性检查，深度完整性扫描只保留在部署、备份和恢复门禁。 |
 | 2026-07-10 | 1.1.39 | A股 P0 从每轮 30 只优先/轮转改为 `rt_min` 每批最多 300 只、每 5 分钟覆盖完整 active universe；移除旧游标与优先池配置，空批次计关键失败；退役重复且盘中无数据的 `stk_mins` 生产能力；health SLA 新增盘中 active-universe 覆盖率门禁。 |
 | 2026-07-10 | 1.1.38 | 修复 SQL 时间格式的开盘闸门解析和控制面缓存；DuckDB 大表改为受限资源的哈希增量镜像，并把闸门与镜像结果纳入 `/health`、`/source_status`。外部入口文档统一为 Cloudflare 橙云 A 记录/Nginx。 |
 | 2026-07-10 | 1.1.37 | 增加 `/opening_gate` 与四个交易时点轻量供数门，外部 agent 可在使用行情前读取当前门状态。 |
