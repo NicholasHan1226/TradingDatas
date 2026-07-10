@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-10（数据库镜像一致性、接口运行证据、公网探针和新加坡 Tunnel connector 完成）
+> 最后更新：2026-07-11（Sina期货分钟bar_time夜盘凌晨窗口标准化；SQLite检查分层恢复）
 
 ---
 
@@ -51,6 +51,7 @@
 - **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
 - **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
 - **部署与回滚必须串行**：`deploy.sh` 与手工 `rollback.sh` 共用非阻塞文件锁；部署失败触发的自动回滚会校验当前 HEAD，若代码已被其它部署推进则拒绝恢复代码和数据库，避免旧任务覆盖新版本。部署/回滚另持有 read-model 独占维护锁，现役 cron 任务只取共享锁并在维护时跳过；SQLite 备份使用原生 backup API，恢复先写同目录临时文件、校验后原子替换。部署测试通过不等于生产生效，仍须分别核对 Git HEAD、systemd runtime、API 响应和下一轮自动采集。
+- **Sina 期货分钟 bar_time 标准化（2026-07-11）**：Sina 夜盘午夜后的 bar 可能携带交易所下一交易日标签（例如周五夜盘标记为周一）而非自然日历时间。`collect_cn_futures_5min.py` 的 `_normalize_sina_bar_time()` 仅在参考时间处于夜盘凌晨窗口（00:00-02:30 北京时间）且 bar 时间也在该窗口内时，将交易所交易日标签修正为参考自然日期。修正后的 bar_time 为北京时间自然时间，原始交易所交易日保留为显式 `trade_date`。超过 5 分钟的未来时间戳且不符合夜盘凌晨窗口形状的 bar 将被拒绝（不写入 SQLite）。TradingAgent 不得添加下游兼容性回退逻辑。
 - **SQLite 检查分层**：30 分钟 patrol/heal 只做数据库可打开、schema、轻量查询、WAL 和锁检查，不再对多 GB 权威库重复全表 `quick_check/integrity_check`；部署快照、恢复源验收和明确损坏后的恢复流程仍执行深度完整性检查。
 
 ## 五、验证入口

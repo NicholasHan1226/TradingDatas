@@ -10,9 +10,10 @@ import os
 import re
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -33,9 +34,25 @@ _DATE_RE = re.compile(r"^\d{8}$")
 
 logger = logging.getLogger(__name__)
 
+CHINA_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _to_china_time(dt: datetime | None) -> datetime:
+    """Normalize *dt* to an aware datetime in Asia/Shanghai.
+
+    - ``None`` → ``datetime.now(CHINA_TZ)``
+    - aware   → ``dt.astimezone(CHINA_TZ)``
+    - naive   → ``dt.replace(tzinfo=CHINA_TZ)`` (interpreted as China local)
+    """
+    if dt is None:
+        return datetime.now(tz=CHINA_TZ)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=CHINA_TZ)
+    return dt.astimezone(CHINA_TZ)
+
 
 def default_trade_date() -> str:
-    return datetime.now().strftime("%Y%m%d")
+    return _to_china_time(None).strftime("%Y%m%d")
 
 
 def normalize_product(symbol: str) -> str:
@@ -155,18 +172,93 @@ def _sina_symbol(symbol: str) -> str:
     return root
 
 
+def _normalize_sina_bar_time(
+    bar_time_str: str,
+    reference_dt: datetime,
+) -> tuple[str | None, str | None]:
+    """Validate and normalize Sina futures bar times.
+
+    Naive *reference_dt* values are interpreted as Asia/Shanghai; aware
+    values are converted to Asia/Shanghai. Provider bar-time strings are
+    naive China-local times.
+
+    Returns (normalized_bar_time | None, trade_date | None).  ``None``
+    bar_time means the row is invalid and MUST be skipped by the caller.
+
+    Rules (all times are China local):
+
+    1. Past or ≤ +5 min future  →  returned unchanged, no trade_date.
+    2. Night-early session rollover (reference 00:00–02:30,
+       bar time-of-day also 00:00–02:30, provider date later than the
+       reference natural date) → corrected to reference natural date
+       IF the corrected time is ≤ reference + 5 min.  Original
+       provider date preserved as explicit *trade_date*.
+    3. Everything else more than 5 minutes ahead  →  invalid (None).
+    """
+    _NIGHT_EARLY_START_MIN = 0       # 00:00
+    _NIGHT_EARLY_END_MIN = 150       # 02:30
+    _MAX_FUTURE_SKEW = timedelta(minutes=5)
+
+    try:
+        bar_dt_naive = datetime.strptime(bar_time_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None, None
+
+    reference_dt = _to_china_time(reference_dt)
+
+    # Provider strings are China-local; attach timezone for comparison.
+    bar_dt = bar_dt_naive.replace(tzinfo=CHINA_TZ)
+
+    # --- unchanged: bar is not spuriously in the future ---
+    if bar_dt <= reference_dt + _MAX_FUTURE_SKEW:
+        return bar_time_str, None
+
+    # --- bar is > 5 min ahead — only the night-early rollover shape is valid ---
+    ref_tod = reference_dt.hour * 60 + reference_dt.minute
+    if not (_NIGHT_EARLY_START_MIN <= ref_tod <= _NIGHT_EARLY_END_MIN):
+        return None, None
+
+    bar_tod = bar_dt.hour * 60 + bar_dt.minute
+    if not (_NIGHT_EARLY_START_MIN <= bar_tod <= _NIGHT_EARLY_END_MIN):
+        return None, None
+
+    if bar_dt.date() <= reference_dt.date():
+        return None, None
+
+    # Candidate: replace provider date with the reference natural date.
+    original_trade_date = bar_dt.strftime("%Y%m%d")
+    corrected = reference_dt.replace(
+        hour=bar_dt.hour,
+        minute=bar_dt.minute,
+        second=bar_dt.second,
+        microsecond=0,
+    )
+    if corrected > reference_dt + _MAX_FUTURE_SKEW:
+        return None, None
+
+    return corrected.strftime("%Y-%m-%d %H:%M:%S"), original_trade_date
+
+
 def collect_sina_futures_minute_rows(
     symbols: list[str],
     *,
     period: str = "5",
     max_rows_per_symbol: int = DEFAULT_SINA_MAX_ROWS_PER_SYMBOL,
+    reference_time: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Collect CN futures minute rows from Sina through the SharedSignals owner."""
+    """Collect CN futures minute rows from Sina through the SharedSignals owner.
+
+    *reference_time* (default now) is the wall-clock Asia/Shanghai time used
+    to detect and correct exchange trading-date labels (e.g. Friday night
+    session labelled as Monday).  Naive datetimes are treated as China local.
+    """
 
     try:
         import akshare as ak  # type: ignore
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Sina futures provider unavailable: {exc}") from exc
+
+    ref_dt = _to_china_time(reference_time)
 
     rows: list[dict[str, Any]] = []
     limit = max(1, int(max_rows_per_symbol))
@@ -185,20 +277,31 @@ def collect_sina_futures_minute_rows(
             bar_time = str(item.get("datetime") or item.get("time") or "").strip()
             if not bar_time:
                 continue
-            rows.append(
-                {
-                    "ts_code": symbol,
-                    "code": symbol,
-                    "time": bar_time,
-                    "open": item.get("open"),
-                    "high": item.get("high"),
-                    "low": item.get("low"),
-                    "close": item.get("close"),
-                    "vol": item.get("volume") or item.get("vol"),
-                    "hold": item.get("hold"),
-                    "provider": SINA_PROVIDER,
-                }
+            normalized_time, exchange_trade_date = _normalize_sina_bar_time(
+                bar_time, ref_dt
             )
+            if normalized_time is None:
+                logger.warning(
+                    "Sina futures minute bar rejected (future timestamp outside night-early rollover): "
+                    "symbol=%s provider_time=%s reference=%s",
+                    symbol, bar_time, ref_dt.isoformat(),
+                )
+                continue
+            row: dict[str, Any] = {
+                "ts_code": symbol,
+                "code": symbol,
+                "time": normalized_time,
+                "open": item.get("open"),
+                "high": item.get("high"),
+                "low": item.get("low"),
+                "close": item.get("close"),
+                "vol": item.get("volume") or item.get("vol"),
+                "hold": item.get("hold"),
+                "provider": SINA_PROVIDER,
+            }
+            if exchange_trade_date:
+                row["trade_date"] = exchange_trade_date
+            rows.append(row)
     return rows
 
 
@@ -240,10 +343,12 @@ def run_collection(
             rows = collect_rt_fut_min_rows(params, fields="")
             source = TUSHARE_PROVIDER
         elif provider == SINA_PROVIDER:
+            collection_time = datetime.now(tz=CHINA_TZ)
             rows = collect_sina_futures_minute_rows(
                 symbols,
                 period="5",
                 max_rows_per_symbol=int(os.environ.get("CN_FUTURES_SINA_MAX_ROWS_PER_SYMBOL", str(DEFAULT_SINA_MAX_ROWS_PER_SYMBOL))),
+                reference_time=collection_time,
             )
             source = SINA_PROVIDER
         else:
