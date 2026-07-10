@@ -25,7 +25,7 @@
 
 ## 网络
 - SharedSignals API：`127.0.0.1:8082`，通过 `signals.tradingagent.cc` 受控暴露；不得直接开放公网端口
-- Nginx :80/:443 → Cloudflare 代理后的 SharedSignals 源站入口，反代 `127.0.0.1:8082`；公网不开放 8082。源站证书当前为临时自签名证书，Cloudflare 回源使用 Full 模式，后续应替换为 Cloudflare Origin CA 证书并切换 Full (strict)。
+- Nginx :80/:443 → Cloudflare 代理后的 SharedSignals 源站入口，反代 `127.0.0.1:8082`；公网不开放 8082。源站证书当前为临时自签名证书（2026-08-09 到期），后续应替换为 Cloudflare Origin CA 证书并确认切换 Full (strict)。
 - RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新设计 SharedSignals collector 并直接写入 read model
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)
 - 新加坡仅作为 Polymarket/Crypto 境外代理 relay，不运行 RSSHub/rsync staging；主服务器通过 SSH 隧道连接新加坡 127.0.0.1:18888
