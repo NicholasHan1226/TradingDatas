@@ -5,6 +5,7 @@ __pycache__/
 .env
 .env.*
 logs/
+backups/
 config/api_tokens.json
 *.log
 node_modules/
