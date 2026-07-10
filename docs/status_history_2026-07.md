@@ -11,6 +11,7 @@
 ## 一、当前状态
 
 - **行情采集**：稳定运行 — Tushare（P0-P7 分层 113 个唯一生产配置接口；另有 `rt_fut_min` 独立期货 5 分钟入口，114 个 allowlisted 接口已全部按模块/频率纳管，0 planned backlog）+ Binance + Polymarket → SQLite read model + DuckDB mirror。2026-07-10 起 A股 P0 只使用 `rt_min`，每 5 分钟按每批最多 300 只覆盖完整 active universe，并由 health SLA 检查盘中新鲜覆盖率；空/错误响应不进入 LRU，HTTP 502 先走请求级重试，再对仍失败的批次做最多两轮退避补齐，最终空批继续 fail-closed。旧 30 只优先/轮转和重复 `stk_mins` 路径已退役。Crypto/PM 保持 30 分钟供数，A股 P0 与 CNFutures 保持 5 分钟交易热路径；所有采集直接写 SQLite，不使用 CSV/NDJSON 生产兜底。
+- **尾盘标签边界**：2026-07-10 收盘后直接核验 QuickSync `rt_min`，全市场最新可用标签仍为 14:45，`stk_mins` 同窗口和当时 `daily` 均未返回更晚数据。15:05 `close_check` 因此验证 14:45 全量尾盘快照，并显式输出 `last_available_rt_min_not_official_close`；正式收盘价只能由盘后 `daily`/P1 数据确认，TradingAgent 不得把该快照冒充正式收盘价。
 - **因子边界**：SharedSignals 的 `market_factors` 只输出事实型 read-model 数据，例如 provider 财务/资金流/宏观/持仓/限制/参考字段和必要字段展开；不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件。TradingAgent 应通过 API 读取这些事实数据后，自行完成交易因子提取、标准化、组合、风控和决策。
 - **事件采集**：RSS/RSSHub/Tavily/DeepSeek 当前不作为现役生产 collector；相关旧资产进入退役/迁移审计，恢复前必须走新的 SharedSignals collector 直接写 SQLite read model，不得恢复旧文件 staging、旧 bridge 或跨系统运行层入口。
 - **现役数据源/同步管线**：Tushare、Binance、Polymarket、CNFutures 采集 + DuckDB 分析镜像同步；Crypto/PM 不再挂在 Tushare tier 下，按各自 collector/reader 维护，当前生产频率为 30 分钟；Binance collector 对 transient `requests`/SSL 网络异常使用短重试，减少单次 EOF 造成整轮采集跳过

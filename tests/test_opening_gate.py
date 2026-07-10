@@ -93,6 +93,27 @@ def test_first_sample_gate_opens_for_clock_with_seconds() -> None:
     assert result["checks"]["a_share_intraday"]["sample_count"] == 1
 
 
+def test_close_gate_uses_last_available_rt_min_bar_without_calling_it_close_price() -> None:
+    result = evaluate_phase(
+        "close_check",
+        now=datetime(2026, 7, 10, 7, 10, tzinfo=timezone.utc),
+        db_ready=True,
+        health_sla_ready=True,
+        intraday_rows=[
+            {
+                "market": "Ashare",
+                "trade_date": "20260710",
+                "bar_time": "2026-07-10 14:45:00",
+                "collected_at": "2026-07-10T07:09:00+00:00",
+            }
+        ],
+    )
+
+    assert result["status"] == "green"
+    assert result["checks"]["a_share_intraday"]["minimum_bar_time"] == "14:45"
+    assert result["checks"]["a_share_intraday"]["price_semantics"] == "last_available_rt_min_not_official_close"
+
+
 def test_preopen_gate_is_yellow_when_sla_artifact_is_missing() -> None:
     result = evaluate_phase(
         "preopen",

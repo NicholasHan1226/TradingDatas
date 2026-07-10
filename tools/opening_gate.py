@@ -19,7 +19,7 @@ PHASES = {
     "preopen": {"label": "preopen", "needs_sample": False},
     "morning_first_sample": {"label": "morning_first_sample", "needs_sample": True, "start": time(9, 25)},
     "afternoon_resume": {"label": "afternoon_resume", "needs_sample": True, "start": time(12, 55)},
-    "close_check": {"label": "close_check", "needs_sample": True, "start": time(14, 55)},
+    "close_check": {"label": "close_check", "needs_sample": True, "start": time(14, 45)},
 }
 
 
@@ -123,6 +123,8 @@ def evaluate_phase(
             "trade_date": cn_now.strftime("%Y%m%d"),
             "minimum_bar_time": spec["start"].strftime("%H:%M"),
         }
+        if phase == "close_check":
+            checks["a_share_intraday"]["price_semantics"] = "last_available_rt_min_not_official_close"
         if not samples:
             failures.append("Ashare 5-minute sample has not arrived for the current phase")
 
