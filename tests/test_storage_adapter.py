@@ -128,6 +128,45 @@ def test_snapshot_table_sync_removes_rows_deleted_from_sqlite(tmp_path: Path):
     ]
 
 
+def test_intraday_snapshot_sync_removes_rows_with_retired_primary_keys(tmp_path: Path):
+    sqlite_path = tmp_path / "marketdata.sqlite"
+    duckdb_path = tmp_path / "marketdata.duckdb"
+    _create_sqlite(sqlite_path)
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        conn.execute(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, bar_time, trade_date, interval, close, provider)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("Ashare", "000001.SZ", "20260710", "20260710", "1w", 10.0, "test"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    adapter = StorageAdapter(str(sqlite_path), str(duckdb_path))
+    assert adapter.sync_sqlite_to_duckdb("market_bars_intraday") == 1
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        conn.execute(
+            "UPDATE market_bars_intraday SET bar_time = ? WHERE bar_time = ?",
+            ("2026-07-10 00:00:00", "20260710"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    adapter.sync_sqlite_to_duckdb("market_bars_intraday")
+
+    assert adapter.query(
+        "SELECT bar_time FROM market_bars_intraday ORDER BY bar_time"
+    ) == [{"bar_time": "2026-07-10 00:00:00"}]
+
+
 def test_reconcile_counts_reports_table_mismatch(tmp_path: Path):
     sqlite_path = tmp_path / "marketdata.sqlite"
     duckdb_path = tmp_path / "marketdata.duckdb"

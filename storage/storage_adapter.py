@@ -29,6 +29,8 @@ APPEND_ONLY_HASH_TABLES = {"market_events", "market_factors"}
 AUTHORITATIVE_SNAPSHOT_TABLES = {
     "market_assets",
     "market_backfill_status",
+    "market_bars_daily",
+    "market_bars_intraday",
     "market_coverage_status",
     "market_fund_portfolio",
     "market_pm_markets",
