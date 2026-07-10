@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from tools import external_api_probe
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_unauthenticated_401_proves_public_route_reached_auth_gate() -> None:
@@ -59,3 +63,11 @@ def test_ssh_probe_uses_remote_vantage(monkeypatch) -> None:
     assert report["http_status"] == 401
     assert report["vantage"] == "ssh:root@47.82.153.58"
     assert calls[0][0][-1] == "https://signals.tradingagent.cc/health"
+
+
+def test_cron_wrapper_prevents_local_probe_from_overwriting_root_report() -> None:
+    wrapper = (ROOT / "cron" / "external_api_probe.sh").read_text(encoding="utf-8")
+
+    assert '"$(id -u)" -ne 0' in wrapper
+    assert 'SHAREDSIGNALS_EXTERNAL_PROBE_SSH_TARGET' in wrapper
+    assert "root-owned relay vantage not configured" in wrapper
