@@ -37,7 +37,8 @@ acquire_maintenance_lock() {
     fi
     mkdir -p "$(dirname "$MAINTENANCE_LOCK_FILE")"
     touch "$MAINTENANCE_LOCK_FILE"
-    chmod 0666 "$MAINTENANCE_LOCK_FILE"
+    chgrp marketgraph "$MAINTENANCE_LOCK_FILE" 2>/dev/null || true
+    chmod 0660 "$MAINTENANCE_LOCK_FILE"
     exec 8>"$MAINTENANCE_LOCK_FILE"
     if ! flock -w "$MAINTENANCE_LOCK_TIMEOUT" 8; then
         error "Timed out waiting for SharedSignals read model jobs to finish"

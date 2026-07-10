@@ -75,6 +75,10 @@ def test_rollback_refuses_to_overwrite_a_newer_deployment() -> None:
     assert '"$CURRENT" != "$EXPECTED_CURRENT_HEAD"' in rollback
     assert '"$CURRENT" != "$TARGET"' in rollback
     assert "Stale rollback refused" in rollback
+    pull_position = deploy.index("git pull")
+    captured_head_position = deploy.index("DEPLOYED_HEAD=$(git rev-parse HEAD)", pull_position)
+    success_log_position = deploy.index('success "Pulled:', pull_position)
+    assert captured_head_position < success_log_position
 
 
 def test_deploy_and_rollback_hold_exclusive_read_model_maintenance_lock() -> None:
@@ -85,6 +89,11 @@ def test_deploy_and_rollback_hold_exclusive_read_model_maintenance_lock() -> Non
         assert "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE" in script
         assert "SHAREDSIGNALS_MAINTENANCE_LOCK_HELD" in script
         assert 'flock -w "$MAINTENANCE_LOCK_TIMEOUT" 8' in script
+        assert "chmod 0666" not in script
+        assert "chmod 0660" in script
+
+    assert "SHAREDSIGNALS_MARKETDATA_DB" in deploy
+    assert "SHAREDSIGNALS_MARKETDATA_DB" in rollback
 
 
 def test_read_model_cron_jobs_take_shared_maintenance_lock() -> None:
@@ -96,3 +105,7 @@ def test_read_model_cron_jobs_take_shared_maintenance_lock() -> None:
         script = (ROOT / "cron" / name).read_text(encoding="utf-8")
         assert 'source "${SCRIPT_DIR}/maintenance_lock.sh"' in script, name
         assert "acquire_sharedsignals_read_model_lock" in script, name
+
+
+def test_legacy_root_duckdb_cron_wrapper_is_retired() -> None:
+    assert not (ROOT / "duckdb_merge_cron.sh").exists()

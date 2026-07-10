@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_DIR="/opt/investment/SharedSignals"
 BACKUP_DIR="/opt/investment/SharedSignals/backups"
 RUNTIME_DIR="${SHAREDSIGNALS_RUNTIME_ROOT:-/opt/investment/SharedSignals/runtime}"
-SQLITE_DB="${RUNTIME_DIR}/read_model/marketdata.sqlite"
+SQLITE_DB="${SHAREDSIGNALS_MARKETDATA_DB:-${RUNTIME_DIR}/read_model/marketdata.sqlite}"
 VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 DEPLOY_LOCK_FILE="${SHAREDSIGNALS_DEPLOY_LOCK_FILE:-/var/lock/sharedsignals-deploy.lock}"
 MAINTENANCE_LOCK_FILE="${SHAREDSIGNALS_MAINTENANCE_LOCK_FILE:-${REPO_DIR}/logs/locks/read_model_maintenance.lock}"
@@ -36,7 +36,8 @@ acquire_deploy_lock() {
 acquire_maintenance_lock() {
     mkdir -p "$(dirname "$MAINTENANCE_LOCK_FILE")"
     touch "$MAINTENANCE_LOCK_FILE"
-    chmod 0666 "$MAINTENANCE_LOCK_FILE"
+    chgrp marketgraph "$MAINTENANCE_LOCK_FILE" 2>/dev/null || true
+    chmod 0660 "$MAINTENANCE_LOCK_FILE"
     exec 8>"$MAINTENANCE_LOCK_FILE"
     if ! flock -w "$MAINTENANCE_LOCK_TIMEOUT" 8; then
         error "Timed out waiting for SharedSignals read model jobs to finish"
@@ -146,6 +147,7 @@ if [ "$CURRENT" = "$REMOTE" ]; then
     warn "Already at latest - nothing to pull"
 else
     git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
+    DEPLOYED_HEAD=$(git rev-parse HEAD)
     success "Pulled: $(git log --oneline -1)"
 fi
 DEPLOYED_HEAD=$(git rev-parse HEAD)
