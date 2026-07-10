@@ -48,6 +48,11 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh
 10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh
+# Session readiness gates: lightweight read-model checks at the four decision points.
+50 8 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase preopen
+35 9 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase morning_first_sample
+5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume
+5 15 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase close_check
 52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh
 
 # Polymarket markets/prices collection belongs here, not in TradingAgent or
