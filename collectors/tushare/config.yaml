@@ -4,6 +4,8 @@ priorities:
     frequency: 5min
     stock_batch_size: 300
     empty_is_failure: true
+    failed_batch_retry_rounds: 2
+    failed_batch_retry_delay_seconds: 2
     params:
       freq: 5MIN
       ts_code: '{ts_code}'

@@ -275,6 +275,8 @@ def test_p0_trading_lane_only_contains_intraday_apis() -> None:
     assert [api["api_name"] for api in p0_apis] == ["rt_min"]
     assert p0_apis[0]["stock_batch_size"] == 300
     assert p0_apis[0]["empty_is_failure"] is True
+    assert p0_apis[0]["failed_batch_retry_rounds"] == 2
+    assert p0_apis[0]["failed_batch_retry_delay_seconds"] == 2
     configured_names = {
         api["api_name"]
         for tier in config["priorities"].values()
@@ -372,6 +374,60 @@ def test_p0_rt_min_empty_batch_is_counted_as_failure(tmp_path: Path, monkeypatch
         threshold=0.5,
         exit_on_failure=True,
     ) == 2
+
+def test_p0_rt_min_retries_only_failed_batches(tmp_path: Path, monkeypatch) -> None:
+    attempts: dict[str, int] = {}
+    sleeps: list[float] = []
+
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            del api_name, fields
+            ts_code = params["ts_code"]
+            attempts[ts_code] = attempts.get(ts_code, 0) + 1
+            if ts_code == "000001.SZ,000002.SZ" and attempts[ts_code] == 1:
+                self.last_collect_failed = True
+                return []
+            self.last_collect_failed = False
+            return [
+                {"ts_code": code, "time": "2026-07-10 14:55:00", "close": 10.0}
+                for code in ts_code.split(",")
+            ]
+
+    monkeypatch.setattr(sync_daily_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _path, _table, _api, rows, **_kwargs: len(rows),
+    )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P0_trading_5min",
+        [{
+            "api_name": "rt_min",
+            "per_stock": True,
+            "stock_batch_size": 2,
+            "empty_is_failure": True,
+            "failed_batch_retry_rounds": 2,
+            "failed_batch_retry_delay_seconds": 2,
+            "params": {"freq": "5MIN", "ts_code": "{ts_code}"},
+        }],
+        stock_codes=["000001.SZ", "000002.SZ", "000003.SZ"],
+        trade_date="20260710",
+        start_date="20260710",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert attempts == {"000001.SZ,000002.SZ": 2, "000003.SZ": 1}
+    assert sleeps == [2]
+    assert stats["rt_min"]["calls"] == 3
+    assert stats["rt_min"]["rows"] == 3
+    assert stats["rt_min"]["failure_count"] == 0
+    assert stats["_tier_summary"]["critical_failure_count"] == 0
+
 
 def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))

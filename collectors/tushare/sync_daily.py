@@ -326,6 +326,10 @@ def sync_tier(
             fields = api_def.get("fields")
             batch_size = max(1, int(api_def.get("stock_batch_size") or 1))
             empty_is_failure = bool(api_def.get("empty_is_failure"))
+            failed_batch_retry_rounds = max(0, int(api_def.get("failed_batch_retry_rounds") or 0))
+            failed_batch_retry_delay_seconds = max(
+                0.0, float(api_def.get("failed_batch_retry_delay_seconds") or 0)
+            )
             _api_trade_date, api_start_date, api_end_date = resolve_api_window(
                 api_def, trade_date, start_date, end_date
             )
@@ -336,11 +340,13 @@ def sync_tier(
             sqlite_total = 0
             sqlite_statuses: list[str] = []
             api_sqlite_errors: list[str] = []
+            failed_batches: list[tuple[int, list[str]]] = []
 
-            for batch_index, offset in enumerate(range(0, len(codes), batch_size), start=1):
-                code_batch = codes[offset:offset + batch_size]
+            def _collect_batch(batch_index: int, code_batch: list[str], *, retry_round: int = 0) -> bool:
+                nonlocal call_idx, api_calls, api_total, sqlite_total
                 ts_code = ",".join(code_batch)
-                call_idx += 1
+                if retry_round == 0:
+                    call_idx += 1
                 api_calls += 1
                 params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
                 rows = collector.collect(api_name, params, fields)
@@ -354,8 +360,6 @@ def sync_tier(
                         batch_index,
                         len(code_batch),
                     )
-                if call_failed:
-                    api_failures += 1
                 api_total += len(rows)
                 source_name = (
                     f"{api_name}_batch_{batch_index}_{trade_date}"
@@ -367,9 +371,41 @@ def sync_tier(
                 sqlite_statuses.append(str(sqlite_result["status"]))
                 if sqlite_result.get("error"):
                     api_sqlite_errors.append(str(sqlite_result["error"]))
-                logger.info("[%s] [%d/%d] %s symbols=%d → %d rows",
-                            tier_name, call_idx, total_calls,
-                            api_name, len(code_batch), len(rows))
+                if retry_round:
+                    logger.info(
+                        "[%s] RETRY %d/%d %s batch=%d symbols=%d → %d rows",
+                        tier_name,
+                        retry_round,
+                        failed_batch_retry_rounds,
+                        api_name,
+                        batch_index,
+                        len(code_batch),
+                        len(rows),
+                    )
+                else:
+                    logger.info("[%s] [%d/%d] %s symbols=%d → %d rows",
+                                tier_name, call_idx, total_calls,
+                                api_name, len(code_batch), len(rows))
+                return call_failed
+
+            for batch_index, offset in enumerate(range(0, len(codes), batch_size), start=1):
+                code_batch = codes[offset:offset + batch_size]
+                if _collect_batch(batch_index, code_batch):
+                    failed_batches.append((batch_index, code_batch))
+
+            for retry_round in range(1, failed_batch_retry_rounds + 1):
+                if not failed_batches:
+                    break
+                delay = failed_batch_retry_delay_seconds * retry_round
+                if delay:
+                    time.sleep(delay)
+                retry_failures: list[tuple[int, list[str]]] = []
+                for batch_index, code_batch in failed_batches:
+                    if _collect_batch(batch_index, code_batch, retry_round=retry_round):
+                        retry_failures.append((batch_index, code_batch))
+                failed_batches = retry_failures
+
+            api_failures = len(failed_batches)
 
             duration = time.time() - api_start
             stats[api_name] = {
