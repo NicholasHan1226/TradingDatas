@@ -5,6 +5,7 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 - Scripts must `cd` to the SharedSignals root before running Python.
 - Scripts may source root `.env` for local configuration, but must not contain secrets.
 - Use `flock` locks under `logs/locks/` to avoid overlapping runs.
+- Every cron job that reads or writes the read model must source `maintenance_lock.sh` and acquire the shared maintenance lock. Deploy/rollback holds the exclusive side, so cron must skip rather than access SQLite during snapshot or restore.
 - Write stdout/stderr to `logs/cron/`.
 - Keep business logic in the main SharedSignals modules; cron scripts should only orchestrate.
 

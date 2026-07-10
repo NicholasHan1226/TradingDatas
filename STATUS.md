@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-10（外部账号分层、`signals.tradingagent.cc` Cloudflare 橙云 A 记录/Nginx 入口、开盘闸门解析、DuckDB 增量镜像与运行监控完成）
+> 最后更新：2026-07-10（A股 P0 全量覆盖门禁、部署互斥与过期回滚保护完成）
 
 ---
 
@@ -48,6 +48,7 @@
 - **`reader.py` / `api_server.py` 仍偏大**：当前测试覆盖通过，但长期应继续按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。
 - **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
 - **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
+- **部署与回滚必须串行**：`deploy.sh` 与手工 `rollback.sh` 共用非阻塞文件锁；部署失败触发的自动回滚会校验当前 HEAD，若代码已被其它部署推进则拒绝恢复代码和数据库，避免旧任务覆盖新版本。部署/回滚另持有 read-model 独占维护锁，现役 cron 任务只取共享锁并在维护时跳过；SQLite 备份使用原生 backup API，恢复先写同目录临时文件、校验后原子替换。部署测试通过不等于生产生效，仍须分别核对 Git HEAD、systemd runtime、API 响应和下一轮自动采集。
 
 ## 五、验证入口
 

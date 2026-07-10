@@ -21,6 +21,10 @@ TMP_FILE="${OUTPUT_FILE}.$$"
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}" "${WATCHDOG_INPUT_DIR}"
 exec 2>>"${LOG_FILE}"
 
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/maintenance_lock.sh"
+acquire_sharedsignals_read_model_lock "${ROOT}" "${LOG_FILE}"
+
 exec 200>"${LOCK_FILE}"
 if ! flock -n 200; then
   echo "[$(date -Iseconds)] SKIP health_sla already running" >> "${LOG_FILE}"

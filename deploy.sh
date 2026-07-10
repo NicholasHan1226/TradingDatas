@@ -8,9 +8,13 @@ BACKUP_DIR="/opt/investment/SharedSignals/backups"
 RUNTIME_DIR="${SHAREDSIGNALS_RUNTIME_ROOT:-/opt/investment/SharedSignals/runtime}"
 SQLITE_DB="${RUNTIME_DIR}/read_model/marketdata.sqlite"
 VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
+DEPLOY_LOCK_FILE="${SHAREDSIGNALS_DEPLOY_LOCK_FILE:-/var/lock/sharedsignals-deploy.lock}"
+MAINTENANCE_LOCK_FILE="${SHAREDSIGNALS_MAINTENANCE_LOCK_FILE:-${REPO_DIR}/logs/locks/read_model_maintenance.lock}"
+MAINTENANCE_LOCK_TIMEOUT="${SHAREDSIGNALS_MAINTENANCE_LOCK_TIMEOUT:-300}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 TAG="deploy-${TIMESTAMP}"
 LOG_FILE="${REPO_DIR}/logs/deploy_${TIMESTAMP}.log"
+DEPLOYED_HEAD=""
 
 mkdir -p "$BACKUP_DIR" "$(dirname "$LOG_FILE")"
 
@@ -18,6 +22,47 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 success() { echo "[OK] $*" | tee -a "$LOG_FILE"; }
 warn() { echo "[WARN] $*" | tee -a "$LOG_FILE"; }
 error() { echo "[ERROR] $*" | tee -a "$LOG_FILE"; }
+
+acquire_deploy_lock() {
+    mkdir -p "$(dirname "$DEPLOY_LOCK_FILE")"
+    exec 9>"$DEPLOY_LOCK_FILE"
+    if ! flock -n 9; then
+        error "Another SharedSignals deploy or rollback is active; refusing concurrent deployment"
+        exit 75
+    fi
+    export SHAREDSIGNALS_DEPLOY_LOCK_HELD=1
+}
+
+acquire_maintenance_lock() {
+    mkdir -p "$(dirname "$MAINTENANCE_LOCK_FILE")"
+    touch "$MAINTENANCE_LOCK_FILE"
+    chmod 0666 "$MAINTENANCE_LOCK_FILE"
+    exec 8>"$MAINTENANCE_LOCK_FILE"
+    if ! flock -w "$MAINTENANCE_LOCK_TIMEOUT" 8; then
+        error "Timed out waiting for SharedSignals read model jobs to finish"
+        exit 76
+    fi
+    export SHAREDSIGNALS_MAINTENANCE_LOCK_HELD=1
+}
+
+backup_sqlite_database() {
+    local source_path="$1"
+    local target_path="$2"
+    rm -f "$target_path"
+    "$VENV_PYTHON" - "$source_path" "$target_path" <<'PY'
+import sqlite3
+import sys
+
+source_path, target_path = sys.argv[1:3]
+source = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True, timeout=30)
+target = sqlite3.connect(target_path, timeout=30)
+try:
+    source.backup(target)
+finally:
+    target.close()
+    source.close()
+PY
+}
 
 validate_sqlite_snapshot() {
     local path="$1"
@@ -44,13 +89,15 @@ PY
 rollback_deploy() {
     error "DEPLOY FAILED - rolling back"
     if [ -f "${REPO_DIR}/rollback.sh" ]; then
-        bash "${REPO_DIR}/rollback.sh" "$TAG" "$TIMESTAMP" || true
+        bash "${REPO_DIR}/rollback.sh" "$TAG" "$TIMESTAMP" "${DEPLOYED_HEAD:-}" || true
     else
         error "rollback.sh not found - manual recovery required"
     fi
     exit 1
 }
 
+acquire_deploy_lock
+acquire_maintenance_lock
 trap rollback_deploy ERR
 
 log "=== SharedSignals Deploy ${TIMESTAMP} ==="
@@ -58,6 +105,7 @@ log "=== SharedSignals Deploy ${TIMESTAMP} ==="
 # ---- Phase 1: Backup ----
 log "Phase 1: Backup"
 cd "$REPO_DIR"
+DEPLOYED_HEAD=$(git rev-parse HEAD)
 
 # Git tag
 git tag "$TAG"
@@ -76,7 +124,7 @@ if [ -f "$SQLITE_DB" ]; then
         DB_BACKUP=""
     else
         rm -f "$DB_BACKUP_TMP"
-        cp "$SQLITE_DB" "$DB_BACKUP_TMP"
+        backup_sqlite_database "$SQLITE_DB" "$DB_BACKUP_TMP"
         validate_sqlite_snapshot "$DB_BACKUP_TMP"
         mv "$DB_BACKUP_TMP" "$DB_BACKUP"
         success "SQLite snapshot saved and validated"
@@ -100,6 +148,7 @@ else
     git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
     success "Pulled: $(git log --oneline -1)"
 fi
+DEPLOYED_HEAD=$(git rev-parse HEAD)
 
 # ---- Phase 3: Install/update dependencies ----
 log "Phase 3: Dependencies"

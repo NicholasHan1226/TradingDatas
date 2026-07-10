@@ -21,6 +21,10 @@ LOOKBACK="${SHAREDSIGNALS_LOW_FREQ_LOOKBACK_DAYS:-370}"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}"
 
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/maintenance_lock.sh"
+acquire_sharedsignals_read_model_lock "${ROOT}" "${LOG_FILE}"
+
 exec 200>"${LOCK_FILE}"
 if ! flock -n 200; then
   echo "[$(date -Iseconds)] SKIP tushare_low_frequency_collect already running" >> "${LOG_FILE}"

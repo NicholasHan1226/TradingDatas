@@ -18,6 +18,10 @@ LOCK_FILE="${LOCK_DIR}/cn_futures_5min.lock"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}"
 
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/maintenance_lock.sh"
+acquire_sharedsignals_read_model_lock "${ROOT}" "${LOG_FILE}"
+
 exec 200>"${LOCK_FILE}"
 if ! flock -n 200; then
   echo "[$(date -Iseconds)] SKIP cn_futures_5min already running" >> "${LOG_FILE}"

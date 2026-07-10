@@ -21,6 +21,10 @@ SUMMARY_FILE="${OUTPUT_DIR}/source_governance_summary.txt"
 
 mkdir -p "${LOG_DIR}" "${LOCK_DIR}" "${OUTPUT_DIR}"
 
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/maintenance_lock.sh"
+acquire_sharedsignals_read_model_lock "${ROOT}" "${LOG_FILE}"
+
 exec 200>"${LOCK_FILE}"
 if ! flock -n 200; then
   echo "[$(date -Iseconds)] SKIP source_governance_monitor already running" >> "${LOG_FILE}"
