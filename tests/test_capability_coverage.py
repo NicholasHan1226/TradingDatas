@@ -398,7 +398,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
 
     assert config["contract_version"] == "1.1.36"
     assert config["base_url"] == "https://signals.tradingagent.cc"
-    assert config["access_status"] == "pending_cloudflare_route"
+    assert config["access_status"] == "live_cloudflare_route"
     assert config["account_tiers"]["internal"]["hourly_limit"] is None
     assert config["account_tiers"]["internal"]["default_max_concurrent"] == 16
     assert config["account_tiers"]["starter"]["hourly_limit"] == 60

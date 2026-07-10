@@ -9,9 +9,9 @@
 
 ## 域名
 - tradingagent.cc — 统一域名
-- dashboard.tradingagent.cc — Cloudflare前端看板 (未来)
-- api.tradingagent.cc — API反代 (未来)
-- signals.tradingagent.cc — SharedSignals 外部受控 API 入口；目标 origin 为主服务器 `127.0.0.1:8082`，必须通过 Cloudflare Tunnel/Access + SharedSignals API key 双层鉴权。当前仍不可用：公共 DNS 无记录，现有可操作的本机 Cloudflare origin certificate 只覆盖 `vorra.cc`，不能写 `tradingagent.cc` zone；需 `tradingagent.cc` DNS Edit + Tunnel Edit 权限后再新增 hostname/ingress。
+- dashboard.tradingagent.cc — Cloudflare前端看板入口
+- api.tradingagent.cc — TradingAgent API 入口
+- signals.tradingagent.cc — SharedSignals 外部受控 API 入口；目标 origin 为主服务器 `127.0.0.1:8082`，通过 Cloudflare Tunnel/DNS 对外暴露，仍必须使用 SharedSignals API key/JWT 鉴权。2026-07-10 已完成 DNS 与 tunnel route 验证；外部 agent 应使用 `https://signals.tradingagent.cc`。
 
 ## 邮件
 - 交易类: notice@tradingagent.cc → tradingadviser@coze.email
@@ -24,7 +24,7 @@
 - 旧 RSS/RSSHub 资产仅作历史审计，不作为当前生产采集或 API 数据源。
 
 ## 网络
-- SharedSignals API：`127.0.0.1:8082`，计划通过 `signals.tradingagent.cc` 受控暴露；不得直接开放公网端口
+- SharedSignals API：`127.0.0.1:8082`，通过 `signals.tradingagent.cc` 受控暴露；不得直接开放公网端口
 - Nginx :80 → 当前 Cloudflare tunnel 站点入口；不要把它当作 SharedSignals 专用外部 API 入口
 - RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新设计 SharedSignals collector 并直接写入 read model
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)

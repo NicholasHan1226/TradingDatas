@@ -12,7 +12,7 @@ SharedSignals is a read-only market data supply layer for minute and 5-minute tr
 API base URL:
 - Use the operator-provided SharedSignals HTTP base URL: https://signals.tradingagent.cc
 - Local default for same-server testing is http://127.0.0.1:8082.
-- External accounts must use the approved proxy/domain plus Authorization token or X-API-Key. If https://signals.tradingagent.cc does not resolve or returns a Cloudflare routing error, stop and ask the operator to finish Cloudflare Tunnel DNS/ingress/Access setup.
+- External accounts must use the approved proxy/domain plus Authorization token or X-API-Key. If https://signals.tradingagent.cc does not resolve, returns a Cloudflare routing error, or returns 401/403 for a valid token, stop and ask the operator to re-check Cloudflare Tunnel, DNS, and SharedSignals account scope.
 
 Authentication:
 - Prefer: Authorization: Bearer <SHAREDSIGNALS_API_TOKEN>
