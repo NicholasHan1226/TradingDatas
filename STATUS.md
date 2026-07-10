@@ -22,7 +22,7 @@
 
 | 数据 lane | 生产频率 | 说明 |
 | --- | --- | --- |
-| A-share P0 intraday | 交易时段 5 分钟 | `rt_min` 按每批最多 300 只覆盖完整 active universe；HTTP 502 先做请求级重试，再仅对失败批次做两轮退避补齐；仍有空批才整轮失败；不再使用 30 只轮转或跨系统优先池 |
+| A-share P0 intraday | 交易时段 5 分钟 | `rt_min` 按每批最多 300 只覆盖完整 active universe；空/错误响应不进入 LRU，HTTP 502 先做请求级重试，再仅对失败批次做两轮退避补齐；仍有空批才整轮失败；不再使用 30 只轮转或跨系统优先池 |
 | CNFutures intraday | 日盘/夜盘 5 分钟 | 独立 `cn_futures_5min` wrapper；不走 A-share P0 循环 |
 | Crypto | ticker 30 分钟；1d support bars 每 6 小时 | 不与 A-share/Futures 5 分钟热路径抢写 |
 | Polymarket | markets/prices 30 分钟 | 新加坡 relay 优先，本地 Mihomo/Clash 兜底；默认不直连 |

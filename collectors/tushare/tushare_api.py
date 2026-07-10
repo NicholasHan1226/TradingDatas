@@ -50,6 +50,8 @@ def _cached_call(func_name: str, args: tuple, kwargs: dict) -> list[dict[str, An
             _cache.move_to_end(key)
             return _cache[key]
     result = tushare_rows(func_name, *args, **kwargs)
+    if not result:
+        return result
     with _cache_lock:
         _cache[key] = result
         _cache.move_to_end(key)
