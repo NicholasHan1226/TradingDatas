@@ -333,8 +333,9 @@ def choose_recovery_source(
     Returns a dict with ``source_type`` and ``path``, or ``None`` if blocked.
     """
     db_path = Path(db_path)
+    candidate_dirs = default_backup_dirs(db_path) if backup_dirs is None else backup_dirs
     if source_type in ("auto", "backup"):
-        for candidate in list_candidate_backups(backup_dirs or default_backup_dirs(db_path)):
+        for candidate in list_candidate_backups(candidate_dirs):
             validation = validate_backup(candidate["path"])
             if validation["valid"]:
                 return {

@@ -184,9 +184,13 @@ class TestRecoverySourceSelection:
         assert source is not None
         assert source["source_type"] == "duckdb"
 
-    def test_choose_recovery_source_blocked(self, tmp_path: Path):
+    def test_choose_recovery_source_blocked(self, tmp_path: Path, monkeypatch):
         db_path = tmp_path / "marketdata.sqlite"
         _corrupt_db(db_path)
+        monkeypatch.setattr(
+            "tools.sqlite_recovery.default_backup_dirs",
+            lambda _path: (_ for _ in ()).throw(AssertionError("explicit [] must not use defaults")),
+        )
 
         source = choose_recovery_source(db_path, duckdb_path=tmp_path / "no.duckdb", backup_dirs=[])
         assert source is None
