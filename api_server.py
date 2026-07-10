@@ -16,6 +16,14 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import api_control_plane
+from api_response import (
+    aggregate_metadata,
+    apply_row_limit,
+    to_int,
+    utc_now_iso,
+    validate_json_query_params,
+    wrap_response,
+)
 from env_bootstrap import env_float, env_int
 
 ROOT = Path(__file__).resolve().parent
@@ -97,146 +105,6 @@ def _get_health() -> dict[str, Any]:
         _health_cache = result
         _health_cache_time = now
         return _health_cache
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-
-def to_int(value: Any, default: int, *, min_val: int = 1, max_val: int = 10000) -> int:
-    try:
-        v = int(value)
-        if v < min_val:
-            return min_val
-        if v > max_val:
-            return max_val
-        return v
-    except (TypeError, ValueError):
-        return default
-
-
-def apply_row_limit(rows: Any, params: dict[str, str], *, default: int | None = None) -> Any:
-    if not isinstance(rows, list):
-        return rows
-    raw_limit = params.get("limit")
-    if raw_limit in (None, "") and default is None:
-        return rows
-    fallback = default if default is not None else len(rows)
-    return rows[:to_int(raw_limit, fallback, min_val=1, max_val=10000)]
-
-
-def validate_json_query_params(params: dict[str, str]) -> None:
-    """Reject malformed JSON in query params that explicitly declare JSON content."""
-    json_param_names = {"params", "filters", "payload"}
-    for key, value in params.items():
-        if key not in json_param_names and not key.endswith("_json"):
-            continue
-        if not value:
-            continue
-        try:
-            json.loads(value)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"malformed JSON in query parameter '{key}': {exc.msg}") from exc
-
-
-
-def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
-    if not isinstance(rows, list):
-        return rows, {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
-
-    if not rows:
-        return [], {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
-
-    if not all(isinstance(row, dict) and "data" in row for row in rows):
-        return rows, {"freshness": None, "quality": None, "degraded": False, "degraded_reasons": [], "lineage": []}, None
-
-    data_rows = [
-        row.get("data")
-        for row in rows
-        if not (
-            isinstance(row, dict)
-            and bool(row.get("degraded"))
-            and row.get("data") in ({}, None)
-        )
-    ]
-    degraded = any(bool(row.get("degraded")) for row in rows)
-    freshness_rows = [row.get("freshness") for row in rows if isinstance(row.get("freshness"), dict)]
-    quality_rows = [row.get("quality") for row in rows if isinstance(row.get("quality"), dict)]
-    degraded_reasons: list[str] = []
-    lineages: list[dict[str, Any]] = []
-    sources = []
-    for row in rows:
-        provenance = row.get("provenance") if isinstance(row, dict) else None
-        if isinstance(provenance, dict) and provenance.get("source_id"):
-            sources.append(str(provenance["source_id"]))
-        lineage = row.get("lineage") if isinstance(row, dict) else None
-        if isinstance(lineage, dict) and lineage:
-            lineages.append(lineage)
-            reason = lineage.get("reason")
-            if reason:
-                degraded_reasons.append(str(reason))
-        row_reasons = row.get("degraded_reasons") if isinstance(row, dict) else None
-        if isinstance(row_reasons, list):
-            degraded_reasons.extend(str(reason) for reason in row_reasons if reason)
-        elif row_reasons:
-            degraded_reasons.append(str(row_reasons))
-    source = sources[0] if sources else None
-
-    freshness: dict[str, Any] | None = None
-    if freshness_rows:
-        age_hours = [float(item.get("age_hours", 0.0)) for item in freshness_rows if item.get("age_hours") is not None]
-        scores = [float(item.get("score", 0.0)) for item in freshness_rows if item.get("score") is not None]
-        freshness = {
-            "stale": any(bool(item.get("stale")) for item in freshness_rows),
-            "age_hours_max": max(age_hours) if age_hours else None,
-            "age_hours_min": min(age_hours) if age_hours else None,
-            "score_min": min(scores) if scores else None,
-            "score_max": max(scores) if scores else None,
-        }
-        if len(freshness_rows) == 1:
-            freshness = freshness_rows[0]
-
-    quality: dict[str, Any] | None = None
-    if quality_rows:
-        scores = [float(item.get("score", 0.0)) for item in quality_rows if item.get("score") is not None]
-        completeness = [float(item.get("completeness", 0.0)) for item in quality_rows if item.get("completeness") is not None]
-        quality = {
-            "score_min": min(scores) if scores else None,
-            "score_avg": round(sum(scores) / len(scores), 4) if scores else None,
-            "completeness_min": min(completeness) if completeness else None,
-        }
-        if len(quality_rows) == 1:
-            quality = quality_rows[0]
-
-    seen_reasons: set[str] = set()
-    unique_reasons = []
-    for reason in degraded_reasons:
-        if reason not in seen_reasons:
-            seen_reasons.add(reason)
-            unique_reasons.append(reason)
-
-    return data_rows, {
-        "freshness": freshness,
-        "quality": quality,
-        "degraded": degraded,
-        "degraded_reasons": unique_reasons,
-        "lineage": lineages[0] if len(lineages) == 1 else lineages,
-    }, source
-
-
-
-def wrap_response(payload: Any, metadata: dict[str, Any], source: str | None) -> dict[str, Any]:
-    metadata = dict(metadata or {})
-    metadata.setdefault("degraded_reasons", [])
-    metadata.setdefault("lineage", [])
-    return {
-        "data": payload,
-        "metadata": metadata,
-        "source": source,
-        "timestamp": utc_now_iso(),
-    }
-
 
 
 class NotFoundError(ValueError):
@@ -519,8 +387,10 @@ class Handler(BaseHTTPRequestHandler):
             symbol = params.get("symbol", "").strip()
             if not symbol:
                 raise ValueError("symbol is required")
-            rows = reader.get_crypto_klines(symbol=symbol)
-            rows = apply_row_limit(rows, params)
+            rows = reader.get_crypto_klines(
+                symbol=symbol,
+                limit=to_int(params.get("limit"), 50),
+            )
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

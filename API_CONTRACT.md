@@ -42,7 +42,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
-**HTTP 服务**：生产 API 默认监听 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。正式外部入口为 `https://signals.tradingagent.cc`，Cloudflare 橙云 A 记录指向主服务器 Nginx origin，再反代到 SharedSignals；本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
+**HTTP 服务**：生产 API 默认监听广州 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。正式外部入口为 `https://signals.tradingagent.cc`，Cloudflare Tunnel CNAME 由新加坡 connector 接入，并通过 loopback-only SSH reverse tunnel 到广州 API；8082 不直接暴露公网。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
 
 **账号层级**：内部账号使用 `internal` tier，面向 Nicholas 批准的内部用户或可信内部 agent，可设置较高 `max_concurrent` 且无小时额度；仍不等于运维权限。未来外部套餐使用 `starter`（60/hour, 2 concurrent）、`research`（300/hour, 4 concurrent）、`pro`（600/hour, 8 concurrent）和 `enterprise`（定制，需容量和审计评估）。旧 `free` tier 保留为 `starter` 等价兼容口径。
 
@@ -838,6 +838,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-10 | 1.1.40 | Crypto `limit` 直接传给 reader 并返回最新记录；周/月线 `bar_time` 统一为 SQL 时间；DuckDB 权威快照支持删除传播并执行全表计数核对；新增 Tushare 逐接口运行台账和 5 分钟公网探针；API systemd 固定使用 SharedSignals venv；外部入口改为新加坡 connector 承载的 Cloudflare Tunnel CNAME。P1 `daily` 改为全市场 trade-date 单次采集并要求 >=90% active-universe 唯一代码覆盖；未验证批量能力的研究接口使用每日 300 只单股轮转；修复 `repurchase/pledge_*` 及 P2/P3 六个逐股接口的空参数重复请求，并增加 provider 行上限截断门。 |
 | 2026-07-10 | 1.1.39 | A股 P0 从每轮 30 只优先/轮转改为 `rt_min` 每批最多 300 只、每 5 分钟覆盖完整 active universe；移除旧游标与优先池配置，空批次计关键失败；退役重复且盘中无数据的 `stk_mins` 生产能力；health SLA 新增盘中 active-universe 覆盖率门禁。 |
 | 2026-07-10 | 1.1.38 | 修复 SQL 时间格式的开盘闸门解析和控制面缓存；DuckDB 大表改为受限资源的哈希增量镜像，并把闸门与镜像结果纳入 `/health`、`/source_status`。外部入口文档统一为 Cloudflare 橙云 A 记录/Nginx。 |
 | 2026-07-10 | 1.1.37 | 增加 `/opening_gate` 与四个交易时点轻量供数门，外部 agent 可在使用行情前读取当前门状态。 |

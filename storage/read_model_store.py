@@ -10,6 +10,7 @@ import fcntl
 import hashlib
 import json
 import logging
+import re
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -548,6 +549,11 @@ def _canonical_row(table, row, api_name, source_ref):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
         if api_name in ("weekly", "monthly", "index_weekly", "index_monthly"):
             row["interval"] = api_name
+            bar_time = str(row.get("bar_time") or "")
+            if re.fullmatch(r"\d{8}", bar_time):
+                row["bar_time"] = (
+                    f"{bar_time[0:4]}-{bar_time[4:6]}-{bar_time[6:8]} 00:00:00"
+                )
         elif api_name in ("rt_min", "rt_fut_min"):
             row["interval"] = "5min"
         if api_name == "rt_fut_min":

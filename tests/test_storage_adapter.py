@@ -91,3 +91,66 @@ def test_append_only_event_sync_inserts_new_hashes_without_rewriting_history(tmp
         {"event_hash": "event-1", "title": "original"},
         {"event_hash": "event-2", "title": "new"},
     ]
+
+
+def test_snapshot_table_sync_removes_rows_deleted_from_sqlite(tmp_path: Path):
+    sqlite_path = tmp_path / "marketdata.sqlite"
+    duckdb_path = tmp_path / "marketdata.duckdb"
+    _create_sqlite(sqlite_path)
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        conn.executemany(
+            "INSERT INTO market_assets (market, symbol, name, provider) VALUES (?, ?, ?, ?)",
+            [
+                ("Ashare", "000001.SZ", "asset-1", "test"),
+                ("Ashare", "000002.SZ", "asset-2", "test"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    adapter = StorageAdapter(str(sqlite_path), str(duckdb_path))
+    assert adapter.sync_sqlite_to_duckdb("market_assets") == 2
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        conn.execute("DELETE FROM market_assets WHERE symbol = ?", ("000002.SZ",))
+        conn.commit()
+    finally:
+        conn.close()
+
+    adapter.sync_sqlite_to_duckdb("market_assets")
+
+    assert adapter.query("SELECT symbol FROM market_assets ORDER BY symbol") == [
+        {"symbol": "000001.SZ"},
+    ]
+
+
+def test_reconcile_counts_reports_table_mismatch(tmp_path: Path):
+    sqlite_path = tmp_path / "marketdata.sqlite"
+    duckdb_path = tmp_path / "marketdata.duckdb"
+    _create_sqlite(sqlite_path)
+    adapter = StorageAdapter(str(sqlite_path), str(duckdb_path))
+    adapter.sync_sqlite_to_duckdb("market_assets")
+
+    conn = adapter.duckdb_connect()
+    try:
+        conn.execute(
+            "INSERT INTO market_assets (market, symbol, name, provider) VALUES (?, ?, ?, ?)",
+            ["Ashare", "stale.SZ", "stale", "test"],
+        )
+    finally:
+        conn.close()
+
+    reconciliation = adapter.reconcile_counts(["market_assets"])
+
+    assert reconciliation == {
+        "market_assets": {
+            "sqlite_rows": 0,
+            "duckdb_rows": 1,
+            "delta": -1,
+            "status": "mismatch",
+        }
+    }

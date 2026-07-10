@@ -105,3 +105,34 @@ def test_apply_migrations_repairs_missing_nullable_columns_when_hash_is_current(
         conn.close()
     assert {"bid_price", "ask_price", "bid_size", "ask_size", "last_trade_date", "expiry_date"}.issubset(columns)
     assert "repair missing nullable columns" in repair_note
+
+
+def test_apply_migrations_normalizes_existing_periodic_bar_times(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, bar_time, trade_date, interval, provider)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("Ashare", "000001.SZ", "20260703", "20260703", "weekly", "tushare_weekly"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = apply_migrations(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        value = conn.execute(
+            "SELECT bar_time FROM market_bars_intraday WHERE symbol = ?",
+            ("000001.SZ",),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert result["periodic_bar_times_normalized"] == 1
+    assert value == "2026-07-03 00:00:00"

@@ -126,13 +126,14 @@ class _FakeReader:
             {"data": {"market_id": market_id or "pm-1", "price": 0.42}, "degraded": False},
         ]
 
-    def get_crypto_klines(self, symbol: str) -> list[dict[str, Any]]:
-        self.calls.append(("get_crypto_klines", {"symbol": symbol}))
-        return [
+    def get_crypto_klines(self, symbol: str, limit: int = 50) -> list[dict[str, Any]]:
+        self.calls.append(("get_crypto_klines", {"symbol": symbol, "limit": limit}))
+        rows = [
             {"data": {"symbol": symbol, "close": 100.0}, "degraded": False},
             {"data": {"symbol": symbol, "close": 101.0}, "degraded": False},
             {"data": {"symbol": symbol, "close": 102.0}, "degraded": False},
         ]
+        return rows[-limit:]
 
     def get_tushare(
         self,
@@ -273,14 +274,14 @@ def test_api_tushare_relationship_api_is_visible(api_edge_server) -> None:
     assert reader.calls[-1][0] == "get_tushare"
 
 
-def test_api_crypto_applies_limit(api_edge_server) -> None:
+def test_api_crypto_passes_limit_to_reader_and_returns_latest_rows(api_edge_server) -> None:
     base_url, reader = api_edge_server
 
     status, payload = _get_json(base_url, "/crypto?symbol=BTCUSDT&limit=2")
 
     assert status == 200
-    assert [row["close"] for row in payload["data"]] == [100.0, 101.0]
-    assert reader.calls[-1] == ("get_crypto_klines", {"symbol": "BTCUSDT"})
+    assert [row["close"] for row in payload["data"]] == [101.0, 102.0]
+    assert reader.calls[-1] == ("get_crypto_klines", {"symbol": "BTCUSDT", "limit": 2})
 
 
 def test_api_fundamentals_passes_limit_to_reader(api_edge_server) -> None:
@@ -470,7 +471,7 @@ def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) 
 
     assert status == 200
     assert payload["source"] == "external_agent_api_config.json"
-    assert payload["data"]["contract_version"] == "1.1.38"
+    assert payload["data"]["contract_version"] == "1.1.40"
     assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 114
     assert payload["data"]["tushare_status"]["configured_in_production_tiers"] == 113
     assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 0

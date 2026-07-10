@@ -14,15 +14,16 @@ priorities:
   - api_name: daily
     fields: ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount
     frequency: daily
-    lookback_days: 90
+    coverage_key: ts_code
+    min_universe_coverage_ratio: 0.9
+    row_limit_guard: 6000
     params:
-      end_date: '{end_date}'
-      start_date: '{start_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
+      trade_date: '{trade_date}'
+    per_stock: false
   - api_name: stk_factor
     frequency: daily
     lookback_days: 90
+    bounded_rotation_size: 300
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -32,6 +33,7 @@ priorities:
     frequency: daily
     per_stock: true
     lookback_days: 90
+    bounded_rotation_size: 300
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -39,6 +41,7 @@ priorities:
     fields: ts_code,trade_date,pe,pb,turnover_rate,mv
   - api_name: daily_basic
     frequency: daily
+    bounded_rotation_size: 300
     params:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
@@ -51,6 +54,7 @@ priorities:
     per_stock: false
   - api_name: cyq_perf
     frequency: daily
+    bounded_rotation_size: 300
     params:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
@@ -58,6 +62,7 @@ priorities:
     fields: ts_code,trade_date,winner_rate,cost_50pct
   - api_name: cyq_chips
     frequency: daily
+    bounded_rotation_size: 300
     params:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
@@ -65,6 +70,7 @@ priorities:
     fields: ts_code,trade_date,price,percent
   - api_name: adj_factor
     frequency: daily
+    bounded_rotation_size: 300
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -111,12 +117,14 @@ priorities:
     fields: trade_date,ts_code,pre_close,up_limit,down_limit
   - api_name: stk_auction
     frequency: daily
+    bounded_rotation_size: 300
     params:
       trade_date: '{trade_date}'
       ts_code: '{ts_code}'
     per_stock: true
   - api_name: stk_limit
     frequency: daily
+    bounded_rotation_size: 300
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -130,15 +138,28 @@ priorities:
       start_date: '{start_date}'
     per_stock: false
   - api_name: repurchase
-    per_stock: true
+    per_stock: false
+    lookback_days: 30
+    params:
+      start_date: '{start_date}'
+      end_date: '{end_date}'
+    row_limit_guard: 2000
     fields: ts_code,ann_date,vol,amount,high_limit
     frequency: daily
   - api_name: pledge_stat
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
+    row_limit_guard: 1000
     fields: ts_code,end_date,pledge_amount,pledge_ratio
     frequency: daily
   - api_name: pledge_detail
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
+    row_limit_guard: 1000
     fields: ts_code,holder_name,pledge_amount
     frequency: daily
   P2_financial_daily:
@@ -210,18 +231,30 @@ priorities:
     fields: ts_code,div_year,cash_div,record_date,ex_date
   - api_name: top10_holders
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
     frequency: daily
   - api_name: top10_floatholders
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,ann_date,holder_name,hold_amount,hold_ratio
     frequency: daily
   - api_name: stk_holdertrade
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,ann_date,holder_name,in_de,change_vol
     frequency: daily
   - api_name: top_inst
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,ann_date,inst_name,hold_amount,hold_ratio
     frequency: daily
   P3_reference_daily:
@@ -295,6 +328,9 @@ priorities:
     fields: index_code,con_code,trade_date,weight
   - api_name: share_float
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,ann_date,float_share,float_ratio
     frequency: daily
   - api_name: stk_surv
@@ -369,6 +405,9 @@ priorities:
     fields: ts_code,exchange,name,per_unit,opt_code,opt_type,call_put,exercise_type,exercise_price,s_month,maturity_date,list_price,list_date,delist_date
   - api_name: stk_managers
     per_stock: true
+    bounded_rotation_size: 300
+    params:
+      ts_code: '{ts_code}'
     fields: ts_code,name,gender,position,edu
     frequency: daily
   P4_macro_daily:

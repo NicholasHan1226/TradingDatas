@@ -96,6 +96,19 @@ def test_configured_tushare_apis_are_allowed_by_api_gateway() -> None:
     assert missing == []
 
 
+def test_every_per_stock_api_binds_the_requested_symbol() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    invalid = []
+    for tier, apis in config["priorities"].items():
+        for api in apis:
+            if not api.get("per_stock", True):
+                continue
+            if "{ts_code}" not in str(api.get("params") or {}):
+                invalid.append(f"{tier}:{api['api_name']}")
+
+    assert invalid == []
+
+
 def test_p6_news_announcement_event_apis_are_single_config_entries() -> None:
     from collections import Counter
 
@@ -429,21 +442,58 @@ def test_p0_rt_min_retries_only_failed_batches(tmp_path: Path, monkeypatch) -> N
     assert stats["_tier_summary"]["critical_failure_count"] == 0
 
 
-def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
+def test_p1_daily_collects_one_market_wide_trade_date_snapshot() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
     p1_by_name = {
         api["api_name"]: api for api in config["priorities"]["P1_eod_daily"]
     }
 
-    for api_name in ("daily", "stk_factor", "stk_factor_pro"):
+    daily = p1_by_name["daily"]
+    assert daily["per_stock"] is False
+    assert daily["params"] == {"trade_date": "{trade_date}"}
+    assert daily["coverage_key"] == "ts_code"
+    assert daily["min_universe_coverage_ratio"] == 0.9
+    assert daily["row_limit_guard"] == 6000
+
+
+def test_p1_unverified_research_apis_use_bounded_single_symbol_rotation() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p1_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P1_eod_daily"]
+    }
+
+    for api_name in (
+        "stk_factor",
+        "stk_factor_pro",
+        "daily_basic",
+        "cyq_perf",
+        "cyq_chips",
+        "adj_factor",
+        "stk_auction",
+        "stk_limit",
+        "pledge_stat",
+        "pledge_detail",
+    ):
         api = p1_by_name[api_name]
-        assert api["lookback_days"] == 90
         assert api["per_stock"] is True
-        assert api["params"] == {
-            "ts_code": "{ts_code}",
-            "start_date": "{start_date}",
-            "end_date": "{end_date}",
-        }
+        assert api["params"]["ts_code"] == "{ts_code}"
+        assert api["bounded_rotation_size"] == 300
+        assert not api.get("stock_batch_size")
+
+
+def test_p1_repurchase_uses_market_wide_announcement_window() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p1_by_name = {
+        api["api_name"]: api for api in config["priorities"]["P1_eod_daily"]
+    }
+
+    repurchase = p1_by_name["repurchase"]
+    assert repurchase["per_stock"] is False
+    assert repurchase["params"] == {
+        "start_date": "{start_date}",
+        "end_date": "{end_date}",
+    }
+    assert repurchase["row_limit_guard"] == 2000
 
 
 def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
@@ -457,6 +507,125 @@ def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
     assert api["lookback_days"] == 7
     assert api["per_stock"] is False
     assert api["params"] == {"trade_date": "{trade_date}"}
+
+
+def test_p1_daily_completeness_guard_marks_silent_truncation_critical(tmp_path: Path, monkeypatch) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            assert api_name == "daily"
+            assert params == {"trade_date": "20260710"}
+            return [
+                {"ts_code": "000001.SZ", "trade_date": "20260710"},
+                {"ts_code": "000002.SZ", "trade_date": "20260710"},
+            ]
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _path, _table, _api, rows, **_kwargs: len(rows),
+    )
+    universe = [f"{index:06d}.SZ" for index in range(10)]
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{
+            "api_name": "daily",
+            "per_stock": False,
+            "params": {"trade_date": "{trade_date}"},
+            "coverage_key": "ts_code",
+            "min_universe_coverage_ratio": 0.9,
+            "row_limit_guard": 6000,
+        }],
+        stock_codes=universe,
+        trade_date="20260710",
+        start_date="20260710",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["coverage_status"] == "failed"
+    assert stats["daily"]["unique_symbols"] == 2
+    assert stats["daily"]["universe_coverage_ratio"] == 0.2
+    assert stats["daily"]["critical_failure_count"] == 1
+    assert stats["_tier_summary"]["critical_failure_count"] == 1
+
+
+def test_p1_global_row_limit_guard_marks_possible_truncation_critical(tmp_path: Path, monkeypatch) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            del api_name, params, fields
+            return [{"ts_code": "000001.SZ", "ann_date": "20260710"}] * 3
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _path, _table, _api, rows, **_kwargs: len(rows),
+    )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{
+            "api_name": "repurchase",
+            "per_stock": False,
+            "params": {"start_date": "{start_date}", "end_date": "{end_date}"},
+            "row_limit_guard": 3,
+        }],
+        stock_codes=[],
+        trade_date="20260710",
+        start_date="20260701",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["repurchase"]["possible_truncation"] is True
+    assert stats["repurchase"]["critical_failure_count"] == 1
+
+
+def test_p1_bounded_rotation_limits_provider_calls_without_batching(tmp_path: Path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            del api_name, fields
+            calls.append(params["ts_code"])
+            return [{"ts_code": params["ts_code"], "trade_date": "20260710"}]
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _path, _table, _api, rows, **_kwargs: len(rows),
+    )
+    universe = [f"{index:06d}.SZ" for index in range(1000)]
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{
+            "api_name": "pledge_stat",
+            "per_stock": True,
+            "params": {"ts_code": "{ts_code}"},
+            "bounded_rotation_size": 300,
+        }],
+        stock_codes=universe,
+        trade_date="20260710",
+        start_date="20260710",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert len(calls) == 300
+    assert all("," not in code for code in calls)
+    assert stats["pledge_stat"]["universe_symbols"] == 1000
+    assert stats["pledge_stat"]["scheduled_symbols"] == 300
+    assert stats["pledge_stat"]["collection_mode"] == "bounded_rotation"
 
 
 def test_load_stock_codes_prefers_sqlite_market_assets(tmp_path: Path) -> None:

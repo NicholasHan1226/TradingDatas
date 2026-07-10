@@ -101,6 +101,7 @@ def _crontab_text() -> str:
             "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
             "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
             "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
+            "3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh",
         ]
     )
 
@@ -206,8 +207,49 @@ def test_source_governance_reports_runtime_control_failures() -> None:
         capability_registry={"summary": {"down": 0, "degraded": 0}},
         opening_gate_report={"status": "red", "gate": "closed", "phase": "morning_first_sample"},
         duckdb_sync_report={"status": "error", "failed_tables": ["market_events"]},
+        interface_runtime_report={"status": "red", "summary": {"failed": 1, "unobserved": 2}},
     )
 
     assert report["status"] == "red"
     red_checks = {check["name"] for check in report["checks"] if check["status"] == "red"}
-    assert {"opening_gate", "duckdb_sync"} <= red_checks
+    assert {"opening_gate", "duckdb_sync", "interface_runtime_ledger"} <= red_checks
+
+
+def test_source_governance_preserves_unobserved_interface_runtime_as_yellow() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        interface_runtime_report={
+            "status": "yellow",
+            "summary": {"failed": 0, "degraded": 0, "unobserved": 10},
+        },
+    )
+
+    assert report["status"] == "yellow"
+    check = next(item for item in report["checks"] if item["name"] == "interface_runtime_ledger")
+    assert check["status"] == "yellow"
+    assert check["evidence"]["unobserved"] == 10
+
+
+def test_source_governance_reports_external_api_probe_failure() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        external_api_probe_report={
+            "status": "red",
+            "http_status": 525,
+            "checked_at": "2026-07-10T08:00:00+00:00",
+        },
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "external_api_probe")
+    assert report["status"] == "red"
+    assert check["evidence"]["http_status"] == 525

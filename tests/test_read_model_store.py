@@ -104,6 +104,24 @@ def test_rt_min_ingests_intraday_with_metadata(tmp_path: Path) -> None:
     )
 
 
+def test_weekly_rows_use_canonical_bar_time(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    rows = ingest_rows_to_sqlite(
+        db_path,
+        "market_bars_intraday",
+        "weekly",
+        [{"ts_code": "000001.SZ", "trade_date": "20260703", "close": 10.5}],
+        source_name="weekly_rows_test",
+    )
+
+    assert rows == 1
+    assert _fetchone(
+        db_path,
+        "SELECT trade_date, bar_time, interval FROM market_bars_intraday",
+    ) == ("20260703", "2026-07-03 00:00:00", "weekly")
+
 def test_rt_fut_min_ingests_quote_and_expiry_fields(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

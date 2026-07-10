@@ -20,6 +20,7 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
   not the trading read path; keep it off 5-minute cadence unless the merge is
   incremental and load-tested.
 - `patrol.sh`, `health_sla.sh`, `source_governance_monitor.sh`, `green_gate_report.sh`, `watchdog.sh`: health checks, source governance status, daily operator Green Gate email, and bounded self-heal loop.
+- `external_api_probe.sh`: every 5 minutes verifies the public hostname reaches the SharedSignals authentication gate; it does not need or store a consumer token by default.
 - `capability_scan.sh`: API capability registry refresh.
 
 ## Environment surface

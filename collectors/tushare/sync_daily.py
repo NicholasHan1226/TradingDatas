@@ -19,13 +19,14 @@ into the SQLite read model.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import os
 import re
 import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -43,6 +44,7 @@ from storage.read_model_store import (  # noqa: E402
     DEFAULT_SQLITE_PATH,
     ingest_rows_to_sqlite,
 )
+from tools.interface_runtime_ledger import record_tushare_stats  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -269,11 +271,35 @@ def sync_tier(
     # Resolve HK stock codes
     hk_codes = hk_stock_codes or []
 
+    def _rotation_codes(api_def: dict, codes: list[str]) -> tuple[list[str], dict[str, Any]]:
+        size = max(0, int(api_def.get("bounded_rotation_size") or 0))
+        if size <= 0 or size >= len(codes):
+            return codes, {
+                "collection_mode": "full_universe",
+                "universe_symbols": len(codes),
+                "scheduled_symbols": len(codes),
+                "rotation_offset": 0,
+            }
+        cycle_count = (len(codes) + size - 1) // size
+        day_ordinal = datetime.strptime(trade_date, "%Y%m%d").date().toordinal()
+        api_offset = int(hashlib.sha256(str(api_def.get("api_name") or "").encode()).hexdigest()[:8], 16)
+        cycle_index = (day_ordinal + api_offset) % cycle_count
+        offset = cycle_index * size
+        selected = codes[offset:offset + size]
+        return selected, {
+            "collection_mode": "bounded_rotation",
+            "universe_symbols": len(codes),
+            "scheduled_symbols": len(selected),
+            "rotation_offset": offset,
+            "rotation_cycle_runs": cycle_count,
+        }
+
     def _stock_call_count(api_defs: list[dict], codes: list[str]) -> int:
         total = 0
         for api_def in api_defs:
             batch_size = max(1, int(api_def.get("stock_batch_size") or 1))
-            total += (len(codes) + batch_size - 1) // batch_size
+            selected, _rotation = _rotation_codes(api_def, codes)
+            total += (len(selected) + batch_size - 1) // batch_size
         return total
 
     total_calls = (
@@ -325,6 +351,8 @@ def sync_tier(
             template = api_def.get("params", {})
             fields = api_def.get("fields")
             batch_size = max(1, int(api_def.get("stock_batch_size") or 1))
+            row_limit_guard = max(0, int(api_def.get("row_limit_guard") or 0))
+            api_codes, rotation = _rotation_codes(api_def, codes)
             empty_is_failure = bool(api_def.get("empty_is_failure"))
             failed_batch_retry_rounds = max(0, int(api_def.get("failed_batch_retry_rounds") or 0))
             failed_batch_retry_delay_seconds = max(
@@ -341,6 +369,7 @@ def sync_tier(
             sqlite_statuses: list[str] = []
             api_sqlite_errors: list[str] = []
             failed_batches: list[tuple[int, list[str]]] = []
+            possible_truncation_batches: set[int] = set()
 
             def _collect_batch(batch_index: int, code_batch: list[str], *, retry_round: int = 0) -> bool:
                 nonlocal call_idx, api_calls, api_total, sqlite_total
@@ -359,6 +388,16 @@ def sync_tier(
                         api_name,
                         batch_index,
                         len(code_batch),
+                    )
+                if row_limit_guard and len(rows) >= row_limit_guard:
+                    call_failed = True
+                    possible_truncation_batches.add(batch_index)
+                    logger.error(
+                        "[%s] %s batch %d reached provider row limit guard %d",
+                        tier_name,
+                        api_name,
+                        batch_index,
+                        row_limit_guard,
                     )
                 api_total += len(rows)
                 source_name = (
@@ -388,8 +427,8 @@ def sync_tier(
                                 api_name, len(code_batch), len(rows))
                 return call_failed
 
-            for batch_index, offset in enumerate(range(0, len(codes), batch_size), start=1):
-                code_batch = codes[offset:offset + batch_size]
+            for batch_index, offset in enumerate(range(0, len(api_codes), batch_size), start=1):
+                code_batch = api_codes[offset:offset + batch_size]
                 if _collect_batch(batch_index, code_batch):
                     failed_batches.append((batch_index, code_batch))
 
@@ -412,11 +451,13 @@ def sync_tier(
                 "rows": api_total,
                 "calls": api_calls,
                 "failure_count": api_failures,
-                "critical_failure_count": api_failures if empty_is_failure else 0,
+                "critical_failure_count": api_failures if (empty_is_failure or row_limit_guard) else 0,
                 "duration_s": round(duration, 1),
                 "sqlite_rows": sqlite_total,
                 "sqlite_status": _sqlite_status(sqlite_statuses),
                 "sqlite_errors": api_sqlite_errors,
+                "possible_truncation": bool(possible_truncation_batches),
+                **rotation,
             }
             logger.info("[%s] %s (%s): %d rows, api_failures=%d/%d, sqlite=%s/%d rows in %.1fs",
                         tier_name, api_name, label, api_total, api_failures, api_calls,
@@ -441,7 +482,34 @@ def sync_tier(
         call_idx += 1
         params = fill_params(template, None, trade_date, api_start_date, api_end_date)
         rows = collector.collect(api_name, params, fields)
-        api_failures = 1 if getattr(collector, "last_collect_failed", False) else 0
+        provider_failed = bool(getattr(collector, "last_collect_failed", False))
+        row_limit_guard = max(0, int(api_def.get("row_limit_guard") or 0))
+        possible_truncation = bool(row_limit_guard and len(rows) >= row_limit_guard)
+        coverage_key = str(api_def.get("coverage_key") or "")
+        min_coverage = float(api_def.get("min_universe_coverage_ratio") or 0.0)
+        unique_symbols = len({str(row.get(coverage_key) or "") for row in rows if coverage_key and row.get(coverage_key)})
+        universe_size = len(stock_codes)
+        coverage_ratio = round(unique_symbols / universe_size, 4) if universe_size else 0.0
+        coverage_failed = bool(min_coverage and (not universe_size or coverage_ratio < min_coverage))
+        guard_failed = possible_truncation or coverage_failed
+        api_failures = 1 if provider_failed or guard_failed else 0
+        if possible_truncation:
+            logger.error(
+                "[%s] %s reached provider row limit guard %d; possible silent truncation",
+                tier_name,
+                api_name,
+                row_limit_guard,
+            )
+        if coverage_failed:
+            logger.error(
+                "[%s] %s coverage %.4f below %.4f (%d/%d unique symbols)",
+                tier_name,
+                api_name,
+                coverage_ratio,
+                min_coverage,
+                unique_symbols,
+                universe_size,
+            )
         sqlite_result = _write_sqlite(api_name, rows, source_name=f"{api_name}_{trade_date}")
         sqlite_total = int(sqlite_result["rows"])
 
@@ -450,10 +518,17 @@ def sync_tier(
             "rows": len(rows),
             "calls": 1,
             "failure_count": api_failures,
+            "critical_failure_count": 1 if guard_failed else 0,
             "duration_s": round(duration, 1),
             "sqlite_rows": sqlite_total,
             "sqlite_status": str(sqlite_result["status"]),
             "sqlite_errors": [str(sqlite_result["error"])] if sqlite_result.get("error") else [],
+            "possible_truncation": possible_truncation,
+            "coverage_status": "failed" if coverage_failed else ("ok" if min_coverage else "not_configured"),
+            "coverage_key": coverage_key or None,
+            "unique_symbols": unique_symbols,
+            "universe_symbols": universe_size,
+            "universe_coverage_ratio": coverage_ratio if min_coverage else None,
         }
         logger.info("[%s] [%d/%d] %s (global) → %d rows, api_failures=%d/1, sqlite=%s/%d rows in %.1fs",
                     tier_name, call_idx, total_calls,
@@ -597,6 +672,7 @@ def main() -> None:
     logger.info("=" * 60)
 
     collector = TushareCollector()
+    started_at = datetime.now(timezone.utc).isoformat()
     start_time = time.time()
 
     stats = sync_tier(
@@ -628,6 +704,13 @@ def main() -> None:
     if sqlite_errors:
         logger.warning("SQLITE_ERRORS: %s", sqlite_errors)
     logger.info("=" * 60)
+
+    record_tushare_stats(
+        stats,
+        tier=tier_name,
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+    )
 
     exit_code = _failure_exit_code(
         tier_summary,

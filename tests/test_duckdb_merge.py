@@ -9,6 +9,24 @@ class _PartialFailureAdapter:
     def sync_all_to_duckdb(self) -> dict[str, int]:
         return {"market_events": -1, "market_factors": 3}
 
+    def reconcile_counts(self, tables=None) -> dict[str, dict[str, int | str]]:
+        return {}
+
+
+class _CountMismatchAdapter:
+    def sync_all_to_duckdb(self) -> dict[str, int]:
+        return {"market_assets": 2}
+
+    def reconcile_counts(self, tables=None) -> dict[str, dict[str, int | str]]:
+        return {
+            "market_assets": {
+                "sqlite_rows": 1,
+                "duckdb_rows": 2,
+                "delta": -1,
+                "status": "mismatch",
+            }
+        }
+
 
 def test_run_merge_reports_partial_table_failures_as_error() -> None:
     result = duckdb_merge.run_merge(adapter=_PartialFailureAdapter())
@@ -16,6 +34,14 @@ def test_run_merge_reports_partial_table_failures_as_error() -> None:
     assert result["status"] == "error"
     assert result["failed_tables"] == ["market_events"]
     assert result["total_rows"] == 3
+
+
+def test_run_merge_reports_count_mismatch_as_error() -> None:
+    result = duckdb_merge.run_merge(adapter=_CountMismatchAdapter())
+
+    assert result["status"] == "error"
+    assert result["mismatched_tables"] == ["market_assets"]
+    assert result["reconciliation"]["market_assets"]["delta"] == -1
 
 
 def test_record_result_atomically_updates_watchdog_artifact(tmp_path, monkeypatch) -> None:

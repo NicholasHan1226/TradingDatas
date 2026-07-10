@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_SQLITE_PATH = str(marketdata_sqlite_path())
 DEFAULT_DUCKDB_PATH = str(marketdata_duckdb_path())
 APPEND_ONLY_HASH_TABLES = {"market_events", "market_factors"}
+AUTHORITATIVE_SNAPSHOT_TABLES = {
+    "market_assets",
+    "market_backfill_status",
+    "market_coverage_status",
+    "market_fund_portfolio",
+    "market_pm_markets",
+    "market_relationships",
+    "provider_interface_matrix",
+}
 
 
 class StorageAdapter:
@@ -132,6 +141,16 @@ class StorageAdapter:
 
             result = conn_dk.execute(sql)
             count = result.fetchall()[0][0] if result.description else 0
+            if pk and table in AUTHORITATIVE_SNAPSHOT_TABLES and not where:
+                pk_match = " AND ".join(
+                    f"src.{_quote_identifier(col)} = dst.{_quote_identifier(col)}" for col in pk
+                )
+                conn_dk.execute(
+                    f"DELETE FROM {_quote_identifier(table)} AS dst "
+                    f"WHERE NOT EXISTS ("
+                    f"SELECT 1 FROM sqlite_scan('{sqlite_path}', '{table}') AS src "
+                    f"WHERE {pk_match})"
+                )
             logger.info("duckdb merge: %s <- %d rows (direct sqlite_scan)", table, count)
         finally:
             conn_dk.close()
@@ -152,6 +171,42 @@ class StorageAdapter:
                 logger.exception("sync failed: %s", table)
                 results[table] = -1
         return results
+
+    def reconcile_counts(self, tables: list[str] | None = None) -> dict[str, dict[str, int | str]]:
+        """Compare authoritative SQLite and DuckDB row counts table by table."""
+        from .duckdb_schema import TABLE_NAMES
+
+        selected = tables or list(TABLE_NAMES)
+        sqlite_conn = sqlite3.connect(
+            f"file:{self._sqlite_path}?mode=ro",
+            uri=True,
+            timeout=30.0,
+        )
+        duckdb_conn = self.duckdb_connect(read_only=True)
+        result: dict[str, dict[str, int | str]] = {}
+        try:
+            for table in selected:
+                sqlite_rows = int(
+                    sqlite_conn.execute(
+                        f"SELECT COUNT(*) FROM {_quote_identifier(table)}"
+                    ).fetchone()[0]
+                )
+                duckdb_rows = int(
+                    duckdb_conn.execute(
+                        f"SELECT COUNT(*) FROM {_quote_identifier(table)}"
+                    ).fetchone()[0]
+                )
+                delta = sqlite_rows - duckdb_rows
+                result[table] = {
+                    "sqlite_rows": sqlite_rows,
+                    "duckdb_rows": duckdb_rows,
+                    "delta": delta,
+                    "status": "ok" if delta == 0 else "mismatch",
+                }
+        finally:
+            sqlite_conn.close()
+            duckdb_conn.close()
+        return result
 
     # -- Query (DuckDB-first for speed) --------------------------------------
 

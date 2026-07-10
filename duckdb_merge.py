@@ -96,6 +96,17 @@ def run_merge(
                 result["status"] = "error"
                 result["failed_tables"] = failed_tables
                 result["error"] = "DuckDB sync failed for: " + ", ".join(failed_tables)
+        reconciliation = adapter.reconcile_counts([table] if table else None)
+        result["reconciliation"] = reconciliation
+        mismatched_tables = sorted(
+            table_name
+            for table_name, details in reconciliation.items()
+            if details.get("status") != "ok"
+        )
+        if mismatched_tables:
+            result["status"] = "error"
+            result["mismatched_tables"] = mismatched_tables
+            result["error"] = "DuckDB row-count mismatch for: " + ", ".join(mismatched_tables)
     except Exception as exc:
         logger.exception("merge failed")
         result["status"] = "error"

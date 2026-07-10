@@ -68,6 +68,27 @@ def _add_missing_columns(conn: sqlite3.Connection) -> int:
     return added
 
 
+def _normalize_periodic_bar_times(conn: sqlite3.Connection) -> int:
+    table_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_bars_intraday'"
+    ).fetchone()
+    if not table_exists:
+        return 0
+    cursor = conn.execute(
+        """
+        UPDATE market_bars_intraday
+        SET bar_time =
+            substr(bar_time, 1, 4) || '-' ||
+            substr(bar_time, 5, 2) || '-' ||
+            substr(bar_time, 7, 2) || ' 00:00:00'
+        WHERE interval IN ('weekly', 'monthly', 'index_weekly', 'index_monthly')
+          AND length(bar_time) = 8
+          AND bar_time GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+        """
+    )
+    return max(0, int(cursor.rowcount or 0))
+
+
 def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
     """Apply SCHEMA_SQL DDL to *db_path*. Returns a result dict."""
     import importlib
@@ -117,8 +138,9 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                     "schema_hash": current_hash,
                 }
             added_columns = _add_missing_columns(conn)
+            periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
             conn.commit()
-            if added_columns:
+            if added_columns or periodic_bar_times_normalized:
                 conn.execute(
                     "INSERT INTO _migrations (schema_hash, applied_at, table_count, notes) "
                     "VALUES (?, ?, ?, ?)",
@@ -126,7 +148,9 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                         current_hash,
                         datetime.now(timezone.utc).isoformat(),
                         conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0],
-                        f"repair missing nullable columns: {added_columns}",
+                        "repair missing nullable columns: "
+                        f"{added_columns}; normalize periodic bar times: "
+                        f"{periodic_bar_times_normalized}",
                     ),
                 )
                 conn.commit()
@@ -136,6 +160,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 "message": f"schema up to date, added {added_columns} columns",
                 "applied": 0,
                 "added_columns": added_columns,
+                "periodic_bar_times_normalized": periodic_bar_times_normalized,
                 "drift": False,
                 "schema_hash": current_hash,
             }
@@ -165,6 +190,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 print(f"[migrate] WARNING: {exc}", file=sys.stderr)
 
         added_columns = _add_missing_columns(conn)
+        periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
 
         conn.commit()
 
@@ -191,6 +217,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "message": f"applied {applied} statements, added {added_columns} columns",
             "applied": applied,
             "added_columns": added_columns,
+            "periodic_bar_times_normalized": periodic_bar_times_normalized,
             "table_count": table_count,
             "drift": False,
             "schema_hash": current_hash,

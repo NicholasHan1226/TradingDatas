@@ -25,6 +25,8 @@ CAPABILITY_REGISTRY_PATH = ROOT / "tools" / "capability_registry.json"
 HEALTH_SLA_PATH = ROOT / "logs" / "watchdog_inputs" / "health_sla.json"
 OPENING_GATE_PATH = ROOT / "logs" / "watchdog_inputs" / "opening_gate.json"
 DUCKDB_SYNC_PATH = ROOT / "logs" / "watchdog_inputs" / "duckdb_sync.json"
+INTERFACE_RUNTIME_PATH = ROOT / "logs" / "watchdog_inputs" / "interface_runtime.json"
+EXTERNAL_API_PROBE_PATH = ROOT / "logs" / "watchdog_inputs" / "external_api_probe.json"
 CRONTAB_PATH = ROOT / "crontab.txt"
 DEFAULT_OUTPUT_PATH = ROOT / "logs" / "watchdog_inputs" / "source_governance.json"
 
@@ -73,6 +75,7 @@ REQUIRED_CRON_LINES = {
     "health_sla_15min": "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
     "source_governance_daily": "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
     "green_gate_daily": "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
+    "external_api_probe_5min": "3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh",
     "opening_gate_preopen": "50 8 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase preopen",
     "opening_gate_morning": "35 9 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase morning_first_sample",
     "opening_gate_afternoon": "5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume",
@@ -379,6 +382,42 @@ def _evaluate_runtime_report(name: str, report: dict[str, Any] | None, healthy_s
     )
 
 
+def _evaluate_interface_runtime(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict) or not report:
+        return _check("interface_runtime_ledger", "yellow", "interface runtime ledger has not been initialized")
+    raw_status = str(report.get("status") or "red")
+    status = raw_status if raw_status in STATUS_ORDER else "red"
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    return _check(
+        "interface_runtime_ledger",
+        status,
+        "all configured interfaces have runtime evidence"
+        if status == "green"
+        else "configured interfaces still have failed, degraded, or unobserved runtime evidence",
+        failed=int(summary.get("failed") or 0),
+        degraded=int(summary.get("degraded") or 0),
+        unobserved=int(summary.get("unobserved") or 0),
+        observed=int(summary.get("observed") or 0),
+        expected=int(summary.get("expected") or 0),
+    )
+
+
+def _evaluate_external_api_probe(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict) or not report:
+        return _check("external_api_probe", "yellow", "external API probe has not been initialized")
+    status = "green" if report.get("status") == "green" else "red"
+    return _check(
+        "external_api_probe",
+        status,
+        "public route reached the SharedSignals API boundary"
+        if status == "green"
+        else "public route did not reach the SharedSignals API boundary",
+        http_status=report.get("http_status"),
+        checked_at=report.get("checked_at"),
+        latency_ms=report.get("latency_ms"),
+    )
+
+
 def evaluate_source_governance(
     *,
     agent_config: dict[str, Any],
@@ -389,6 +428,8 @@ def evaluate_source_governance(
     capability_registry: dict[str, Any] | None = None,
     opening_gate_report: dict[str, Any] | None = None,
     duckdb_sync_report: dict[str, Any] | None = None,
+    interface_runtime_report: dict[str, Any] | None = None,
+    external_api_probe_report: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     checks = []
@@ -408,6 +449,10 @@ def evaluate_source_governance(
         checks.append(_evaluate_runtime_report("opening_gate", opening_gate_report, "green"))
     if duckdb_sync_report is not None:
         checks.append(_evaluate_runtime_report("duckdb_sync", duckdb_sync_report, "ok"))
+    if interface_runtime_report is not None:
+        checks.append(_evaluate_interface_runtime(interface_runtime_report))
+    if external_api_probe_report is not None:
+        checks.append(_evaluate_external_api_probe(external_api_probe_report))
     status = _overall(checks)
     tushare = agent_config.get("tushare_status") or {}
     endpoints = _endpoint_paths(agent_config)
@@ -434,6 +479,8 @@ def evaluate_source_governance(
             "capability_registry": str(CAPABILITY_REGISTRY_PATH),
             "opening_gate": str(OPENING_GATE_PATH),
             "duckdb_sync": str(DUCKDB_SYNC_PATH),
+            "interface_runtime": str(INTERFACE_RUNTIME_PATH),
+            "external_api_probe": str(EXTERNAL_API_PROBE_PATH),
         },
     }
 
@@ -488,6 +535,8 @@ def build_source_governance_report() -> dict[str, Any]:
     health_sla_report = _json_file(HEALTH_SLA_PATH, {})
     opening_gate_report = _json_file(OPENING_GATE_PATH, {})
     duckdb_sync_report = _json_file(DUCKDB_SYNC_PATH, {})
+    interface_runtime_report = _json_file(INTERFACE_RUNTIME_PATH, {})
+    external_api_probe_report = _json_file(EXTERNAL_API_PROBE_PATH, {})
     crontab_text = CRONTAB_PATH.read_text(encoding="utf-8", errors="replace") if CRONTAB_PATH.exists() else ""
     return evaluate_source_governance(
         agent_config=agent_config,
@@ -498,6 +547,8 @@ def build_source_governance_report() -> dict[str, Any]:
         capability_registry=capability_registry,
         opening_gate_report=opening_gate_report,
         duckdb_sync_report=duckdb_sync_report,
+        interface_runtime_report=interface_runtime_report,
+        external_api_probe_report=external_api_probe_report,
     )
 
 

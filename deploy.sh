@@ -11,6 +11,8 @@ VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 DEPLOY_LOCK_FILE="${SHAREDSIGNALS_DEPLOY_LOCK_FILE:-/var/lock/sharedsignals-deploy.lock}"
 MAINTENANCE_LOCK_FILE="${SHAREDSIGNALS_MAINTENANCE_LOCK_FILE:-${REPO_DIR}/logs/locks/read_model_maintenance.lock}"
 MAINTENANCE_LOCK_TIMEOUT="${SHAREDSIGNALS_MAINTENANCE_LOCK_TIMEOUT:-300}"
+SQLITE_BACKUP_RETENTION="${SHAREDSIGNALS_SQLITE_BACKUP_RETENTION:-3}"
+SMOKE_LOG_RETENTION="${SHAREDSIGNALS_SMOKE_LOG_RETENTION:-5}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 TAG="deploy-${TIMESTAMP}"
 LOG_FILE="${REPO_DIR}/logs/deploy_${TIMESTAMP}.log"
@@ -211,14 +213,19 @@ fi
 # ---- Phase 6: Switch ----
 log "Phase 6: Switch"
 
-# Restart any services if needed
+# Install the repository-owned service definition so the API cannot drift back
+# to a sibling project's Python environment.
 SERVICE_FILE="/etc/systemd/system/sharedsignals-api.service"
-if [ -f "$SERVICE_FILE" ]; then
-    sudo systemctl restart sharedsignals-api 2>/dev/null || warn "Could not restart sharedsignals-api service"
-    success "Service restarted"
-else
-    log "No systemd service found - skipping restart"
+SERVICE_TEMPLATE="${REPO_DIR}/deploy/systemd/sharedsignals-api.service"
+if [ ! -f "$SERVICE_TEMPLATE" ]; then
+    error "Missing SharedSignals systemd service template"
+    false
 fi
+sudo install -m 0644 "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+sudo systemctl daemon-reload
+sudo systemctl enable sharedsignals-api >/dev/null 2>&1
+sudo systemctl restart sharedsignals-api
+success "SharedSignals-owned service installed and restarted"
 
 # ---- Completion ----
 log "=== Deploy ${TIMESTAMP} COMPLETE ==="
@@ -227,6 +234,7 @@ echo "Tag: $TAG"
 echo "Backup: ${DB_BACKUP:-none}"
 echo "Log: $LOG_FILE"
 
-# Clean up old backups (keep last 10)
-ls -t "${BACKUP_DIR}"/marketdata_*.sqlite 2>/dev/null | tail -n +11 | xargs -r rm || true
-ls -t "${BACKUP_DIR}"/pre_deploy_head_*.txt 2>/dev/null | tail -n +11 | xargs -r rm || true
+# Retention is applied only after a successful deploy and validated snapshot.
+ls -t "${BACKUP_DIR}"/marketdata_*.sqlite 2>/dev/null | tail -n +$((SQLITE_BACKUP_RETENTION + 1)) | xargs -r rm || true
+ls -t "${BACKUP_DIR}"/pre_deploy_head_*.txt 2>/dev/null | tail -n +$((SQLITE_BACKUP_RETENTION + 1)) | xargs -r rm || true
+ls -t "${BACKUP_DIR}"/smoke_*.log 2>/dev/null | tail -n +$((SMOKE_LOG_RETENTION + 1)) | xargs -r rm || true

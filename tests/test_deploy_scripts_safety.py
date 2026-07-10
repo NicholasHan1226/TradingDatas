@@ -109,3 +109,33 @@ def test_read_model_cron_jobs_take_shared_maintenance_lock() -> None:
 
 def test_legacy_root_duckdb_cron_wrapper_is_retired() -> None:
     assert not (ROOT / "duckdb_merge_cron.sh").exists()
+
+
+def test_deploy_installs_sharedsignals_owned_systemd_service() -> None:
+    service = (ROOT / "deploy" / "systemd" / "sharedsignals-api.service").read_text(encoding="utf-8")
+    deploy = _read_script("deploy.sh")
+
+    assert "User=marketgraph" in service
+    assert "ExecStart=/opt/sharedsignals/venv/bin/python3" in service
+    assert "/opt/marketgraph/venv" not in service
+    assert "deploy/systemd/sharedsignals-api.service" in deploy
+    assert "systemctl daemon-reload" in deploy
+
+
+def test_deploy_keeps_only_three_validated_sqlite_snapshots_by_default() -> None:
+    deploy = _read_script("deploy.sh")
+
+    assert 'SQLITE_BACKUP_RETENTION="${SHAREDSIGNALS_SQLITE_BACKUP_RETENTION:-3}"' in deploy
+    assert "SQLITE_BACKUP_RETENTION + 1" in deploy
+
+
+def test_tunnel_service_templates_keep_secrets_out_of_units_and_ports_on_loopback() -> None:
+    relay = (ROOT / "deploy" / "systemd" / "sharedsignals-sg-relay-tunnel.service").read_text(encoding="utf-8")
+    connector = (ROOT / "deploy" / "systemd" / "sharedsignals-cloudflared.service").read_text(encoding="utf-8")
+
+    assert "-R 127.0.0.1:8082:127.0.0.1:8082" in relay
+    assert "-R 127.0.0.1:80:127.0.0.1:80" in relay
+    assert "-R 127.0.0.1:8787" not in relay
+    assert "-L 127.0.0.1:18889:127.0.0.1:18888" in relay
+    assert "--token-file /etc/cloudflared/sharedsignals.token" in connector
+    assert "--token " not in connector
