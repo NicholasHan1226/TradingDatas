@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 from tools import health_sla
@@ -464,3 +465,12 @@ def test_ashare_intraday_zero_coverage_is_critical(tmp_path, monkeypatch):
     assert report["status"] == "critical"
     assert violation["status"] == "empty"
     assert violation["severity"] == "critical"
+
+
+def test_critical_alert_timeout_does_not_abort_report(monkeypatch):
+    def fail(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="email_sender", timeout=15)
+
+    monkeypatch.setattr(health_sla.subprocess, "run", fail)
+
+    assert health_sla.send_critical_alert({"status": "critical", "violations": [{}]}) is False

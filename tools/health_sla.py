@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Data health SLA monitor — alerts when freshness breaches thresholds."""
 from __future__ import annotations
-import json, os, sqlite3, urllib.request
+import json, os, sqlite3, subprocess, sys, urllib.request
 from datetime import date as date_cls, datetime, time as time_cls, timezone, timedelta
 from pathlib import Path
 try:
@@ -512,14 +512,34 @@ def check_sla(now: datetime | None = None):
         },
     }
 
+
+def send_critical_alert(result: dict) -> bool:
+    """Send a best-effort alert without blocking health artifact publication."""
+    if result.get('status') != 'critical':
+        return True
+    violation_count = len(result.get("violations") or [])
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).parent / 'email_sender.py'),
+                '--subject',
+                f'[CRITICAL] Data health SLA breached - {violation_count} violations',
+                '--body',
+                json.dumps(result, indent=2),
+                '--channel',
+                'system',
+            ],
+            timeout=15,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
 if __name__ == '__main__':
     result = check_sla()
     print(json.dumps(result, indent=2, ensure_ascii=False))
-    
-    # Send email if critical
-    if result['status'] == 'critical':
-        import subprocess, sys
-        violation_count = len(result.get("violations") or [])
-        subprocess.run([sys.executable, str(Path(__file__).parent / 'email_sender.py'),
-            '--subject', f'[CRITICAL] Data health SLA breached — {violation_count} violations',
-            '--body', json.dumps(result, indent=2), '--channel', 'system'], timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    send_critical_alert(result)
