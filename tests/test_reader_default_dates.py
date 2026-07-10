@@ -357,6 +357,47 @@ def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_pat
     assert {row["data"]["trade_date"] for row in latest_result} == {"20260703"}
 
 
+def test_get_realtime_5min_batch_does_not_truncate_a_large_market_universe(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    intake_root = tmp_path / "intake"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=intake_root)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.executemany(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, trade_date, bar_time, interval, close, provider, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "Ashare",
+                    f"S{index:05d}",
+                    "20260710",
+                    "2026-07-10 14:45:00",
+                    "5min",
+                    10.0,
+                    "tushare_rt_min",
+                    "2026-07-10T07:31:47+00:00",
+                )
+                for index in range(5001)
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = reader.get_realtime_5min("", "20260710", market="Ashare")
+
+    assert len(result) == 5001
+    assert result[0]["degraded"] is False
+
+
 def test_cache_invalidation_watches_sqlite_wal_sidecar(tmp_path: Path) -> None:
     import reader
 

@@ -1774,7 +1774,7 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
                     "SELECT * FROM market_bars_intraday "
                     "WHERE market = ? AND trade_date = ? AND bar_time = ? "
                     "AND (interval IS NULL OR interval = '') "
-                    "ORDER BY symbol ASC LIMIT 5000"
+                    "ORDER BY symbol ASC LIMIT 10000"
                 )
                 params = (market_key, date_key, latest_bar_time)
             else:
@@ -1782,7 +1782,7 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
                     "SELECT * FROM market_bars_intraday "
                     "WHERE market = ? AND trade_date = ? AND bar_time = ? "
                     "AND interval IN (?, ?) "
-                    "ORDER BY symbol ASC LIMIT 5000"
+                    "ORDER BY symbol ASC LIMIT 10000"
                 )
                 params = (market_key, date_key, latest_bar_time, "5min", "5m")
             rows, degraded = _sqlite_rows(query, params, "market_bars_intraday")
