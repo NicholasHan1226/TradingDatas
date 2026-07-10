@@ -19,7 +19,6 @@ into the SQLite read model.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import re
@@ -53,8 +52,6 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
 DEFAULT_LOOKBACK_DAYS = 7
-DEFAULT_P0_STOCK_BATCH_SIZE = 30
-DEFAULT_P0_STOCK_BATCH_STATE = _BASE_DIR / "memory" / "p0_stock_batch_cursor.json"
 ASHARE_TZ = ZoneInfo("Asia/Shanghai")
 
 DEFAULT_TIERS = [
@@ -81,7 +78,7 @@ def valid_tiers(config_path: Path = CONFIG_PATH) -> list[str]:
 
 def _looks_like_ashare_stock_code(code: str) -> bool:
     """Return True for supported沪深 A股股票代码形态."""
-    return bool(re.match(r"^(00|30|60|68)\d{4}\.(SZ|SH)$", code))
+    return bool(re.match(r"^(?:(?:00|30)\d{4}\.SZ|(?:60|68)\d{4}\.SH)$", code))
 
 
 def _load_stock_codes_from_sqlite(sqlite_path: Path) -> list[str]:
@@ -244,217 +241,6 @@ def filter_apis(apis: list[dict[str, Any]], only_api: str | None) -> list[dict[s
     return [api for api in apis if str(api.get("api_name") or "") in names]
 
 
-def parse_positive_int(value: str | int | None, default: int = 0) -> int:
-    """Parse an optional positive integer setting."""
-
-    if value in (None, ""):
-        return default
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        logger.warning("invalid positive integer setting: %r; using %d", value, default)
-        return default
-    return parsed if parsed > 0 else default
-
-
-def normalize_ashare_code(value: Any) -> str:
-    """Return canonical A-share ts_code or empty string for unsupported symbols."""
-
-    raw = str(value or "").strip().upper()
-    if not raw:
-        return ""
-    match = re.search(r"(?<!\d)(\d{6})(?:\.(SH|SZ))?(?!\d)", raw)
-    if not match:
-        return ""
-    digits, exchange = match.group(1), match.group(2) or ""
-    if exchange == "SZ" and digits.startswith(("000", "001", "002", "003", "300", "301")):
-        return f"{digits}.SZ"
-    if exchange == "SH" and digits.startswith(("600", "601", "603", "605", "688", "689")):
-        return f"{digits}.SH"
-    if not exchange:
-        if digits.startswith(("000", "001", "002", "003", "300", "301")):
-            return f"{digits}.SZ"
-        if digits.startswith(("600", "601", "603", "605", "688", "689")):
-            return f"{digits}.SH"
-    return ""
-
-
-def load_priority_stock_codes(
-    *,
-    allowed_codes: set[str] | None = None,
-    explicit_codes: str | None = None,
-) -> tuple[list[str], dict[str, Any]]:
-    """Load the P0 hot pool from explicit environment symbols only."""
-
-    seen: set[str] = set()
-    codes: list[str] = []
-    sources: list[dict[str, Any]] = []
-
-    def add(code: str, source: str) -> None:
-        normalized = normalize_ashare_code(code)
-        if not normalized or normalized in seen:
-            return
-        if allowed_codes is not None and normalized not in allowed_codes:
-            return
-        seen.add(normalized)
-        codes.append(normalized)
-        sources.append({"code": normalized, "source": source})
-
-    for raw in (explicit_codes or os.environ.get("SHAREDSIGNALS_P0_PRIORITY_STOCKS", "")).split(","):
-        add(raw, "env")
-
-    return codes, {
-        "enabled": bool(codes),
-        "selected": len(codes),
-        "sources": sources[:50],
-        "source_count": len({item["source"] for item in sources}),
-    }
-
-def select_rotating_stock_batch(
-    stock_codes: list[str],
-    *,
-    batch_size: int,
-    state_path: Path,
-    trade_date: str | None = None,
-) -> tuple[list[str], dict[str, Any]]:
-    """Return a stable rotating slice of stock codes and persist the next cursor."""
-
-    total = len(stock_codes)
-    if total == 0 or batch_size <= 0 or batch_size >= total:
-        return stock_codes, {
-            "enabled": False,
-            "batch_size": batch_size,
-            "total": total,
-            "start_index": 0,
-            "next_index": 0,
-            "selected": total,
-            "state_path": str(state_path),
-        }
-
-    start_index = 0
-    if state_path.exists():
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            if trade_date and str(state.get("trade_date") or "") != str(trade_date):
-                start_index = 0
-            else:
-                start_index = int(state.get("next_index", 0)) % total
-        except Exception as exc:
-            logger.warning("failed to read P0 stock batch state %s: %s", state_path, exc)
-            start_index = 0
-
-    end_index = start_index + batch_size
-    if end_index <= total:
-        selected = stock_codes[start_index:end_index]
-    else:
-        selected = stock_codes[start_index:] + stock_codes[: end_index % total]
-    next_index = end_index % total
-
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(
-        json.dumps(
-            {
-                "next_index": next_index,
-                "updated_at": datetime.now().isoformat(timespec="seconds"),
-                "trade_date": trade_date or "",
-                "batch_size": batch_size,
-                "total": total,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    tmp_path.replace(state_path)
-
-    return selected, {
-        "enabled": True,
-        "batch_size": batch_size,
-        "total": total,
-        "start_index": start_index,
-        "next_index": next_index,
-        "selected": len(selected),
-        "state_path": str(state_path),
-    }
-
-
-def select_priority_rotating_stock_batch(
-    stock_codes: list[str],
-    *,
-    batch_size: int,
-    state_path: Path,
-    priority_codes: list[str],
-    trade_date: str | None = None,
-) -> tuple[list[str], dict[str, Any]]:
-    """Select priority symbols first, then fill remaining slots by rotating the market."""
-
-    allowed = set(stock_codes)
-    priority: list[str] = []
-    seen: set[str] = set()
-    for code in priority_codes:
-        normalized = normalize_ashare_code(code)
-        if normalized and normalized in allowed and normalized not in seen:
-            seen.add(normalized)
-            priority.append(normalized)
-
-    if not priority:
-        selected, meta = select_rotating_stock_batch(
-            stock_codes,
-            batch_size=batch_size,
-            state_path=state_path,
-            trade_date=trade_date,
-        )
-        meta["priority_count"] = 0
-        return selected, meta
-
-    if batch_size <= 0 or batch_size >= len(stock_codes):
-        ordered = priority + [code for code in stock_codes if code not in seen]
-        return ordered, {
-            "enabled": False,
-            "batch_size": batch_size,
-            "total": len(stock_codes),
-            "start_index": 0,
-            "next_index": 0,
-            "selected": len(ordered),
-            "priority_count": len(priority),
-            "priority_overflow": 0,
-            "state_path": str(state_path),
-        }
-
-    priority_selected = priority[:batch_size]
-    remaining_slots = max(batch_size - len(priority_selected), 0)
-    rotating_universe = [code for code in stock_codes if code not in set(priority_selected)]
-    if remaining_slots > 0:
-        rotating, meta = select_rotating_stock_batch(
-            rotating_universe,
-            batch_size=remaining_slots,
-            state_path=state_path,
-            trade_date=trade_date,
-        )
-    else:
-        rotating, meta = [], {
-            "enabled": True,
-            "batch_size": batch_size,
-            "total": len(stock_codes),
-            "start_index": 0,
-            "next_index": 0,
-            "selected": len(priority_selected),
-            "state_path": str(state_path),
-        }
-    selected = priority_selected + [code for code in rotating if code not in set(priority_selected)]
-    meta.update(
-        {
-            "enabled": True,
-            "total": len(stock_codes),
-            "selected": len(selected),
-            "priority_count": len(priority_selected),
-            "priority_overflow": max(len(priority) - len(priority_selected), 0),
-        }
-    )
-    return selected, meta
-
-
 # ---------------------------------------------------------------------------
 # sync_tier — core sync logic for a single tier
 # ---------------------------------------------------------------------------
@@ -483,9 +269,16 @@ def sync_tier(
     # Resolve HK stock codes
     hk_codes = hk_stock_codes or []
 
+    def _stock_call_count(api_defs: list[dict], codes: list[str]) -> int:
+        total = 0
+        for api_def in api_defs:
+            batch_size = max(1, int(api_def.get("stock_batch_size") or 1))
+            total += (len(codes) + batch_size - 1) // batch_size
+        return total
+
     total_calls = (
-        len(per_stock_ashare) * len(stock_codes)
-        + len(per_stock_hk) * len(hk_codes)
+        _stock_call_count(per_stock_ashare, stock_codes)
+        + _stock_call_count(per_stock_hk, hk_codes)
         + len(global_apis)
     )
     call_idx = 0
@@ -531,6 +324,8 @@ def sync_tier(
             api_name = api_def["api_name"]
             template = api_def.get("params", {})
             fields = api_def.get("fields")
+            batch_size = max(1, int(api_def.get("stock_batch_size") or 1))
+            empty_is_failure = bool(api_def.get("empty_is_failure"))
             _api_trade_date, api_start_date, api_end_date = resolve_api_window(
                 api_def, trade_date, start_date, end_date
             )
@@ -542,28 +337,46 @@ def sync_tier(
             sqlite_statuses: list[str] = []
             api_sqlite_errors: list[str] = []
 
-            for ts_code in codes:
+            for batch_index, offset in enumerate(range(0, len(codes), batch_size), start=1):
+                code_batch = codes[offset:offset + batch_size]
+                ts_code = ",".join(code_batch)
                 call_idx += 1
                 api_calls += 1
                 params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
                 rows = collector.collect(api_name, params, fields)
-                if getattr(collector, "last_collect_failed", False):
+                call_failed = bool(getattr(collector, "last_collect_failed", False))
+                if empty_is_failure and not rows:
+                    call_failed = True
+                    logger.error(
+                        "[%s] %s batch %d returned no rows for %d requested symbols",
+                        tier_name,
+                        api_name,
+                        batch_index,
+                        len(code_batch),
+                    )
+                if call_failed:
                     api_failures += 1
                 api_total += len(rows)
-                sqlite_result = _write_sqlite(api_name, rows, source_name=f"{api_name}_{ts_code}_{trade_date}")
+                source_name = (
+                    f"{api_name}_batch_{batch_index}_{trade_date}"
+                    if batch_size > 1
+                    else f"{api_name}_{ts_code}_{trade_date}"
+                )
+                sqlite_result = _write_sqlite(api_name, rows, source_name=source_name)
                 sqlite_total += int(sqlite_result["rows"])
                 sqlite_statuses.append(str(sqlite_result["status"]))
                 if sqlite_result.get("error"):
                     api_sqlite_errors.append(str(sqlite_result["error"]))
-                logger.info("[%s] [%d/%d] %s %s → %d rows",
+                logger.info("[%s] [%d/%d] %s symbols=%d → %d rows",
                             tier_name, call_idx, total_calls,
-                            api_name, ts_code, len(rows))
+                            api_name, len(code_batch), len(rows))
 
             duration = time.time() - api_start
             stats[api_name] = {
                 "rows": api_total,
                 "calls": api_calls,
                 "failure_count": api_failures,
+                "critical_failure_count": api_failures if empty_is_failure else 0,
                 "duration_s": round(duration, 1),
                 "sqlite_rows": sqlite_total,
                 "sqlite_status": _sqlite_status(sqlite_statuses),
@@ -612,12 +425,14 @@ def sync_tier(
 
     tier_duration = time.time() - tier_start
     total_failures = sum(int(s.get("failure_count", 0)) for s in stats.values())
+    critical_failures = sum(int(s.get("critical_failure_count", 0)) for s in stats.values())
     counted_calls = sum(int(s.get("calls", 0)) for s in stats.values())
     stats["_tier_summary"] = {
         "tier": tier_name,
         "apis": len(apis),
         "calls": counted_calls,
         "failure_count": total_failures,
+        "critical_failure_count": critical_failures,
         "sqlite_failure_count": len(sqlite_errors),
         "failure_ratio": round(total_failures / counted_calls, 4) if counted_calls else 0.0,
         "duration_s": round(tier_duration, 1),
@@ -632,10 +447,11 @@ def _failure_exit_code(summary: dict[str, Any], *, threshold: float, exit_on_fai
     if not exit_on_failure:
         return 0
     failure_count = int(summary.get("failure_count", 0))
+    critical_failure_count = int(summary.get("critical_failure_count", 0))
     sqlite_failure_count = int(summary.get("sqlite_failure_count", 0))
     calls = int(summary.get("calls", 0))
     failure_ratio = (failure_count / calls) if calls else 0.0
-    if sqlite_failure_count > 0 or (calls and failure_ratio > threshold):
+    if critical_failure_count > 0 or sqlite_failure_count > 0 or (calls and failure_ratio > threshold):
         return 2
     return 0
 
@@ -686,20 +502,6 @@ def main() -> None:
         help="Failed-call ratio threshold for --exit-on-failure (default: 0.5)",
     )
     parser.add_argument(
-        "--stock-batch-size",
-        type=int,
-        default=0,
-        help=(
-            "Limit P0 per-stock A-share calls to a rotating batch. "
-            "Defaults to SHAREDSIGNALS_P0_STOCK_BATCH_SIZE or 100 for P0 production runs."
-        ),
-    )
-    parser.add_argument(
-        "--stock-batch-state",
-        default="",
-        help="Cursor file for P0 rotating stock batches",
-    )
-    parser.add_argument(
         "--allow-off-session",
         action="store_true",
         help="Allow P0 to run outside A-share intraday windows for manual backfill/smoke runs",
@@ -748,47 +550,12 @@ def main() -> None:
         and os.environ.get("SHAREDSIGNALS_P0_ALLOW_OFF_SESSION", "").strip() != "1"
         and not is_ashare_intraday_session()
     ):
-        logger.info("SKIP P0_trading_5min outside A-share intraday session; cursor not advanced")
+        logger.info("SKIP P0_trading_5min outside A-share intraday session")
         return
-
-    batch_meta: dict[str, Any] = {"enabled": False}
-    if tier_name == "P0_trading_5min" and not args.test:
-        batch_size = args.stock_batch_size or parse_positive_int(
-            os.environ.get("SHAREDSIGNALS_P0_STOCK_BATCH_SIZE"),
-            DEFAULT_P0_STOCK_BATCH_SIZE,
-        )
-        state_path = Path(
-            args.stock_batch_state
-            or os.environ.get("SHAREDSIGNALS_P0_STOCK_BATCH_STATE")
-            or DEFAULT_P0_STOCK_BATCH_STATE
-        )
-        priority_codes, priority_meta = load_priority_stock_codes(allowed_codes=set(stock_codes))
-        stock_codes, batch_meta = select_priority_rotating_stock_batch(
-            stock_codes,
-            batch_size=batch_size,
-            state_path=state_path,
-            priority_codes=priority_codes,
-            trade_date=trade_date,
-        )
-        batch_meta["priority_sources"] = priority_meta.get("sources", [])
-        batch_meta["priority_source_count"] = priority_meta.get("source_count", 0)
-        if batch_meta.get("enabled"):
-            logger.info(
-                "P0 priority rotating stock batch: selected %d/%d stocks, priority=%d, batch_size=%d, cursor %d→%d, state=%s",
-                batch_meta["selected"],
-                batch_meta["total"],
-                batch_meta.get("priority_count", 0),
-                batch_meta["batch_size"],
-                batch_meta["start_index"],
-                batch_meta["next_index"],
-                batch_meta["state_path"],
-            )
 
     logger.info("=" * 60)
     logger.info("TIER: %s  |  A-Stocks: %d  |  HK-Stocks: %d  |  APIs: %d",
                 tier_name, len(stock_codes), len(hk_stock_codes), len(apis))
-    if batch_meta.get("enabled"):
-        logger.info("P0 batch mode: %s", batch_meta)
     logger.info("Window: %s → %s (trade_date=%s, lookback=%d days)",
                 start_date, end_date, trade_date, args.lookback)
     logger.info("=" * 60)

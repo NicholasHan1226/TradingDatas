@@ -1,14 +1,9 @@
 priorities:
   P0_trading_5min:
-  - api_name: stk_mins
-    frequency: 5min
-    params:
-      freq: 5min
-      trade_date: '{trade_date}'
-      ts_code: '{ts_code}'
-    per_stock: true
   - api_name: rt_min
     frequency: 5min
+    stock_batch_size: 300
+    empty_is_failure: true
     params:
       freq: 5MIN
       ts_code: '{ts_code}'

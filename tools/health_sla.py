@@ -23,6 +23,8 @@ SLA_DATE_COLUMNS = {
     'market_events': ['event_time', 'collected_at', 'updated_at', 'trade_date'],
 }
 CRYPTO_INTRADAY_MAX_AGE_HOURS = float(os.getenv("SHAREDSIGNALS_CRYPTO_INTRADAY_MAX_AGE_MIN", "45")) / 60.0
+ASHARE_INTRADAY_MIN_COVERAGE_RATIO = float(os.getenv("SHAREDSIGNALS_ASHARE_INTRADAY_MIN_COVERAGE", "0.8"))
+ASHARE_INTRADAY_GRACE_MINUTES = int(os.getenv("SHAREDSIGNALS_ASHARE_INTRADAY_GRACE_MIN", "10"))
 RECENT_SAMPLE_LIMIT = int(os.getenv("SHAREDSIGNALS_HEALTH_SLA_RECENT_SAMPLE_LIMIT", "50000"))
 RECENT_SAMPLE_TABLES = {
     "market_bars_daily",
@@ -274,6 +276,95 @@ def _crypto_intraday_violation(conn: sqlite3.Connection, now: datetime) -> dict 
     }
 
 
+def _ashare_intraday_cutoff(now: datetime) -> tuple[str, str] | None:
+    cn_now = _as_utc(now).astimezone(timezone(timedelta(hours=8)))
+    if cn_now.weekday() >= 5:
+        return None
+    current_minutes = cn_now.hour * 60 + cn_now.minute
+    in_morning = 9 * 60 + 35 <= current_minutes <= 11 * 60 + 35
+    in_afternoon = 13 * 60 + 5 <= current_minutes <= 15 * 60 + 10
+    if not (in_morning or in_afternoon):
+        return None
+    rounded = cn_now.replace(minute=(cn_now.minute // 5) * 5, second=0, microsecond=0)
+    cutoff = rounded - timedelta(minutes=ASHARE_INTRADAY_GRACE_MINUTES)
+    return cn_now.strftime("%Y%m%d"), cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _ashare_intraday_coverage_violation(conn: sqlite3.Connection, now: datetime) -> dict | None:
+    expected = _ashare_intraday_cutoff(now)
+    if expected is None:
+        return None
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    if not {"market_assets", "market_bars_intraday"}.issubset(tables):
+        return None
+
+    trade_date, cutoff = expected
+    universe = int(
+        conn.execute(
+            """
+            SELECT COUNT(DISTINCT symbol)
+            FROM market_assets
+            WHERE market = 'Ashare'
+              AND COALESCE(asset_type, 'stock') != 'fund'
+              AND COALESCE(name, '') != ''
+              AND name NOT LIKE '%退%'
+              AND length(symbol) = 9
+              AND (
+                    (substr(symbol, 1, 2) IN ('00', '30') AND substr(symbol, 7) = '.SZ')
+                 OR (substr(symbol, 1, 2) IN ('60', '68') AND substr(symbol, 7) = '.SH')
+              )
+            """
+        ).fetchone()[0]
+        or 0
+    )
+    if universe <= 0:
+        return {
+            "table": "market_bars_intraday",
+            "status": "error",
+            "message": "A-share active universe is empty during the trading session",
+            "lane": "trading",
+            "severity": "critical",
+            "market": "Ashare",
+            "source": "ashare_intraday_coverage",
+            "trade_date": trade_date,
+        }
+
+    fresh, latest = conn.execute(
+        """
+        SELECT COUNT(DISTINCT symbol), MAX(bar_time)
+        FROM market_bars_intraday
+        WHERE market = 'Ashare'
+          AND trade_date = ?
+          AND (interval IN ('5min', '5m', '') OR interval IS NULL)
+          AND bar_time >= ?
+        """,
+        (trade_date, cutoff),
+    ).fetchone()
+    fresh = int(fresh or 0)
+    coverage = fresh / universe
+    if coverage >= ASHARE_INTRADAY_MIN_COVERAGE_RATIO:
+        return None
+    return {
+        "table": "market_bars_intraday",
+        "status": "breached" if fresh else "empty",
+        "message": "A-share intraday symbol coverage is below the trading-session minimum",
+        "lane": "trading",
+        "severity": "critical",
+        "market": "Ashare",
+        "source": "ashare_intraday_coverage",
+        "trade_date": trade_date,
+        "cutoff": cutoff,
+        "latest": latest,
+        "fresh_symbols": fresh,
+        "universe_symbols": universe,
+        "coverage_ratio": round(coverage, 4),
+        "minimum_coverage_ratio": ASHARE_INTRADAY_MIN_COVERAGE_RATIO,
+    }
+
+
 def _latest_recent_value(
     conn: sqlite3.Connection,
     table: str,
@@ -384,6 +475,20 @@ def check_sla(now: datetime | None = None):
                 _append_freshness_violation(violations, table=table, sla=sla, latest=latest, now=now)
             except Exception as exc:
                 violations.append(_table_violation(table, sla, status='error', message=f'{exc.__class__.__name__}: {exc}', now=now))
+        try:
+            ashare_violation = _ashare_intraday_coverage_violation(conn, now)
+            if ashare_violation:
+                violations.append(ashare_violation)
+        except Exception as exc:
+            violations.append(
+                _table_violation(
+                    'market_bars_intraday',
+                    {'lane': 'trading', 'severity': 'critical', 'max_age_hours': None},
+                    status='error',
+                    message=f'A-share coverage check failed: {exc.__class__.__name__}: {exc}',
+                    now=now,
+                )
+            )
     finally:
         conn.close()
     missing_or_empty_count = sum(1 for item in violations if item.get('status') in {'empty', 'error'})

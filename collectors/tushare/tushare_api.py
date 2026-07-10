@@ -174,29 +174,6 @@ def get_suspend_d(ts_code: str, start_date: str, end_date: str) -> list[dict[str
 # ===========================================================================
 
 
-def get_stk_mins(
-    ts_code: str | None = None,
-    trade_date: str = "",
-    freq: str = "1min",
-    limit: int | None = None,
-    *,
-    ts_codes: list[str] | tuple[str, ...] | None = None,
-) -> list[dict[str, Any]]:
-    """分钟K线数据。
-
-    Tushare API: stk_mins
-    """
-    codes = _as_code_list(ts_code, ts_codes)
-    if len(codes) > 1:
-        return _concat([get_stk_mins(code, trade_date, freq=freq, limit=limit) for code in codes])
-    params: dict[str, Any] = {"trade_date": trade_date, "freq": freq}
-    if codes:
-        params["ts_code"] = codes[0]
-    if limit is not None:
-        params["limit"] = limit
-    return _call("stk_mins", params, "ts_code,trade_time,open,high,low,close,vol,amount")
-
-
 def get_rt_min(
     ts_code: str | None = None,
     freq: str = "5MIN",
@@ -745,7 +722,6 @@ __all__ = [
     "get_daily",
     "get_adj_factor",
     "get_suspend_d",
-    "get_stk_mins",
     "get_rt_min",
     "get_rt_min_daily",
     "get_stk_auction",

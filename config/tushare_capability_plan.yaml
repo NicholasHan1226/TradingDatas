@@ -1,4 +1,4 @@
-version: 2026-07-09
+version: 2026-07-10
 purpose: >
   Market/module capability plan for every Tushare api_name allowlisted by
   SharedSignals. This file separates the production collection plan from the
@@ -16,7 +16,6 @@ modules:
     market: Ashare
     default_cadence: trading_session_5min
     apis:
-      - {api_name: stk_mins, mode: scheduled, tier: P0_trading_5min, cadence: trading_session_5min}
       - {api_name: rt_min, mode: scheduled, tier: P0_trading_5min, cadence: trading_session_5min}
 
   - module: ashare_daily_price

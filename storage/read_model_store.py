@@ -144,7 +144,6 @@ API_TO_TABLE_MAP = {
     "stk_factor": "market_bars_daily",
     "stk_factor_pro": "market_factors",
     "stk_limit": "market_factors",
-    "stk_mins": "market_bars_intraday",
     "rt_min": "market_bars_intraday",
     "rt_fut_min": "market_bars_intraday",
     "stk_holdernumber": "market_assets",
@@ -196,7 +195,6 @@ def _market_for(api_name, symbol):
         "index_classify",
         "index_weekly",
         "index_monthly",
-        "stk_mins",
         "rt_min",
         "repo_daily",
         "concept",
@@ -408,7 +406,7 @@ def _columns_for_insert(table, row_columns, target_columns, api_name):
                 derived_columns.append("bar_time")
             if "trade_date" in target_columns:
                 derived_columns.append("trade_date")
-        if api_name in ("weekly", "monthly", "stk_mins", "rt_min", "rt_fut_min") and "interval" in target_columns:
+        if api_name in ("weekly", "monthly", "rt_min", "rt_fut_min") and "interval" in target_columns:
             derived_columns.append("interval")
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():
@@ -549,7 +547,7 @@ def _canonical_row(table, row, api_name, source_ref):
                 row["trade_date"] = _trade_date_from_trade_time(row.get("time"))
         if api_name in ("weekly", "monthly", "index_weekly", "index_monthly"):
             row["interval"] = api_name
-        elif api_name in ("stk_mins", "rt_min", "rt_fut_min"):
+        elif api_name in ("rt_min", "rt_fut_min"):
             row["interval"] = "5min"
         if api_name == "rt_fut_min":
             for canonical, aliases in _INTRADAY_ALIAS_COLUMNS.items():

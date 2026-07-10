@@ -539,7 +539,7 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `api_name` | `str` | 必填 | Tushare API 名，如 `daily`、`moneyflow`、`fina_indicator`、`income`、`balancesheet`、`adj_factor`、`margin`、`limit_list`、`stk_mins`、`news`、`major_news`、`cctv_news`、`anns_d`、`report_rc` 等；已配置采集且已映射 SQLite 的接口应全部开放 |
+| `api_name` | `str` | 必填 | Tushare API 名，如 `daily`、`moneyflow`、`fina_indicator`、`income`、`balancesheet`、`adj_factor`、`margin`、`limit_list`、`rt_min`、`news`、`major_news`、`cctv_news`、`anns_d`、`report_rc` 等；已配置采集且已映射 SQLite 的接口应全部开放 |
 | `ts_code` | `str` | `None` | 股票代码，自动注入到 params 中 |
 | `start_date` | `str` | `None` | 起始日期 YYYYMMDD，自动注入到 params 中 |
 | `end_date` | `str` | `None` | 截止日期 YYYYMMDD，自动注入到 params 中 |
@@ -593,7 +593,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 隔离外部账号建议使用 `external_read` scope。它覆盖完整数据读取面，包括 `/health`、`/agent_config`、`/source_status`、`/opening_gate`、业务端点和 `/tushare` 数据库输出；不覆盖 `/cache/invalidate`、生产写入、provider key、数据库文件或运维权限。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 23 个可发现路径，并用 `cadence_class` 区分交易、研究、session readiness、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 23 个可发现路径，并用 `cadence_class` 区分交易、研究、session readiness、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 114 个 allowlisted 接口中 113 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
 
@@ -616,7 +616,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | A 股主题/行业日线 | Tushare `ths_daily` / `dc_daily` | P3 collector → `market_bars_daily`; 日频主题/行业参考，不进入 5 分钟交易通道 |
 | A 股筹码/备用基础/热度 | Tushare `cyq_perf` / `cyq_chips` / `bak_basic` / `ths_hot` | P1/P3 collectors → `market_factors`; 日频或 pilot 因子，不进入 P0 5 分钟快车道 |
 | A 股北向资金/沪深港通资金 | Tushare `moneyflow_hsgt` | P1 collector → `market_factors`; DB-first `/tushare?api_name=moneyflow_hsgt` |
-| A 股分钟线 | Tushare `stk_mins` / `rt_min` realtime snapshot | P0 5 分钟 collector → `market_bars_intraday`; P0 只保留分钟行情快车道，默认每轮从 read model 资产池和显式环境变量优先池选股并轮转补足，A股连续交易窗口外不推进游标，跨交易日自动重置；日线/因子改由盘后日频层维护；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，未传日期时使用该股票最新 intraday 日期；无数据返回 degraded/empty，不回退 CSV 或旧目录 |
+| A 股分钟线 | Tushare `rt_min` 盘中快照 | P0 每 5 分钟从 SQLite `market_assets` 读取完整 active universe，并按 provider 上限每 300 只一批调用 `rt_min` 后直接写 `market_bars_intraday`，自然累积全天 5 分钟历史；不使用轮转、优先池、跨系统文件或重复 `stk_mins` 路径。任一预期非空批次返回空即计入关键采集失败。`health_sla` 在连续交易窗口按完整股票池检查新鲜覆盖率，默认低于 80% 为 critical；`reader.get_realtime_5min(market="Ashare")` / HTTP `/realtime_5min?market=Ashare` 只读 SQLite read model，无数据返回 degraded/empty，不回退 CSV 或旧目录 |
 | A 股/指数周月线 | Tushare `weekly` / `monthly` / `index_weekly` / `index_monthly` | P7 low-frequency wrapper → `market_bars_intraday` with interval=`weekly`/`monthly`/`index_weekly`/`index_monthly`; DB-first `/tushare` |
 | A 股国债逆回购 | Tushare `repo_daily` | P1/P4 collector → `market_factors`，同时投影到 `market_bars_daily`；`204001.SH` 等逆回购代码可通过 `/market_data` 读取 `close` 作为年化利率百分值 |
 | A 股新闻/公告/研报 | Tushare `news` / `major_news` / `cctv_news` / `anns_d` / `report_rc` | 30min full event lane → `market_events`; `news/major_news` 另有 15min supplemental pilot；`/events` 与 `/tushare` 均 DB-first；no live provider fallback |
@@ -838,9 +838,10 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-07-10 | 1.1.36 | 外部入口统一为 `https://signals.tradingagent.cc` 并通过 Cloudflare Tunnel/DNS 对外可达；API 账号层级拆分为 `internal` 内部使用与未来 `starter/research/pro/enterprise` 分级套餐，`free` 保留兼容。 |
-| 2026-07-10 | 1.1.37 | 增加 `/opening_gate` 与四个交易时点轻量供数门，外部 agent 可在使用行情前读取当前门状态。 |
+| 2026-07-10 | 1.1.39 | A股 P0 从每轮 30 只优先/轮转改为 `rt_min` 每批最多 300 只、每 5 分钟覆盖完整 active universe；移除旧游标与优先池配置，空批次计关键失败；退役重复且盘中无数据的 `stk_mins` 生产能力；health SLA 新增盘中 active-universe 覆盖率门禁。 |
 | 2026-07-10 | 1.1.38 | 修复 SQL 时间格式的开盘闸门解析和控制面缓存；DuckDB 大表改为受限资源的哈希增量镜像，并把闸门与镜像结果纳入 `/health`、`/source_status`。外部入口文档统一为 Cloudflare 橙云 A 记录/Nginx。 |
+| 2026-07-10 | 1.1.37 | 增加 `/opening_gate` 与四个交易时点轻量供数门，外部 agent 可在使用行情前读取当前门状态。 |
+| 2026-07-10 | 1.1.36 | 外部入口统一为 `https://signals.tradingagent.cc` 并通过 Cloudflare Tunnel/DNS 对外可达；API 账号层级拆分为 `internal` 内部使用与未来 `starter/research/pro/enterprise` 分级套餐，`free` 保留兼容。 |
 | 2026-07-10 | 1.1.35 | 新增外部隔离账号 `external_read` scope，并让 token 鉴权支持 `X-API-Key` header；该 scope 提供完整数据读权限（含 `/tushare` read-model 输出），但不含 `/cache/invalidate` 运维控制。 |
 | 2026-07-09 | 1.1.34 | `/source_status` 增加 API/module catalog 与 source expansion plan 映射检查，确认 planned 数据源没有误启用、候选模块能映射到默认 HTTP surface 和 read-model 表、扩源默认复用现有 API。 |
 | 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |

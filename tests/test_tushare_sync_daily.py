@@ -9,18 +9,12 @@ import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
-    DEFAULT_P0_STOCK_BATCH_SIZE,
     date_range,
     filter_apis,
     load_stock_codes,
-    load_priority_stock_codes,
     load_config,
     is_ashare_intraday_session,
-    normalize_ashare_code,
-    parse_positive_int,
     resolve_api_window,
-    select_priority_rotating_stock_batch,
-    select_rotating_stock_batch,
     sync_tier,
 )
 from storage.read_model_store import API_TO_TABLE_MAP
@@ -276,16 +270,108 @@ def test_p6_cron_runs_after_market_close_only() -> None:
 
 def test_p0_trading_lane_only_contains_intraday_apis() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
-    p0_names = [api["api_name"] for api in config["priorities"]["P0_trading_5min"]]
+    p0_apis = config["priorities"]["P0_trading_5min"]
 
-    assert p0_names == ["stk_mins", "rt_min"]
-    assert DEFAULT_P0_STOCK_BATCH_SIZE == 30
+    assert [api["api_name"] for api in p0_apis] == ["rt_min"]
+    assert p0_apis[0]["stock_batch_size"] == 300
+    assert p0_apis[0]["empty_is_failure"] is True
+    configured_names = {
+        api["api_name"]
+        for tier in config["priorities"].values()
+        for api in tier
+    }
+    assert "stk_mins" not in configured_names
 
 
 
 def test_p0_priority_sources_do_not_read_cross_system_files() -> None:
     assert not hasattr(sync_daily_module, "DEFAULT_P0_PRIORITY_STOCK_FILES")
     assert not hasattr(sync_daily_module, "_priority_stock_paths")
+    assert not hasattr(sync_daily_module, "select_rotating_stock_batch")
+    assert not hasattr(sync_daily_module, "select_priority_rotating_stock_batch")
+
+
+def test_p0_rt_min_batches_the_complete_stock_universe(tmp_path: Path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            assert api_name == "rt_min"
+            calls.append(params["ts_code"])
+            return [
+                {"ts_code": code, "time": "2026-07-10 13:30:00", "close": 10.0}
+                for code in params["ts_code"].split(",")
+            ]
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _path, _table, _api, rows, **_kwargs: len(rows),
+    )
+    codes = [f"{index:06d}.SZ" for index in range(650)]
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P0_trading_5min",
+        [{
+            "api_name": "rt_min",
+            "per_stock": True,
+            "stock_batch_size": 300,
+            "empty_is_failure": True,
+            "params": {"freq": "5MIN", "ts_code": "{ts_code}"},
+        }],
+        stock_codes=codes,
+        trade_date="20260710",
+        start_date="20260710",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert [len(value.split(",")) for value in calls] == [300, 300, 50]
+    assert stats["rt_min"]["calls"] == 3
+    assert stats["rt_min"]["rows"] == 650
+    assert stats["rt_min"]["sqlite_rows"] == 650
+    assert stats["_tier_summary"]["failure_count"] == 0
+
+
+def test_p0_rt_min_empty_batch_is_counted_as_failure(tmp_path: Path, monkeypatch) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            del api_name, params, fields
+            return []
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P0_trading_5min",
+        [{
+            "api_name": "rt_min",
+            "per_stock": True,
+            "stock_batch_size": 300,
+            "empty_is_failure": True,
+            "params": {"freq": "5MIN", "ts_code": "{ts_code}"},
+        }],
+        stock_codes=["000001.SZ", "000002.SZ"],
+        trade_date="20260710",
+        start_date="20260710",
+        end_date="20260710",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["rt_min"]["calls"] == 1
+    assert stats["rt_min"]["failure_count"] == 1
+    assert stats["_tier_summary"]["failure_count"] == 1
+    assert stats["_tier_summary"]["critical_failure_count"] == 1
+    assert sync_daily_module._failure_exit_code(
+        stats["_tier_summary"],
+        threshold=0.5,
+        exit_on_failure=True,
+    ) == 2
 
 def test_p1_ashare_scoring_apis_collect_90_day_per_symbol_windows() -> None:
     config = load_config(Path("collectors/tushare/config.yaml"))
@@ -359,6 +445,13 @@ def test_load_stock_codes_returns_empty_when_sqlite_missing(tmp_path: Path) -> N
     assert codes == []
 
 
+def test_ashare_symbol_validation_binds_prefix_to_exchange() -> None:
+    assert sync_daily_module._looks_like_ashare_stock_code("000001.SZ") is True
+    assert sync_daily_module._looks_like_ashare_stock_code("600000.SH") is True
+    assert sync_daily_module._looks_like_ashare_stock_code("000001.SH") is False
+    assert sync_daily_module._looks_like_ashare_stock_code("600000.SZ") is False
+
+
 def test_shibor_lpr_dedup_key_keeps_distinct_dates() -> None:
     collector = TushareCollector()
 
@@ -390,58 +483,6 @@ def test_macro_dedup_keys_keep_distinct_periods_in_mixin_and_collector() -> None
     assert len(DeduplicatorMixin().deduplicate("cn_gdp", gdp_rows)) == 2
 
 
-def test_parse_positive_int_uses_default_for_invalid_values() -> None:
-    assert parse_positive_int("25", 10) == 25
-    assert parse_positive_int("0", 10) == 10
-    assert parse_positive_int("bad", 10) == 10
-
-
-def test_select_rotating_stock_batch_persists_cursor(tmp_path: Path) -> None:
-    state_path = tmp_path / "cursor.json"
-    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]
-
-    first, first_meta = select_rotating_stock_batch(codes, batch_size=2, state_path=state_path)
-    second, second_meta = select_rotating_stock_batch(codes, batch_size=2, state_path=state_path)
-
-    assert first == ["000001.SZ", "000002.SZ"]
-    assert first_meta["next_index"] == 2
-    assert second == ["000003.SZ", "000004.SZ"]
-    assert second_meta["next_index"] == 0
-
-
-def test_select_rotating_stock_batch_wraps_at_end(tmp_path: Path) -> None:
-    state_path = tmp_path / "cursor.json"
-    state_path.write_text('{"next_index": 3}', encoding="utf-8")
-    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]
-
-    selected, meta = select_rotating_stock_batch(codes, batch_size=3, state_path=state_path)
-
-    assert selected == ["000004.SZ", "000001.SZ", "000002.SZ"]
-    assert meta["start_index"] == 3
-    assert meta["next_index"] == 2
-
-
-def test_select_rotating_stock_batch_resets_on_new_trade_date(tmp_path: Path) -> None:
-    state_path = tmp_path / "cursor.json"
-    state_path.write_text(
-        '{"next_index": 3, "trade_date": "20260707"}',
-        encoding="utf-8",
-    )
-    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]
-
-    selected, meta = select_rotating_stock_batch(
-        codes,
-        batch_size=2,
-        state_path=state_path,
-        trade_date="20260708",
-    )
-
-    assert selected == ["000001.SZ", "000002.SZ"]
-    assert meta["start_index"] == 0
-    assert meta["next_index"] == 2
-    assert '"trade_date": "20260708"' in state_path.read_text(encoding="utf-8")
-
-
 def test_is_ashare_intraday_session_windows() -> None:
     tz = ZoneInfo("Asia/Shanghai")
 
@@ -450,38 +491,3 @@ def test_is_ashare_intraday_session_windows() -> None:
     assert is_ashare_intraday_session(datetime(2026, 7, 8, 9, 25, tzinfo=tz)) is False
     assert is_ashare_intraday_session(datetime(2026, 7, 8, 12, 0, tzinfo=tz)) is False
     assert is_ashare_intraday_session(datetime(2026, 7, 11, 10, 0, tzinfo=tz)) is False
-
-
-def test_normalize_ashare_code_filters_unsupported_symbols() -> None:
-    assert normalize_ashare_code("600000") == "600000.SH"
-    assert normalize_ashare_code("000001") == "000001.SZ"
-    assert normalize_ashare_code("300750.SZ") == "300750.SZ"
-    assert normalize_ashare_code("200011.SZ") == ""
-    assert normalize_ashare_code("830000.BJ") == ""
-
-
-def test_load_priority_stock_codes_reads_explicit_env_only() -> None:
-    codes, meta = load_priority_stock_codes(
-        explicit_codes="600000.SH,000001.SZ,300750,200011.SZ",
-        allowed_codes={"600000.SH", "000001.SZ", "300750.SZ"},
-    )
-
-    assert codes == ["600000.SH", "000001.SZ", "300750.SZ"]
-    assert meta["enabled"] is True
-    assert meta["selected"] == 3
-
-
-def test_select_priority_rotating_stock_batch_keeps_hot_pool_first(tmp_path: Path) -> None:
-    state_path = tmp_path / "cursor.json"
-    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "600000.SH", "600001.SH"]
-
-    selected, meta = select_priority_rotating_stock_batch(
-        codes,
-        batch_size=4,
-        state_path=state_path,
-        priority_codes=["600000.SH", "000003.SZ", "200011.SZ"],
-    )
-
-    assert selected[:2] == ["600000.SH", "000003.SZ"]
-    assert len(selected) == 4
-    assert meta["priority_count"] == 2

@@ -284,9 +284,9 @@
     "rule": "A new data source is not production-ready until it can collect, write SQLite read-model rows, expose DB-first API/reader output or explicit degraded semantics, and pass coverage tests without CSV/NDJSON/provider fallback."
   },
   "tushare_status": {
-    "allowlisted_api_names": 115,
-    "scheduled_or_independent_or_event_lane": 115,
-    "configured_in_production_tiers": 114,
+    "allowlisted_api_names": 114,
+    "scheduled_or_independent_or_event_lane": 114,
+    "configured_in_production_tiers": 113,
     "planned_activation_backlog": 0,
     "planning_doc": "docs/tushare_activation_backlog.md",
     "capability_plan": "config/tushare_capability_plan.yaml"

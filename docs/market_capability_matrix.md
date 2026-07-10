@@ -1,6 +1,6 @@
 # SharedSignals Market Capability Matrix
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
 This document is the market-facing capability and cadence guide for SharedSignals. It complements the internal Tushare P0-P7 tier config and prevents external consumers from treating every allowlisted provider API as an active production feed.
 
@@ -8,9 +8,9 @@ This document is the market-facing capability and cadence guide for SharedSignal
 
 SharedSignals should be managed by market and data-latency need, not by provider name alone.
 
-- `collectors/tushare/config.yaml` is the active Tushare collection plan: 114 configured interfaces.
-- `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 115 names.
-- `config/tushare_capability_plan.yaml` is the market/module management plan for all 115 allowlisted names.
+- `collectors/tushare/config.yaml` is the active Tushare collection plan: 113 configured interfaces.
+- `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 114 names.
+- `config/tushare_capability_plan.yaml` is the market/module management plan for all 114 allowlisted names.
 - `docs/tushare_activation_backlog.md` is the activation ledger; 0 planned interfaces remain after B5 activation.
 - `/agent_config` and `config/external_agent_api_config.json` expose the external-agent integration contract and frequency labels.
 - HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
@@ -21,7 +21,7 @@ SharedSignals should be managed by market and data-latency need, not by provider
 
 | Market / lane | Active sources | Active HTTP/read surface | Current cadence | Freshness expectation | Status |
 | --- | --- | --- | --- | --- | --- |
-| A-share intraday | Tushare `stk_mins`, `rt_min` | `/realtime_5min`, `/market_data?freq=5m`, `/tushare` | Trading window every 5 minutes | Trading-session latest bar; fail closed outside usable data | Active |
+| A-share intraday | Tushare `rt_min` | `/realtime_5min`, `/market_data?freq=5m`, `/tushare` | Trading window every 5 minutes; complete active universe in chunks of at most 300 symbols | Fresh-symbol coverage >= 80% during continuous trading; empty batch fails closed | Active |
 | A-share daily/technical | Tushare `daily`, `stk_factor`, `stk_factor_pro`, `daily_basic`, `adj_factor` | `/market_data`, `/tushare` | Post-close daily | Latest trading day after EOD collection | Active |
 | A-share flow/depth/events-derived data | Tushare `moneyflow`, `moneyflow_hsgt`, `margin`, `margin_detail`, `top_list`, `limit_list`, `limit_list_d`, `limit_step`, `stk_auction`, `stk_limit`, `block_trade`, `cyq_perf`, `cyq_chips` | `/capital_flow` reads moneyflow/northbound/margin factors, `/events` reads event lane, `/tushare` for native dimensions | Post-close daily | Latest trading day or latest collected event row | Active, not buy/sell logic |
 | A-share fundamentals/reference | Tushare `fina_indicator`, financial statements, holders, pledge, company, concept, index membership, calendar, `fina_audit`, `fina_mainbz`, `bak_basic` | `/fundamentals`, `/reference`, `/industry`, `/tushare` | Daily/reference/reporting windows | Latest available reporting/reference snapshot | Active |
@@ -76,7 +76,7 @@ New provider interfaces should be promoted only after this checklist is satisfie
 
 The current production host can support the active SharedSignals cadence when hot paths are separated. It should not run every source at 5-minute frequency.
 
-- Keep A-share P0 and China futures intraday on 5-minute schedules because they feed minute-level trading workflows.
+- Keep A-share P0 and China futures intraday on 5-minute schedules because they feed minute-level trading workflows. A-share P0 must batch the complete active universe and must not restore rotating subsets.
 - Keep Crypto and Polymarket on 30-minute schedules unless a stronger storage/write-queue layer is introduced.
 - Keep DuckDB mirror and capability scan outside 09:00-15:59 China trading hours.
 - Run patrol and health SLA on staggered minutes so they do not start on the same minute as market-data writers.

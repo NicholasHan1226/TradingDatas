@@ -1,10 +1,12 @@
 # Tushare Activation Backlog
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
-SharedSignals currently has 115 Tushare names in the HTTP read allowlist. Of those, 114 are configured in production collection tiers and `rt_fut_min` is an independent 5-minute futures collector option. 0 planned interfaces remain in the activation backlog.
+SharedSignals currently has 114 Tushare names in the HTTP read allowlist. Of those, 113 are configured in production collection tiers and `rt_fut_min` is an independent 5-minute futures collector option. 0 planned interfaces remain in the activation backlog.
 
 This ledger exists so interfaces stay managed scientifically: by market, module, read-model shape, and cadence. Do not treat an interface as 5-minute trading data merely because it is allowlisted or scheduled.
+
+`rt_min` is the sole P0 live A-share minute source and batches the complete active universe in groups of at most 300 symbols. The repeated `stk_mins` path is retired from collection, read allowlist, mapping, and capability plan; it must not be restored as a fallback.
 
 ## Activation Rules
 

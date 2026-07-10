@@ -389,3 +389,78 @@ def test_crypto_intraday_staleness_is_critical(tmp_path, monkeypatch):
         and item.get("source") == "market_bars_intraday_collected_at"
         for item in report["violations"]
     )
+
+
+def _add_ashare_intraday_coverage(path, *, fresh_symbols: int, universe_symbols: int) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE market_assets (market TEXT, symbol TEXT, name TEXT, asset_type TEXT)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE market_bars_intraday (
+            market TEXT,
+            symbol TEXT,
+            trade_date TEXT,
+            bar_time TEXT,
+            interval TEXT,
+            collected_at TEXT
+        )
+        """
+    )
+    symbols = [f"00{index:04d}.SZ" for index in range(universe_symbols)]
+    conn.executemany(
+        "INSERT INTO market_assets VALUES (?, ?, ?, ?)",
+        [("Ashare", symbol, f"stock-{index}", "stock") for index, symbol in enumerate(symbols)],
+    )
+    conn.executemany(
+        "INSERT INTO market_bars_intraday VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("Ashare", symbol, "20260710", "2026-07-10 13:30:00", "5min", "2026-07-10T05:30:10+00:00")
+            for symbol in symbols[:fresh_symbols]
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_ashare_intraday_partial_coverage_is_critical(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-10T05:32:00+00:00")
+    path = _db(tmp_path, now=now, event_age_hours=1, pm_age_hours=0.1)
+    _add_ashare_intraday_coverage(path, fresh_symbols=30, universe_symbols=100)
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    violation = next(item for item in report["violations"] if item.get("market") == "Ashare")
+    assert report["status"] == "critical"
+    assert violation["source"] == "ashare_intraday_coverage"
+    assert violation["fresh_symbols"] == 30
+    assert violation["universe_symbols"] == 100
+    assert violation["coverage_ratio"] == 0.3
+
+
+def test_ashare_intraday_full_coverage_is_healthy(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-10T05:32:00+00:00")
+    path = _db(tmp_path, now=now, event_age_hours=1, pm_age_hours=0.1)
+    _add_ashare_intraday_coverage(path, fresh_symbols=90, universe_symbols=100)
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    assert report["status"] == "ok"
+    assert not [item for item in report["violations"] if item.get("market") == "Ashare"]
+
+
+def test_ashare_intraday_zero_coverage_is_critical(tmp_path, monkeypatch):
+    now = datetime.fromisoformat("2026-07-10T05:32:00+00:00")
+    path = _db(tmp_path, now=now, event_age_hours=1, pm_age_hours=0.1)
+    _add_ashare_intraday_coverage(path, fresh_symbols=0, universe_symbols=100)
+    monkeypatch.setenv("MARKETDATA_SQLITE", str(path))
+
+    report = health_sla.check_sla(now=now)
+
+    violation = next(item for item in report["violations"] if item.get("market") == "Ashare")
+    assert report["status"] == "critical"
+    assert violation["status"] == "empty"
+    assert violation["severity"] == "critical"

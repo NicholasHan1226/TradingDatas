@@ -76,11 +76,6 @@ if [ -f "${ROOT}/.env" ]; then
   set +a
 fi
 
-# P0 is the trading-session fast lane and should stay limited to intraday
-# quote APIs. A small rotating batch keeps each run inside the 5-minute cadence
-# while priority holdings/candidates are always selected first.
-export SHAREDSIGNALS_P0_STOCK_BATCH_SIZE="${SHAREDSIGNALS_P0_STOCK_BATCH_SIZE:-30}"
-
 {
   echo "[$(date -Iseconds)] START collectors tiers=${TIERS[*]} python=${PYTHON_BIN}"
   for tier in "${TIERS[@]}"; do
