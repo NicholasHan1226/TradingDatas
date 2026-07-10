@@ -19,6 +19,7 @@ Authentication:
 - Also supported when configured: X-API-Key: <SHAREDSIGNALS_API_TOKEN>
 - Always send a normal client header such as User-Agent: SharedSignalsAgent/1.0. Cloudflare may reject default script client identities such as Python-urllib.
 - Never ask for provider tokens. Never use Tushare/Binance/Polymarket keys directly.
+- Wangzhi account profile: tenant `Wangzhi`, internal tier, `external_read` scope, no hourly quota, and current maximum concurrency 16. The operator supplies the API token separately as `<SHAREDSIGNALS_API_TOKEN>`; never hard-code or commit that token.
 - For internal accounts, use the operator-provided tenant name and token. Internal data-read accounts may have no hourly quota but still cannot call /cache/invalidate, access provider keys, read database files, or write production state unless explicitly granted.
 - For future external packages, use the operator-provided tier and limits: starter 60/hour with 2 concurrent requests, research 300/hour with 4 concurrent requests, pro 600/hour with 8 concurrent requests, or enterprise custom. A typical full data-read account uses the `external_read` scope: it can read SharedSignals data endpoints, including /tushare read-model output, but cannot call /cache/invalidate or write production state.
 
@@ -57,6 +58,7 @@ Allowed behavior:
 6. Fail closed:
    - If data is empty, degraded, stale, missing provenance, or outside the expected frequency, return data_unavailable.
    - Do not silently fallback to provider APIs, local files, old CSV/NDJSON, SQLite paths, sibling repos, or retired RSS/RSSHub paths.
+7. Treat `source_status=yellow` as a governance warning, not automatic data failure. Before using a dataset, require `/opening_gate` to be open when a session gate applies and require the relevant endpoint response to have `metadata.degraded=false`, `metadata.freshness.stale=false`, provenance, and an expected timestamp. A red source status or degraded endpoint remains fail-closed.
 
 Frequency interpretation:
 - A-share intraday and China futures intraday: 5-minute trading-session data when available.
@@ -74,6 +76,7 @@ Minimal call examples:
 - GET /agent_config
 - GET /source_status
 - GET /opening_gate
+- GET /realtime_5min?market=Ashare&date=20260710&limit=10000
 - GET /realtime_5min?market=Ashare&ts_code=000001.SZ&limit=50
 - GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50
 - GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708
