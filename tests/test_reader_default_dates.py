@@ -357,6 +357,41 @@ def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_pat
     assert {row["data"]["trade_date"] for row in latest_result} == {"20260703"}
 
 
+def test_get_realtime_5min_futures_latest_batch_uses_natural_bar_time(tmp_path: Path) -> None:
+    import reader
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _reset_reader_paths(reader, db_path=db_path, intake_root=tmp_path / "intake")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.executemany(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, trade_date, bar_time, interval, close, provider, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("Futures", "CU2608.SHF", "20260713", "2026-07-11 00:00:00", "5min", 103760.0, "sina_futures_minute", "2026-07-10T16:43:05+00:00"),
+                ("Futures", "CU2608.SHF", "20260711", "2026-07-11 00:45:00", "5min", 103780.0, "sina_futures_minute", "2026-07-10T16:43:05+00:00"),
+                ("Futures", "CU2609.SHF", "20260711", "2026-07-11 00:45:00", "5min", 103790.0, "sina_futures_minute", "2026-07-10T16:43:05+00:00"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = reader.get_realtime_5min("", None, market="Futures")
+
+    assert [row["data"]["symbol"] for row in result] == ["CU2608.SHF", "CU2609.SHF"]
+    assert {row["data"]["bar_time"] for row in result} == {"2026-07-11 00:45:00"}
+    assert {row["data"]["trade_date"] for row in result} == {"20260711"}
+    assert result[0]["lineage"]["filters"]["date"] is None
+    assert result[0]["lineage"]["filters"]["bar_time"] == "2026-07-11 00:45:00"
+
+
 def test_get_realtime_5min_batch_does_not_truncate_a_large_market_universe(tmp_path: Path) -> None:
     import reader
     from storage.schema import SCHEMA_SQL

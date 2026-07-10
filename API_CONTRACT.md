@@ -149,8 +149,9 @@ CNFutures 5 分钟采集使用独立入口，不进入 `P6_other_daily`，避免
 - `provider="sina_futures_minute"`（默认）或显式配置下的 `provider="tushare_rt_fut_min"`
 - `interval="5min"`
 - `symbol` 兼容 Tushare 返回的 `ts_code`、`symbol` 或 `code`
-- `trade_date` 从 `time`/`trade_time` 派生，`bar_time` 保留分钟时间戳
+- `bar_time` 始终保存北京时间自然时间；Sina 夜盘凌晨若用下一交易日标记时间，collector 仅在 00:00-02:30 的可验证换日形状内修正自然日期，并把原始交易日单独保留为 `trade_date`
 - `/realtime_5min` 默认仍读取 A 股分钟线；期货读取需显式传 `market=Futures`，例如 `/realtime_5min?market=Futures&ts_code=RB2609.SHF&date=20260703`
+- `/realtime_5min?market=Futures` 未传 `ts_code` 和 `date` 时，按最大的自然 `bar_time` 返回当前全市场快照，不先按 `trade_date` 排序；显式 `date` 查询仍按交易日过滤
 - 可选一级盘口字段会透传到 `market_bars_intraday`：`bid_price` 兼容 `bid1`/`best_bid`，`ask_price` 兼容 `ask1`/`best_ask`，`bid_size` 兼容 `bid_volume`/`bid1_volume`，`ask_size` 兼容 `ask_volume`/`ask1_volume`
 - 可选到期字段会透传到 `market_bars_intraday`：`last_trade_date`、`expiry_date`；若分钟 provider rows 未带这些字段但 `market_assets` 的同一 Futures 合约已有 `last_trade_date`/`expiry_date`，入库层会补齐
 - 这些字段均为可空增量字段；Tushare 当前返回缺失时不阻断 OHLCV 写入，TradingAgent 只能在字段存在时使用盘口/到期保护增强
