@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from runtime_paths import marketdata_sqlite_path, runtime_root, sharedsignals_root
+from runtime_paths import marketdata_sqlite_path, sharedsignals_root
 
 CN_TZ = timezone(timedelta(hours=8))
 PHASES = {
@@ -144,7 +144,7 @@ def _health_sla_ready(path: Path, now: datetime) -> bool:
 def collect_gate(phase: str, *, now: datetime | None = None, db_path: Path | None = None, artifact_path: Path | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     db_path = db_path or marketdata_sqlite_path()
-    artifact_path = artifact_path or (Path(os.environ.get("WATCHDOG_INPUT_DIR", runtime_root() / "logs" / "watchdog_inputs")) / "health_sla.json")
+    artifact_path = artifact_path or (Path(os.environ.get("WATCHDOG_INPUT_DIR", sharedsignals_root() / "logs" / "watchdog_inputs")) / "health_sla.json")
     rows: list[dict[str, Any]] = []
     db_ready = False
     error = None
@@ -180,7 +180,7 @@ def collect_gate(phase: str, *, now: datetime | None = None, db_path: Path | Non
 
 
 def output_path() -> Path:
-    return Path(os.environ.get("WATCHDOG_INPUT_DIR", runtime_root() / "logs" / "watchdog_inputs")) / "opening_gate.json"
+    return Path(os.environ.get("WATCHDOG_INPUT_DIR", sharedsignals_root() / "logs" / "watchdog_inputs")) / "opening_gate.json"
 
 
 def main() -> int:

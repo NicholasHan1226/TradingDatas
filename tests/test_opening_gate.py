@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
-from tools.opening_gate import evaluate_phase
+from tools.opening_gate import evaluate_phase, output_path
 
 
 def test_preopen_gate_is_green_when_runtime_and_sla_are_ready() -> None:
@@ -63,3 +64,10 @@ def test_preopen_gate_is_yellow_when_sla_artifact_is_missing() -> None:
 
     assert result["status"] == "yellow"
     assert result["gate"] == "closed"
+
+
+def test_opening_gate_artifact_defaults_to_sharedsignals_logs(monkeypatch) -> None:
+    monkeypatch.setenv("SHAREDSIGNALS_ROOT", "/tmp/sharedsignals-test")
+    monkeypatch.delenv("WATCHDOG_INPUT_DIR", raising=False)
+
+    assert output_path() == Path("/tmp/sharedsignals-test/logs/watchdog_inputs/opening_gate.json")
