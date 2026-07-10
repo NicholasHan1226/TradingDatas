@@ -24,7 +24,8 @@
   "auth": {
     "headers": [
       "Authorization: Bearer <token>",
-      "X-API-Key: <token>"
+      "X-API-Key: <token>",
+      "User-Agent: SharedSignalsAgent/1.0"
     ],
     "required_for_external_accounts": true,
     "localhost_bypass_only_when_explicitly_enabled": true,

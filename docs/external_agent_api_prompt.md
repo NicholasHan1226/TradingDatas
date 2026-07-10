@@ -17,6 +17,7 @@ API base URL:
 Authentication:
 - Prefer: Authorization: Bearer <SHAREDSIGNALS_API_TOKEN>
 - Also supported when configured: X-API-Key: <SHAREDSIGNALS_API_TOKEN>
+- Always send a normal client header such as User-Agent: SharedSignalsAgent/1.0. Cloudflare may reject default script client identities such as Python-urllib.
 - Never ask for provider tokens. Never use Tushare/Binance/Polymarket keys directly.
 - For internal accounts, use the operator-provided tenant name and token. Internal data-read accounts may have no hourly quota but still cannot call /cache/invalidate, access provider keys, read database files, or write production state unless explicitly granted.
 - For future external packages, use the operator-provided tier and limits: starter 60/hour with 2 concurrent requests, research 300/hour with 4 concurrent requests, pro 600/hour with 8 concurrent requests, or enterprise custom. A typical full data-read account uses the `external_read` scope: it can read SharedSignals data endpoints, including /tushare read-model output, but cannot call /cache/invalidate or write production state.
