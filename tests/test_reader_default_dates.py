@@ -324,6 +324,23 @@ def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_pat
                     "{}",
                 ),
             )
+        conn.execute(
+            """
+            INSERT INTO market_bars_intraday
+            (market, symbol, trade_date, bar_time, interval, close, provider, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "Futures",
+                "RB2609.SHF",
+                "20260704",
+                "2026-07-04 00:00:00",
+                "1w",
+                3530.0,
+                "tushare_fut_weekly",
+                "2026-07-04T08:00:00+00:00",
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -334,6 +351,10 @@ def test_get_realtime_5min_can_return_latest_market_batch_without_symbol(tmp_pat
     assert symbols == ["CU2609.SHF", "RB2609.SHF"]
     assert {row["data"]["bar_time"] for row in result} == {"2026-07-03T14:55:00+08:00"}
     assert result[0]["lineage"]["filters"]["ts_code"] == ""
+
+    latest_result = reader.get_realtime_5min("", None, market="Futures")
+    assert [row["data"]["symbol"] for row in latest_result] == ["CU2609.SHF", "RB2609.SHF"]
+    assert {row["data"]["trade_date"] for row in latest_result} == {"20260703"}
 
 
 def test_cache_invalidation_watches_sqlite_wal_sidecar(tmp_path: Path) -> None:

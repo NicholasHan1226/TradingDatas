@@ -1689,15 +1689,40 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
     date_key = _optional_date_key(date_value)
     if date_key is None:
         if symbol_key:
-            latest_query = "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ? AND symbol = ?"
-            latest_params: tuple[Any, ...] = (market_key, symbol_key)
+            latest_query = (
+                "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday "
+                "WHERE market = ? AND symbol = ? AND interval IN (?, ?)"
+            )
+            latest_params: tuple[Any, ...] = (market_key, symbol_key, "5min", "5m")
         else:
-            latest_query = "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday WHERE market = ?"
-            latest_params = (market_key,)
+            latest_query = (
+                "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday "
+                "WHERE market = ? AND interval IN (?, ?)"
+            )
+            latest_params = (market_key, "5min", "5m")
         latest_rows, latest_degraded = _sqlite_rows(latest_query, latest_params, "market_bars_intraday")
         if latest_degraded is not None:
             return _json_cached(lambda: latest_degraded)
         latest = latest_rows[0].get("trade_date") if latest_rows else None
+        if not latest:
+            if symbol_key:
+                legacy_query = (
+                    "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday "
+                    "WHERE market = ? AND symbol = ? AND (interval IS NULL OR interval = '')"
+                )
+                legacy_params: tuple[Any, ...] = (market_key, symbol_key)
+            else:
+                legacy_query = (
+                    "SELECT MAX(trade_date) AS trade_date FROM market_bars_intraday "
+                    "WHERE market = ? AND (interval IS NULL OR interval = '')"
+                )
+                legacy_params = (market_key,)
+            latest_rows, latest_degraded = _sqlite_rows(
+                legacy_query, legacy_params, "market_bars_intraday"
+            )
+            if latest_degraded is not None:
+                return _json_cached(lambda: latest_degraded)
+            latest = latest_rows[0].get("trade_date") if latest_rows else None
         date_key = _optional_date_key(latest)
         if date_key is None:
             lineage = {"reader": "get_realtime_5min", "source": "sqlite:market_bars_intraday", "filters": {"market": market_key, "ts_code": symbol_key, "date": None}}
@@ -1707,23 +1732,62 @@ def _get_realtime_5min_cached(_generation: int, market: str, ts_code: str, date_
         query = (
             "SELECT * FROM market_bars_intraday "
             "WHERE market = ? AND symbol = ? AND trade_date = ? "
-            "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '') "
+            "AND interval IN (?, ?) "
             "ORDER BY bar_time ASC LIMIT 5000"
         )
         params: tuple[Any, ...] = (market_key, symbol_key, date_key, "5min", "5m")
+        rows, degraded = _sqlite_rows(query, params, "market_bars_intraday")
+        if degraded is None and not rows:
+            query = (
+                "SELECT * FROM market_bars_intraday "
+                "WHERE market = ? AND symbol = ? AND trade_date = ? "
+                "AND (interval IS NULL OR interval = '') "
+                "ORDER BY bar_time ASC LIMIT 5000"
+            )
+            rows, degraded = _sqlite_rows(
+                query, (market_key, symbol_key, date_key), "market_bars_intraday"
+            )
     else:
-        query = (
-            "WITH scoped AS ("
-            "SELECT * FROM market_bars_intraday "
-            "WHERE market = ? AND trade_date = ? "
-            "AND (interval = ? OR interval = ? OR interval IS NULL OR interval = '')"
-            "), latest AS (SELECT MAX(COALESCE(bar_time, '')) AS latest_bar_time FROM scoped) "
-            "SELECT scoped.* FROM scoped, latest "
-            "WHERE COALESCE(scoped.bar_time, '') = latest.latest_bar_time "
-            "ORDER BY scoped.symbol ASC LIMIT 5000"
+        latest_bar_query = (
+            "SELECT MAX(bar_time) AS bar_time FROM market_bars_intraday "
+            "WHERE market = ? AND trade_date = ? AND interval IN (?, ?)"
         )
-        params = (market_key, date_key, "5min", "5m")
-    rows, degraded = _sqlite_rows(query, params, "market_bars_intraday")
+        latest_bar_rows, degraded = _sqlite_rows(
+            latest_bar_query,
+            (market_key, date_key, "5min", "5m"),
+            "market_bars_intraday",
+        )
+        latest_bar_time = latest_bar_rows[0].get("bar_time") if latest_bar_rows else None
+        use_legacy_interval = False
+        if degraded is None and not latest_bar_time:
+            latest_bar_rows, degraded = _sqlite_rows(
+                "SELECT MAX(bar_time) AS bar_time FROM market_bars_intraday "
+                "WHERE market = ? AND trade_date = ? AND (interval IS NULL OR interval = '')",
+                (market_key, date_key),
+                "market_bars_intraday",
+            )
+            latest_bar_time = latest_bar_rows[0].get("bar_time") if latest_bar_rows else None
+            use_legacy_interval = bool(latest_bar_time)
+        if degraded is None and latest_bar_time:
+            if use_legacy_interval:
+                query = (
+                    "SELECT * FROM market_bars_intraday "
+                    "WHERE market = ? AND trade_date = ? AND bar_time = ? "
+                    "AND (interval IS NULL OR interval = '') "
+                    "ORDER BY symbol ASC LIMIT 5000"
+                )
+                params = (market_key, date_key, latest_bar_time)
+            else:
+                query = (
+                    "SELECT * FROM market_bars_intraday "
+                    "WHERE market = ? AND trade_date = ? AND bar_time = ? "
+                    "AND interval IN (?, ?) "
+                    "ORDER BY symbol ASC LIMIT 5000"
+                )
+                params = (market_key, date_key, latest_bar_time, "5min", "5m")
+            rows, degraded = _sqlite_rows(query, params, "market_bars_intraday")
+        else:
+            rows = None
     if degraded is None and rows:
         collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
         return _json_cached(lambda: _rows_to_wrappers(rows, source_id="sqlite:market_bars_intraday", source_tier="marketdata", collected_at=collected_at, lineage=lineage, stale_after_hours=48.0))
