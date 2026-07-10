@@ -29,7 +29,7 @@
 - RSSHub :1200 已停用；旧 RSSCollector cron 条目已从模板和生产 crontab 删除，恢复前必须重新设计 SharedSignals collector 并直接写入 read model
 - Mihomo :7890/:7891 (Clash代理, Binance/Polymarket走代理)
 - 新加坡不运行 RSSHub/rsync staging，也不保存 SQLite/DuckDB；广州通过同一受控 SSH 服务连接新加坡 proxy `127.0.0.1:18888`，并把广州 API 反向转发到新加坡 loopback `127.0.0.1:8082` 供 cloudflared 使用。
-- `cron/external_api_probe.sh` 每 5 分钟无凭据请求公网 `/health`；HTTP 401 表示 Cloudflare/Tunnel/API 链路已到达鉴权门，525、超时或其它状态为失败。可选 `SHAREDSIGNALS_EXTERNAL_PROBE_TOKEN` 才使用 200 口径，仓库不保存 token。
+- `cron/external_api_probe.sh` 每 5 分钟通过广州到新加坡的受控 SSH relay，由新加坡节点无凭据请求公网 `/health`；HTTP 401 表示 Cloudflare/Tunnel/API 链路已到达鉴权门，525、超时或其它状态为失败。可选 `SHAREDSIGNALS_EXTERNAL_PROBE_TOKEN` 才使用 200 口径，仓库不保存 token。
 
 ## API Keys
 - 详见 .env (不在此文档记录值)

@@ -21,6 +21,9 @@ fi
 cd "${ROOT}"
 {
   echo "[$(date -Iseconds)] START external_api_probe"
-  PYTHONPATH="${ROOT}" "${PYTHON_BIN}" tools/external_api_probe.py --output "${OUTPUT_DIR}/external_api_probe.json"
+  PYTHONPATH="${ROOT}" "${PYTHON_BIN}" tools/external_api_probe.py \
+    --output "${OUTPUT_DIR}/external_api_probe.json" \
+    --ssh-target "${SHAREDSIGNALS_EXTERNAL_PROBE_SSH_TARGET:-}" \
+    --ssh-key "${SHAREDSIGNALS_EXTERNAL_PROBE_SSH_KEY:-}"
   echo "[$(date -Iseconds)] OK external_api_probe"
 } >> "${LOG_FILE}" 2>&1
