@@ -421,6 +421,7 @@ def _has_forwarded_client_header(headers: Any) -> bool:
     if not headers:
         return False
     forwarded_headers = (
+        "CF-Connecting-IP",
         "Forwarded",
         "X-Forwarded-For",
         "X-Real-IP",

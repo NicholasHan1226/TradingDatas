@@ -373,3 +373,6 @@ def test_forwarded_localhost_request_requires_real_auth(monkeypatch: pytest.Monk
 
     with pytest.raises(auth_module.AuthError):
         auth_module.authenticate({"X-Forwarded-For": "203.0.113.20"}, "127.0.0.1")
+
+    with pytest.raises(auth_module.AuthError):
+        auth_module.authenticate({"CF-Connecting-IP": "203.0.113.20"}, "127.0.0.1")
