@@ -55,7 +55,7 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
-3-58/5 * * * * SHAREDSIGNALS_EXTERNAL_PROBE_SSH_TARGET=root@47.82.153.58 SHAREDSIGNALS_EXTERNAL_PROBE_SSH_KEY=/root/.ssh/sharedsignals_sg_relay_ed25519 /opt/investment/SharedSignals/cron/external_api_probe.sh
+3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh
 7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh
 10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh
