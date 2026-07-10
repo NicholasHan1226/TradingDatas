@@ -4,7 +4,7 @@
 >
 > 保留本文件是为了追溯 2026-07 生产化、旧路径退役、接口能力补齐、SQLite 恢复和数据源治理的过程记录。不要把下方旧段落中的“当前状态”直接当成最新事实。
 >
-> 最后更新：2026-07-09 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取、外部 agent 22 路径配置补齐、`/source_status` 数据源治理状态、事件 lane/新增数据源治理文档补齐、生产 SQLite 从 DuckDB 恢复并加固 deploy/rollback、横向扩展数据源 planned-only 队列纳入 `/agent_config`、API/module catalog 固化扩源接口规划并纳入 `/source_status`、A股 macro/sentiment/capital_flow evidence debt 最小闭环修复)
+> 最后更新：2026-07-10 (采集直接入库、旧 CSV/旧目录 fallback 退役、A股 P0 5分钟快车道收窄、Crypto/PM 30分钟降载、事件 API market/symbol 过滤补齐、API health 轻量化、A股 moneyflow 盘后日频化、评分历史窗口修复、DuckDB 降载、CNFutures 5分钟默认 AkShare/Sina、市场参数统一规范化、全量同步冲突收口、CNFutures 午休新鲜度口径、Tushare 入库/API 覆盖完整性保护、health_sla 大表轻量化、新闻/公告 DB-first 事件输出、repo 旧 CSV 样本与 Tushare CSV cache 删除、`api_server.py` 默认 HOST 改为 `127.0.0.1`、API 大表读侧限流/超时与索引补强、`/tushare daily` 最新日线轻量读取、外部 agent 23 路径配置补齐、`/source_status` 数据源治理状态、`/opening_gate` 四时点轻量交易供数门、事件 lane/新增数据源治理文档补齐、生产 SQLite 从 DuckDB 恢复并加固 deploy/rollback、横向扩展数据源 planned-only 队列纳入 `/agent_config`、API/module catalog 固化扩源接口规划并纳入 `/source_status`、A股 macro/sentiment/capital_flow evidence debt 最小闭环修复)
 
 ---
 

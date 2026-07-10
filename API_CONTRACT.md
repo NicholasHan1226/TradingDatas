@@ -54,6 +54,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 | `GET /capabilities` | `health` | 返回当前 API/read-model 能力登记；能力登记缺失时返回 degraded fallback，帮助消费者发现可用端点 |
 | `GET /agent_config` | `health` | 返回外部 agent 接入机器配置、频率标签、禁止绕过规则和推荐调用端点 |
 | `GET /source_status` | `health` | 返回数据源治理 green/yellow/red 状态，检查接口纳管、模块/API 目录、扩源 planned 队列、调度重复、SLA 和能力 registry |
+| `GET /opening_gate` | `health` | 返回最近一次预开盘、首样本、午后恢复或收盘轻量供数门状态；不触发全库扫描 |
 | `GET /cache/status` | `health` | 返回 API 进程内 cache generation、TTL、容量、条目数和鉴权去重缓存摘要 |
 | `GET/POST /cache/invalidate` | `health` | 清理 API 进程内缓存；仅影响 API cache，不删除 read model 数据 |
 | `GET /market_data` | `market_data` | 日线/分钟行情，只读 SQLite read model |
@@ -583,16 +584,16 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 调用时必须：
 
-1. 先读取 `/health`、`/agent_config` 与 `/source_status`，确认服务健康、接入规则、频率标签、接口纳管状态和禁止绕过边界。
+1. 先读取 `/health`、`/agent_config`、`/source_status` 与 `/opening_gate`，确认服务健康、接入规则、频率标签、接口纳管状态、当前交易时点供数门和禁止绕过边界。
 2. 优先使用业务端点：`/market_data`、`/realtime_5min`、`/events`、`/fundamentals`、`/macro`、`/pm_markets`、`/pm_prices`。
 3. 需要 Tushare 原生维度时使用 `/tushare?api_name=...&limit=...`；该接口仍然只读数据库，不现场调用 Tushare。
 4. 每次读取都检查 `metadata.degraded`、`metadata.degraded_reasons`、`freshness`、`provenance.source_id`、行内 `trade_date/event_time/collected_at`。
 5. 按市场和频率理解数据：A股/期货保留 5 分钟交易输入；Crypto/PM 当前是 30 分钟供数；日频、周月线、财务、宏观、研报、公告不得当作 5 分钟行情。
 6. 无数据或 degraded 时 fail closed：返回“数据不足/不可用”，不要自动改走 provider、旧文件或其它仓库。
 
-隔离外部账号建议使用 `external_read` scope。它覆盖完整数据读取面，包括 `/health`、`/agent_config`、`/source_status`、业务端点和 `/tushare` 数据库输出；不覆盖 `/cache/invalidate`、生产写入、provider key、数据库文件或运维权限。
+隔离外部账号建议使用 `external_read` scope。它覆盖完整数据读取面，包括 `/health`、`/agent_config`、`/source_status`、`/opening_gate`、业务端点和 `/tushare` 数据库输出；不覆盖 `/cache/invalidate`、生产写入、provider key、数据库文件或运维权限。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 22 个可发现路径，并用 `cadence_class` 区分交易、研究、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
+复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 23 个可发现路径，并用 `cadence_class` 区分交易、研究、session readiness、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 115 个 allowlisted 接口中 114 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
 
 ### 数据维度来源标注
 
@@ -838,6 +839,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-07-10 | 1.1.36 | 外部入口统一为 `https://signals.tradingagent.cc` 并通过 Cloudflare Tunnel/DNS 对外可达；API 账号层级拆分为 `internal` 内部使用与未来 `starter/research/pro/enterprise` 分级套餐，`free` 保留兼容。 |
+| 2026-07-10 | 1.1.37 | 增加 `/opening_gate` 与四个交易时点轻量供数门，外部 agent 可在使用行情前读取当前门状态。 |
 | 2026-07-10 | 1.1.35 | 新增外部隔离账号 `external_read` scope，并让 token 鉴权支持 `X-API-Key` header；该 scope 提供完整数据读权限（含 `/tushare` read-model 输出），但不含 `/cache/invalidate` 运维控制。 |
 | 2026-07-09 | 1.1.34 | `/source_status` 增加 API/module catalog 与 source expansion plan 映射检查，确认 planned 数据源没有误启用、候选模块能映射到默认 HTTP surface 和 read-model 表、扩源默认复用现有 API。 |
 | 2026-07-09 | 1.1.33 | 新增 `config/api_module_catalog.yaml` 模块/API 规划目录，规定新增数据源先按模块映射到 read-model 表和默认 HTTP surface，默认复用现有 API；只有新查询形态、独立 SLA/auth/分页/限流等情况才新增 endpoint。 |

@@ -470,7 +470,7 @@ def test_agent_config_endpoint_returns_external_agent_contract(api_edge_server) 
 
     assert status == 200
     assert payload["source"] == "external_agent_api_config.json"
-    assert payload["data"]["contract_version"] == "1.1.36"
+    assert payload["data"]["contract_version"] == "1.1.37"
     assert payload["data"]["tushare_status"]["allowlisted_api_names"] == 115
     assert payload["data"]["tushare_status"]["configured_in_production_tiers"] == 114
     assert payload["data"]["tushare_status"]["planned_activation_backlog"] == 0
@@ -487,8 +487,23 @@ def test_source_status_endpoint_returns_governance_report(api_edge_server) -> No
     assert payload["data"]["status"] in {"green", "yellow", "red"}
     assert "checks" in payload["data"]
     assert any(check["name"] == "tushare_planned_backlog" for check in payload["data"]["checks"])
-    assert payload["data"]["summary"]["endpoint_count"] == 22
+    assert payload["data"]["summary"]["endpoint_count"] == 23
     assert payload["metadata"]["lineage"]["source"] == "tools/source_governance_monitor.py"
+
+
+def test_opening_gate_endpoint_returns_latest_session_gate(api_edge_server, monkeypatch) -> None:
+    base_url, _reader = api_edge_server
+    monkeypatch.setattr(
+        api_server.api_control_plane,
+        "opening_gate_payload",
+        lambda: ({"status": "green", "gate": "open", "phase": "preopen"}, {"degraded": False}, "opening_gate.json"),
+    )
+
+    status, payload = _get_json(base_url, "/opening_gate")
+
+    assert status == 200
+    assert payload["data"]["gate"] == "open"
+    assert payload["source"] == "opening_gate.json"
 
 
 def test_api_health_defaults_to_lightweight_cached_checks(monkeypatch) -> None:

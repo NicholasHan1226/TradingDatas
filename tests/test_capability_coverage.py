@@ -396,7 +396,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     planned = {row["api_name"] for row in planned_rows if row["mode"] == "planned"}
     active = {row["api_name"] for row in planned_rows if row["mode"] in {"scheduled", "independent", "event_lane"}}
 
-    assert config["contract_version"] == "1.1.36"
+    assert config["contract_version"] == "1.1.37"
     assert config["base_url"] == "https://signals.tradingagent.cc"
     assert config["access_status"] == "live_cloudflare_route"
     assert config["account_tiers"]["internal"]["hourly_limit"] is None
@@ -424,6 +424,7 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
         "/capabilities",
         "/agent_config",
         "/source_status",
+        "/opening_gate",
         "/cache/status",
         "/cache/invalidate",
         "/market_data",

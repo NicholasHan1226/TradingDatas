@@ -55,7 +55,7 @@ RATE_MAX_TENANTS = env_int("SHAREDSIGNALS_RATE_MAX_TENANTS", 1024, min_value=1)
 RATE_MAX_EVENTS_PER_TENANT = env_int("SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1)
 
 # Scope presets — which endpoints each scope grants access to
-STATUS_ENDPOINTS = {"/health", "/capabilities", "/agent_config", "/source_status", "/cache/status"}
+STATUS_ENDPOINTS = {"/health", "/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status"}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "status": STATUS_ENDPOINTS,

@@ -93,6 +93,10 @@ def _crontab_text() -> str:
             "1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
             "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
             "15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
+            "50 8 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase preopen",
+            "35 9 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase morning_first_sample",
+            "5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume",
+            "5 15 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase close_check",
             "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
             "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
             "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
@@ -116,7 +120,7 @@ def test_source_governance_monitor_returns_green_when_sources_are_complete() -> 
 
     assert report["status"] == "green"
     assert report["summary"]["tushare_planned_backlog"] == 0
-    assert report["summary"]["endpoint_count"] == 22
+    assert report["summary"]["endpoint_count"] == 23
     assert report["recommendation"] == "no action required"
     assert all(check["status"] == "green" for check in report["checks"])
 
@@ -186,7 +190,7 @@ def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
     summary = source_governance_monitor.render_operator_summary(report)
 
     assert "结论：green" in summary
-    assert "当前状态：外部 API 22 个端点" in summary
+    assert "当前状态：外部 API 23 个端点" in summary
     assert "依据：green 检查 7 项，yellow 0 项，red 0 项" in summary
     assert "风险：无直接阻断" in summary
     assert "下一步：保持当前采集频率" in summary

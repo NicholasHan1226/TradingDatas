@@ -1,6 +1,6 @@
 {
   "name": "SharedSignals External Agent API",
-  "contract_version": "1.1.36",
+  "contract_version": "1.1.37",
   "base_url": "https://signals.tradingagent.cc",
   "local_base_url": "http://127.0.0.1:8082",
   "access_status": "live_cloudflare_route",
@@ -99,6 +99,12 @@
       "scope": "health",
       "cadence_class": "source_governance",
       "use": "Read green/yellow/red source governance status before relying on market data."
+    },
+    {
+      "path": "/opening_gate",
+      "scope": "health",
+      "cadence_class": "session_readiness",
+      "use": "Read the latest preopen, first-sample, afternoon-resume, or close-session market-data gate."
     },
     {
       "path": "/cache/status",

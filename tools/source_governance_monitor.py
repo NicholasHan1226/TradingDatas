@@ -31,6 +31,7 @@ REQUIRED_ENDPOINTS = {
     "/capabilities",
     "/agent_config",
     "/source_status",
+    "/opening_gate",
     "/cache/status",
     "/cache/invalidate",
     "/market_data",
@@ -70,6 +71,10 @@ REQUIRED_CRON_LINES = {
     "health_sla_15min": "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
     "source_governance_daily": "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
     "green_gate_daily": "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
+    "opening_gate_preopen": "50 8 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase preopen",
+    "opening_gate_morning": "35 9 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase morning_first_sample",
+    "opening_gate_afternoon": "5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume",
+    "opening_gate_close": "5 15 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase close_check",
 }
 
 STATUS_ORDER = {"green": 0, "yellow": 1, "red": 2}

@@ -108,6 +108,25 @@ def source_status_payload() -> tuple[dict[str, Any], dict[str, Any], str]:
     return payload, metadata, "source_governance_monitor"
 
 
+def opening_gate_payload() -> tuple[dict[str, Any], dict[str, Any], str]:
+    path = Path(__import__("os").environ.get("WATCHDOG_INPUT_DIR", "logs/watchdog_inputs")) / "opening_gate.json"
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parent / path
+    if not path.exists():
+        payload = {
+            "status": "yellow",
+            "gate": "closed",
+            "phase": "unknown",
+            "action_required": "opening_gate artifact is not available; run cron/opening_gate.sh",
+        }
+        return payload, {"degraded": True, "degraded_reasons": ["opening_gate artifact missing"]}, "opening_gate_missing"
+    payload, metadata, source = json_file_payload(path)
+    metadata["lineage"] = {"source": "tools/opening_gate.py", "artifact": str(path)}
+    metadata["degraded"] = payload.get("status") != "green"
+    metadata["degraded_reasons"] = [] if payload.get("status") == "green" else [payload.get("action_required", "opening gate closed")]
+    return payload, metadata, source
+
+
 def _endpoint_category(endpoint: str, scope_map: dict[str, set[str]]) -> str:
     for scope, endpoints in scope_map.items():
         if scope == "read":

@@ -8,7 +8,7 @@ def _governance_report(status: str = "green") -> dict:
         "status": status,
         "generated_at": "2026-07-09T00:10:00+00:00",
         "summary": {
-            "endpoint_count": 22,
+            "endpoint_count": 23,
             "tushare_allowlisted": 115,
             "tushare_active": 115,
             "tushare_planned_backlog": 0,
@@ -43,7 +43,7 @@ def test_green_gate_payload_uses_source_governance_and_artifact_guard(monkeypatc
     assert payload["status"] == "green"
     assert payload["delivery"]["status"] == "dry_run"
     assert "[SharedSignals][GREEN]" in payload["subject"]
-    assert "External API endpoints: 22" in payload["body_html"]
+    assert "External API endpoints: 23" in payload["body_html"]
     assert "Retired file artifact guard: ok (0 offenders)" in payload["body_html"]
 
 

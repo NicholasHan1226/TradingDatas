@@ -175,4 +175,4 @@ Operational handoff:
 - Event lane guide: `docs/event_lane.md`
 - New source onboarding checklist: `docs/data_source_onboarding.md`
 
-`GET /agent_config` lists the full 22 HTTP paths as discoverable integration surface: health/config/cache paths, `/source_status` source governance status, business data paths, delegated association/impact projections, and `/tushare`. External agents should still prefer the business endpoint that matches their market and cadence, then fall back to `/tushare` only for native Tushare-shaped read-model output.
+`GET /agent_config` lists the full 23 HTTP paths as discoverable integration surface: health/config/cache paths, `/source_status` source governance status, `/opening_gate` session readiness, business data paths, delegated association/impact projections, and `/tushare`. External agents should still prefer the business endpoint that matches their market and cadence, then fall back to `/tushare` only for native Tushare-shaped read-model output.

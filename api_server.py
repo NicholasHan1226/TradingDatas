@@ -436,6 +436,10 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = api_control_plane.source_status_payload()
             return wrap_response(payload, metadata, source)
 
+        if path == "/opening_gate":
+            payload, metadata, source = api_control_plane.opening_gate_payload()
+            return wrap_response(payload, metadata, source)
+
         if path == "/market_data":
             ts_code = params.get("ts_code", "").strip()
             if not ts_code:
