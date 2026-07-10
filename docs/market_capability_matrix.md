@@ -4,6 +4,8 @@ Last updated: 2026-07-10
 
 This document is the market-facing capability and cadence guide for SharedSignals. It complements the internal Tushare P0-P7 tier config and prevents external consumers from treating every allowlisted provider API as an active production feed.
 
+Storage semantics are strict: identity APIs (`stock_basic`, fund/futures/options/ETF/HK/US basics and index identity) write `market_assets`; company, NAV, unlock, holder, manager and calendar facts write `market_factors`; membership/constituent APIs write `market_relationships`. Coverage alone is not sufficient if an API is mapped to the wrong semantic table.
+
 ## Current Decision
 
 SharedSignals should be managed by market and data-latency need, not by provider name alone.

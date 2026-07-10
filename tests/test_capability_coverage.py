@@ -234,6 +234,29 @@ def test_relationship_member_apis_are_scheduled_and_mapped_to_relationships() ->
         assert by_name[api_name]["cadence"] == "daily_reference"
 
 
+def test_reference_and_ownership_apis_do_not_pollute_asset_master() -> None:
+    factor_apis = {
+        "fund_nav",
+        "index_dailybasic",
+        "share_float",
+        "stk_holdernumber",
+        "stk_holdertrade",
+        "stk_managers",
+        "stock_company",
+        "top10_floatholders",
+        "top10_holders",
+        "top_inst",
+        "trade_cal",
+    }
+    relationship_apis = {"concept_detail", "hs_const", "index_weight"}
+
+    for api_name in factor_apis:
+        assert API_TO_TABLE_MAP[api_name] == "market_factors"
+    for api_name in relationship_apis:
+        assert API_TO_TABLE_MAP[api_name] == "market_relationships"
+    assert API_TO_TABLE_MAP["index_basic"] == "market_assets"
+
+
 def test_b2_daily_supporting_apis_are_scheduled_and_mapped() -> None:
     configured = {api_name for _tier, api_name, _api in _configured_tushare_apis()}
     planned_rows = _planned_tushare_apis()

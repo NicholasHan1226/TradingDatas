@@ -178,6 +178,37 @@ def test_factor_rows_expand_numeric_metrics(tmp_path: Path) -> None:
     ]
 
 
+def test_manager_rows_are_factors_not_asset_names(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    ingest_rows_to_sqlite(
+        db_path,
+        "market_assets",
+        "stock_basic",
+        [{"ts_code": "000001.SZ", "name": "平安银行", "asset_type": "stock"}],
+        source_name="stock_basic_rows_test",
+    )
+
+    rows = ingest_rows_to_sqlite(
+        db_path,
+        API_TO_TABLE_MAP["stk_managers"],
+        "stk_managers",
+        [{"ts_code": "000001.SZ", "name": "某高管", "position": "董事长", "gender": "M"}],
+        source_name="stk_managers_rows_test",
+    )
+
+    assert rows == 1
+    assert _fetchone(db_path, "SELECT name, provider FROM market_assets WHERE symbol='000001.SZ'") == (
+        "平安银行",
+        "tushare_stock_basic",
+    )
+    assert _fetchone(db_path, "SELECT symbol, factor_name, provider FROM market_factors") == (
+        "000001.SZ",
+        "stk_managers:stk_managers",
+        "tushare_stk_managers",
+    )
+
+
 def test_repo_daily_projects_to_factors_and_daily_bars(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

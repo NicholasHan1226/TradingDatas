@@ -14,6 +14,7 @@
 - **交易边界**：支持分钟级/5 分钟级交易供数，不承诺毫秒级 HFT、订单簿撮合或执行系统能力。
 - **现役数据源**：Tushare、Binance、Polymarket、CNFutures；RSS/RSSHub/Tavily/DeepSeek 不作为现役生产 collector。
 - **存储边界**：SQLite read model 是权威读模型；DuckDB 是分析镜像；CSV/NDJSON/旧目录只能作为历史迁移或审计材料，不能作为生产读取兜底。
+- **资产主数据边界**：`market_assets` 只接收真正的资产/指数 identity 接口；公司资料、基金净值、解禁、股东、高管和交易日历进入 `market_factors`，成分/归属进入 `market_relationships`，不得再用人员姓名或持仓记录覆盖证券名称。
 - **仓库数据边界**：仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；冷归档样本、CSV bridge、旧 query_router/archive_manager 不作为当前 read path 或交接材料，且由测试门禁阻止恢复。
 - **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
 - **外部域名状态**：Wangzhi/internal tier 这类外部账号已在 SharedSignals 侧可控；正式域名 `https://signals.tradingagent.cc` 通过 Cloudflare 橙云 A 记录指向主服务器 Nginx，再反代到 `127.0.0.1:8082`。旧 Tunnel CNAME 已退役，外部请求仍必须携带 SharedSignals API token。
