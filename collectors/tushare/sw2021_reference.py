@@ -46,7 +46,12 @@ class IndustryCandidate:
     source_run_id: str
     taxonomy_rows: tuple[Mapping[str, Any], ...]
     membership_rows: tuple[Mapping[str, Any], ...]
+    # Raw row count returned by each provider request.  This must never be
+    # reconstructed from row-declared l1_code values or post-deduplication rows.
     partition_counts: Mapping[str, int]
+    deduplicated_partition_counts: Mapping[str, int]
+    declared_partition_counts: Mapping[str, int]
+    partition_scope_mismatches: tuple[tuple[str, str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -218,10 +223,14 @@ def _validated_l1_codes(taxonomy_rows: list[dict[str, Any]]) -> list[str]:
     return l1_codes
 
 
-def _deduplicate_memberships(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
-    passthrough: list[dict[str, Any]] = []
-    for row in rows:
+def _deduplicate_memberships(
+    rows: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    grouped: dict[
+        tuple[str, str, str, str, str], list[tuple[str, dict[str, Any]]]
+    ] = {}
+    passthrough: list[tuple[str, dict[str, Any]]] = []
+    for requested_partition, row in rows:
         identity = (
             _text(row.get("membership_key")),
             _text(row.get("symbol")),
@@ -230,22 +239,26 @@ def _deduplicate_memberships(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             _text(row.get("l3_code")),
         )
         if all(identity):
-            grouped.setdefault(identity, []).append(row)
+            grouped.setdefault(identity, []).append((requested_partition, row))
         else:
-            passthrough.append(row)
+            passthrough.append((requested_partition, row))
 
     deduplicated = [
-        min(duplicates, key=lambda row: _text(row.get("raw_json")))
+        min(
+            duplicates,
+            key=lambda item: (_text(item[1].get("raw_json")), item[0]),
+        )
         for duplicates in grouped.values()
     ]
     return sorted(
         [*deduplicated, *passthrough],
-        key=lambda row: (
-            _text(row.get("symbol")),
-            _text(row.get("l1_code")),
-            _text(row.get("l2_code")),
-            _text(row.get("l3_code")),
-            _text(row.get("raw_json")),
+        key=lambda item: (
+            _text(item[1].get("symbol")),
+            _text(item[1].get("l1_code")),
+            _text(item[1].get("l2_code")),
+            _text(item[1].get("l3_code")),
+            _text(item[1].get("raw_json")),
+            item[0],
         ),
     )
 
@@ -267,8 +280,9 @@ def collect_candidate(
     l1_codes = _validated_l1_codes(normalized_taxonomy_rows)
     taxonomy_rows = tuple(MappingProxyType(row) for row in normalized_taxonomy_rows)
 
-    membership_rows: list[dict[str, Any]] = []
+    membership_entries: list[tuple[str, dict[str, Any]]] = []
     source_partition_counts: dict[str, int] = {}
+    partition_scope_mismatches: list[tuple[str, str, str]] = []
     for l1_code in l1_codes:
         try:
             partition = fetch(
@@ -288,17 +302,24 @@ def collect_candidate(
             for row in partition
         ]
         source_partition_counts[l1_code] = len(normalized_rows)
-        membership_rows.extend(normalized_rows)
+        for row in normalized_rows:
+            declared_l1_code = _text(row.get("l1_code"))
+            if declared_l1_code != l1_code:
+                partition_scope_mismatches.append(
+                    (l1_code, declared_l1_code, _text(row.get("symbol")))
+                )
+            membership_entries.append((l1_code, row))
 
-    membership_rows = _deduplicate_memberships(membership_rows)
-    partition_counts = {code: 0 for code in l1_codes}
-    for row in membership_rows:
-        code = _text(row.get("l1_code"))
-        if code in partition_counts:
-            partition_counts[code] += 1
-    for code, source_count in source_partition_counts.items():
-        if source_count < 0 or source_count >= PROVIDER_PAGE_LIMIT:
-            partition_counts[code] = source_count
+    deduplicated_entries = _deduplicate_memberships(membership_entries)
+    deduplicated_partition_counts = {code: 0 for code in l1_codes}
+    declared_partition_counts = {code: 0 for code in l1_codes}
+    membership_rows: list[dict[str, Any]] = []
+    for requested_partition, row in deduplicated_entries:
+        deduplicated_partition_counts[requested_partition] += 1
+        declared_l1_code = _text(row.get("l1_code"))
+        if declared_l1_code in declared_partition_counts:
+            declared_partition_counts[declared_l1_code] += 1
+        membership_rows.append(row)
 
     return IndustryCandidate(
         snapshot_id=snapshot_id,
@@ -306,7 +327,10 @@ def collect_candidate(
         source_run_id=source_run_id,
         taxonomy_rows=taxonomy_rows,
         membership_rows=tuple(MappingProxyType(row) for row in membership_rows),
-        partition_counts=MappingProxyType(partition_counts),
+        partition_counts=MappingProxyType(source_partition_counts),
+        deduplicated_partition_counts=MappingProxyType(deduplicated_partition_counts),
+        declared_partition_counts=MappingProxyType(declared_partition_counts),
+        partition_scope_mismatches=tuple(sorted(partition_scope_mismatches)),
     )
 
 
@@ -397,12 +421,25 @@ def validate_candidate(
     partition_codes = set(candidate.partition_counts)
     if len(l1_codes) != EXPECTED_PARTITION_COUNT or partition_codes != l1_codes:
         reject("partition_count")
+    if set(candidate.deduplicated_partition_counts) != partition_codes:
+        reject("deduplicated_partition_count_mismatch")
+    if set(candidate.declared_partition_counts) != partition_codes:
+        reject("declared_partition_count_mismatch")
     if any(count < 0 for count in candidate.partition_counts.values()):
         reject("partition_fetch_failed")
     if any(count == 0 for count in candidate.partition_counts.values()):
         reject("empty_partition")
     if any(count >= PROVIDER_PAGE_LIMIT for count in candidate.partition_counts.values()):
         reject("possible_provider_truncation")
+    if candidate.partition_scope_mismatches:
+        reject("partition_scope_mismatch")
+
+    if any(
+        source_count >= 0
+        and candidate.deduplicated_partition_counts.get(code, -1) > source_count
+        for code, source_count in candidate.partition_counts.items()
+    ):
+        reject("deduplicated_partition_count_mismatch")
 
     observed_partition_counts = {code: 0 for code in partition_codes}
     for row in candidate.membership_rows:
@@ -412,10 +449,20 @@ def validate_candidate(
             continue
         observed_partition_counts[code] += 1
     if any(
-        count >= 0 and observed_partition_counts.get(code) != count
-        for code, count in candidate.partition_counts.items()
+        observed_partition_counts.get(code) != count
+        for code, count in candidate.declared_partition_counts.items()
     ):
-        reject("partition_row_count_mismatch")
+        reject("declared_partition_count_mismatch")
+
+    membership_count = len(candidate.membership_rows)
+    if sum(candidate.deduplicated_partition_counts.values()) != membership_count:
+        reject("deduplicated_partition_count_mismatch")
+    if sum(candidate.declared_partition_counts.values()) != membership_count:
+        reject("declared_partition_count_mismatch")
+    if not candidate.partition_scope_mismatches and (
+        candidate.deduplicated_partition_counts != candidate.declared_partition_counts
+    ):
+        reject("partition_scope_mismatch")
 
     required_membership_fields = (
         "symbol",
@@ -480,7 +527,6 @@ def validate_candidate(
             ):
                 reject("membership_hierarchy_mismatch")
 
-    membership_count = len(candidate.membership_rows)
     if membership_count < min_rows:
         reject("membership_rows_below_min")
     if membership_count > max_rows:

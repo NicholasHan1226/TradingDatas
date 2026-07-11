@@ -283,6 +283,96 @@ def test_provider_partition_failure_is_preserved_and_rejected() -> None:
     assert "partition_fetch_failed" in validation.errors
 
 
+def test_empty_provider_partition_preserves_zero_source_count_and_is_rejected() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        if params["l1_code"] == "L1-02":
+            return []
+        return [row for row in memberships if row["l1_code"] == params["l1_code"]]
+
+    candidate = collect_candidate(fetch, snapshot_id="snapshot-empty", source_run_id="run-empty")
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert candidate.partition_counts["L1-02"] == 0
+    assert candidate.deduplicated_partition_counts["L1-02"] == 0
+    assert candidate.declared_partition_counts["L1-02"] == 0
+    assert validation.accepted is False
+    assert "empty_partition" in validation.errors
+
+
+def test_cross_partition_row_cannot_fill_an_empty_requested_partition() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    smuggled_l1_02 = next(row for row in memberships if row["l1_code"] == "L1-02")
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        if params["l1_code"] == "L1-02":
+            return []
+        rows = [row for row in memberships if row["l1_code"] == params["l1_code"]]
+        return [*rows, smuggled_l1_02] if params["l1_code"] == "L1-01" else rows
+
+    candidate = collect_candidate(
+        fetch,
+        snapshot_id="snapshot-partition-scope",
+        source_run_id="run-partition-scope",
+    )
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert candidate.partition_counts["L1-01"] == 5
+    assert candidate.partition_counts["L1-02"] == 0
+    assert candidate.deduplicated_partition_counts["L1-01"] == 5
+    assert candidate.deduplicated_partition_counts["L1-02"] == 0
+    assert candidate.declared_partition_counts["L1-02"] == 1
+    assert candidate.partition_scope_mismatches == (
+        ("L1-01", "L1-02", smuggled_l1_02["ts_code"]),
+    )
+    assert validation.accepted is False
+    assert "empty_partition" in validation.errors
+    assert "partition_scope_mismatch" in validation.errors
+
+
+@pytest.mark.parametrize(
+    ("count_field", "reason"),
+    [
+        ("deduplicated_partition_counts", "deduplicated_partition_count_mismatch"),
+        ("declared_partition_counts", "declared_partition_count_mismatch"),
+    ],
+)
+def test_partition_count_totals_are_validated_defensively(
+    count_field: str, reason: str
+) -> None:
+    candidate = _collected_candidate()
+    counts = dict(getattr(candidate, count_field))
+    counts["L1-01"] += 1
+    candidate = replace(candidate, **{count_field: counts})
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert validation.accepted is False
+    assert reason in validation.errors
+
+
 def test_taxonomy_pagination_continues_after_an_exact_full_page() -> None:
     taxonomy = _raw_taxonomy()
     exact_full_page = taxonomy[:TAXONOMY_PAGE_SIZE]
@@ -372,7 +462,7 @@ def test_same_symbol_and_assignment_is_stably_deduplicated() -> None:
     assert len(keys) == len(set(keys))
 
 
-def test_same_assignment_smuggled_across_partitions_is_globally_deduplicated() -> None:
+def test_same_assignment_smuggled_across_partitions_is_deduplicated_but_rejected() -> None:
     taxonomy = _raw_taxonomy()
     memberships = _raw_memberships()
     smuggled = dict(memberships[0], name="Cross-partition duplicate")
@@ -398,12 +488,17 @@ def test_same_assignment_smuggled_across_partitions_is_globally_deduplicated() -
     assert len({row["membership_key"] for row in first.membership_rows}) == len(
         first.membership_rows
     )
-    assert validate_candidate(
+    validation = validate_candidate(
         first,
         {_symbol(number) for number in range(1, 101)},
         min_rows=1,
         max_rows=10_000,
-    ).accepted
+    )
+    assert validation.accepted is False
+    assert "partition_scope_mismatch" in validation.errors
+    assert first.partition_counts["L1-02"] == 5
+    assert sum(first.partition_counts.values()) == 101
+    assert sum(first.deduplicated_partition_counts.values()) == 100
 
 
 def test_conflicting_assignment_smuggled_across_partitions_is_rejected() -> None:
