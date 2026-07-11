@@ -35,6 +35,7 @@ except ImportError:
 
 import warnings as _warnings
 from env_bootstrap import env_float, env_int
+from pagination import decode_cursor, encode_cursor
 from runtime_paths import marketdata_sqlite_path, runtime_root, sharedsignals_root
 
 
@@ -324,11 +325,11 @@ def _cache_generation_snapshot() -> int:
         return _CACHE_GENERATION
 
 
-def _json_cached(fn: Callable[..., list[dict[str, Any]]], *args: Any) -> str:
+def _json_cached(fn: Callable[..., Any], *args: Any) -> str:
     return json.dumps(fn(*args), ensure_ascii=False, sort_keys=True, default=str)
 
 
-def _clone_cached(payload: str) -> list[dict[str, Any]]:
+def _clone_cached(payload: str) -> Any:
     return deepcopy(json.loads(payload))
 
 
@@ -893,7 +894,7 @@ def get_market_data(ts_code: str, start: Any = None, end: Any = None, freq: str 
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_events_cached(
+def _get_events_page_cached(
     _generation: int,
     start: str,
     end: str,
@@ -901,6 +902,7 @@ def _get_events_cached(
     limit: int,
     market: str | None,
     subject_code: str | None,
+    cursor: str | None,
 ) -> str:
     start_key = _optional_date_key(start)
     end_key = _optional_date_key(end)
@@ -929,34 +931,84 @@ def _get_events_cached(
         where.append(f"UPPER(COALESCE(symbol, '')) IN ({placeholders})")
         params.extend(wanted_codes)
 
+    time_expr = "COALESCE(NULLIF(event_time, ''), collected_at)"
+    if cursor:
+        sort_key = decode_cursor(cursor, scope="events")
+        if (
+            len(sort_key) != 3
+            or not isinstance(sort_key[0], str)
+            or not isinstance(sort_key[1], str)
+            or not isinstance(sort_key[2], int)
+        ):
+            raise ValueError("invalid cursor")
+        cursor_time, cursor_event_id, cursor_revision = sort_key
+        where.append(
+            f"({time_expr} < ? OR "
+            f"({time_expr} = ? AND event_id < ?) OR "
+            f"({time_expr} = ? AND event_id = ? AND revision < ?))"
+        )
+        params.extend(
+            [
+                cursor_time,
+                cursor_time,
+                cursor_event_id,
+                cursor_time,
+                cursor_event_id,
+                cursor_revision,
+            ]
+        )
+
     db_lineage = {
-        "reader": "get_events",
+        "reader": "get_events_page",
         "source": "sqlite:market_events",
         "filters": {"start": start, "end": end, "event_type": event_type, "market": market, "subject_code": subject_code},
     }
+    page_limit = _bounded_limit(limit, 500)
     rows, db_degraded = _sqlite_rows(
         "SELECT * FROM market_events "
         f"WHERE {' AND '.join(where)} "
-        "ORDER BY COALESCE(trade_date, event_time, collected_at) DESC LIMIT ?",
-        (*tuple(params), _bounded_limit(limit, 500)),
+        f"ORDER BY {time_expr} DESC, event_id DESC, revision DESC LIMIT ?",
+        (*tuple(params), page_limit + 1),
         "market_events",
     )
     if db_degraded is None and rows:
-        collected_at = max((str(row.get("collected_at") or "") for row in rows), default="") or None
-        return _json_cached(
-            lambda: _rows_to_wrappers(
-                rows,
-                source_id="sqlite:market_events",
-                source_tier="events",
-                collected_at=collected_at,
-                lineage=db_lineage,
-                stale_after_hours=168.0,
+        has_more = len(rows) > page_limit
+        page_rows = rows[:page_limit]
+        collected_at = max((str(row.get("collected_at") or "") for row in page_rows), default="") or None
+        next_cursor = None
+        if has_more:
+            last_row = page_rows[-1]
+            sort_key = (
+                str(last_row.get("event_time") or last_row.get("collected_at") or ""),
+                last_row.get("event_id"),
+                last_row.get("revision"),
             )
+            if isinstance(sort_key[1], str) and isinstance(sort_key[2], int):
+                next_cursor = encode_cursor("events", "", sort_key)
+        return _json_cached(
+            lambda: {
+                "rows": _rows_to_wrappers(
+                    page_rows,
+                    source_id="sqlite:market_events",
+                    source_tier="events",
+                    collected_at=collected_at,
+                    lineage=db_lineage,
+                    stale_after_hours=168.0,
+                ),
+                "next_cursor": next_cursor,
+                "row_count": len(page_rows),
+            }
         )
 
     if db_degraded is not None:
-        return _json_cached(lambda: db_degraded)
-    return _json_cached(lambda: _degraded_empty("sqlite:market_events", "no rows matched", lineage=db_lineage))
+        return _json_cached(lambda: {"rows": db_degraded, "next_cursor": None, "row_count": 0})
+    return _json_cached(
+        lambda: {
+            "rows": _degraded_empty("sqlite:market_events", "no rows matched", lineage=db_lineage),
+            "next_cursor": None,
+            "row_count": 0,
+        }
+    )
 
 
 def _event_code_variants(value: Any) -> set[str]:
@@ -1007,36 +1059,66 @@ def _event_row_matches_market(data: dict[str, Any], market: Any) -> bool:
     return False
 
 
-def get_events(start: Any = None, end: Any = None, event_type: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+def _decode_event_cursor(cursor: str) -> tuple[str, str, int]:
+    sort_key = decode_cursor(cursor, scope="events")
+    if (
+        len(sort_key) != 3
+        or not isinstance(sort_key[0], str)
+        or not isinstance(sort_key[1], str)
+        or not isinstance(sort_key[2], int)
+    ):
+        raise ValueError("invalid cursor")
+    return sort_key
+
+
+def get_events_page(
+    start: Any = None,
+    end: Any = None,
+    event_type: str | None = None,
+    limit: int = 500,
+    cursor: str | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     if start is None and "date" in kwargs:
         start = kwargs.get("date")
     if end is None:
         end = start
-    limit = _bounded_limit(kwargs.get("limit"), 500)
-    lineage = {"reader": "get_events", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
+    page_limit = _bounded_limit(limit, 500)
+    lineage = {"reader": "get_events_page", "filters": {"start": start, "end": end, "event_type": event_type, **kwargs}}
     market = kwargs.get("market")
     symbol = kwargs.get("symbol")
     subject_code = kwargs.get("subject_code") or kwargs.get("ts_code") or symbol
     subject_type = kwargs.get("subject_type")
     wanted_codes = _event_code_variants(subject_code)
-    rows = _safe_public(
-        "sqlite:market_events",
-        lineage,
-        lambda generation: _get_events_cached(
-            generation,
-            str(start),
-            str(end),
-            event_type,
-            limit,
-            str(market or "") or None,
-            str(subject_code or "") or None,
-        ),
-    )
+    if cursor is not None:
+        _decode_event_cursor(cursor)
+    _maybe_invalidate()
+    generation_snapshot = _cache_generation_snapshot()
+    try:
+        page = _clone_cached(
+            _get_events_page_cached(
+                generation_snapshot,
+                str(start),
+                str(end),
+                event_type,
+                page_limit,
+                str(market or "") or None,
+                str(subject_code or "") or None,
+                cursor,
+            )
+        )
+    except Exception as exc:  # pragma: no cover - final public boundary
+        return {
+            "rows": _degraded_empty("sqlite:market_events", f"reader failed: {exc}", lineage=lineage),
+            "next_cursor": None,
+            "row_count": 0,
+        }
+    rows = page["rows"]
     if rows and all(
         isinstance(row, dict) and bool(row.get("degraded")) and row.get("data") in ({}, None)
         for row in rows
     ):
-        return rows
+        return page
     if market:
         rows = [
             row for row in rows
@@ -1061,7 +1143,20 @@ def get_events(start: Any = None, end: Any = None, event_type: str | None = None
                 or str(row["data"].get("subject_type")) == str(subject_type)
             )
         ]
-    return rows
+    page["rows"] = rows
+    page["row_count"] = len(rows)
+    return page
+
+
+def get_events(start: Any = None, end: Any = None, event_type: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    return get_events_page(
+        start=start,
+        end=end,
+        event_type=event_type,
+        limit=_bounded_limit(kwargs.pop("limit", None), 500),
+        cursor=None,
+        **kwargs,
+    )["rows"]
 
 
 _DEFAULT_SENTIMENT_EVENT_TYPES = frozenset({"sentiment", "major_news", "news", "cctv_news"})

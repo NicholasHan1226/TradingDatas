@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 import api_control_plane
 from api_response import (
+    add_page_metadata,
     aggregate_metadata,
     apply_row_limit,
     to_int,
@@ -330,7 +331,7 @@ class Handler(BaseHTTPRequestHandler):
                 or params.get("ts_code", "").strip()
                 or params.get("subject_code", "").strip()
             )
-            rows = reader.get_events(
+            page = reader.get_events_page(
                 start=params.get("start"),
                 end=params.get("end"),
                 event_type=params.get("event_type", "").strip() or None,
@@ -339,9 +340,14 @@ class Handler(BaseHTTPRequestHandler):
                 subject_code=params.get("subject_code", "").strip() or symbol or None,
                 subject_type=params.get("subject_type", "").strip() or None,
                 limit=to_int(params.get("limit"), 500),
+                cursor=params.get("cursor"),
             )
-            rows = apply_row_limit(rows, params)
-            payload, metadata, source = aggregate_metadata(rows)
+            payload, metadata, source = aggregate_metadata(page["rows"])
+            metadata = add_page_metadata(
+                metadata,
+                next_cursor=page["next_cursor"],
+                row_count=page["row_count"],
+            )
             return wrap_response(payload, metadata, source)
 
         if path == "/sentiment":

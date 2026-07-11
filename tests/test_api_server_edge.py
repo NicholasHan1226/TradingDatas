@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 import api_server
+from pagination import decode_cursor, encode_cursor
 from tools import health_check
 
 
@@ -86,6 +87,36 @@ class _FakeReader:
             },
         ))
         return []
+
+    def get_events_page(
+        self,
+        start: str | None = None,
+        end: str | None = None,
+        event_type: str | None = None,
+        market: str | None = None,
+        symbol: str | None = None,
+        subject_code: str | None = None,
+        subject_type: str | None = None,
+        limit: int = 500,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        if cursor is not None:
+            decode_cursor(cursor, scope="events")
+        self.calls.append((
+            "get_events_page",
+            {
+                "start": start,
+                "end": end,
+                "event_type": event_type,
+                "market": market,
+                "symbol": symbol,
+                "subject_code": subject_code,
+                "subject_type": subject_type,
+                "limit": limit,
+                "cursor": cursor,
+            },
+        ))
+        return {"rows": [], "next_cursor": "next-events-page", "row_count": 0}
 
     def get_sentiment(self, start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
         self.calls.append(("get_sentiment", {"start": start, "end": end}))
@@ -238,7 +269,7 @@ def test_api_events_passes_filter_params_to_reader(api_edge_server) -> None:
     assert status == 200
     assert payload["data"] == []
     assert reader.calls[-1] == (
-        "get_events",
+        "get_events_page",
         {
             "start": "20260701",
             "end": "20260708",
@@ -248,8 +279,40 @@ def test_api_events_passes_filter_params_to_reader(api_edge_server) -> None:
             "subject_code": "600000.SH",
             "subject_type": "stock",
             "limit": 5,
+            "cursor": None,
         },
     )
+
+
+def test_api_events_preserves_list_data_and_adds_page_metadata(api_edge_server) -> None:
+    base_url, _reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/events?limit=2")
+
+    assert status == 200
+    assert payload["data"] == []
+    assert payload["metadata"]["next_cursor"] == "next-events-page"
+    assert payload["metadata"]["row_count"] == 0
+
+
+def test_events_rejects_cursor_from_another_endpoint(api_edge_server) -> None:
+    base_url, _reader = api_edge_server
+    cursor = encode_cursor("industry_taxonomy", "snap-1", ("L1", "801010.SI", "n1"))
+
+    status, payload = _get_json(base_url, f"/events?cursor={cursor}")
+
+    assert status == 400
+    assert payload["error"] == "invalid cursor"
+
+
+def test_api_events_passes_raw_cursor_to_reader(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+    cursor = encode_cursor("events", "", ("2026-07-11T09:30:00Z", "event-1", 1))
+
+    status, _payload = _get_json(base_url, f"/events?cursor={cursor}")
+
+    assert status == 200
+    assert reader.calls[-1][1]["cursor"] == cursor
 
 
 def test_api_tushare_applies_limit(api_edge_server) -> None:

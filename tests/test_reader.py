@@ -119,6 +119,98 @@ class TestMarketdataDB:
 # ============================================================================
 
 class TestReaderEvents:
+    def test_event_cursor_is_opaque_endpoint_bound_and_snapshot_checked(self):
+        from pagination import decode_cursor, encode_cursor
+
+        cursor = encode_cursor("events", "snap-1", ("2026-07-11T09:30:00Z", "event-1", 2))
+
+        assert "event-1" not in cursor
+        assert decode_cursor(cursor, scope="events", snapshot_id="snap-1") == (
+            "2026-07-11T09:30:00Z",
+            "event-1",
+            2,
+        )
+        with pytest.raises(ValueError, match="^invalid cursor$"):
+            decode_cursor(cursor, scope="industry_taxonomy")
+        with pytest.raises(ValueError, match="^cursor snapshot mismatch$"):
+            decode_cursor(cursor, scope="events", snapshot_id="snap-2")
+
+    @pytest.mark.parametrize("cursor", ["", "not-base64!", "e30"])
+    def test_event_cursor_rejects_malformed_payloads(self, cursor: str):
+        from pagination import decode_cursor
+
+        with pytest.raises(ValueError, match="^invalid cursor$"):
+            decode_cursor(cursor, scope="events")
+
+    def test_events_cursor_has_no_duplicates_across_equal_timestamps(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"h{idx}",
+                        f"h{idx}",
+                        1,
+                        "unit",
+                        "news",
+                        "2026-07-11T09:30:00+00:00",
+                        "20260711",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "unit",
+                        "unit",
+                        "2026-07-11T09:31:00+00:00",
+                        "{}",
+                    )
+                    for idx in range(1, 5)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        first = reader.get_events_page(limit=2)
+        second = reader.get_events_page(limit=2, cursor=first["next_cursor"])
+        legacy_first = reader.get_events(limit=2)
+
+        ids = [row["data"]["event_hash"] for row in first["rows"] + second["rows"]]
+        assert ids == ["h4", "h3", "h2", "h1"]
+        assert len(ids) == len(set(ids))
+        assert legacy_first == first["rows"]
+        assert first["row_count"] == 2
+        assert second == {"rows": second["rows"], "next_cursor": None, "row_count": 2}
+
+    def test_events_page_preserves_degraded_shape(self, tmp_path: Path, monkeypatch):
+        import reader
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", tmp_path / "missing_marketdata.sqlite")
+        reader.clear_caches()
+
+        page = reader.get_events_page(limit=2)
+
+        assert page["rows"][0]["degraded"] is True
+        assert page["rows"][0]["data"] == {}
+        assert page["next_cursor"] is None
+        assert page["row_count"] == 0
+
     def test_get_tushare_fut_basic_reads_futures_assets_not_ashare(self, tmp_path: Path, monkeypatch):
         import reader
         from storage.schema import SCHEMA_SQL

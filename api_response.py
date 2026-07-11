@@ -119,6 +119,18 @@ def aggregate_metadata(rows: Any) -> tuple[Any, dict[str, Any], str | None]:
     }, sources[0] if sources else None
 
 
+def add_page_metadata(
+    metadata: dict[str, Any],
+    *,
+    next_cursor: str | None,
+    row_count: int,
+) -> dict[str, Any]:
+    paged = dict(metadata or {})
+    paged["next_cursor"] = next_cursor
+    paged["row_count"] = max(0, int(row_count))
+    return paged
+
+
 def wrap_response(payload: Any, metadata: dict[str, Any], source: str | None) -> dict[str, Any]:
     normalized = dict(metadata or {})
     normalized.setdefault("degraded_reasons", [])
