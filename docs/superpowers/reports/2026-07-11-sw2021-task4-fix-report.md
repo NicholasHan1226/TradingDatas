@@ -114,3 +114,25 @@ Closure GREEN:
 The 17 warnings are still the pre-existing empty
 `SHAREDSIGNALS_TOKEN_SALT` test-environment warning. This closure introduced no
 token or production credential.
+
+## Semantic Partition Final Gate
+
+The accepted flag and `successful_partition_count` now share one semantic
+definition. Invalid member fields fail their requested partition; a legitimate
+same-assignment duplicate is deterministically deduplicated without failing the
+partition; promotion eligibility requires exactly 31 expected and 31 successful
+partitions plus no global validation errors.
+
+Final verification:
+
+```text
+./.venv/bin/python3 -m pytest tests/test_sw2021_reference.py tests/test_capability_coverage.py -q
+87 passed
+
+./.venv/bin/python3 -m pytest -q
+472 passed, 17 warnings
+```
+
+Final independent gates: spec `PASS`; code quality `APPROVED`. Task 4 remains
+strictly in-memory/no-write and does not call a real provider token or production
+database.
