@@ -65,3 +65,8 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume
 5 15 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase close_check
 52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh
+
+# Task 7 wrappers are implemented but intentionally unscheduled until the
+# manual SW2021 pilot, authenticated API smoke, and production preflight pass.
+# 20 3 * * * /opt/investment/SharedSignals/cron/sqlite_maintenance.sh
+# 25 6 * * 1-5 /opt/investment/SharedSignals/cron/sw2021_reference_collect.sh

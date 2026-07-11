@@ -15,6 +15,8 @@ MAINTENANCE_GUARDED_CRON_SCRIPTS = (
     "patrol.sh",
     "pm_collect.sh",
     "source_governance_monitor.sh",
+    "sqlite_maintenance.sh",
+    "sw2021_reference_collect.sh",
     "tushare_events_collect.sh",
     "tushare_low_frequency_collect.sh",
     "watchdog.sh",
@@ -105,6 +107,56 @@ def test_read_model_cron_jobs_take_shared_maintenance_lock() -> None:
         script = (ROOT / "cron" / name).read_text(encoding="utf-8")
         assert 'source "${SCRIPT_DIR}/maintenance_lock.sh"' in script, name
         assert "acquire_sharedsignals_read_model_lock" in script, name
+
+
+def test_reference_and_maintenance_wrappers_are_bounded_and_atomic() -> None:
+    maintenance = _read_script("cron/sqlite_maintenance.sh")
+    reference = _read_script("cron/sw2021_reference_collect.sh")
+
+    for script in (maintenance, reference):
+        assert 'RUN_AS_USER="${SHAREDSIGNALS_CRON_USER:-marketgraph}"' in script
+        assert 'exec runuser -u "${RUN_AS_USER}" -- "$0" "$@"' in script
+        assert 'source "${ROOT}/.env"' in script
+        assert 'source "${SCRIPT_DIR}/maintenance_lock.sh"' in script
+        assert "acquire_sharedsignals_read_model_lock" in script
+        assert "flock -n" in script
+        assert 'TMP_FILE="${OUTPUT_FILE}.$$"' in script
+        assert 'mv "${TMP_FILE}" "${OUTPUT_FILE}"' in script
+        assert "/opt/investment/TradingAgent" not in script
+        assert "/opt/investment/MarketGraph" not in script
+
+    assert "tools/sqlite_maintenance.py" in maintenance
+    assert "VACUUM" not in maintenance.upper()
+    assert "-wal" not in maintenance
+    assert "-shm" not in maintenance
+
+    assert "collectors/tushare/sw2021_reference.py" in reference
+    assert "sync_daily.py" not in reference
+    assert "API_TO_TABLE_MAP" not in reference
+    collector_pos = reference.index("collectors/tushare/sw2021_reference.py")
+    assert reference.index('"$@"', collector_pos) < reference.index(
+        '--snapshot-id "${SNAPSHOT_ID}"', collector_pos
+    )
+
+
+def test_sw2021_cron_lines_remain_commented_until_manual_pilot() -> None:
+    manifest = _read_script("cron/crontab.txt")
+    schedule_lines = {
+        "20 3 * * * /opt/investment/SharedSignals/cron/sqlite_maintenance.sh",
+        "25 6 * * 1-5 /opt/investment/SharedSignals/cron/sw2021_reference_collect.sh",
+    }
+    active_lines = {
+        line.strip()
+        for line in manifest.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert schedule_lines <= {
+        line.lstrip("# ")
+        for line in manifest.splitlines()
+        if line.lstrip().startswith("#")
+    }
+    assert not schedule_lines & active_lines
 
 
 def test_legacy_root_duckdb_cron_wrapper_is_retired() -> None:

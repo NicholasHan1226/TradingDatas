@@ -27,6 +27,8 @@ OPENING_GATE_PATH = ROOT / "logs" / "watchdog_inputs" / "opening_gate.json"
 DUCKDB_SYNC_PATH = ROOT / "logs" / "watchdog_inputs" / "duckdb_sync.json"
 INTERFACE_RUNTIME_PATH = ROOT / "logs" / "watchdog_inputs" / "interface_runtime.json"
 EXTERNAL_API_PROBE_PATH = ROOT / "logs" / "watchdog_inputs" / "external_api_probe.json"
+SQLITE_MAINTENANCE_PATH = ROOT / "logs" / "watchdog_inputs" / "sqlite_maintenance.json"
+SW2021_REFERENCE_PATH = ROOT / "logs" / "watchdog_inputs" / "sw2021_reference.json"
 CRONTAB_PATH = ROOT / "crontab.txt"
 DEFAULT_OUTPUT_PATH = ROOT / "logs" / "watchdog_inputs" / "source_governance.json"
 
@@ -55,6 +57,20 @@ REQUIRED_ENDPOINTS = {
     "/impacts",
     "/tushare",
 }
+
+SW2021_REQUIRED_ENDPOINTS = {
+    "/industry/snapshot",
+    "/industry/taxonomy",
+    "/industry/memberships",
+}
+SQLITE_MAINTENANCE_CRON_LINE = (
+    "20 3 * * * /opt/investment/SharedSignals/cron/sqlite_maintenance.sh"
+)
+SW2021_REFERENCE_CRON_LINE = (
+    "25 6 * * 1-5 /opt/investment/SharedSignals/cron/sw2021_reference_collect.sh"
+)
+SW2021_MAX_AGE_HOURS = 96.0
+SQLITE_MAINTENANCE_MAX_AGE_HOURS = 36.0
 
 REQUIRED_FREQUENCY_LABELS = {
     "Ashare_intraday",
@@ -143,6 +159,39 @@ def _endpoint_paths(agent_config: dict[str, Any]) -> set[str]:
         for item in agent_config.get("primary_endpoints", [])
         if isinstance(item, dict) and item.get("path")
     }
+
+
+def _active_cron_lines(crontab_text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in crontab_text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _report_age_hours(report: dict[str, Any], generated_at: str) -> float | None:
+    completed = _parse_timestamp(
+        report.get("completed_at")
+        or report.get("promoted_at")
+        or report.get("checked_at")
+    )
+    evaluated = _parse_timestamp(generated_at)
+    if completed is None or evaluated is None:
+        return None
+    return max(0.0, (evaluated - completed).total_seconds() / 3600.0)
 
 
 def _evaluate_agent_config(agent_config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -306,8 +355,9 @@ def _evaluate_cron(crontab_text: str) -> dict[str, Any]:
     missing: list[str] = []
     duplicates: list[str] = []
     counts: dict[str, int] = {}
+    active_lines = _active_cron_lines(crontab_text)
     for name, line in REQUIRED_CRON_LINES.items():
-        count = crontab_text.count(line)
+        count = active_lines.count(line)
         counts[name] = count
         if count == 0:
             missing.append(name)
@@ -321,6 +371,140 @@ def _evaluate_cron(crontab_text: str) -> dict[str, Any]:
         missing=missing,
         duplicates=duplicates,
         counts=counts,
+    )
+
+
+def _evaluate_sw2021_reference(
+    *,
+    agent_config: dict[str, Any],
+    crontab_text: str,
+    source_report: dict[str, Any] | None,
+    maintenance_report: dict[str, Any] | None,
+    generated_at: str,
+) -> dict[str, Any]:
+    source = source_report if isinstance(source_report, dict) else {}
+    maintenance = maintenance_report if isinstance(maintenance_report, dict) else {}
+    state = str(source.get("status") or "implemented_unscheduled")
+    source_age = _report_age_hours(source, generated_at)
+
+    if state in {"active", "rejected"} and (
+        source_age is None or source_age > SW2021_MAX_AGE_HOURS
+    ):
+        state = "stale"
+
+    passive_states = {
+        "implemented_unscheduled": "SW2021 is implemented but intentionally unscheduled pending pilot",
+        "pilot_promoted": "SW2021 pilot is promoted but scheduled activation is not complete",
+        "disabled_by_operator": "SW2021 collection is intentionally disabled by the operator",
+    }
+    if state in passive_states:
+        return _check(
+            "sw2021_reference",
+            "yellow",
+            passive_states[state],
+            state=state,
+            source_age_hours=round(source_age, 3) if source_age is not None else None,
+            missing_endpoints=[],
+            missing_cron=[],
+            maintenance_status="not_required",
+            automatic_heal_allowed=False,
+            restart_requested=False,
+        )
+
+    if state in {"rejected", "stale"}:
+        return _check(
+            "sw2021_reference",
+            "red",
+            "SW2021 reference collection was rejected"
+            if state == "rejected"
+            else "SW2021 reference evidence is stale",
+            state=state,
+            source_age_hours=round(source_age, 3) if source_age is not None else None,
+            missing_endpoints=[],
+            missing_cron=[],
+            maintenance_status=str(maintenance.get("status") or "missing"),
+            automatic_heal_allowed=True,
+            restart_requested=False,
+        )
+
+    if state != "active":
+        return _check(
+            "sw2021_reference",
+            "red",
+            "SW2021 reference state is invalid",
+            state=state,
+            missing_endpoints=[],
+            missing_cron=[],
+            maintenance_status=str(maintenance.get("status") or "missing"),
+            automatic_heal_allowed=False,
+            restart_requested=False,
+        )
+
+    endpoints = _endpoint_paths(agent_config)
+    missing_endpoints = sorted(SW2021_REQUIRED_ENDPOINTS - endpoints)
+    active_lines = _active_cron_lines(crontab_text)
+    cron_counts = {
+        "sqlite_maintenance": active_lines.count(SQLITE_MAINTENANCE_CRON_LINE),
+        "sw2021_reference": active_lines.count(SW2021_REFERENCE_CRON_LINE),
+    }
+    missing_cron = sorted(name for name, count in cron_counts.items() if count == 0)
+    duplicate_cron = sorted(name for name, count in cron_counts.items() if count > 1)
+
+    maintenance_age = _report_age_hours(maintenance, generated_at)
+    maintenance_status = str(maintenance.get("status") or "missing")
+    checkpoint = (
+        maintenance.get("wal_checkpoint")
+        if isinstance(maintenance.get("wal_checkpoint"), dict)
+        else {}
+    )
+    maintenance_evidence_complete = (
+        checkpoint.get("busy") == 0
+        and isinstance(checkpoint.get("log_frames"), int)
+        and isinstance(checkpoint.get("checkpointed_frames"), int)
+        and maintenance.get("integrity") in {"not_run", "ok"}
+    )
+    maintenance_ok = (
+        maintenance.get("owner") == "SharedSignals"
+        and maintenance_status == "green"
+        and maintenance.get("optimized") is True
+        and maintenance_evidence_complete
+        and maintenance_age is not None
+        and maintenance_age <= SQLITE_MAINTENANCE_MAX_AGE_HOURS
+    )
+    source_evidence_complete = (
+        source.get("owner") == "SharedSignals"
+        and source.get("exit_code") == 0
+        and bool(str(source.get("snapshot_id") or "").strip())
+    )
+    status = (
+        "green"
+        if not missing_endpoints
+        and not missing_cron
+        and not duplicate_cron
+        and source_evidence_complete
+        and maintenance_ok
+        else "red"
+    )
+    return _check(
+        "sw2021_reference",
+        status,
+        "SW2021 reference source is active with complete operations evidence"
+        if status == "green"
+        else "SW2021 active state is missing required activation evidence",
+        state=state,
+        source_age_hours=round(source_age, 3) if source_age is not None else None,
+        source_evidence_complete=source_evidence_complete,
+        missing_endpoints=missing_endpoints,
+        missing_cron=missing_cron,
+        duplicate_cron=duplicate_cron,
+        cron_counts=cron_counts,
+        maintenance_status=maintenance_status,
+        maintenance_evidence_complete=maintenance_evidence_complete,
+        maintenance_age_hours=(
+            round(maintenance_age, 3) if maintenance_age is not None else None
+        ),
+        automatic_heal_allowed=True,
+        restart_requested=False,
     )
 
 
@@ -430,8 +614,11 @@ def evaluate_source_governance(
     duckdb_sync_report: dict[str, Any] | None = None,
     interface_runtime_report: dict[str, Any] | None = None,
     external_api_probe_report: dict[str, Any] | None = None,
+    sw2021_reference_report: dict[str, Any] | None = None,
+    sqlite_maintenance_report: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
+    evaluated_at = generated_at or utc_now_iso()
     checks = []
     checks.extend(_evaluate_agent_config(agent_config))
     checks.append(
@@ -453,13 +640,23 @@ def evaluate_source_governance(
         checks.append(_evaluate_interface_runtime(interface_runtime_report))
     if external_api_probe_report is not None:
         checks.append(_evaluate_external_api_probe(external_api_probe_report))
+    if sw2021_reference_report is not None:
+        checks.append(
+            _evaluate_sw2021_reference(
+                agent_config=agent_config,
+                crontab_text=crontab_text,
+                source_report=sw2021_reference_report,
+                maintenance_report=sqlite_maintenance_report,
+                generated_at=evaluated_at,
+            )
+        )
     status = _overall(checks)
     tushare = agent_config.get("tushare_status") or {}
     endpoints = _endpoint_paths(agent_config)
     return {
         "status": status,
         "recommendation": _recommendation(status),
-        "generated_at": generated_at or utc_now_iso(),
+        "generated_at": evaluated_at,
         "summary": {
             "endpoint_count": len(endpoints),
             "tushare_allowlisted": int(tushare.get("allowlisted_api_names") or 0),
@@ -481,6 +678,8 @@ def evaluate_source_governance(
             "duckdb_sync": str(DUCKDB_SYNC_PATH),
             "interface_runtime": str(INTERFACE_RUNTIME_PATH),
             "external_api_probe": str(EXTERNAL_API_PROBE_PATH),
+            "sqlite_maintenance": str(SQLITE_MAINTENANCE_PATH),
+            "sw2021_reference": str(SW2021_REFERENCE_PATH),
         },
     }
 
@@ -537,6 +736,11 @@ def build_source_governance_report() -> dict[str, Any]:
     duckdb_sync_report = _json_file(DUCKDB_SYNC_PATH, {})
     interface_runtime_report = _json_file(INTERFACE_RUNTIME_PATH, {})
     external_api_probe_report = _json_file(EXTERNAL_API_PROBE_PATH, {})
+    sqlite_maintenance_report = _json_file(SQLITE_MAINTENANCE_PATH, {})
+    sw2021_reference_report = _json_file(
+        SW2021_REFERENCE_PATH,
+        {"status": "implemented_unscheduled"},
+    )
     crontab_text = CRONTAB_PATH.read_text(encoding="utf-8", errors="replace") if CRONTAB_PATH.exists() else ""
     return evaluate_source_governance(
         agent_config=agent_config,
@@ -549,6 +753,8 @@ def build_source_governance_report() -> dict[str, Any]:
         duckdb_sync_report=duckdb_sync_report,
         interface_runtime_report=interface_runtime_report,
         external_api_probe_report=external_api_probe_report,
+        sw2021_reference_report=sw2021_reference_report,
+        sqlite_maintenance_report=sqlite_maintenance_report,
     )
 
 

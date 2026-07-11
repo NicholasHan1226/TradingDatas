@@ -3,10 +3,13 @@ from __future__ import annotations
 from tools import source_governance_monitor
 
 
-def _agent_config() -> dict:
+def _agent_config(*, include_industry: bool = False) -> dict:
+    endpoints = set(source_governance_monitor.REQUIRED_ENDPOINTS)
+    if include_industry:
+        endpoints.update(source_governance_monitor.SW2021_REQUIRED_ENDPOINTS)
     return {
         "contract_version": "1.1.34",
-        "primary_endpoints": [{"path": path} for path in sorted(source_governance_monitor.REQUIRED_ENDPOINTS)],
+        "primary_endpoints": [{"path": path} for path in sorted(endpoints)],
         "market_frequency_labels": {
             "Ashare_intraday": "5min trading-session intraday",
             "Futures_intraday": "5min configured day/night sessions",
@@ -85,9 +88,8 @@ def _source_expansion_plan() -> dict:
     }
 
 
-def _crontab_text() -> str:
-    return "\n".join(
-        [
+def _crontab_text(*, include_sw2021: bool = False) -> str:
+    lines = [
             "*/5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min",
             "2,32 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
             "1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
@@ -102,8 +104,36 @@ def _crontab_text() -> str:
             "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
             "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
             "3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh",
-        ]
-    )
+    ]
+    if include_sw2021:
+        lines.extend(
+            [
+                source_governance_monitor.SQLITE_MAINTENANCE_CRON_LINE,
+                source_governance_monitor.SW2021_REFERENCE_CRON_LINE,
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _active_sw2021_report() -> dict:
+    return {
+        "owner": "SharedSignals",
+        "status": "active",
+        "exit_code": 0,
+        "completed_at": "2026-07-11T06:30:00+00:00",
+        "snapshot_id": "snap-a",
+    }
+
+
+def _green_maintenance_report() -> dict:
+    return {
+        "owner": "SharedSignals",
+        "status": "green",
+        "completed_at": "2026-07-11T03:20:00+00:00",
+        "wal_checkpoint": {"busy": 0, "log_frames": 0, "checkpointed_frames": 0},
+        "optimized": True,
+        "integrity": "not_run",
+    }
 
 
 def test_source_governance_monitor_returns_green_when_sources_are_complete() -> None:
@@ -253,3 +283,182 @@ def test_source_governance_reports_external_api_probe_failure() -> None:
     check = next(item for item in report["checks"] if item["name"] == "external_api_probe")
     assert report["status"] == "red"
     assert check["evidence"]["http_status"] == 525
+
+
+def test_sw2021_active_requires_endpoints_cron_and_recent_maintenance() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(include_industry=True),
+        crontab_text=_crontab_text(include_sw2021=True),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report=_active_sw2021_report(),
+        sqlite_maintenance_report=_green_maintenance_report(),
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "green"
+    assert check["status"] == "green"
+    assert check["evidence"]["state"] == "active"
+    assert check["evidence"]["missing_endpoints"] == []
+    assert check["evidence"]["missing_cron"] == []
+    assert check["evidence"]["maintenance_status"] == "green"
+
+
+def test_sw2021_active_fails_closed_when_activation_evidence_is_incomplete() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report=_active_sw2021_report(),
+        sqlite_maintenance_report={},
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "red"
+    assert check["evidence"]["missing_endpoints"] == sorted(
+        source_governance_monitor.SW2021_REQUIRED_ENDPOINTS
+    )
+    assert set(check["evidence"]["missing_cron"]) == {
+        "sqlite_maintenance",
+        "sw2021_reference",
+    }
+    assert check["evidence"]["maintenance_status"] == "missing"
+
+
+def test_sw2021_active_rejects_incomplete_green_maintenance_evidence() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(include_industry=True),
+        crontab_text=_crontab_text(include_sw2021=True),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report=_active_sw2021_report(),
+        sqlite_maintenance_report={
+            "owner": "SharedSignals",
+            "status": "green",
+            "optimized": True,
+            "integrity": "not_run",
+            "completed_at": "2026-07-11T03:20:00+00:00",
+        },
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "red"
+    assert check["evidence"]["maintenance_evidence_complete"] is False
+
+
+def test_sw2021_active_rejects_incomplete_source_evidence() -> None:
+    source_report = _active_sw2021_report()
+    source_report.pop("snapshot_id")
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(include_industry=True),
+        crontab_text=_crontab_text(include_sw2021=True),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report=source_report,
+        sqlite_maintenance_report=_green_maintenance_report(),
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "red"
+    assert check["evidence"]["source_evidence_complete"] is False
+
+
+def test_sw2021_commented_cron_declarations_do_not_satisfy_active_state() -> None:
+    crontab_text = _crontab_text() + "\n" + "\n".join(
+        [
+            f"# {source_governance_monitor.SQLITE_MAINTENANCE_CRON_LINE}",
+            f"# {source_governance_monitor.SW2021_REFERENCE_CRON_LINE}",
+        ]
+    )
+
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(include_industry=True),
+        crontab_text=crontab_text,
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report=_active_sw2021_report(),
+        sqlite_maintenance_report=_green_maintenance_report(),
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert check["status"] == "red"
+    assert len(check["evidence"]["missing_cron"]) == 2
+
+
+def test_sw2021_rejected_and_stale_states_are_red() -> None:
+    for source_report in (
+        {"status": "rejected", "completed_at": "2026-07-11T06:50:00+00:00"},
+        {"status": "stale", "completed_at": "2026-07-01T06:50:00+00:00"},
+        {"status": "active", "completed_at": "2026-07-01T06:50:00+00:00"},
+    ):
+        report = source_governance_monitor.evaluate_source_governance(
+            agent_config=_agent_config(),
+            crontab_text=_crontab_text(),
+            api_module_catalog=_api_module_catalog(),
+            source_expansion_plan=_source_expansion_plan(),
+            health_sla_report={"status": "ok", "summary": {}},
+            capability_registry={"summary": {"down": 0, "degraded": 0}},
+            sw2021_reference_report=source_report,
+            generated_at="2026-07-11T07:00:00+00:00",
+        )
+
+        check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+        assert report["status"] == "red"
+        assert check["status"] == "red"
+        assert check["evidence"]["state"] in {"rejected", "stale"}
+
+
+def test_sw2021_disabled_by_operator_is_yellow_without_heal_or_cron_requirements() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report={"status": "disabled_by_operator"},
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "yellow"
+    assert check["status"] == "yellow"
+    assert check["evidence"]["state"] == "disabled_by_operator"
+    assert check["evidence"]["automatic_heal_allowed"] is False
+    assert check["evidence"]["restart_requested"] is False
+    assert check["evidence"]["missing_cron"] == []
+
+
+def test_sw2021_implemented_unscheduled_is_yellow_until_pilot() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        sw2021_reference_report={"status": "implemented_unscheduled"},
+        generated_at="2026-07-11T07:00:00+00:00",
+    )
+
+    check = next(item for item in report["checks"] if item["name"] == "sw2021_reference")
+    assert report["status"] == "yellow"
+    assert check["evidence"]["state"] == "implemented_unscheduled"
+    assert check["evidence"]["automatic_heal_allowed"] is False
+    assert check["evidence"]["missing_cron"] == []

@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-11（SW2021 行业只读 API 本地实现；尚未 pilot、部署或启用调度）
+> 最后更新：2026-07-11（SW2021 行业 API、受控采集 wrapper 与 SQLite routine maintenance 本地实现；尚未 pilot、部署或启用调度）
 
 ---
 
@@ -18,6 +18,7 @@
 - **仓库数据边界**：仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；冷归档样本、CSV bridge、旧 query_router/archive_manager 不作为当前 read path 或交接材料，且由测试门禁阻止恢复。
 - **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
 - **SW2021 行业接口状态**：本地已实现固定快照的 `/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 与独立 `industry_reference` scope；当前只代表代码和测试层，仍是 `implemented_unscheduled`，不代表生产表已有 promoted 快照、runtime 已部署、外部路由已生效或定时采集已启用。
+- **SQLite routine maintenance 状态**：本地已实现 SharedSignals 自有的 bounded maintenance 工具与 wrapper，只执行 `wal_checkpoint(PASSIVE)`、`optimize(0x10002)`，仅在显式 deep check 时执行 `quick_check`，并原子写入 watchdog JSON；当前 cron 行保持注释，未安装、未运行生产维护。
 - **外部域名状态**：Wangzhi/internal tier 这类外部账号已在 SharedSignals 侧可控；正式域名 `https://signals.tradingagent.cc` 使用 Cloudflare Tunnel CNAME。广州 API 仍只监听 `127.0.0.1:8082`，通过出站 SSH 反向隧道送到新加坡 cloudflared connector；不再依赖未备案广州公网源站 TLS，外部请求仍必须携带 SharedSignals API token。
 
 ## 二、生产频率
@@ -37,6 +38,7 @@
 - **HTTP surface**：`/health`、`/capabilities`、`/agent_config`、`/source_status`、`/opening_gate`、`/cache/status`、`/cache/invalidate`、`/market_data`、`/realtime_5min`、`/is_trading_day`、`/events`、`/sentiment`、`/fundamentals`、`/reference`、`/industry`（legacy）、`/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships`、`/macro`、`/capital_flow`、`/crypto`、`/pm_markets`、`/pm_prices`、`/associations`、`/impacts`、`/tushare`。
 - **外部 agent 合同**：`GET /agent_config`，当前合同版本 `1.1.40`。
 - **数据源治理状态**：`GET /source_status`，检查 API surface、频率标签、Tushare 114/114 active、逐接口运行证据、API/module catalog、planned 扩源队列、cron、health SLA、DuckDB 镜像、外部 API 探针和 capability registry。
+- **SW2021 治理状态机**：`implemented_unscheduled` 与 `disabled_by_operator` 是 yellow 且不请求自动 heal/restart；`rejected`、`stale` 是 red；只有 `active` 才要求三个行业 endpoint、两条真实非注释 cron 和最近一次完整 SQLite maintenance evidence。注释中的待启用 cron 不算已调度。
 - **Green Gate 日报**：每日 08:10 `cron/green_gate_report.sh` 发送系统邮件到 `soc@coze.email`，口径复用 `/source_status` 并追加 `data_artifact_guard`。green 时不需要 Nicholas 每天人工追问接口、数据源、频率和扩源边界；yellow/red 时先看邮件列出的检查项。
 - **Session Gate**：`GET /opening_gate` 读取四个时点的轻量定时产物：08:50 预开盘、09:35 上午首样本、13:05 午后恢复、15:05 尾盘 P0 快照；QuickSync `rt_min` 的当日最后可用标签实测为 14:45，该门禁只证明尾盘快照到达，不把它称为正式收盘价；正式收盘价由盘后日线任务确认。`health_sla` 同时按 active universe 检查盘中 5 分钟新鲜覆盖率，默认低于 80% 即阻断。
 - **新增数据源规则**：先进入 [config/source_expansion_priority.yaml](config/source_expansion_priority.yaml) planned 队列，再按 [config/api_module_catalog.yaml](config/api_module_catalog.yaml) 映射模块、表和默认 API；通过 collector、直接入库、API 可读、SLA、限流、降级、测试和 pilot 后才能 scheduled。
@@ -45,7 +47,7 @@
 ## 四、当前风险与未完成项
 
 - **外部链路需要双节点监控**：广州 API 与新加坡 cloudflared 任一节点或 SSH 反向隧道异常都会影响公网，但不影响广州本机消费者；`external_api_probe.sh` 每 5 分钟通过现有 SSH relay 让新加坡节点从公网验证请求能到达 SharedSignals 鉴权边界，避免广州到 Cloudflare 的出站网络限制造成误报；525、超时或异常状态会进入 `/source_status`。
-- **SW2021 发布闸门未完成**：新行业路由当前仅在本地代码层通过测试；collector 尚未完成生产手动 pilot，live SQLite 是否存在三张表及 promoted 快照、API runtime 与外部 route 是否包含新路径、独立 token 是否配置、cron 是否安装均未验证。无 promoted 快照时三路由按设计返回 degraded empty；不得用该状态代替 pilot 或 production proof。
+- **SW2021 发布闸门未完成**：新行业路由、专用 collector wrapper 和 maintenance wrapper 当前仅在本地代码层通过测试；collector 尚未完成生产手动 pilot，live SQLite 是否存在三张表及 promoted 快照、API runtime 与外部 route 是否包含新路径、独立 token 是否配置、maintenance evidence 是否生成、cron 是否安装均未验证。`cron/crontab.txt` 中两条新 schedule 仍是注释；无 promoted 快照时三路由按设计返回 degraded empty，不得用本地 wrapper 或测试状态代替 pilot / production proof。
 - **运行闸门与镜像状态**：`/health` 和 `/source_status` 同时披露 A 股开盘闸门、逐 Tushare 接口最近运行证据与 DuckDB 镜像同步结果。`/realtime_5min` 的无代码批量读取先按 `5min/5m` 解析最新交易日和最新 bar，再做索引化快照查询，避免旧 CTE 在大表上超过 2.5 秒读门禁后 fail-closed 为空；内部上限与 API 一致为 10,000 行，可完整容纳当前 A 股 active universe。`market_events`、`market_factors` 使用按 `collected_at` 水位和哈希主键的增量追加；`market_bars_daily`、`market_bars_intraday` 等权威快照表会删除 DuckDB 中已不在 SQLite 的陈旧主键行，防止日期/时间规范化后旧行残留；全表计数不一致会让同步任务失败。SQLite 始终是权威库，DuckDB 可备份后重建。
 - **日频逐股负载边界**：2026-07-10 旧 P1 配置实测计划 62,398 次调用且一小时内只能推进约 7,000 次。当前 P1 计划降为约 3,012 次：`daily` 全市场单次采集；`repurchase` 按公告日期窗口全市场增量；`pledge_stat/pledge_detail` 补 `ts_code`；10 个未证明可全市场/批量调用的研究接口每日轮转 300 只。P2/P3 另有 6 个缺 `ts_code` 的逐股接口已补参数并纳入同一轮转门禁。撞到配置的 provider 行数上限或 `daily` 唯一股票覆盖率低于 90% 均 critical，不得静默当成功。
 - **B1 扩源仍是 planned**：SEC EDGAR 已完成生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`、16 条 selected companyfacts 写入 `market_factors`，`/events` 与 `/fundamentals` API 可读），用于补 Tushare 没有的美国官方披露/结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
