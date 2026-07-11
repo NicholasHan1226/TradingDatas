@@ -895,6 +895,16 @@ def run_collection(
                         conn, candidate, validation, completed_at=completed_at
                     )
                 except Exception as exc:
+                    try:
+                        record_failure(
+                            "rejection_write_failed",
+                            {"exception_type": type(exc).__name__},
+                        )
+                    except Exception as record_exc:
+                        logger.error(
+                            "could not persist rejection write failure: %s",
+                            type(record_exc).__name__,
+                        )
                     logger.error("rejection write failed: %s", type(exc).__name__)
                     return 2
                 logger.warning(

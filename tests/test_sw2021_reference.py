@@ -978,8 +978,10 @@ def test_run_collection_rejects_and_persists_structured_errors(tmp_path: Path) -
             limit = params["limit"]
             return taxonomy[offset : offset + limit]
         return [
-            row for row in memberships
-            if row["l1_code"] == params["l1_code"] and int(row["ts_code"][:6]) <= 50
+            row
+            for row in memberships
+            if row["l1_code"] == params["l1_code"]
+            and int(row["ts_code"][:6]) <= 50
         ]
 
     exit_code = run_collection(
@@ -990,7 +992,6 @@ def test_run_collection_rejects_and_persists_structured_errors(tmp_path: Path) -
         max_rows=10_000,
         fetch=fetch,
     )
-    # Should be rejected due to coverage
     assert exit_code == 1
 
     conn = sqlite3.connect(str(db_path))
@@ -1002,6 +1003,74 @@ def test_run_collection_rejects_and_persists_structured_errors(tmp_path: Path) -
     assert row[0] == "rejected"
     errors = json.loads(row[1])
     assert "coverage_below_0.90" in errors
+    conn.close()
+
+
+def test_run_collection_rejection_write_failure_is_recorded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed validation-rejection write is retried as infrastructure evidence."""
+    import storage.industry_snapshot_store as store
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_rejection_write_fail.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    for number in range(1, 101):
+        conn.execute(
+            "INSERT OR IGNORE INTO market_assets "
+            "(market, symbol, name, asset_type, provider) "
+            "VALUES ('Ashare', ?, ?, 'stock', 'tushare_stock_basic')",
+            (f"{number:06d}.SZ", f"Stock {number}"),
+        )
+    conn.commit()
+    conn.close()
+
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        if api_name == "index_classify":
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
+        return [
+            row
+            for row in memberships
+            if row["l1_code"] == params["l1_code"]
+            and int(row["ts_code"][:6]) <= 50
+        ]
+
+    def fail_rejection(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("simulated rejection write failure")
+
+    monkeypatch.setattr(store, "reject_snapshot", fail_rejection)
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-rejection-write-fail",
+        source_run_id="run-rejection-write-fail",
+        fetch=fetch,
+    )
+
+    assert exit_code == 2
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT status, validation_errors_json FROM market_industry_snapshots "
+        "WHERE snapshot_id='snap-rejection-write-fail'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "rejected"
+    assert json.loads(row[1]) == [
+        {
+            "code": "rejection_write_failed",
+            "evidence": {"exception_type": "OperationalError"},
+        }
+    ]
     conn.close()
 
 
