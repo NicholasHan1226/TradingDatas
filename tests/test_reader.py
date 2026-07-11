@@ -1058,6 +1058,142 @@ class TestReaderEvents:
         assert "missing sqlite db" in rows[0]["lineage"]["reason"]
 
 # ============================================================================
+# canonical stock-master reference tests
+# ============================================================================
+
+
+class TestReaderStockMasterReference:
+    @staticmethod
+    def _use_db(monkeypatch, db_path: Path) -> None:
+        import reader
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+    def test_stock_master_reads_bounded_ashare_stock_rows_with_metadata(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(SCHEMA_SQL)
+        collected_at = datetime.now(timezone.utc).isoformat()
+        conn.executemany(
+            """
+            INSERT INTO market_assets (
+                market, symbol, name, asset_type, exchange, sector, list_date,
+                status, provider, source_file, updated_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "Ashare", "000001.SZ", "平安银行", "stock", "SZSE",
+                    "银行", "19910403", "L", "tushare_stock_basic",
+                    "run-stock-basic", collected_at, "{}",
+                ),
+                (
+                    "Ashare", "600519.SH", "贵州茅台", "stock", "SSE",
+                    "白酒", "20010827", "L", "tushare_stock_company",
+                    "run-stock-company", collected_at, "{}",
+                ),
+                (
+                    "Ashare", "510300.SH", "沪深300ETF", "etf", "SSE",
+                    "ETF", "20120528", "L", "tushare_etf_basic",
+                    "run-etf-basic", collected_at, "{}",
+                ),
+                (
+                    "US", "AAPL", "Apple", "stock", "NASDAQ",
+                    "Technology", "19801212", "L", "tushare_us_basic",
+                    "run-us-basic", collected_at, "{}",
+                ),
+            ],
+        )
+        conn.commit()
+        conn.close()
+        self._use_db(monkeypatch, db_path)
+
+        rows = reader.get_reference("stock_master", limit=1)
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["data"]["symbol"] == "000001.SZ"
+        assert row["data"]["market"] == "Ashare"
+        assert row["data"]["asset_type"] == "stock"
+        assert "raw_json" not in row["data"]
+        assert row["degraded"] is False
+        assert row["provenance"] == {
+            "source_id": "tushare_stock_basic",
+            "source_tier": "reference",
+            "collected_at": collected_at,
+        }
+        assert row["freshness"]["stale"] is False
+        assert row["quality"]["score"] > 0
+        assert row["lineage"] == {
+            "reader": "get_reference",
+            "db_path": str(db_path),
+            "requested_table": "stock_master",
+            "table": "market_assets",
+            "filters": {"market": "Ashare", "asset_type": "stock", "limit": 1},
+        }
+
+    def test_stock_master_empty_read_model_is_explicitly_degraded(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+        conn.close()
+        self._use_db(monkeypatch, db_path)
+
+        rows = reader.get_reference("stock_master")
+
+        assert len(rows) == 1
+        assert rows[0]["degraded"] is True
+        assert rows[0]["data"] == {}
+        assert rows[0]["provenance"]["source_id"] == "sqlite:market_assets"
+        assert "no A-share stock rows" in rows[0]["lineage"]["reason"]
+        assert rows[0]["lineage"]["table"] == "market_assets"
+
+    def test_stock_master_missing_table_is_explicitly_degraded(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        sqlite3.connect(str(db_path)).close()
+        self._use_db(monkeypatch, db_path)
+
+        rows = reader.get_reference("stock_master")
+
+        assert len(rows) == 1
+        assert rows[0]["degraded"] is True
+        assert rows[0]["data"] == {}
+        assert rows[0]["lineage"]["table"] == "market_assets"
+        assert "sqlite read failed" in rows[0]["lineage"]["reason"]
+
+    def test_noncanonical_reference_table_keeps_retired_behavior(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        sqlite3.connect(str(db_path)).close()
+        self._use_db(monkeypatch, db_path)
+
+        rows = reader.get_reference("legacy_csv_table")
+
+        assert len(rows) == 1
+        assert rows[0]["degraded"] is True
+        assert "reference CSV endpoints are retired" in rows[0]["lineage"]["reason"]
+
+
+# ============================================================================
 # reference/market_calendar.py tests
 # ============================================================================
 

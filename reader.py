@@ -1729,7 +1729,60 @@ def get_pm_prices(market_id: str | None = None, limit: int = 200) -> list[dict[s
 
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
-def _get_reference_cached(_generation: int, table: str) -> str:
+def _get_reference_cached(_generation: int, table: str, limit: int) -> str:
+    if table == "stock_master":
+        lineage = {
+            "reader": "get_reference",
+            "db_path": str(SQLITE_PATH),
+            "requested_table": "stock_master",
+            "table": "market_assets",
+            "filters": {
+                "market": "Ashare",
+                "asset_type": "stock",
+                "limit": limit,
+            },
+        }
+        rows, degraded = _sqlite_rows(
+            """
+            SELECT
+                market, symbol, name, asset_type, exchange, sector, list_date,
+                last_trade_date, expiry_date, status, provider, source_file,
+                updated_at
+            FROM market_assets
+            WHERE market = ? AND asset_type = ?
+            ORDER BY symbol ASC
+            LIMIT ?
+            """,
+            ("Ashare", "stock", limit),
+            "market_assets",
+        )
+        if degraded is not None:
+            for item in degraded:
+                reason = str((item.get("lineage") or {}).get("reason") or "read-model lookup failed")
+                item["lineage"] = {**lineage, "reason": reason}
+            return _json_cached(lambda: degraded)
+        if not rows:
+            return _json_cached(
+                lambda: _degraded_empty(
+                    "sqlite:market_assets",
+                    "no A-share stock rows in SharedSignals read model",
+                    lineage=lineage,
+                )
+            )
+
+        wrapped = [
+            _wrap(
+                row,
+                source_id=_row_source_id(row, "sqlite:market_assets"),
+                source_tier="reference",
+                collected_at=row.get("updated_at"),
+                lineage=lineage,
+                stale_after_hours=48.0,
+            )
+            for row in rows
+        ]
+        return _json_cached(lambda: wrapped)
+
     lineage = {"reader": "get_reference", "filters": {"table": table}}
     return _json_cached(
         lambda: _degraded_empty(
@@ -1740,9 +1793,19 @@ def _get_reference_cached(_generation: int, table: str) -> str:
     )
 
 
-def get_reference(table: str) -> list[dict[str, Any]]:
-    lineage = {"reader": "get_reference", "filters": {"table": table}}
-    return _safe_public("sqlite:reference", lineage, lambda generation: _get_reference_cached(generation, str(table)))
+def get_reference(table: str, limit: int = 6000) -> list[dict[str, Any]]:
+    table_key = str(table or "").strip().lower()
+    bounded_limit = _bounded_limit(limit, 6000, max_value=10000)
+    lineage = {
+        "reader": "get_reference",
+        "filters": {"table": table_key, "limit": bounded_limit},
+    }
+    source_id = "sqlite:market_assets" if table_key == "stock_master" else "sqlite:reference"
+    return _safe_public(
+        source_id,
+        lineage,
+        lambda generation: _get_reference_cached(generation, table_key, bounded_limit),
+    )
 
 
 @_register_cached

@@ -48,6 +48,7 @@
 - 低频参考: 周/月线通过 P7 低频 lane 每周独立刷新，不混入每日 P6
 
 ## API 输出保护
+- A 股股票主数据的唯一 canonical reference 是 `/reference?table=stock_master&limit=6000`：只读 SQLite `market_assets` 中 `market=Ashare AND asset_type=stock`，默认 6,000、最大 10,000，返回 provenance/freshness/quality/lineage；缺数据库、缺表或空表时 degraded，reader/API 无 provider/CSV fallback。其它旧 CSV reference table 仍 degraded。
 - `/events`、`/fundamentals`、`/macro`、`/tushare` 等大表接口必须把 `limit` 下推到数据库查询。
 - SQLite read model 只读查询设置短 busy timeout 和查询超时；超时返回 degraded 元数据，不回退旧 CSV/旧目录。
 - 外部应用通过 SharedSignals HTTP API 读取数据；TradingAgent、MarketGraph 和外部 agent 不直接调用 provider 或旧目录。

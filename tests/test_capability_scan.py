@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from tools import capability_scan
@@ -63,5 +64,83 @@ def test_capability_scan_resolves_provider_specific_smoke_samples(monkeypatch) -
     assert limit_kwargs["trade_date"] == "20260707"
 
 
-def test_retired_reference_capability_is_skipped() -> None:
-    assert capability_scan.READER_REGISTRY["get_reference"]["status_override"] == "skipped"
+def test_stock_master_reference_capability_is_active_and_canonical() -> None:
+    meta = capability_scan.READER_REGISTRY["get_reference"]
+
+    assert "status_override" not in meta
+    assert meta["func"] == "get_reference"
+    assert meta["smoke_args"] == ["stock_master"]
+    assert "SQLite market_assets" in meta["description"]
+    assert "A-share stock" in meta["description"]
+    assert meta["fields"] == [
+        "market",
+        "symbol",
+        "name",
+        "asset_type",
+        "exchange",
+        "sector",
+        "list_date",
+        "last_trade_date",
+        "expiry_date",
+        "status",
+        "provider",
+        "source_file",
+        "updated_at",
+        "provenance",
+        "freshness",
+        "quality",
+        "degraded",
+        "lineage",
+    ]
+
+
+def test_stock_master_reference_is_scanned_in_test_only_mode(tmp_path, monkeypatch) -> None:
+    registry_path = tmp_path / "capability_registry.json"
+    changes_path = tmp_path / "capability_changes.jsonl"
+
+    monkeypatch.setattr(capability_scan, "REGISTRY_PATH", registry_path)
+    monkeypatch.setattr(capability_scan, "CHANGES_PATH", changes_path)
+    monkeypatch.setattr(capability_scan, "DOCS_DIR", tmp_path)
+    monkeypatch.setattr(capability_scan, "_load_previous_registry", lambda: {})
+    monkeypatch.setattr(capability_scan, "_resolve_smoke_args", lambda meta: (meta.get("smoke_args", []), {}))
+    module = SimpleNamespace()
+    monkeypatch.setattr(capability_scan, "_import_module", lambda _name: module)
+
+    calls: list[tuple[str, list[object]]] = []
+
+    def fake_call(_mod, func, args, _kwargs=None):
+        calls.append((func, args))
+        return {
+            "latency_ms": 1.0,
+            "rows": 1,
+            "error": "",
+            "degraded_reason": "",
+        }
+
+    monkeypatch.setattr(capability_scan, "_call_func", fake_call)
+
+    result = capability_scan.run_scan(test_only=True, write_doc=False)
+    endpoints = {item["name"]: item for item in result["registry"]["endpoints"]}
+
+    assert ("get_reference", ["stock_master"]) in calls
+    assert endpoints["get_reference"]["status"] == "ok"
+    assert endpoints["get_reference"]["rows"] == 1
+
+
+def test_stock_master_reference_documentation_keeps_canonical_fail_closed_contract() -> None:
+    contract = Path("API_CONTRACT.md").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
+    status = Path("STATUS.md").read_text(encoding="utf-8")
+    matrix = Path("docs/market_capability_matrix.md").read_text(encoding="utf-8")
+    prompt = Path("docs/external_agent_api_prompt.md").read_text(encoding="utf-8")
+
+    for document in (contract, readme, status, matrix, prompt):
+        assert "/reference?table=stock_master&limit=6000" in document
+        assert "market_assets" in document
+
+    assert "最大 10,000" in contract
+    assert "缺表或空表" in contract
+    assert "provider/CSV fallback" in contract
+    assert "production runtime" in status
+    assert "Only `stock_master`" in matrix
+    assert "Do not substitute another reference table" in prompt

@@ -418,7 +418,10 @@ class Handler(BaseHTTPRequestHandler):
             table = params.get("table", "").strip()
             if not table:
                 raise ValueError("table is required")
-            rows = reader.get_reference(table=table)
+            rows = reader.get_reference(
+                table=table,
+                limit=to_int(params.get("limit"), 6000, max_val=10000),
+            )
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 

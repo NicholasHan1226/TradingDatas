@@ -1,6 +1,6 @@
 # SharedSignals External Agent One-Click Prompt
 
-Last updated: 2026-07-10
+Last updated: 2026-07-12
 
 Copy this prompt into an external agent that needs SharedSignals market data access.
 
@@ -59,6 +59,11 @@ Allowed behavior:
    - If data is empty, degraded, stale, missing provenance, or outside the expected frequency, return data_unavailable.
    - Do not silently fallback to provider APIs, local files, old CSV/NDJSON, SQLite paths, sibling repos, or retired RSS/RSSHub paths.
 7. Treat `source_status=yellow` as a governance warning, not automatic data failure. Before using a dataset, require `/opening_gate` to be open when a session gate applies and require the relevant endpoint response to have `metadata.degraded=false`, `metadata.freshness.stale=false`, provenance, and an expected timestamp. A red source status or degraded endpoint remains fail-closed.
+8. A-share stock-master reference contract:
+   - Use GET /reference?table=stock_master&limit=6000. It is the only active `/reference` table and reads SQLite `market_assets` rows filtered to `market=Ashare` and `asset_type=stock`.
+   - The default limit is 6000 and the server hard maximum is 10000. Inspect provenance, freshness, quality, and lineage on every response.
+   - A missing database/table or no matching rows must remain degraded/data_unavailable. There is no provider/CSV fallback.
+   - Do not substitute another reference table. Other legacy CSV reference names remain degraded; use the relevant business endpoint or `/tushare` read-model output for non-stock-master dimensions.
 
 Frequency interpretation:
 - A-share intraday and China futures intraday: 5-minute trading-session data when available.
@@ -81,7 +86,7 @@ Minimal call examples:
 - GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50
 - GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708
 - GET /events?event_type=news&limit=20
-- GET /reference?table=market_assets
+- GET /reference?table=stock_master&limit=6000
 - GET /industry?ts_code=600519.SH
 - GET /tushare?api_name=index_weekly&limit=20
 

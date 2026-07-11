@@ -203,6 +203,19 @@ class _FakeReader:
         self.calls.append(("get_fundamentals", {"ts_code": ts_code, "limit": limit}))
         return [{"data": {"symbol": ts_code, "factor_name": "unit"}, "degraded": False}]
 
+    def get_reference(self, table: str, limit: int = 6000) -> list[dict[str, Any]]:
+        self.calls.append(("get_reference", {"table": table, "limit": limit}))
+        return [
+            {
+                "data": {"market": "Ashare", "symbol": "000001.SZ"},
+                "degraded": False,
+                "freshness": {"stale": False, "score": 1.0, "age_hours": 1.0},
+                "quality": {"score": 1.0, "completeness": 1.0},
+                "provenance": {"source_id": "tushare_stock_basic"},
+                "lineage": {"requested_table": table, "table": "market_assets"},
+            }
+        ]
+
     def get_industry_snapshot(self) -> list[dict[str, Any]]:
         self.calls.append(("get_industry_snapshot", {}))
         return [
@@ -531,6 +544,22 @@ def test_api_fundamentals_passes_limit_to_reader(api_edge_server) -> None:
     assert status == 200
     assert payload["data"] == [{"symbol": "000001.SZ", "factor_name": "unit"}]
     assert reader.calls[-1] == ("get_fundamentals", {"ts_code": "000001.SZ", "limit": 7})
+
+
+def test_api_stock_master_reference_passes_a_bounded_limit(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(
+        base_url, "/reference?table=stock_master&limit=50000"
+    )
+
+    assert status == 200
+    assert payload["data"] == [{"market": "Ashare", "symbol": "000001.SZ"}]
+    assert payload["metadata"]["degraded"] is False
+    assert reader.calls[-1] == (
+        "get_reference",
+        {"table": "stock_master", "limit": 10000},
+    )
 
 
 def test_api_industry_snapshot_exposes_promoted_snapshot_and_lineage(
