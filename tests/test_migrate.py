@@ -136,3 +136,23 @@ def test_apply_migrations_normalizes_existing_periodic_bar_times(tmp_path: Path)
         conn.close()
     assert result["periodic_bar_times_normalized"] == 1
     assert value == "2026-07-03 00:00:00"
+
+
+def test_apply_migrations_backfills_legacy_event_identity(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.execute(
+        "INSERT INTO market_events (event_hash, provider, event_type, title) VALUES (?, ?, ?, ?)",
+        ("legacy-hash", "tushare_news", "news", "legacy"),
+    )
+    conn.commit()
+    conn.close()
+    result = apply_migrations(db_path)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT event_id, revision, source_family FROM market_events WHERE event_hash='legacy-hash'"
+    ).fetchone()
+    conn.close()
+    assert result["event_identity_backfilled"] == 1
+    assert row == ("legacy-hash", 1, "tushare")

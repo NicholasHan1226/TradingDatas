@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("duckdb")
 
 from storage.schema import SCHEMA_SQL
-from storage.storage_adapter import StorageAdapter
+from storage.storage_adapter import AUTHORITATIVE_SNAPSHOT_TABLES, StorageAdapter
 
 
 def _create_sqlite(path: Path) -> None:
@@ -193,3 +193,11 @@ def test_reconcile_counts_reports_table_mismatch(tmp_path: Path):
             "status": "mismatch",
         }
     }
+
+
+def test_industry_tables_are_authoritative_snapshots() -> None:
+    assert {
+        "market_industry_snapshots",
+        "market_industry_taxonomy",
+        "market_industry_memberships",
+    } <= AUTHORITATIVE_SNAPSHOT_TABLES

@@ -37,3 +37,11 @@ def test_duckdb_schema_exports_primary_keys() -> None:
     assert duckdb_schema.TABLE_PRIMARY_KEYS == table_primary_keys()
     assert duckdb_schema.TABLE_PRIMARY_KEYS["market_relationships"] == ["relationship_hash"]
     assert duckdb_schema.TABLE_PRIMARY_KEYS["market_fund_portfolio"] == ["portfolio_hash"]
+
+
+def test_capital_growth_tables_and_event_identity_are_in_contract() -> None:
+    events = get_table("market_events")
+    assert {column.name for column in events.columns} >= {"event_id", "revision", "source_family"}
+    assert table_primary_keys()["market_industry_snapshots"] == ["snapshot_id"]
+    assert table_primary_keys()["market_industry_taxonomy"] == ["taxonomy_node_key"]
+    assert table_primary_keys()["market_industry_memberships"] == ["membership_key"]

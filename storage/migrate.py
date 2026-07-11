@@ -89,6 +89,26 @@ def _normalize_periodic_bar_times(conn: sqlite3.Connection) -> int:
     return max(0, int(cursor.rowcount or 0))
 
 
+def _backfill_event_identity(conn: sqlite3.Connection) -> int:
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_events'").fetchone():
+        return 0
+    cursor = conn.execute(
+        """
+        UPDATE market_events
+        SET event_id = COALESCE(NULLIF(event_id, ''), event_hash),
+            revision = COALESCE(revision, 1),
+            source_family = COALESCE(
+                NULLIF(source_family, ''),
+                CASE WHEN provider LIKE 'tushare_%' THEN 'tushare'
+                     WHEN provider = 'sec_edgar' THEN 'sec_edgar'
+                     ELSE COALESCE(NULLIF(provider, ''), 'unknown') END
+            )
+        WHERE event_id IS NULL OR event_id = '' OR revision IS NULL OR source_family IS NULL OR source_family = ''
+        """
+    )
+    return max(0, int(cursor.rowcount or 0))
+
+
 def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
     """Apply SCHEMA_SQL DDL to *db_path*. Returns a result dict."""
     import importlib
@@ -139,8 +159,9 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 }
             added_columns = _add_missing_columns(conn)
             periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
+            event_identity_backfilled = _backfill_event_identity(conn)
             conn.commit()
-            if added_columns or periodic_bar_times_normalized:
+            if added_columns or periodic_bar_times_normalized or event_identity_backfilled:
                 conn.execute(
                     "INSERT INTO _migrations (schema_hash, applied_at, table_count, notes) "
                     "VALUES (?, ?, ?, ?)",
@@ -150,7 +171,8 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                         conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0],
                         "repair missing nullable columns: "
                         f"{added_columns}; normalize periodic bar times: "
-                        f"{periodic_bar_times_normalized}",
+                        f"{periodic_bar_times_normalized}; backfill event identity: "
+                        f"{event_identity_backfilled}",
                     ),
                 )
                 conn.commit()
@@ -161,6 +183,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 "applied": 0,
                 "added_columns": added_columns,
                 "periodic_bar_times_normalized": periodic_bar_times_normalized,
+                "event_identity_backfilled": event_identity_backfilled,
                 "drift": False,
                 "schema_hash": current_hash,
             }
@@ -191,6 +214,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
 
         added_columns = _add_missing_columns(conn)
         periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
+        event_identity_backfilled = _backfill_event_identity(conn)
 
         conn.commit()
 
@@ -218,6 +242,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "applied": applied,
             "added_columns": added_columns,
             "periodic_bar_times_normalized": periodic_bar_times_normalized,
+            "event_identity_backfilled": event_identity_backfilled,
             "table_count": table_count,
             "drift": False,
             "schema_hash": current_hash,
