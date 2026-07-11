@@ -30,6 +30,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]  # SharedSignals root
 sys.path.insert(0, str(REPO_DIR))
 
 from runtime_paths import marketdata_sqlite_path  # noqa: E402
+from storage.event_identity import source_family, stable_event_id  # noqa: E402
 
 DEFAULT_DB = marketdata_sqlite_path()
 
@@ -121,21 +122,48 @@ def _normalize_periodic_bar_times(conn: sqlite3.Connection) -> int:
 def _backfill_event_identity(conn: sqlite3.Connection) -> int:
     if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_events'").fetchone():
         return 0
-    cursor = conn.execute(
+    rows = conn.execute(
         """
-        UPDATE market_events
-        SET event_id = COALESCE(NULLIF(event_id, ''), event_hash),
-            revision = COALESCE(revision, 1),
-            source_family = COALESCE(
-                NULLIF(source_family, ''),
-                CASE WHEN provider LIKE 'tushare_%' THEN 'tushare'
-                     WHEN provider = 'sec_edgar' THEN 'sec_edgar'
-                     ELSE COALESCE(NULLIF(provider, ''), 'unknown') END
+        SELECT rowid, event_hash, event_id, revision, source_family, provider,
+               event_type, event_time, trade_date, symbol, title, content, url,
+               source, collected_at, raw_json
+        FROM market_events
+        """
+    ).fetchall()
+    grouped: dict[str, list[tuple]] = {}
+    for row in rows:
+        identity_row = {
+            "event_time": row[7],
+            "trade_date": row[8],
+            "symbol": row[9],
+            "title": row[10],
+            "content": row[11],
+            "url": row[12],
+            "source": row[13],
+            "raw_json": row[15],
+        }
+        try:
+            expected_id = stable_event_id(row[5], row[6], identity_row)
+        except ValueError:
+            expected_id = str(row[2] or row[1] or "").strip()
+        grouped.setdefault(expected_id, []).append(row)
+
+    updated = 0
+    for expected_id, identity_rows in grouped.items():
+        ordered = sorted(
+            identity_rows,
+            key=lambda row: (str(row[7] or ""), str(row[14] or ""), int(row[0])),
+        )
+        for revision, row in enumerate(ordered, start=1):
+            expected_family = source_family(row[5])
+            if row[2] == expected_id and row[3] == revision and row[4] == expected_family:
+                continue
+            conn.execute(
+                "UPDATE market_events SET event_id=?, revision=?, source_family=? WHERE rowid=?",
+                (expected_id, revision, expected_family, row[0]),
             )
-        WHERE event_id IS NULL OR event_id = '' OR revision IS NULL OR source_family IS NULL OR source_family = ''
-        """
-    )
-    return max(0, int(cursor.rowcount or 0))
+            updated += 1
+    return updated
 
 
 def apply_migrations(db_path: Path, check_only: bool = False) -> dict:

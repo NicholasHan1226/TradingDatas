@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fcntl
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -303,6 +304,36 @@ def test_event_ingest_keeps_logical_id_and_appends_changed_revision(tmp_path: Pa
 
     assert len({row[0] for row in rows}) == 1
     assert rows == [(rows[0][0], 1, "tushare"), (rows[0][0], 2, "tushare")]
+
+
+def test_concurrent_event_ingest_serializes_one_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    event = {
+        "id": "provider-42",
+        "datetime": "2026-07-11 09:00:00",
+        "title": "A",
+        "content": "v1",
+    }
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _: ingest_rows_to_sqlite(db_path, "market_events", "news", [event]),
+                range(2),
+            )
+        )
+
+    assert sorted(results) == [0, 1]
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision FROM market_events"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == 1
+    assert rows[0][1] == 1
 
 
 def test_relationship_member_apis_ingest_to_market_relationships(tmp_path: Path) -> None:

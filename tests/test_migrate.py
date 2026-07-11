@@ -3,8 +3,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from storage.event_identity import stable_event_id
 from storage.migrate import apply_migrations
 from storage.migrate import schema_hash
+from storage.read_model_store import ingest_rows_to_sqlite
 from storage.schema import SCHEMA_SQL
 
 
@@ -155,7 +157,62 @@ def test_apply_migrations_backfills_legacy_event_identity(tmp_path: Path) -> Non
     ).fetchone()
     conn.close()
     assert result["event_identity_backfilled"] == 1
-    assert row == ("legacy-hash", 1, "tushare")
+    assert row == (
+        stable_event_id("tushare_news", "news", {"title": "legacy"}),
+        1,
+        "tushare",
+    )
+
+
+def test_event_identity_migration_preserves_rows_and_resumes_revisions(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    conn.close()
+    base = {
+        "id": "provider-42",
+        "datetime": "2026-07-11 09:00:00",
+        "title": "A",
+        "content": "v1",
+    }
+    assert ingest_rows_to_sqlite(db_path, "market_events", "news", [base]) == 1
+
+    conn = sqlite3.connect(db_path)
+    event_hash = conn.execute("SELECT event_hash FROM market_events").fetchone()[0]
+    conn.execute(
+        "UPDATE market_events SET event_id = event_hash, revision = 1, source_family = 'tushare'"
+    )
+    before_count = conn.execute("SELECT COUNT(*) FROM market_events").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    result = apply_migrations(db_path)
+
+    conn = sqlite3.connect(db_path)
+    migrated = conn.execute(
+        "SELECT event_hash, event_id, revision, source_family FROM market_events"
+    ).fetchone()
+    after_count = conn.execute("SELECT COUNT(*) FROM market_events").fetchone()[0]
+    conn.close()
+    expected_id = stable_event_id("tushare_news", "news", base)
+    assert result["event_identity_backfilled"] >= 1
+    assert before_count == after_count == 1
+    assert migrated == (event_hash, expected_id, 1, "tushare")
+    assert ingest_rows_to_sqlite(db_path, "market_events", "news", [base]) == 0
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "news",
+        [{**base, "content": "v2"}],
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    revisions = conn.execute(
+        "SELECT event_id, revision, content FROM market_events ORDER BY revision"
+    ).fetchall()
+    conn.close()
+    assert revisions == [(expected_id, 1, "v1"), (expected_id, 2, "v2")]
 
 
 def test_apply_migrations_creates_event_identity_indexes_for_legacy_schema(tmp_path: Path) -> None:

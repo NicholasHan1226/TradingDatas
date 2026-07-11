@@ -15,30 +15,66 @@ NATIVE_ID_FIELDS = (
 )
 
 
+def _normalized_provider(provider: str) -> str:
+    return str(provider or "").strip().lower() or "unknown"
+
+
 def source_family(provider: str) -> str:
-    value = str(provider or "").strip().lower()
+    value = _normalized_provider(provider)
     if value.startswith("tushare_"):
         return "tushare"
-    return value or "unknown"
+    return value
+
+
+def _nested_mappings(value: Any):
+    if isinstance(value, Mapping):
+        yield value
+        for nested in value.values():
+            yield from _nested_mappings(nested)
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            yield from _nested_mappings(nested)
+
+
+def _decoded_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return decoded if isinstance(decoded, Mapping) else None
+
+
+def _native_identity(row: Mapping[str, Any]) -> str:
+    sources = [row]
+    for field in ("raw_json", "content"):
+        decoded = _decoded_mapping(row.get(field))
+        if decoded is not None:
+            sources.extend(_nested_mappings(decoded))
+    for source in sources:
+        for key in NATIVE_ID_FIELDS:
+            value = str(source.get(key) or "").strip()
+            if value:
+                return value
+    return ""
 
 
 def stable_event_id(provider: str, event_type: str, row: Mapping[str, Any]) -> str:
-    native = next(
-        (
-            str(row.get(key) or "").strip()
-            for key in NATIVE_ID_FIELDS
-            if row.get(key)
-        ),
-        "",
-    )
+    native = _native_identity(row)
     canonical_url = str(row.get("url") or row.get("link") or "").strip().split("#", 1)[0]
-    fallback = "|".join(
+    fallback_parts = [
         str(row.get(key) or "").strip()
         for key in ("datetime", "pub_time", "date", "title")
-    )
+    ]
+    fallback = "|".join(fallback_parts) if any(fallback_parts) else ""
     identity = native or canonical_url or fallback
+    if not identity:
+        raise ValueError("cannot derive stable event identity from native id, URL, date, or title")
     digest = hashlib.sha256(
-        f"{source_family(provider)}|{event_type}|{identity}".encode()
+        f"{_normalized_provider(provider)}|{event_type}|{identity}".encode()
     ).hexdigest()[:32]
     return f"evt:{digest}"
 

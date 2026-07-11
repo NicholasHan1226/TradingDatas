@@ -263,3 +263,33 @@ def test_sec_edgar_event_uses_accession_based_identity(tmp_path: Path) -> None:
         filing["event_type"],
         {**filing, "title": "Corrected title"},
     ) == row[2]
+
+
+def test_sec_identity_reads_nested_accession_before_mutable_url() -> None:
+    accession = "0000320193-26-000001"
+    raw_json_row = {
+        "url": "https://www.sec.gov/filing?output=1",
+        "raw_json": '{"accession_number":"0000320193-26-000001"}',
+    }
+    content_row = {
+        "url": "https://www.sec.gov/filing?output=2",
+        "content": '{"accessionNumber":"0000320193-26-000001"}',
+    }
+
+    assert stable_event_id("sec_edgar", "sec_edgar:10-K", raw_json_row) == stable_event_id(
+        "sec_edgar", "sec_edgar:10-K", content_row
+    )
+    assert accession in raw_json_row["raw_json"]
+
+
+def test_provider_local_native_ids_are_namespaced_by_provider() -> None:
+    row = {"id": "provider-42", "title": "A"}
+
+    assert stable_event_id("tushare_news", "news", row) != stable_event_id(
+        "tushare_major_news", "news", row
+    )
+
+
+def test_sparse_event_without_identity_facts_is_rejected() -> None:
+    with pytest.raises(ValueError, match="stable event identity"):
+        stable_event_id("tushare_news", "news", {"symbol": "000001.SZ"})
