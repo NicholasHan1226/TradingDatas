@@ -199,6 +199,139 @@ class TestReaderEvents:
         assert first["row_count"] == 2
         assert second == {"rows": second["rows"], "next_cursor": None, "row_count": 2}
 
+    @pytest.mark.parametrize(
+        ("legacy_event_id", "legacy_revision"),
+        [
+            (None, 1),
+            ("", 1),
+            ("legacy-event-4", None),
+        ],
+    )
+    def test_events_cursor_traverses_legacy_nullable_identity_boundary(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        legacy_event_id: str | None,
+        legacy_revision: int | None,
+    ):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"legacy-h{idx}",
+                        legacy_event_id if idx == 4 else f"event-{idx}",
+                        legacy_revision if idx == 4 else 1,
+                        "unit",
+                        "news",
+                        f"2026-07-11T09:3{6 - idx}:00+00:00",
+                        "20260711",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "unit",
+                        "unit",
+                        "2026-07-11T10:00:00+00:00",
+                        "{}",
+                    )
+                    for idx in range(1, 6)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        first = reader.get_events_page(limit=4)
+        assert first["next_cursor"] is not None
+        from pagination import decode_cursor
+
+        assert decode_cursor(first["next_cursor"], scope="events") == (
+            "2026-07-11T09:32:00+00:00",
+            legacy_event_id or "legacy-h4",
+            legacy_revision if legacy_revision is not None else 0,
+        )
+        second = reader.get_events_page(limit=4, cursor=first["next_cursor"])
+
+        event_hashes = [
+            row["data"]["event_hash"]
+            for row in first["rows"] + second["rows"]
+        ]
+        assert event_hashes == [f"legacy-h{idx}" for idx in range(1, 6)]
+        assert len(event_hashes) == len(set(event_hashes))
+        assert second["next_cursor"] is None
+
+    @pytest.mark.parametrize("bad_event_hash", [None, ""])
+    def test_events_page_fails_closed_when_cursor_boundary_has_no_stable_identity(
+        self, tmp_path: Path, monkeypatch, bad_event_hash: str | None
+    ):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        bad_event_hash if idx == 4 else f"stable-h{idx}",
+                        None if idx == 4 else f"event-{idx}",
+                        1,
+                        "unit",
+                        "news",
+                        "2026-07-11T09:30:00+00:00",
+                        "20260711",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "unit",
+                        "unit",
+                        "2026-07-11T10:00:00+00:00",
+                        "{}",
+                    )
+                    for idx in range(1, 6)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        page = reader.get_events_page(limit=4)
+
+        assert page["row_count"] == 0
+        assert page["next_cursor"] is None
+        assert page["rows"][0]["degraded"] is True
+        assert "stable event identity" in page["rows"][0]["lineage"]["reason"]
+
     def test_events_page_preserves_degraded_shape(self, tmp_path: Path, monkeypatch):
         import reader
 
