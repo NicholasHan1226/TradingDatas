@@ -27,10 +27,16 @@ MEMBERSHIP_FIELDS = (
 )
 EXPECTED_PARTITION_COUNT = 31
 PROVIDER_PAGE_LIMIT = 2_000
+TAXONOMY_PAGE_SIZE = 50
+TAXONOMY_MAX_PAGES = 100
 _ASHARE_SYMBOL = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 _LEVELS = {"1": "L1", "2": "L2", "3": "L3", "L1": "L1", "L2": "L2", "L3": "L3"}
 
 FetchRows = Callable[[str, dict[str, Any], str], list[dict[str, Any]]]
+
+
+class CandidateCollectionError(RuntimeError):
+    """Fail-closed provider pagination error for an incomplete candidate."""
 
 
 @dataclass(frozen=True)
@@ -123,6 +129,76 @@ def _default_fetch(api_name: str, params: dict[str, Any], fields: str) -> list[d
     return tushare_rows(api_name, params, fields)
 
 
+def _collect_taxonomy_pages(fetch: FetchRows) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    page_fingerprints: set[str] = set()
+
+    for page_number in range(TAXONOMY_MAX_PAGES):
+        offset = page_number * TAXONOMY_PAGE_SIZE
+        try:
+            page = fetch(
+                "index_classify",
+                {
+                    "level": "",
+                    "src": "SW2021",
+                    "limit": TAXONOMY_PAGE_SIZE,
+                    "offset": offset,
+                },
+                TAXONOMY_FIELDS,
+            )
+        except Exception as exc:
+            raise CandidateCollectionError("taxonomy_fetch_failed") from exc
+
+        if not isinstance(page, list):
+            raise CandidateCollectionError("taxonomy_invalid_page")
+        if len(page) > TAXONOMY_PAGE_SIZE:
+            raise CandidateCollectionError("taxonomy_page_oversized")
+        if not page:
+            return rows
+
+        fingerprint = _hash_key(_raw_json({"rows": page}))
+        if fingerprint in page_fingerprints:
+            raise CandidateCollectionError("taxonomy_repeated_page")
+        page_fingerprints.add(fingerprint)
+        rows.extend(page)
+
+        if len(page) < TAXONOMY_PAGE_SIZE:
+            return rows
+
+    raise CandidateCollectionError("taxonomy_page_limit_exceeded")
+
+
+def _deduplicate_partition(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    passthrough: list[dict[str, Any]] = []
+    for row in rows:
+        identity = (
+            _text(row.get("symbol")),
+            _text(row.get("l1_code")),
+            _text(row.get("l2_code")),
+            _text(row.get("l3_code")),
+        )
+        if all(identity):
+            grouped.setdefault(identity, []).append(row)
+        else:
+            passthrough.append(row)
+
+    deduplicated = [
+        min(duplicates, key=lambda row: _text(row.get("raw_json")))
+        for duplicates in grouped.values()
+    ]
+    return sorted(
+        [*deduplicated, *passthrough],
+        key=lambda row: (
+            _text(row.get("symbol")),
+            _text(row.get("l1_code")),
+            _text(row.get("l2_code")),
+            _text(row.get("l3_code")),
+            _text(row.get("raw_json")),
+        ),
+    )
+
+
 def collect_candidate(
     fetch: FetchRows = _default_fetch,
     *,
@@ -132,7 +208,7 @@ def collect_candidate(
     """Collect one complete in-memory candidate without writing any database."""
 
     started_at = datetime.now(UTC).isoformat()
-    taxonomy_raw = fetch("index_classify", {"level": "", "src": "SW2021"}, TAXONOMY_FIELDS)
+    taxonomy_raw = _collect_taxonomy_pages(fetch)
     taxonomy_rows = tuple(
         MappingProxyType(
             _normalize_taxonomy_row(row, snapshot_id=snapshot_id, collected_at=started_at)
@@ -161,13 +237,19 @@ def collect_candidate(
             # validation result can be persisted as evidence in the next task.
             partition_counts[l1_code] = -1
             continue
-        partition_counts[l1_code] = len(partition)
-        membership_rows.extend(
-            MappingProxyType(
-                _normalize_membership_row(row, snapshot_id=snapshot_id, collected_at=started_at)
+        normalized_rows = [
+            _normalize_membership_row(
+                row, snapshot_id=snapshot_id, collected_at=started_at
             )
             for row in partition
+        ]
+        normalized_partition = (
+            normalized_rows
+            if len(partition) >= PROVIDER_PAGE_LIMIT
+            else _deduplicate_partition(normalized_rows)
         )
+        partition_counts[l1_code] = len(normalized_partition)
+        membership_rows.extend(MappingProxyType(row) for row in normalized_partition)
 
     return IndustryCandidate(
         snapshot_id=snapshot_id,
@@ -214,6 +296,17 @@ def validate_candidate(
     taxonomy_by_level_and_industry: dict[tuple[str, str], Mapping[str, Any]] = {}
     taxonomy_keys: set[str] = set()
     for row in candidate.taxonomy_rows:
+        try:
+            raw_row = json.loads(_text(row.get("raw_json")))
+            expected_row = _normalize_taxonomy_row(
+                raw_row,
+                snapshot_id=candidate.snapshot_id,
+                collected_at=candidate.started_at,
+            )
+            if dict(row) != expected_row:
+                reject("invalid_taxonomy_lineage")
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            reject("invalid_taxonomy_lineage")
         level = _text(row.get("level"))
         index_code = _text(row.get("index_code"))
         industry_code = _text(row.get("industry_code"))
@@ -245,6 +338,9 @@ def validate_candidate(
         elif level == "L3":
             if not parent or ("L2", parent) not in taxonomy_by_level_and_industry:
                 reject("invalid_taxonomy_parent")
+
+    if {level for level, _ in taxonomy_by_level_and_index} != {"L1", "L2", "L3"}:
+        reject("incomplete_taxonomy_hierarchy")
 
     l1_codes = {
         index_code for (level, index_code) in taxonomy_by_level_and_index if level == "L1" and index_code
@@ -285,6 +381,17 @@ def validate_candidate(
     assignments: dict[str, tuple[str, str, str]] = {}
     unique_symbols: set[str] = set()
     for row in candidate.membership_rows:
+        try:
+            raw_row = json.loads(_text(row.get("raw_json")))
+            expected_row = _normalize_membership_row(
+                raw_row,
+                snapshot_id=candidate.snapshot_id,
+                collected_at=candidate.started_at,
+            )
+            if dict(row) != expected_row:
+                reject("invalid_membership_lineage")
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            reject("invalid_membership_lineage")
         if any(not _text(row.get(field)) for field in required_membership_fields):
             reject("missing_required_membership_field")
         symbol = _text(row.get("symbol"))
@@ -300,13 +407,24 @@ def validate_candidate(
             assignments[symbol] = assignment
             unique_symbols.add(symbol)
 
+        resolved_taxonomy: dict[int, Mapping[str, Any]] = {}
         for level in (1, 2, 3):
             code = _text(row.get(f"l{level}_code"))
             taxonomy = taxonomy_by_level_and_index.get((f"L{level}", code))
             if taxonomy is None:
                 reject("unresolved_taxonomy_code")
-            elif _text(row.get(f"l{level}_name")) != _text(taxonomy.get("industry_name")):
-                reject("taxonomy_name_mismatch")
+            else:
+                resolved_taxonomy[level] = taxonomy
+                if _text(row.get(f"l{level}_name")) != _text(taxonomy.get("industry_name")):
+                    reject("taxonomy_name_mismatch")
+
+        if len(resolved_taxonomy) == 3:
+            if _text(resolved_taxonomy[2].get("parent_industry_code")) != _text(
+                resolved_taxonomy[1].get("industry_code")
+            ) or _text(resolved_taxonomy[3].get("parent_industry_code")) != _text(
+                resolved_taxonomy[2].get("industry_code")
+            ):
+                reject("membership_hierarchy_mismatch")
 
     membership_count = len(candidate.membership_rows)
     if membership_count < min_rows:

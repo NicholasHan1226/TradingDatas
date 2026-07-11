@@ -9,6 +9,9 @@ import pytest
 
 from collectors.tushare.sw2021_reference import (
     MEMBERSHIP_FIELDS,
+    TAXONOMY_FIELDS,
+    TAXONOMY_PAGE_SIZE,
+    CandidateCollectionError,
     IndustryCandidate,
     collect_candidate,
     eligible_ashare_universe,
@@ -86,7 +89,9 @@ def _collected_candidate() -> IndustryCandidate:
 
     def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
         if api_name == "index_classify":
-            return taxonomy
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
         assert fields == MEMBERSHIP_FIELDS
         return [row for row in memberships if row["l1_code"] == params["l1_code"]]
 
@@ -159,7 +164,9 @@ def test_collects_full_hierarchy_and_exactly_31_bounded_partitions() -> None:
     def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
         calls.append((api_name, params, fields))
         if api_name == "index_classify":
-            return taxonomy
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
         return [row for row in memberships if row["l1_code"] == params["l1_code"]]
 
     candidate = collect_candidate(fetch, snapshot_id="snapshot-capture", source_run_id="run-capture")
@@ -169,9 +176,10 @@ def test_collects_full_hierarchy_and_exactly_31_bounded_partitions() -> None:
     assert taxonomy_calls == [
         (
             "index_classify",
-            {"level": "", "src": "SW2021"},
-            "index_code,industry_name,parent_code,level,industry_code,is_pub",
+            {"level": "", "src": "SW2021", "limit": TAXONOMY_PAGE_SIZE, "offset": offset},
+            TAXONOMY_FIELDS,
         )
+        for offset in range(0, len(taxonomy), TAXONOMY_PAGE_SIZE)
     ]
     assert len(member_calls) == 31
     assert [call[1] for call in member_calls] == [
@@ -200,7 +208,10 @@ def test_collects_full_hierarchy_and_exactly_31_bounded_partitions() -> None:
 def test_provider_partition_failure_is_preserved_and_rejected() -> None:
     def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
         if api_name == "index_classify":
-            return _raw_taxonomy()
+            taxonomy = _raw_taxonomy()
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
         if params["l1_code"] == "L1-12":
             raise RuntimeError("provider timeout")
         return [row for row in _raw_memberships() if row["l1_code"] == params["l1_code"]]
@@ -216,6 +227,163 @@ def test_provider_partition_failure_is_preserved_and_rejected() -> None:
     assert candidate.partition_counts["L1-12"] == -1
     assert validation.accepted is False
     assert "partition_fetch_failed" in validation.errors
+
+
+def test_taxonomy_pagination_continues_after_an_exact_full_page() -> None:
+    taxonomy = _raw_taxonomy()
+    exact_full_page = taxonomy[:TAXONOMY_PAGE_SIZE]
+    calls: list[int] = []
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            calls.append(params["offset"])
+            if params["offset"] == 0:
+                return exact_full_page
+            return []
+        return []
+
+    candidate = collect_candidate(fetch, snapshot_id="snapshot-exact-page", source_run_id="run")
+
+    assert calls == [0, TAXONOMY_PAGE_SIZE]
+    assert len(candidate.taxonomy_rows) == TAXONOMY_PAGE_SIZE
+
+
+@pytest.mark.parametrize(
+    ("mode", "reason"),
+    [
+        ("repeated", "taxonomy_repeated_page"),
+        ("exception", "taxonomy_fetch_failed"),
+        ("oversized", "taxonomy_page_oversized"),
+    ],
+)
+def test_taxonomy_pagination_fails_closed(mode: str, reason: str) -> None:
+    page = _raw_taxonomy()[:TAXONOMY_PAGE_SIZE]
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name != "index_classify":
+            return []
+        if mode == "exception" and params["offset"]:
+            raise RuntimeError("provider timeout")
+        if mode == "oversized":
+            return [*page, dict(page[0])]
+        return page
+
+    with pytest.raises(CandidateCollectionError, match=reason):
+        collect_candidate(fetch, snapshot_id=f"snapshot-{mode}", source_run_id="run")
+
+
+def test_taxonomy_pagination_maximum_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import collectors.tushare.sw2021_reference as module
+
+    monkeypatch.setattr(module, "TAXONOMY_MAX_PAGES", 2)
+    page = _raw_taxonomy()[:TAXONOMY_PAGE_SIZE]
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        assert api_name == "index_classify"
+        return [dict(row, index_code=f'{row["index_code"]}-{params["offset"]}') for row in page]
+
+    with pytest.raises(CandidateCollectionError, match="taxonomy_page_limit_exceeded"):
+        collect_candidate(fetch, snapshot_id="snapshot-max-pages", source_run_id="run")
+
+
+def test_same_symbol_and_assignment_is_stably_deduplicated() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    duplicate = dict(memberships[0], name="A duplicate chosen deterministically")
+    memberships.insert(0, duplicate)
+
+    def collect(rows: list[dict[str, Any]]) -> IndustryCandidate:
+        def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+            if api_name == "index_classify":
+                offset = params["offset"]
+                return taxonomy[offset : offset + params["limit"]]
+            return [row for row in rows if row["l1_code"] == params["l1_code"]]
+
+        return collect_candidate(fetch, snapshot_id="snapshot-dedupe", source_run_id="run")
+
+    first = collect(memberships)
+    second = collect(list(reversed(memberships)))
+
+    assert len(first.membership_rows) == len(_raw_memberships())
+    comparable_first = [
+        {key: value for key, value in row.items() if key != "collected_at"}
+        for row in first.membership_rows
+    ]
+    comparable_second = [
+        {key: value for key, value in row.items() if key != "collected_at"}
+        for row in second.membership_rows
+    ]
+    assert comparable_first == comparable_second
+    keys = [row["membership_key"] for row in first.membership_rows]
+    assert len(keys) == len(set(keys))
+
+
+@pytest.mark.parametrize(("level", "parent_level"), [(2, 1), (3, 2)])
+def test_membership_hierarchy_must_follow_the_rows_parent_chain(
+    level: int, parent_level: int
+) -> None:
+    candidate = _collected_candidate()
+    rows = [dict(row) for row in candidate.membership_rows]
+    rows[0][f"l{level}_code"] = f"L{level}-02"
+    rows[0][f"l{level}_name"] = f"Level {level} 2"
+    assert rows[0][f"l{parent_level}_code"] != f"L{parent_level}-02"
+    candidate = replace(candidate, membership_rows=tuple(rows))
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert "membership_hierarchy_mismatch" in validation.errors
+
+
+@pytest.mark.parametrize(
+    ("row_kind", "field", "value"),
+    [
+        ("taxonomy", "snapshot_id", "other-snapshot"),
+        ("taxonomy", "taxonomy_system", "OTHER"),
+        ("taxonomy", "taxonomy_version", "SW2021-tampered"),
+        ("taxonomy", "provider", "other-provider"),
+        ("taxonomy", "collected_at", "2020-01-01T00:00:00+00:00"),
+        ("taxonomy", "raw_json", "{}"),
+        ("taxonomy", "raw_json", "[]"),
+        ("taxonomy", "taxonomy_node_key", "tampered-hash"),
+        ("taxonomy", "industry_name", "tampered-name"),
+        ("membership", "snapshot_id", "other-snapshot"),
+        ("membership", "market", "HK"),
+        ("membership", "provider", "other-provider"),
+        ("membership", "collected_at", "2020-01-01T00:00:00+00:00"),
+        ("membership", "raw_json", "{}"),
+        ("membership", "raw_json", "[]"),
+        ("membership", "membership_key", "tampered-hash"),
+        ("membership", "name", "tampered-name"),
+    ],
+)
+def test_row_lineage_and_content_tampering_is_rejected(
+    row_kind: str, field: str, value: str
+) -> None:
+    candidate = _collected_candidate()
+    if row_kind == "taxonomy":
+        rows = [dict(row) for row in candidate.taxonomy_rows]
+        rows[0][field] = value
+        candidate = replace(candidate, taxonomy_rows=tuple(rows))
+        reason = "invalid_taxonomy_lineage"
+    else:
+        rows = [dict(row) for row in candidate.membership_rows]
+        rows[0][field] = value
+        candidate = replace(candidate, membership_rows=tuple(rows))
+        reason = "invalid_membership_lineage"
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert reason in validation.errors
 
 
 @pytest.mark.parametrize(
