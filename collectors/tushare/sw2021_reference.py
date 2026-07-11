@@ -510,6 +510,7 @@ def validate_candidate(
         index_code for (level, index_code) in taxonomy_by_level_and_index if level == "L1" and index_code
     }
     partition_codes = set(candidate.partition_counts)
+    semantically_failed_partitions: set[str] = set()
     if len(l1_codes) != EXPECTED_PARTITION_COUNT or partition_codes != l1_codes:
         reject("partition_count")
     if set(candidate.deduplicated_partition_counts) != partition_codes:
@@ -520,12 +521,28 @@ def validate_candidate(
         count < 0 for count in candidate.partition_counts.values()
     ):
         reject("partition_fetch_failed")
+        semantically_failed_partitions.update(candidate.partition_failures)
+        semantically_failed_partitions.update(
+            code for code, count in candidate.partition_counts.items() if count < 0
+        )
     if any(count == 0 for count in candidate.partition_counts.values()):
         reject("empty_partition")
+        semantically_failed_partitions.update(
+            code for code, count in candidate.partition_counts.items() if count == 0
+        )
     if any(count >= PROVIDER_PAGE_LIMIT for count in candidate.partition_counts.values()):
         reject("possible_provider_truncation")
+        semantically_failed_partitions.update(
+            code
+            for code, count in candidate.partition_counts.items()
+            if count >= PROVIDER_PAGE_LIMIT
+        )
     if candidate.partition_scope_mismatches:
         reject("partition_scope_mismatch")
+        semantically_failed_partitions.update(
+            requested_partition
+            for requested_partition, _, _ in candidate.partition_scope_mismatches
+        )
 
     if any(
         source_count >= 0
@@ -533,6 +550,12 @@ def validate_candidate(
         for code, source_count in candidate.partition_counts.items()
     ):
         reject("deduplicated_partition_count_mismatch")
+        semantically_failed_partitions.update(
+            code
+            for code, source_count in candidate.partition_counts.items()
+            if source_count >= 0
+            and candidate.deduplicated_partition_counts.get(code, -1) > source_count
+        )
 
     observed_partition_counts = {code: 0 for code in partition_codes}
     for row in candidate.membership_rows:
@@ -546,6 +569,11 @@ def validate_candidate(
         for code, count in candidate.declared_partition_counts.items()
     ):
         reject("declared_partition_count_mismatch")
+        semantically_failed_partitions.update(
+            code
+            for code, count in candidate.declared_partition_counts.items()
+            if observed_partition_counts.get(code) != count
+        )
 
     membership_count = len(candidate.membership_rows)
     if sum(candidate.deduplicated_partition_counts.values()) != membership_count:
@@ -567,7 +595,7 @@ def validate_candidate(
         "l3_code",
         "l3_name",
     )
-    assignments: dict[str, tuple[str, str, str]] = {}
+    assignments: dict[str, tuple[tuple[str, str, str], set[str]]] = {}
     membership_keys: set[str] = set()
     unique_symbols: set[str] = set()
     scope_mismatch_partitions = {
@@ -575,12 +603,18 @@ def validate_candidate(
         for requested_partition, _, _ in candidate.partition_scope_mismatches
     }
     for row in candidate.membership_rows:
+        row_failed = False
+        row_partitions: set[str] = set()
         membership_key = _text(row.get("membership_key"))
         if membership_key in membership_keys:
             reject("duplicate_membership_key")
+            row_failed = True
         membership_keys.add(membership_key)
         try:
             raw_row, requested_l1, source_partitions = _membership_evidence(row)
+            row_partitions.update(
+                code for code in source_partitions if code in partition_codes
+            )
             expected_row = _normalize_membership_row(
                 raw_row,
                 snapshot_id=candidate.snapshot_id,
@@ -590,6 +624,7 @@ def validate_candidate(
             )
             if dict(row) != expected_row:
                 reject("invalid_membership_lineage")
+                row_failed = True
             declared_l1 = _text(expected_row.get("l1_code"))
             mismatched_partitions = {
                 source_partition
@@ -598,22 +633,45 @@ def validate_candidate(
             }
             if mismatched_partitions:
                 scope_mismatch_partitions.update(mismatched_partitions)
+                semantically_failed_partitions.update(mismatched_partitions)
                 reject("partition_scope_mismatch")
+                row_failed = True
         except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
             reject("invalid_membership_lineage")
+            row_failed = True
+            try:
+                evidence = json.loads(_text(row.get("raw_json")))
+                if isinstance(evidence, dict):
+                    requested_l1 = evidence.get("requested_l1")
+                    source_partitions = evidence.get("source_partitions")
+                    if isinstance(requested_l1, str) and requested_l1 in partition_codes:
+                        row_partitions.add(requested_l1)
+                    if isinstance(source_partitions, list):
+                        row_partitions.update(
+                            code
+                            for code in source_partitions
+                            if isinstance(code, str) and code in partition_codes
+                        )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
         if any(not _text(row.get(field)) for field in required_membership_fields):
             reject("missing_required_membership_field")
+            row_failed = True
         symbol = _text(row.get("symbol"))
         if symbol and not _ASHARE_SYMBOL.fullmatch(symbol):
             reject("invalid_membership_symbol")
+            row_failed = True
         if _text(row.get("is_current")).upper() != "Y" or _text(row.get("out_date")):
             reject("non_current_membership")
+            row_failed = True
 
         assignment = tuple(_text(row.get(f"l{level}_code")) for level in (1, 2, 3))
-        if symbol in assignments and assignments[symbol] != assignment:
+        if symbol in assignments and assignments[symbol][0] != assignment:
             reject("conflicting_current_assignment")
+            row_failed = True
+            semantically_failed_partitions.update(assignments[symbol][1])
         elif symbol:
-            assignments[symbol] = assignment
+            assignments[symbol] = (assignment, set(row_partitions))
             unique_symbols.add(symbol)
 
         resolved_taxonomy: dict[int, Mapping[str, Any]] = {}
@@ -622,10 +680,12 @@ def validate_candidate(
             taxonomy = taxonomy_by_level_and_index.get((f"L{level}", code))
             if taxonomy is None:
                 reject("unresolved_taxonomy_code")
+                row_failed = True
             else:
                 resolved_taxonomy[level] = taxonomy
                 if _text(row.get(f"l{level}_name")) != _text(taxonomy.get("industry_name")):
                     reject("taxonomy_name_mismatch")
+                    row_failed = True
 
         if len(resolved_taxonomy) == 3:
             if _text(resolved_taxonomy[2].get("parent_industry_code")) != _text(
@@ -634,6 +694,14 @@ def validate_candidate(
                 resolved_taxonomy[2].get("industry_code")
             ):
                 reject("membership_hierarchy_mismatch")
+                row_failed = True
+
+        if not row_partitions:
+            declared_l1 = _text(row.get("l1_code"))
+            if declared_l1 in partition_codes:
+                row_partitions.add(declared_l1)
+        if row_failed:
+            semantically_failed_partitions.update(row_partitions)
 
     if membership_count < min_rows:
         reject("membership_rows_below_min")
@@ -653,12 +721,19 @@ def validate_candidate(
         code not in candidate.partition_failures
         and 0 < count < PROVIDER_PAGE_LIMIT
         and code not in scope_mismatch_partitions
-        and candidate.deduplicated_partition_counts.get(code) == count
-        and candidate.declared_partition_counts.get(code) == count
+        and code not in semantically_failed_partitions
+        and 0 < candidate.deduplicated_partition_counts.get(code, 0) <= count
+        and candidate.declared_partition_counts.get(code)
+        == candidate.deduplicated_partition_counts.get(code)
         for code, count in candidate.partition_counts.items()
     )
+    accepted = (
+        not errors
+        and EXPECTED_PARTITION_COUNT == 31
+        and successful_partitions == EXPECTED_PARTITION_COUNT
+    )
     return SnapshotValidation(
-        accepted=not errors,
+        accepted=accepted,
         errors=tuple(errors),
         expected_partition_count=EXPECTED_PARTITION_COUNT,
         successful_partition_count=successful_partitions,

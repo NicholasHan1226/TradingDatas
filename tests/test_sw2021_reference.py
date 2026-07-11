@@ -344,6 +344,16 @@ def test_successful_partition_count_requires_nonempty_bounded_valid_response(
     assert validation.successful_partition_count == 30
 
 
+def test_invalid_membership_row_fails_its_requested_partition_semantically() -> None:
+    candidate, active = candidate_fixture("missing_name")
+
+    validation = validate_candidate(candidate, active, min_rows=1, max_rows=10_000)
+
+    assert validation.accepted is False
+    assert "missing_required_membership_field" in validation.errors
+    assert validation.successful_partition_count == 30
+
+
 def test_empty_provider_partition_preserves_zero_source_count_and_is_rejected() -> None:
     taxonomy = _raw_taxonomy()
     memberships = _raw_memberships()
@@ -614,6 +624,34 @@ def test_same_symbol_and_assignment_is_stably_deduplicated() -> None:
     assert comparable_first == comparable_second
     keys = [row["membership_key"] for row in first.membership_rows]
     assert len(keys) == len(set(keys))
+
+
+def test_same_partition_same_assignment_duplicate_remains_semantically_successful() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    memberships.append(dict(memberships[0]))
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        return [row for row in memberships if row["l1_code"] == params["l1_code"]]
+
+    candidate = collect_candidate(
+        fetch,
+        snapshot_id="snapshot-valid-duplicate",
+        source_run_id="run-valid-duplicate",
+    )
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert sum(candidate.partition_counts.values()) == 101
+    assert sum(candidate.deduplicated_partition_counts.values()) == 100
+    assert validation.successful_partition_count == 31
+    assert validation.accepted is True
 
 
 def test_same_assignment_smuggled_across_partitions_is_deduplicated_but_rejected() -> None:
