@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from storage import duckdb_schema, schema  # noqa: E402
 from storage.schema_contract import (  # noqa: E402
+    SQLITE_EXPRESSION_INDEXES,
     TABLES,
     TYPE_MAP,
     render_schema,
@@ -46,6 +47,11 @@ def validate_contract() -> list[str]:
             missing_index = [column for column in index_columns if column not in column_names]
             if missing_index:
                 errors.append(f"{table.name}.{index_name}: index references missing columns {missing_index}")
+        for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
+            if not index_name:
+                errors.append(f"{table.name}: expression index has empty name")
+            if not expressions or any(not expression.strip() for expression in expressions):
+                errors.append(f"{table.name}.{index_name}: expression index has empty terms")
 
     daily_pk = table_primary_keys().get("market_bars_daily")
     if daily_pk != EXPECTED_DAILY_PK:
@@ -89,19 +95,33 @@ def _validate_sqlite_render() -> list[str]:
             if actual != expected:
                 errors.append(f"sqlite {table.name}: column drift expected {expected}, got {actual}")
             index_rows = conn.execute(f"PRAGMA index_list({table.name})").fetchall()
+            expression_indexes = dict(SQLITE_EXPRESSION_INDEXES.get(table.name, ()))
             actual_indexes = {
                 row[1]: tuple(
                     info_row[2]
                     for info_row in conn.execute(f"PRAGMA index_info({row[1]})").fetchall()
                 )
                 for row in index_rows
-                if row[1].startswith("idx_")
+                if row[1].startswith("idx_") and row[1] not in expression_indexes
             }
             expected_indexes = dict(table.indexes)
             if actual_indexes != expected_indexes:
                 errors.append(
                     f"sqlite {table.name}: index drift expected {expected_indexes}, got {actual_indexes}"
                 )
+            for index_name, expressions in expression_indexes.items():
+                row = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+                    (index_name,),
+                ).fetchone()
+                rendered_sql = " ".join(str(row[0] if row else "").split())
+                if not row or any(
+                    " ".join(expression.split()) not in rendered_sql
+                    for expression in expressions
+                ):
+                    errors.append(
+                        f"sqlite {table.name}: expression index drift for {index_name}"
+                    )
     finally:
         conn.close()
     return errors

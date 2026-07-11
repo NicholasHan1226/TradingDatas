@@ -72,7 +72,7 @@ def _add_missing_columns(conn: sqlite3.Connection) -> int:
 
 def _create_missing_indexes(conn: sqlite3.Connection) -> int:
     """Create contract indexes after additive columns are available."""
-    from storage.schema_contract import TABLES
+    from storage.schema_contract import SQLITE_EXPRESSION_INDEXES, TABLES
 
     created = 0
     for table in TABLES:
@@ -94,6 +94,14 @@ def _create_missing_indexes(conn: sqlite3.Connection) -> int:
             conn.execute(
                 f"CREATE INDEX {_quote_identifier(index_name)} "
                 f"ON {_quote_identifier(table.name)} ({column_sql})"
+            )
+            created += 1
+        for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
+            if index_name in existing:
+                continue
+            conn.execute(
+                f"CREATE INDEX {_quote_identifier(index_name)} "
+                f"ON {_quote_identifier(table.name)} ({', '.join(expressions)})"
             )
             created += 1
     return created

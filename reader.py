@@ -37,6 +37,12 @@ import warnings as _warnings
 from env_bootstrap import env_float, env_int
 from pagination import decode_cursor, encode_cursor
 from runtime_paths import marketdata_sqlite_path, runtime_root, sharedsignals_root
+from storage.schema_contract import (
+    EVENT_CURSOR_HASH_SQL,
+    EVENT_CURSOR_KEY_SQL,
+    EVENT_CURSOR_REVISION_SQL,
+    EVENT_CURSOR_TIME_SQL,
+)
 
 
 class _LazyPath:
@@ -946,26 +952,20 @@ def _get_events_page_cached(
     # Keep the SQL ordering, cursor predicate and cursor payload on exactly the
     # same normalized keys.  Legacy rows can predate populated event_id and
     # revision fields, so event_hash and revision zero are stable fallbacks.
-    time_expr = (
-        "COALESCE(NULLIF(event_time, ''), NULLIF(collected_at, ''), "
-        "NULLIF(trade_date, ''), '')"
-    )
-    event_key_expr = "COALESCE(NULLIF(event_id, ''), NULLIF(event_hash, ''), '')"
-    revision_expr = "COALESCE(revision, 0)"
+    time_expr = EVENT_CURSOR_TIME_SQL
+    event_key_expr = EVENT_CURSOR_KEY_SQL
+    revision_expr = EVENT_CURSOR_REVISION_SQL
+    event_hash_expr = EVENT_CURSOR_HASH_SQL
     if cursor:
-        sort_key = decode_cursor(cursor, scope="events")
-        if (
-            len(sort_key) != 3
-            or not isinstance(sort_key[0], str)
-            or not isinstance(sort_key[1], str)
-            or not isinstance(sort_key[2], int)
-        ):
-            raise ValueError("invalid cursor")
-        cursor_time, cursor_event_id, cursor_revision = sort_key
+        cursor_time, cursor_event_id, cursor_revision, cursor_event_hash = (
+            _decode_event_cursor(cursor)
+        )
         where.append(
             f"({time_expr} < ? OR "
             f"({time_expr} = ? AND {event_key_expr} < ?) OR "
-            f"({time_expr} = ? AND {event_key_expr} = ? AND {revision_expr} < ?))"
+            f"({time_expr} = ? AND {event_key_expr} = ? AND {revision_expr} < ?) OR "
+            f"({time_expr} = ? AND {event_key_expr} = ? AND {revision_expr} = ? "
+            f"AND {event_hash_expr} < ?))"
         )
         params.extend(
             [
@@ -975,6 +975,10 @@ def _get_events_page_cached(
                 cursor_time,
                 cursor_event_id,
                 cursor_revision,
+                cursor_time,
+                cursor_event_id,
+                cursor_revision,
+                cursor_event_hash,
             ]
         )
 
@@ -994,20 +998,17 @@ def _get_events_page_cached(
     rows, db_degraded = _sqlite_rows(
         f"SELECT *, {time_expr} AS __cursor_time, "
         f"{event_key_expr} AS __cursor_event_key, "
-        f"{revision_expr} AS __cursor_revision FROM market_events "
+        f"{revision_expr} AS __cursor_revision, "
+        f"{event_hash_expr} AS __cursor_event_hash FROM market_events "
         f"WHERE {' AND '.join(where)} "
         "ORDER BY __cursor_time DESC, __cursor_event_key DESC, "
-        "__cursor_revision DESC LIMIT ?",
+        "__cursor_revision DESC, __cursor_event_hash DESC LIMIT ?",
         (*tuple(params), page_limit + 1),
         "market_events",
     )
     if db_degraded is None and rows:
-        if any(
-            not isinstance(row.get("__cursor_event_key"), str)
-            or not row.get("__cursor_event_key")
-            for row in rows
-        ):
-            raise ValueError("event page contains row without stable event identity")
+        if any(not _valid_event_cursor_row(row) for row in rows):
+            raise ValueError("event page contains row without stable event cursor")
         has_more = len(rows) > page_limit
         page_rows = rows[:page_limit]
         collected_at = max((str(row.get("collected_at") or "") for row in page_rows), default="") or None
@@ -1018,19 +1019,14 @@ def _get_events_page_cached(
                 last_row.get("__cursor_time"),
                 last_row.get("__cursor_event_key"),
                 last_row.get("__cursor_revision"),
+                last_row.get("__cursor_event_hash"),
             )
-            if not (
-                isinstance(sort_key[0], str)
-                and isinstance(sort_key[1], str)
-                and bool(sort_key[1])
-                and isinstance(sort_key[2], int)
-            ):
-                raise ValueError("event page boundary lacks stable event identity")
             next_cursor = encode_cursor("events", "", sort_key)
         for row in page_rows:
             row.pop("__cursor_time", None)
             row.pop("__cursor_event_key", None)
             row.pop("__cursor_revision", None)
+            row.pop("__cursor_event_hash", None)
         return _json_cached(
             lambda: {
                 "rows": _rows_to_wrappers(
@@ -1079,13 +1075,32 @@ def _event_code_variants(value: Any) -> set[str]:
     return {item for item in variants if item}
 
 
-def _decode_event_cursor(cursor: str) -> tuple[str, str, int]:
+def _valid_event_cursor_row(row: dict[str, Any]) -> bool:
+    revision = row.get("__cursor_revision")
+    return (
+        isinstance(row.get("__cursor_time"), str)
+        and bool(row.get("__cursor_time"))
+        and isinstance(row.get("__cursor_event_key"), str)
+        and bool(row.get("__cursor_event_key"))
+        and isinstance(revision, int)
+        and not isinstance(revision, bool)
+        and isinstance(row.get("__cursor_event_hash"), str)
+        and bool(row.get("__cursor_event_hash"))
+    )
+
+
+def _decode_event_cursor(cursor: str) -> tuple[str, str, int, str]:
     sort_key = decode_cursor(cursor, scope="events")
     if (
-        len(sort_key) != 3
+        len(sort_key) != 4
         or not isinstance(sort_key[0], str)
+        or not sort_key[0]
         or not isinstance(sort_key[1], str)
+        or not sort_key[1]
         or not isinstance(sort_key[2], int)
+        or isinstance(sort_key[2], bool)
+        or not isinstance(sort_key[3], str)
+        or not sort_key[3]
     ):
         raise ValueError("invalid cursor")
     return sort_key

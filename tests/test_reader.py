@@ -123,18 +123,34 @@ class TestReaderEvents:
     def test_event_cursor_is_opaque_endpoint_bound_and_snapshot_checked(self):
         from pagination import decode_cursor, encode_cursor
 
-        cursor = encode_cursor("events", "snap-1", ("2026-07-11T09:30:00Z", "event-1", 2))
+        cursor = encode_cursor(
+            "events",
+            "snap-1",
+            ("2026-07-11T09:30:00Z", "event-1", 2, "hash-1"),
+        )
 
         assert "event-1" not in cursor
         assert decode_cursor(cursor, scope="events", snapshot_id="snap-1") == (
             "2026-07-11T09:30:00Z",
             "event-1",
             2,
+            "hash-1",
         )
         with pytest.raises(ValueError, match="^invalid cursor$"):
             decode_cursor(cursor, scope="industry_taxonomy")
         with pytest.raises(ValueError, match="^cursor snapshot mismatch$"):
             decode_cursor(cursor, scope="events", snapshot_id="snap-2")
+
+    def test_event_cursor_rejects_legacy_three_part_sort_key(self):
+        import reader
+        from pagination import encode_cursor
+
+        legacy_cursor = encode_cursor(
+            "events", "", ("2026-07-11T09:30:00Z", "event-1", 2)
+        )
+
+        with pytest.raises(ValueError, match="^invalid cursor$"):
+            reader.get_events_page(limit=2, cursor=legacy_cursor)
 
     @pytest.mark.parametrize("cursor", ["", "not-base64!", "e30"])
     def test_event_cursor_rejects_malformed_payloads(self, cursor: str):
@@ -198,6 +214,101 @@ class TestReaderEvents:
         assert legacy_first == first["rows"]
         assert first["row_count"] == 2
         assert second == {"rows": second["rows"], "next_cursor": None, "row_count": 2}
+
+    def test_events_cursor_traverses_identical_logical_keys_by_physical_hash(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, 'same-event', 1, 'unit', 'news',
+                          '2026-07-11T09:30:00+00:00', '20260711', 'Ashare',
+                          '000001.SZ', ?, '', '', 'unit', 'unit',
+                          '2026-07-11T09:31:00+00:00', '{}')
+                """,
+                [(f"physical-hash-{idx}", f"event {idx}") for idx in range(1, 5)],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        first = reader.get_events_page(limit=2)
+        second = reader.get_events_page(limit=2, cursor=first["next_cursor"])
+
+        hashes = [row["data"]["event_hash"] for row in first["rows"] + second["rows"]]
+        assert hashes == [
+            "physical-hash-4",
+            "physical-hash-3",
+            "physical-hash-2",
+            "physical-hash-1",
+        ]
+        assert len(hashes) == len(set(hashes))
+        assert second["next_cursor"] is None
+
+    @pytest.mark.parametrize(
+        ("bad_field", "bad_value"),
+        [("__cursor_time", ""), ("__cursor_revision", "not-an-integer")],
+    )
+    def test_events_page_fails_closed_for_bad_non_boundary_lookahead_row(
+        self, monkeypatch, bad_field: str, bad_value: object
+    ):
+        import reader
+
+        rows = [
+            {
+                "event_hash": "h3",
+                "event_id": "event-3",
+                "revision": 1,
+                "collected_at": "2026-07-11T10:00:00+00:00",
+                "__cursor_time": "2026-07-11T09:33:00+00:00",
+                "__cursor_event_key": "event-3",
+                "__cursor_revision": 1,
+                "__cursor_event_hash": "h3",
+            },
+            {
+                "event_hash": "h2",
+                "event_id": "event-2",
+                "revision": 1,
+                "collected_at": "2026-07-11T10:00:00+00:00",
+                "__cursor_time": "2026-07-11T09:32:00+00:00",
+                "__cursor_event_key": "event-2",
+                "__cursor_revision": 1,
+                "__cursor_event_hash": "h2",
+            },
+            {
+                "event_hash": "h1",
+                "event_id": "event-1",
+                "revision": 1,
+                "collected_at": "2026-07-11T10:00:00+00:00",
+                "__cursor_time": "2026-07-11T09:31:00+00:00",
+                "__cursor_event_key": "event-1",
+                "__cursor_revision": 1,
+                "__cursor_event_hash": "h1",
+            },
+        ]
+        rows[2][bad_field] = bad_value
+        monkeypatch.setattr(reader, "_sqlite_rows", lambda *args, **kwargs: (rows, None))
+        reader.clear_caches()
+
+        page = reader.get_events_page(limit=2)
+
+        assert page["row_count"] == 0
+        assert page["next_cursor"] is None
+        assert page["rows"][0]["degraded"] is True
+        assert "stable event cursor" in page["rows"][0]["lineage"]["reason"]
 
     @pytest.mark.parametrize(
         ("legacy_event_id", "legacy_revision"),
@@ -266,6 +377,7 @@ class TestReaderEvents:
             "2026-07-11T09:32:00+00:00",
             legacy_event_id or "legacy-h4",
             legacy_revision if legacy_revision is not None else 0,
+            "legacy-h4",
         )
         second = reader.get_events_page(limit=4, cursor=first["next_cursor"])
 
@@ -330,7 +442,7 @@ class TestReaderEvents:
         assert page["row_count"] == 0
         assert page["next_cursor"] is None
         assert page["rows"][0]["degraded"] is True
-        assert "stable event identity" in page["rows"][0]["lineage"]["reason"]
+        assert "stable event cursor" in page["rows"][0]["lineage"]["reason"]
 
     def test_events_page_preserves_degraded_shape(self, tmp_path: Path, monkeypatch):
         import reader

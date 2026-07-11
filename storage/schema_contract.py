@@ -39,6 +39,31 @@ TYPE_MAP: dict[str, dict[str, str]] = {
 }
 
 
+# SQLite read-side keyset order for ``reader.get_events_page``.  These
+# expressions are shared with the reader so ORDER BY, cursor predicates and
+# the supporting expression index cannot silently drift apart.
+EVENT_CURSOR_TIME_SQL = (
+    "COALESCE(NULLIF(event_time, ''), NULLIF(collected_at, ''), "
+    "NULLIF(trade_date, ''), '')"
+)
+EVENT_CURSOR_KEY_SQL = "COALESCE(NULLIF(event_id, ''), NULLIF(event_hash, ''), '')"
+EVENT_CURSOR_REVISION_SQL = "COALESCE(revision, 0)"
+EVENT_CURSOR_HASH_SQL = "COALESCE(NULLIF(event_hash, ''), '')"
+SQLITE_EXPRESSION_INDEXES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "market_events": (
+        (
+            "idx_market_events_cursor_order",
+            (
+                EVENT_CURSOR_TIME_SQL,
+                EVENT_CURSOR_KEY_SQL,
+                EVENT_CURSOR_REVISION_SQL,
+                EVENT_CURSOR_HASH_SQL,
+            ),
+        ),
+    ),
+}
+
+
 TABLES: tuple[Table, ...] = (
     Table(
         name="market_assets",
@@ -409,13 +434,19 @@ def render_table(table: Table, dialect: str) -> str:
     return f"CREATE TABLE IF NOT EXISTS {table.name} (\n{body}\n);"
 
 
-def render_indexes(table: Table) -> str:
+def render_indexes(table: Table, dialect: str = "sqlite") -> str:
     """Render CREATE INDEX statements for a table."""
     statements = []
     for index_name, columns in table.indexes:
         statements.append(
             f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} ({', '.join(columns)});"
         )
+    if dialect == "sqlite":
+        for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
+            statements.append(
+                f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} "
+                f"({', '.join(expressions)});"
+            )
     return "\n".join(statements)
 
 
@@ -427,7 +458,7 @@ def render_schema(dialect: str) -> str:
     statements: list[str] = []
     for table in TABLES:
         statements.append(render_table(table, dialect))
-        index_sql = render_indexes(table)
+        index_sql = render_indexes(table, dialect)
         if index_sql:
             statements.append(index_sql)
     return "\n\n".join(statements) + "\n"

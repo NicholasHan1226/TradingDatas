@@ -445,6 +445,52 @@ def test_apply_migrations_creates_event_identity_indexes_for_legacy_schema(tmp_p
             "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='market_events'"
         ).fetchall()
     }
+    plan = conn.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT event_hash
+        FROM market_events
+        ORDER BY
+          COALESCE(NULLIF(event_time, ''), NULLIF(collected_at, ''), NULLIF(trade_date, ''), '') DESC,
+          COALESCE(NULLIF(event_id, ''), NULLIF(event_hash, ''), '') DESC,
+          COALESCE(revision, 0) DESC,
+          COALESCE(NULLIF(event_hash, ''), '') DESC
+        LIMIT 11
+        """
+    ).fetchall()
     conn.close()
     assert result["status"] == "ok"
-    assert indexes >= {"idx_market_events_identity", "idx_market_events_time_identity"}
+    assert indexes >= {
+        "idx_market_events_identity",
+        "idx_market_events_time_identity",
+        "idx_market_events_cursor_order",
+    }
+    detail = "\n".join(str(row[3]) for row in plan)
+    assert "USING INDEX idx_market_events_cursor_order" in detail
+    assert "USE TEMP B-TREE" not in detail
+
+
+def test_event_cursor_order_uses_matching_index_without_temp_sort(tmp_path: Path) -> None:
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    plan = conn.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT event_hash
+        FROM market_events
+        ORDER BY
+          COALESCE(NULLIF(event_time, ''), NULLIF(collected_at, ''), NULLIF(trade_date, ''), '') DESC,
+          COALESCE(NULLIF(event_id, ''), NULLIF(event_hash, ''), '') DESC,
+          COALESCE(revision, 0) DESC,
+          COALESCE(NULLIF(event_hash, ''), '') DESC
+        LIMIT 11
+        """
+    ).fetchall()
+    conn.close()
+
+    detail = "\n".join(str(row[3]) for row in plan)
+    assert "USING INDEX idx_market_events_cursor_order" in detail
+    assert "USE TEMP B-TREE" not in detail
