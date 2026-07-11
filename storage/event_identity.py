@@ -5,6 +5,9 @@ import json
 from typing import Any, Mapping
 
 
+# Contract: provider-local native IDs are namespaced by normalized provider.
+# ``source_family`` is lineage metadata only and is never the identity namespace.
+
 NATIVE_ID_FIELDS = (
     "event_id",
     "id",

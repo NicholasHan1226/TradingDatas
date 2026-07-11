@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import sqlite3
 import sys
@@ -130,39 +131,72 @@ def _backfill_event_identity(conn: sqlite3.Connection) -> int:
         FROM market_events
         """
     ).fetchall()
-    grouped: dict[str, list[tuple]] = {}
+    protected_revisions: dict[str, set[int]] = {}
+    legacy_grouped: dict[str, list[tuple]] = {}
     for row in rows:
-        identity_row = {
-            "event_time": row[7],
-            "trade_date": row[8],
-            "symbol": row[9],
-            "title": row[10],
-            "content": row[11],
-            "url": row[12],
-            "source": row[13],
-            "raw_json": row[15],
-        }
+        current_id = str(row[2] or "").strip()
+        current_revision = int(row[3] or 0)
+        if current_id.startswith("evt:") and current_revision > 0:
+            protected_revisions.setdefault(current_id, set()).add(current_revision)
+            continue
+
         try:
-            expected_id = stable_event_id(row[5], row[6], identity_row)
+            decoded_raw = json.loads(row[15] or "{}")
+        except (TypeError, ValueError):
+            decoded_raw = {}
+        identity_row = dict(decoded_raw) if isinstance(decoded_raw, dict) else {}
+        for key, value in (
+            ("event_time", row[7]),
+            ("trade_date", row[8]),
+            ("symbol", row[9]),
+            ("title", row[10]),
+            ("content", row[11]),
+            ("url", row[12]),
+            ("source", row[13]),
+        ):
+            if key not in identity_row and value not in (None, ""):
+                identity_row[key] = value
+        identity_row["raw_json"] = row[15]
+        try:
+            expected_id = (
+                current_id
+                if current_id.startswith("evt:")
+                else stable_event_id(row[5], row[6], identity_row)
+            )
         except ValueError:
-            expected_id = str(row[2] or row[1] or "").strip()
-        grouped.setdefault(expected_id, []).append(row)
+            expected_id = str(current_id or row[1] or "").strip()
+        legacy_grouped.setdefault(expected_id, []).append(row)
 
     updated = 0
-    for expected_id, identity_rows in grouped.items():
+    for expected_id, identity_rows in legacy_grouped.items():
         ordered = sorted(
             identity_rows,
-            key=lambda row: (str(row[7] or ""), str(row[14] or ""), int(row[0])),
+            key=lambda row: (
+                str(row[7] or ""),
+                str(row[14] or ""),
+                str(row[1] or ""),
+            ),
         )
-        for revision, row in enumerate(ordered, start=1):
+        used_revisions = set(protected_revisions.get(expected_id, set()))
+        revision = 1
+        for row in ordered:
+            while revision in used_revisions:
+                revision += 1
             expected_family = source_family(row[5])
             if row[2] == expected_id and row[3] == revision and row[4] == expected_family:
+                used_revisions.add(revision)
+                revision += 1
                 continue
+            # Historical physical hashes are release-gated compatibility keys.
+            # They remain unchanged even though only Task 2+ writes follow the
+            # event_id/revision/content-fingerprint hash formula.
             conn.execute(
                 "UPDATE market_events SET event_id=?, revision=?, source_family=? WHERE rowid=?",
                 (expected_id, revision, expected_family, row[0]),
             )
             updated += 1
+            used_revisions.add(revision)
+            revision += 1
     return updated
 
 
