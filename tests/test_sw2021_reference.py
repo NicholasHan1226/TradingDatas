@@ -4,6 +4,7 @@ import json
 import sqlite3
 from dataclasses import replace
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -861,3 +862,338 @@ def test_eligible_universe_uses_only_valid_named_non_delisted_tushare_stocks() -
 def test_dedicated_collector_does_not_change_generic_api_mappings() -> None:
     assert API_TO_TABLE_MAP["index_classify"] == "market_assets"
     assert API_TO_TABLE_MAP["index_member_all"] == "market_relationships"
+
+
+# ---------------------------------------------------------------------------
+# Task 5 integration tests — run_collection and CLI lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_run_collection_promotes_and_supersedes_old_snapshot(tmp_path: Path) -> None:
+    """End-to-end: collect → validate → promote, superseding old."""
+    import sqlite3
+
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_promote.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    # Seed market_assets with eligible stocks
+    for number in range(1, 101):
+        conn.execute(
+            "INSERT OR IGNORE INTO market_assets (market, symbol, name, asset_type, provider) "
+            "VALUES ('Ashare', ?, ?, 'stock', 'tushare_stock_basic')",
+            (f"{number:06d}.SZ", f"Stock {number}"),
+        )
+    # Seed old promoted (single-row INSERT, auto-committed)
+    conn.execute(
+        """INSERT INTO market_industry_snapshots
+           (snapshot_id, taxonomy_system, taxonomy_version, provider,
+            started_at, completed_at, status, expected_partition_count,
+            successful_partition_count, taxonomy_row_count, membership_row_count,
+            unique_symbol_count, active_universe_count, coverage_ratio,
+            validation_errors_json, source_run_id, promoted_at)
+           VALUES ('snap-old', 'SW', 'SW2021', 'tushare',
+            '2026-01-01T00:00:00+00:00', '2026-01-01T01:00:00+00:00', 'promoted',
+            31, 31, 93, 100, 100, 100, 1.0,
+            '[]', 'run-old', '2026-01-01T01:00:00+00:00')"""
+    )
+    conn.commit()
+    conn.close()
+
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        if api_name == "index_classify":
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
+        return [row for row in memberships if row["l1_code"] == params["l1_code"]]
+
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-new",
+        source_run_id="run-new",
+        min_rows=1,
+        max_rows=10_000,
+        fetch=fetch,
+    )
+    assert exit_code == 0
+
+    conn = sqlite3.connect(str(db_path))
+    old_status = conn.execute(
+        "SELECT status FROM market_industry_snapshots WHERE snapshot_id='snap-old'"
+    ).fetchone()
+    new_status = conn.execute(
+        "SELECT status FROM market_industry_snapshots WHERE snapshot_id='snap-new'"
+    ).fetchone()
+    assert old_status[0] == "superseded"
+    assert new_status[0] == "promoted"
+    tax_count = conn.execute(
+        "SELECT COUNT(*) FROM market_industry_taxonomy WHERE snapshot_id='snap-new'"
+    ).fetchone()[0]
+    mem_count = conn.execute(
+        "SELECT COUNT(*) FROM market_industry_memberships WHERE snapshot_id='snap-new'"
+    ).fetchone()[0]
+    assert tax_count == 93
+    assert mem_count == 100
+    conn.close()
+
+
+def test_run_collection_rejects_and_persists_structured_errors(tmp_path: Path) -> None:
+    """When validation rejects, exit code 1 and rejected attempt is stored."""
+    import sqlite3
+
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_reject.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    # Seed market_assets with 100 stocks (universe size 100)
+    for number in range(1, 101):
+        conn.execute(
+            "INSERT OR IGNORE INTO market_assets (market, symbol, name, asset_type, provider) "
+            "VALUES ('Ashare', ?, ?, 'stock', 'tushare_stock_basic')",
+            (f"{number:06d}.SZ", f"Stock {number}"),
+        )
+    conn.commit()
+    conn.close()
+
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    # Only 50 stocks → coverage below 0.90 for 100-stock universe
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        if api_name == "index_classify":
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
+        return [
+            row for row in memberships
+            if row["l1_code"] == params["l1_code"] and int(row["ts_code"][:6]) <= 50
+        ]
+
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-rej",
+        source_run_id="run-rej",
+        min_rows=1,
+        max_rows=10_000,
+        fetch=fetch,
+    )
+    # Should be rejected due to coverage
+    assert exit_code == 1
+
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT status, validation_errors_json FROM market_industry_snapshots "
+        "WHERE snapshot_id='snap-rej'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "rejected"
+    errors = json.loads(row[1])
+    assert "coverage_below_0.90" in errors
+    conn.close()
+
+
+def test_run_collection_exit_code_2_on_provider_failure(tmp_path: Path) -> None:
+    """Provider failure is recorded after the collecting row becomes visible."""
+    import sqlite3
+
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_provider_fail.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    conn.commit()
+    conn.close()
+
+    observed_statuses: list[str] = []
+
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        probe = sqlite3.connect(str(db_path))
+        try:
+            row = probe.execute(
+                "SELECT status FROM market_industry_snapshots "
+                "WHERE snapshot_id='snap-fail'"
+            ).fetchone()
+            observed_statuses.append(row[0] if row else "missing")
+        finally:
+            probe.close()
+        raise RuntimeError("provider timeout")
+
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-fail",
+        source_run_id="run-fail",
+        fetch=fetch,
+    )
+    assert exit_code == 2
+    assert observed_statuses == ["collecting"]
+
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT status, validation_errors_json, completed_at "
+        "FROM market_industry_snapshots WHERE snapshot_id='snap-fail'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "rejected"
+    assert json.loads(row[1]) == [
+        {"code": "taxonomy_fetch_failed", "evidence": {}}
+    ]
+    assert row[2]
+    conn.close()
+
+
+def test_run_collection_write_failure_records_rejected_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rolled-back promotion is followed by a durable rejection record."""
+    import storage.industry_snapshot_store as store
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_write_fail.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    for number in range(1, 101):
+        conn.execute(
+            "INSERT OR IGNORE INTO market_assets "
+            "(market, symbol, name, asset_type, provider) "
+            "VALUES ('Ashare', ?, ?, 'stock', 'tushare_stock_basic')",
+            (f"{number:06d}.SZ", f"Stock {number}"),
+        )
+    conn.commit()
+    conn.close()
+
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        if api_name == "index_classify":
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
+        return [row for row in memberships if row["l1_code"] == params["l1_code"]]
+
+    def fail_membership_insert(*args: Any, **kwargs: Any) -> int:
+        raise sqlite3.OperationalError("simulated promotion failure")
+
+    monkeypatch.setattr(store, "_insert_memberships", fail_membership_insert)
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-write-fail",
+        source_run_id="run-write-fail",
+        fetch=fetch,
+    )
+    assert exit_code == 2
+
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT status, validation_errors_json FROM market_industry_snapshots "
+        "WHERE snapshot_id='snap-write-fail'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "rejected"
+    assert json.loads(row[1]) == [
+        {
+            "code": "promotion_write_failed",
+            "evidence": {"exception_type": "OperationalError"},
+        }
+    ]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM market_industry_taxonomy "
+        "WHERE snapshot_id='snap-write-fail'"
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM market_industry_memberships "
+        "WHERE snapshot_id='snap-write-fail'"
+    ).fetchone()[0] == 0
+    conn.close()
+
+
+def test_run_collection_db_not_found_returns_2(tmp_path: Path) -> None:
+    from collectors.tushare.sw2021_reference import run_collection
+
+    exit_code = run_collection(
+        str(tmp_path / "nonexistent.db"),
+        snapshot_id="snap-x",
+        source_run_id="run-x",
+    )
+    assert exit_code == 2
+
+
+def test_run_collection_no_prior_promoted_first_promotion_succeeds(tmp_path: Path) -> None:
+    """First-ever promotion with no prior promoted row."""
+    import sqlite3
+
+    from collectors.tushare.sw2021_reference import run_collection
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "test_first.db"
+    conn = sqlite3.connect(str(db_path))
+    for stmt in SCHEMA_SQL.split(";"):
+        clean = stmt.strip()
+        if clean and not clean.startswith("--"):
+            conn.execute(clean)
+    # Seed market_assets with eligible stocks
+    for number in range(1, 101):
+        conn.execute(
+            "INSERT OR IGNORE INTO market_assets (market, symbol, name, asset_type, provider) "
+            "VALUES ('Ashare', ?, ?, 'stock', 'tushare_stock_basic')",
+            (f"{number:06d}.SZ", f"Stock {number}"),
+        )
+    conn.commit()
+    conn.close()
+
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+
+    def fetch(api_name: str, params: dict, fields: str) -> list[dict]:
+        if api_name == "index_classify":
+            offset = params["offset"]
+            limit = params["limit"]
+            return taxonomy[offset : offset + limit]
+        return [row for row in memberships if row["l1_code"] == params["l1_code"]]
+
+    exit_code = run_collection(
+        str(db_path),
+        snapshot_id="snap-first",
+        source_run_id="run-first",
+        min_rows=1,
+        max_rows=10_000,
+        fetch=fetch,
+    )
+    assert exit_code == 0
+
+    conn = sqlite3.connect(str(db_path))
+    promoted_count = conn.execute(
+        "SELECT COUNT(*) FROM market_industry_snapshots "
+        "WHERE taxonomy_system='SW' AND taxonomy_version='SW2021' AND status='promoted'"
+    ).fetchone()[0]
+    assert promoted_count == 1
+    conn.close()
+
+
+def test_sw2021_module_exports_run_collection_and_main() -> None:
+    from collectors.tushare.sw2021_reference import main, run_collection
+
+    assert callable(run_collection)
+    assert callable(main)

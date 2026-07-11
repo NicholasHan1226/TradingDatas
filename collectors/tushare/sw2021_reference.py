@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Collect and validate an in-memory SW2021 reference snapshot candidate.
 
-This module deliberately has no persistence or scheduling entry point.  A caller
-must validate the complete candidate before the snapshot store introduced by the
-next rollout task may write or promote it.
+Collection remains unscheduled.  The CLI records every attempted run in the
+snapshot lifecycle tables and promotes only a complete, validated candidate.
 """
 
 from __future__ import annotations
@@ -347,10 +346,17 @@ def collect_candidate(
     *,
     snapshot_id: str,
     source_run_id: str,
+    started_at: str | None = None,
 ) -> IndustryCandidate:
     """Collect one complete in-memory candidate without writing any database."""
 
-    started_at = datetime.now(UTC).isoformat()
+    started_at = (
+        _text(started_at)
+        if started_at is not None
+        else datetime.now(UTC).isoformat()
+    )
+    if not started_at:
+        raise ValueError("started_at must be non-empty")
     taxonomy_raw = _collect_taxonomy_pages(fetch)
     normalized_taxonomy_rows = [
         _normalize_taxonomy_row(row, snapshot_id=snapshot_id, collected_at=started_at)
@@ -743,3 +749,219 @@ def validate_candidate(
         active_universe_count=active_count,
         coverage_ratio=coverage_ratio,
     )
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point (Task 5)
+# ---------------------------------------------------------------------------
+
+
+def run_collection(
+    db_path: str,
+    *,
+    snapshot_id: str,
+    source_run_id: str,
+    min_rows: int = 1,
+    max_rows: int = 10_000,
+    fetch: FetchRows | None = None,
+) -> int:
+    """Execute the full collect→validate→persist lifecycle.
+
+    Returns 0 when a snapshot was promoted and committed.  Returns 1 when
+    the candidate was collected but rejected (a structured rejected attempt
+    is still persisted).  Returns 2 on provider/collection failure.
+    """
+    import logging
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from storage.industry_snapshot_store import (
+        _industry_lock,
+        promote_snapshot,
+        record_failed_attempt,
+        reject_snapshot,
+        start_snapshot,
+    )
+
+    logger = logging.getLogger(__name__)
+
+    fetch_fn = fetch or _default_fetch
+    db_path_obj = Path(db_path)
+
+    if not db_path_obj.exists():
+        logger.error("database not found: %s", db_path_obj)
+        return 2
+
+    with _industry_lock(db_path_obj):
+        conn = sqlite3.connect(str(db_path_obj), timeout=30)
+        try:
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+
+            # 1. Persist the attempt before the first provider call so every
+            # provider/write failure has a durable lifecycle row.
+            started_at = datetime.now(UTC).isoformat()
+            try:
+                start_snapshot(
+                    conn,
+                    snapshot_id=snapshot_id,
+                    source_run_id=source_run_id,
+                    started_at=started_at,
+                )
+            except Exception as exc:
+                logger.error(
+                    "could not start snapshot attempt %s: %s",
+                    snapshot_id,
+                    type(exc).__name__,
+                )
+                return 2
+
+            def record_failure(
+                code: str,
+                evidence: Mapping[str, Any] | None = None,
+            ) -> None:
+                record_failed_attempt(
+                    conn,
+                    snapshot_id=snapshot_id,
+                    source_run_id=source_run_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(UTC).isoformat(),
+                    code=code,
+                    evidence=evidence,
+                )
+
+            # 2. Collect the immutable in-memory candidate.
+            try:
+                candidate = collect_candidate(
+                    fetch_fn,
+                    snapshot_id=snapshot_id,
+                    source_run_id=source_run_id,
+                    started_at=started_at,
+                )
+            except CandidateCollectionError as exc:
+                record_failure(exc.reason, exc.evidence)
+                logger.error("collection failed: %s", exc)
+                return 2
+            except Exception as exc:
+                record_failure(
+                    "collection_failed",
+                    {"exception_type": type(exc).__name__},
+                )
+                logger.error("collection failed: %s", type(exc).__name__)
+                return 2
+
+            # 3. Resolve the authoritative universe and validate.
+            try:
+                active_symbols = eligible_ashare_universe(conn)
+                validation = validate_candidate(
+                    candidate,
+                    active_symbols,
+                    min_rows=min_rows,
+                    max_rows=max_rows,
+                )
+            except Exception as exc:
+                record_failure(
+                    "validation_pipeline_failed",
+                    {"exception_type": type(exc).__name__},
+                )
+                logger.error("validation pipeline failed: %s", type(exc).__name__)
+                return 2
+
+            # 4. Promote atomically or persist a validation rejection.
+            completed_at = datetime.now(UTC).isoformat()
+            if validation.accepted:
+                try:
+                    promote_snapshot(
+                        conn, candidate, validation, completed_at=completed_at
+                    )
+                except Exception as exc:
+                    record_failure(
+                        "promotion_write_failed",
+                        {"exception_type": type(exc).__name__},
+                    )
+                    logger.error("promotion failed: %s", type(exc).__name__)
+                    return 2
+                logger.info(
+                    "snapshot promoted: %s (%d taxonomy, %d memberships)",
+                    snapshot_id,
+                    validation.taxonomy_row_count,
+                    validation.membership_row_count,
+                )
+                return 0
+            else:
+                try:
+                    reject_snapshot(
+                        conn, candidate, validation, completed_at=completed_at
+                    )
+                except Exception as exc:
+                    logger.error("rejection write failed: %s", type(exc).__name__)
+                    return 2
+                logger.warning(
+                    "snapshot rejected: %s errors=%s",
+                    snapshot_id,
+                    list(validation.errors),
+                )
+                return 1
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+
+def main() -> None:
+    import argparse
+    import sys
+    import uuid
+    from datetime import UTC, datetime
+
+    from runtime_paths import marketdata_sqlite_path
+
+    parser = argparse.ArgumentParser(
+        description="Collect, validate, and persist an SW2021 industry snapshot."
+    )
+    parser.add_argument(
+        "--snapshot-id",
+        help="Snapshot identifier (default: auto-generated UUID).",
+    )
+    parser.add_argument(
+        "--source-run-id",
+        help="Source run identifier (default: auto-generated).",
+    )
+    parser.add_argument(
+        "--min-rows",
+        type=int,
+        default=1,
+        help="Minimum membership row count (default: 1).",
+    )
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=10_000,
+        help="Maximum membership row count (default: 10_000).",
+    )
+    parser.add_argument(
+        "--db",
+        help="SQLite database path (default: SHAREDSIGNALS_MARKETDATA_DB env or runtime path).",
+    )
+    args = parser.parse_args()
+
+    snapshot_id = args.snapshot_id or f"sw2021-{uuid.uuid4().hex[:12]}"
+    source_run_id = args.source_run_id or (
+        f"cli-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    )
+    db_path = str(args.db or marketdata_sqlite_path())
+
+    exit_code = run_collection(
+        db_path,
+        snapshot_id=snapshot_id,
+        source_run_id=source_run_id,
+        min_rows=args.min_rows,
+        max_rows=args.max_rows,
+    )
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

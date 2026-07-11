@@ -96,6 +96,15 @@ def _create_missing_indexes(conn: sqlite3.Connection) -> int:
                 f"ON {_quote_identifier(table.name)} ({column_sql})"
             )
             created += 1
+        for index_name, columns, where_clause in table.unique_indexes:
+            if index_name in existing:
+                continue
+            column_sql = ", ".join(_quote_identifier(column) for column in columns)
+            conn.execute(
+                f"CREATE UNIQUE INDEX {_quote_identifier(index_name)} "
+                f"ON {_quote_identifier(table.name)} ({column_sql}) WHERE {where_clause}"
+            )
+            created += 1
         for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
             if index_name in existing:
                 continue

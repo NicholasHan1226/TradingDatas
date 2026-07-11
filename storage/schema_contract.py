@@ -23,6 +23,8 @@ class Table:
     columns: tuple[Column, ...]
     primary_key: tuple[str, ...] = ()
     indexes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Partial unique indexes: (name, columns, where_clause).
+    unique_indexes: tuple[tuple[str, tuple[str, ...], str], ...] = ()
 
 
 TYPE_MAP: dict[str, dict[str, str]] = {
@@ -216,6 +218,13 @@ TABLES: tuple[Table, ...] = (
         ),
         primary_key=("snapshot_id",),
         indexes=(("idx_industry_snapshots_current", ("taxonomy_system", "taxonomy_version", "status")),),
+        unique_indexes=(
+            (
+                "idx_industry_snapshots_one_promoted",
+                ("taxonomy_system", "taxonomy_version"),
+                "status = 'promoted'",
+            ),
+        ),
     ),
     Table(
         name="market_industry_taxonomy",
@@ -441,6 +450,13 @@ def render_indexes(table: Table, dialect: str = "sqlite") -> str:
         statements.append(
             f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} ({', '.join(columns)});"
         )
+    # Partial unique indexes are SQLite-only (DuckDB does not support them).
+    if dialect == "sqlite":
+        for index_name, columns, where_clause in table.unique_indexes:
+            statements.append(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table.name} "
+                f"({', '.join(columns)}) WHERE {where_clause};"
+            )
     if dialect == "sqlite":
         for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
             statements.append(
