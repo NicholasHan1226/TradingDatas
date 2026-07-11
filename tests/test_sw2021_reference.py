@@ -205,6 +205,60 @@ def test_collects_full_hierarchy_and_exactly_31_bounded_partitions() -> None:
     assert '"index_code":"L1-01"' in candidate.taxonomy_rows[0]["raw_json"]
 
 
+@pytest.mark.parametrize("mode", ["too_few", "too_many", "duplicate_l1", "broken_hierarchy"])
+def test_invalid_taxonomy_fails_before_any_membership_call(mode: str) -> None:
+    taxonomy = _raw_taxonomy()
+    if mode == "too_few":
+        taxonomy = [row for row in taxonomy if row["index_code"] != "L1-31"]
+    elif mode == "too_many":
+        taxonomy.extend(
+            [
+                {
+                    "index_code": "L1-32",
+                    "industry_name": "Level 1 32",
+                    "parent_code": "",
+                    "level": "L1",
+                    "industry_code": "320000",
+                    "is_pub": "1",
+                },
+                {
+                    "index_code": "L2-32",
+                    "industry_name": "Level 2 32",
+                    "parent_code": "320000",
+                    "level": "L2",
+                    "industry_code": "321000",
+                    "is_pub": "1",
+                },
+                {
+                    "index_code": "L3-32",
+                    "industry_name": "Level 3 32",
+                    "parent_code": "321000",
+                    "level": "L3",
+                    "industry_code": "321100",
+                    "is_pub": "1",
+                },
+            ]
+        )
+    elif mode == "duplicate_l1":
+        taxonomy.append(dict(taxonomy[0]))
+    else:
+        taxonomy[-1] = dict(taxonomy[-1], parent_code="does-not-exist")
+
+    membership_calls = 0
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        nonlocal membership_calls
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        membership_calls += 1
+        return []
+
+    with pytest.raises(CandidateCollectionError, match="invalid_taxonomy_candidate"):
+        collect_candidate(fetch, snapshot_id=f"snapshot-{mode}", source_run_id="run")
+
+    assert membership_calls == 0
+
+
 def test_provider_partition_failure_is_preserved_and_rejected() -> None:
     def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
         if api_name == "index_classify":
@@ -242,10 +296,10 @@ def test_taxonomy_pagination_continues_after_an_exact_full_page() -> None:
             return []
         return []
 
-    candidate = collect_candidate(fetch, snapshot_id="snapshot-exact-page", source_run_id="run")
+    with pytest.raises(CandidateCollectionError, match="invalid_taxonomy_candidate"):
+        collect_candidate(fetch, snapshot_id="snapshot-exact-page", source_run_id="run")
 
     assert calls == [0, TAXONOMY_PAGE_SIZE]
-    assert len(candidate.taxonomy_rows) == TAXONOMY_PAGE_SIZE
 
 
 @pytest.mark.parametrize(
@@ -316,6 +370,87 @@ def test_same_symbol_and_assignment_is_stably_deduplicated() -> None:
     assert comparable_first == comparable_second
     keys = [row["membership_key"] for row in first.membership_rows]
     assert len(keys) == len(set(keys))
+
+
+def test_same_assignment_smuggled_across_partitions_is_globally_deduplicated() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    smuggled = dict(memberships[0], name="Cross-partition duplicate")
+
+    def collect(reverse: bool) -> IndustryCandidate:
+        def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+            if api_name == "index_classify":
+                return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+            rows = [row for row in memberships if row["l1_code"] == params["l1_code"]]
+            if params["l1_code"] == "L1-02":
+                rows.append(smuggled)
+            return list(reversed(rows)) if reverse else rows
+
+        return collect_candidate(fetch, snapshot_id="snapshot-global-dedupe", source_run_id="run")
+
+    first = collect(False)
+    second = collect(True)
+    first_rows = [{k: v for k, v in row.items() if k != "collected_at"} for row in first.membership_rows]
+    second_rows = [{k: v for k, v in row.items() if k != "collected_at"} for row in second.membership_rows]
+
+    assert first_rows == second_rows
+    assert len(first.membership_rows) == len(memberships)
+    assert len({row["membership_key"] for row in first.membership_rows}) == len(
+        first.membership_rows
+    )
+    assert validate_candidate(
+        first,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    ).accepted
+
+
+def test_conflicting_assignment_smuggled_across_partitions_is_rejected() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    conflict = dict(
+        memberships[0],
+        l1_code="L1-02",
+        l1_name="Level 1 2",
+        l2_code="L2-02",
+        l2_name="Level 2 2",
+        l3_code="L3-02",
+        l3_name="Level 3 2",
+    )
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        rows = [row for row in memberships if row["l1_code"] == params["l1_code"]]
+        return [*rows, conflict] if params["l1_code"] == "L1-02" else rows
+
+    candidate = collect_candidate(fetch, snapshot_id="snapshot-global-conflict", source_run_id="run")
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert len(candidate.membership_rows) == len(memberships) + 1
+    assert "conflicting_current_assignment" in validation.errors
+    assert "duplicate_membership_key" in validation.errors
+
+
+def test_validate_candidate_rejects_duplicate_membership_key_defensively() -> None:
+    candidate = _collected_candidate()
+    duplicate = dict(candidate.membership_rows[0])
+    candidate = replace(candidate, membership_rows=(*candidate.membership_rows, duplicate))
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert "duplicate_membership_key" in validation.errors
 
 
 @pytest.mark.parametrize(("level", "parent_level"), [(2, 1), (3, 2)])

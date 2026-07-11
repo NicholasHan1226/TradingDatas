@@ -168,11 +168,62 @@ def _collect_taxonomy_pages(fetch: FetchRows) -> list[dict[str, Any]]:
     raise CandidateCollectionError("taxonomy_page_limit_exceeded")
 
 
-def _deduplicate_partition(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+def _validated_l1_codes(taxonomy_rows: list[dict[str, Any]]) -> list[str]:
+    """Fail before fan-out unless the complete taxonomy is structurally sound."""
+
+    by_level_and_index: dict[tuple[str, str], dict[str, Any]] = {}
+    by_level_and_industry: dict[tuple[str, str], dict[str, Any]] = {}
+    node_keys: set[str] = set()
+    valid = True
+
+    for row in taxonomy_rows:
+        level = _text(row.get("level"))
+        index_code = _text(row.get("index_code"))
+        industry_code = _text(row.get("industry_code"))
+        industry_name = _text(row.get("industry_name"))
+        node_key = _text(row.get("taxonomy_node_key"))
+        if (
+            level not in {"L1", "L2", "L3"}
+            or not index_code
+            or not industry_code
+            or not industry_name
+            or not node_key
+            or node_key in node_keys
+            or (level, index_code) in by_level_and_index
+            or (level, industry_code) in by_level_and_industry
+        ):
+            valid = False
+        node_keys.add(node_key)
+        by_level_and_index[(level, index_code)] = row
+        by_level_and_industry[(level, industry_code)] = row
+
+    for row in taxonomy_rows:
+        level = _text(row.get("level"))
+        parent = _text(row.get("parent_industry_code"))
+        if level == "L1" and parent not in {"", "0"}:
+            valid = False
+        elif level == "L2" and (not parent or ("L1", parent) not in by_level_and_industry):
+            valid = False
+        elif level == "L3" and (not parent or ("L2", parent) not in by_level_and_industry):
+            valid = False
+
+    l1_codes = sorted(
+        index_code
+        for (level, index_code) in by_level_and_index
+        if level == "L1" and index_code
+    )
+    levels = {level for level, _ in by_level_and_index}
+    if not valid or levels != {"L1", "L2", "L3"} or len(l1_codes) != EXPECTED_PARTITION_COUNT:
+        raise CandidateCollectionError("invalid_taxonomy_candidate")
+    return l1_codes
+
+
+def _deduplicate_memberships(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
     passthrough: list[dict[str, Any]] = []
     for row in rows:
         identity = (
+            _text(row.get("membership_key")),
             _text(row.get("symbol")),
             _text(row.get("l1_code")),
             _text(row.get("l2_code")),
@@ -209,22 +260,15 @@ def collect_candidate(
 
     started_at = datetime.now(UTC).isoformat()
     taxonomy_raw = _collect_taxonomy_pages(fetch)
-    taxonomy_rows = tuple(
-        MappingProxyType(
-            _normalize_taxonomy_row(row, snapshot_id=snapshot_id, collected_at=started_at)
-        )
+    normalized_taxonomy_rows = [
+        _normalize_taxonomy_row(row, snapshot_id=snapshot_id, collected_at=started_at)
         for row in taxonomy_raw
-    )
-    l1_codes = sorted(
-        {
-            row["index_code"]
-            for row in taxonomy_rows
-            if row["level"] == "L1" and row["index_code"]
-        }
-    )
+    ]
+    l1_codes = _validated_l1_codes(normalized_taxonomy_rows)
+    taxonomy_rows = tuple(MappingProxyType(row) for row in normalized_taxonomy_rows)
 
     membership_rows: list[dict[str, Any]] = []
-    partition_counts: dict[str, int] = {}
+    source_partition_counts: dict[str, int] = {}
     for l1_code in l1_codes:
         try:
             partition = fetch(
@@ -235,7 +279,7 @@ def collect_candidate(
         except Exception:
             # Preserve the failed partition in the immutable candidate so the
             # validation result can be persisted as evidence in the next task.
-            partition_counts[l1_code] = -1
+            source_partition_counts[l1_code] = -1
             continue
         normalized_rows = [
             _normalize_membership_row(
@@ -243,20 +287,25 @@ def collect_candidate(
             )
             for row in partition
         ]
-        normalized_partition = (
-            normalized_rows
-            if len(partition) >= PROVIDER_PAGE_LIMIT
-            else _deduplicate_partition(normalized_rows)
-        )
-        partition_counts[l1_code] = len(normalized_partition)
-        membership_rows.extend(MappingProxyType(row) for row in normalized_partition)
+        source_partition_counts[l1_code] = len(normalized_rows)
+        membership_rows.extend(normalized_rows)
+
+    membership_rows = _deduplicate_memberships(membership_rows)
+    partition_counts = {code: 0 for code in l1_codes}
+    for row in membership_rows:
+        code = _text(row.get("l1_code"))
+        if code in partition_counts:
+            partition_counts[code] += 1
+    for code, source_count in source_partition_counts.items():
+        if source_count < 0 or source_count >= PROVIDER_PAGE_LIMIT:
+            partition_counts[code] = source_count
 
     return IndustryCandidate(
         snapshot_id=snapshot_id,
         started_at=started_at,
         source_run_id=source_run_id,
         taxonomy_rows=taxonomy_rows,
-        membership_rows=tuple(membership_rows),
+        membership_rows=tuple(MappingProxyType(row) for row in membership_rows),
         partition_counts=MappingProxyType(partition_counts),
     )
 
@@ -379,8 +428,13 @@ def validate_candidate(
         "l3_name",
     )
     assignments: dict[str, tuple[str, str, str]] = {}
+    membership_keys: set[str] = set()
     unique_symbols: set[str] = set()
     for row in candidate.membership_rows:
+        membership_key = _text(row.get("membership_key"))
+        if membership_key in membership_keys:
+            reject("duplicate_membership_key")
+        membership_keys.add(membership_key)
         try:
             raw_row = json.loads(_text(row.get("raw_json")))
             expected_row = _normalize_membership_row(
