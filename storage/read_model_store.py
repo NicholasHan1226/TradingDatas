@@ -18,6 +18,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from storage.event_identity import (
+    event_content_fingerprint,
+    source_family,
+    stable_event_id,
+)
 from storage.schema_contract import get_table, table_primary_keys
 from env_bootstrap import env_int
 from runtime_paths import marketdata_sqlite_path
@@ -419,7 +424,17 @@ def _columns_for_insert(table, row_columns, target_columns, api_name):
             if col in target_columns:
                 derived_columns.append(col)
     if table == "market_events":
-        for col in ("event_hash", "event_type", "event_time", "trade_date", "source", "raw_json"):
+        for col in (
+            "event_hash",
+            "event_id",
+            "revision",
+            "source_family",
+            "event_type",
+            "event_time",
+            "trade_date",
+            "source",
+            "raw_json",
+        ):
             if col in target_columns:
                 derived_columns.append(col)
     if table == "market_relationships":
@@ -503,22 +518,6 @@ def _trade_date_from_event_time(event_time):
         return digits[:8]
     digits = "".join(ch for ch in value if ch.isdigit())
     return digits[:8] if len(digits) >= 8 else ""
-
-
-def _event_hash(provider, event_type, event_time, row):
-    payload = "|".join(
-        str(part or "")
-        for part in (
-            provider,
-            event_type,
-            event_time,
-            row.get("title"),
-            row.get("content"),
-            row.get("url"),
-            row.get("source") or row.get("src"),
-        )
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _canonical_row(table, row, api_name, source_ref):
@@ -620,8 +619,6 @@ def _canonical_row(table, row, api_name, source_ref):
             row["source"] = provider
         if not row.get("raw_json"):
             row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
-        if not row.get("event_hash"):
-            row["event_hash"] = _event_hash(provider, event_type, event_time, row)
 
     if table == "market_relationships":
         provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
@@ -730,6 +727,11 @@ def _insert_sql(table, columns, pk_columns):
     if pk_columns:
         conflict_sql = ", ".join(_quote_identifier(col) for col in pk_columns)
         update_columns = [col for col in columns if col not in pk_columns]
+        if table == "market_events":
+            return (
+                f"INSERT INTO {quoted_table} ({col_sql}) VALUES ({placeholders}) "
+                f"ON CONFLICT ({conflict_sql}) DO NOTHING"
+            )
         if update_columns:
             if table == "market_assets":
                 preserve_existing_when_empty = {
@@ -820,6 +822,55 @@ def _enrich_futures_intraday_from_assets(conn, row):
     if not row.get("expiry_date") and metadata.get("expiry_date"):
         row["expiry_date"] = metadata["expiry_date"]
     return row
+
+
+def _stored_event_fingerprint(row: sqlite3.Row) -> str:
+    stored = {
+        "title": row[1],
+        "content": row[2],
+        "url": row[3],
+        "source": row[4],
+        "symbol": row[5],
+        "event_time": row[6],
+        "trade_date": row[7],
+    }
+    try:
+        raw = json.loads(row[8] or "{}")
+    except (TypeError, ValueError):
+        raw = {}
+    if isinstance(raw, dict):
+        for key, value in stored.items():
+            raw.setdefault(key, value)
+        stored = raw
+    return event_content_fingerprint(stored)
+
+
+def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
+    provider = str(row.get("provider") or "")
+    event_type = str(row.get("event_type") or "event")
+    event_id = stable_event_id(provider, event_type, row)
+    fingerprint = event_content_fingerprint(row)
+    latest = conn.execute(
+        """
+        SELECT revision, title, content, url, source, symbol, event_time, trade_date, raw_json
+        FROM market_events
+        WHERE event_id = ?
+        ORDER BY revision DESC
+        LIMIT 1
+        """,
+        (event_id,),
+    ).fetchone()
+    if latest is not None and _stored_event_fingerprint(latest) == fingerprint:
+        return False
+
+    revision = int(latest[0] or 0) + 1 if latest is not None else 1
+    row["event_id"] = event_id
+    row["revision"] = revision
+    row["source_family"] = source_family(provider)
+    row["event_hash"] = hashlib.sha256(
+        f"{event_id}|{revision}|{fingerprint}".encode()
+    ).hexdigest()
+    return True
 
 
 def _flush_chunk(conn, sql, chunk):
@@ -917,8 +968,20 @@ def _ingest_rows_to_sqlite_once(
             for canonical_row in canonical_rows:
                 if table == "market_bars_intraday" and api_name == "rt_fut_min":
                     canonical_row = _enrich_futures_intraday_from_assets(conn, canonical_row)
+                if table == "market_events" and not _assign_event_revision(conn, canonical_row):
+                    continue
                 values = _row_values(canonical_row, columns, required_columns, source_path, row_number)
                 if values is None:
+                    continue
+                if table == "market_events":
+                    rows_written += _flush_chunk(conn, sql, [values])
+                    transaction_rows += 1
+                    if max_rows_per_transaction > 0 and transaction_rows >= max_rows_per_transaction:
+                        conn.commit()
+                        transaction_open = False
+                        conn.execute("BEGIN IMMEDIATE")
+                        transaction_open = True
+                        transaction_rows = 0
                     continue
                 chunk.append(values)
                 if len(chunk) >= CHUNK_SIZE:

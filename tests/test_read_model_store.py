@@ -278,6 +278,33 @@ def test_event_rows_are_normalized(tmp_path: Path) -> None:
     )
 
 
+def test_event_ingest_keeps_logical_id_and_appends_changed_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    base = {
+        "id": "provider-42",
+        "datetime": "2026-07-11 09:00:00",
+        "title": "A",
+        "content": "v1",
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "news", [base]) == 1
+    assert ingest_rows_to_sqlite(db_path, "market_events", "news", [base]) == 0
+    changed = {**base, "content": "v2"}
+    assert ingest_rows_to_sqlite(db_path, "market_events", "news", [changed]) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision, source_family FROM market_events ORDER BY revision"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len({row[0] for row in rows}) == 1
+    assert rows == [(rows[0][0], 1, "tushare"), (rows[0][0], 2, "tushare")]
+
+
 def test_relationship_member_apis_ingest_to_market_relationships(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

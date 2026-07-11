@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from collectors.events import sec_edgar_filings
+from storage.event_identity import stable_event_id
+from storage.read_model_store import ingest_rows_to_sqlite
 from storage.schema import SCHEMA_SQL
 
 
@@ -227,3 +229,37 @@ def test_run_collection_writes_market_events(tmp_path: Path, monkeypatch) -> Non
         conn.close()
     assert row[:4] == ("sec_edgar", "sec_edgar:10-K", "US", "CIK0000320193")
     assert "Apple Inc." in row[4]
+
+
+def test_sec_edgar_event_uses_accession_based_identity(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    filing = sec_edgar_filings.filing_rows_from_submissions(_sample_payload(), limit=1)[0]
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "sec_edgar",
+        [filing],
+        source_name="sec_edgar_test",
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT provider, source_family, event_id, revision FROM market_events"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == (
+        "sec_edgar",
+        "sec_edgar",
+        stable_event_id("sec_edgar", filing["event_type"], filing),
+        1,
+    )
+    assert stable_event_id(
+        "sec_edgar",
+        filing["event_type"],
+        {**filing, "title": "Corrected title"},
+    ) == row[2]
