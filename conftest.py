@@ -97,7 +97,12 @@ def tmp_db_with_data(tmp_db: sqlite3.Connection) -> sqlite3.Connection:
     url = "https://example.com/news/1"
     event_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
     conn.execute(
-        "INSERT OR REPLACE INTO market_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        """
+        INSERT OR REPLACE INTO market_events
+        (event_hash, provider, event_type, event_time, trade_date, market,
+         symbol, title, content, url, source, source_file, collected_at, raw_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
         (event_hash, "rss", "news", ts, trade_date, "Ashare",
          "000001.SZ", "Test Event", "Sample content", url,
          "example_rss", "batch_001", ts, "{}"),

@@ -156,3 +156,44 @@ def test_apply_migrations_backfills_legacy_event_identity(tmp_path: Path) -> Non
     conn.close()
     assert result["event_identity_backfilled"] == 1
     assert row == ("legacy-hash", 1, "tushare")
+
+
+def test_apply_migrations_creates_event_identity_indexes_for_legacy_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE market_events (
+            event_hash TEXT,
+            provider TEXT,
+            event_type TEXT,
+            event_time TEXT,
+            trade_date TEXT,
+            market TEXT,
+            symbol TEXT,
+            title TEXT,
+            content TEXT,
+            url TEXT,
+            source TEXT,
+            source_file TEXT,
+            collected_at TEXT,
+            raw_json TEXT,
+            PRIMARY KEY (event_hash)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    result = apply_migrations(db_path)
+
+    conn = sqlite3.connect(db_path)
+    indexes = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='market_events'"
+        ).fetchall()
+    }
+    conn.close()
+    assert result["status"] == "ok"
+    assert indexes >= {"idx_market_events_identity", "idx_market_events_time_identity"}

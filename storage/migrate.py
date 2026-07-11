@@ -68,6 +68,35 @@ def _add_missing_columns(conn: sqlite3.Connection) -> int:
     return added
 
 
+def _create_missing_indexes(conn: sqlite3.Connection) -> int:
+    """Create contract indexes after additive columns are available."""
+    from storage.schema_contract import TABLES
+
+    created = 0
+    for table in TABLES:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table.name,),
+        ).fetchone():
+            continue
+        existing = {
+            row[1]
+            for row in conn.execute(
+                f"PRAGMA index_list({_quote_identifier(table.name)})"
+            ).fetchall()
+        }
+        for index_name, columns in table.indexes:
+            if index_name in existing:
+                continue
+            column_sql = ", ".join(_quote_identifier(column) for column in columns)
+            conn.execute(
+                f"CREATE INDEX {_quote_identifier(index_name)} "
+                f"ON {_quote_identifier(table.name)} ({column_sql})"
+            )
+            created += 1
+    return created
+
+
 def _normalize_periodic_bar_times(conn: sqlite3.Connection) -> int:
     table_exists = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_bars_intraday'"
@@ -158,10 +187,11 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                     "schema_hash": current_hash,
                 }
             added_columns = _add_missing_columns(conn)
+            indexes_created = _create_missing_indexes(conn)
             periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
             event_identity_backfilled = _backfill_event_identity(conn)
             conn.commit()
-            if added_columns or periodic_bar_times_normalized or event_identity_backfilled:
+            if added_columns or indexes_created or periodic_bar_times_normalized or event_identity_backfilled:
                 conn.execute(
                     "INSERT INTO _migrations (schema_hash, applied_at, table_count, notes) "
                     "VALUES (?, ?, ?, ?)",
@@ -170,7 +200,8 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                         datetime.now(timezone.utc).isoformat(),
                         conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0],
                         "repair missing nullable columns: "
-                        f"{added_columns}; normalize periodic bar times: "
+                        f"{added_columns}; create missing indexes: {indexes_created}; "
+                        "normalize periodic bar times: "
                         f"{periodic_bar_times_normalized}; backfill event identity: "
                         f"{event_identity_backfilled}",
                     ),
@@ -182,6 +213,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 "message": f"schema up to date, added {added_columns} columns",
                 "applied": 0,
                 "added_columns": added_columns,
+                "indexes_created": indexes_created,
                 "periodic_bar_times_normalized": periodic_bar_times_normalized,
                 "event_identity_backfilled": event_identity_backfilled,
                 "drift": False,
@@ -213,6 +245,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 print(f"[migrate] WARNING: {exc}", file=sys.stderr)
 
         added_columns = _add_missing_columns(conn)
+        indexes_created = _create_missing_indexes(conn)
         periodic_bar_times_normalized = _normalize_periodic_bar_times(conn)
         event_identity_backfilled = _backfill_event_identity(conn)
 
@@ -241,6 +274,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "message": f"applied {applied} statements, added {added_columns} columns",
             "applied": applied,
             "added_columns": added_columns,
+            "indexes_created": indexes_created,
             "periodic_bar_times_normalized": periodic_bar_times_normalized,
             "event_identity_backfilled": event_identity_backfilled,
             "table_count": table_count,
