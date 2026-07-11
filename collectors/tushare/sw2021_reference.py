@@ -39,6 +39,16 @@ FetchRows = Callable[[str, dict[str, Any], str], Any]
 class CandidateCollectionError(RuntimeError):
     """Fail-closed provider pagination error for an incomplete candidate."""
 
+    def __init__(self, reason: str, **evidence: int) -> None:
+        self.reason = reason
+        self.evidence = dict(evidence)
+        detail = (
+            f":{json.dumps(self.evidence, sort_keys=True, separators=(',', ':'))}"
+            if self.evidence
+            else ""
+        )
+        super().__init__(f"{reason}{detail}")
+
 
 @dataclass(frozen=True)
 class IndustryCandidate:
@@ -204,8 +214,12 @@ def _collect_taxonomy_pages(fetch: FetchRows) -> list[dict[str, Any]]:
         except Exception as exc:
             raise CandidateCollectionError("taxonomy_fetch_failed") from exc
 
-        if not isinstance(page, list):
-            raise CandidateCollectionError("taxonomy_invalid_page")
+        if not isinstance(page, list) or any(
+            not isinstance(row, MappingABC) for row in page
+        ):
+            raise CandidateCollectionError(
+                "taxonomy_invalid_page", page=page_number, offset=offset
+            )
         if len(page) > TAXONOMY_PAGE_SIZE:
             raise CandidateCollectionError("taxonomy_page_oversized")
         if not page:
@@ -556,6 +570,10 @@ def validate_candidate(
     assignments: dict[str, tuple[str, str, str]] = {}
     membership_keys: set[str] = set()
     unique_symbols: set[str] = set()
+    scope_mismatch_partitions = {
+        requested_partition
+        for requested_partition, _, _ in candidate.partition_scope_mismatches
+    }
     for row in candidate.membership_rows:
         membership_key = _text(row.get("membership_key"))
         if membership_key in membership_keys:
@@ -572,10 +590,14 @@ def validate_candidate(
             )
             if dict(row) != expected_row:
                 reject("invalid_membership_lineage")
-            if any(
-                source_partition != _text(expected_row.get("l1_code"))
+            declared_l1 = _text(expected_row.get("l1_code"))
+            mismatched_partitions = {
+                source_partition
                 for source_partition in source_partitions
-            ):
+                if source_partition != declared_l1
+            }
+            if mismatched_partitions:
+                scope_mismatch_partitions.update(mismatched_partitions)
                 reject("partition_scope_mismatch")
         except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
             reject("invalid_membership_lineage")
@@ -628,7 +650,11 @@ def validate_candidate(
             reject("coverage_below_0.90")
 
     successful_partitions = sum(
-        code not in candidate.partition_failures and 0 < count < PROVIDER_PAGE_LIMIT
+        code not in candidate.partition_failures
+        and 0 < count < PROVIDER_PAGE_LIMIT
+        and code not in scope_mismatch_partitions
+        and candidate.deduplicated_partition_counts.get(code) == count
+        and candidate.declared_partition_counts.get(code) == count
         for code, count in candidate.partition_counts.items()
     )
     return SnapshotValidation(

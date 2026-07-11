@@ -74,3 +74,43 @@ Final-pass GREEN:
 ```
 
 The warnings remain the pre-existing empty `SHAREDSIGNALS_TOKEN_SALT` test-environment warning. No token or production credential was introduced.
+
+## Final Count And Taxonomy Page Closure
+
+The last Task 4 review closed two additional evidence gaps without changing any
+generic API mapping, persistence, token, schedule, deployment, or production
+boundary:
+
+- `successful_partition_count` is now a per-request evidence count, not merely
+  a bounded raw-row count. A partition counts only when its membership response
+  shape was valid, its raw count is strictly between 0 and 2,000, it has no
+  provider failure or request-scope mismatch, and its raw, deduplicated, and
+  declared counts agree. A symmetric row swap between two requested L1
+  partitions is rejected and reports 29 successful partitions even if the
+  summary mismatch tuple is cleared, because validation rebuilds the two failed
+  request scopes from immutable row evidence.
+- Every taxonomy page must be exactly `list[Mapping]`. Any non-list page or any
+  page containing a non-mapping element raises a structured
+  `CandidateCollectionError` with reason `taxonomy_invalid_page` and the exact
+  zero-based `page` plus provider `offset`; normalization can no longer leak a
+  raw `AttributeError`.
+
+Closure RED:
+
+```text
+5 failed, 57 passed in 0.29s
+```
+
+Closure GREEN:
+
+```text
+./.venv/bin/python3 -m pytest tests/test_sw2021_reference.py tests/test_capability_coverage.py -q
+85 passed in 0.43s
+
+./.venv/bin/python3 -m pytest -q
+470 passed, 17 warnings in 17.36s
+```
+
+The 17 warnings are still the pre-existing empty
+`SHAREDSIGNALS_TOKEN_SALT` test-environment warning. This closure introduced no
+token or production credential.

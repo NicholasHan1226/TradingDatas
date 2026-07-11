@@ -437,6 +437,7 @@ def test_per_row_partition_evidence_rebuilds_symmetric_scope_mismatch() -> None:
 
     assert validation.accepted is False
     assert "partition_scope_mismatch" in validation.errors
+    assert validation.successful_partition_count == 29
 
 
 @pytest.mark.parametrize("tamper", ["raw_lineage", "evidence_hash"])
@@ -488,6 +489,42 @@ def test_partition_count_totals_are_validated_defensively(
 
     assert validation.accepted is False
     assert reason in validation.errors
+    assert validation.successful_partition_count == 30
+
+
+@pytest.mark.parametrize(
+    ("invalid_row", "expected_page", "expected_offset"),
+    [
+        ("not-a-mapping", 0, 0),
+        (42, 1, TAXONOMY_PAGE_SIZE),
+    ],
+)
+def test_taxonomy_page_requires_only_mappings_with_structured_evidence(
+    invalid_row: object,
+    expected_page: int,
+    expected_offset: int,
+) -> None:
+    taxonomy = _raw_taxonomy()
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[object]:
+        assert api_name == "index_classify"
+        page = list(taxonomy[params["offset"] : params["offset"] + params["limit"]])
+        if params["offset"] == expected_offset:
+            page[0] = invalid_row
+        return page
+
+    with pytest.raises(CandidateCollectionError) as exc_info:
+        collect_candidate(
+            fetch,
+            snapshot_id=f"snapshot-invalid-taxonomy-page-{expected_page}",
+            source_run_id="run-invalid-taxonomy-page",
+        )
+
+    assert exc_info.value.reason == "taxonomy_invalid_page"
+    assert exc_info.value.evidence == {
+        "page": expected_page,
+        "offset": expected_offset,
+    }
 
 
 def test_taxonomy_pagination_continues_after_an_exact_full_page() -> None:
