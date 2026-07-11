@@ -305,6 +305,30 @@ def test_events_rejects_cursor_from_another_endpoint(api_edge_server) -> None:
     assert payload["error"] == "invalid cursor"
 
 
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "not-a-cursor",
+        pytest.param(
+            encode_cursor("industry_taxonomy", "", ("L1", "801010.SI", "n1")),
+            id="cross-scope",
+        ),
+    ],
+)
+def test_api_events_real_reader_rejects_invalid_cursor_with_400(
+    api_edge_server, monkeypatch, cursor: str
+) -> None:
+    import reader as real_reader
+
+    base_url, _fake_reader = api_edge_server
+    monkeypatch.setattr(api_server, "reader", real_reader)
+
+    status, payload = _get_json(base_url, f"/events?cursor={cursor}")
+
+    assert status == 400
+    assert payload["error"] == "invalid cursor"
+
+
 def test_api_events_passes_raw_cursor_to_reader(api_edge_server) -> None:
     base_url, reader = api_edge_server
     cursor = encode_cursor("events", "", ("2026-07-11T09:30:00Z", "event-1", 1))

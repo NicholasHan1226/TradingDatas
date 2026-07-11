@@ -6,6 +6,7 @@ and reference/market_calendar.py.
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -210,6 +211,139 @@ class TestReaderEvents:
         assert page["rows"][0]["data"] == {}
         assert page["next_cursor"] is None
         assert page["row_count"] == 0
+
+    def test_events_subject_type_filters_before_page_limit_and_allows_missing_type(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"h{idx}",
+                        f"event-{idx}",
+                        1,
+                        "unit",
+                        "news",
+                        f"2026-07-11T09:3{idx}:00+00:00",
+                        "20260711",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "unit",
+                        "unit",
+                        "2026-07-11T10:00:00+00:00",
+                        json.dumps({"subject_type": subject_type}) if subject_type else "{}",
+                    )
+                    for idx, subject_type in ((1, None), (2, "stock"), (3, "bond"), (4, "bond"))
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        page = reader.get_events_page(limit=2, subject_type="stock")
+
+        assert [row["data"]["event_hash"] for row in page["rows"]] == ["h2", "h1"]
+        assert page["row_count"] == 2
+        assert page["next_cursor"] is None
+
+    def test_events_subject_type_cursor_does_not_skip_matching_rows(self, tmp_path: Path, monkeypatch):
+        import reader
+        from storage.schema import SCHEMA_SQL
+
+        db_path = tmp_path / "marketdata.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(SCHEMA_SQL)
+            conn.executemany(
+                """
+                INSERT INTO market_events (
+                    event_hash, event_id, revision, provider, event_type,
+                    event_time, trade_date, market, symbol, title, content,
+                    url, source, source_file, collected_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"h{idx}",
+                        f"event-{idx}",
+                        1,
+                        "unit",
+                        "news",
+                        f"2026-07-11T09:3{idx}:00+00:00",
+                        "20260711",
+                        "Ashare",
+                        "000001.SZ",
+                        f"event {idx}",
+                        "",
+                        "",
+                        "unit",
+                        "unit",
+                        "2026-07-11T10:00:00+00:00",
+                        json.dumps({"subject_type": subject_type}),
+                    )
+                    for idx, subject_type in (
+                        (1, "stock"),
+                        (2, "bond"),
+                        (3, "stock"),
+                        (4, "bond"),
+                        (5, "bond"),
+                        (6, "stock"),
+                    )
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        reader.clear_caches()
+
+        first = reader.get_events_page(limit=2, subject_type="stock")
+        second = reader.get_events_page(
+            limit=2,
+            subject_type="stock",
+            cursor=first["next_cursor"],
+        )
+
+        assert [row["data"]["event_hash"] for row in first["rows"]] == ["h6", "h3"]
+        assert [row["data"]["event_hash"] for row in second["rows"]] == ["h1"]
+        assert first["row_count"] == 2
+        assert first["next_cursor"] is not None
+        assert second["row_count"] == 1
+        assert second["next_cursor"] is None
+
+    @pytest.mark.parametrize(
+        "cursor",
+        ["not-a-cursor", pytest.param(None, id="cross-scope")],
+    )
+    def test_events_page_rejects_invalid_cursor_before_reader_degradation(self, cursor, monkeypatch):
+        import reader
+        from pagination import encode_cursor
+
+        if cursor is None:
+            cursor = encode_cursor("industry_taxonomy", "", ("L1", "801010.SI", "n1"))
+
+        with pytest.raises(ValueError, match="^invalid cursor$"):
+            reader.get_events_page(limit=2, cursor=cursor)
 
     def test_get_tushare_fut_basic_reads_futures_assets_not_ashare(self, tmp_path: Path, monkeypatch):
         import reader

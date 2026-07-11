@@ -902,6 +902,7 @@ def _get_events_page_cached(
     limit: int,
     market: str | None,
     subject_code: str | None,
+    subject_type: str | None,
     cursor: str | None,
 ) -> str:
     start_key = _optional_date_key(start)
@@ -930,6 +931,17 @@ def _get_events_page_cached(
         placeholders = ",".join("?" for _ in wanted_codes)
         where.append(f"UPPER(COALESCE(symbol, '')) IN ({placeholders})")
         params.extend(wanted_codes)
+    if subject_type:
+        subject_type_expr = (
+            "CASE WHEN json_valid(raw_json) "
+            "THEN json_extract(raw_json, '$.subject_type') END"
+        )
+        where.append(
+            f"({subject_type_expr} IS NULL OR "
+            f"TRIM(CAST({subject_type_expr} AS TEXT)) = '' OR "
+            f"CAST({subject_type_expr} AS TEXT) = ?)"
+        )
+        params.append(str(subject_type))
 
     time_expr = "COALESCE(NULLIF(event_time, ''), collected_at)"
     if cursor:
@@ -961,7 +973,14 @@ def _get_events_page_cached(
     db_lineage = {
         "reader": "get_events_page",
         "source": "sqlite:market_events",
-        "filters": {"start": start, "end": end, "event_type": event_type, "market": market, "subject_code": subject_code},
+        "filters": {
+            "start": start,
+            "end": end,
+            "event_type": event_type,
+            "market": market,
+            "subject_code": subject_code,
+            "subject_type": subject_type,
+        },
     }
     page_limit = _bounded_limit(limit, 500)
     rows, db_degraded = _sqlite_rows(
@@ -1033,32 +1052,6 @@ def _event_code_variants(value: Any) -> set[str]:
     return {item for item in variants if item}
 
 
-def _event_row_matches_code(data: dict[str, Any], wanted: set[str]) -> bool:
-    if not wanted:
-        return True
-    for field in ("subject_code", "ts_code", "symbol", "code", "asset_code"):
-        if _event_code_variants(data.get(field)) & wanted:
-            return True
-    return False
-
-
-def _event_row_matches_market(data: dict[str, Any], market: Any) -> bool:
-    wanted = _market_match_key(market)
-    if not wanted:
-        return True
-    values = [
-        data.get("market"),
-        data.get("target_market"),
-        data.get("market_scope"),
-        data.get("subject_market"),
-    ]
-    for value in values:
-        normalized = _market_match_key(value)
-        if normalized and normalized == wanted:
-            return True
-    return False
-
-
 def _decode_event_cursor(cursor: str) -> tuple[str, str, int]:
     sort_key = decode_cursor(cursor, scope="events")
     if (
@@ -1089,7 +1082,6 @@ def get_events_page(
     symbol = kwargs.get("symbol")
     subject_code = kwargs.get("subject_code") or kwargs.get("ts_code") or symbol
     subject_type = kwargs.get("subject_type")
-    wanted_codes = _event_code_variants(subject_code)
     if cursor is not None:
         _decode_event_cursor(cursor)
     _maybe_invalidate()
@@ -1104,6 +1096,7 @@ def get_events_page(
                 page_limit,
                 str(market or "") or None,
                 str(subject_code or "") or None,
+                str(subject_type or "") or None,
                 cursor,
             )
         )
@@ -1119,32 +1112,6 @@ def get_events_page(
         for row in rows
     ):
         return page
-    if market:
-        rows = [
-            row for row in rows
-            if isinstance(row, dict)
-            and isinstance(row.get("data"), dict)
-            and _event_row_matches_market(row["data"], market)
-        ]
-    if wanted_codes:
-        rows = [
-            row for row in rows
-            if isinstance(row, dict)
-            and isinstance(row.get("data"), dict)
-            and _event_row_matches_code(row["data"], wanted_codes)
-        ]
-    if subject_type:
-        rows = [
-            row for row in rows
-            if isinstance(row, dict)
-            and isinstance(row.get("data"), dict)
-            and (
-                not row["data"].get("subject_type")
-                or str(row["data"].get("subject_type")) == str(subject_type)
-            )
-        ]
-    page["rows"] = rows
-    page["row_count"] = len(rows)
     return page
 
 
