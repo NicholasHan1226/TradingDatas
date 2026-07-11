@@ -124,10 +124,16 @@ def add_page_metadata(
     *,
     next_cursor: str | None,
     row_count: int,
+    total_rows: int | None = None,
+    page_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     paged = dict(metadata or {})
+    if page_metadata:
+        paged.update(page_metadata)
     paged["next_cursor"] = next_cursor
     paged["row_count"] = max(0, int(row_count))
+    if total_rows is not None:
+        paged["total_rows"] = max(0, int(total_rows))
     return paged
 
 

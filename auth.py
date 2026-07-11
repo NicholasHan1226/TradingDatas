@@ -56,12 +56,23 @@ RATE_MAX_EVENTS_PER_TENANT = env_int("SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT",
 
 # Scope presets — which endpoints each scope grants access to
 STATUS_ENDPOINTS = {"/health", "/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status"}
+INDUSTRY_REFERENCE_ENDPOINTS = {
+    "/industry/snapshot",
+    "/industry/taxonomy",
+    "/industry/memberships",
+}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "status": STATUS_ENDPOINTS,
     "health": {*STATUS_ENDPOINTS, "/cache/invalidate"},
     "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
-    "fundamentals": {"/fundamentals", "/reference", "/industry"},
+    "industry_reference": INDUSTRY_REFERENCE_ENDPOINTS,
+    "fundamentals": {
+        "/fundamentals",
+        "/reference",
+        "/industry",
+        *INDUSTRY_REFERENCE_ENDPOINTS,
+    },
     "macro": {"/macro", "/capital_flow"},
     "events": {"/events", "/sentiment"},
     "crypto": {"/crypto"},
@@ -74,6 +85,7 @@ SCOPE_ENDPOINTS["external_read"] = set().union(
     SCOPE_ENDPOINTS["status"],
     SCOPE_ENDPOINTS["market_data"],
     SCOPE_ENDPOINTS["fundamentals"],
+    SCOPE_ENDPOINTS["industry_reference"],
     SCOPE_ENDPOINTS["macro"],
     SCOPE_ENDPOINTS["events"],
     SCOPE_ENDPOINTS["crypto"],

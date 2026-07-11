@@ -1971,6 +1971,637 @@ def get_realtime_5min(ts_code: str = "", date: Any = None, market: str = "Ashare
     lineage = {"reader": "get_realtime_5min", "filters": {"market": market_key, "ts_code": ts_code, "date": date}}
     return _safe_public("sqlite:market_bars_intraday", lineage, lambda generation: _get_realtime_5min_cached(generation, market_key, str(ts_code), str(date)))
 
+
+# -- Pinned SW2021 industry reference read model -----------------------------
+
+_INDUSTRY_SNAPSHOT_TABLE = "market_industry_snapshots"
+_INDUSTRY_TAXONOMY_TABLE = "market_industry_taxonomy"
+_INDUSTRY_MEMBERSHIPS_TABLE = "market_industry_memberships"
+
+
+class _IndustryCursorError(ValueError):
+    """A client cursor is malformed, endpoint-bound, or snapshot-mismatched."""
+
+
+def _industry_snapshot_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
+    numerator = int(snapshot.get("unique_symbol_count") or 0)
+    denominator = int(snapshot.get("active_universe_count") or 0)
+    return {
+        "snapshot_id": str(snapshot.get("snapshot_id") or "") or None,
+        "provider": str(snapshot.get("provider") or "") or None,
+        "source_run_id": str(snapshot.get("source_run_id") or "") or None,
+        "coverage_numerator": numerator,
+        "coverage_denominator": denominator,
+        "coverage_missing_count": max(0, denominator - numerator),
+        "coverage_ratio": float(snapshot.get("coverage_ratio") or 0.0),
+        "freshness_at": str(
+            snapshot.get("promoted_at")
+            or snapshot.get("completed_at")
+            or snapshot.get("started_at")
+            or ""
+        )
+        or None,
+    }
+
+
+def _industry_snapshot_lineage(
+    reader_name: str,
+    table: str,
+    snapshot: dict[str, Any],
+    *,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = _industry_snapshot_metadata(snapshot)
+    lineage: dict[str, Any] = {
+        "reader": reader_name,
+        "table": table,
+        "snapshot_id": metadata["snapshot_id"],
+        "provider": metadata["provider"],
+        "source_run_id": metadata["source_run_id"],
+        "coverage_numerator": metadata["coverage_numerator"],
+        "coverage_denominator": metadata["coverage_denominator"],
+        "coverage_missing_count": metadata["coverage_missing_count"],
+    }
+    if filters is not None:
+        lineage["filters"] = filters
+    return lineage
+
+
+def _resolve_industry_snapshot(
+    snapshot_id: str,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None]:
+    if snapshot_id:
+        query = (
+            "SELECT * FROM market_industry_snapshots "
+            "WHERE snapshot_id = ? AND taxonomy_system='SW' "
+            "AND taxonomy_version='SW2021' "
+            "AND status IN ('promoted', 'superseded') LIMIT 1"
+        )
+        params: tuple[Any, ...] = (snapshot_id,)
+        unavailable_reason = f"SW2021 snapshot is not available: {snapshot_id}"
+    else:
+        query = (
+            "SELECT * FROM market_industry_snapshots "
+            "WHERE taxonomy_system='SW' AND taxonomy_version='SW2021' "
+            "AND status='promoted' LIMIT 1"
+        )
+        params = ()
+        unavailable_reason = "no promoted SW2021 snapshot"
+
+    rows, degraded = _sqlite_rows(query, params, _INDUSTRY_SNAPSHOT_TABLE)
+    if degraded is not None:
+        return None, degraded
+    if not rows:
+        return None, _degraded_empty(
+            f"sqlite:{_INDUSTRY_SNAPSHOT_TABLE}",
+            unavailable_reason,
+            lineage={
+                "reader": "resolve_industry_snapshot",
+                "table": _INDUSTRY_SNAPSHOT_TABLE,
+                "snapshot_id": snapshot_id or None,
+                "taxonomy_system": "SW",
+                "taxonomy_version": "SW2021",
+            },
+        )
+    return rows[0], None
+
+
+def _wrap_industry_rows(
+    rows: list[dict[str, Any]],
+    *,
+    table: str,
+    lineage: dict[str, Any],
+    fallback_collected_at: Any,
+) -> list[dict[str, Any]]:
+    return [
+        _wrap(
+            row,
+            source_id=f"sqlite:{table}",
+            source_tier="reference",
+            collected_at=row.get("collected_at") or fallback_collected_at,
+            degraded=False,
+            lineage=lineage,
+            stale_after_hours=24.0,
+        )
+        for row in rows
+    ]
+
+
+def _empty_industry_page(
+    *,
+    table: str,
+    reason: str,
+    lineage: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+    rows: list[dict[str, Any]] | None = None,
+    total_rows: int = 0,
+) -> dict[str, Any]:
+    empty_metadata = {
+        "snapshot_id": None,
+        "provider": None,
+        "source_run_id": None,
+        "coverage_numerator": 0,
+        "coverage_denominator": 0,
+        "coverage_missing_count": 0,
+        "coverage_ratio": 0.0,
+        "freshness_at": None,
+    }
+    if metadata:
+        empty_metadata.update(metadata)
+    effective_lineage = lineage
+    if rows and isinstance(rows[0], dict) and isinstance(rows[0].get("lineage"), dict):
+        effective_lineage = rows[0]["lineage"]
+    empty_metadata["lineage"] = effective_lineage
+    return {
+        "rows": rows
+        if rows is not None
+        else _degraded_empty(f"sqlite:{table}", reason, lineage=lineage),
+        "next_cursor": None,
+        "row_count": 0,
+        "total_rows": max(0, int(total_rows)),
+        "metadata": empty_metadata,
+    }
+
+
+def _decode_taxonomy_cursor(
+    cursor: str, *, snapshot_id: str = ""
+) -> tuple[str, str, str]:
+    try:
+        sort_key = decode_cursor(
+            cursor, scope="industry_taxonomy", snapshot_id=snapshot_id
+        )
+    except ValueError as exc:
+        raise _IndustryCursorError(str(exc)) from exc
+    if (
+        len(sort_key) != 3
+        or any(not isinstance(value, str) or not value for value in sort_key)
+    ):
+        raise _IndustryCursorError("invalid cursor")
+    return str(sort_key[0]), str(sort_key[1]), str(sort_key[2])
+
+
+def _decode_memberships_cursor(
+    cursor: str, *, snapshot_id: str = ""
+) -> tuple[str, str]:
+    try:
+        sort_key = decode_cursor(
+            cursor, scope="industry_memberships", snapshot_id=snapshot_id
+        )
+    except ValueError as exc:
+        raise _IndustryCursorError(str(exc)) from exc
+    if (
+        len(sort_key) != 2
+        or any(not isinstance(value, str) or not value for value in sort_key)
+    ):
+        raise _IndustryCursorError("invalid cursor")
+    return str(sort_key[0]), str(sort_key[1])
+
+
+@_register_cached
+@_bounded_lru_cache(maxsize=32)
+def _get_industry_snapshot_cached(_generation: int) -> str:
+    snapshot, degraded = _resolve_industry_snapshot("")
+    if degraded is not None:
+        return _json_cached(lambda: degraded)
+    assert snapshot is not None
+    metadata = _industry_snapshot_metadata(snapshot)
+    lineage = _industry_snapshot_lineage(
+        "get_industry_snapshot", _INDUSTRY_SNAPSHOT_TABLE, snapshot
+    )
+    wrapped = _wrap(
+        snapshot,
+        source_id=f"sqlite:{_INDUSTRY_SNAPSHOT_TABLE}",
+        source_tier="reference",
+        collected_at=metadata["freshness_at"],
+        degraded=False,
+        lineage=lineage,
+        stale_after_hours=24.0,
+    )
+    return _json_cached(lambda: [wrapped])
+
+
+def get_industry_snapshot() -> list[dict[str, Any]]:
+    """Return the current promoted SW2021 snapshot without provider fallback."""
+    lineage = {
+        "reader": "get_industry_snapshot",
+        "table": _INDUSTRY_SNAPSHOT_TABLE,
+    }
+    return _safe_public(
+        f"sqlite:{_INDUSTRY_SNAPSHOT_TABLE}",
+        lineage,
+        lambda generation: _get_industry_snapshot_cached(generation),
+    )
+
+
+@_register_cached
+@_bounded_lru_cache(maxsize=256)
+def _get_industry_taxonomy_cached(
+    _generation: int,
+    snapshot_id: str,
+    level: str,
+    parent_industry_code: str,
+    index_code: str,
+    limit: int,
+    cursor: str | None,
+) -> str:
+    snapshot, snapshot_degraded = _resolve_industry_snapshot(snapshot_id)
+    base_lineage = {
+        "reader": "get_industry_taxonomy",
+        "table": _INDUSTRY_TAXONOMY_TABLE,
+        "filters": {
+            "snapshot_id": snapshot_id or None,
+            "level": level or None,
+            "parent_industry_code": parent_industry_code or None,
+            "index_code": index_code or None,
+        },
+    }
+    if snapshot_degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_TAXONOMY_TABLE,
+                reason="SW2021 snapshot unavailable",
+                lineage=base_lineage,
+                metadata={"snapshot_id": snapshot_id or None},
+                rows=snapshot_degraded,
+            )
+        )
+    assert snapshot is not None
+    resolved_snapshot_id = str(snapshot["snapshot_id"])
+    cursor_key = (
+        _decode_taxonomy_cursor(cursor, snapshot_id=resolved_snapshot_id)
+        if cursor
+        else None
+    )
+    metadata = _industry_snapshot_metadata(snapshot)
+    filters = {
+        "snapshot_id": resolved_snapshot_id,
+        "level": level or None,
+        "parent_industry_code": parent_industry_code or None,
+        "index_code": index_code or None,
+    }
+    lineage = _industry_snapshot_lineage(
+        "get_industry_taxonomy",
+        _INDUSTRY_TAXONOMY_TABLE,
+        snapshot,
+        filters=filters,
+    )
+    metadata["lineage"] = lineage
+    where = ["snapshot_id = ?"]
+    params: list[Any] = [resolved_snapshot_id]
+    if level:
+        where.append("level = ?")
+        params.append(level)
+    if parent_industry_code:
+        where.append("parent_industry_code = ?")
+        params.append(parent_industry_code)
+    if index_code:
+        where.append("index_code = ?")
+        params.append(index_code)
+
+    total_rows_result, total_degraded = _sqlite_rows(
+        f"SELECT COUNT(*) AS total_rows FROM {_INDUSTRY_TAXONOMY_TABLE} "
+        f"WHERE {' AND '.join(where)}",
+        tuple(params),
+        _INDUSTRY_TAXONOMY_TABLE,
+    )
+    if total_degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_TAXONOMY_TABLE,
+                reason="SW2021 taxonomy table unavailable",
+                lineage=lineage,
+                metadata=metadata,
+                rows=total_degraded,
+            )
+        )
+    total_rows = int((total_rows_result or [{}])[0].get("total_rows") or 0)
+
+    page_where = list(where)
+    page_params = list(params)
+    if cursor_key is not None:
+        cursor_level, cursor_index_code, cursor_node_key = cursor_key
+        page_where.append(
+            "(level > ? OR (level = ? AND index_code > ?) "
+            "OR (level = ? AND index_code = ? AND taxonomy_node_key > ?))"
+        )
+        page_params.extend(
+            [
+                cursor_level,
+                cursor_level,
+                cursor_index_code,
+                cursor_level,
+                cursor_index_code,
+                cursor_node_key,
+            ]
+        )
+    rows, degraded = _sqlite_rows(
+        f"SELECT * FROM {_INDUSTRY_TAXONOMY_TABLE} "
+        f"WHERE {' AND '.join(page_where)} "
+        "ORDER BY level ASC, index_code ASC, taxonomy_node_key ASC LIMIT ?",
+        (*tuple(page_params), limit + 1),
+        _INDUSTRY_TAXONOMY_TABLE,
+    )
+    if degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_TAXONOMY_TABLE,
+                reason="SW2021 taxonomy table unavailable",
+                lineage=lineage,
+                metadata=metadata,
+                rows=degraded,
+                total_rows=total_rows,
+            )
+        )
+    page_rows = (rows or [])[:limit]
+    has_more = bool(rows and len(rows) > limit)
+    next_cursor = None
+    if has_more and page_rows:
+        last = page_rows[-1]
+        next_cursor = encode_cursor(
+            "industry_taxonomy",
+            resolved_snapshot_id,
+            (last["level"], last["index_code"], last["taxonomy_node_key"]),
+        )
+    if not page_rows:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_TAXONOMY_TABLE,
+                reason="no SW2021 taxonomy rows matched",
+                lineage=lineage,
+                metadata=metadata,
+                total_rows=total_rows,
+            )
+        )
+    wrapped = _wrap_industry_rows(
+        page_rows,
+        table=_INDUSTRY_TAXONOMY_TABLE,
+        lineage=lineage,
+        fallback_collected_at=metadata["freshness_at"],
+    )
+    return _json_cached(
+        lambda: {
+            "rows": wrapped,
+            "next_cursor": next_cursor,
+            "row_count": len(page_rows),
+            "total_rows": total_rows,
+            "metadata": metadata,
+        }
+    )
+
+
+def get_industry_taxonomy(
+    snapshot_id: str | None = None,
+    level: str | None = None,
+    parent_industry_code: str | None = None,
+    index_code: str | None = None,
+    limit: int = 500,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable, snapshot-pinned SW2021 taxonomy page."""
+    snapshot_key = str(snapshot_id or "").strip()
+    level_key = str(level or "").strip()
+    parent_key = str(parent_industry_code or "").strip()
+    index_key = str(index_code or "").strip()
+    page_limit = _bounded_limit(limit, 500, max_value=1000)
+    if cursor is not None:
+        _decode_taxonomy_cursor(cursor, snapshot_id=snapshot_key)
+    _maybe_invalidate()
+    generation_snapshot = _cache_generation_snapshot()
+    try:
+        return _clone_cached(
+            _get_industry_taxonomy_cached(
+                generation_snapshot,
+                snapshot_key,
+                level_key,
+                parent_key,
+                index_key,
+                page_limit,
+                cursor,
+            )
+        )
+    except _IndustryCursorError:
+        raise
+    except Exception as exc:  # pragma: no cover - final public boundary
+        return _empty_industry_page(
+            table=_INDUSTRY_TAXONOMY_TABLE,
+            reason=f"reader failed: {exc}",
+            lineage={
+                "reader": "get_industry_taxonomy",
+                "filters": {
+                    "snapshot_id": snapshot_key or None,
+                    "level": level_key or None,
+                    "parent_industry_code": parent_key or None,
+                    "index_code": index_key or None,
+                },
+            },
+            metadata={"snapshot_id": snapshot_key or None},
+        )
+
+
+@_register_cached
+@_bounded_lru_cache(maxsize=256)
+def _get_industry_memberships_cached(
+    _generation: int,
+    snapshot_id: str,
+    symbol: str,
+    l1_code: str,
+    l2_code: str,
+    l3_code: str,
+    limit: int,
+    cursor: str | None,
+) -> str:
+    snapshot, snapshot_degraded = _resolve_industry_snapshot(snapshot_id)
+    base_lineage = {
+        "reader": "get_industry_memberships",
+        "table": _INDUSTRY_MEMBERSHIPS_TABLE,
+        "filters": {
+            "snapshot_id": snapshot_id or None,
+            "symbol": symbol or None,
+            "l1_code": l1_code or None,
+            "l2_code": l2_code or None,
+            "l3_code": l3_code or None,
+        },
+    }
+    if snapshot_degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_MEMBERSHIPS_TABLE,
+                reason="SW2021 snapshot unavailable",
+                lineage=base_lineage,
+                metadata={"snapshot_id": snapshot_id or None},
+                rows=snapshot_degraded,
+            )
+        )
+    assert snapshot is not None
+    resolved_snapshot_id = str(snapshot["snapshot_id"])
+    cursor_key = (
+        _decode_memberships_cursor(cursor, snapshot_id=resolved_snapshot_id)
+        if cursor
+        else None
+    )
+    metadata = _industry_snapshot_metadata(snapshot)
+    filters = {
+        "snapshot_id": resolved_snapshot_id,
+        "symbol": symbol or None,
+        "l1_code": l1_code or None,
+        "l2_code": l2_code or None,
+        "l3_code": l3_code or None,
+    }
+    lineage = _industry_snapshot_lineage(
+        "get_industry_memberships",
+        _INDUSTRY_MEMBERSHIPS_TABLE,
+        snapshot,
+        filters=filters,
+    )
+    metadata["lineage"] = lineage
+    where = ["snapshot_id = ?"]
+    params: list[Any] = [resolved_snapshot_id]
+    for field, value in (
+        ("symbol", symbol),
+        ("l1_code", l1_code),
+        ("l2_code", l2_code),
+        ("l3_code", l3_code),
+    ):
+        if value:
+            where.append(f"{field} = ?")
+            params.append(value)
+
+    total_rows_result, total_degraded = _sqlite_rows(
+        f"SELECT COUNT(*) AS total_rows FROM {_INDUSTRY_MEMBERSHIPS_TABLE} "
+        f"WHERE {' AND '.join(where)}",
+        tuple(params),
+        _INDUSTRY_MEMBERSHIPS_TABLE,
+    )
+    if total_degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_MEMBERSHIPS_TABLE,
+                reason="SW2021 memberships table unavailable",
+                lineage=lineage,
+                metadata=metadata,
+                rows=total_degraded,
+            )
+        )
+    total_rows = int((total_rows_result or [{}])[0].get("total_rows") or 0)
+
+    page_where = list(where)
+    page_params = list(params)
+    if cursor_key is not None:
+        cursor_symbol, cursor_membership_key = cursor_key
+        page_where.append(
+            "(symbol > ? OR (symbol = ? AND membership_key > ?))"
+        )
+        page_params.extend(
+            [cursor_symbol, cursor_symbol, cursor_membership_key]
+        )
+    rows, degraded = _sqlite_rows(
+        f"SELECT * FROM {_INDUSTRY_MEMBERSHIPS_TABLE} "
+        f"WHERE {' AND '.join(page_where)} "
+        "ORDER BY symbol ASC, membership_key ASC LIMIT ?",
+        (*tuple(page_params), limit + 1),
+        _INDUSTRY_MEMBERSHIPS_TABLE,
+    )
+    if degraded is not None:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_MEMBERSHIPS_TABLE,
+                reason="SW2021 memberships table unavailable",
+                lineage=lineage,
+                metadata=metadata,
+                rows=degraded,
+                total_rows=total_rows,
+            )
+        )
+    page_rows = (rows or [])[:limit]
+    has_more = bool(rows and len(rows) > limit)
+    next_cursor = None
+    if has_more and page_rows:
+        last = page_rows[-1]
+        next_cursor = encode_cursor(
+            "industry_memberships",
+            resolved_snapshot_id,
+            (last["symbol"], last["membership_key"]),
+        )
+    if not page_rows:
+        return _json_cached(
+            lambda: _empty_industry_page(
+                table=_INDUSTRY_MEMBERSHIPS_TABLE,
+                reason="no SW2021 membership rows matched",
+                lineage=lineage,
+                metadata=metadata,
+                total_rows=total_rows,
+            )
+        )
+    wrapped = _wrap_industry_rows(
+        page_rows,
+        table=_INDUSTRY_MEMBERSHIPS_TABLE,
+        lineage=lineage,
+        fallback_collected_at=metadata["freshness_at"],
+    )
+    return _json_cached(
+        lambda: {
+            "rows": wrapped,
+            "next_cursor": next_cursor,
+            "row_count": len(page_rows),
+            "total_rows": total_rows,
+            "metadata": metadata,
+        }
+    )
+
+
+def get_industry_memberships(
+    snapshot_id: str | None = None,
+    symbol: str | None = None,
+    l1_code: str | None = None,
+    l2_code: str | None = None,
+    l3_code: str | None = None,
+    limit: int = 500,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable, snapshot-pinned SW2021 membership page."""
+    snapshot_key = str(snapshot_id or "").strip()
+    symbol_key = str(symbol or "").strip()
+    l1_key = str(l1_code or "").strip()
+    l2_key = str(l2_code or "").strip()
+    l3_key = str(l3_code or "").strip()
+    page_limit = _bounded_limit(limit, 500, max_value=1000)
+    if cursor is not None:
+        _decode_memberships_cursor(cursor, snapshot_id=snapshot_key)
+    _maybe_invalidate()
+    generation_snapshot = _cache_generation_snapshot()
+    try:
+        return _clone_cached(
+            _get_industry_memberships_cached(
+                generation_snapshot,
+                snapshot_key,
+                symbol_key,
+                l1_key,
+                l2_key,
+                l3_key,
+                page_limit,
+                cursor,
+            )
+        )
+    except _IndustryCursorError:
+        raise
+    except Exception as exc:  # pragma: no cover - final public boundary
+        return _empty_industry_page(
+            table=_INDUSTRY_MEMBERSHIPS_TABLE,
+            reason=f"reader failed: {exc}",
+            lineage={
+                "reader": "get_industry_memberships",
+                "filters": {
+                    "snapshot_id": snapshot_key or None,
+                    "symbol": symbol_key or None,
+                    "l1_code": l1_key or None,
+                    "l2_code": l2_key or None,
+                    "l3_code": l3_key or None,
+                },
+            },
+            metadata={"snapshot_id": snapshot_key or None},
+        )
+
+
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_industry_cached(_generation: int, ts_code: str) -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import urllib.error
 import urllib.parse
@@ -202,6 +203,157 @@ class _FakeReader:
         self.calls.append(("get_fundamentals", {"ts_code": ts_code, "limit": limit}))
         return [{"data": {"symbol": ts_code, "factor_name": "unit"}, "degraded": False}]
 
+    def get_industry_snapshot(self) -> list[dict[str, Any]]:
+        self.calls.append(("get_industry_snapshot", {}))
+        return [
+            {
+                "data": {
+                    "snapshot_id": "snap-a",
+                    "taxonomy_system": "SW",
+                    "taxonomy_version": "SW2021",
+                    "status": "promoted",
+                    "provider": "tushare",
+                    "source_run_id": "run-a",
+                },
+                "degraded": False,
+                "freshness": {"stale": False, "score": 1.0, "age_hours": 1.0},
+                "quality": {"score": 1.0, "completeness": 1.0},
+                "provenance": {"source_id": "sqlite:market_industry_snapshots"},
+                "lineage": {
+                    "snapshot_id": "snap-a",
+                    "provider": "tushare",
+                    "source_run_id": "run-a",
+                    "coverage_numerator": 3,
+                    "coverage_denominator": 4,
+                    "coverage_missing_count": 1,
+                },
+            }
+        ]
+
+    @staticmethod
+    def _industry_page_metadata(snapshot_id: str) -> dict[str, Any]:
+        return {
+            "snapshot_id": snapshot_id,
+            "provider": "tushare",
+            "source_run_id": "run-a",
+            "coverage_numerator": 3,
+            "coverage_denominator": 4,
+            "coverage_missing_count": 1,
+            "coverage_ratio": 0.75,
+            "freshness_at": "2026-07-11T00:30:00+00:00",
+        }
+
+    def get_industry_taxonomy(
+        self,
+        snapshot_id: str | None = None,
+        level: str | None = None,
+        parent_industry_code: str | None = None,
+        index_code: str | None = None,
+        limit: int = 500,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_snapshot = snapshot_id or "snap-a"
+        if cursor is not None:
+            decode_cursor(
+                cursor, scope="industry_taxonomy", snapshot_id=resolved_snapshot
+            )
+        self.calls.append(
+            (
+                "get_industry_taxonomy",
+                {
+                    "snapshot_id": snapshot_id,
+                    "level": level,
+                    "parent_industry_code": parent_industry_code,
+                    "index_code": index_code,
+                    "limit": limit,
+                    "cursor": cursor,
+                },
+            )
+        )
+        return {
+            "rows": [
+                {
+                    "data": {
+                        "taxonomy_node_key": "tax-1",
+                        "snapshot_id": resolved_snapshot,
+                        "level": level or "L1",
+                        "index_code": index_code or "801010.SI",
+                    },
+                    "degraded": False,
+                    "freshness": {"stale": False, "score": 1.0, "age_hours": 1.0},
+                    "quality": {"score": 1.0, "completeness": 1.0},
+                    "provenance": {"source_id": "sqlite:market_industry_taxonomy"},
+                    "lineage": {"snapshot_id": resolved_snapshot, "source_run_id": "run-a"},
+                }
+            ],
+            "next_cursor": None,
+            "row_count": 1,
+            "total_rows": 17,
+            "metadata": self._industry_page_metadata(resolved_snapshot),
+        }
+
+    def get_industry_memberships(
+        self,
+        snapshot_id: str | None = None,
+        symbol: str | None = None,
+        l1_code: str | None = None,
+        l2_code: str | None = None,
+        l3_code: str | None = None,
+        limit: int = 500,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_snapshot = snapshot_id or "snap-a"
+        if cursor is not None:
+            decode_cursor(
+                cursor, scope="industry_memberships", snapshot_id=resolved_snapshot
+            )
+        self.calls.append(
+            (
+                "get_industry_memberships",
+                {
+                    "snapshot_id": snapshot_id,
+                    "symbol": symbol,
+                    "l1_code": l1_code,
+                    "l2_code": l2_code,
+                    "l3_code": l3_code,
+                    "limit": limit,
+                    "cursor": cursor,
+                },
+            )
+        )
+        return {
+            "rows": [
+                {
+                    "data": {
+                        "membership_key": "member-1",
+                        "snapshot_id": resolved_snapshot,
+                        "symbol": symbol or "000001.SZ",
+                        "l1_code": l1_code or "L1-01",
+                        "l2_code": l2_code or "L2-01",
+                        "l3_code": l3_code or "L3-01",
+                    },
+                    "degraded": False,
+                    "freshness": {"stale": False, "score": 1.0, "age_hours": 1.0},
+                    "quality": {"score": 1.0, "completeness": 1.0},
+                    "provenance": {"source_id": "sqlite:market_industry_memberships"},
+                    "lineage": {"snapshot_id": resolved_snapshot, "source_run_id": "run-a"},
+                }
+            ],
+            "next_cursor": None,
+            "row_count": 1,
+            "total_rows": 23,
+            "metadata": self._industry_page_metadata(resolved_snapshot),
+        }
+
+    def get_industry(self, ts_code: str) -> list[dict[str, Any]]:
+        self.calls.append(("get_industry", {"ts_code": ts_code}))
+        return [
+            {
+                "data": {"symbol": ts_code, "industry": "legacy-sector"},
+                "degraded": False,
+            }
+        ]
+
     def get_macro_factors(self, start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
         self.calls.append(("get_macro_factors", {"start": start, "end": end, "limit": limit}))
         return [{"data": {"factor_name": "macro"}, "degraded": False}]
@@ -379,6 +531,166 @@ def test_api_fundamentals_passes_limit_to_reader(api_edge_server) -> None:
     assert status == 200
     assert payload["data"] == [{"symbol": "000001.SZ", "factor_name": "unit"}]
     assert reader.calls[-1] == ("get_fundamentals", {"ts_code": "000001.SZ", "limit": 7})
+
+
+def test_api_industry_snapshot_exposes_promoted_snapshot_and_lineage(
+    api_edge_server,
+) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/industry/snapshot")
+
+    assert status == 200
+    assert payload["data"][0]["snapshot_id"] == "snap-a"
+    assert payload["data"][0]["taxonomy_version"] == "SW2021"
+    assert payload["metadata"]["lineage"]["coverage_missing_count"] == 1
+    assert payload["source"] == "sqlite:market_industry_snapshots"
+    assert reader.calls[-1] == ("get_industry_snapshot", {})
+
+
+def test_api_industry_taxonomy_passes_filters_clamps_limit_and_merges_page_metadata(
+    api_edge_server,
+) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(
+        base_url,
+        "/industry/taxonomy?snapshot_id=snap-a&level=L2&parent_industry_code=L1-01"
+        "&index_code=801012.SI&limit=50000",
+    )
+
+    assert status == 200
+    assert payload["data"][0]["level"] == "L2"
+    assert payload["metadata"]["row_count"] == 1
+    assert payload["metadata"]["total_rows"] == 17
+    assert payload["metadata"]["snapshot_id"] == "snap-a"
+    assert payload["metadata"]["coverage_numerator"] == 3
+    assert payload["metadata"]["coverage_denominator"] == 4
+    assert payload["metadata"]["coverage_missing_count"] == 1
+    assert payload["metadata"]["provider"] == "tushare"
+    assert payload["metadata"]["source_run_id"] == "run-a"
+    assert reader.calls[-1] == (
+        "get_industry_taxonomy",
+        {
+            "snapshot_id": "snap-a",
+            "level": "L2",
+            "parent_industry_code": "L1-01",
+            "index_code": "801012.SI",
+            "limit": 1000,
+            "cursor": None,
+        },
+    )
+
+
+def test_api_industry_memberships_passes_all_filters_and_raw_cursor(
+    api_edge_server,
+) -> None:
+    base_url, reader = api_edge_server
+    cursor = encode_cursor(
+        "industry_memberships", "snap-a", ("000001.SZ", "member-1")
+    )
+
+    status, payload = _get_json(
+        base_url,
+        "/industry/memberships?snapshot_id=snap-a&symbol=000002.SZ&l1_code=L1-01"
+        f"&l2_code=L2-01&l3_code=L3-01&limit=7&cursor={cursor}",
+    )
+
+    assert status == 200
+    assert payload["metadata"]["total_rows"] == 23
+    assert payload["metadata"]["snapshot_id"] == "snap-a"
+    assert reader.calls[-1] == (
+        "get_industry_memberships",
+        {
+            "snapshot_id": "snap-a",
+            "symbol": "000002.SZ",
+            "l1_code": "L1-01",
+            "l2_code": "L2-01",
+            "l3_code": "L3-01",
+            "limit": 7,
+            "cursor": cursor,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "cursor"),
+    [
+        ("/industry/taxonomy", "not-a-cursor"),
+        (
+            "/industry/taxonomy",
+            encode_cursor(
+                "industry_memberships", "snap-a", ("000001.SZ", "member-1")
+            ),
+        ),
+        (
+            "/industry/memberships?snapshot_id=snap-old",
+            encode_cursor(
+                "industry_memberships", "snap-a", ("000001.SZ", "member-1")
+            ),
+        ),
+    ],
+)
+def test_api_industry_pages_reject_invalid_cross_endpoint_or_cross_snapshot_cursor(
+    api_edge_server, path: str, cursor: str
+) -> None:
+    base_url, _reader = api_edge_server
+    separator = "&" if "?" in path else "?"
+
+    status, payload = _get_json(base_url, f"{path}{separator}cursor={cursor}")
+
+    assert status == 400
+    assert payload["error"] in {"invalid cursor", "cursor snapshot mismatch"}
+
+
+@pytest.mark.parametrize("mode", ["missing_table", "no_promoted_snapshot"])
+def test_api_industry_routes_fail_closed_as_degraded_empty(
+    api_edge_server, tmp_path, monkeypatch, mode: str
+) -> None:
+    import reader as real_reader
+
+    db_path = tmp_path / f"{mode}.sqlite"
+    conn = sqlite3.connect(db_path)
+    if mode == "no_promoted_snapshot":
+        from storage.schema import SCHEMA_SQL
+
+        conn.executescript(SCHEMA_SQL)
+    else:
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+    conn.commit()
+    conn.close()
+
+    base_url, _reader = api_edge_server
+    monkeypatch.setattr(real_reader, "SQLITE_PATH", db_path)
+    real_reader.clear_caches()
+    monkeypatch.setattr(api_server, "reader", real_reader)
+
+    for path in (
+        "/industry/snapshot",
+        "/industry/taxonomy",
+        "/industry/memberships",
+    ):
+        status, payload = _get_json(base_url, path)
+        assert status == 200, path
+        assert payload["data"] == [], path
+        assert payload["metadata"]["degraded"] is True, path
+        assert payload["metadata"]["degraded_reasons"], path
+        if path != "/industry/snapshot":
+            assert payload["metadata"]["row_count"] == 0, path
+            assert payload["metadata"]["total_rows"] == 0, path
+            assert payload["metadata"]["snapshot_id"] is None, path
+
+
+def test_api_legacy_industry_route_is_unchanged(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    status, payload = _get_json(base_url, "/industry?ts_code=000001.SZ")
+
+    assert status == 200
+    assert payload["data"] == [
+        {"symbol": "000001.SZ", "industry": "legacy-sector"}
+    ]
+    assert reader.calls[-1] == ("get_industry", {"ts_code": "000001.SZ"})
 
 
 def test_api_macro_passes_limit_to_reader(api_edge_server) -> None:

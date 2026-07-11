@@ -422,6 +422,53 @@ class Handler(BaseHTTPRequestHandler):
             payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
+        if path == "/industry/snapshot":
+            rows = reader.get_industry_snapshot()
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/industry/taxonomy":
+            page = reader.get_industry_taxonomy(
+                snapshot_id=params.get("snapshot_id", "").strip() or None,
+                level=params.get("level", "").strip() or None,
+                parent_industry_code=params.get(
+                    "parent_industry_code", ""
+                ).strip()
+                or None,
+                index_code=params.get("index_code", "").strip() or None,
+                limit=to_int(params.get("limit"), 500, max_val=1000),
+                cursor=params.get("cursor", "").strip() or None,
+            )
+            payload, metadata, source = aggregate_metadata(page["rows"])
+            metadata = add_page_metadata(
+                metadata,
+                next_cursor=page["next_cursor"],
+                row_count=page["row_count"],
+                total_rows=page["total_rows"],
+                page_metadata=page.get("metadata"),
+            )
+            return wrap_response(payload, metadata, source)
+
+        if path == "/industry/memberships":
+            page = reader.get_industry_memberships(
+                snapshot_id=params.get("snapshot_id", "").strip() or None,
+                symbol=params.get("symbol", "").strip() or None,
+                l1_code=params.get("l1_code", "").strip() or None,
+                l2_code=params.get("l2_code", "").strip() or None,
+                l3_code=params.get("l3_code", "").strip() or None,
+                limit=to_int(params.get("limit"), 500, max_val=1000),
+                cursor=params.get("cursor", "").strip() or None,
+            )
+            payload, metadata, source = aggregate_metadata(page["rows"])
+            metadata = add_page_metadata(
+                metadata,
+                next_cursor=page["next_cursor"],
+                row_count=page["row_count"],
+                total_rows=page["total_rows"],
+                page_metadata=page.get("metadata"),
+            )
+            return wrap_response(payload, metadata, source)
+
         if path == "/industry":
             ts_code = params.get("ts_code", "").strip()
             if not ts_code:

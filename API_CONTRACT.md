@@ -1,6 +1,6 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.34 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **版本**: 1.1.41 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
 
 ---
 
@@ -40,6 +40,8 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **因子边界（2026-07-09）**：`market_factors` 是 SharedSignals 的事实型 read-model 投影，用于保存 provider 已给出的财务、资金流、宏观、参考限制、持仓排名等结构化数据，或必要的字段展开。SharedSignals 不计算 alpha、买卖方向、策略评分、仓位权重或交易触发条件；TradingAgent 应从 SharedSignals API 读取行情/事件/事实型因子后，自行完成交易因子提取、标准化、打分、组合、风控和决策。
 
+**SW2021 行业快照边界（2026-07-11）**：`/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 只读专用 SQLite 表 `market_industry_snapshots`、`market_industry_taxonomy`、`market_industry_memberships`，不在请求时调用 Tushare，也不回退 `market_assets`、CSV 或其它 provider。默认只解析当前 `promoted` 快照；显式 `snapshot_id` 只允许已发布的 `promoted/superseded` 快照，使多页消费者可完成已固定的历史下载。缺表或无 promoted 快照返回 degraded `data: []`。旧 `/industry?ts_code=` 继续表示 `market_assets.sector`，不得称为 SW2021。
+
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
 **HTTP 服务**：生产 API 默认监听广州 `127.0.0.1:8082`（可通过 `SHAREDSIGNALS_API_HOST` 覆盖）。正式外部入口为 `https://signals.tradingagent.cc`，Cloudflare Tunnel CNAME 由新加坡 connector 接入，并通过 loopback-only SSH reverse tunnel 到广州 API；8082 不直接暴露公网。本机 MarketGraph/TradingAgent 仅在显式设置 `SHAREDSIGNALS_LOCALHOST_BYPASS=1` 且请求没有外部 token/代理来源头时走 localhost bypass；外部账号必须配置 Bearer token、`X-API-Key` 或 JWT，账号可设置 `max_concurrent`，未配置时按 tier 默认并发限制执行。`external_read` 是外部隔离账号的完整数据读 scope，可读取健康/配置、业务数据和 `/tushare` read-model 输出，但不允许 `/cache/invalidate` 等运维控制。
@@ -63,6 +65,9 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 | `GET /fundamentals` | `fundamentals` | 基本面/财务因子 read model |
 | `GET /reference` | `fundamentals` | 明确参考表读取；旧 CSV reference 返回 degraded |
 | `GET /industry` | `fundamentals` | 行业/产业链/板块基础字段 |
+| `GET /industry/snapshot` | `industry_reference` | 当前 promoted SW2021 快照、计数、覆盖率与 lineage |
+| `GET /industry/taxonomy` | `industry_reference` | 固定快照的 SW2021 L1/L2/L3 taxonomy keyset 分页 |
+| `GET /industry/memberships` | `industry_reference` | 固定快照的股票行业归属 keyset 分页 |
 | `GET /macro` | `macro` | 宏观因子 read model |
 | `GET /capital_flow` | `macro` | A股资金流向因子 read model |
 | `GET /events` | `events` | 新闻/公告/事件 read model |
@@ -642,6 +647,20 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 ### 关联查询 (Association Queries)
 
+#### SW2021 快照接口
+
+`reader.get_industry_snapshot()` / `GET /industry/snapshot` 返回当前 `SW/SW2021`、`status=promoted` 的快照行。响应 lineage 包含 `snapshot_id`、`provider`、`source_run_id`、`coverage_numerator`、`coverage_denominator` 和 `coverage_missing_count`。
+
+`reader.get_industry_taxonomy(snapshot_id=None, level=None, parent_industry_code=None, index_code=None, limit=500, cursor=None)` / `GET /industry/taxonomy` 按 `(level, index_code, taxonomy_node_key)` 升序分页。
+
+`reader.get_industry_memberships(snapshot_id=None, symbol=None, l1_code=None, l2_code=None, l3_code=None, limit=500, cursor=None)` / `GET /industry/memberships` 按 `(symbol, membership_key)` 升序分页。
+
+两个列表接口默认每页 500、最大 1,000；cursor 是 endpoint-bound、snapshot-bound 的不透明 URL-safe 值。响应 metadata 包含 `snapshot_id`、`next_cursor`、本页 `row_count`、相同过滤条件下不含 cursor 的精确 `total_rows`、provider、source run、覆盖率分子/分母/缺失数与 freshness。格式错误、跨端点或快照不匹配的 cursor 返回 HTTP 400（`invalid cursor` 或 `cursor snapshot mismatch`）。
+
+`industry_reference` scope 只授予上述三个精确路径；`fundamentals`、`external_read` 和 `read` 组合 scope 包含它，但 `status`、`health`、`events` 与 operator control 不包含它。MarketGraph 与未来 TradingAgent 消费者应使用分离的 service-account token，不共享万能 token。
+
+---
+
 #### `get_industry(ts_code)`
 
 **NEW** — 查询股票的行业/产业链/板块/概念信息。
@@ -839,6 +858,7 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-07-11 | 1.1.41 | 本地实现固定快照的 SW2021 `/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 只读接口与最小权限 `industry_reference` scope；列表采用 snapshot-bound keyset、精确总数和 1,000 行上限，缺表/无 promoted 快照 fail closed。该记录不代表已 pilot、部署、对外生效或启用调度。 |
 | 2026-07-10 | 1.1.40 | Crypto `limit` 直接传给 reader 并返回最新记录；周/月线 `bar_time` 统一为 SQL 时间；DuckDB 权威快照支持删除传播并执行全表计数核对；新增 Tushare 逐接口运行台账和 5 分钟公网探针；API systemd 固定使用 SharedSignals venv；外部入口改为新加坡 connector 承载的 Cloudflare Tunnel CNAME。P1 `daily` 改为全市场 trade-date 单次采集并要求 >=90% active-universe 唯一代码覆盖；未验证批量能力的研究接口使用每日 300 只单股轮转；修复 `repurchase/pledge_*` 及 P2/P3 六个逐股接口的空参数重复请求，并增加 provider 行上限截断门。日常 patrol/heal 改为浅层 SQLite 可用性检查，深度完整性扫描只保留在部署、备份和恢复门禁。 |
 | 2026-07-10 | 1.1.39 | A股 P0 从每轮 30 只优先/轮转改为 `rt_min` 每批最多 300 只、每 5 分钟覆盖完整 active universe；移除旧游标与优先池配置，空批次计关键失败；退役重复且盘中无数据的 `stk_mins` 生产能力；health SLA 新增盘中 active-universe 覆盖率门禁。 |
 | 2026-07-10 | 1.1.38 | 修复 SQL 时间格式的开盘闸门解析和控制面缓存；DuckDB 大表改为受限资源的哈希增量镜像，并把闸门与镜像结果纳入 `/health`、`/source_status`。外部入口文档统一为 Cloudflare 橙云 A 记录/Nginx。 |

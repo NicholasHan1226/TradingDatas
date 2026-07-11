@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,6 +19,8 @@ import pytest
 _SHARED = Path(__file__).resolve().parents[1]
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))
+
+from pagination import encode_cursor
 
 
 # ============================================================================
@@ -1269,3 +1273,448 @@ class TestMarketDataReader:
 
         assert len(rows) == 1
         assert rows[0]["data"]["trade_date"] == "20260708"
+
+
+# ============================================================================
+# Pinned SW2021 industry reference reader tests
+# ============================================================================
+
+
+@pytest.fixture
+def industry_db(tmp_path: Path) -> Path:
+    """Create one promoted and one superseded SW2021 snapshot."""
+    from storage.schema import SCHEMA_SQL
+
+    db_path = tmp_path / "industry.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.executemany(
+        """
+        INSERT INTO market_industry_snapshots (
+            snapshot_id, taxonomy_system, taxonomy_version, provider,
+            started_at, completed_at, status, expected_partition_count,
+            successful_partition_count, taxonomy_row_count,
+            membership_row_count, unique_symbol_count, active_universe_count,
+            coverage_ratio, validation_errors_json, source_run_id, promoted_at
+        ) VALUES (?, 'SW', 'SW2021', 'tushare', ?, ?, ?, 31, 31, ?, ?, ?, ?, ?,
+                  '[]', ?, ?)
+        """,
+        [
+            (
+                "snap-old",
+                "2026-07-01T00:00:00+00:00",
+                "2026-07-01T00:30:00+00:00",
+                "superseded",
+                1,
+                1,
+                1,
+                1,
+                1.0,
+                "run-old",
+                "2026-07-01T00:30:00+00:00",
+            ),
+            (
+                "snap-a",
+                "2026-07-11T00:00:00+00:00",
+                "2026-07-11T00:30:00+00:00",
+                "promoted",
+                4,
+                3,
+                3,
+                4,
+                0.75,
+                "run-a",
+                "2026-07-11T00:30:00+00:00",
+            ),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO market_industry_taxonomy (
+            taxonomy_node_key, snapshot_id, taxonomy_system, taxonomy_version,
+            level, index_code, industry_code, industry_name,
+            parent_industry_code, is_published, provider, collected_at, raw_json
+        ) VALUES (?, ?, 'SW', 'SW2021', ?, ?, ?, ?, ?, '1',
+                  'tushare_index_classify', ?, '{}')
+        """,
+        [
+            (
+                "old-tax-1", "snap-old", "L1", "700001.SI", "OLD-L1",
+                "Old Industry", "", "2026-07-01T00:20:00+00:00",
+            ),
+            (
+                "tax-1", "snap-a", "L1", "801010.SI", "L1-01",
+                "Agriculture", "", "2026-07-11T00:20:00+00:00",
+            ),
+            (
+                "tax-2", "snap-a", "L2", "801011.SI", "L2-01",
+                "Seeds", "L1-01", "2026-07-11T00:21:00+00:00",
+            ),
+            (
+                "tax-3", "snap-a", "L2", "801012.SI", "L2-02",
+                "Farming", "L1-01", "2026-07-11T00:22:00+00:00",
+            ),
+            (
+                "tax-4", "snap-a", "L3", "801013.SI", "L3-01",
+                "Hybrid Seeds", "L2-01", "2026-07-11T00:23:00+00:00",
+            ),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO market_industry_memberships (
+            membership_key, snapshot_id, market, symbol, name,
+            l1_code, l1_name, l2_code, l2_name, l3_code, l3_name,
+            in_date, out_date, is_current, provider, collected_at, raw_json
+        ) VALUES (?, ?, 'Ashare', ?, ?, ?, ?, ?, ?, ?, ?, '20210101', '', 'Y',
+                  'tushare_index_member_all', ?, '{}')
+        """,
+        [
+            (
+                "old-member-1", "snap-old", "000099.SZ", "Old Stock",
+                "OLD-L1", "Old Industry", "OLD-L2", "Old L2", "OLD-L3",
+                "Old L3", "2026-07-01T00:25:00+00:00",
+            ),
+            (
+                "member-1", "snap-a", "000001.SZ", "Ping An Bank",
+                "L1-01", "Agriculture", "L2-01", "Seeds", "L3-01",
+                "Hybrid Seeds", "2026-07-11T00:25:00+00:00",
+            ),
+            (
+                "member-2", "snap-a", "000002.SZ", "Vanke",
+                "L1-01", "Agriculture", "L2-01", "Seeds", "L3-01",
+                "Hybrid Seeds", "2026-07-11T00:26:00+00:00",
+            ),
+            (
+                "member-3", "snap-a", "600000.SH", "SPDB",
+                "L1-02", "Banks", "L2-03", "Joint-stock Banks", "L3-03",
+                "Banks", "2026-07-11T00:27:00+00:00",
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+def _use_industry_db(monkeypatch: pytest.MonkeyPatch, db_path: Path):
+    import reader
+
+    monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+    reader.clear_caches()
+    return reader
+
+
+def test_get_industry_snapshot_returns_promoted_snapshot_with_exact_lineage(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    rows = reader.get_industry_snapshot()
+
+    assert len(rows) == 1
+    assert rows[0]["data"]["snapshot_id"] == "snap-a"
+    assert rows[0]["data"]["status"] == "promoted"
+    assert rows[0]["data"]["taxonomy_system"] == "SW"
+    assert rows[0]["data"]["taxonomy_version"] == "SW2021"
+    assert rows[0]["lineage"] == {
+        "reader": "get_industry_snapshot",
+        "table": "market_industry_snapshots",
+        "snapshot_id": "snap-a",
+        "provider": "tushare",
+        "source_run_id": "run-a",
+        "coverage_numerator": 3,
+        "coverage_denominator": 4,
+        "coverage_missing_count": 1,
+    }
+    assert rows[0]["provenance"]["source_id"] == "sqlite:market_industry_snapshots"
+    assert rows[0]["freshness"]["age_hours"] is not None
+
+
+def test_industry_taxonomy_uses_stable_pinned_keyset_and_exact_metadata(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    first = reader.get_industry_taxonomy(limit=2)
+    second = reader.get_industry_taxonomy(limit=2, cursor=first["next_cursor"])
+
+    assert [row["data"]["taxonomy_node_key"] for row in first["rows"]] == [
+        "tax-1",
+        "tax-2",
+    ]
+    assert [row["data"]["taxonomy_node_key"] for row in second["rows"]] == [
+        "tax-3",
+        "tax-4",
+    ]
+    assert second["next_cursor"] is None
+    assert first["row_count"] == 2
+    assert first["total_rows"] == 4
+    expected_metadata = {
+        "snapshot_id": "snap-a",
+        "provider": "tushare",
+        "source_run_id": "run-a",
+        "coverage_numerator": 3,
+        "coverage_denominator": 4,
+        "coverage_missing_count": 1,
+        "coverage_ratio": 0.75,
+        "freshness_at": "2026-07-11T00:30:00+00:00",
+    }
+    assert {
+        key: first["metadata"][key] for key in expected_metadata
+    } == expected_metadata
+    assert first["metadata"]["lineage"]["snapshot_id"] == "snap-a"
+    assert first["rows"][0]["lineage"]["snapshot_id"] == "snap-a"
+    assert first["rows"][0]["lineage"]["source_run_id"] == "run-a"
+
+
+def test_industry_page_past_last_key_preserves_exact_filtered_total(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+    cursor = encode_cursor(
+        "industry_taxonomy", "snap-a", ("L3", "801013.SI", "tax-4")
+    )
+
+    page = reader.get_industry_taxonomy(snapshot_id="snap-a", cursor=cursor)
+
+    assert page["row_count"] == 0
+    assert page["total_rows"] == 4
+    assert page["next_cursor"] is None
+    assert page["rows"][0]["degraded"] is True
+
+
+def test_industry_taxonomy_filters_and_can_read_pinned_superseded_snapshot(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    filtered = reader.get_industry_taxonomy(
+        level="L2", parent_industry_code="L1-01", index_code="801012.SI"
+    )
+    historical = reader.get_industry_taxonomy(snapshot_id="snap-old")
+
+    assert filtered["total_rows"] == 1
+    assert filtered["rows"][0]["data"]["taxonomy_node_key"] == "tax-3"
+    assert historical["metadata"]["snapshot_id"] == "snap-old"
+    assert historical["rows"][0]["data"]["taxonomy_node_key"] == "old-tax-1"
+
+
+def test_taxonomy_cursor_is_endpoint_and_snapshot_bound(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+    page = reader.get_industry_taxonomy(snapshot_id="snap-a", limit=1)
+    assert page["next_cursor"]
+
+    with pytest.raises(ValueError, match="cursor snapshot mismatch"):
+        reader.get_industry_taxonomy(
+            snapshot_id="snap-old", cursor=page["next_cursor"]
+        )
+    with pytest.raises(ValueError, match="cursor snapshot mismatch"):
+        reader.get_industry_taxonomy(
+            snapshot_id="snap-does-not-exist", cursor=page["next_cursor"]
+        )
+    with pytest.raises(ValueError, match="^invalid cursor$"):
+        reader.get_industry_memberships(cursor=page["next_cursor"])
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        pytest.param(
+            encode_cursor("industry_taxonomy", "snap-a", ("L1",)),
+            id="short-key",
+        ),
+        pytest.param(
+            encode_cursor("industry_taxonomy", "snap-a", ("L1", 1, "tax-1")),
+            id="non-string-key",
+        ),
+    ],
+)
+def test_taxonomy_rejects_invalid_cursor_sort_key_shape(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch, cursor: str
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    with pytest.raises(ValueError, match="^invalid cursor$"):
+        reader.get_industry_taxonomy(snapshot_id="snap-a", cursor=cursor)
+
+
+@pytest.mark.parametrize("hidden_status", ["collecting", "rejected"])
+def test_explicit_unpromoted_industry_snapshot_is_not_visible(
+    industry_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hidden_status: str,
+) -> None:
+    conn = sqlite3.connect(industry_db)
+    conn.execute(
+        "UPDATE market_industry_snapshots SET status = ? WHERE snapshot_id = 'snap-old'",
+        (hidden_status,),
+    )
+    conn.commit()
+    conn.close()
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    page = reader.get_industry_memberships(snapshot_id="snap-old")
+
+    assert page["row_count"] == 0
+    assert page["total_rows"] == 0
+    assert page["rows"][0]["degraded"] is True
+    assert page["rows"][0]["data"] == {}
+
+
+def test_industry_memberships_filters_paginates_and_reports_exact_total(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    first = reader.get_industry_memberships(l1_code="L1-01", limit=1)
+    second = reader.get_industry_memberships(
+        l1_code="L1-01", limit=1, cursor=first["next_cursor"]
+    )
+    by_symbol = reader.get_industry_memberships(
+        symbol="600000.SH", l2_code="L2-03", l3_code="L3-03"
+    )
+
+    assert first["total_rows"] == 2
+    assert first["rows"][0]["data"]["symbol"] == "000001.SZ"
+    assert second["rows"][0]["data"]["symbol"] == "000002.SZ"
+    assert second["next_cursor"] is None
+    assert by_symbol["total_rows"] == 1
+    assert by_symbol["rows"][0]["data"]["membership_key"] == "member-3"
+    assert by_symbol["metadata"]["coverage_missing_count"] == 1
+
+
+def test_industry_reader_clamps_page_size_to_1000(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = sqlite3.connect(industry_db)
+    conn.executemany(
+        """
+        INSERT INTO market_industry_taxonomy (
+            taxonomy_node_key, snapshot_id, taxonomy_system, taxonomy_version,
+            level, index_code, industry_code, industry_name,
+            parent_industry_code, is_published, provider, collected_at, raw_json
+        ) VALUES (?, 'snap-a', 'SW', 'SW2021', 'L3', ?, ?, ?, 'L2-X', '1',
+                  'tushare_index_classify', '2026-07-11T00:28:00+00:00', '{}')
+        """,
+        [
+            (f"bulk-{i:04d}", f"9{i:05d}.SI", f"B-{i:04d}", f"Bulk {i}")
+            for i in range(997)
+        ],
+    )
+    conn.commit()
+    conn.close()
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    page = reader.get_industry_taxonomy(limit=50_000)
+
+    assert page["row_count"] == 1000
+    assert page["total_rows"] == 1001
+    assert page["next_cursor"] is not None
+
+
+def test_industry_caches_follow_sqlite_mtime_after_snapshot_promotion(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _use_industry_db(monkeypatch, industry_db)
+    assert reader.get_industry_snapshot()[0]["data"]["snapshot_id"] == "snap-a"
+    assert reader.get_industry_taxonomy()["metadata"]["snapshot_id"] == "snap-a"
+
+    conn = sqlite3.connect(industry_db)
+    conn.execute(
+        "UPDATE market_industry_snapshots SET status = 'superseded' "
+        "WHERE snapshot_id = 'snap-a'"
+    )
+    conn.execute(
+        """
+        INSERT INTO market_industry_snapshots (
+            snapshot_id, taxonomy_system, taxonomy_version, provider,
+            started_at, completed_at, status, expected_partition_count,
+            successful_partition_count, taxonomy_row_count,
+            membership_row_count, unique_symbol_count, active_universe_count,
+            coverage_ratio, validation_errors_json, source_run_id, promoted_at
+        ) VALUES (
+            'snap-new', 'SW', 'SW2021', 'tushare',
+            '2026-07-12T00:00:00+00:00', '2026-07-12T00:30:00+00:00',
+            'promoted', 31, 31, 1, 0, 0, 4, 0.0, '[]', 'run-new',
+            '2026-07-12T00:30:00+00:00'
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO market_industry_taxonomy (
+            taxonomy_node_key, snapshot_id, taxonomy_system, taxonomy_version,
+            level, index_code, industry_code, industry_name,
+            parent_industry_code, is_published, provider, collected_at, raw_json
+        ) VALUES (
+            'new-tax-1', 'snap-new', 'SW', 'SW2021', 'L1', '900001.SI',
+            'NEW-L1', 'New Industry', '', '1', 'tushare_index_classify',
+            '2026-07-12T00:20:00+00:00', '{}'
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    stat = industry_db.stat()
+    future_ns = max(stat.st_mtime_ns + 1_000_000_000, time.time_ns() + 1_000_000_000)
+    os.utime(industry_db, ns=(stat.st_atime_ns, future_ns))
+
+    snapshot = reader.get_industry_snapshot()
+    page = reader.get_industry_taxonomy()
+
+    assert snapshot[0]["data"]["snapshot_id"] == "snap-new"
+    assert page["metadata"]["snapshot_id"] == "snap-new"
+    assert page["rows"][0]["data"]["taxonomy_node_key"] == "new-tax-1"
+
+
+def test_corrupt_snapshot_metadata_degrades_instead_of_looking_like_bad_request(
+    industry_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = sqlite3.connect(industry_db)
+    conn.execute(
+        "UPDATE market_industry_snapshots SET coverage_ratio = 'invalid' "
+        "WHERE snapshot_id = 'snap-a'"
+    )
+    conn.commit()
+    conn.close()
+    reader = _use_industry_db(monkeypatch, industry_db)
+
+    page = reader.get_industry_taxonomy()
+
+    assert page["row_count"] == 0
+    assert page["rows"][0]["degraded"] is True
+    assert "reader failed" in page["rows"][0]["lineage"]["reason"]
+
+
+@pytest.mark.parametrize("mode", ["missing_table", "no_promoted_snapshot"])
+def test_industry_readers_fail_closed_without_tables_or_promoted_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    db_path = tmp_path / f"{mode}.sqlite"
+    conn = sqlite3.connect(db_path)
+    if mode == "no_promoted_snapshot":
+        from storage.schema import SCHEMA_SQL
+
+        conn.executescript(SCHEMA_SQL)
+    else:
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+    conn.commit()
+    conn.close()
+    reader = _use_industry_db(monkeypatch, db_path)
+
+    snapshot = reader.get_industry_snapshot()
+    taxonomy = reader.get_industry_taxonomy()
+    memberships = reader.get_industry_memberships()
+
+    assert snapshot[0]["degraded"] is True
+    assert snapshot[0]["data"] == {}
+    for page in (taxonomy, memberships):
+        assert page["rows"][0]["degraded"] is True
+        assert page["rows"][0]["data"] == {}
+        assert page["next_cursor"] is None
+        assert page["row_count"] == 0
+        assert page["total_rows"] == 0
+        assert page["metadata"]["snapshot_id"] is None

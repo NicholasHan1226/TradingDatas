@@ -88,6 +88,45 @@ def test_pm_scope_covers_markets_and_prices() -> None:
     assert not auth.check_endpoint_scope(account, "/market_data")
 
 
+def test_industry_reference_scope_is_exact_and_least_privilege() -> None:
+    expected = {
+        "/industry/snapshot",
+        "/industry/taxonomy",
+        "/industry/memberships",
+    }
+    account = {"scopes": ["industry_reference"]}
+
+    assert auth.SCOPE_ENDPOINTS["industry_reference"] == expected
+    for path in expected:
+        assert auth.check_endpoint_scope(account, path), path
+    for path in (
+        "/industry",
+        "/fundamentals",
+        "/events",
+        "/health",
+        "/cache/status",
+        "/cache/invalidate",
+    ):
+        assert not auth.check_endpoint_scope(account, path), path
+
+
+def test_industry_reference_routes_are_only_in_approved_composites() -> None:
+    paths = {
+        "/industry/snapshot",
+        "/industry/taxonomy",
+        "/industry/memberships",
+    }
+
+    for scope in ("fundamentals", "external_read", "read"):
+        account = {"scopes": [scope]}
+        for path in paths:
+            assert auth.check_endpoint_scope(account, path), (scope, path)
+    for scope in ("status", "health", "events"):
+        account = {"scopes": [scope]}
+        for path in paths:
+            assert not auth.check_endpoint_scope(account, path), (scope, path)
+
+
 def test_signed_jwt_wrong_issuer_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
@@ -190,6 +229,9 @@ def test_external_read_scope_allows_full_data_surface_without_operator_control(m
         "/fundamentals",
         "/reference",
         "/industry",
+        "/industry/snapshot",
+        "/industry/taxonomy",
+        "/industry/memberships",
         "/macro",
         "/capital_flow",
         "/events",
