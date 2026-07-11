@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import replace
 from hashlib import sha256
@@ -283,6 +284,66 @@ def test_provider_partition_failure_is_preserved_and_rejected() -> None:
     assert "partition_fetch_failed" in validation.errors
 
 
+@pytest.mark.parametrize(
+    "malformed_response",
+    [
+        {"l1_code": "L1-12"},
+        "not-a-list-of-mappings",
+        [{"l1_code": "L1-12"}, "not-a-mapping"],
+    ],
+)
+def test_invalid_membership_response_shape_becomes_structured_partition_failure(
+    malformed_response: object,
+) -> None:
+    taxonomy = _raw_taxonomy()
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> Any:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        if params["l1_code"] == "L1-12":
+            return malformed_response
+        return [
+            row
+            for row in _raw_memberships()
+            if row["l1_code"] == params["l1_code"]
+        ]
+
+    candidate = collect_candidate(
+        fetch, snapshot_id="snapshot-invalid-shape", source_run_id="run-invalid-shape"
+    )
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert candidate.partition_counts["L1-12"] == -1
+    assert candidate.partition_failures["L1-12"] == "invalid_membership_response_shape"
+    assert validation.accepted is False
+    assert "partition_fetch_failed" in validation.errors
+    assert validation.successful_partition_count == 30
+
+
+@pytest.mark.parametrize("raw_count", [-1, 0, 2_000])
+def test_successful_partition_count_requires_nonempty_bounded_valid_response(
+    raw_count: int,
+) -> None:
+    candidate = _collected_candidate()
+    counts = dict(candidate.partition_counts)
+    counts["L1-01"] = raw_count
+    candidate = replace(candidate, partition_counts=counts)
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert validation.successful_partition_count == 30
+
+
 def test_empty_provider_partition_preserves_zero_source_count_and_is_rejected() -> None:
     taxonomy = _raw_taxonomy()
     memberships = _raw_memberships()
@@ -345,6 +406,62 @@ def test_cross_partition_row_cannot_fill_an_empty_requested_partition() -> None:
     assert validation.accepted is False
     assert "empty_partition" in validation.errors
     assert "partition_scope_mismatch" in validation.errors
+
+
+def test_per_row_partition_evidence_rebuilds_symmetric_scope_mismatch() -> None:
+    taxonomy = _raw_taxonomy()
+    memberships = _raw_memberships()
+    first = next(row for row in memberships if row["l1_code"] == "L1-01")
+    second = next(row for row in memberships if row["l1_code"] == "L1-02")
+
+    def fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
+        if api_name == "index_classify":
+            return taxonomy[params["offset"] : params["offset"] + params["limit"]]
+        rows = [row for row in memberships if row["l1_code"] == params["l1_code"]]
+        if params["l1_code"] == "L1-01":
+            return [second if row is first else row for row in rows]
+        if params["l1_code"] == "L1-02":
+            return [first if row is second else row for row in rows]
+        return rows
+
+    candidate = collect_candidate(
+        fetch, snapshot_id="snapshot-symmetric-scope", source_run_id="run-symmetric-scope"
+    )
+    candidate = replace(candidate, partition_scope_mismatches=())
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert validation.accepted is False
+    assert "partition_scope_mismatch" in validation.errors
+
+
+@pytest.mark.parametrize("tamper", ["raw_lineage", "evidence_hash"])
+def test_membership_partition_evidence_tampering_is_rejected(tamper: str) -> None:
+    candidate = _collected_candidate()
+    rows = [dict(row) for row in candidate.membership_rows]
+    if tamper == "raw_lineage":
+        evidence = json.loads(rows[0]["raw_json"])
+        evidence["requested_l1"] = "L1-31"
+    else:
+        evidence = json.loads(rows[0]["raw_json"])
+        evidence["evidence_hash"] = "tampered-hash"
+    rows[0]["raw_json"] = json.dumps(
+        evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    candidate = replace(candidate, membership_rows=tuple(rows))
+
+    validation = validate_candidate(
+        candidate,
+        {_symbol(number) for number in range(1, 101)},
+        min_rows=1,
+        max_rows=10_000,
+    )
+
+    assert "invalid_membership_lineage" in validation.errors
 
 
 @pytest.mark.parametrize(

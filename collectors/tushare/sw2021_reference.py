@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
@@ -32,7 +33,7 @@ TAXONOMY_MAX_PAGES = 100
 _ASHARE_SYMBOL = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 _LEVELS = {"1": "L1", "2": "L2", "3": "L3", "L1": "L1", "L2": "L2", "L3": "L3"}
 
-FetchRows = Callable[[str, dict[str, Any], str], list[dict[str, Any]]]
+FetchRows = Callable[[str, dict[str, Any], str], Any]
 
 
 class CandidateCollectionError(RuntimeError):
@@ -52,6 +53,7 @@ class IndustryCandidate:
     deduplicated_partition_counts: Mapping[str, int]
     declared_partition_counts: Mapping[str, int]
     partition_scope_mismatches: tuple[tuple[str, str, str], ...]
+    partition_failures: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -106,9 +108,24 @@ def _normalize_taxonomy_row(
 
 
 def _normalize_membership_row(
-    row: Mapping[str, Any], *, snapshot_id: str, collected_at: str
+    row: Mapping[str, Any],
+    *,
+    snapshot_id: str,
+    collected_at: str,
+    requested_l1: str,
+    source_partitions: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     symbol = _text(row.get("ts_code"))
+    partitions = tuple(sorted(set(source_partitions or (requested_l1,))))
+    evidence = {
+        "provider_row": dict(row),
+        "requested_l1": requested_l1,
+        "source_partitions": list(partitions),
+    }
+    evidence["evidence_hash"] = _hash_key(
+        f"{snapshot_id}|SW2021|{symbol}|{_raw_json(evidence)}"
+    )
+    raw_json = _raw_json(evidence)
     return {
         "membership_key": _hash_key(f"{snapshot_id}|SW2021|{symbol}"),
         "snapshot_id": snapshot_id,
@@ -126,8 +143,41 @@ def _normalize_membership_row(
         "is_current": _text(row.get("is_new")).upper(),
         "provider": "tushare_index_member_all",
         "collected_at": collected_at,
-        "raw_json": _raw_json(row),
+        "raw_json": raw_json,
     }
+
+
+def _membership_evidence(row: Mapping[str, Any]) -> tuple[Mapping[str, Any], str, tuple[str, ...]]:
+    evidence = json.loads(_text(row.get("raw_json")))
+    if not isinstance(evidence, dict):
+        raise ValueError("membership evidence must be an object")
+    provider_row = evidence.get("provider_row")
+    requested_l1 = evidence.get("requested_l1")
+    source_partitions = evidence.get("source_partitions")
+    evidence_hash = evidence.get("evidence_hash")
+    if (
+        set(evidence)
+        != {"provider_row", "requested_l1", "source_partitions", "evidence_hash"}
+        or not isinstance(provider_row, MappingABC)
+        or not isinstance(requested_l1, str)
+        or not requested_l1.strip()
+        or not isinstance(source_partitions, list)
+        or not source_partitions
+        or any(not isinstance(value, str) or not value.strip() for value in source_partitions)
+        or source_partitions != sorted(set(source_partitions))
+        or requested_l1 != source_partitions[0]
+        or not isinstance(evidence_hash, str)
+    ):
+        raise ValueError("invalid membership evidence")
+    unsigned_evidence = dict(evidence)
+    unsigned_evidence.pop("evidence_hash")
+    expected_hash = _hash_key(
+        f"{_text(row.get('snapshot_id'))}|SW2021|{_text(row.get('symbol'))}|"
+        f"{_raw_json(unsigned_evidence)}"
+    )
+    if evidence_hash != expected_hash:
+        raise ValueError("invalid membership evidence hash")
+    return provider_row, requested_l1, tuple(source_partitions)
 
 
 def _default_fetch(api_name: str, params: dict[str, Any], fields: str) -> list[dict[str, Any]]:
@@ -243,13 +293,28 @@ def _deduplicate_memberships(
         else:
             passthrough.append((requested_partition, row))
 
-    deduplicated = [
-        min(
+    deduplicated: list[tuple[str, dict[str, Any]]] = []
+    for duplicates in grouped.values():
+        evidence = [_membership_evidence(row) for _, row in duplicates]
+        source_partitions = tuple(
+            sorted({partition for _, _, partitions in evidence for partition in partitions})
+        )
+        provider_row = min(
+            (provider_row for provider_row, _, _ in evidence), key=_raw_json
+        )
+        primary_partition = min(source_partitions)
+        template = min(
             duplicates,
             key=lambda item: (_text(item[1].get("raw_json")), item[0]),
+        )[1]
+        merged = _normalize_membership_row(
+            provider_row,
+            snapshot_id=_text(template.get("snapshot_id")),
+            collected_at=_text(template.get("collected_at")),
+            requested_l1=primary_partition,
+            source_partitions=source_partitions,
         )
-        for duplicates in grouped.values()
-    ]
+        deduplicated.append((primary_partition, merged))
     return sorted(
         [*deduplicated, *passthrough],
         key=lambda item: (
@@ -282,6 +347,7 @@ def collect_candidate(
 
     membership_entries: list[tuple[str, dict[str, Any]]] = []
     source_partition_counts: dict[str, int] = {}
+    partition_failures: dict[str, str] = {}
     partition_scope_mismatches: list[tuple[str, str, str]] = []
     for l1_code in l1_codes:
         try:
@@ -294,10 +360,20 @@ def collect_candidate(
             # Preserve the failed partition in the immutable candidate so the
             # validation result can be persisted as evidence in the next task.
             source_partition_counts[l1_code] = -1
+            partition_failures[l1_code] = "membership_fetch_failed"
+            continue
+        if not isinstance(partition, list) or any(
+            not isinstance(row, MappingABC) for row in partition
+        ):
+            source_partition_counts[l1_code] = -1
+            partition_failures[l1_code] = "invalid_membership_response_shape"
             continue
         normalized_rows = [
             _normalize_membership_row(
-                row, snapshot_id=snapshot_id, collected_at=started_at
+                row,
+                snapshot_id=snapshot_id,
+                collected_at=started_at,
+                requested_l1=l1_code,
             )
             for row in partition
         ]
@@ -331,6 +407,7 @@ def collect_candidate(
         deduplicated_partition_counts=MappingProxyType(deduplicated_partition_counts),
         declared_partition_counts=MappingProxyType(declared_partition_counts),
         partition_scope_mismatches=tuple(sorted(partition_scope_mismatches)),
+        partition_failures=MappingProxyType(partition_failures),
     )
 
 
@@ -425,7 +502,9 @@ def validate_candidate(
         reject("deduplicated_partition_count_mismatch")
     if set(candidate.declared_partition_counts) != partition_codes:
         reject("declared_partition_count_mismatch")
-    if any(count < 0 for count in candidate.partition_counts.values()):
+    if candidate.partition_failures or any(
+        count < 0 for count in candidate.partition_counts.values()
+    ):
         reject("partition_fetch_failed")
     if any(count == 0 for count in candidate.partition_counts.values()):
         reject("empty_partition")
@@ -483,14 +562,21 @@ def validate_candidate(
             reject("duplicate_membership_key")
         membership_keys.add(membership_key)
         try:
-            raw_row = json.loads(_text(row.get("raw_json")))
+            raw_row, requested_l1, source_partitions = _membership_evidence(row)
             expected_row = _normalize_membership_row(
                 raw_row,
                 snapshot_id=candidate.snapshot_id,
                 collected_at=candidate.started_at,
+                requested_l1=requested_l1,
+                source_partitions=source_partitions,
             )
             if dict(row) != expected_row:
                 reject("invalid_membership_lineage")
+            if any(
+                source_partition != _text(expected_row.get("l1_code"))
+                for source_partition in source_partitions
+            ):
+                reject("partition_scope_mismatch")
         except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
             reject("invalid_membership_lineage")
         if any(not _text(row.get(field)) for field in required_membership_fields):
@@ -541,7 +627,10 @@ def validate_candidate(
         if coverage_ratio < 0.90:
             reject("coverage_below_0.90")
 
-    successful_partitions = sum(count >= 0 for count in candidate.partition_counts.values())
+    successful_partitions = sum(
+        code not in candidate.partition_failures and 0 < count < PROVIDER_PAGE_LIMIT
+        for code, count in candidate.partition_counts.items()
+    )
     return SnapshotValidation(
         accepted=not errors,
         errors=tuple(errors),

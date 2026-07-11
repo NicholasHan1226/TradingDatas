@@ -48,3 +48,29 @@ The 17 warnings are the pre-existing test-environment warning that `SHAREDSIGNAL
 ## Residual Boundary
 
 This task constructs and validates an in-memory candidate only. It does not write or promote a snapshot, install a schedule, use provider credentials, modify production state, or push a branch.
+
+## Final Hardening Pass
+
+The final review added three fail-closed guarantees without changing generic API mappings or any persistence, token, database, or schedule boundary:
+
+- `successful_partition_count` now counts only partitions with a structurally valid membership response and a raw provider count strictly greater than zero and below the 2,000-row truncation boundary. Empty, failed (`-1`), and boundary-sized responses are excluded.
+- Membership responses must be exactly `list[Mapping]`. A dict, string, or list containing any non-mapping element is converted into candidate evidence with raw count `-1` and structured reason `invalid_membership_response_shape`; collection continues so validation can reject the complete candidate instead of leaking an iteration/attribute exception.
+- Every normalized membership row now stores canonical request-scope evidence inside `raw_json`: the selected `requested_l1`, all source partitions merged during deterministic deduplication, the original provider row, and a SHA-256 evidence hash bound to snapshot and symbol lineage. Validation reconstructs scope mismatch from each row, so clearing the summary mismatch tuple cannot make a symmetric cross-partition swap pass. Raw lineage or evidence-hash tampering rejects as `invalid_membership_lineage`.
+
+Final-pass RED:
+
+```text
+7 failed, 53 passed in 0.22s
+```
+
+Final-pass GREEN:
+
+```text
+./.venv/bin/python3 -m pytest tests/test_sw2021_reference.py tests/test_capability_coverage.py -q
+83 passed in 0.45s
+
+./.venv/bin/python3 -m pytest -q
+468 passed, 17 warnings in 17.29s
+```
+
+The warnings remain the pre-existing empty `SHAREDSIGNALS_TOKEN_SALT` test-environment warning. No token or production credential was introduced.
