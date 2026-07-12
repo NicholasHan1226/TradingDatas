@@ -37,6 +37,15 @@ def test_deploy_snapshot_uses_temp_file_space_gate_and_validation() -> None:
     assert "source.backup(target)" in script
     assert 'cp "$SQLITE_DB" "$DB_BACKUP_TMP"' not in script
     assert "mv \"$DB_BACKUP_TMP\" \"$DB_BACKUP\"" in script
+    assert "refusing deployment before pull or migration" in script
+    assert "exit 77" in script
+    assert "skipping DB snapshot" not in script.split(
+        'if [ "$DB_AVAIL" -lt "$MIN_AVAIL" ]', 1
+    )[1].split("else", 1)[0]
+    assert script.index('git tag "$TAG"') > script.index(
+        'success "SQLite snapshot saved and validated"'
+    )
+    assert script.index('git tag "$TAG"') < script.index("# ---- Phase 2: Pull new code ----")
     assert (
         "bash \"${REPO_DIR}/rollback.sh\" \"$TAG\" \"$TIMESTAMP\" "
         "\"${DEPLOYED_HEAD:-}\"" in script

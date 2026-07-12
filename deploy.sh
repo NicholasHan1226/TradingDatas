@@ -110,10 +110,6 @@ log "Phase 1: Backup"
 cd "$REPO_DIR"
 DEPLOYED_HEAD=$(git rev-parse HEAD)
 
-# Git tag
-git tag "$TAG"
-success "Git tag: $TAG"
-
 # SQLite snapshot
 DB_BACKUP=""
 if [ -f "$SQLITE_DB" ]; then
@@ -123,8 +119,8 @@ if [ -f "$SQLITE_DB" ]; then
     DB_AVAIL=$(df -PB1 "$BACKUP_DIR" | awk 'NR==2 {print $4}')
     MIN_AVAIL=$((DB_SIZE + 2147483648))
     if [ "$DB_AVAIL" -lt "$MIN_AVAIL" ]; then
-        warn "Insufficient free space for SQLite snapshot (need ${MIN_AVAIL} bytes, available ${DB_AVAIL}); skipping DB snapshot"
-        DB_BACKUP=""
+        error "Insufficient free space for a validated SQLite snapshot (need ${MIN_AVAIL} bytes, available ${DB_AVAIL}); refusing deployment before pull or migration"
+        exit 77
     else
         rm -f "$DB_BACKUP_TMP"
         backup_sqlite_database "$SQLITE_DB" "$DB_BACKUP_TMP"
@@ -135,6 +131,12 @@ if [ -f "$SQLITE_DB" ]; then
 else
     warn "No SQLite database at $SQLITE_DB - skipping snapshot"
 fi
+
+# Create the rollback tag only after a production database has a validated
+# snapshot (or when this is a first install with no database yet).  A failed
+# space gate must leave both code and database untouched.
+git tag "$TAG"
+success "Git tag: $TAG"
 
 # Save current HEAD for rollback
 git rev-parse HEAD > "${BACKUP_DIR}/pre_deploy_head_${TIMESTAMP}.txt"
