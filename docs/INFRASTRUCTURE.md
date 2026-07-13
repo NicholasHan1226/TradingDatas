@@ -21,7 +21,8 @@
 - Python: 3.12.3 (venv /opt/sharedsignals/venv)
 - OS: Ubuntu 24.04
 - SQLite + DuckDB mirror：`/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` 是生产 read model，`/opt/investment/SharedSignals/data/marketdata.duckdb` 每小时同步用于只读分析加速；Redis 未启用。
-- DuckDB mirror schema 迁移（本地候选，未发布）：`create_schema()` 以单事务按“全部表 → 全部缺列 → 全部索引”迁移并验证合同，任一结构漂移失败即回滚；旧事件只从 SQLite authority 回填三项 identity 元数据，正文仍保持 append-only，reconcile 同时核验行数与 identity。空表 0 行合法，缺 source/mirror 或语义漂移均 fail-closed。候选已通过 DuckDB 1.4.5/1.5.4 定向回归及生产同版全套 567 项；生产文件、runtime 与 cron 是否恢复必须在合入和部署后另行取证。
+- DuckDB mirror schema 迁移（2026-07-13 production 已发布）：`create_schema()` 以单事务按“全部表 → 全部缺列 → 全部索引”迁移并验证合同，任一结构漂移失败即回滚；旧事件只从 SQLite authority 回填三项 identity 元数据，正文保持 append-only，reconcile 同时核验行数与 identity。生产本轮 16 表全部 delta=0，`market_events` 67,266/67,266 且 identity mismatch=0，三行业空表 0/0 合法；缺 source/mirror 或语义漂移仍 fail-closed。
+- Tushare event runtime：无原生 ID/URL 的 `namechange` 与 `report_rc` 只使用各自明确的稳定业务复合键；已有同内容 revision 的 0 写入是合法 idempotent no-change，非 event 表非空采集写 0 行仍按失败处理。
 - 旧 RSS/RSSHub 资产仅作历史审计，不作为当前生产采集或 API 数据源。
 
 ## 网络
