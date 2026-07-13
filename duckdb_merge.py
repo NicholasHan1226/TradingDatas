@@ -82,6 +82,8 @@ def run_merge(
         result["message"] = "dry run — no data written"
         return result
 
+    issues: list[dict[str, str]] = []
+
     try:
         if table:
             count = adapter.sync_sqlite_to_duckdb(table)
@@ -95,7 +97,16 @@ def run_merge(
             if failed_tables:
                 result["status"] = "error"
                 result["failed_tables"] = failed_tables
-                result["error"] = "DuckDB sync failed for: " + ", ".join(failed_tables)
+                issues.append({
+                    "stage": "sync",
+                    "message": "DuckDB sync failed for: " + ", ".join(failed_tables),
+                })
+    except Exception as exc:
+        logger.exception("merge sync failed")
+        result["status"] = "error"
+        issues.append({"stage": "sync", "message": str(exc)})
+
+    try:
         reconciliation = adapter.reconcile_counts([table] if table else None)
         result["reconciliation"] = reconciliation
         mismatched_tables = sorted(
@@ -106,11 +117,21 @@ def run_merge(
         if mismatched_tables:
             result["status"] = "error"
             result["mismatched_tables"] = mismatched_tables
-            result["error"] = "DuckDB row-count mismatch for: " + ", ".join(mismatched_tables)
+            issues.append({
+                "stage": "reconcile",
+                "message": "DuckDB reconciliation failed for: "
+                + ", ".join(mismatched_tables),
+            })
     except Exception as exc:
-        logger.exception("merge failed")
+        logger.exception("merge reconciliation failed")
         result["status"] = "error"
-        result["error"] = str(exc)
+        result["reconciliation_error"] = str(exc)
+        issues.append({"stage": "reconcile", "message": str(exc)})
+
+    if issues:
+        result["status"] = "error"
+        result["errors"] = issues
+        result["error"] = "; ".join(issue["message"] for issue in issues)
 
     result["elapsed_s"] = round(time.monotonic() - started, 2)
     return result

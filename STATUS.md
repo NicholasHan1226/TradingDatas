@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-12（补齐 A 股 `stock_master` canonical reference 的本地能力声明与契约；production runtime、生产数据与部署状态尚未验证）
+> 最后更新：2026-07-12（DuckDB mirror fail-closed 迁移修复已在隔离分支通过双版本定向回归与生产同版全套 567 项；合入、production deploy/runtime 与下一次 cron 均待验证）
 
 ---
 
@@ -51,6 +51,7 @@
 - **SW2021 发布闸门未完成**：新行业路由、专用 collector wrapper 和 maintenance wrapper 当前仅在本地代码层通过测试；collector 尚未完成生产手动 pilot，live SQLite 是否存在三张表及 promoted 快照、API runtime 与外部 route 是否包含新路径、独立 token 是否配置、maintenance evidence 是否生成、cron 是否安装均未验证。`cron/crontab.txt` 中两条新 schedule 仍是注释；无 promoted 快照时三路由按设计返回 degraded empty，不得用本地 wrapper 或测试状态代替 pilot / production proof。
 - **`stock_master` live 证据未完成**：本地 reader/API、capability 声明与文档通过测试，不等于生产 API 已包含 `/reference?table=stock_master&limit=6000`，也不证明 live `market_assets` 存在合格的 A 股 stock 行。后续发布时必须分别验证 production runtime 版本、鉴权 scope、正常响应 metadata，以及缺表/空表 degraded 行为；不得用其它 reference 表或 provider/CSV fallback 冒充成功。
 - **运行闸门与镜像状态**：`/health` 和 `/source_status` 同时披露 A 股开盘闸门、逐 Tushare 接口最近运行证据与 DuckDB 镜像同步结果。`/realtime_5min` 的无代码批量读取先按 `5min/5m` 解析最新交易日和最新 bar，再做索引化快照查询，避免旧 CTE 在大表上超过 2.5 秒读门禁后 fail-closed 为空；内部上限与 API 一致为 10,000 行，可完整容纳当前 A 股 active universe。`market_events`、`market_factors` 使用按 `collected_at` 水位和哈希主键的增量追加；`market_bars_daily`、`market_bars_intraday` 等权威快照表会删除 DuckDB 中已不在 SQLite 的陈旧主键行，防止日期/时间规范化后旧行残留；全表计数不一致会让同步任务失败。SQLite 始终是权威库，DuckDB 可备份后重建。
+- **DuckDB 镜像 schema 迁移候选（2026-07-12，未发布）**：隔离分支把 schema 迁移改为单事务三阶段（全部表、全部缺列、全部索引），任何 DDL、索引、类型或 NOT NULL 漂移均 fail-closed；旧 `market_events` 只按 `event_hash` 从 SQLite authority 回填 `event_id/revision/source_family`，不重写历史正文，且对账同时校验 identity 语义而非只比行数。空行业表的 0 行同步仍是合法结果，缺 source/mirror 会结构化报错。DuckDB 1.4.5 与生产同版 1.5.4 定向回归各 40 项通过，1.5.4 全套 567 项通过，58,698 条旧事件规模模拟回填约 2.915 秒且 identity mismatch 为 0。该证据仅证明本地候选；生产当前 DuckDB red、合入、部署、runtime 与下一次 cron 结果必须由发布线程另行验证。
 - **日频逐股负载边界**：2026-07-10 旧 P1 配置实测计划 62,398 次调用且一小时内只能推进约 7,000 次。当前 P1 计划降为约 3,012 次：`daily` 全市场单次采集；`repurchase` 按公告日期窗口全市场增量；`pledge_stat/pledge_detail` 补 `ts_code`；10 个未证明可全市场/批量调用的研究接口每日轮转 300 只。P2/P3 另有 6 个缺 `ts_code` 的逐股接口已补参数并纳入同一轮转门禁。撞到配置的 provider 行数上限或 `daily` 唯一股票覆盖率低于 90% 均 critical，不得静默当成功。
 - **B1 扩源仍是 planned**：SEC EDGAR 已完成生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`、16 条 selected companyfacts 写入 `market_factors`，`/events` 与 `/fundamentals` API 可读），用于补 Tushare 没有的美国官方披露/结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
 - **`reader.py` / `api_server.py` 仍偏大**：无状态 query/response helpers 已抽到 `api_response.py`，但长期仍应按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。

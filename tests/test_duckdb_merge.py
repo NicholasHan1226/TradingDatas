@@ -28,6 +28,14 @@ class _CountMismatchAdapter:
         }
 
 
+class _SyncAndReconcileFailureAdapter:
+    def sync_all_to_duckdb(self) -> dict[str, int]:
+        return {"market_events": -1}
+
+    def reconcile_counts(self, tables=None) -> dict[str, dict[str, int | str]]:
+        raise RuntimeError("reconcile exploded")
+
+
 def test_run_merge_reports_partial_table_failures_as_error() -> None:
     result = duckdb_merge.run_merge(adapter=_PartialFailureAdapter())
 
@@ -42,6 +50,17 @@ def test_run_merge_reports_count_mismatch_as_error() -> None:
     assert result["status"] == "error"
     assert result["mismatched_tables"] == ["market_assets"]
     assert result["reconciliation"]["market_assets"]["delta"] == -1
+
+
+def test_run_merge_preserves_sync_failure_when_reconcile_also_fails() -> None:
+    result = duckdb_merge.run_merge(adapter=_SyncAndReconcileFailureAdapter())
+
+    assert result["status"] == "error"
+    assert result["failed_tables"] == ["market_events"]
+    assert result["reconciliation_error"] == "reconcile exploded"
+    assert [issue["stage"] for issue in result["errors"]] == ["sync", "reconcile"]
+    assert "DuckDB sync failed for: market_events" in result["error"]
+    assert "reconcile exploded" in result["error"]
 
 
 def test_record_result_atomically_updates_watchdog_artifact(tmp_path, monkeypatch) -> None:
