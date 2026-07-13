@@ -244,6 +244,11 @@ def test_code_only_bootstrap_runs_from_detached_candidate_without_touching_datab
 def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(tmp_path: Path) -> None:
     helper = ROOT / "deploy" / "runtime_paths.sh"
     simulated_repo = tmp_path / "repo"
+    check_command = (
+        f'source "{helper}"; sharedsignals_load_runtime_paths; load_rc=$?; '
+        'if [ "$load_rc" -ne 0 ]; then exit "$load_rc"; fi; '
+        'sharedsignals_assert_runtime_paths'
+    )
     base_env = {
         "SHAREDSIGNALS_REPO_DIR": str(simulated_repo),
         "SHAREDSIGNALS_ENV_FILE": str(tmp_path / "missing.env"),
@@ -259,7 +264,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     import subprocess
 
     good = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(tmp_path / "runtime" / "read_model" / "marketdata.sqlite")},
         capture_output=True,
         text=True,
@@ -267,7 +272,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     assert good.returncode == 0, good.stderr
 
     canonical_repo = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={
             **os.environ,
             **base_env,
@@ -280,7 +285,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     assert "may not disable mount checks" in canonical_repo.stderr
 
     cross_root = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(tmp_path / "elsewhere.sqlite")},
         capture_output=True,
         text=True,
@@ -289,7 +294,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     assert "must remain below READ_MODEL_DIR" in cross_root.stderr
 
     relative = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={**os.environ, **base_env, "SHAREDSIGNALS_BACKUP_DIR": "relative/backups"},
         capture_output=True,
         text=True,
@@ -304,7 +309,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     symlink_db = read_model / "marketdata.sqlite"
     symlink_db.symlink_to(target_db)
     symlink = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(symlink_db)},
         capture_output=True,
         text=True,
@@ -317,7 +322,7 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
     env_symlink = tmp_path / "runtime.env"
     env_symlink.symlink_to(real_env)
     unsafe_env = subprocess.run(
-        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        ["bash", "-c", check_command],
         env={**os.environ, **base_env, "SHAREDSIGNALS_ENV_FILE": str(env_symlink)},
         capture_output=True,
         text=True,
