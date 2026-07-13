@@ -265,6 +265,26 @@ def test_source_governance_preserves_unobserved_interface_runtime_as_yellow() ->
     assert check["evidence"]["unobserved"] == 10
 
 
+def test_source_governance_preserves_empty_interface_runtime_as_yellow() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        interface_runtime_report={
+            "status": "yellow",
+            "summary": {"failed": 0, "degraded": 0, "empty": 11, "unobserved": 0},
+        },
+    )
+
+    assert report["status"] == "yellow"
+    check = next(item for item in report["checks"] if item["name"] == "interface_runtime_ledger")
+    assert check["status"] == "yellow"
+    assert check["evidence"]["empty"] == 11
+
+
 def test_source_governance_reports_external_api_probe_failure() -> None:
     report = source_governance_monitor.evaluate_source_governance(
         agent_config=_agent_config(),

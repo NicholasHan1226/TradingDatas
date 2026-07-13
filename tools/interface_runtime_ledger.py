@@ -49,31 +49,41 @@ def _status_for(stats: dict[str, Any]) -> tuple[str, str]:
         return "failed", "provider_or_sqlite_failure"
     if failures > 0:
         return "degraded", "partial_provider_failure"
+    if calls <= 0:
+        return "degraded", "no_provider_call_completed"
     if rows == 0:
-        return "success", "provider_returned_no_rows"
+        return "empty", "provider_returned_no_rows"
     return "success", ""
 
 
 def _summarize(interfaces: dict[str, Any], expected: set[str]) -> dict[str, Any]:
     observed_names = expected.intersection(interfaces)
-    statuses = [str((interfaces.get(name) or {}).get("status") or "unobserved") for name in observed_names]
-    empty = sum(
-        1
+    empty_names = {
+        name
         for name in observed_names
-        if (interfaces[name] or {}).get("empty_reason") == "provider_returned_no_rows"
-    )
+        if str((interfaces[name] or {}).get("status") or "") == "empty"
+        or (interfaces[name] or {}).get("empty_reason") == "provider_returned_no_rows"
+    }
+    statuses = {
+        name: str((interfaces.get(name) or {}).get("status") or "unobserved")
+        for name in observed_names
+    }
     summary = {
         "expected": len(expected),
         "observed": len(observed_names),
-        "success": sum(1 for status in statuses if status == "success"),
-        "empty": empty,
-        "degraded": sum(1 for status in statuses if status == "degraded"),
-        "failed": sum(1 for status in statuses if status == "failed"),
+        "success": sum(
+            1
+            for name, status in statuses.items()
+            if status == "success" and name not in empty_names
+        ),
+        "empty": len(empty_names),
+        "degraded": sum(1 for status in statuses.values() if status == "degraded"),
+        "failed": sum(1 for status in statuses.values() if status == "failed"),
         "unobserved": len(expected - observed_names),
     }
     if summary["failed"]:
         status = "red"
-    elif summary["degraded"] or summary["unobserved"]:
+    elif summary["degraded"] or summary["empty"] or summary["unobserved"]:
         status = "yellow"
     else:
         status = "green"
@@ -97,7 +107,7 @@ def record_tushare_stats(
     for api_name, raw in stats.items():
         if str(api_name).startswith("_") or not isinstance(raw, dict):
             continue
-        status, empty_reason = _status_for(raw)
+        status, status_reason = _status_for(raw)
         old = interfaces.get(api_name) if isinstance(interfaces.get(api_name), dict) else {}
         entry = {
             "source": f"tushare:{api_name}",
@@ -111,7 +121,8 @@ def record_tushare_stats(
             "calls": int(raw.get("calls") or 0),
             "failure_count": int(raw.get("failure_count") or 0),
             "sqlite_status": str(raw.get("sqlite_status") or "empty"),
-            "empty_reason": empty_reason,
+            "status_reason": status_reason,
+            "empty_reason": status_reason if status == "empty" else "",
             "errors": [str(item) for item in raw.get("sqlite_errors") or [] if item],
         }
         if status == "success":

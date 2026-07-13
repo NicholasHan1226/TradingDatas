@@ -577,9 +577,10 @@ def _evaluate_interface_runtime(report: dict[str, Any] | None) -> dict[str, Any]
         status,
         "all configured interfaces have runtime evidence"
         if status == "green"
-        else "configured interfaces still have failed, degraded, or unobserved runtime evidence",
+        else "configured interfaces still have failed, degraded, empty, or unobserved runtime evidence",
         failed=int(summary.get("failed") or 0),
         degraded=int(summary.get("degraded") or 0),
+        empty=int(summary.get("empty") or 0),
         unobserved=int(summary.get("unobserved") or 0),
         observed=int(summary.get("observed") or 0),
         expected=int(summary.get("expected") or 0),
