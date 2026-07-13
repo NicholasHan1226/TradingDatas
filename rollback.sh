@@ -3,10 +3,24 @@
 # Restore git tag + SQLite snapshot -> restart service -> verify
 set -euo pipefail
 
-REPO_DIR="/opt/investment/SharedSignals"
-BACKUP_DIR="/opt/investment/SharedSignals/backups"
-SQLITE_DB="${SHAREDSIGNALS_MARKETDATA_DB:-/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite}"
-VENV_PYTHON="/opt/sharedsignals/venv/bin/python3"
+CODE_ONLY=0
+if [ "${1:-}" = "--code-only" ]; then
+    CODE_ONLY=1
+    shift
+fi
+
+REPO_DIR="${SHAREDSIGNALS_REPO_DIR:-/opt/investment/SharedSignals}"
+PATH_CONTRACT="${REPO_DIR}/deploy/runtime_paths.sh"
+if [ ! -f "$PATH_CONTRACT" ] || [ -L "$PATH_CONTRACT" ]; then
+    echo "[ERROR] SharedSignals runtime path contract missing or unsafe: $PATH_CONTRACT" >&2
+    exit 78
+fi
+# shellcheck disable=SC1090
+source "$PATH_CONTRACT"
+sharedsignals_load_runtime_paths
+sharedsignals_assert_runtime_paths
+
+VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 DEPLOY_LOCK_FILE="${SHAREDSIGNALS_DEPLOY_LOCK_FILE:-/var/lock/sharedsignals-deploy.lock}"
 MAINTENANCE_LOCK_FILE="${SHAREDSIGNALS_MAINTENANCE_LOCK_FILE:-${REPO_DIR}/logs/locks/read_model_maintenance.lock}"
 MAINTENANCE_LOCK_TIMEOUT="${SHAREDSIGNALS_MAINTENANCE_LOCK_TIMEOUT:-300}"
@@ -105,7 +119,7 @@ TIMESTAMP="${2:-$(date +%Y%m%d_%H%M%S)}"
 EXPECTED_CURRENT_HEAD="${3:-}"
 
 if [ -z "$TAG" ]; then
-    echo "Usage: rollback.sh <git-tag> [timestamp] [expected-current-head]"
+    echo "Usage: rollback.sh [--code-only] <git-tag> [timestamp] [expected-current-head]"
     echo ""
     echo "  git-tag    Git tag to rollback to (e.g. deploy-20260630_120000)"
     echo "  timestamp  Optional timestamp to find matching backup"
@@ -132,6 +146,11 @@ fi
 CURRENT=$(git rev-parse HEAD)
 TARGET=$(git rev-parse "$TAG")
 
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    error "Tracked production checkout is dirty; refusing rollback"
+    exit 79
+fi
+
 if [ -n "$EXPECTED_CURRENT_HEAD" ] \
     && [ "$CURRENT" != "$EXPECTED_CURRENT_HEAD" ] \
     && [ "$CURRENT" != "$TARGET" ]; then
@@ -149,7 +168,7 @@ else
 fi
 
 # ---- Phase 2: Restore SQLite snapshot ----
-log "Phase 2: Restore SQLite snapshot"
+log "Phase 2: Database rollback gate"
 
 # Find the exact backup for this deploy tag only. Never fall back to an
 # unrelated latest backup; restoring the wrong SQLite snapshot is worse than
@@ -157,7 +176,9 @@ log "Phase 2: Restore SQLite snapshot"
 TAG_TS=$(echo "$TAG" | sed 's/^deploy-//')
 DB_BACKUP="${BACKUP_DIR}/marketdata_${TAG_TS}.sqlite"
 
-if [ -f "$DB_BACKUP" ]; then
+if [ "$CODE_ONLY" = "1" ]; then
+    success "CODE-ONLY: SQLite restore explicitly skipped; current authority remains in place"
+elif [ -f "$DB_BACKUP" ]; then
     if ! validate_sqlite_snapshot "$DB_BACKUP"; then
         warn "SQLite backup failed validation; database unchanged: $DB_BACKUP"
     else

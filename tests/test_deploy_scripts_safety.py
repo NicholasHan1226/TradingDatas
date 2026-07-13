@@ -86,10 +86,113 @@ def test_rollback_refuses_to_overwrite_a_newer_deployment() -> None:
     assert '"$CURRENT" != "$EXPECTED_CURRENT_HEAD"' in rollback
     assert '"$CURRENT" != "$TARGET"' in rollback
     assert "Stale rollback refused" in rollback
-    pull_position = deploy.index("git pull")
+    pull_position = deploy.index('git merge --ff-only "$REMOTE_REF"')
     captured_head_position = deploy.index("DEPLOYED_HEAD=$(git rev-parse HEAD)", pull_position)
     success_log_position = deploy.index('success "Pulled:', pull_position)
     assert captured_head_position < success_log_position
+
+
+def test_code_only_release_and_rollback_share_path_contract_and_never_touch_database() -> None:
+    deploy = _read_script("deploy.sh")
+    rollback = _read_script("rollback.sh")
+    helper = _read_script("deploy/runtime_paths.sh")
+
+    for script in (deploy, rollback):
+        assert 'source "$PATH_CONTRACT"' in script
+        assert "sharedsignals_load_runtime_paths" in script
+        assert "sharedsignals_assert_runtime_paths" in script
+        assert 'git status --porcelain --untracked-files=no' in script
+        assert 'CODE_ONLY=0' in script
+
+    assert 'git merge --ff-only "$REMOTE_REF"' in deploy
+    assert 'CODE-ONLY: schema migration explicitly skipped' in deploy
+    assert 'CODE-ONLY: explicitly skipping SQLite snapshot and all database mutation' in deploy
+    assert 'rollback.sh" --code-only' in deploy
+    assert 'CODE-ONLY: SQLite restore explicitly skipped' in rollback
+    assert "SHAREDSIGNALS_READ_MODEL_DIR" in helper
+    assert "SHAREDSIGNALS_ENV_FILE" in helper
+    assert "SHAREDSIGNALS_MARKETDATA_DB" in helper
+    assert "SHAREDSIGNALS_BACKUP_DIR" in helper
+    assert "SHAREDSIGNALS_RUNTIME_BACKUP_DIR" in helper
+    assert "SHAREDSIGNALS_DATA_UUID" in helper
+    assert 'mountpoint -q' in helper
+    assert 'findmnt -n -o UUID' in helper
+    assert "data mount UUID mismatch" in helper
+    assert "service mount guard missing or unsafe" in helper
+    assert "runtime authority path may not be a symlink" in helper
+    assert "runtime env may not redirect the repository root" in helper
+    assert "production repository may not disable mount checks" in helper
+
+
+def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(tmp_path: Path) -> None:
+    helper = ROOT / "deploy" / "runtime_paths.sh"
+    base_env = {
+        "SHAREDSIGNALS_REPO_DIR": str(ROOT),
+        "SHAREDSIGNALS_ENV_FILE": str(tmp_path / "missing.env"),
+        "SHAREDSIGNALS_RUNTIME_ROOT": str(tmp_path / "runtime"),
+        "SHAREDSIGNALS_READ_MODEL_DIR": str(tmp_path / "runtime" / "read_model"),
+        "SHAREDSIGNALS_BACKUP_DIR": str(tmp_path / "backups"),
+        "SHAREDSIGNALS_RUNTIME_BACKUP_DIR": str(tmp_path / "runtime-backups"),
+        "SHAREDSIGNALS_DATA_MOUNT": str(tmp_path),
+        "SHAREDSIGNALS_REQUIRE_MOUNTS": "0",
+    }
+
+    import os
+    import subprocess
+
+    good = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(tmp_path / "runtime" / "read_model" / "marketdata.sqlite")},
+        capture_output=True,
+        text=True,
+    )
+    assert good.returncode == 0, good.stderr
+
+    cross_root = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(tmp_path / "elsewhere.sqlite")},
+        capture_output=True,
+        text=True,
+    )
+    assert cross_root.returncode == 78
+    assert "must remain below READ_MODEL_DIR" in cross_root.stderr
+
+    relative = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={**os.environ, **base_env, "SHAREDSIGNALS_BACKUP_DIR": "relative/backups"},
+        capture_output=True,
+        text=True,
+    )
+    assert relative.returncode == 78
+    assert "must be absolute" in relative.stderr
+
+    read_model = tmp_path / "runtime" / "read_model"
+    read_model.mkdir(parents=True)
+    target_db = tmp_path / "real.sqlite"
+    target_db.touch()
+    symlink_db = read_model / "marketdata.sqlite"
+    symlink_db.symlink_to(target_db)
+    symlink = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={**os.environ, **base_env, "SHAREDSIGNALS_MARKETDATA_DB": str(symlink_db)},
+        capture_output=True,
+        text=True,
+    )
+    assert symlink.returncode == 78
+    assert "may not be a symlink" in symlink.stderr
+
+    real_env = tmp_path / "real.env"
+    real_env.write_text("SHAREDSIGNALS_REQUIRE_MOUNTS=0\n", encoding="utf-8")
+    env_symlink = tmp_path / "runtime.env"
+    env_symlink.symlink_to(real_env)
+    unsafe_env = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={**os.environ, **base_env, "SHAREDSIGNALS_ENV_FILE": str(env_symlink)},
+        capture_output=True,
+        text=True,
+    )
+    assert unsafe_env.returncode == 78
+    assert "env file missing, unreadable or unsafe" in unsafe_env.stderr
 
 
 def test_deploy_and_rollback_hold_exclusive_read_model_maintenance_lock() -> None:
@@ -103,8 +206,10 @@ def test_deploy_and_rollback_hold_exclusive_read_model_maintenance_lock() -> Non
         assert "chmod 0666" not in script
         assert "chmod 0660" in script
 
-    assert "SHAREDSIGNALS_MARKETDATA_DB" in deploy
-    assert "SHAREDSIGNALS_MARKETDATA_DB" in rollback
+    helper = _read_script("deploy/runtime_paths.sh")
+    assert "SHAREDSIGNALS_MARKETDATA_DB" in helper
+    assert 'source "$PATH_CONTRACT"' in deploy
+    assert 'source "$PATH_CONTRACT"' in rollback
 
 
 def test_read_model_cron_jobs_take_shared_maintenance_lock() -> None:

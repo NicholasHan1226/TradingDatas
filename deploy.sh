@@ -1,12 +1,31 @@
 #!/bin/bash
 # deploy.sh - SharedSignals deployment pipeline
-# Backup (git tag + SQLite snapshot) -> pull -> migration -> smoke test -> switch (or rollback)
+# Full: backup -> pull -> migration -> smoke -> switch (or rollback).
+# Code-only: tag -> ff-only pull -> smoke -> switch; explicitly no DB snapshot,
+# schema migration, database restore or database replacement.
 set -euo pipefail
 
-REPO_DIR="/opt/investment/SharedSignals"
-BACKUP_DIR="/opt/investment/SharedSignals/backups"
-RUNTIME_DIR="${SHAREDSIGNALS_RUNTIME_ROOT:-/opt/investment/SharedSignals/runtime}"
-SQLITE_DB="${SHAREDSIGNALS_MARKETDATA_DB:-${RUNTIME_DIR}/read_model/marketdata.sqlite}"
+CODE_ONLY=0
+if [ "${1:-}" = "--code-only" ]; then
+    CODE_ONLY=1
+    shift
+fi
+if [ "$#" -ne 0 ]; then
+    echo "Usage: deploy.sh [--code-only]" >&2
+    exit 2
+fi
+
+REPO_DIR="${SHAREDSIGNALS_REPO_DIR:-/opt/investment/SharedSignals}"
+PATH_CONTRACT="${REPO_DIR}/deploy/runtime_paths.sh"
+if [ ! -f "$PATH_CONTRACT" ] || [ -L "$PATH_CONTRACT" ]; then
+    echo "[ERROR] SharedSignals runtime path contract missing or unsafe: $PATH_CONTRACT" >&2
+    exit 78
+fi
+# shellcheck disable=SC1090
+source "$PATH_CONTRACT"
+sharedsignals_load_runtime_paths
+sharedsignals_assert_runtime_paths
+
 VENV_PYTHON="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 DEPLOY_LOCK_FILE="${SHAREDSIGNALS_DEPLOY_LOCK_FILE:-/var/lock/sharedsignals-deploy.lock}"
 MAINTENANCE_LOCK_FILE="${SHAREDSIGNALS_MAINTENANCE_LOCK_FILE:-${REPO_DIR}/logs/locks/read_model_maintenance.lock}"
@@ -92,7 +111,11 @@ PY
 rollback_deploy() {
     error "DEPLOY FAILED - rolling back"
     if [ -f "${REPO_DIR}/rollback.sh" ]; then
-        bash "${REPO_DIR}/rollback.sh" "$TAG" "$TIMESTAMP" "${DEPLOYED_HEAD:-}" || true
+        if [ "$CODE_ONLY" = "1" ]; then
+            bash "${REPO_DIR}/rollback.sh" --code-only "$TAG" "$TIMESTAMP" "${DEPLOYED_HEAD:-}" || true
+        else
+            bash "${REPO_DIR}/rollback.sh" "$TAG" "$TIMESTAMP" "${DEPLOYED_HEAD:-}" || true
+        fi
     else
         error "rollback.sh not found - manual recovery required"
     fi
@@ -109,10 +132,16 @@ log "=== SharedSignals Deploy ${TIMESTAMP} ==="
 log "Phase 1: Backup"
 cd "$REPO_DIR"
 DEPLOYED_HEAD=$(git rev-parse HEAD)
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    error "Tracked production checkout is dirty; refusing deploy"
+    exit 79
+fi
 
 # SQLite snapshot
 DB_BACKUP=""
-if [ -f "$SQLITE_DB" ]; then
+if [ "$CODE_ONLY" = "1" ]; then
+    log "CODE-ONLY: explicitly skipping SQLite snapshot and all database mutation"
+elif [ -f "$SQLITE_DB" ]; then
     DB_BACKUP="${BACKUP_DIR}/marketdata_${TIMESTAMP}.sqlite"
     DB_BACKUP_TMP="${DB_BACKUP}.tmp"
     DB_SIZE=$(stat -c%s "$SQLITE_DB")
@@ -145,12 +174,20 @@ git rev-parse HEAD > "${BACKUP_DIR}/pre_deploy_head_${TIMESTAMP}.txt"
 log "Phase 2: Pull new code"
 git fetch origin
 CURRENT=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    REMOTE_REF="origin/main"
+elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+    REMOTE_REF="origin/master"
+else
+    error "Neither origin/main nor origin/master exists after fetch"
+    false
+fi
+REMOTE=$(git rev-parse "$REMOTE_REF")
 
 if [ "$CURRENT" = "$REMOTE" ]; then
     warn "Already at latest - nothing to pull"
 else
-    git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
+    git merge --ff-only "$REMOTE_REF"
     DEPLOYED_HEAD=$(git rev-parse HEAD)
     success "Pulled: $(git log --oneline -1)"
 fi
@@ -169,9 +206,11 @@ else
 fi
 
 # ---- Phase 4: Run migrations ----
-log "Phase 4: Run migrations"
+log "Phase 4: Migration gate"
 MIGRATION_SCRIPT="${REPO_DIR}/storage/migrate.py"
-if [ -f "$MIGRATION_SCRIPT" ]; then
+if [ "$CODE_ONLY" = "1" ]; then
+    success "CODE-ONLY: schema migration explicitly skipped"
+elif [ -f "$MIGRATION_SCRIPT" ]; then
     $VENV_PYTHON "$MIGRATION_SCRIPT" 2>&1 | tee -a "$LOG_FILE"
     success "Migration complete"
 else
@@ -234,9 +273,12 @@ log "=== Deploy ${TIMESTAMP} COMPLETE ==="
 success "SharedSignals deployed successfully"
 echo "Tag: $TAG"
 echo "Backup: ${DB_BACKUP:-none}"
+echo "Mode: $([ "$CODE_ONLY" = "1" ] && echo code-only || echo full)"
 echo "Log: $LOG_FILE"
 
 # Retention is applied only after a successful deploy and validated snapshot.
-ls -t "${BACKUP_DIR}"/marketdata_*.sqlite 2>/dev/null | tail -n +$((SQLITE_BACKUP_RETENTION + 1)) | xargs -r rm || true
+if [ "$CODE_ONLY" != "1" ]; then
+    ls -t "${BACKUP_DIR}"/marketdata_*.sqlite 2>/dev/null | tail -n +$((SQLITE_BACKUP_RETENTION + 1)) | xargs -r rm || true
+fi
 ls -t "${BACKUP_DIR}"/pre_deploy_head_*.txt 2>/dev/null | tail -n +$((SQLITE_BACKUP_RETENTION + 1)) | xargs -r rm || true
 ls -t "${BACKUP_DIR}"/smoke_*.log 2>/dev/null | tail -n +$((SMOKE_LOG_RETENTION + 1)) | xargs -r rm || true
