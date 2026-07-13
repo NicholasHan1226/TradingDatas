@@ -643,3 +643,15 @@
 - [TradingAgent STATUS](../tradingagent/STATUS.md) — 交易执行与模拟盘状态
 - [MarketGraph STATUS](../MarketGraph/STATUS.md) — 研究图谱与因果状态
 - [Finance STATUS](../STATUS.md) — 根工作区总览
+
+## 八、旧根层 LOG.md 归档迁移（2026-07-13）
+
+根层 `LOG.md` 原来只有一张 2026-06-29 至 2026-07-08 的重复摘要表，现已退休；当前事实继续以根层 `STATUS.md` 和 live API 为准。其仍有价值的历史动作在本文件已有对应证据：
+
+- 2026-07-08 CNFutures 5 分钟隐式备源退役与 provider 失败语义：见上文 2026-07-08 checklist 及 2026-07-04 CNFutures 章节。
+- 2026-07-06 `rt_fut_min` 权限/provider 错误、非空写入 0 行 fail-closed：见 2026-07-04 CNFutures 期货 5 分钟入口的后续验收记录。
+- 2026-07-05 DuckDB 空数值 `TRY_CAST(NULLIF(...))`、A 股资产合并保护、5 分钟 API market 参数、期货盘口/到期字段和 API 高压稳定性：见本文件当前结论、能力清单和 2026-07-05 各节。
+- 2026-07-04 RSS/RSSHub 退役边界、系统邮件 smoke、P4 宏观与事件/资产 bridge、watchdog 修复：见 2026-07-04 对应章节。
+- 2026-06-29 初始目录和早期 RSS/Tushare/bridge 软链、`market_calendar.py` 记录仅保留为项目起源；这些软链与旧 RSS 路径均已退役，不能恢复为现役生产入口。
+
+删除根层 `LOG.md` 不删除迁移、recovery、数据库、runtime、STATUS 或运行证据，也不改变 `docs/API_CONTRACT.md` 的 capability-scan 生成边界。

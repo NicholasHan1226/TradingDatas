@@ -90,7 +90,7 @@
 
 - 仓库地址、remote 名称和默认分支以本仓库内 `git remote -v`、`git branch --show-current` 和项目文档为准，不从其它项目继承。
 - 开发前检查 `git status -sb`、`git remote -v`、当前分支和是否落后远端；发现采集、存储、桥接或其它 agent 的未提交改动时，先确认来源，不得覆盖。
-- 涉及采集源、SQLite read model、schema、API contract、patrol/heal 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md`、`LOG.md` 或 `docs/` 下对应说明。
+- 涉及采集源、SQLite read model、schema、API contract、patrol/heal 或对 MarketGraph/TradingAgent 的输出契约时，必须同步更新核心文档，例如 `README.md`、`STATUS.md`、`API_CONTRACT.md` 或 `docs/` 下对应说明。历史运行记录归档到 `docs/status_history_2026-07.md`，不再维护重复的根层 `LOG.md`。
 - 提交时只暂存本次审计过的文件；数据库、缓存、日志、staging、密钥和本机运行产物默认不提交，除非项目文档明确要求并已审计。
 - 不得提交或恢复 CSV/NDJSON/SQLite/DB/Parquet/冷归档样本、`storage/cold`、`storage/archive_manager.py`、`storage/query_router.py`、Polymarket parquet loader 配置或 `ingest_csv_to_sqlite` 一类文件桥入口；测试门禁必须阻止这些内容回归。
 - 从旧 `Desktop/Works/02.AI_Projects` 或其它 iCloud 管理目录迁移时，优先使用当前 Projects 下真实 clone；旧目录只作为对照和补漏来源。
