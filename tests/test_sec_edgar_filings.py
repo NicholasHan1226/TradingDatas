@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import subprocess
 import sys
@@ -293,3 +294,48 @@ def test_provider_local_native_ids_are_namespaced_by_provider() -> None:
 def test_sparse_event_without_identity_facts_is_rejected() -> None:
     with pytest.raises(ValueError, match="stable event identity"):
         stable_event_id("tushare_news", "news", {"symbol": "000001.SZ"})
+
+
+def test_namechange_uses_provider_business_key_from_raw_json() -> None:
+    first = {
+        "raw_json": json.dumps(
+            {
+                "ts_code": "000001.SZ",
+                "start_date": "20260713",
+                "name": "平安银行",
+                "change_reason": "简称变更",
+            }
+        )
+    }
+    changed_content = {
+        "raw_json": json.dumps(
+            {
+                "ts_code": "000001.SZ",
+                "start_date": "20260713",
+                "name": "平安银行",
+                "change_reason": "更正后的说明",
+            }
+        )
+    }
+
+    assert stable_event_id("tushare_namechange", "namechange", first) == stable_event_id(
+        "tushare_namechange",
+        "namechange",
+        changed_content,
+    )
+
+
+def test_report_rc_uses_provider_business_key() -> None:
+    first = {
+        "ts_code": "600000.SH",
+        "report_date": "20260713",
+        "report_title": "盈利预测更新",
+        "org_name": "示例机构",
+    }
+    other_report = {**first, "report_title": "目标价更新"}
+
+    assert stable_event_id("tushare_report_rc", "report_rc", first) != stable_event_id(
+        "tushare_report_rc",
+        "report_rc",
+        other_report,
+    )

@@ -241,6 +241,49 @@ def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path
     assert stats["_tier_summary"]["sqlite_failure_count"] == 1
 
 
+def test_sync_tier_accepts_idempotent_market_event_no_change(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            return [
+                {
+                    "title": "same event",
+                    "pub_time": "2026-07-13 10:00:00",
+                }
+            ]
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *args, **kwargs: 0,
+    )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P6_other_daily",
+        [
+            {
+                "api_name": "major_news",
+                "per_stock": False,
+                "params": {},
+            }
+        ],
+        stock_codes=[],
+        trade_date="20260713",
+        start_date="20260713",
+        end_date="20260713",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["major_news"]["sqlite_status"] == "ok"
+    assert stats["major_news"]["sqlite_errors"] == []
+    assert stats["_tier_summary"]["sqlite_failure_count"] == 0
+
+
 def test_exit_on_failure_considers_sqlite_failures() -> None:
     assert sync_daily_module._failure_exit_code(
         {"calls": 10, "failure_count": 6, "sqlite_failure_count": 0},

@@ -497,7 +497,15 @@ def _trade_date_from_trade_time(trade_time):
     return ""
 
 
-_EVENT_TIME_COLUMNS = ("event_time", "datetime", "pub_time", "date", "trade_date", "ann_date")
+_EVENT_TIME_COLUMNS = (
+    "event_time",
+    "datetime",
+    "pub_time",
+    "date",
+    "trade_date",
+    "ann_date",
+    "report_date",
+)
 
 
 def _event_time_from_row(row):

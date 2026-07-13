@@ -324,6 +324,20 @@ def sync_tier(
         try:
             written = ingest_rows_to_sqlite(sqlite_db_path, table, api_name, rows, source_name=source_name)
             if written == 0:
+                if table == "market_events":
+                    logger.info(
+                        "direct sqlite %s -> %s: idempotent no-change for %d rows from %s",
+                        api_name,
+                        table,
+                        len(rows),
+                        source_name,
+                    )
+                    return {
+                        "rows": 0,
+                        "status": "ok",
+                        "error": "",
+                        "idempotent_no_change": True,
+                    }
                 error = f"{api_name}:{source_name}:direct sqlite write produced 0 rows for non-empty collection"
                 sqlite_errors.append(error)
                 logger.warning("direct sqlite write failed for %s from %s: %s", api_name, source_name, error)

@@ -17,6 +17,21 @@ NATIVE_ID_FIELDS = (
     "report_id",
 )
 
+# These provider rows have no native ID or URL.  Their documented immutable
+# business keys are therefore the narrow fallback identity.  Keep this mapping
+# provider-specific: a broad "all available fields" hash would turn content
+# edits into new logical events instead of revisions.
+PROVIDER_COMPOSITE_IDENTITY_FIELDS = {
+    "tushare_namechange": (
+        ("ts_code", "start_date", "name"),
+        ("ts_code", "ann_date", "name"),
+    ),
+    "tushare_report_rc": (
+        ("ts_code", "report_date", "report_title"),
+        ("ts_code", "report_date", "org_name", "author_name"),
+    ),
+}
+
 
 def _normalized_provider(provider: str) -> str:
     return str(provider or "").strip().lower() or "unknown"
@@ -51,12 +66,17 @@ def _decoded_mapping(value: Any) -> Mapping[str, Any] | None:
     return decoded if isinstance(decoded, Mapping) else None
 
 
-def _native_identity(row: Mapping[str, Any]) -> str:
+def _identity_sources(row: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     sources = [row]
     for field in ("raw_json", "content"):
         decoded = _decoded_mapping(row.get(field))
         if decoded is not None:
             sources.extend(_nested_mappings(decoded))
+    return sources
+
+
+def _native_identity(row: Mapping[str, Any]) -> str:
+    sources = _identity_sources(row)
     for source in sources:
         for key in NATIVE_ID_FIELDS:
             value = str(source.get(key) or "").strip()
@@ -65,15 +85,32 @@ def _native_identity(row: Mapping[str, Any]) -> str:
     return ""
 
 
+def _provider_composite_identity(
+    provider: str,
+    row: Mapping[str, Any],
+) -> str:
+    field_sets = PROVIDER_COMPOSITE_IDENTITY_FIELDS.get(
+        _normalized_provider(provider),
+        (),
+    )
+    for source in _identity_sources(row):
+        for fields in field_sets:
+            values = [str(source.get(field) or "").strip() for field in fields]
+            if all(values):
+                return "|".join(values)
+    return ""
+
+
 def stable_event_id(provider: str, event_type: str, row: Mapping[str, Any]) -> str:
     native = _native_identity(row)
+    provider_composite = _provider_composite_identity(provider, row)
     canonical_url = str(row.get("url") or row.get("link") or "").strip().split("#", 1)[0]
     fallback_parts = [
         str(row.get(key) or "").strip()
         for key in ("datetime", "pub_time", "date", "title")
     ]
     fallback = "|".join(fallback_parts) if any(fallback_parts) else ""
-    identity = native or canonical_url or fallback
+    identity = native or provider_composite or canonical_url or fallback
     if not identity:
         raise ValueError("cannot derive stable event identity from native id, URL, date, or title")
     digest = hashlib.sha256(

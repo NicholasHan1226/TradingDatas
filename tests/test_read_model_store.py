@@ -306,6 +306,63 @@ def test_event_ingest_keeps_logical_id_and_appends_changed_revision(tmp_path: Pa
     assert rows == [(rows[0][0], 1, "tushare"), (rows[0][0], 2, "tushare")]
 
 
+def test_provider_business_key_events_ingest_idempotently(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    namechange = {
+        "ts_code": "000001.SZ",
+        "name": "平安银行",
+        "start_date": "20260713",
+        "ann_date": "20260713",
+        "change_reason": "简称变更",
+    }
+    report = {
+        "ts_code": "600000.SH",
+        "report_date": "20260713",
+        "report_title": "盈利预测更新",
+        "org_name": "示例机构",
+    }
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "namechange",
+        [namechange],
+    ) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "namechange",
+        [namechange],
+    ) == 0
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "report_rc",
+        [report],
+    ) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "report_rc",
+        [report],
+    ) == 0
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_type, event_time, trade_date, symbol "
+            "FROM market_events ORDER BY event_type"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("namechange", "20260713", "20260713", "000001.SZ"),
+        ("report_rc", "20260713", "20260713", "600000.SH"),
+    ]
+
+
 def test_concurrent_event_ingest_serializes_one_revision(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
