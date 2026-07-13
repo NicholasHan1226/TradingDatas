@@ -104,8 +104,8 @@ After an authorized deployment, one single-instance run must prove:
 
 ## 2026-07-13 emergency stop
 
-At 18:47 CST the production authority was 15.80GB, the root filesystem was 92%
-used with 8.27GB available, and `P2_financial_daily` was still writing. This is
+At 18:51 CST the production authority was 17.25GB, the root filesystem was 94%
+used with 6.82GB available, and `P2_financial_daily` was still writing. This is
 a hard preflight stop. Do not run this helper, the old DuckDB sync, migration,
 backup or deploy until P2 has exited naturally and fresh disk/database evidence
 has been reviewed. Do not kill the writer or delete backups without explicit

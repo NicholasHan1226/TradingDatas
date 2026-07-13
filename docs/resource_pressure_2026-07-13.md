@@ -24,6 +24,12 @@ read-only stat at `18:48:03+08:00`. Memory, swap, inode use and recent OOM
 evidence do not indicate the current bottleneck; root-disk capacity and IO
 pressure do.
 
+A single follow-up readback at `2026-07-13T18:51:27+08:00` showed further
+deterioration: root usage reached 94% with 6,816,092,160 bytes available and the
+SQLite authority reached 17,252,536,320 bytes. PIDs 174946/175093/175096 were
+still active; no SQLite WAL or SHM file was present, and the DuckDB size remained
+7,541,895,168 bytes. No repeated polling or production write followed.
+
 ## Exact large-file preservation inventory
 
 The following list was collected with metadata-only `find/stat`. Full hashes of
@@ -31,7 +37,7 @@ large files were deliberately not recomputed under IO pressure.
 
 | Size bytes | Owner/mode | Path | Preservation class |
 |---:|---|---|---|
-| 15,796,649,984 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority. Never delete, copy, restore or replace during this gate. |
+| 17,252,536,320 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority at 18:51. Never delete, copy, restore or replace during this gate. |
 | 7,541,895,168 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/data/marketdata.duckdb` | Live derived mirror. Preserve until replacement and rollback are proven. |
 | 10,579,881,984 | marketgraph:marketgraph 0664 | `/opt/investment/SharedSignals/backups/duckdb/marketdata_pre_incremental_20260710_150600.duckdb` | Pre-incremental rollback evidence. No adjacent hash was found in the small-manifest scan; preserve pending lineage review. |
 | 7,371,132,928 | root:root 0644 | `/opt/investment/SharedSignals/backups/marketdata_20260711_002519.sqlite` | SQLite deploy rollback snapshot. Preserve; a pre-deploy HEAD file exists, but no separate SHA file was found. |
