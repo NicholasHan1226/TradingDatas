@@ -363,6 +363,59 @@ def test_provider_business_key_events_ingest_idempotently(tmp_path: Path) -> Non
     ]
 
 
+def test_cb_issue_replay_is_idempotent_and_content_change_is_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    first = {
+        "ts_code": "123456.SZ",
+        "ann_date": "20260713",
+        "issue_size": 10.0,
+        "issue_price": 100.0,
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "cb_issue", [first]) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [dict(reversed(list(first.items())))],
+    ) == 0
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [{**first, "issue_size": 11.0}],
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision FROM market_events ORDER BY revision"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [(rows[0][0], 1), (rows[0][0], 2)]
+
+
+def test_cb_issue_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    with pytest.raises(ValueError, match="missing required business key ts_code"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_events",
+            "cb_issue",
+            [
+                {"ts_code": "123456.SZ", "ann_date": "20260713"},
+                {"ann_date": "20260713", "title": "invalid fallback"},
+            ],
+        )
+
+    assert _count_rows(db_path, "market_events") == 0
+
+
 def test_concurrent_event_ingest_serializes_one_revision(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

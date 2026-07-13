@@ -339,3 +339,37 @@ def test_report_rc_uses_provider_business_key() -> None:
         "report_rc",
         other_report,
     )
+
+
+def test_cb_issue_identity_is_replayable_across_order_and_content_changes() -> None:
+    first = {
+        "ts_code": "123456.SZ",
+        "ann_date": "20260713",
+        "issue_size": 10.0,
+        "issue_price": 100.0,
+    }
+    reordered_and_corrected = {
+        "issue_price": 100.0,
+        "issue_size": 11.0,
+        "ann_date": "20260714",
+        "ts_code": "123456.SZ",
+    }
+
+    assert stable_event_id("tushare_cb_issue", "cb_issue", first) == stable_event_id(
+        "tushare_cb_issue",
+        "cb_issue",
+        reordered_and_corrected,
+    )
+
+
+def test_cb_issue_missing_provider_business_key_fails_closed() -> None:
+    with pytest.raises(ValueError, match="missing required business key ts_code"):
+        stable_event_id(
+            "tushare_cb_issue",
+            "cb_issue",
+            {
+                "ann_date": "20260713",
+                "title": "mutable fallback must not be accepted",
+                "id": "caller-injected-id-must-not-bypass-contract",
+            },
+        )
