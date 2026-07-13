@@ -39,7 +39,11 @@ def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     for key in (
         "SHAREDSIGNALS_JWT_PUBLIC_KEY",
         "SHAREDSIGNALS_JWT_ISSUER",
+        "SHAREDSIGNALS_JWT_ALGORITHM",
+        "SHAREDSIGNALS_JWT_LEEWAY_SECONDS",
+        "SHAREDSIGNALS_TOKEN_HASH_FILE",
         "SHAREDSIGNALS_TOKEN_HASHES_JSON",
+        "SHAREDSIGNALS_TOKEN_SALT",
         "SHAREDSIGNALS_LOCALHOST_BYPASS",
     ):
         monkeypatch.delenv(key, raising=False)

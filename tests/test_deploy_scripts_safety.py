@@ -243,8 +243,9 @@ def test_code_only_bootstrap_runs_from_detached_candidate_without_touching_datab
 
 def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(tmp_path: Path) -> None:
     helper = ROOT / "deploy" / "runtime_paths.sh"
+    simulated_repo = tmp_path / "repo"
     base_env = {
-        "SHAREDSIGNALS_REPO_DIR": str(ROOT),
+        "SHAREDSIGNALS_REPO_DIR": str(simulated_repo),
         "SHAREDSIGNALS_ENV_FILE": str(tmp_path / "missing.env"),
         "SHAREDSIGNALS_RUNTIME_ROOT": str(tmp_path / "runtime"),
         "SHAREDSIGNALS_READ_MODEL_DIR": str(tmp_path / "runtime" / "read_model"),
@@ -264,6 +265,19 @@ def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(t
         text=True,
     )
     assert good.returncode == 0, good.stderr
+
+    canonical_repo = subprocess.run(
+        ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],
+        env={
+            **os.environ,
+            **base_env,
+            "SHAREDSIGNALS_REPO_DIR": "/opt/investment/SharedSignals",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert canonical_repo.returncode == 78
+    assert "may not disable mount checks" in canonical_repo.stderr
 
     cross_root = subprocess.run(
         ["bash", "-c", f'source "{helper}"; sharedsignals_load_runtime_paths; sharedsignals_assert_runtime_paths'],

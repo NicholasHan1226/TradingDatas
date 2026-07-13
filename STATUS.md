@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-13（20:07 storage epoch 首写完成后，新盘 SQLite 已成为唯一 authority；根盘 57%/41GB free、数据盘 12%/433GB free。P2、DuckDB sync 与两条 A 股 sample_ops 共 4 项 heavy cron 继续事故隔离；source/sample 仍非绿。本文记录的是生产 writer handoff evidence；本轮本地工作未重新连接或修改生产）
+> 最后更新：2026-07-14（07:06 code-only smoke 对 `24a9685c` 命中 606 passed/8 failed 后自动 rollback 到 `7c701de`，SQLite size/mtime 未变；7 个 auth 失败是测试 helper 继承生产 `TOKEN_SALT` 等 env，1 个 runtime path 失败是 fixture 使用 canonical production root 并设置 `REQUIRE_MOUNTS=0`。修复仅隔离测试环境并新增 canonical reject 断言，`auth.py`、`runtime_paths.sh` 与生产 drop-in 不改；P2、DuckDB sync 与两条 A 股 sample_ops 继续事故隔离。）
 
 ---
 
