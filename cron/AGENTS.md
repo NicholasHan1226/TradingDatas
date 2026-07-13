@@ -18,7 +18,10 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 - `cn_futures_5min.sh` and `cn_futures_daily.sh`: China futures intraday and settlement data.
 - `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
   not the trading read path; keep it off 5-minute cadence unless the merge is
-  incremental and load-tested.
+  incremental and load-tested. The Python worker must create one native SQLite
+  backup snapshot before any DuckDB write, then use that same snapshot for all
+  tables and reconciliation. Do not make the wrapper take the exclusive
+  maintenance lock: collectors use nonblocking shared locks and would skip.
 - `patrol.sh`, `health_sla.sh`, `source_governance_monitor.sh`, `green_gate_report.sh`, `watchdog.sh`: health checks, source governance status, daily operator Green Gate email, and bounded self-heal loop.
 - `external_api_probe.sh`: every 5 minutes verifies the public hostname reaches the SharedSignals authentication gate; it does not need or store a consumer token by default. Production runs this read-only probe from root because the SSH relay key is root-only; the live root crontab supplies `SHAREDSIGNALS_EXTERNAL_PROBE_SSH_TARGET` and `SHAREDSIGNALS_EXTERNAL_PROBE_SSH_KEY`, while the repository cron manifest remains a standard command entry for coverage checks.
 - `capability_scan.sh`: API capability registry refresh.

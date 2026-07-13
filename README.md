@@ -15,7 +15,7 @@
 
 ## 架构
 ```
-采集层 → 校验/去重 → SQLite read model → DuckDB 分析镜像
+采集层 → 校验/去重 → SQLite read model → 单轮一致性 snapshot → DuckDB 分析镜像
   Tushare(P0-P7分层接口) → marketdata.sqlite
   Binance(9 symbols, ticker 30min + 6h klines) → marketdata.sqlite
   Polymarket(markets/prices) → marketdata.sqlite
@@ -26,6 +26,7 @@
 
 ## 存储
 - 行情: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb` — 对外 HTTP API 只读此处
+- DuckDB 同步每轮先用 SQLite 原生 backup API 生成一个权限受控的临时 source snapshot；16 表同步和 reconcile 只读同一个 snapshot，结束后删除。空间、权限、超时、校验或清理任一失败都在 artifact 中 fail-closed，详见 [docs/duckdb_sync_runbook.md](docs/duckdb_sync_runbook.md)。
 - 事件: SQLite (URL去重) — 原始事件, 不做分类
 - 参考: SQLite `market_assets` / `market_factors` / `market_events`；旧 reference CSV 不作为生产 API 兜底
 

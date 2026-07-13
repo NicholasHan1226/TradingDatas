@@ -52,6 +52,19 @@ class StorageAdapter:
     ):
         self._sqlite_path = Path(sqlite_path)
         self._duckdb_path = Path(duckdb_path)
+        self._last_sync_errors: dict[str, dict[str, str]] = {}
+
+    @property
+    def sqlite_path(self) -> Path:
+        return self._sqlite_path
+
+    @property
+    def duckdb_path(self) -> Path:
+        return self._duckdb_path
+
+    @property
+    def last_sync_errors(self) -> dict[str, dict[str, str]]:
+        return dict(self._last_sync_errors)
 
     # -- Connections ---------------------------------------------------------
 
@@ -197,14 +210,19 @@ class StorageAdapter:
         from .duckdb_schema import TABLE_NAMES
 
         results = {}
+        self._last_sync_errors = {}
         for table in TABLE_NAMES:
             try:
                 count = self.sync_sqlite_to_duckdb(table)
                 results[table] = count
                 logger.info("sync %s: %d rows", table, count)
-            except Exception:
+            except Exception as exc:
                 logger.exception("sync failed: %s", table)
                 results[table] = -1
+                self._last_sync_errors[table] = {
+                    "error_class": type(exc).__name__,
+                    "message": str(exc),
+                }
         return results
 
     def reconcile_counts(self, tables: list[str] | None = None) -> dict[str, dict[str, int | str]]:
