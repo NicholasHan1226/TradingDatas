@@ -104,11 +104,15 @@ After an authorized deployment, one single-instance run must prove:
 
 ## 2026-07-13 emergency stop
 
-At 18:57 CST the production authority was 18.50GB, the root filesystem was 98%
-used with 2.21GB available, and `P2_financial_daily` was still writing. This is
-a hard preflight stop. Do not run this helper, the old DuckDB sync, migration,
-backup or deploy until P2 has exited naturally and fresh disk/database evidence
-has been reviewed. Do not kill the writer, delete backups, change cron or resize
-storage without explicit authorization and a transaction/rollback assessment.
-The evidence inventory is recorded in
+At 19:08 CST, after an instance restart, P2 and sample-ops were no longer
+running, but the authority had reached 19.10GB and the original root filesystem
+was still about 96% used with only about 4.7GB available. The attached 500GB
+`/dev/nvme1n1` had no filesystem, UUID, mount or fstab entry; it provided no
+usable capacity. The old DuckDB cron remained installed, production still used
+the old runtime, `/health` was degraded, and the old malformed mirror remained.
+This is a hard preflight stop. Do not run this helper, the old DuckDB sync,
+migration, backup or deploy. Do not format, mount, migrate, delete, change cron
+or alter storage paths without explicit authorization and a rollback
+assessment. The evidence inventory and prepared, unexecuted recovery plan are
+recorded in
 [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md).

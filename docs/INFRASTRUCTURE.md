@@ -3,7 +3,7 @@
 ## 服务器
 | 角色 | IP | 规格 | 职责 |
 |------|-----|------|------|
-| 主服务器 | 8.138.181.177 | 4核8GB/99GB | SharedSignals、MarketGraph、TradingAgent 生产主节点 |
+| 主服务器 | 8.138.181.177 | 4 vCPU/约15GiB RAM；约99GB根盘；500GB裸附加盘 | SharedSignals、MarketGraph、TradingAgent 生产主节点；截至 2026-07-13 19:09，500GB `/dev/nvme1n1` 无文件系统、UUID、挂载点或 fstab 条目，不承载任何生产数据 |
 | 新加坡 | 47.82.153.58 | 30GB | 境外代理 relay（Polymarket/Crypto）和 SharedSignals Cloudflare Tunnel connector；不存权威数据 |
 | Mac Mini | 本地 | — | TradingAgent A股模拟盘可选 Hermes/同花顺 GUI 第二路径；SharedSignals 不依赖 Mini |
 
@@ -20,6 +20,7 @@
 ## 环境
 - Python: 3.12.3 (venv /opt/sharedsignals/venv)
 - OS: Ubuntu 24.04
+- 存储扩容状态（2026-07-13 19:09）：500GB 设备只完成云盘附加，尚未格式化或挂载；SQLite 与 DuckDB 仍在约 96% 使用率的原根盘。附加设备不等于可用容量，未经明确授权不得格式化、挂载、迁移、删除旧文件或修改 fstab/cron。当前事故与回退草案见 [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md)。
 - SQLite + DuckDB mirror：`/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` 是生产 read model，`/opt/investment/SharedSignals/data/marketdata.duckdb` 每小时同步用于只读分析加速；每轮同步先在 authority 同目录的 `.duckdb_sync_snapshots/` 用 SQLite backup API 生成 0600 临时 snapshot，16 表 sync 与 reconcile 只读该固定 source point，结束后精确清理；目录为 0700。默认在创建文件前按 `max(main file, page_count*page_size) + 5 GiB` 计算空间并要求 snapshot 落盘后 filesystem 使用率不超过 90%，backup 内部 deadline 240 秒，外层 cron 仍为 600 秒；超过两个外层 timeout 的固定前缀孤儿文件只由持有单实例锁的下一轮清理。Redis 未启用。
 - DuckDB mirror schema 迁移（2026-07-13 production 已发布）：`create_schema()` 以单事务按“全部表 → 全部缺列 → 全部索引”迁移并验证合同，任一结构漂移失败即回滚；旧事件只从 SQLite authority 回填三项 identity 元数据，正文保持 append-only，reconcile 同时核验行数与 identity。生产本轮 16 表全部 delta=0，`market_events` 67,266/67,266 且 identity mismatch=0，三行业空表 0/0 合法；缺 source/mirror 或语义漂移仍 fail-closed。
 - DuckDB source snapshot P0（2026-07-13 code layer）：修复 collectors 与 DuckDB sync 同持 maintenance shared lock 时，逐表 live `sqlite_scan` 和事后另开 live SQLite reconcile 产生跨时点视图的问题。snapshot metadata 记录 source inode/size/mtime、WAL/SHM、snapshot id、空间门禁、权限和清理结果；watchdog latest 保留连续失败计数、最后成功/失败时间和最近失败摘要，JSONL 历史 append-only。生产启用与 live green 证据必须单独验收，不能由本地测试或 GitHub main 代替。

@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-13（DuckDB source snapshot P0 已进入 GitHub main；production 仍为旧 runtime。18:57 live 根盘 98%、SQLite 18.50GB 且 P2 writer 仍运行，所有 snapshot/sync/migration/backup/deploy 动作紧急冻结，等待 Nicholas 明确授权止血或扩容）
+> 最后更新：2026-07-13（DuckDB source snapshot P0 已进入 GitHub main；production 仍为旧 runtime。19:08 重启后根盘仍约 96%、SQLite 19.10GB；500GB 新盘仅附加、未格式化/挂载。P2/sample_ops 已停止，但旧 DuckDB cron、degraded health 与 malformed mirror 仍在，所有 snapshot/sync/migration/backup/deploy 动作继续冻结）
 
 ---
 
@@ -60,7 +60,7 @@
 - **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
 - **部署与回滚必须串行**：`deploy.sh` 与手工 `rollback.sh` 共用非阻塞文件锁；部署失败触发的自动回滚会校验当前 HEAD，若代码已被其它部署推进则拒绝恢复代码和数据库，避免旧任务覆盖新版本。部署/回滚另持有 read-model 独占维护锁，现役 cron 任务只取共享锁并在维护时跳过；SQLite 备份使用原生 backup API，恢复先写同目录临时文件、校验后原子替换。生产库存在时，磁盘空间不足或未生成并验证 SQLite 快照会在 pull/migration 之前直接终止部署，不能跳过备份继续迁移；rollback tag 只在快照成功后创建。部署测试通过不等于生产生效，仍须分别核对 Git HEAD、systemd runtime、API 响应和下一轮自动采集。
 - **本轮 code-only 发布仍被 migration gate 阻断**：canonical `deploy.sh` 当前无条件执行 `storage/migrate.py`，没有已审计的 skip-migration 参数。本轮授权禁止重复 schema migration，因此在已有安全 code-only 入口或 Nicholas 明确扩大授权前，不得运行该 deploy，也不得以手工 `git pull` 绕过。此门禁不影响本地实现、测试、commit 和 push，但 production 文件/runtime 仍必须单列为未发布。
-- **2026-07-13 资源压力紧急门禁**：18:57:30 fresh read-only evidence 显示根盘仅余 2,209,431,552 bytes（98% used），authority SQLite 已增至 18,500,161,536 bytes；`P2_financial_daily` PID 175096 仍在写，A 股 `sample_ops` PID 162806 仍单核满载。磁盘与 IO 已直接威胁下一交易日数据新鲜度和开盘 fail-closed。禁止启动 snapshot benchmark、DuckDB sync、migration、backup 或 deploy；不得 kill writer、删除备份、修改 cron 或扩盘，等待 Nicholas 明确授权并先完成事务/回滚评估。精确保留清单和恶化时间线见 [docs/resource_pressure_2026-07-13.md](docs/resource_pressure_2026-07-13.md)。
+- **2026-07-13 资源压力紧急门禁**：19:08–19:09 fresh read-only evidence 显示实例已重启，P2/sample_ops 不再运行，4 vCPU/约 15GiB RAM 与 load 0.27 正常；但原根盘仍约 96%、仅约 4.7GB 可用，authority SQLite 19.10GB、DuckDB 7.54GB。500GB `/dev/nvme1n1` 只有裸设备，`lsblk/blkid/wipefs -n` 均无 FSTYPE/UUID，`findmnt` 与 fstab 均无挂载；数据仍在原根盘。19:17 旧 DuckDB cron 仍存在，production runtime 未更新，`/health` degraded 并保留旧 malformed mirror。禁止格式化、挂载、迁移、删除、改 cron、snapshot、sync、migration、backup 或 deploy，等待 Nicholas 明确授权。精确保留清单、恶化时间线与未授权回退草案见 [docs/resource_pressure_2026-07-13.md](docs/resource_pressure_2026-07-13.md)。
 - **Sina 期货分钟 bar_time 标准化（2026-07-11）**：Sina 夜盘午夜后的 bar 可能携带交易所下一交易日标签（例如周五夜盘标记为周一）而非自然日历时间。`collect_cn_futures_5min.py` 的 `_normalize_sina_bar_time()` 仅在参考时间处于夜盘凌晨窗口（00:00-02:30 北京时间）且 bar 时间也在该窗口内时，将交易所交易日标签修正为参考自然日期。修正后的 bar_time 为北京时间自然时间，原始交易所交易日保留为显式 `trade_date`。超过 5 分钟的未来时间戳且不符合夜盘凌晨窗口形状的 bar 将被拒绝（不写入 SQLite）。TradingAgent 不得添加下游兼容性回退逻辑。
 - **SQLite 检查分层**：30 分钟 patrol/heal 只做数据库可打开、schema、轻量查询、WAL 和锁检查，不再对多 GB 权威库重复全表 `quick_check/integrity_check`；部署快照、恢复源验收和明确损坏后的恢复流程仍执行深度完整性检查。
 
@@ -91,6 +91,6 @@ curl -s http://127.0.0.1:8082/agent_config
 
 1. [ ] B1 official event follow-up：观察 SEC EDGAR pilot 行 1-2 个交易日；若 `/events` 查询、SLA 和 Green Gate 继续正常，再评估 30-60 分钟 filing metadata pilot cron 或优先做官方交易所公告 collector。
 2. [ ] 继续拆小 reader/API：优先抽离无状态配置读取和 response helpers，再逐步拆业务 endpoint。
-3. [ ] DuckDB snapshot P0 生产门禁：当前 98% used/2.21GB available，等待 Nicholas 明确授权止血或扩容；授权前不再启动生产探测或任何写入动作。安全恢复顺序应先评估 P2 停止/延期及事务边界，持续阻止 snapshot 写入，再扩盘，之后修复无界轮转/写放大并错峰开盘任务。资源恢复后仍需解决 code-only deploy migration gate、使 projected filesystem usage <=90%、保留 DuckDB temp 余量，并在获批窗口证明 snapshot+sync+reconcile+cleanup <480 秒、16/16、identity mismatch=0、零残留、collector 无丢失和 `/source_status` 无 red。
+3. [ ] DuckDB snapshot P0 生产门禁：重启已停止本轮 P2/sample_ops，但 500GB 设备尚不可用，根盘仍约 96%/4.7GB available。等待 Nicholas 明确授权格式化/挂载/迁移或 cron 止血；授权前不再启动生产探测或任何写入动作。迁移前必须先修复并测试 deploy/rollback 与 service/cron 的统一路径配置和 mount fail-closed，不能直接手改 `.env` 后依赖当前 rollback。资源恢复后仍需解决 code-only deploy migration gate、使 projected filesystem usage <=90%、保留 DuckDB temp 余量，并在获批窗口证明 snapshot+sync+reconcile+cleanup <480 秒、16/16、identity mismatch=0、零残留、collector 无丢失和 `/source_status` 无 red。
 4. [ ] 公网链路观察：确认外部探针、SSH reverse tunnel 和新加坡 cloudflared 连续 24 小时稳定；异常时只切换 connector，不改广州权威库或 API 契约。
 5. [ ] `stock_master` 发布验收：在明确发布授权后分别核对 production runtime 代码、live `/reference?table=stock_master&limit=6000` 响应、`market_assets` A 股 stock 数据质量与 degraded 负例；本地完成不替代部署和 live 数据证据。

@@ -2,7 +2,8 @@
 
 > Status: active release blocker. This document records read-only evidence and
 > preservation decisions. It authorizes no process termination, backup deletion,
-> database write, migration, sync, snapshot benchmark or deployment.
+> database write, filesystem creation/mount, migration, sync, snapshot benchmark,
+> cron change or deployment.
 
 ## Fresh boundary
 
@@ -38,6 +39,23 @@ supersedes the earlier wait-only threshold: no further production probe or
 mutation is authorized until Nicholas explicitly approves a bounded stop or
 disk expansion plan.
 
+Read-only acceptance at `2026-07-13T19:08:00+08:00` through `19:09:00+08:00`
+after an instance restart established a different but still blocked boundary:
+
+- the instance had 4 vCPU, about 15GiB RAM, load 0.27 and healthy memory;
+- P2 PID 175096 and A-share sample-ops PID 162806 were no longer running;
+- the original root filesystem remained about 96% used with about 4.7GB free;
+- SQLite was 19.10GB and DuckDB was 7.54GB, both still on the original root;
+- the attached 500GB `/dev/nvme1n1` had no FSTYPE or UUID according to
+  `lsblk`, `blkid` and read-only `wipefs -n`, no active mount in `findmnt`, and
+  no fstab entry;
+- the old DuckDB cron still existed at 19:17, production still ran the old code,
+  `/health` was degraded, and the old malformed DuckDB evidence remained.
+
+The restart stopped the observed hot processes but did not complete expansion,
+repair the mirror or disable the scheduled old sync. No formatting, mounting,
+migration, deletion, cron change or deployment is authorized.
+
 ## Exact large-file preservation inventory
 
 The following list was collected with metadata-only `find/stat`. Full hashes of
@@ -45,7 +63,7 @@ large files were deliberately not recomputed under IO pressure.
 
 | Size bytes | Owner/mode | Path | Preservation class |
 |---:|---|---|---|
-| 18,500,161,536 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority at 18:57. Never delete, copy, restore or replace during this gate. |
+| about 19.10GB | marketgraph:marketgraph 0644 at the last exact owner/mode readback | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority at 19:08. Never delete, copy, restore or replace during this gate. |
 | 7,541,895,168 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/data/marketdata.duckdb` | Live derived mirror. Preserve until replacement and rollback are proven. |
 | 10,579,881,984 | marketgraph:marketgraph 0664 | `/opt/investment/SharedSignals/backups/duckdb/marketdata_pre_incremental_20260710_150600.duckdb` | Pre-incremental rollback evidence. No adjacent hash was found in the small-manifest scan; preserve pending lineage review. |
 | 7,371,132,928 | root:root 0644 | `/opt/investment/SharedSignals/backups/marketdata_20260711_002519.sqlite` | SQLite deploy rollback snapshot. Preserve; a pre-deploy HEAD file exists, but no separate SHA file was found. |
@@ -67,21 +85,20 @@ No file in this inventory is approved for deletion. Older SQLite/DuckDB copies
 are only candidates for a future, explicit retention decision after ownership,
 lineage, readable rollback and required-retention evidence are verified.
 
-## Release stop and next safe readback
+## Release stop
 
-Until the active P2 process has exited naturally:
+- do not start P2, sample-ops, SQLite/DuckDB integrity scans, snapshot
+  benchmarks, mirror sync, migration, deploy or backup;
+- do not format or mount `/dev/nvme1n1`, edit fstab, change storage paths, modify
+  cron or delete logs/backups;
+- keep TradingAgent sim-only and do not treat the restart, attached disk or
+  service liveness as data-health evidence;
+- treat the still-installed old DuckDB cron as an unresolved automatic-write
+  risk; no manual run is permitted and changing it requires explicit approval.
 
-- do not kill it or start a second writer;
-- do not run SQLite/DuckDB integrity scans, snapshot benchmarks, mirror sync,
-  migration, deploy or backup;
-- do not modify cron or delete logs/backups;
-- keep TradingAgent sim-only and do not treat service health as data health.
-
-After P2 exits, the next step is one read-only readback of process exit state,
-`df`, authority/WAL/SHM size and mtime, DuckDB size, and relevant cron/log tail.
-Only then may an expansion or explicitly authorized bounded-retention plan be
-designed. The consistent-snapshot feature remains disabled until projected
-filesystem usage is at most 90% and all code-only deployment gates pass.
+The consistent-snapshot feature remains disabled until the new storage path,
+mount guard, rollback and projected filesystem usage are proven and all
+code-only deployment gates pass.
 
 At 98% usage, the preferred recovery architecture is sequencing guidance only,
 not authorization: assess a transaction-safe P2 stop or deferral, keep all
@@ -89,3 +106,61 @@ snapshot writers disabled, expand the filesystem, then repair unbounded
 rotation/write amplification and move heavy jobs away from the opening gate.
 Killing a process, changing cron, deleting a backup or resizing storage requires
 Nicholas's explicit approval and a fresh rollback assessment.
+
+## Prepared recovery plan — not authorized to execute
+
+This is sequencing and rollback design only. Every production mutation below
+requires Nicholas to approve the exact device, filesystem, mount point,
+maintenance window, writer freeze and rollback boundary.
+
+1. **Re-identify the device.** Re-read cloud attachment identity, size,
+   serial/model, `lsblk`, `blkid`, `wipefs -n`, `findmnt` and fstab. Do not rely
+   on the transient name `/dev/nvme1n1` alone. Abort if identity differs, any
+   signature appears, or the device is mounted/used by another system.
+2. **Preserve small control evidence.** Export the production HEAD/status,
+   systemd unit, exact crontab, fstab, mount table, database inode/size/mtime,
+   existing SHA manifests and the large-file inventory. Do not create another
+   large backup or recompute full large-file hashes on the constrained root.
+3. **Establish a bounded writer freeze.** Verify the production wrapper version
+   actually uses `read_model_maintenance.lock`, then hold its exclusive side so
+   project cron jobs skip. Confirm P2, sample-ops, DuckDB sync and all SQLite
+   writers are absent. Do not rewrite the whole crontab. Stop the read-only API
+   only for the final path switch, not for the entire copy window.
+4. **Prepare storage only after authorization.** Create the approved filesystem,
+   mount it at a dedicated SharedSignals data mount by UUID, set restrictive
+   ownership/modes, and add a fail-closed mount check. A missing mount must stop
+   service/cron; it must never fall back to an empty directory on the root disk.
+5. **Close the path-contract blocker before cutover.** `runtime_paths.py`, cron
+   wrappers and systemd can consume `.env` path overrides, but the current
+   `deploy.sh` and `rollback.sh` do not load that same file. Implement and test a
+   single path contract plus mount guard locally before changing production.
+   Directly editing `.env` now would make rollback target the wrong authority.
+6. **Copy the SQLite authority without promotion.** With writers frozen, inspect
+   WAL/SHM state and use the native SQLite backup API to write a temporary file
+   directly on the new filesystem; do not raw-copy an active database. Flush it,
+   validate owner/mode, read-only SQLite health, required tables, canonical
+   counts and lineage, then atomically promote it on the new filesystem. Keep
+   the root copy untouched. The malformed DuckDB is derived evidence: preserve
+   it but do not promote it as the new active mirror or use it to reconstruct
+   SQLite.
+7. **Use a two-stage cutover.** First point only the API/read path at the new
+   SQLite while writers remain frozen; verify mount identity, process
+   environment, inode/device, internal API, freshness and lineage. Before the
+   first new write, rollback is path-config restoration to the untouched root
+   copy. After the first new write, the root copy is stale: rollback must keep
+   the new storage authority and roll back code only, never silently switch to
+   the old database.
+8. **Resume in layers.** Enable one bounded collector only after the read-only
+   phase passes, verify the write lands on the new device and remains
+   append-safe, then restore schedules through the project-managed cron path.
+   Rebuild DuckDB later from one consistent SQLite snapshot; require 16/16,
+   identity mismatch zero, no residual snapshot and `/source_status` without
+   DuckDB red before calling the mirror recovered.
+9. **Retain the old root copy.** Do not delete the old SQLite, DuckDB, backups or
+   incident evidence during cutover. Root-space reclamation is a separate,
+   explicit retention decision after the new authority survives the approved
+   observation window and rollback evidence is readable.
+10. **Fix the cause after capacity is stable.** Profile P2 write amplification
+    and unbounded rotation, enforce bounded/idempotent writes, and move heavy
+    P2/sample projection work away from opening gates. Capacity expansion alone
+    does not close the defect.
