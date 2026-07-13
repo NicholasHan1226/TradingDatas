@@ -17,7 +17,9 @@ change API/PIT semantics.
 
 ## Runtime paths and limits
 
-- authority: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite`
+- canonical authority: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite`
+- physical authority root: `/opt/investment-data/SharedSignals/runtime/read_model`
+- data filesystem UUID: `3f7cbf99-b15e-4c54-94cc-a57e38412874`
 - mirror: `/opt/investment/SharedSignals/data/marketdata.duckdb`
 - temporary snapshot directory: authority parent + `.duckdb_sync_snapshots/`
 - directory/file mode: `0700` / `0600`
@@ -88,9 +90,12 @@ Snapshot evidence includes:
 
 Before enabling this path, re-run safe-release preflight and verify the exact
 production database/mirror paths, runtime user, disk, cron and rollback point.
-The current canonical `deploy.sh` always runs `storage/migrate.py`; it is not a
-code-only deploy entry. When schema migration is outside the authorization, stop
-before deployment rather than manually pulling around the script.
+The local candidate provides `deploy.sh --code-only` and
+`rollback.sh --code-only`; both source `deploy/runtime_paths.sh`, require the
+data/bind mounts and service guard, refuse tracked dirty state, and explicitly
+skip schema migration, SQLite snapshot/restore and database replacement. This
+entry is not production-available until its commit is merged, pushed and
+deployed through a fresh bootstrap review; do not manually pull around it.
 
 After an authorized deployment, one single-instance run must prove:
 
@@ -102,17 +107,17 @@ After an authorized deployment, one single-instance run must prove:
 - `/source_status` has no red DuckDB check;
 - TradingAgent remains sim-only and both 50,000 CNY authorities are unchanged.
 
-## 2026-07-13 emergency stop
+## 2026-07-13 storage epoch follow-up
 
-At 19:08 CST, after an instance restart, P2 and sample-ops were no longer
-running, but the authority had reached 19.10GB and the original root filesystem
-was still about 96% used with only about 4.7GB available. The attached 500GB
-`/dev/nvme1n1` had no filesystem, UUID, mount or fstab entry; it provided no
-usable capacity. The old DuckDB cron remained installed, production still used
-the old runtime, `/health` was degraded, and the old malformed mirror remained.
-This is a hard preflight stop. Do not run this helper, the old DuckDB sync,
-migration, backup or deploy. Do not format, mount, migrate, delete, change cron
-or alter storage paths without explicit authorization and a rollback
-assessment. The evidence inventory and prepared, unexecuted recovery plan are
-recorded in
+The authorized storage writer completed the ext4/fstab/bind migration and first
+new-disk write at 20:07. Root/data free space is now adequate, but capacity alone
+does not clear the DuckDB P0: the old mirror remains malformed, `/source_status`
+is red, and DuckDB sync stays commented. The root underlay is stale after run
+`e5a1fd619a6e` and is not a rollback authority. Preserve the mount guard and all
+migration evidence described in
 [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md).
+
+P2 and DuckDB sync plus the two TradingAgent A-share sample-ops schedules remain
+inactive. Restore only the single DuckDB job after the code-only path contract,
+snapshot implementation, rollback tag and single-instance preflight pass; do
+not restore P2 or sample-ops as a side effect.

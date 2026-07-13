@@ -1,9 +1,45 @@
 # 2026-07-13 production resource-pressure gate
 
-> Status: active release blocker. This document records read-only evidence and
-> preservation decisions. It authorizes no process termination, backup deletion,
-> database write, filesystem creation/mount, migration, sync, snapshot benchmark,
-> cron change or deployment.
+> Status: capacity stop mitigated; incident and release gates remain open. The
+> storage migration below was completed by the authorized sole production
+> writer. This repository update is local-only and authorizes no new production
+> deployment, heavy-cron restore, database migration, sync or snapshot run.
+
+## Storage epoch outcome (writer handoff)
+
+- `/dev/nvme1n1` is ext4, UUID
+  `3f7cbf99-b15e-4c54-94cc-a57e38412874`, mounted at
+  `/opt/investment-data` through fstab.
+- Physical paths are
+  `/opt/investment-data/SharedSignals/runtime/read_model`,
+  `/opt/investment-data/SharedSignals/backups` and
+  `/opt/investment-data/runtime-backups`; three canonical bind mounts retain
+  the old consumer paths. The API mount guard is
+  `/etc/systemd/system/sharedsignals-api.service.d/20-finance-data-mount.conf`.
+- At the handoff readback the root filesystem was 57% used with 41GB free and
+  the data filesystem was 12% used with 433GB free. SS/MG/TA/relay were active;
+  local 8082/8080/8787 returned HTTP 200. Liveness is not source/sample green.
+- The migration evidence root is
+  `/opt/investment-data/migration-evidence/storage-migration-20260713T192703+0800`;
+  cron evidence is
+  `/opt/investment/SharedSignals/logs/cron/storage-migration-20260713T192703+0800`;
+  fstab backup is
+  `/etc/fstab.before-finance-data-20260713T193012+0800`.
+- At `20:02:53–20:03:06` the exclusive lock was released about 13 seconds too
+  early and immediately reacquired. DB and underlay size/mtime did not change;
+  no collector or write was observed. Production `summary.json` does not record
+  this near-miss, so this section is the canonical incident supplement.
+- First write run `e5a1fd619a6e` at 20:07 promoted the new-disk DB to authority.
+  `read_model.root-predata-20260713T1956` is stale evidence/controlled-rollback
+  material and must never be directly switched back after that write.
+- Only two old-root duplicate backup/runtime-backup groups with double-SHA
+  proof were released. Old read model files, databases, Journals, ledgers,
+  history, migration evidence and empty staging directories remain preserved.
+- Four heavy schedules remain inactive: P2 financial, DuckDB sync and two
+  TradingAgent A-share sample-ops jobs. Do not restore them as a group. Current
+  source status remains red (`market_pm_prices` stale plus `cb_issue` identity),
+  and current A-share/CNFutures sample evidence remains non-green as recorded in
+  `STATUS.md`.
 
 ## Fresh boundary
 
@@ -85,33 +121,29 @@ No file in this inventory is approved for deletion. Older SQLite/DuckDB copies
 are only candidates for a future, explicit retention decision after ownership,
 lineage, readable rollback and required-retention evidence are verified.
 
-## Release stop
+## Current release stop
 
-- do not start P2, sample-ops, SQLite/DuckDB integrity scans, snapshot
-  benchmarks, mirror sync, migration, deploy or backup;
-- do not format or mount `/dev/nvme1n1`, edit fstab, change storage paths, modify
-  cron or delete logs/backups;
-- keep TradingAgent sim-only and do not treat the restart, attached disk or
-  service liveness as data-health evidence;
-- treat the still-installed old DuckDB cron as an unresolved automatic-write
-  risk; no manual run is permitted and changing it requires explicit approval.
+- keep P2, DuckDB sync and both TradingAgent A-share sample-ops schedules
+  inactive; do not run a snapshot benchmark, schema migration or backup merely
+  because capacity is now available;
+- do not reformat/remount the data device, change fstab/binds, remove the mount
+  guard, switch to the stale root underlay or delete retained evidence;
+- keep TradingAgent sim-only and do not treat storage, service liveness or HTTP
+  200 as source/sample green;
+- code-only deploy remains local-only until commit/push and a fresh production
+  preflight prove clean checkout, mounts, guard, locks and rollback tag.
 
-The consistent-snapshot feature remains disabled until the new storage path,
-mount guard, rollback and projected filesystem usage are proven and all
-code-only deployment gates pass.
+The consistent-snapshot feature remains disabled until the local path contract
+and code-only release entry are integrated, then a single authorized pilot
+proves 16/16 reconcile, identity mismatch zero, no residual snapshot and no
+collector loss. P2 requires a separate bounded-run pilot and must not be restored
+as part of DuckDB recovery.
 
-At 98% usage, the preferred recovery architecture is sequencing guidance only,
-not authorization: assess a transaction-safe P2 stop or deferral, keep all
-snapshot writers disabled, expand the filesystem, then repair unbounded
-rotation/write amplification and move heavy jobs away from the opening gate.
-Killing a process, changing cron, deleting a backup or resizing storage requires
-Nicholas's explicit approval and a fresh rollback assessment.
+## Historical pre-migration recovery plan — superseded, do not execute
 
-## Prepared recovery plan — not authorized to execute
-
-This is sequencing and rollback design only. Every production mutation below
-requires Nicholas to approve the exact device, filesystem, mount point,
-maintenance window, writer freeze and rollback boundary.
+This section preserves the plan that preceded the completed storage epoch. It
+must not be replayed against the new authority. Any future mutation requires a
+fresh preflight against the 20:07 epoch and must preserve the new-disk DB.
 
 1. **Re-identify the device.** Re-read cloud attachment identity, size,
    serial/model, `lsblk`, `blkid`, `wipefs -n`, `findmnt` and fstab. Do not rely
