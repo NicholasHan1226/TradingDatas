@@ -30,6 +30,14 @@ SQLite authority reached 17,252,536,320 bytes. PIDs 174946/175093/175096 were
 still active; no SQLite WAL or SHM file was present, and the DuckDB size remained
 7,541,895,168 bytes. No repeated polling or production write followed.
 
+The delegated read-only audit at `2026-07-13T18:57:30+08:00` showed a critical
+98% root-filesystem level with only 2,209,431,552 bytes available. The SQLite
+authority had reached 18,500,161,536 bytes, P2 worker PID 175096 was still
+writing, and A-share sample-ops PID 162806 remained single-core saturated. This
+supersedes the earlier wait-only threshold: no further production probe or
+mutation is authorized until Nicholas explicitly approves a bounded stop or
+disk expansion plan.
+
 ## Exact large-file preservation inventory
 
 The following list was collected with metadata-only `find/stat`. Full hashes of
@@ -37,7 +45,7 @@ large files were deliberately not recomputed under IO pressure.
 
 | Size bytes | Owner/mode | Path | Preservation class |
 |---:|---|---|---|
-| 17,252,536,320 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority at 18:51. Never delete, copy, restore or replace during this gate. |
+| 18,500,161,536 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` | Live authority at 18:57. Never delete, copy, restore or replace during this gate. |
 | 7,541,895,168 | marketgraph:marketgraph 0644 | `/opt/investment/SharedSignals/data/marketdata.duckdb` | Live derived mirror. Preserve until replacement and rollback are proven. |
 | 10,579,881,984 | marketgraph:marketgraph 0664 | `/opt/investment/SharedSignals/backups/duckdb/marketdata_pre_incremental_20260710_150600.duckdb` | Pre-incremental rollback evidence. No adjacent hash was found in the small-manifest scan; preserve pending lineage review. |
 | 7,371,132,928 | root:root 0644 | `/opt/investment/SharedSignals/backups/marketdata_20260711_002519.sqlite` | SQLite deploy rollback snapshot. Preserve; a pre-deploy HEAD file exists, but no separate SHA file was found. |
@@ -74,3 +82,10 @@ After P2 exits, the next step is one read-only readback of process exit state,
 Only then may an expansion or explicitly authorized bounded-retention plan be
 designed. The consistent-snapshot feature remains disabled until projected
 filesystem usage is at most 90% and all code-only deployment gates pass.
+
+At 98% usage, the preferred recovery architecture is sequencing guidance only,
+not authorization: assess a transaction-safe P2 stop or deferral, keep all
+snapshot writers disabled, expand the filesystem, then repair unbounded
+rotation/write amplification and move heavy jobs away from the opening gate.
+Killing a process, changing cron, deleting a backup or resizing storage requires
+Nicholas's explicit approval and a fresh rollback assessment.
