@@ -165,11 +165,13 @@ priorities:
   P2_financial_daily:
   - api_name: fina_indicator
     frequency: daily
+    bounded_rotation_size: 100
     params:
       ts_code: '{ts_code}'
     per_stock: true
   - api_name: fina_audit
     frequency: daily
+    bounded_rotation_size: 100
     lookback_days: 550
     params:
       end_date: '{end_date}'
@@ -179,6 +181,7 @@ priorities:
     fields: ts_code,ann_date,end_date,audit_result,audit_fees,audit_agency,audit_sign
   - api_name: fina_mainbz
     frequency: daily
+    bounded_rotation_size: 100
     lookback_days: 550
     params:
       end_date: '{end_date}'
@@ -188,6 +191,7 @@ priorities:
     fields: ts_code,end_date,bz_item,bz_sales,bz_profit,bz_cost,curr_type
   - api_name: income
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -195,6 +199,7 @@ priorities:
     per_stock: true
   - api_name: balancesheet
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -202,6 +207,7 @@ priorities:
     per_stock: true
   - api_name: cashflow
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -209,6 +215,7 @@ priorities:
     per_stock: true
   - api_name: forecast
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -216,6 +223,7 @@ priorities:
     per_stock: true
   - api_name: express
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'
@@ -223,6 +231,7 @@ priorities:
     per_stock: true
   - api_name: dividend
     frequency: daily
+    bounded_rotation_size: 100
     params:
       end_date: '{end_date}'
       start_date: '{start_date}'

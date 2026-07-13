@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import os
 import re
 import sqlite3
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -55,6 +57,8 @@ logger = logging.getLogger(__name__)
 CONFIG_PATH = _BASE_DIR / "collectors" / "tushare" / "config.yaml"
 DEFAULT_LOOKBACK_DAYS = 7
 ASHARE_TZ = ZoneInfo("Asia/Shanghai")
+DEFAULT_P2_EVIDENCE_PATH = _BASE_DIR / "logs" / "watchdog_inputs" / "p2_financial_budget.json"
+DEFAULT_P2_HISTORY_PATH = _BASE_DIR / "logs" / "p2_financial_budget.jsonl"
 
 DEFAULT_TIERS = [
     "P0_trading_5min",
@@ -66,6 +70,68 @@ DEFAULT_TIERS = [
     "P6_other_daily",
 ]
 VALID_TIERS = DEFAULT_TIERS
+
+
+@dataclass
+class ResourceBudget:
+    """Conservative provider/write/deadline budget for one collector run."""
+
+    max_provider_calls: int = 0
+    max_rows_admitted: int = 0
+    deadline_seconds: float = 0.0
+    started_monotonic: float = field(default_factory=time.monotonic)
+    provider_calls: int = 0
+    rows_admitted: int = 0
+    exceeded_reason: str = ""
+
+    @property
+    def exceeded(self) -> bool:
+        return bool(self.exceeded_reason)
+
+    def _check_deadline(self) -> bool:
+        if self.exceeded:
+            return False
+        if self.deadline_seconds > 0 and self.elapsed_seconds() >= self.deadline_seconds:
+            self.exceeded_reason = "deadline_seconds_exceeded"
+            return False
+        return True
+
+    def admit_provider_call(self) -> bool:
+        if not self._check_deadline():
+            return False
+        if self.max_provider_calls > 0 and self.provider_calls >= self.max_provider_calls:
+            self.exceeded_reason = "provider_call_budget_exceeded"
+            return False
+        self.provider_calls += 1
+        return True
+
+    def admit_rows_for_write(self, count: int) -> bool:
+        if not self._check_deadline():
+            return False
+        count = max(0, int(count))
+        if self.max_rows_admitted > 0 and self.rows_admitted + count > self.max_rows_admitted:
+            self.exceeded_reason = "sqlite_row_budget_exceeded"
+            return False
+        self.rows_admitted += count
+        return True
+
+    def elapsed_seconds(self) -> float:
+        return max(0.0, time.monotonic() - self.started_monotonic)
+
+    def checkpoint(self) -> bool:
+        return self._check_deadline()
+
+    def evidence(self) -> dict[str, Any]:
+        return {
+            "status": "degraded" if self.exceeded else "ok",
+            "max_provider_calls": self.max_provider_calls,
+            "provider_calls": self.provider_calls,
+            "max_rows_admitted": self.max_rows_admitted,
+            "rows_admitted": self.rows_admitted,
+            "deadline_seconds": self.deadline_seconds,
+            "elapsed_seconds": round(self.elapsed_seconds(), 3),
+            "exceeded_reason": self.exceeded_reason or None,
+        }
 
 
 def load_config(path: Path) -> dict:
@@ -150,6 +216,64 @@ def is_ashare_intraday_session(now: datetime | None = None) -> bool:
     morning = 9 * 60 + 30 <= minute <= 11 * 60 + 30
     afternoon = 13 * 60 <= minute <= 15 * 60
     return morning or afternoon
+
+
+def p2_collection_window_allowed(now: datetime | None = None) -> bool:
+    """Keep heavy P2 work outside the A-share opening/day-session envelope."""
+
+    current = now or datetime.now(ASHARE_TZ)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=ASHARE_TZ)
+    else:
+        current = current.astimezone(ASHARE_TZ)
+    if current.weekday() >= 5:
+        return True
+    minute = current.hour * 60 + current.minute
+    return not (8 * 60 + 30 <= minute <= 16 * 60 + 30)
+
+
+def write_p2_resource_evidence(
+    stats: dict[str, Any],
+    *,
+    started_at: str,
+    finished_at: str,
+    output_path: Path = DEFAULT_P2_EVIDENCE_PATH,
+    history_path: Path = DEFAULT_P2_HISTORY_PATH,
+) -> dict[str, Any]:
+    """Atomically publish P2 latest state and preserve append-only run history."""
+
+    summary = dict(stats.get("_tier_summary") or {})
+    status = "degraded" if (
+        summary.get("completion_status") != "ok"
+        or int(summary.get("failure_count") or 0) > 0
+        or int(summary.get("critical_failure_count") or 0) > 0
+        or int(summary.get("sqlite_failure_count") or 0) > 0
+    ) else "ok"
+    report = {
+        "status": status,
+        "tier": "P2_financial_daily",
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "resource_budget": summary.get("resource_budget") or {},
+        "failure_count": int(summary.get("failure_count") or 0),
+        "critical_failure_count": int(summary.get("critical_failure_count") or 0),
+        "sqlite_failure_count": int(summary.get("sqlite_failure_count") or 0),
+        "rollback_boundary": (
+            "retain committed idempotent/append-only rows; disable the P2 cron and "
+            "roll back code only; rerun the same window after review"
+        ),
+    }
+    encoded = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = output_path.with_suffix(f".{os.getpid()}.tmp")
+    temp.write_text(encoded + "\n", encoding="utf-8")
+    temp.replace(output_path)
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write(encoded + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return report
 
 
 def resolve_api_window(
@@ -257,6 +381,7 @@ def sync_tier(
     end_date: str,
     hk_stock_codes: list[str] | None = None,
     sqlite_db_path: Path = DEFAULT_SQLITE_PATH,
+    resource_budget: ResourceBudget | None = None,
 ) -> dict[str, dict]:
     """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
     stats: dict[str, dict] = {}
@@ -316,6 +441,10 @@ def sync_tier(
     def _write_sqlite(api_name: str, rows: list[dict[str, Any]], source_name: str) -> dict[str, Any]:
         if not rows:
             return {"rows": 0, "status": "empty", "error": ""}
+        if resource_budget is not None and not resource_budget.admit_rows_for_write(len(rows)):
+            error = f"{api_name}:{source_name}:{resource_budget.exceeded_reason}"
+            sqlite_errors.append(error)
+            return {"rows": 0, "status": "failed", "error": error}
         table = API_TO_TABLE_MAP.get(api_name)
         if not table:
             error = f"{api_name}:no sqlite table mapping"
@@ -385,8 +514,10 @@ def sync_tier(
             failed_batches: list[tuple[int, list[str]]] = []
             possible_truncation_batches: set[int] = set()
 
-            def _collect_batch(batch_index: int, code_batch: list[str], *, retry_round: int = 0) -> bool:
+            def _collect_batch(batch_index: int, code_batch: list[str], *, retry_round: int = 0) -> bool | None:
                 nonlocal call_idx, api_calls, api_total, sqlite_total
+                if resource_budget is not None and not resource_budget.admit_provider_call():
+                    return None
                 ts_code = ",".join(code_batch)
                 if retry_round == 0:
                     call_idx += 1
@@ -443,7 +574,10 @@ def sync_tier(
 
             for batch_index, offset in enumerate(range(0, len(api_codes), batch_size), start=1):
                 code_batch = api_codes[offset:offset + batch_size]
-                if _collect_batch(batch_index, code_batch):
+                batch_failed = _collect_batch(batch_index, code_batch)
+                if batch_failed is None:
+                    break
+                if batch_failed:
                     failed_batches.append((batch_index, code_batch))
 
             for retry_round in range(1, failed_batch_retry_rounds + 1):
@@ -454,9 +588,14 @@ def sync_tier(
                     time.sleep(delay)
                 retry_failures: list[tuple[int, list[str]]] = []
                 for batch_index, code_batch in failed_batches:
-                    if _collect_batch(batch_index, code_batch, retry_round=retry_round):
+                    batch_failed = _collect_batch(batch_index, code_batch, retry_round=retry_round)
+                    if batch_failed is None:
+                        break
+                    if batch_failed:
                         retry_failures.append((batch_index, code_batch))
                 failed_batches = retry_failures
+                if resource_budget is not None and resource_budget.exceeded:
+                    break
 
             api_failures = len(failed_batches)
 
@@ -476,6 +615,8 @@ def sync_tier(
             logger.info("[%s] %s (%s): %d rows, api_failures=%d/%d, sqlite=%s/%d rows in %.1fs",
                         tier_name, api_name, label, api_total, api_failures, api_calls,
                         stats[api_name]["sqlite_status"], sqlite_total, duration)
+            if resource_budget is not None and resource_budget.exceeded:
+                break
 
     # ── Per-stock: A-share ──
     _run_per_stock(per_stock_ashare, stock_codes, "A-share")
@@ -485,6 +626,8 @@ def sync_tier(
 
     # ── Global (non-per-stock) APIs ──
     for api_def in global_apis:
+        if resource_budget is not None and not resource_budget.admit_provider_call():
+            break
         api_name = api_def["api_name"]
         template = api_def.get("params", {})
         fields = api_def.get("fields")
@@ -552,16 +695,22 @@ def sync_tier(
     total_failures = sum(int(s.get("failure_count", 0)) for s in stats.values())
     critical_failures = sum(int(s.get("critical_failure_count", 0)) for s in stats.values())
     counted_calls = sum(int(s.get("calls", 0)) for s in stats.values())
+    if resource_budget is not None:
+        resource_budget.checkpoint()
+    budget_evidence = resource_budget.evidence() if resource_budget is not None else None
+    budget_critical_failure = 1 if resource_budget is not None and resource_budget.exceeded else 0
     stats["_tier_summary"] = {
         "tier": tier_name,
         "apis": len(apis),
         "calls": counted_calls,
         "failure_count": total_failures,
-        "critical_failure_count": critical_failures,
+        "critical_failure_count": critical_failures + budget_critical_failure,
         "sqlite_failure_count": len(sqlite_errors),
         "failure_ratio": round(total_failures / counted_calls, 4) if counted_calls else 0.0,
         "duration_s": round(tier_duration, 1),
         "sqlite_errors": sqlite_errors,
+        "completion_status": "degraded" if budget_critical_failure else "ok",
+        "resource_budget": budget_evidence,
     }
     logger.info("[%s] COMPLETE: %d APIs, api_failures=%d/%d, sqlite_errors=%d, %.1fs total",
                 tier_name, len(apis), total_failures, counted_calls, len(sqlite_errors), tier_duration)
@@ -631,6 +780,9 @@ def main() -> None:
         action="store_true",
         help="Allow P0 to run outside A-share intraday windows for manual backfill/smoke runs",
     )
+    parser.add_argument("--max-provider-calls", type=int, default=0)
+    parser.add_argument("--max-rows-admitted", type=int, default=0)
+    parser.add_argument("--deadline-seconds", type=float, default=0.0)
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -655,6 +807,23 @@ def main() -> None:
     if not apis:
         logger.error("No APIs selected for tier=%s only_api=%s", tier_name, args.only_api)
         sys.exit(1)
+
+    resource_budget: ResourceBudget | None = None
+    if tier_name == "P2_financial_daily":
+        if not p2_collection_window_allowed():
+            logger.error("P2_financial_daily is forbidden during the A-share opening/day-session envelope")
+            sys.exit(2)
+        if args.max_provider_calls <= 0 or args.max_rows_admitted <= 0 or args.deadline_seconds <= 0:
+            logger.error(
+                "P2_financial_daily requires positive --max-provider-calls, "
+                "--max-rows-admitted and --deadline-seconds budgets"
+            )
+            sys.exit(2)
+        resource_budget = ResourceBudget(
+            max_provider_calls=args.max_provider_calls,
+            max_rows_admitted=args.max_rows_admitted,
+            deadline_seconds=args.deadline_seconds,
+        )
 
     # Detect if any API in this tier needs HK stock codes
     needs_hk = any(a.get("stock_list") == "hk" for a in apis)
@@ -693,6 +862,7 @@ def main() -> None:
         collector, tier_name, apis, stock_codes,
         trade_date, start_date, end_date,
         hk_stock_codes=hk_stock_codes,
+        resource_budget=resource_budget,
     )
 
     # Summary
@@ -719,12 +889,19 @@ def main() -> None:
         logger.warning("SQLITE_ERRORS: %s", sqlite_errors)
     logger.info("=" * 60)
 
+    finished_at = datetime.now(timezone.utc).isoformat()
     record_tushare_stats(
         stats,
         tier=tier_name,
         started_at=started_at,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=finished_at,
     )
+    if tier_name == "P2_financial_daily":
+        write_p2_resource_evidence(
+            stats,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
 
     exit_code = _failure_exit_code(
         tier_summary,

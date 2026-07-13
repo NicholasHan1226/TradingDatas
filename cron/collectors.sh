@@ -1,6 +1,5 @@
 #!/bin/bash
 # Run SharedSignals Tushare sync_daily tiers.
-TIMEOUT="${SHAREDSIGNALS_CRON_TIMEOUT:-3600}"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,7 +83,24 @@ fi
   echo "[$(date -Iseconds)] START collectors tiers=${TIERS[*]} python=${PYTHON_BIN}"
   for tier in "${TIERS[@]}"; do
     echo "[$(date -Iseconds)] RUN sync_daily tier=${tier}"
-    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${PYTHON_BIN}" collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure
+    TIMEOUT="${SHAREDSIGNALS_CRON_TIMEOUT:-3600}"
+    EXTRA_ARGS=()
+    RUNNER=("${PYTHON_BIN}")
+    if [ "${tier}" = "P2_financial_daily" ]; then
+      TIMEOUT="${SHAREDSIGNALS_P2_TIMEOUT:-900}"
+      EXTRA_ARGS=(
+        --max-provider-calls "${SHAREDSIGNALS_P2_MAX_PROVIDER_CALLS:-2500}"
+        --max-rows-admitted "${SHAREDSIGNALS_P2_MAX_ROWS_ADMITTED:-100000}"
+        --deadline-seconds "${SHAREDSIGNALS_P2_DEADLINE_SECONDS:-840}"
+      )
+      if command -v ionice >/dev/null 2>&1; then
+        RUNNER=(ionice -c3 nice -n 10 "${PYTHON_BIN}")
+      else
+        RUNNER=(nice -n 10 "${PYTHON_BIN}")
+      fi
+    fi
+    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${RUNNER[@]}" \
+      collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure "${EXTRA_ARGS[@]}"
   done
   echo "[$(date -Iseconds)] OK collectors"
 } >> "${LOG_FILE}" 2>&1

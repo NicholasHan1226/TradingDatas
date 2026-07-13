@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9,13 +10,16 @@ import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
+    ResourceBudget,
     date_range,
     filter_apis,
     load_stock_codes,
     load_config,
     is_ashare_intraday_session,
+    p2_collection_window_allowed,
     resolve_api_window,
     sync_tier,
+    write_p2_resource_evidence,
 )
 from storage.read_model_store import API_TO_TABLE_MAP
 
@@ -759,3 +763,164 @@ def test_is_ashare_intraday_session_windows() -> None:
     assert is_ashare_intraday_session(datetime(2026, 7, 8, 9, 25, tzinfo=tz)) is False
     assert is_ashare_intraday_session(datetime(2026, 7, 8, 12, 0, tzinfo=tz)) is False
     assert is_ashare_intraday_session(datetime(2026, 7, 11, 10, 0, tzinfo=tz)) is False
+
+
+def test_p2_window_excludes_opening_and_day_session() -> None:
+    tz = ZoneInfo("Asia/Shanghai")
+
+    assert p2_collection_window_allowed(datetime(2026, 7, 8, 8, 29, tzinfo=tz)) is True
+    assert p2_collection_window_allowed(datetime(2026, 7, 8, 8, 30, tzinfo=tz)) is False
+    assert p2_collection_window_allowed(datetime(2026, 7, 8, 15, 0, tzinfo=tz)) is False
+    assert p2_collection_window_allowed(datetime(2026, 7, 8, 19, 45, tzinfo=tz)) is True
+    assert p2_collection_window_allowed(datetime(2026, 7, 11, 10, 0, tzinfo=tz)) is True
+
+
+def test_p2_provider_call_budget_stops_before_next_call(tmp_path: Path, monkeypatch) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def collect(self, api_name, params, fields=None):
+            self.calls += 1
+            return [{"ts_code": params["ts_code"], "ann_date": "20260713"}]
+
+    writes: list[list[dict]] = []
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda _db, _table, _api, rows, **_kwargs: writes.append(rows) or len(rows),
+    )
+    collector = FakeCollector()
+    budget = ResourceBudget(max_provider_calls=1, max_rows_admitted=10, deadline_seconds=60)
+
+    stats = sync_tier(
+        collector,
+        "P2_financial_daily",
+        [{"api_name": "income", "per_stock": True, "params": {"ts_code": "{ts_code}"}}],
+        stock_codes=["000001.SZ", "000002.SZ"],
+        trade_date="20260713",
+        start_date="20260706",
+        end_date="20260713",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+        resource_budget=budget,
+    )
+
+    assert collector.calls == 1
+    assert len(writes) == 1
+    assert stats["_tier_summary"]["completion_status"] == "degraded"
+    assert stats["_tier_summary"]["resource_budget"]["exceeded_reason"] == "provider_call_budget_exceeded"
+    assert stats["_tier_summary"]["critical_failure_count"] == 1
+
+
+def test_p2_deadline_checkpoint_marks_completed_late_run_degraded() -> None:
+    budget = ResourceBudget(
+        max_provider_calls=10,
+        max_rows_admitted=10,
+        deadline_seconds=1,
+        started_monotonic=time.monotonic() - 2,
+    )
+
+    assert budget.checkpoint() is False
+    assert budget.evidence()["exceeded_reason"] == "deadline_seconds_exceeded"
+
+
+def test_p2_row_budget_fails_before_sqlite_write(tmp_path: Path, monkeypatch) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            return [
+                {"ts_code": "000001.SZ", "ann_date": "20260713"},
+                {"ts_code": "000002.SZ", "ann_date": "20260713"},
+            ]
+
+    writes = 0
+
+    def fake_write(*_args, **_kwargs):
+        nonlocal writes
+        writes += 1
+        return 2
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", fake_write)
+    budget = ResourceBudget(max_provider_calls=10, max_rows_admitted=1, deadline_seconds=60)
+    stats = sync_tier(
+        FakeCollector(),
+        "P2_financial_daily",
+        [{"api_name": "income", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260713",
+        start_date="20260706",
+        end_date="20260713",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+        resource_budget=budget,
+    )
+
+    assert writes == 0
+    assert stats["income"]["sqlite_status"] == "failed"
+    assert stats["_tier_summary"]["resource_budget"]["exceeded_reason"] == "sqlite_row_budget_exceeded"
+
+
+def test_p2_evidence_is_atomic_and_history_is_append_only(tmp_path: Path) -> None:
+    latest = tmp_path / "watchdog" / "p2.json"
+    history = tmp_path / "p2.jsonl"
+    stats = {
+        "_tier_summary": {
+            "completion_status": "degraded",
+            "resource_budget": {"exceeded_reason": "deadline_seconds_exceeded"},
+            "failure_count": 0,
+            "critical_failure_count": 1,
+            "sqlite_failure_count": 0,
+        }
+    }
+
+    first = write_p2_resource_evidence(
+        stats,
+        started_at="2026-07-13T11:00:00+00:00",
+        finished_at="2026-07-13T11:10:00+00:00",
+        output_path=latest,
+        history_path=history,
+    )
+    second = write_p2_resource_evidence(
+        stats,
+        started_at="2026-07-13T12:00:00+00:00",
+        finished_at="2026-07-13T12:10:00+00:00",
+        output_path=latest,
+        history_path=history,
+    )
+
+    assert first["status"] == second["status"] == "degraded"
+    assert latest.exists()
+    assert len(history.read_text(encoding="utf-8").splitlines()) == 2
+    assert not list(latest.parent.glob("*.tmp"))
+
+
+def test_p2_and_duckdb_cron_remain_incident_paused_with_bounded_wrapper() -> None:
+    for manifest_path in (Path("cron/crontab.txt"), Path("crontab.txt")):
+        manifest = manifest_path.read_text(encoding="utf-8")
+        active = [
+            line
+            for line in manifest.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert not any("P2_financial_daily" in line for line in active)
+        assert not any("duckdb_sync.sh" in line for line in active)
+
+    wrapper = Path("cron/collectors.sh").read_text(encoding="utf-8")
+    assert "SHAREDSIGNALS_P2_TIMEOUT" in wrapper
+    assert "SHAREDSIGNALS_P2_MAX_PROVIDER_CALLS" in wrapper
+    assert "SHAREDSIGNALS_P2_MAX_ROWS_ADMITTED" in wrapper
+    assert 'SHAREDSIGNALS_P2_MAX_ROWS_ADMITTED:-100000' in wrapper
+    assert "SHAREDSIGNALS_P2_DEADLINE_SECONDS" in wrapper
+    assert "ionice -c3 nice -n 10" in wrapper
+
+
+def test_every_p2_api_has_a_bounded_rotation_within_default_call_budget() -> None:
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    p2 = config["priorities"]["P2_financial_daily"]
+
+    assert p2
+    assert all(int(api.get("bounded_rotation_size") or 0) > 0 for api in p2)
+    planned_calls = sum(int(api["bounded_rotation_size"]) for api in p2)
+    assert planned_calls <= 2500

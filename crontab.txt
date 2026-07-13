@@ -28,7 +28,9 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 25 16 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_daily.sh
 
 35 16 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P1_eod_daily
-30 18 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P2_financial_daily
+# INCIDENT PAUSE 2026-07-13: keep P2 disabled until bounded-run production pilot passes.
+# Future audited slot is deliberately outside A-share/opening and DuckDB windows.
+# 45 19 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P2_financial_daily
 15 6 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P3_reference_daily
 45 8 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P4_macro_daily
 10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
@@ -41,7 +43,8 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Read model sync and health loop.
 # DuckDB is an analytics mirror, not the 5-minute trading read path. Keep it
 # off the 5-minute cadence so it cannot full-scan SQLite during trading loops.
-17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
+# INCIDENT PAUSE 2026-07-13: do not restore until consistent snapshot P0 is deployed and piloted.
+# 17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
 12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh
 1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
 */5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
