@@ -6,17 +6,60 @@
 set -euo pipefail
 
 CODE_ONLY=0
-if [ "${1:-}" = "--code-only" ]; then
-    CODE_ONLY=1
+BOOTSTRAP_FROM_CANDIDATE=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --code-only)
+            CODE_ONLY=1
+            ;;
+        --bootstrap-from-candidate)
+            BOOTSTRAP_FROM_CANDIDATE=1
+            ;;
+        *)
+            echo "Usage: deploy.sh [--code-only] [--bootstrap-from-candidate]" >&2
+            exit 2
+            ;;
+    esac
     shift
-fi
-if [ "$#" -ne 0 ]; then
-    echo "Usage: deploy.sh [--code-only]" >&2
+done
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ] && [ "$CODE_ONLY" != "1" ]; then
+    echo "[ERROR] --bootstrap-from-candidate is allowed only with --code-only" >&2
     exit 2
 fi
 
 REPO_DIR="${SHAREDSIGNALS_REPO_DIR:-/opt/investment/SharedSignals}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+RELEASE_SOURCE_ROOT="${SCRIPT_DIR}"
+BOOTSTRAP_HEAD=""
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ]; then
+    if [ "$RELEASE_SOURCE_ROOT" = "$REPO_DIR" ]; then
+        echo "[ERROR] Bootstrap source must be a separate detached candidate tree" >&2
+        exit 78
+    fi
+    if ! git -C "$RELEASE_SOURCE_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || [ "$(git -C "$RELEASE_SOURCE_ROOT" rev-parse --show-toplevel 2>/dev/null || true)" != "$RELEASE_SOURCE_ROOT" ]; then
+        echo "[ERROR] Bootstrap source is not a Git worktree root: $RELEASE_SOURCE_ROOT" >&2
+        exit 78
+    fi
+    if git -C "$RELEASE_SOURCE_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1; then
+        echo "[ERROR] Bootstrap source must be detached" >&2
+        exit 78
+    fi
+    if [ -n "$(git -C "$RELEASE_SOURCE_ROOT" status --porcelain --untracked-files=no)" ]; then
+        echo "[ERROR] Tracked bootstrap candidate is dirty; refusing deploy" >&2
+        exit 79
+    fi
+    BOOTSTRAP_HEAD="$(git -C "$RELEASE_SOURCE_ROOT" rev-parse HEAD)"
+    CACHED_REMOTE_HEAD="$(git -C "$REPO_DIR" rev-parse origin/main 2>/dev/null || true)"
+    if [ -z "$CACHED_REMOTE_HEAD" ] || [ "$BOOTSTRAP_HEAD" != "$CACHED_REMOTE_HEAD" ]; then
+        echo "[ERROR] Bootstrap candidate must equal a prefetched canonical origin/main before its release code is trusted" >&2
+        exit 78
+    fi
+fi
 PATH_CONTRACT="${REPO_DIR}/deploy/runtime_paths.sh"
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ]; then
+    PATH_CONTRACT="${RELEASE_SOURCE_ROOT}/deploy/runtime_paths.sh"
+fi
 if [ ! -f "$PATH_CONTRACT" ] || [ -L "$PATH_CONTRACT" ]; then
     echo "[ERROR] SharedSignals runtime path contract missing or unsafe: $PATH_CONTRACT" >&2
     exit 78
@@ -128,6 +171,10 @@ trap rollback_deploy ERR
 
 log "=== SharedSignals Deploy ${TIMESTAMP} ==="
 
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ]; then
+    log "Bootstrap candidate: ${BOOTSTRAP_HEAD} from ${RELEASE_SOURCE_ROOT}"
+fi
+
 # ---- Phase 1: Backup ----
 log "Phase 1: Backup"
 cd "$REPO_DIR"
@@ -183,6 +230,18 @@ else
     false
 fi
 REMOTE=$(git rev-parse "$REMOTE_REF")
+
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ]; then
+    if [ "$(git -C "$RELEASE_SOURCE_ROOT" rev-parse HEAD)" != "$BOOTSTRAP_HEAD" ] \
+        || [ -n "$(git -C "$RELEASE_SOURCE_ROOT" status --porcelain --untracked-files=no)" ]; then
+        error "Bootstrap candidate changed after preflight; refusing deploy"
+        false
+    fi
+    if [ "$BOOTSTRAP_HEAD" != "$REMOTE" ]; then
+        error "Bootstrap candidate $BOOTSTRAP_HEAD is not fresh $REMOTE_REF $REMOTE"
+        false
+    fi
+fi
 
 if [ "$CURRENT" = "$REMOTE" ]; then
     warn "Already at latest - nothing to pull"
@@ -274,6 +333,9 @@ success "SharedSignals deployed successfully"
 echo "Tag: $TAG"
 echo "Backup: ${DB_BACKUP:-none}"
 echo "Mode: $([ "$CODE_ONLY" = "1" ] && echo code-only || echo full)"
+if [ "$BOOTSTRAP_FROM_CANDIDATE" = "1" ]; then
+    echo "Bootstrap source: ${BOOTSTRAP_HEAD}"
+fi
 echo "Log: $LOG_FILE"
 
 # Retention is applied only after a successful deploy and validated snapshot.

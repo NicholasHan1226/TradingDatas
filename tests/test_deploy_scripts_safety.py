@@ -1,4 +1,8 @@
+import os
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +126,119 @@ def test_code_only_release_and_rollback_share_path_contract_and_never_touch_data
     assert "runtime authority path may not be a symlink" in helper
     assert "runtime env may not redirect the repository root" in helper
     assert "production repository may not disable mount checks" in helper
+
+
+def test_code_only_bootstrap_requires_a_clean_fresh_separate_candidate() -> None:
+    deploy = _read_script("deploy.sh")
+
+    assert '--bootstrap-from-candidate' in deploy
+    assert 'BOOTSTRAP_FROM_CANDIDATE=1' in deploy
+    assert 'allowed only with --code-only' in deploy
+    assert 'PATH_CONTRACT="${RELEASE_SOURCE_ROOT}/deploy/runtime_paths.sh"' in deploy
+    assert 'Bootstrap source must be a separate detached candidate tree' in deploy
+    assert 'Bootstrap source must be detached' in deploy
+    assert 'rev-parse --show-toplevel' in deploy
+    assert 'status --porcelain --untracked-files=no' in deploy
+    assert 'BOOTSTRAP_HEAD="$(git -C "$RELEASE_SOURCE_ROOT" rev-parse HEAD)"' in deploy
+    assert 'Bootstrap candidate must equal a prefetched canonical origin/main' in deploy
+    assert 'Bootstrap candidate changed after preflight' in deploy
+    assert '"$BOOTSTRAP_HEAD" != "$REMOTE"' in deploy
+    assert 'is not fresh $REMOTE_REF' in deploy
+    assert deploy.index('"$BOOTSTRAP_HEAD" != "$REMOTE"') < deploy.index(
+        'git merge --ff-only "$REMOTE_REF"'
+    )
+    assert deploy.index('Bootstrap candidate must equal a prefetched canonical origin/main') < deploy.index(
+        'source "$PATH_CONTRACT"'
+    )
+
+
+def test_code_only_bootstrap_runs_from_detached_candidate_without_touching_database(
+    tmp_path: Path,
+) -> None:
+    remote = tmp_path / "remote.git"
+    canonical = tmp_path / "canonical"
+    candidate = tmp_path / "candidate"
+
+    def run(*args: str, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            args,
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    run("git", "init", "--bare", str(remote))
+    run("git", "init", str(canonical))
+    run("git", "config", "user.name", "SharedSignals Test", cwd=canonical)
+    run("git", "config", "user.email", "sharedsignals-test@example.invalid", cwd=canonical)
+    for relative in (
+        "deploy.sh",
+        "deploy/runtime_paths.sh",
+        "deploy/systemd/sharedsignals-api.service",
+        "storage/schema.py",
+        "bridge/marketgraph_marketdata_db.py",
+        "reference/market_calendar.py",
+    ):
+        source = ROOT / relative
+        target = canonical / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    run("git", "add", ".", cwd=canonical)
+    run("git", "commit", "-m", "test release", cwd=canonical)
+    run("git", "branch", "-M", "main", cwd=canonical)
+    run("git", "remote", "add", "origin", str(remote), cwd=canonical)
+    run("git", "push", "-u", "origin", "main", cwd=canonical)
+    run("git", "worktree", "add", "--detach", str(candidate), "origin/main", cwd=canonical)
+
+    runtime = tmp_path / "runtime"
+    read_model = runtime / "read_model"
+    backups = tmp_path / "backups"
+    runtime_backups = tmp_path / "runtime-backups"
+    for path in (read_model, backups, runtime_backups):
+        path.mkdir(parents=True)
+    database = read_model / "marketdata.sqlite"
+    database.write_bytes(b"authority-must-not-change")
+    before = database.read_bytes()
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_sudo = fake_bin / "sudo"
+    fake_flock = fake_bin / "flock"
+    for executable in (fake_python, fake_sudo, fake_flock):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(candidate / "deploy.sh"), "--code-only", "--bootstrap-from-candidate"],
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SHAREDSIGNALS_REPO_DIR": str(canonical),
+            "SHAREDSIGNALS_ENV_FILE": str(tmp_path / "missing.env"),
+            "SHAREDSIGNALS_RUNTIME_ROOT": str(runtime),
+            "SHAREDSIGNALS_READ_MODEL_DIR": str(read_model),
+            "SHAREDSIGNALS_MARKETDATA_DB": str(database),
+            "SHAREDSIGNALS_BACKUP_DIR": str(backups),
+            "SHAREDSIGNALS_RUNTIME_BACKUP_DIR": str(runtime_backups),
+            "SHAREDSIGNALS_DATA_MOUNT": str(tmp_path),
+            "SHAREDSIGNALS_SERVICE_MOUNT_GUARD": str(tmp_path / "unused.guard"),
+            "SHAREDSIGNALS_REQUIRE_MOUNTS": "0",
+            "SHAREDSIGNALS_VENV_PYTHON": str(fake_python),
+            "SHAREDSIGNALS_DEPLOY_LOCK_FILE": str(tmp_path / "deploy.lock"),
+            "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE": str(tmp_path / "maintenance.lock"),
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Mode: code-only" in result.stdout
+    assert "Bootstrap source:" in result.stdout
+    assert "schema migration explicitly skipped" in result.stdout
+    assert database.read_bytes() == before
+    assert not list(backups.glob("marketdata_*.sqlite"))
 
 
 def test_runtime_path_contract_fails_closed_on_relative_or_cross_root_database(tmp_path: Path) -> None:

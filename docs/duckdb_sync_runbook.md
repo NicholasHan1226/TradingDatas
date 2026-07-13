@@ -96,6 +96,16 @@ data/bind mounts and service guard, refuse tracked dirty state, and explicitly
 skip schema migration, SQLite snapshot/restore and database replacement. This
 entry is not production-available until its commit is merged, pushed and
 deployed through a fresh bootstrap review; do not manually pull around it.
+For the first production adoption only, fetch the remote without moving the
+release checkout, create a clean detached worktree at the fetched
+`origin/main`, and invoke that candidate's
+`deploy.sh --code-only --bootstrap-from-candidate`. The candidate must remain a
+separate clean tracked tree and equal the freshly fetched remote commit both at
+preflight and immediately before the release checkout's ff-only move. The same
+mount/service guard, exclusive locks, rollback tag, full tests and database
+mutation exclusions still apply. Remove the detached bootstrap worktree only
+after deployment and rollback evidence are archived; never substitute a manual
+pull.
 
 After an authorized deployment, one single-instance run must prove:
 

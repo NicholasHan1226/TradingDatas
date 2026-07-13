@@ -27,7 +27,7 @@
 ## 存储
 - 行情: `/opt/investment/SharedSignals/runtime/read_model/marketdata.sqlite` + `/opt/investment/SharedSignals/data/marketdata.duckdb` — 对外 HTTP API 只读此处
 - DuckDB 同步每轮先用 SQLite 原生 backup API 生成一个权限受控的临时 source snapshot；16 表同步和 reconcile 只读同一个 snapshot，结束后删除。空间、权限、超时、校验或清理任一失败都在 artifact 中 fail-closed，详见 [docs/duckdb_sync_runbook.md](docs/duckdb_sync_runbook.md)。
-- 2026-07-13 storage epoch 后，authority 的物理目录位于 `/opt/investment-data`，canonical 旧路径由 bind mount 保持；P2 与 DuckDB sync 仍事故暂停。代码发布使用经 fresh preflight 的 `./deploy.sh --code-only`，显式跳过 schema migration 和数据库 snapshot/restore；对应回退为 `./rollback.sh --code-only <deploy-tag>`。本地存在入口不代表生产已部署或可恢复 heavy cron。
+- 2026-07-13 storage epoch 后，authority 的物理目录位于 `/opt/investment-data`，canonical 旧路径由 bind mount 保持；P2 与 DuckDB sync 仍事故暂停。代码发布使用经 fresh preflight 的 `./deploy.sh --code-only`，显式跳过 schema migration 和数据库 snapshot/restore；对应回退为 `./rollback.sh --code-only <deploy-tag>`。生产首次采用该入口时，只能从 fresh `origin/main` 的独立 clean detached worktree 执行 `./deploy.sh --code-only --bootstrap-from-candidate`，不得手工 pull 绕过。当前本地存在入口不代表生产已部署或可恢复 heavy cron。
 - 事件: SQLite (URL去重) — 原始事件, 不做分类
 - 参考: SQLite `market_assets` / `market_factors` / `market_events`；旧 reference CSV 不作为生产 API 兜底
 
