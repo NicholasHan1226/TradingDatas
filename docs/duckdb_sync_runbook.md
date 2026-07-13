@@ -40,6 +40,11 @@ Do not lower the reserve or enlarge the timeout in production without a fresh
 disk and duration benchmark. The outer timeout must still leave time for sync,
 reconcile and `finally` cleanup.
 
+The 5 GiB reserve is not a standalone approval condition. The logical SQLite
+size, projected filesystem percentage, DuckDB work filesystem and concurrent
+writer state must all pass. If live usage is already at or above the 90% patrol
+stop threshold, do not run a snapshot benchmark merely to measure it.
+
 ## Fail-closed sequence
 
 1. Reject a missing, non-regular or symlink authority.
@@ -96,3 +101,13 @@ After an authorized deployment, one single-instance run must prove:
 - no collector row loss across the snapshot interval;
 - `/source_status` has no red DuckDB check;
 - TradingAgent remains sim-only and both 50,000 CNY authorities are unchanged.
+
+## 2026-07-13 emergency stop
+
+At 18:47 CST the production authority was 15.80GB, the root filesystem was 92%
+used with 8.27GB available, and `P2_financial_daily` was still writing. This is
+a hard preflight stop. Do not run this helper, the old DuckDB sync, migration,
+backup or deploy until P2 has exited naturally and fresh disk/database evidence
+has been reviewed. Do not kill the writer or delete backups without explicit
+authorization and a transaction/rollback assessment. The evidence inventory is
+recorded in [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md).

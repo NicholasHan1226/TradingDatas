@@ -17,6 +17,8 @@
 | [../config/source_expansion_priority.yaml](../config/source_expansion_priority.yaml) | 新增外部数据源横向扩展优先级；当前只表示 planned 候选，不代表生产 collector 已启用 |
 | [data_source_onboarding.md](data_source_onboarding.md) | 新增数据源准入字段、产物、频率、入库/API/降级验收门槛 |
 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | 基础设施说明 |
+| [duckdb_sync_runbook.md](duckdb_sync_runbook.md) | DuckDB 一致性 source snapshot 的 fail-closed 运维与验收门禁 |
+| [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md) | 2026-07-13 生产磁盘/IO 紧急门禁与备份保留清单 |
 | [repo_structure.md](repo_structure.md) | 仓库结构说明 |
 
 `docs/API_CONTRACT.md` 是 `tools/capability_scan.py` 生成的历史能力快照；如需刷新，运行 capability scan 生成新快照。当前生产 API 边界以根层 `API_CONTRACT.md`、`STATUS.md`、`/health` 和 `/capabilities` live 输出为准。
