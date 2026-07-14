@@ -39,6 +39,6 @@ fi
 
 {
   echo "[$(date -Iseconds)] START opening_gate $*"
-  SHAREDSIGNALS_ROOT="${ROOT}" PYTHONPATH="${ROOT}" timeout "${SHAREDSIGNALS_OPENING_GATE_TIMEOUT:-20}" "${PYTHON_BIN}" tools/opening_gate.py "$@"
+  SHAREDSIGNALS_ROOT="${ROOT}" PYTHONPATH="${ROOT}" timeout "${SHAREDSIGNALS_OPENING_GATE_TIMEOUT:-30}" "${PYTHON_BIN}" tools/opening_gate.py "$@"
   echo "[$(date -Iseconds)] OK opening_gate $*"
 } >> "${LOG_FILE}" 2>&1

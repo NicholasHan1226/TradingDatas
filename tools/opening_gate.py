@@ -8,13 +8,15 @@ import json
 import os
 import re
 import sqlite3
+import time as time_module
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from runtime_paths import marketdata_sqlite_path, sharedsignals_root
 
 CN_TZ = timezone(timedelta(hours=8))
+MAX_FUTURE_SKEW = timedelta(seconds=5)
 PHASES = {
     "preopen": {"label": "preopen", "needs_sample": False},
     "morning_first_sample": {"label": "morning_first_sample", "needs_sample": True, "start": time(9, 25)},
@@ -67,22 +69,61 @@ def _parse_dt(value: Any) -> datetime | None:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _bar_datetime(row: dict[str, Any]) -> datetime | None:
+    day_key = _date_key(row.get("trade_date"))
+    text = str(row.get("bar_time") or "").strip()
+    if not day_key or not text:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = None
+    if parsed is not None:
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            if parsed.strftime("%Y%m%d") != day_key:
+                return None
+            return parsed.replace(tzinfo=CN_TZ)
+        market_time = parsed.astimezone(CN_TZ)
+        return parsed if market_time.strftime("%Y%m%d") == day_key else None
+
+    minutes = _bar_minutes(text)
+    if minutes is None:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 12 and digits[:8] != day_key:
+        return None
+    try:
+        day = datetime.strptime(day_key, "%Y%m%d")
+    except ValueError:
+        return None
+    return day.replace(hour=minutes // 60, minute=minutes % 60, tzinfo=CN_TZ)
 
 
 def _sample_rows(rows: list[dict[str, Any]], *, day_key: str, phase_start: time | None, now: datetime) -> list[dict[str, Any]]:
-    cutoff = now.astimezone(timezone.utc) - timedelta(minutes=20)
+    if now.tzinfo is None or now.utcoffset() is None:
+        return []
+    now_utc = now.astimezone(timezone.utc)
+    upper_bound = now_utc + MAX_FUTURE_SKEW
+    cutoff = now_utc - timedelta(minutes=20)
     selected = []
     for row in rows:
         if str(row.get("market") or "").strip().lower() != "ashare":
             continue
         if _date_key(row.get("trade_date")) != day_key:
             continue
-        bar_minutes = _bar_minutes(row.get("bar_time"))
-        if phase_start is not None and (bar_minutes is None or bar_minutes < phase_start.hour * 60 + phase_start.minute):
+        bar_at = _bar_datetime(row)
+        if bar_at is None or bar_at.astimezone(timezone.utc) > upper_bound:
+            continue
+        if phase_start is not None and bar_at.astimezone(CN_TZ).time() < phase_start:
             continue
         collected = _parse_dt(row.get("collected_at"))
-        if collected is None or collected < cutoff:
+        if collected is None or collected < cutoff or collected > upper_bound:
             continue
         selected.append(row)
     return selected
@@ -190,6 +231,61 @@ def collect_gate(phase: str, *, now: datetime | None = None, db_path: Path | Non
     return result
 
 
+def _sample_missing_is_only_failure(result: dict[str, Any]) -> bool:
+    checks = result.get("checks", {})
+    sample = checks.get("a_share_intraday", {})
+    return (
+        checks.get("database_readable", {}).get("status") == "green"
+        and checks.get("health_sla_artifact", {}).get("status") == "green"
+        and sample.get("status") == "red"
+    )
+
+
+def collect_gate_with_retry(
+    phase: str,
+    *,
+    db_path: Path | None = None,
+    artifact_path: Path | None = None,
+    retry_interval_seconds: float = 5.0,
+    retry_window_seconds: float = 20.0,
+    now_fn: Callable[[], datetime] | None = None,
+    monotonic_fn: Callable[[], float] = time_module.monotonic,
+    sleep_fn: Callable[[float], None] = time_module.sleep,
+) -> dict[str, Any]:
+    """Re-read only when a healthy P0 lane may still be committing its phase bar."""
+    if retry_interval_seconds <= 0 or retry_window_seconds < 0:
+        raise ValueError("opening gate retry interval must be positive and window non-negative")
+
+    now_fn = now_fn or (lambda: datetime.now(timezone.utc))
+    started = monotonic_fn()
+    attempts = 0
+    result: dict[str, Any]
+    while True:
+        attempts += 1
+        result = collect_gate(phase, now=now_fn(), db_path=db_path, artifact_path=artifact_path)
+        if result["status"] == "green":
+            reason = "sample_arrived_within_retry_window" if attempts > 1 else "not_needed"
+            break
+        if not _sample_missing_is_only_failure(result):
+            reason = "ineligible_failure"
+            break
+        elapsed = monotonic_fn() - started
+        remaining = retry_window_seconds - elapsed
+        if remaining < retry_interval_seconds:
+            reason = "sample_retry_window_exhausted"
+            break
+        sleep_fn(retry_interval_seconds)
+
+    result["attempt_count"] = attempts
+    result["retry"] = {
+        "interval_seconds": retry_interval_seconds,
+        "window_seconds": retry_window_seconds,
+        "elapsed_seconds": max(0.0, monotonic_fn() - started),
+        "reason": reason,
+    }
+    return result
+
+
 def output_path() -> Path:
     return Path(os.environ.get("WATCHDOG_INPUT_DIR", sharedsignals_root() / "logs" / "watchdog_inputs")) / "opening_gate.json"
 
@@ -198,7 +294,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", choices=sorted(PHASES), required=True)
     args = parser.parse_args()
-    result = collect_gate(args.phase)
+    result = collect_gate_with_retry(
+        args.phase,
+        retry_interval_seconds=float(os.environ.get("SHAREDSIGNALS_OPENING_GATE_RETRY_INTERVAL", "5")),
+        retry_window_seconds=float(os.environ.get("SHAREDSIGNALS_OPENING_GATE_RETRY_WINDOW", "20")),
+    )
     target = output_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_suffix(f".{os.getpid()}.tmp")
