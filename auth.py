@@ -61,12 +61,18 @@ INDUSTRY_REFERENCE_ENDPOINTS = {
     "/industry/taxonomy",
     "/industry/memberships",
 }
+SECTOR_FLOW_V2_ENDPOINTS = {
+    "/v2/sector-flow/snapshot",
+    "/v2/sector-flow/industries",
+    "/v2/sector-flow/constituents",
+}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "status": STATUS_ENDPOINTS,
     "health": {*STATUS_ENDPOINTS, "/cache/invalidate"},
     "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
     "industry_reference": INDUSTRY_REFERENCE_ENDPOINTS,
+    "sector_flow_v2": SECTOR_FLOW_V2_ENDPOINTS,
     "fundamentals": {
         "/fundamentals",
         "/reference",
@@ -86,6 +92,7 @@ SCOPE_ENDPOINTS["external_read"] = set().union(
     SCOPE_ENDPOINTS["market_data"],
     SCOPE_ENDPOINTS["fundamentals"],
     SCOPE_ENDPOINTS["industry_reference"],
+    SCOPE_ENDPOINTS["sector_flow_v2"],
     SCOPE_ENDPOINTS["macro"],
     SCOPE_ENDPOINTS["events"],
     SCOPE_ENDPOINTS["crypto"],

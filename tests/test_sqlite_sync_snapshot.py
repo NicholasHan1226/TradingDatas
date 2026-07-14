@@ -10,6 +10,7 @@ import pytest
 
 import duckdb_merge
 from storage.schema import SCHEMA_SQL
+from storage.schema import TABLE_NAMES
 from storage.sqlite_snapshot import (
     DEFAULT_STALE_SECONDS,
     SQLiteSnapshotError,
@@ -148,7 +149,7 @@ def test_real_full_merge_preserves_two_table_transaction_invariant_with_writer(
         thread.join(timeout=5)
 
     assert result["status"] == "ok", result.get("error")
-    assert len(result["reconciliation"]) == 16
+    assert len(result["reconciliation"]) == len(TABLE_NAMES)
     asset_rows = result["reconciliation"]["market_assets"]["sqlite_rows"]
     bar_rows = result["reconciliation"]["market_bars_daily"]["sqlite_rows"]
     assert asset_rows == bar_rows

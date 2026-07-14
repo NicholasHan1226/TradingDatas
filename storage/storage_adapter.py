@@ -38,6 +38,9 @@ AUTHORITATIVE_SNAPSHOT_TABLES = {
     "market_industry_taxonomy",
     "market_pm_markets",
     "market_relationships",
+    "market_sector_flow_constituents_v2",
+    "market_sector_flow_industries_v2",
+    "market_sector_flow_snapshots_v2",
     "provider_interface_matrix",
 }
 

@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
 
 auth: Any | None = None
 reader: Any | None = None
+sector_flow_v2: Any | None = None
 _runtime_load_lock = threading.Lock()
 HOST = os.environ.get("SHAREDSIGNALS_API_HOST", "127.0.0.1")
 PORT = env_int("SHAREDSIGNALS_API_PORT", 8082, min_value=1, max_value=65535)
@@ -48,12 +49,20 @@ LIVE_CONTROL_PLANE_ENDPOINTS = {"/capabilities", "/agent_config", "/source_statu
 
 def _ensure_runtime_loaded() -> None:
     """Bootstrap process env, then load modules that read os.environ."""
-    global auth, reader, HOST, PORT, VERSION, REQUEST_TIMEOUT, MAX_THREADS
+    global auth, reader, sector_flow_v2, HOST, PORT, VERSION, REQUEST_TIMEOUT, MAX_THREADS
     if auth is not None and reader is not None:
+        if sector_flow_v2 is None:
+            import sector_flow_v2 as sector_flow_v2_module  # noqa: WPS433
+
+            sector_flow_v2 = sector_flow_v2_module
         return
 
     with _runtime_load_lock:
         if auth is not None and reader is not None:
+            if sector_flow_v2 is None:
+                import sector_flow_v2 as sector_flow_v2_module  # noqa: WPS433
+
+                sector_flow_v2 = sector_flow_v2_module
             return
 
         from env_bootstrap import bootstrap_sharedsignals_env
@@ -67,9 +76,11 @@ def _ensure_runtime_loaded() -> None:
 
         import auth as auth_module  # noqa: WPS433
         import reader as reader_module  # noqa: WPS433
+        import sector_flow_v2 as sector_flow_v2_module  # noqa: WPS433
 
         auth = auth_module
         reader = reader_module
+        sector_flow_v2 = sector_flow_v2_module
         Handler.server_version = f"SharedSignalsAPI/{VERSION}"
 
 # ---- Health check (lazy import to avoid pulling in health_check at startup) ----
@@ -470,6 +481,42 @@ class Handler(BaseHTTPRequestHandler):
                 total_rows=page["total_rows"],
                 page_metadata=page.get("metadata"),
             )
+            return wrap_response(payload, metadata, source)
+
+        if path == "/v2/sector-flow/snapshot":
+            rows = sector_flow_v2.get_snapshot(
+                fact_kind=params.get("fact_kind", "").strip() or None,
+                snapshot_id=params.get("snapshot_id", "").strip() or None,
+                as_of=params.get("as_of", "").strip() or None,
+            )
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/v2/sector-flow/industries":
+            rows = sector_flow_v2.get_industries(
+                fact_kind=params.get("fact_kind", "").strip() or None,
+                snapshot_id=params.get("snapshot_id", "").strip() or None,
+                as_of=params.get("as_of", "").strip() or None,
+                industry_code=params.get("industry_code", "").strip() or None,
+                limit=to_int(params.get("limit"), 500, max_val=1000),
+            )
+            payload, metadata, source = aggregate_metadata(rows)
+            return wrap_response(payload, metadata, source)
+
+        if path == "/v2/sector-flow/constituents":
+            industry_code = params.get("industry_code", "").strip() or None
+            symbol = params.get("symbol", "").strip() or None
+            if not industry_code and not symbol:
+                raise ValueError("industry_code or symbol is required")
+            rows = sector_flow_v2.get_constituents(
+                fact_kind=params.get("fact_kind", "").strip() or None,
+                snapshot_id=params.get("snapshot_id", "").strip() or None,
+                as_of=params.get("as_of", "").strip() or None,
+                industry_code=industry_code,
+                symbol=symbol,
+                limit=to_int(params.get("limit"), 500, max_val=1000),
+            )
+            payload, metadata, source = aggregate_metadata(rows)
             return wrap_response(payload, metadata, source)
 
         if path == "/industry":
