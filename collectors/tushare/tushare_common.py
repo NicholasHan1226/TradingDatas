@@ -42,38 +42,82 @@ class ProviderCallOutcome:
     error_message: str | None
 
 
-_RATE_LIMIT_MARKERS = (
-    "rate limit",
-    "too many request",
-    "throttl",
-    "每分钟",
-    "每秒",
-    "最多访问",
-    "访问次数",
-    "频率",
-    "频次",
+_RATE_LIMIT_PATTERNS = (
+    re.compile(r"\brate limit (?:has been )?exceeded\b"),
+    re.compile(r"\btoo many requests?\b"),
+    re.compile(r"\brequests? (?:has been )?throttled\b"),
+    re.compile(r"每(?:秒|分钟|小时|日|天).{0,40}最多(?:可)?访问.{0,20}\d+\s*次"),
+    re.compile(r"(?:请求|访问)过于频繁(?:[，。,:：；;]|$)"),
+    re.compile(
+        r"(?:请求|访问)(?:频率|次数).{0,12}"
+        r"(?:过高|过多|超限|达到上限|已达上限|超过限制)"
+    ),
+    re.compile(r"(?:触发|已被).{0,6}限流"),
 )
-_PERMISSION_DENIED_MARKERS = (
-    "permission",
-    "forbidden",
-    "unauthorized",
-    "not authorized",
-    "access denied",
-    "no access",
-    "权限",
-    "无权",
-    "未授权",
-    "积分不足",
+_PERMISSION_DENIED_PATTERNS = (
+    re.compile(r"\bpermission denied\b"),
+    re.compile(r"\baccess denied\b"),
+    re.compile(r"\bnot authori[sz]ed\b"),
+    re.compile(r"^(?:unauthorized|forbidden)(?:[.:\s]|$)"),
+    re.compile(
+        r"\b(?:do not|does not|don't|doesn't) have "
+        r"(?:the )?(?:required )?permission\b"
+    ),
+    re.compile(r"(?:您|你|用户|账户).{0,8}没有.{0,8}(?:访问|调用).{0,16}权限"),
+    re.compile(r"(?:您|你|用户|账户).{0,8}(?:无权|未授权).{0,12}(?:访问|调用)"),
+    re.compile(
+        r"(?:接口|访问|调用)?权限(?:不足|被拒绝|未开通)"
+        r"(?:[，。,:：；;]|$)"
+    ),
+    re.compile(
+        r"(?:^(?:积分)|(?:您|你|用户|账户).{0,8}积分)不(?:足|够)"
+        r"(?:[，。,:：；;]|$)"
+    ),
 )
+_PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _provider_error_code(message: str) -> str:
     normalized = message.casefold()
-    if any(marker in normalized for marker in _RATE_LIMIT_MARKERS):
+    if any(pattern.search(normalized) for pattern in _RATE_LIMIT_PATTERNS):
         return "rate_limited"
-    if any(marker in normalized for marker in _PERMISSION_DENIED_MARKERS):
+    if any(pattern.search(normalized) for pattern in _PERMISSION_DENIED_PATTERNS):
         return "permission_denied"
     return "provider_error"
+
+
+def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(data, dict):
+        raise ValueError("Tushare response data must be a mapping")
+    if "fields" not in data or "items" not in data:
+        raise ValueError("Tushare response data must contain fields and items")
+
+    fields = data["fields"]
+    if not isinstance(fields, list) or not fields:
+        raise ValueError("Tushare response fields must be a non-empty list")
+    if any(
+        not isinstance(field, str) or _PROVIDER_FIELD_NAME.fullmatch(field) is None
+        for field in fields
+    ):
+        raise ValueError("Tushare response fields must contain valid field names")
+    if len(set(fields)) != len(fields):
+        raise ValueError("Tushare response fields must be unique")
+
+    items = data["items"]
+    if not isinstance(items, list):
+        raise ValueError("Tushare response items must be a list")
+
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(items):
+        if not isinstance(row, list):
+            raise ValueError(f"Tushare response row {index} must be a list")
+        if len(row) != len(fields):
+            raise ValueError(
+                f"Tushare response row {index} must contain exactly "
+                f"{len(fields)} values"
+            )
+        rows.append(dict(zip(fields, row)))
+    return tuple(rows)
 
 
 def _parse_tushare_url(raw_url: str) -> dict[str, str]:
@@ -255,12 +299,9 @@ def tushare_rows_outcome(
                 error_message=message,
             )
 
-        data = body.get("data")
-        if data is None:
-            data = {"fields": [], "items": []}
-        if not isinstance(data, dict):
-            raise ValueError("Tushare response data must be a mapping")
-        rows = tuple(rows_to_dicts(data))
+        if "data" not in body:
+            raise ValueError("Tushare response must contain data")
+        rows = _strict_provider_rows(body["data"])
         return ProviderCallOutcome(
             state="success" if rows else "empty",
             rows=rows,

@@ -191,6 +191,161 @@ def test_tushare_rows_outcome_rejects_malformed_success_data(monkeypatch):
     assert "mapping" in outcome.error_message
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"code": 0, "msg": None}, id="missing-data"),
+        pytest.param({"code": 0, "msg": None, "data": None}, id="null-data"),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {}}, id="missing-fields-and-items"
+        ),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"items": [["000001.SZ"]]}},
+            id="missing-fields",
+        ),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"fields": ["ts_code"]}},
+            id="missing-items",
+        ),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"fields": [], "items": []}},
+            id="empty-fields",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": "ts_code", "items": []},
+            },
+            id="fields-not-list",
+        ),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"fields": [1], "items": []}},
+            id="field-not-string",
+        ),
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"fields": [""], "items": []}},
+            id="field-empty",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": [" ts_code"], "items": []},
+            },
+            id="field-invalid-whitespace",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["ts_code", "ts_code"], "items": []},
+            },
+            id="duplicate-fields",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["ts_code"], "items": None},
+            },
+            id="null-items",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["ts_code"], "items": {}},
+            },
+            id="items-not-list",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["ts_code"], "items": ["000001.SZ"]},
+            },
+            id="row-not-list",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {
+                    "fields": ["ts_code"],
+                    "items": [{"ts_code": "000001.SZ"}],
+                },
+            },
+            id="row-mapping",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {
+                    "fields": ["ts_code", "close"],
+                    "items": [["000001.SZ"]],
+                },
+            },
+            id="row-too-short",
+        ),
+        pytest.param(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {
+                    "fields": ["ts_code"],
+                    "items": [["000001.SZ", 10.5]],
+                },
+            },
+            id="row-too-long",
+        ),
+    ],
+)
+def test_tushare_rows_outcome_rejects_incomplete_or_lossy_success_schema(
+    monkeypatch,
+    payload,
+):
+    _stub_outcome_response(monkeypatch, payload)
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.provider_code == 0
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "internal permission service error",
+        "rate limiter internal service error",
+        "throttling policy cache unavailable",
+        "权限缓存服务异常",
+        "访问频率配置服务异常",
+        "权限不足检测服务异常",
+        "请求频繁检测服务异常",
+    ],
+)
+def test_tushare_rows_outcome_does_not_classify_internal_service_text(
+    monkeypatch,
+    message,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == message
+
+
 def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
     monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(

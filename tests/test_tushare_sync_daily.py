@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shlex
@@ -53,6 +54,20 @@ DOMESTIC_P4_APIS = (
     "index_dailybasic",
     "repo_daily",
 )
+
+
+def _provider_outcome(
+    rows: list[dict],
+    *,
+    failed: bool = False,
+) -> tushare_common.ProviderCallOutcome:
+    return tushare_common.ProviderCallOutcome(
+        state="failed" if failed else ("success" if rows else "empty"),
+        rows=tuple(rows),
+        provider_code=-2001 if failed else 0,
+        error_code="provider_error" if failed else None,
+        error_message="stub provider failure" if failed else None,
+    )
 
 
 def _shell_array(script: str, name: str) -> tuple[str, ...]:
@@ -361,10 +376,10 @@ def test_collectors_default_p4_invocation_filters_to_domestic_apis(
 
 def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
+            )
 
     monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
 
@@ -389,15 +404,15 @@ def test_sync_tier_accepts_idempotent_market_event_no_change(
     monkeypatch,
 ) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [
-                {
-                    "title": "same event",
-                    "pub_time": "2026-07-13 10:00:00",
-                }
-            ]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {
+                        "title": "same event",
+                        "pub_time": "2026-07-13 10:00:00",
+                    }
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -451,11 +466,14 @@ def test_collector_collect_compatibility_returns_rows_from_typed_outcome(
     assert collector.last_collect_outcome is outcome
     assert collector.last_collect_failed is False
     assert collector.last_collect_error == ""
+    assert collector.collect_call_count == 1
+    assert collector.collect_failure_count == 0
 
 
 def test_sync_tier_strict_path_preserves_typed_provider_failure(
     tmp_path: Path,
     monkeypatch,
+    caplog,
 ) -> None:
     outcome = tushare_common.ProviderCallOutcome(
         state="failed",
@@ -472,6 +490,13 @@ def test_sync_tier_strict_path_preserves_typed_provider_failure(
     collector = TushareCollector()
     monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
     monkeypatch.setattr(
+        collector,
+        "collect",
+        lambda *_args, **_kwargs: pytest.fail(
+            "sync_tier must consume collect_outcome directly"
+        ),
+    )
+    monkeypatch.setattr(
         sync_daily_module,
         "ingest_rows_to_sqlite",
         lambda *_args, **_kwargs: pytest.fail(
@@ -479,16 +504,17 @@ def test_sync_tier_strict_path_preserves_typed_provider_failure(
         ),
     )
 
-    stats = sync_tier(
-        collector,
-        "P1_eod_daily",
-        [{"api_name": "daily", "per_stock": False, "params": {}}],
-        stock_codes=[],
-        trade_date="20260715",
-        start_date="20260715",
-        end_date="20260715",
-        sqlite_db_path=tmp_path / "marketdata.sqlite",
-    )
+    with caplog.at_level(logging.ERROR):
+        stats = sync_tier(
+            collector,
+            "P1_eod_daily",
+            [{"api_name": "daily", "per_stock": False, "params": {}}],
+            stock_codes=[],
+            trade_date="20260715",
+            start_date="20260715",
+            end_date="20260715",
+            sqlite_db_path=tmp_path / "marketdata.sqlite",
+        )
 
     assert stats["daily"]["rows"] == 0
     assert stats["daily"]["failure_count"] == 1
@@ -496,6 +522,11 @@ def test_sync_tier_strict_path_preserves_typed_provider_failure(
     assert collector.last_collect_outcome is outcome
     assert collector.last_collect_failed is True
     assert collector.last_collect_error == outcome.error_message
+    assert collector.collect_call_count == 1
+    assert collector.collect_failure_count == 1
+    assert repr(outcome.provider_code) in caplog.text
+    assert outcome.error_code in caplog.text
+    assert outcome.error_message in caplog.text
 
 
 def test_exit_on_failure_considers_sqlite_failures() -> None:
@@ -567,15 +598,19 @@ def test_p0_rt_min_batches_the_complete_stock_universe(tmp_path: Path, monkeypat
     calls: list[str] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             assert api_name == "rt_min"
             calls.append(params["ts_code"])
-            return [
-                {"ts_code": code, "time": "2026-07-10 13:30:00", "close": 10.0}
-                for code in params["ts_code"].split(",")
-            ]
+            return _provider_outcome(
+                [
+                    {
+                        "ts_code": code,
+                        "time": "2026-07-10 13:30:00",
+                        "close": 10.0,
+                    }
+                    for code in params["ts_code"].split(",")
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -610,11 +645,9 @@ def test_p0_rt_min_batches_the_complete_stock_universe(tmp_path: Path, monkeypat
 
 def test_p0_rt_min_empty_batch_is_counted_as_failure(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, params, fields
-            return []
+            return _provider_outcome([])
 
     monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
 
@@ -650,20 +683,22 @@ def test_p0_rt_min_retries_only_failed_batches(tmp_path: Path, monkeypatch) -> N
     sleeps: list[float] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, fields
             ts_code = params["ts_code"]
             attempts[ts_code] = attempts.get(ts_code, 0) + 1
             if ts_code == "000001.SZ,000002.SZ" and attempts[ts_code] == 1:
-                self.last_collect_failed = True
-                return []
-            self.last_collect_failed = False
-            return [
-                {"ts_code": code, "time": "2026-07-10 14:55:00", "close": 10.0}
-                for code in ts_code.split(",")
-            ]
+                return _provider_outcome([], failed=True)
+            return _provider_outcome(
+                [
+                    {
+                        "ts_code": code,
+                        "time": "2026-07-10 14:55:00",
+                        "close": 10.0,
+                    }
+                    for code in ts_code.split(",")
+                ]
+            )
 
     monkeypatch.setattr(sync_daily_module.time, "sleep", sleeps.append)
     monkeypatch.setattr(
@@ -768,15 +803,15 @@ def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
 
 def test_p1_daily_completeness_guard_marks_silent_truncation_critical(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             assert api_name == "daily"
             assert params == {"trade_date": "20260710"}
-            return [
-                {"ts_code": "000001.SZ", "trade_date": "20260710"},
-                {"ts_code": "000002.SZ", "trade_date": "20260710"},
-            ]
+            return _provider_outcome(
+                [
+                    {"ts_code": "000001.SZ", "trade_date": "20260710"},
+                    {"ts_code": "000002.SZ", "trade_date": "20260710"},
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -812,11 +847,11 @@ def test_p1_daily_completeness_guard_marks_silent_truncation_critical(tmp_path: 
 
 def test_p1_global_row_limit_guard_marks_possible_truncation_critical(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, params, fields
-            return [{"ts_code": "000001.SZ", "ann_date": "20260710"}] * 3
+            return _provider_outcome(
+                [{"ts_code": "000001.SZ", "ann_date": "20260710"}] * 3
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -848,12 +883,12 @@ def test_p1_bounded_rotation_limits_provider_calls_without_batching(tmp_path: Pa
     calls: list[str] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, fields
             calls.append(params["ts_code"])
-            return [{"ts_code": params["ts_code"], "trade_date": "20260710"}]
+            return _provider_outcome(
+                [{"ts_code": params["ts_code"], "trade_date": "20260710"}]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -987,14 +1022,14 @@ def test_p2_window_excludes_opening_and_day_session() -> None:
 
 def test_p2_provider_call_budget_stops_before_next_call(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
         def __init__(self) -> None:
             self.calls = 0
 
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             self.calls += 1
-            return [{"ts_code": params["ts_code"], "ann_date": "20260713"}]
+            return _provider_outcome(
+                [{"ts_code": params["ts_code"], "ann_date": "20260713"}]
+            )
 
     writes: list[list[dict]] = []
     monkeypatch.setattr(
@@ -1038,13 +1073,13 @@ def test_p2_deadline_checkpoint_marks_completed_late_run_degraded() -> None:
 
 def test_p2_row_budget_fails_before_sqlite_write(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [
-                {"ts_code": "000001.SZ", "ann_date": "20260713"},
-                {"ts_code": "000002.SZ", "ann_date": "20260713"},
-            ]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {"ts_code": "000001.SZ", "ann_date": "20260713"},
+                    {"ts_code": "000002.SZ", "ann_date": "20260713"},
+                ]
+            )
 
     writes = 0
 
