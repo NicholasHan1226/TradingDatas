@@ -25,8 +25,10 @@ import logging
 import os
 import re
 import sqlite3
+import stat
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -46,10 +48,14 @@ from collectors.tushare.tushare_common import (  # noqa: E402
     provider_outcome_log_fields,
     safe_provider_exception_message,
 )
+from dataset_registry import DatasetRegistry, load_dataset_registry  # noqa: E402
+from storage.ingest_receipts import (  # noqa: E402
+    IngestContext,
+    write_terminal_receipt,
+)
 from storage.read_model_store import (  # noqa: E402
-    API_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
-    ingest_rows_to_sqlite,
+    ingest_rows_with_receipts,
     tushare_provider_discriminator,
 )
 from tools.interface_runtime_ledger import record_tushare_stats  # noqa: E402
@@ -140,13 +146,371 @@ class ResourceBudget:
         }
 
 
-def load_config(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+@dataclass(frozen=True)
+class TrustedConfigSnapshot:
+    raw_bytes: bytes | None
+    config: dict[str, Any] | None
+    config_hash: str | None
+    error_code: str | None
+    error_reason: str | None
+
+    @property
+    def valid(self) -> bool:
+        return self.error_code is None
 
 
-def valid_tiers(config_path: Path = CONFIG_PATH) -> list[str]:
-    config = load_config(config_path)
+@dataclass(frozen=True)
+class _ConfigPathComponent:
+    name: str
+    device: int
+    inode: int
+    mode: int
+
+
+@dataclass(frozen=True)
+class _ConfigPathBinding:
+    lexical_path: Path
+    components: tuple[_ConfigPathComponent, ...]
+    leaf_metadata: tuple[int, int, int]
+
+
+@dataclass
+class _OpenedConfigPath:
+    binding: _ConfigPathBinding
+    directory_descriptors: list[int]
+    leaf_descriptor: int
+
+
+def _config_metadata(file_stat: os.stat_result) -> tuple[int, int, int]:
+    return (file_stat.st_size, file_stat.st_mtime_ns, file_stat.st_ctime_ns)
+
+
+def _read_all_config_bytes(descriptor: int) -> bytes:
+    chunks: list[bytes] = []
+    while True:
+        chunk = os.read(descriptor, 1024 * 1024)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def _lexical_absolute_config_path(path: Path) -> Path:
+    raw_path = os.fspath(path)
+    if not raw_path:
+        raise ValueError("config path is empty")
+    candidate = Path(raw_path)
+    lexical_path = candidate if candidate.is_absolute() else candidate.absolute()
+    if ".." in lexical_path.parts:
+        raise ValueError("config path may not contain parent traversal")
+    if not lexical_path.is_absolute() or lexical_path == Path(os.sep):
+        raise ValueError("config path must name a file beneath an absolute parent")
+    return lexical_path
+
+
+def _component_binding(name: str, observed: os.stat_result) -> _ConfigPathComponent:
+    return _ConfigPathComponent(
+        name=name,
+        device=observed.st_dev,
+        inode=observed.st_ino,
+        mode=observed.st_mode,
+    )
+
+
+def _close_config_descriptors(opened: _OpenedConfigPath) -> None:
+    descriptors = [opened.leaf_descriptor, *reversed(opened.directory_descriptors)]
+    for descriptor in descriptors:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
+def _open_no_follow_config_path(path: Path) -> _OpenedConfigPath:
+    lexical_path = _lexical_absolute_config_path(path)
+    components = lexical_path.parts
+    if not components or components[0] != os.sep or len(components) < 2:
+        raise ValueError("config path is not a lexical absolute file path")
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    nonblock = getattr(os, "O_NONBLOCK", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or nonblock is None or directory_flag is None:
+        raise RuntimeError("platform cannot validate the complete config path safely")
+
+    common_flags = nofollow | nonblock | getattr(os, "O_CLOEXEC", 0)
+    directory_flags = os.O_RDONLY | common_flags | directory_flag
+    leaf_flags = os.O_RDONLY | common_flags
+    directory_descriptors: list[int] = []
+    leaf_descriptor = -1
+    bindings: list[_ConfigPathComponent] = []
+    try:
+        root_descriptor = os.open(os.sep, directory_flags)
+        directory_descriptors.append(root_descriptor)
+        root_stat = os.fstat(root_descriptor)
+        if not stat.S_ISDIR(root_stat.st_mode):
+            raise ValueError("config root is not a directory")
+        bindings.append(_component_binding(os.sep, root_stat))
+
+        parent_descriptor = root_descriptor
+        for component in components[1:-1]:
+            descriptor = os.open(component, directory_flags, dir_fd=parent_descriptor)
+            directory_descriptors.append(descriptor)
+            observed = os.fstat(descriptor)
+            if not stat.S_ISDIR(observed.st_mode):
+                raise ValueError("config parent chain contains a non-directory")
+            bindings.append(_component_binding(component, observed))
+            parent_descriptor = descriptor
+
+        leaf_name = components[-1]
+        leaf_descriptor = os.open(leaf_name, leaf_flags, dir_fd=parent_descriptor)
+        leaf_stat = os.fstat(leaf_descriptor)
+        if not stat.S_ISREG(leaf_stat.st_mode):
+            raise ValueError("config leaf must be a regular file")
+        bindings.append(_component_binding(leaf_name, leaf_stat))
+        return _OpenedConfigPath(
+            binding=_ConfigPathBinding(
+                lexical_path=lexical_path,
+                components=tuple(bindings),
+                leaf_metadata=_config_metadata(leaf_stat),
+            ),
+            directory_descriptors=directory_descriptors,
+            leaf_descriptor=leaf_descriptor,
+        )
+    except FileNotFoundError:
+        for descriptor in reversed(directory_descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if leaf_descriptor >= 0:
+            try:
+                os.close(leaf_descriptor)
+            except OSError:
+                pass
+        raise FileNotFoundError("config file or parent does not exist") from None
+    except (OSError, RuntimeError, ValueError) as error:
+        if leaf_descriptor >= 0:
+            try:
+                os.close(leaf_descriptor)
+            except OSError:
+                pass
+        for descriptor in reversed(directory_descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if isinstance(error, RuntimeError):
+            raise
+        raise ValueError(
+            "config path must contain only no-follow directories and a regular leaf"
+        ) from None
+
+
+def _assert_open_config_path_stable(opened: _OpenedConfigPath, phase: str) -> None:
+    descriptors = [*opened.directory_descriptors, opened.leaf_descriptor]
+    if len(descriptors) != len(opened.binding.components):
+        raise ValueError(f"config parent chain changed {phase}")
+    observed_components: list[_ConfigPathComponent] = []
+    leaf_index = len(descriptors) - 1
+    for index, (expected, descriptor) in enumerate(
+        zip(opened.binding.components, descriptors)
+    ):
+        try:
+            observed = os.fstat(descriptor)
+        except OSError:
+            raise ValueError(f"config parent chain changed {phase}") from None
+        if index == leaf_index:
+            if not stat.S_ISREG(observed.st_mode):
+                raise ValueError(f"config leaf changed {phase}")
+        elif not stat.S_ISDIR(observed.st_mode):
+            raise ValueError(f"config parent chain changed {phase}")
+        observed_components.append(_component_binding(expected.name, observed))
+    if tuple(observed_components) != opened.binding.components:
+        raise ValueError(f"config parent chain changed {phase}")
+    try:
+        leaf_stat = os.fstat(opened.leaf_descriptor)
+    except OSError:
+        raise ValueError(f"config leaf changed {phase}") from None
+    if _config_metadata(leaf_stat) != opened.binding.leaf_metadata:
+        raise ValueError(f"config changed {phase}")
+
+
+def _assert_canonical_config_path_stable(
+    expected: _ConfigPathBinding,
+    phase: str,
+) -> None:
+    try:
+        observed = _open_no_follow_config_path(expected.lexical_path)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        raise ValueError(f"config parent chain changed {phase}") from None
+    try:
+        if observed.binding != expected:
+            raise ValueError(f"config parent chain changed {phase}")
+    finally:
+        _close_config_descriptors(observed)
+
+
+def _read_stable_regular_config_bytes(path: Path) -> bytes:
+    try:
+        opened = _open_no_follow_config_path(path)
+    except FileNotFoundError:
+        raise FileNotFoundError("config file does not exist") from None
+    except (OSError, RuntimeError, ValueError):
+        raise ValueError(
+            "config path failed no-follow regular-file validation"
+        ) from None
+    try:
+        _assert_open_config_path_stable(opened, "before reading")
+        _assert_canonical_config_path_stable(opened.binding, "before reading")
+
+        first_read = _read_all_config_bytes(opened.leaf_descriptor)
+        _assert_canonical_config_path_stable(opened.binding, "during reading")
+        _assert_open_config_path_stable(opened, "during reading")
+
+        os.lseek(opened.leaf_descriptor, 0, os.SEEK_SET)
+        second_read = _read_all_config_bytes(opened.leaf_descriptor)
+        if first_read != second_read:
+            raise ValueError("config bytes were not stable across reads")
+        _assert_canonical_config_path_stable(opened.binding, "after reading")
+        _assert_open_config_path_stable(opened, "after reading")
+    finally:
+        _close_config_descriptors(opened)
+    return first_read
+
+
+def load_trusted_config_snapshot(path: Path) -> TrustedConfigSnapshot:
+    try:
+        raw_bytes = _read_stable_regular_config_bytes(path)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as error:
+        return TrustedConfigSnapshot(
+            raw_bytes=None,
+            config=None,
+            config_hash=None,
+            error_code="config_error",
+            error_reason=str(error),
+        )
+    try:
+        parsed = yaml.safe_load(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError):
+        return TrustedConfigSnapshot(
+            raw_bytes=None,
+            config=None,
+            config_hash=None,
+            error_code="config_error",
+            error_reason="config YAML is invalid",
+        )
+    if not isinstance(parsed, dict):
+        return TrustedConfigSnapshot(
+            raw_bytes=None,
+            config=None,
+            config_hash=None,
+            error_code="config_error",
+            error_reason="config root must be a mapping",
+        )
+    return TrustedConfigSnapshot(
+        raw_bytes=raw_bytes,
+        config=parsed,
+        config_hash=hashlib.sha256(raw_bytes).hexdigest(),
+        error_code=None,
+        error_reason=None,
+    )
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    snapshot = load_trusted_config_snapshot(path)
+    if not snapshot.valid or snapshot.config is None:
+        raise ValueError(snapshot.error_reason or "config_error")
+    return snapshot.config
+
+
+def hash_regular_config(path: Path) -> str:
+    """Return the hash from the same stable bytes used by config parsing."""
+
+    snapshot = load_trusted_config_snapshot(path)
+    if not snapshot.valid or snapshot.config_hash is None:
+        raise ValueError(snapshot.error_reason or "config_error")
+    return snapshot.config_hash
+
+
+def build_ingest_context(
+    *,
+    registry: DatasetRegistry,
+    api_name: str,
+    tier: str,
+    trade_date: str,
+    start_date: str,
+    end_date: str,
+    source_name: str,
+    attempt_id: str,
+    config_hash: str,
+) -> IngestContext:
+    """Resolve one Tushare attempt against the provider-neutral registry."""
+
+    dataset = registry.resolve(f"tushare.{api_name}")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    adapter_version = str(binding.adapter_version or "").strip()
+    if not adapter_version:
+        raise ValueError("registry binding adapter_version is required")
+    if binding.api_name != api_name:
+        raise ValueError("registry binding api_name does not match the attempt")
+    if str(binding.read_discriminator_value or "").strip() != (
+        tushare_provider_discriminator(api_name)
+    ):
+        raise ValueError("registry provider discriminator does not match the attempt")
+    primary_table = str(dataset.read_model_adapter.primary_table or "").strip()
+    if not primary_table or primary_table not in tuple(binding.target_tables):
+        raise ValueError("registry binding is missing the read-model adapter table")
+    if not str(dataset.cadence_class or "").strip():
+        raise ValueError("registry dataset cadence_class is required")
+    if not str(binding.entitlement_state or "").strip():
+        raise ValueError("registry binding entitlement_state is required")
+
+    return IngestContext(
+        attempt_id=attempt_id,
+        dataset_id=dataset.dataset_id,
+        provider="tushare",
+        provider_api=api_name,
+        request_window={
+            "end_date": end_date,
+            "source_name": source_name,
+            "start_date": start_date,
+            "tier": tier,
+            "trade_date": trade_date,
+        },
+        config_hash=config_hash,
+        adapter_version=adapter_version,
+        started_at=datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+        data_through=trade_date,
+    )
+
+
+def ingest_rows_to_sqlite(
+    db_path: Path,
+    table: str,
+    api_name: str,
+    rows: list[dict[str, Any]],
+    *,
+    context: IngestContext,
+    source_name: str,
+    provider_discriminator: str,
+) -> int:
+    """Compatibility call seam backed exclusively by atomic receipt ingestion."""
+
+    expected_provider = tushare_provider_discriminator(api_name)
+    if provider_discriminator != expected_provider:
+        raise ValueError("provider discriminator does not match registry binding")
+    result = ingest_rows_with_receipts(
+        Path(db_path),
+        table,
+        rows,
+        context=context,
+        source_name=source_name,
+    )
+    return result.counts.committed
+
+
+def valid_tiers(config_path: Path | None = None) -> list[str]:
+    config = load_config(config_path or CONFIG_PATH)
     return list(config.get("priorities", {}).keys())
 
 
@@ -388,11 +752,20 @@ def sync_tier(
     hk_stock_codes: list[str] | None = None,
     sqlite_db_path: Path = DEFAULT_SQLITE_PATH,
     resource_budget: ResourceBudget | None = None,
+    registry: DatasetRegistry | None = None,
+    config_path: Path | None = None,
+    config_snapshot: TrustedConfigSnapshot | None = None,
 ) -> dict[str, dict]:
     """Run all APIs in a tier. Returns {api_name: {"rows": N, "duration_s": t}}."""
     stats: dict[str, dict] = {}
     sqlite_errors: list[str] = []
     tier_start = time.time()
+    resolved_registry = registry or load_dataset_registry()
+    run_namespace = uuid.uuid4()
+    resolved_config_path = Path(config_path) if config_path is not None else CONFIG_PATH
+    snapshot = config_snapshot or load_trusted_config_snapshot(resolved_config_path)
+    config_hash = snapshot.config_hash
+    config_error = not snapshot.valid
 
     # Split APIs: global, A-share per-stock, HK per-stock
     per_stock_ashare = [a for a in apis if a.get("per_stock", True) and a.get("stock_list") != "hk"]
@@ -444,24 +817,168 @@ def sync_tier(
                 tier_name, len(apis), len(per_stock_ashare), len(per_stock_hk), len(global_apis),
                 len(stock_codes), len(hk_codes), total_calls)
 
-    def _write_sqlite(api_name: str, rows: list[dict[str, Any]], source_name: str) -> dict[str, Any]:
-        if not rows:
-            return {"rows": 0, "status": "empty", "error": ""}
-        if resource_budget is not None and not resource_budget.admit_rows_for_write(len(rows)):
-            error = f"{api_name}:{source_name}:{resource_budget.exceeded_reason}"
+    def _new_attempt_id() -> str:
+        return f"{run_namespace}:{uuid.uuid4()}"
+
+    def _failure_context(
+        api_name: str,
+        source_name: str,
+        *,
+        attempt_id: str,
+        attempt_start_date: str,
+        attempt_end_date: str,
+    ) -> IngestContext:
+        dataset_id = f"unmapped.tushare.{hashlib.sha256(api_name.encode()).hexdigest()[:16]}"
+        adapter_version = "unresolved.v1"
+        try:
+            dataset = resolved_registry.resolve(f"tushare.{api_name}")
+            binding = resolved_registry.provider_binding(dataset.dataset_id, "tushare")
+            dataset_id = dataset.dataset_id
+            candidate_adapter = str(binding.adapter_version or "").strip()
+            if candidate_adapter:
+                adapter_version = candidate_adapter
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+        return IngestContext(
+            attempt_id=attempt_id,
+            dataset_id=dataset_id,
+            provider="tushare",
+            provider_api=api_name,
+            request_window={
+                "end_date": attempt_end_date,
+                "source_name": source_name,
+                "start_date": attempt_start_date,
+                "tier": tier_name,
+                "trade_date": trade_date,
+            },
+            config_hash=config_hash,
+            adapter_version=adapter_version,
+            started_at=datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+            data_through=trade_date,
+        )
+
+    def _prepare_attempt(
+        api_name: str,
+        source_name: str,
+        *,
+        attempt_start_date: str,
+        attempt_end_date: str,
+    ) -> tuple[IngestContext, str | None, str | None]:
+        attempt_id = _new_attempt_id()
+        if config_error:
+            return (
+                _failure_context(
+                    api_name,
+                    source_name,
+                    attempt_id=attempt_id,
+                    attempt_start_date=attempt_start_date,
+                    attempt_end_date=attempt_end_date,
+                ),
+                None,
+                "config_error",
+            )
+        try:
+            context = build_ingest_context(
+                registry=resolved_registry,
+                api_name=api_name,
+                tier=tier_name,
+                trade_date=trade_date,
+                start_date=attempt_start_date,
+                end_date=attempt_end_date,
+                source_name=source_name,
+                attempt_id=attempt_id,
+                config_hash=config_hash,
+            )
+            dataset = resolved_registry.resolve(context.dataset_id)
+            table = str(dataset.read_model_adapter.primary_table or "").strip()
+            if not table:
+                raise ValueError("registry read-model table is missing")
+            return context, table, None
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return (
+                _failure_context(
+                    api_name,
+                    source_name,
+                    attempt_id=attempt_id,
+                    attempt_start_date=attempt_start_date,
+                    attempt_end_date=attempt_end_date,
+                ),
+                None,
+                "unmapped_dataset",
+            )
+
+    def _write_terminal(
+        api_name: str,
+        source_name: str,
+        *,
+        context: IngestContext,
+        status: str,
+        error_code: str | None,
+    ) -> dict[str, Any]:
+        errors = () if error_code is None else (error_code,)
+        try:
+            result = write_terminal_receipt(
+                Path(sqlite_db_path),
+                context=context,
+                status=status,
+                errors=errors,
+            )
+        except Exception:
+            error = f"{api_name}:{source_name}:terminal receipt unavailable"
             sqlite_errors.append(error)
+            logger.warning(
+                "terminal receipt write failed for %s from %s",
+                api_name,
+                source_name,
+                exc_info=True,
+            )
             return {"rows": 0, "status": "failed", "error": error}
-        table = API_TO_TABLE_MAP.get(api_name)
-        if not table:
-            error = f"{api_name}:no sqlite table mapping"
-            sqlite_errors.append(error)
-            return {"rows": 0, "status": "unmapped", "error": error}
+        return {
+            "rows": result.counts.committed,
+            "status": result.status,
+            "error": "",
+            "receipt_ids": result.receipt_ids,
+        }
+
+    def _write_sqlite(
+        api_name: str,
+        rows: list[dict[str, Any]],
+        source_name: str,
+        *,
+        context: IngestContext,
+        table: str,
+    ) -> dict[str, Any]:
+        def _data_failure(error_code: str) -> dict[str, Any]:
+            result = _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="failed",
+                error_code=error_code,
+            )
+            if not result.get("error"):
+                error = f"{api_name}:{source_name}:{error_code}"
+                sqlite_errors.append(error)
+                return {**result, "error": error}
+            return result
+
+        if not rows:
+            return _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="empty",
+                error_code=None,
+            )
+        if resource_budget is not None and not resource_budget.admit_rows_for_write(len(rows)):
+            return _data_failure("resource_budget")
         try:
             written = ingest_rows_to_sqlite(
                 sqlite_db_path,
                 table,
                 api_name,
                 rows,
+                context=context,
                 source_name=source_name,
                 provider_discriminator=tushare_provider_discriminator(api_name),
             )
@@ -476,26 +993,34 @@ def sync_tier(
                     )
                     return {
                         "rows": 0,
-                        "status": "ok",
+                        "status": "success",
                         "error": "",
                         "idempotent_no_change": True,
                     }
-                error = f"{api_name}:{source_name}:direct sqlite write produced 0 rows for non-empty collection"
-                sqlite_errors.append(error)
-                logger.warning("direct sqlite write failed for %s from %s: %s", api_name, source_name, error)
-                return {"rows": 0, "status": "failed", "error": error}
+                return _data_failure("validation_failed")
             logger.info("direct sqlite %s -> %s: %d rows from %s", api_name, table, written, source_name)
-            return {"rows": written, "status": "ok", "error": ""}
-        except Exception as exc:
-            error = f"{api_name}:{source_name}:{exc}"
-            sqlite_errors.append(error)
-            logger.warning("direct sqlite write failed for %s from %s: %s", api_name, source_name, exc, exc_info=True)
-            return {"rows": 0, "status": "failed", "error": error}
+            return {"rows": written, "status": "success", "error": ""}
+        except ValueError:
+            logger.warning(
+                "provider rows failed validation for %s from %s",
+                api_name,
+                source_name,
+                exc_info=True,
+            )
+            return _data_failure("validation_failed")
+        except Exception:
+            logger.warning(
+                "direct sqlite receipt ingestion failed for %s from %s",
+                api_name,
+                source_name,
+                exc_info=True,
+            )
+            return _data_failure("storage_failed")
 
     def _sqlite_status(statuses: list[str]) -> str:
         if not statuses:
             return "empty"
-        for status in ("failed", "ok", "empty", "unmapped"):
+        for status in ("failed", "success", "empty"):
             if status in statuses:
                 return status
         return "empty"
@@ -561,13 +1086,47 @@ def sync_tier(
 
             def _collect_batch(batch_index: int, code_batch: list[str], *, retry_round: int = 0) -> bool | None:
                 nonlocal call_idx, api_calls, api_total, sqlite_total
-                if resource_budget is not None and not resource_budget.admit_provider_call():
-                    return None
                 ts_code = ",".join(code_batch)
                 if retry_round == 0:
                     call_idx += 1
                 api_calls += 1
                 params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
+                source_name = (
+                    f"{api_name}_batch_{batch_index}_{trade_date}"
+                    if batch_size > 1
+                    else f"{api_name}_{ts_code}_{trade_date}"
+                )
+                context, table, preparation_error = _prepare_attempt(
+                    api_name,
+                    source_name,
+                    attempt_start_date=api_start_date,
+                    attempt_end_date=api_end_date,
+                )
+                if preparation_error is not None:
+                    sqlite_result = _write_terminal(
+                        api_name,
+                        source_name,
+                        context=context,
+                        status="failed",
+                        error_code=preparation_error,
+                    )
+                    sqlite_statuses.append(str(sqlite_result["status"]))
+                    if sqlite_result.get("error"):
+                        api_sqlite_errors.append(str(sqlite_result["error"]))
+                    return True
+                if resource_budget is not None and not resource_budget.admit_provider_call():
+                    sqlite_result = _write_terminal(
+                        api_name,
+                        source_name,
+                        context=context,
+                        status="failed",
+                        error_code="resource_budget",
+                    )
+                    sqlite_statuses.append(str(sqlite_result["status"]))
+                    if sqlite_result.get("error"):
+                        api_sqlite_errors.append(str(sqlite_result["error"]))
+                    return None
+                assert table is not None
                 outcome = _collect_provider_outcome(api_name, params, fields)
                 rows = [] if outcome.state == "failed" else outcome.mutable_rows()
                 call_failed = outcome.state == "failed"
@@ -591,16 +1150,42 @@ def sync_tier(
                         row_limit_guard,
                     )
                 api_total += len(rows)
-                source_name = (
-                    f"{api_name}_batch_{batch_index}_{trade_date}"
-                    if batch_size > 1
-                    else f"{api_name}_{ts_code}_{trade_date}"
-                )
-                sqlite_result = _write_sqlite(api_name, rows, source_name=source_name)
+                if outcome.state == "failed":
+                    error_code = (
+                        outcome.error_code
+                        if outcome.error_code
+                        in {"provider_error", "permission_denied", "rate_limited"}
+                        else "provider_error"
+                    )
+                    sqlite_result = _write_terminal(
+                        api_name,
+                        source_name,
+                        context=context,
+                        status="failed",
+                        error_code=error_code,
+                    )
+                elif call_failed:
+                    sqlite_result = _write_terminal(
+                        api_name,
+                        source_name,
+                        context=context,
+                        status="failed",
+                        error_code="validation_failed",
+                    )
+                else:
+                    sqlite_result = _write_sqlite(
+                        api_name,
+                        rows,
+                        source_name=source_name,
+                        context=context,
+                        table=table,
+                    )
                 sqlite_total += int(sqlite_result["rows"])
                 sqlite_statuses.append(str(sqlite_result["status"]))
                 if sqlite_result.get("error"):
                     api_sqlite_errors.append(str(sqlite_result["error"]))
+                if sqlite_result["status"] == "failed":
+                    call_failed = True
                 if retry_round:
                     logger.info(
                         "[%s] RETRY %d/%d %s batch=%d symbols=%d → %d rows",
@@ -672,8 +1257,6 @@ def sync_tier(
 
     # ── Global (non-per-stock) APIs ──
     for api_def in global_apis:
-        if resource_budget is not None and not resource_budget.admit_provider_call():
-            break
         api_name = api_def["api_name"]
         template = api_def.get("params", {})
         fields = api_def.get("fields")
@@ -683,6 +1266,74 @@ def sync_tier(
         api_start = time.time()
 
         call_idx += 1
+        source_name = f"{api_name}_{trade_date}"
+        context, table, preparation_error = _prepare_attempt(
+            api_name,
+            source_name,
+            attempt_start_date=api_start_date,
+            attempt_end_date=api_end_date,
+        )
+        if preparation_error is not None:
+            sqlite_result = _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="failed",
+                error_code=preparation_error,
+            )
+            duration = time.time() - api_start
+            stats[api_name] = {
+                "rows": 0,
+                "calls": 1,
+                "failure_count": 1,
+                "critical_failure_count": 1,
+                "duration_s": round(duration, 1),
+                "sqlite_rows": 0,
+                "sqlite_status": str(sqlite_result["status"]),
+                "sqlite_errors": (
+                    [str(sqlite_result["error"])]
+                    if sqlite_result.get("error")
+                    else []
+                ),
+                "possible_truncation": False,
+                "coverage_status": "not_configured",
+                "coverage_key": None,
+                "unique_symbols": 0,
+                "universe_symbols": len(stock_codes),
+                "universe_coverage_ratio": None,
+            }
+            continue
+        if resource_budget is not None and not resource_budget.admit_provider_call():
+            sqlite_result = _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="failed",
+                error_code="resource_budget",
+            )
+            duration = time.time() - api_start
+            stats[api_name] = {
+                "rows": 0,
+                "calls": 1,
+                "failure_count": 1,
+                "critical_failure_count": 1,
+                "duration_s": round(duration, 1),
+                "sqlite_rows": 0,
+                "sqlite_status": str(sqlite_result["status"]),
+                "sqlite_errors": (
+                    [str(sqlite_result["error"])]
+                    if sqlite_result.get("error")
+                    else []
+                ),
+                "possible_truncation": False,
+                "coverage_status": "not_configured",
+                "coverage_key": None,
+                "unique_symbols": 0,
+                "universe_symbols": len(stock_codes),
+                "universe_coverage_ratio": None,
+            }
+            break
+        assert table is not None
         params = fill_params(template, None, trade_date, api_start_date, api_end_date)
         outcome = _collect_provider_outcome(api_name, params, fields)
         rows = [] if outcome.state == "failed" else outcome.mutable_rows()
@@ -714,7 +1365,38 @@ def sync_tier(
                 unique_symbols,
                 universe_size,
             )
-        sqlite_result = _write_sqlite(api_name, rows, source_name=f"{api_name}_{trade_date}")
+        if provider_failed:
+            error_code = (
+                outcome.error_code
+                if outcome.error_code
+                in {"provider_error", "permission_denied", "rate_limited"}
+                else "provider_error"
+            )
+            sqlite_result = _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="failed",
+                error_code=error_code,
+            )
+        elif guard_failed:
+            sqlite_result = _write_terminal(
+                api_name,
+                source_name,
+                context=context,
+                status="failed",
+                error_code="validation_failed",
+            )
+        else:
+            sqlite_result = _write_sqlite(
+                api_name,
+                rows,
+                source_name=source_name,
+                context=context,
+                table=table,
+            )
+        if sqlite_result["status"] == "failed":
+            api_failures = 1
         sqlite_total = int(sqlite_result["rows"])
 
         duration = time.time() - api_start
@@ -782,12 +1464,10 @@ def _failure_exit_code(summary: dict[str, Any], *, threshold: float, exit_on_fai
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    valid_tier_names = valid_tiers()
     parser = argparse.ArgumentParser(description="SharedSignals Tushare multi-tier sync")
     parser.add_argument(
         "--tier",
         required=True,
-        choices=valid_tier_names,
         help="Which tier to sync",
     )
     parser.add_argument(
@@ -837,8 +1517,45 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    # Load config + stocks
-    config = load_config(CONFIG_PATH)
+    config_snapshot = load_trusted_config_snapshot(CONFIG_PATH)
+    if not config_snapshot.valid or config_snapshot.config is None:
+        requested_names = [
+            name
+            for name in (item.strip() for item in args.only_api.split(","))
+            if re.fullmatch(r"[A-Za-z0-9_]+", name)
+        ]
+        if not requested_names:
+            requested_names = ["config"]
+        failure_apis = [
+            {"api_name": name, "per_stock": False, "params": {}}
+            for name in dict.fromkeys(requested_names)
+        ]
+        trade_date, start_date, end_date = date_range(
+            args.lookback,
+            args.trade_date or None,
+        )
+        sync_tier(
+            object(),
+            args.tier,
+            failure_apis,
+            [],
+            trade_date,
+            start_date,
+            end_date,
+            sqlite_db_path=DEFAULT_SQLITE_PATH,
+            config_path=CONFIG_PATH,
+            config_snapshot=config_snapshot,
+        )
+        logger.error("Tushare config snapshot failed validation")
+        sys.exit(2)
+
+    config = config_snapshot.config
+    valid_tier_names = list(config.get("priorities", {}).keys())
+    if args.tier not in valid_tier_names:
+        logger.error("Tier %s not found in config.yaml priorities", args.tier)
+        sys.exit(1)
+
+    # Load stocks only after one stable config snapshot has been validated.
     stock_codes = load_stock_codes(sqlite_path=DEFAULT_SQLITE_PATH)
 
     if not stock_codes:
@@ -846,10 +1563,6 @@ def main() -> None:
         sys.exit(1)
 
     tier_name = args.tier
-    if tier_name not in config.get("priorities", {}):
-        logger.error("Tier %s not found in config.yaml priorities", tier_name)
-        sys.exit(1)
-
     apis = filter_apis(config["priorities"][tier_name], args.only_api)
     if not apis:
         logger.error("No APIs selected for tier=%s only_api=%s", tier_name, args.only_api)
@@ -909,7 +1622,10 @@ def main() -> None:
         collector, tier_name, apis, stock_codes,
         trade_date, start_date, end_date,
         hk_stock_codes=hk_stock_codes,
+        sqlite_db_path=DEFAULT_SQLITE_PATH,
         resource_budget=resource_budget,
+        config_path=CONFIG_PATH,
+        config_snapshot=config_snapshot,
     )
 
     # Summary

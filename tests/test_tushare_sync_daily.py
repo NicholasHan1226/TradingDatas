@@ -7,10 +7,13 @@ import re
 import shlex
 import shutil
 import sqlite3
+import socket
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -32,7 +35,9 @@ from collectors.tushare.sync_daily import (
     sync_tier,
     write_p2_resource_evidence,
 )
+from dataset_registry import load_dataset_registry
 from storage.read_model_store import API_TO_TABLE_MAP
+from storage.schema import SCHEMA_SQL
 
 
 COLLECTORS_WRAPPER = Path("cron/collectors.sh")
@@ -94,6 +99,26 @@ def _provider_outcome(
     )
 
 
+def _create_receipt_db(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _receipt_payloads(path: Path) -> list[dict[str, object]]:
+    conn = sqlite3.connect(path)
+    try:
+        rows = conn.execute(
+            "SELECT notes FROM market_ingest_runs ORDER BY started_at, run_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [json.loads(row[0]) for row in rows]
+
+
 def _shell_array(script: str, name: str) -> tuple[str, ...]:
     match = re.search(
         rf"(?ms)^{re.escape(name)}=\(\s*(.*?)^\)",
@@ -134,6 +159,782 @@ def test_only_api_filter_selects_named_api() -> None:
 
     assert filter_apis(apis, "fut_daily") == [{"api_name": "fut_daily"}]
     assert filter_apis(apis, "") == apis
+
+
+def test_build_ingest_context_uses_registry_identity_and_real_config_bytes(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_bytes = b"priorities:\n  P1_eod_daily: []\n"
+    config_path.write_bytes(config_bytes)
+
+    context = sync_daily_module.build_ingest_context(
+        registry=load_dataset_registry(),
+        api_name="daily",
+        tier="P1_eod_daily",
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        source_name="daily_20260715",
+        attempt_id="9f8b5f72-579e-4de0-8198-2cf270319ccb",
+        config_hash=sync_daily_module.hash_regular_config(config_path),
+    )
+
+    assert context.dataset_id == "cn.equity.daily"
+    assert context.provider == "tushare"
+    assert context.provider_api == "daily"
+    assert context.adapter_version == "tushare-direct-sqlite.v1"
+    assert context.config_hash == __import__("hashlib").sha256(config_bytes).hexdigest()
+    assert context.request_window == {
+        "end_date": "20260715",
+        "source_name": "daily_20260715",
+        "start_date": "20260708",
+        "tier": "P1_eod_daily",
+        "trade_date": "20260715",
+    }
+
+
+def test_build_ingest_context_rejects_missing_adapter_mapping() -> None:
+    dataset = SimpleNamespace(
+        dataset_id="cn.equity.daily",
+        cadence_class="postclose_daily",
+        read_model_adapter=SimpleNamespace(primary_table="market_bars_daily"),
+    )
+    binding = SimpleNamespace(
+        provider="tushare",
+        api_name="daily",
+        adapter_version="",
+        entitlement_state="unknown",
+        target_tables=("market_bars_daily",),
+    )
+    registry = SimpleNamespace(
+        resolve=lambda _name: dataset,
+        provider_binding=lambda _dataset_id, _provider: binding,
+    )
+
+    with pytest.raises(ValueError, match="adapter"):
+        sync_daily_module.build_ingest_context(
+            registry=registry,
+            api_name="daily",
+            tier="P1_eod_daily",
+            trade_date="20260715",
+            start_date="20260708",
+            end_date="20260715",
+            source_name="daily_20260715",
+            attempt_id="d7e66231-7ec2-45d1-a0fb-353ca03a9637",
+            config_hash="a" * 64,
+        )
+
+
+def test_build_ingest_context_rejects_registry_discriminator_mismatch() -> None:
+    dataset = SimpleNamespace(
+        dataset_id="cn.equity.daily",
+        cadence_class="postclose_daily",
+        read_model_adapter=SimpleNamespace(primary_table="market_bars_daily"),
+    )
+    binding = SimpleNamespace(
+        provider="tushare",
+        api_name="daily",
+        adapter_version="tushare-direct-sqlite.v1",
+        entitlement_state="unknown",
+        target_tables=("market_bars_daily",),
+        read_discriminator_value="tushare_wrong_api",
+    )
+    registry = SimpleNamespace(
+        resolve=lambda _name: dataset,
+        provider_binding=lambda _dataset_id, _provider: binding,
+    )
+
+    with pytest.raises(ValueError, match="discriminator"):
+        sync_daily_module.build_ingest_context(
+            registry=registry,
+            api_name="daily",
+            tier="P1_eod_daily",
+            trade_date="20260715",
+            start_date="20260708",
+            end_date="20260715",
+            source_name="daily_20260715",
+            attempt_id="62ef3f24-e0fd-48b8-89a9-7943ac913f10",
+            config_hash="a" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_status", "expected_error"),
+    [
+        pytest.param(_provider_outcome([]), "empty", None, id="legitimate-empty"),
+        pytest.param(
+            tushare_common.ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=-2001,
+                error_code="provider_error",
+                error_message="provider unavailable",
+            ),
+            "failed",
+            "provider_error",
+            id="provider-failed",
+        ),
+        pytest.param(
+            tushare_common.ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=-2001,
+                error_code="permission_denied",
+                error_message="permission denied",
+            ),
+            "failed",
+            "permission_denied",
+            id="permission-denied",
+        ),
+        pytest.param(
+            tushare_common.ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=-2001,
+                error_code="rate_limited",
+                error_message="rate limited",
+            ),
+            "failed",
+            "rate_limited",
+            id="rate-limited",
+        ),
+    ],
+)
+def test_sync_tier_records_provider_terminal_receipts(
+    tmp_path: Path,
+    outcome: tushare_common.ProviderCallOutcome,
+    expected_status: str,
+    expected_error: str | None,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return outcome
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == expected_status
+    assert payloads[0]["dataset_id"] == "cn.equity.daily"
+    assert payloads[0]["errors"] == ([] if expected_error is None else [expected_error])
+    assert stats["daily"]["sqlite_status"] == expected_status
+
+
+def test_sync_tier_commits_success_receipt_and_same_day_reruns_are_unique(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [{"ts_code": "000001.SZ", "trade_date": "20260715", "close": 10.5}]
+            )
+
+    for _ in range(2):
+        stats = sync_tier(
+            FakeCollector(),
+            "P1_eod_daily",
+            [{"api_name": "daily", "per_stock": False, "params": {}}],
+            stock_codes=[],
+            trade_date="20260715",
+            start_date="20260708",
+            end_date="20260715",
+            sqlite_db_path=db_path,
+        )
+        assert stats["daily"]["sqlite_status"] == "success"
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["success", "success"]
+    assert len({payload["attempt_id"] for payload in payloads}) == 2
+
+
+def test_sync_tier_validation_rejection_records_failed_not_success(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome([{"trade_date": "20260715"}])
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["errors"] == ["validation_failed"]
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+def test_sync_tier_resource_budget_rejection_records_failed_receipt(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {"ts_code": "000001.SZ", "trade_date": "20260715"},
+                    {"ts_code": "000002.SZ", "trade_date": "20260715"},
+                ]
+            )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P2_financial_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        resource_budget=ResourceBudget(
+            max_provider_calls=1,
+            max_rows_admitted=1,
+            deadline_seconds=60,
+        ),
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["errors"] == ["resource_budget"]
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+def test_sync_tier_unmapped_api_records_failed_receipt_without_provider_call(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            raise AssertionError("unmapped API must fail before provider call")
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "not_registered", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["errors"] == ["unmapped_dataset"]
+    assert stats["not_registered"]["sqlite_status"] == "failed"
+
+
+def test_sync_tier_missing_config_records_config_error_without_empty_hash(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    missing_config = tmp_path / "missing.yaml"
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            raise AssertionError("missing config must fail before provider call")
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        config_path=missing_config,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+    assert payloads[0]["config_hash"] != __import__("hashlib").sha256(b"").hexdigest()
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "special_kind",
+    ["fifo", "unix_socket", "directory", "symlink", "device"],
+)
+def test_sync_tier_rejects_special_config_before_read_and_records_failure(
+    tmp_path: Path,
+    special_kind: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    db_path = tmp_path / f"{special_kind}.sqlite"
+    _create_receipt_db(db_path)
+    provider_marker = tmp_path / f"{special_kind}.provider-called"
+    regular_target = tmp_path / "real-config.yaml"
+    regular_target.write_text("priorities: {}\n", encoding="utf-8")
+    config_path = tmp_path / f"config-{special_kind}"
+
+    if special_kind == "fifo":
+        os.mkfifo(config_path)
+    elif special_kind == "unix_socket":
+        config_path = Path("/private/tmp") / (
+            f"ss9-{os.getpid()}-{time.time_ns()}.sock"
+        )
+        request.addfinalizer(lambda: config_path.unlink(missing_ok=True))
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(str(config_path))
+        finally:
+            listener.close()
+    elif special_kind == "directory":
+        config_path.mkdir()
+    elif special_kind == "symlink":
+        config_path.symlink_to(regular_target)
+    else:
+        config_path = Path("/dev/null")
+
+    probe = """
+from pathlib import Path
+import sys
+
+from collectors.tushare.sync_daily import sync_tier
+from collectors.tushare.tushare_common import ProviderCallOutcome
+
+db_path, config_path, marker_path = map(Path, sys.argv[1:4])
+
+class FakeCollector:
+    def collect_outcome(self, api_name, params, fields=None):
+        marker_path.write_text("called", encoding="utf-8")
+        return ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+stats = sync_tier(
+    FakeCollector(),
+    "P1_eod_daily",
+    [{"api_name": "daily", "per_stock": False, "params": {}}],
+    stock_codes=[],
+    trade_date="20260715",
+    start_date="20260708",
+    end_date="20260715",
+    sqlite_db_path=db_path,
+    config_path=config_path,
+)
+assert stats["daily"]["sqlite_status"] == "failed"
+"""
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                probe,
+                str(db_path),
+                str(config_path),
+                str(provider_marker),
+            ],
+            cwd=Path.cwd(),
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"{special_kind} config blocked before fail-closed receipt")
+
+    assert completed.returncode == 0, completed.stderr
+    assert not provider_marker.exists()
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "failed"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+
+
+def test_hash_regular_config_rejects_regular_to_fifo_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("priorities: {}\n", encoding="utf-8")
+    real_open = os.open
+
+    def swap_then_open(path, flags, *args, **kwargs):
+        assert flags & os.O_NONBLOCK
+        config_path.unlink()
+        os.mkfifo(config_path)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(sync_daily_module.os, "open", swap_then_open)
+
+    with pytest.raises(ValueError, match="binding|regular"):
+        sync_daily_module.hash_regular_config(config_path)
+
+
+def test_sync_tier_rejects_config_beneath_symlink_parent_before_provider_call(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    config_bytes = b"priorities:\n  P1_eod_daily: []\n"
+    (real_parent / "config.yaml").write_bytes(config_bytes)
+    alias_parent = tmp_path / "alias"
+    alias_parent.symlink_to(real_parent, target_is_directory=True)
+    provider_calls: list[str] = []
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            provider_calls.append(api_name)
+            return _provider_outcome([])
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        config_path=alias_parent / "config.yaml",
+    )
+
+    assert provider_calls == []
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "failed"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+@pytest.mark.parametrize("replacement", ["recreated-parent", "symlink-parent"])
+def test_sync_tier_rejects_parent_chain_swap_with_same_leaf_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    parent = tmp_path / "config-parent"
+    parent.mkdir()
+    config_path = parent / "config.yaml"
+    config_bytes = b"priorities:\n  P1_eod_daily: []\n"
+    config_path.write_bytes(config_bytes)
+    original_stat = config_path.stat()
+    retired_parent = tmp_path / "retired-parent"
+    real_read_all = sync_daily_module._read_all_config_bytes
+    read_count = 0
+
+    def swap_parent_after_first_read(descriptor: int) -> bytes:
+        nonlocal read_count
+        payload = real_read_all(descriptor)
+        read_count += 1
+        if read_count == 1:
+            parent.rename(retired_parent)
+            if replacement == "recreated-parent":
+                parent.mkdir()
+                os.link(retired_parent / "config.yaml", config_path)
+            else:
+                parent.symlink_to(retired_parent, target_is_directory=True)
+        return payload
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "_read_all_config_bytes",
+        swap_parent_after_first_read,
+    )
+    provider_calls: list[str] = []
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            provider_calls.append(api_name)
+            return _provider_outcome([])
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        config_path=config_path,
+    )
+
+    observed_stat = config_path.stat()
+    assert (observed_stat.st_dev, observed_stat.st_ino) == (
+        original_stat.st_dev,
+        original_stat.st_ino,
+    )
+    assert provider_calls == []
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "failed"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+def _run_main_config_probe(
+    *,
+    config_path: Path,
+    db_path: Path,
+    provider_marker: Path,
+    expected: str,
+    timeout: float,
+) -> subprocess.CompletedProcess[str]:
+    probe = """
+from pathlib import Path
+import sys
+
+import collectors.tushare.sync_daily as sync_daily
+from collectors.tushare.tushare_common import ProviderCallOutcome
+
+db_path, config_path, marker_path = map(Path, sys.argv[1:4])
+expected = sys.argv[4]
+sync_daily.CONFIG_PATH = config_path
+sync_daily.DEFAULT_SQLITE_PATH = db_path
+sync_daily.load_stock_codes = lambda **_kwargs: ["000001.SZ"]
+sync_daily.record_tushare_stats = lambda *_args, **_kwargs: None
+
+class FakeCollector:
+    def collect_outcome(self, api_name, params, fields=None):
+        marker_path.write_text("called", encoding="utf-8")
+        return ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+sync_daily.TushareCollector = FakeCollector
+sys.argv = [
+    "sync_daily.py",
+    "--tier",
+    "P1_eod_daily",
+    "--only-api",
+    "daily",
+    "--test",
+]
+try:
+    sync_daily.main()
+except SystemExit as error:
+    assert expected == "config_error"
+    assert error.code == 2
+else:
+    assert expected == "regular"
+"""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            probe,
+            str(db_path),
+            str(config_path),
+            str(provider_marker),
+            expected,
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def test_main_cli_fifo_config_never_blocks_and_records_config_error(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    config_path = tmp_path / "config.fifo"
+    os.mkfifo(config_path)
+    provider_marker = tmp_path / "provider-called"
+
+    try:
+        completed = _run_main_config_probe(
+            config_path=config_path,
+            db_path=db_path,
+            provider_marker=provider_marker,
+            expected="config_error",
+            timeout=1.0,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("real CLI blocked on the no-writer FIFO config")
+
+    assert completed.returncode == 0, completed.stderr
+    assert not provider_marker.exists()
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "failed"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+
+
+def test_main_cli_regular_config_uses_one_snapshot_for_parse_and_receipt(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    config_path = tmp_path / "config.yaml"
+    config_bytes = (
+        b"priorities:\n"
+        b"  P1_eod_daily:\n"
+        b"    - api_name: daily\n"
+        b"      per_stock: false\n"
+        b"      params: {}\n"
+    )
+    config_path.write_bytes(config_bytes)
+    provider_marker = tmp_path / "provider-called"
+
+    completed = _run_main_config_probe(
+        config_path=config_path,
+        db_path=db_path,
+        provider_marker=provider_marker,
+        expected="regular",
+        timeout=3.0,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert provider_marker.read_text(encoding="utf-8") == "called"
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "empty"
+    assert payloads[0]["config_hash"] == __import__("hashlib").sha256(
+        config_bytes
+    ).hexdigest()
+
+
+def test_sync_tier_rejects_same_inode_same_size_config_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    config_path = tmp_path / "config.yaml"
+    prefix = b"priorities: {}\nblob: "
+    payload_size = 2 * 1024 * 1024 + 257
+    old_bytes = prefix + (b"A" * (payload_size - len(prefix) - 1)) + b"\n"
+    new_bytes = prefix + (b"B" * (payload_size - len(prefix) - 1)) + b"\n"
+    config_path.write_bytes(old_bytes)
+    original_stat = config_path.stat()
+    real_read = os.read
+    read_calls = 0
+
+    def rewrite_after_first_chunk(descriptor: int, count: int) -> bytes:
+        nonlocal read_calls
+        data = real_read(descriptor, count)
+        read_calls += 1
+        if read_calls == 1:
+            with config_path.open("r+b", buffering=0) as writer:
+                writer.write(new_bytes)
+                os.fsync(writer.fileno())
+        return data
+
+    monkeypatch.setattr(sync_daily_module.os, "read", rewrite_after_first_chunk)
+    provider_calls = 0
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            nonlocal provider_calls
+            provider_calls += 1
+            return _provider_outcome([])
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        config_path=config_path,
+    )
+
+    rewritten_stat = config_path.stat()
+    assert (rewritten_stat.st_dev, rewritten_stat.st_ino, rewritten_stat.st_size) == (
+        original_stat.st_dev,
+        original_stat.st_ino,
+        original_stat.st_size,
+    )
+    assert provider_calls == 0
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "failed"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert payloads[0]["config_hash"] is None
+    assert stats["daily"]["sqlite_status"] == "failed"
+
+
+def test_sync_receipt_uses_api_specific_request_window(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            assert api_name == "shibor_lpr"
+            assert params["start_date"] == "20260306"
+            assert params["end_date"] == "20260704"
+            return _provider_outcome([])
+
+    sync_tier(
+        FakeCollector(),
+        "P4_macro_daily",
+        [
+            {
+                "api_name": "shibor_lpr",
+                "per_stock": False,
+                "lookback_days": 120,
+                "params": {"start_date": "{start_date}", "end_date": "{end_date}"},
+            }
+        ],
+        stock_codes=[],
+        trade_date="20260704",
+        start_date="20260627",
+        end_date="20260704",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["request_window"]["start_date"] == "20260306"
+    assert payloads[0]["request_window"]["end_date"] == "20260704"
 
 
 def test_p6_fut_daily_is_global_trade_date_collection() -> None:
@@ -464,7 +1265,7 @@ def test_sync_tier_passes_registry_provider_discriminator_to_sqlite(
         sqlite_db_path=tmp_path / "marketdata.sqlite",
     )
 
-    assert stats["daily"]["sqlite_status"] == "ok"
+    assert stats["daily"]["sqlite_status"] == "success"
     assert provider_contexts == ["tushare_daily"]
 
 
@@ -506,7 +1307,7 @@ def test_sync_tier_accepts_idempotent_market_event_no_change(
         sqlite_db_path=tmp_path / "marketdata.sqlite",
     )
 
-    assert stats["major_news"]["sqlite_status"] == "ok"
+    assert stats["major_news"]["sqlite_status"] == "success"
     assert stats["major_news"]["sqlite_errors"] == []
     assert stats["_tier_summary"]["sqlite_failure_count"] == 0
 

@@ -188,7 +188,7 @@ class IngestContext:
     provider: str
     provider_api: str
     request_window: Mapping[str, str]
-    config_hash: str
+    config_hash: str | None
     adapter_version: str
     started_at: str
     data_through: str | None
@@ -202,7 +202,8 @@ class IngestContext:
             "adapter_version",
         ):
             _require_public_text(getattr(self, field_name), field_name)
-        _require_hash(self.config_hash, "config_hash")
+        if self.config_hash is not None:
+            _require_hash(self.config_hash, "config_hash")
         _require_timestamp(self.started_at, "started_at")
         if self.data_through is not None:
             _require_public_text(self.data_through, "data_through")
@@ -653,6 +654,11 @@ def insert_ingest_receipt_with_evidence(
     normalized_status = _require_status(status)
     normalized_errors = _validated_errors(errors)
     _validate_status_errors(normalized_status, normalized_errors)
+    if context.config_hash is None:
+        if normalized_status != "failed":
+            raise ValueError("config_hash is required for success and empty receipts")
+        if normalized_errors != ("config_error",):
+            raise ValueError("missing config_hash requires the config_error terminal code")
     table = _validated_target_table(target_table)
     _validate_status_counts_and_target(normalized_status, counts, table)
     index = _require_nonnegative_int(transaction_index, "transaction_index")

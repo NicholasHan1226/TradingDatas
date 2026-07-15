@@ -3,19 +3,22 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
+import collectors.tushare.sync_daily as sync_daily_module
 import storage.ingest_receipts as receipt_module
 import storage.read_model_store as read_model_store
+from collectors.tushare.tushare_common import ProviderCallOutcome
 from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     ReceiptEvidence,
     insert_ingest_receipt_with_evidence,
     make_receipt_id,
+    write_terminal_receipt,
 )
 from storage.read_model_store import ingest_rows_with_receipts
 from storage.schema import SCHEMA_SQL
@@ -180,6 +183,17 @@ def _receipt_notes(db_path: Path) -> list[dict[str, object]]:
     return [json.loads(row[0]) for row in rows]
 
 
+def _all_receipt_notes(db_path: Path) -> list[dict[str, object]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT notes FROM market_ingest_runs ORDER BY started_at, run_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [json.loads(row[0]) for row in rows]
+
+
 def _reserve_receipt_id(
     db_path: Path,
     *,
@@ -231,6 +245,154 @@ def _success_counts() -> IngestCounts:
         committed=1,
         count_semantics="generic_upsert_outcomes_unavailable",
     )
+
+
+def test_sync_storage_failure_writes_failed_terminal_receipt_when_db_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return ProviderCallOutcome(
+                state="success",
+                rows=(
+                    {
+                        "ts_code": "000001.SZ",
+                        "trade_date": "20260715",
+                        "close": 10.5,
+                    },
+                ),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+            )
+
+    def fail_storage(*_args, **_kwargs):
+        raise sqlite3.OperationalError("simulated data transaction failure")
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", fail_storage)
+
+    stats = sync_daily_module.sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _all_receipt_notes(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["errors"] == ["storage_failed"]
+    assert stats["daily"]["sqlite_status"] == "failed"
+    assert stats["daily"]["failure_count"] == 1
+    assert stats["_tier_summary"]["sqlite_failure_count"] == 1
+
+
+def test_sync_run_namespace_is_shared_but_attempt_uuid_is_unique_per_window(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            return ProviderCallOutcome(
+                state="success",
+                rows=(
+                    {
+                        "ts_code": params["ts_code"],
+                        "trade_date": "20260715",
+                        "close": 10.5,
+                    },
+                ),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+            )
+
+    stats = sync_daily_module.sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [
+            {
+                "api_name": "daily",
+                "per_stock": True,
+                "params": {"ts_code": "{ts_code}"},
+            }
+        ],
+        stock_codes=["000001.SZ", "000002.SZ"],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+    )
+
+    payloads = _all_receipt_notes(db_path)
+    attempt_ids = [str(payload["attempt_id"]) for payload in payloads]
+    namespaces = {attempt_id.split(":", 1)[0] for attempt_id in attempt_ids}
+    unique_attempts = {attempt_id.split(":", 1)[1] for attempt_id in attempt_ids}
+    assert len(payloads) == 2
+    assert len(namespaces) == 1
+    assert len(unique_attempts) == 2
+    assert stats["daily"]["sqlite_status"] == "success"
+
+
+def test_only_config_error_failure_may_omit_real_config_hash(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    context = replace(_context("task9-missing-config-hash"), config_hash=None)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        with pytest.raises(ValueError, match="config_hash"):
+            insert_ingest_receipt_with_evidence(
+                conn,
+                context=context,
+                target_table="market_bars_daily",
+                transaction_index=0,
+                status="success",
+                counts=_success_counts(),
+                errors=(),
+                payload_fingerprint="b" * 64,
+            )
+        assert conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
+    finally:
+        conn.rollback()
+        conn.close()
+
+    with pytest.raises(ValueError, match="config_hash"):
+        write_terminal_receipt(
+            db_path,
+            context=context,
+            status="empty",
+            errors=(),
+        )
+    with pytest.raises(ValueError, match="config_error"):
+        write_terminal_receipt(
+            db_path,
+            context=context,
+            status="failed",
+            errors=("provider_error",),
+        )
+
+    result = write_terminal_receipt(
+        db_path,
+        context=context,
+        status="failed",
+        errors=("config_error",),
+    )
+
+    assert result.status == "failed"
+    payloads = _all_receipt_notes(db_path)
+    assert len(payloads) == 1
+    assert payloads[0]["config_hash"] is None
+    assert payloads[0]["errors"] == ["config_error"]
 
 
 def test_task7_insert_helper_returns_one_prebuilt_immutable_evidence_source(
@@ -762,6 +924,98 @@ def test_event_replay_reports_exact_unchanged_outcome(tmp_path: Path) -> None:
         )
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize(
+    "nested_claim",
+    [
+        pytest.param(
+            {"raw_json": {"datetime": "2026-07-15 09:00:00", "title": "nested"}},
+            id="raw-json",
+        ),
+        pytest.param(
+            {"content": json.dumps({"datetime": "2026-07-15 09:00:00", "title": "nested"})},
+            id="content-json",
+        ),
+        pytest.param(
+            {
+                "raw_json": {
+                    "_sharedsignals_provenance": {"schema": "provider-claim.v1"},
+                    "raw_payload": {
+                        "datetime": "2026-07-15 09:00:00",
+                        "title": "nested",
+                    },
+                }
+            },
+            id="provider-envelope",
+        ),
+    ],
+)
+def test_event_nested_payload_cannot_supply_top_level_registry_identity(
+    tmp_path: Path,
+    nested_claim: dict[str, object],
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        ingest_rows_with_receipts(
+            db_path,
+            "market_events",
+            [nested_claim],
+            context=_context(
+                f"task9-nested-identity-{next(iter(nested_claim))}",
+                dataset_id="cn.event.news",
+                provider_api="news",
+            ),
+        )
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM market_events").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_event_provider_claim_is_provenance_only_and_registry_provider_is_canonical(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    spoofed_provider = "caller_spoofed_provider"
+
+    result = ingest_rows_with_receipts(
+        db_path,
+        "market_events",
+        [
+            {
+                "provider": spoofed_provider,
+                "datetime": "2026-07-15 09:00:00",
+                "title": "registry owns canonical provider",
+                "content": "provider claim stays as lineage only",
+            }
+        ],
+        context=_context(
+            "task9-provider-spoof-provenance",
+            dataset_id="cn.event.news",
+            provider_api="news",
+        ),
+    )
+
+    assert result.status == "success"
+    conn = sqlite3.connect(db_path)
+    try:
+        provider, raw_json = conn.execute(
+            "SELECT provider, raw_json FROM market_events"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    provenance = json.loads(raw_json)["_sharedsignals_provenance"]
+    assert provider == "tushare_news"
+    assert provider != spoofed_provider
+    assert provenance["provider_claim"] == spoofed_provider
 
 
 def test_generic_upsert_never_fabricates_insert_update_or_unchanged_counts(
