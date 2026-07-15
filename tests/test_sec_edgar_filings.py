@@ -329,26 +329,16 @@ def test_sparse_event_without_identity_facts_is_rejected() -> None:
         stable_event_id("tushare_news", "news", {"symbol": "000001.SZ"})
 
 
-def test_namechange_uses_provider_business_key_from_raw_json() -> None:
+def test_namechange_uses_top_level_provider_business_key() -> None:
     first = {
-        "raw_json": json.dumps(
-            {
-                "ts_code": "000001.SZ",
-                "start_date": "20260713",
-                "name": "平安银行",
-                "change_reason": "简称变更",
-            }
-        )
+        "ts_code": "000001.SZ",
+        "start_date": "20260713",
+        "name": "平安银行",
+        "raw_json": json.dumps({"change_reason": "简称变更"}),
     }
     changed_content = {
-        "raw_json": json.dumps(
-            {
-                "ts_code": "000001.SZ",
-                "start_date": "20260713",
-                "name": "平安银行",
-                "change_reason": "更正后的说明",
-            }
-        )
+        **first,
+        "raw_json": json.dumps({"change_reason": "更正后的说明"}),
     }
 
     assert stable_event_id("tushare_namechange", "namechange", first) == stable_event_id(

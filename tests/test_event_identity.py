@@ -80,6 +80,43 @@ EXPECTED_TRUSTED_NATIVE_ID_FIELDS = {
     "tushare_report_rc": (),
 }
 
+NESTED_IDENTITY_SHAPES = (
+    "raw_json",
+    "content",
+    "list",
+    "prewrapped",
+    "double_wrap",
+)
+
+
+def _identity_claim(payload: object) -> dict[str, object]:
+    return {
+        "_sharedsignals_provenance": {
+            "raw_payload_source": "raw_json",
+            "schema": "provider-claim.v1",
+        },
+        "raw_payload": payload,
+    }
+
+
+def _nested_identity_shape(
+    shape: str,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    nested = {"metadata": payload}
+    if shape == "raw_json":
+        return {"raw_json": json.dumps(nested, sort_keys=True)}
+    if shape == "content":
+        return {"content": json.dumps(nested, sort_keys=True)}
+    if shape == "list":
+        return {"raw_json": json.dumps({"items": [payload]}, sort_keys=True)}
+    if shape == "prewrapped":
+        return {"raw_json": json.dumps(_identity_claim(nested), sort_keys=True)}
+    if shape == "double_wrap":
+        inner = json.dumps(_identity_claim(nested), sort_keys=True)
+        return {"raw_json": json.dumps(_identity_claim(inner), sort_keys=True)}
+    raise AssertionError(f"unknown nested identity shape: {shape}")
+
 
 def test_every_registry_event_route_declares_its_native_id_contract() -> None:
     assert (
@@ -167,6 +204,70 @@ def test_registry_live_route_ignores_nested_generic_ids(
     )
 
 
+@pytest.mark.parametrize("shape", NESTED_IDENTITY_SHAPES)
+@pytest.mark.parametrize(
+    ("provider", "complete"),
+    ROUTE_IDENTITY_ROWS.items(),
+)
+def test_registered_live_route_never_completes_missing_identity_from_nested_data(
+    provider: str,
+    complete: dict[str, object],
+    shape: str,
+) -> None:
+    event_type = provider.removeprefix("tushare_")
+    missing_field = event_identity_contract.PROVIDER_COMPOSITE_IDENTITY_FIELDS[
+        provider
+    ][0][-1]
+    incomplete = dict(complete)
+    incomplete.pop(missing_field)
+    nested_identity = {
+        **complete,
+        "id": "forged-native-id",
+        "event_id": "forged-event-id",
+        "url": f"https://nested.invalid/{provider}",
+    }
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        stable_event_id(
+            provider,
+            event_type,
+            {**incomplete, **_nested_identity_shape(shape, nested_identity)},
+            allow_legacy_fallback=False,
+        )
+
+
+@pytest.mark.parametrize("top_value", ["", "   ", None])
+@pytest.mark.parametrize(
+    ("provider", "complete"),
+    ROUTE_IDENTITY_ROWS.items(),
+)
+def test_registered_live_route_never_replaces_blank_top_identity_from_nested_data(
+    provider: str,
+    complete: dict[str, object],
+    top_value: object,
+) -> None:
+    event_type = provider.removeprefix("tushare_")
+    missing_field = event_identity_contract.PROVIDER_COMPOSITE_IDENTITY_FIELDS[
+        provider
+    ][0][-1]
+    incomplete = {**complete, missing_field: top_value}
+    nested_identity = {
+        **complete,
+        "url": f"https://nested.invalid/{provider}",
+    }
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        stable_event_id(
+            provider,
+            event_type,
+            {
+                **incomplete,
+                **_nested_identity_shape("raw_json", nested_identity),
+            },
+            allow_legacy_fallback=False,
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "changed"),
     [
@@ -231,6 +332,20 @@ def test_block_trade_missing_full_business_key_fails_closed() -> None:
 
     with pytest.raises(ValueError, match="missing required business key"):
         stable_event_id("tushare_block_trade", "block_trade", row)
+
+
+def test_live_identity_default_does_not_enable_legacy_title_fallback() -> None:
+    legacy = {"title": "legacy title"}
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        stable_event_id("tushare_news", "news", legacy)
+
+    assert stable_event_id(
+        "tushare_news",
+        "news",
+        legacy,
+        allow_legacy_fallback=True,
+    ).startswith("evt:")
 
 
 @pytest.mark.parametrize("raw_payload", ["", "opaque"])

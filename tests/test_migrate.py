@@ -5,7 +5,13 @@ import json
 import sqlite3
 from pathlib import Path
 
-from storage.event_identity import event_content_fingerprint, stable_event_id
+import pytest
+
+from storage.event_identity import (
+    event_content_fingerprint,
+    stable_event_id,
+    stable_migration_event_id,
+)
 from storage.migrate import apply_migrations
 from storage.migrate import schema_hash
 from storage.read_model_store import ingest_rows_to_sqlite
@@ -160,10 +166,87 @@ def test_apply_migrations_backfills_legacy_event_identity(tmp_path: Path) -> Non
     conn.close()
     assert result["event_identity_backfilled"] == 1
     assert row == (
-        stable_event_id("tushare_news", "news", {"title": "legacy"}),
+        stable_migration_event_id("tushare_news", "news", {"title": "legacy"}),
         1,
         "tushare",
     )
+
+
+def test_live_and_migration_nested_identity_paths_are_explicitly_separate() -> None:
+    nested = {
+        "metadata": {
+            "ts_code": "000001.SZ",
+            "start_date": "20260713",
+            "name": "平安银行",
+        }
+    }
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        stable_event_id(
+            "tushare_namechange",
+            "namechange",
+            nested,
+            allow_legacy_fallback=False,
+        )
+
+    assert stable_migration_event_id(
+        "tushare_namechange",
+        "namechange",
+        nested,
+    ).startswith("evt:")
+
+
+def test_apply_migrations_backfills_nested_legacy_provider_identity(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    raw = json.dumps(
+        {
+            "metadata": {
+                "ts_code": "000001.SZ",
+                "start_date": "20260713",
+                "name": "平安银行",
+            }
+        },
+        sort_keys=True,
+    )
+    conn.execute(
+        """
+        INSERT INTO market_events (
+            event_hash, provider, event_type, title, raw_json
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            "legacy-namechange-hash",
+            "tushare_namechange",
+            "namechange",
+            "平安银行简称变更",
+            raw,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = apply_migrations(db_path)
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """
+        SELECT event_id, revision, source_family
+        FROM market_events
+        WHERE event_hash = 'legacy-namechange-hash'
+        """
+    ).fetchone()
+    conn.close()
+    expected_id = stable_migration_event_id(
+        "tushare_namechange",
+        "namechange",
+        {"metadata": json.loads(raw)["metadata"], "raw_json": raw},
+    )
+    assert result["event_identity_backfilled"] == 1
+    assert row == (expected_id, 1, "tushare")
 
 
 def test_event_identity_migration_preserves_rows_and_resumes_revisions(tmp_path: Path) -> None:

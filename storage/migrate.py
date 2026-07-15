@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -31,7 +30,10 @@ REPO_DIR = Path(__file__).resolve().parents[1]  # SharedSignals root
 sys.path.insert(0, str(REPO_DIR))
 
 from runtime_paths import marketdata_sqlite_path  # noqa: E402
-from storage.event_identity import source_family, stable_event_id  # noqa: E402
+from storage.event_identity import (  # noqa: E402
+    source_family,
+    stable_migration_event_id,
+)
 
 DEFAULT_DB = marketdata_sqlite_path()
 
@@ -178,7 +180,7 @@ def _backfill_event_identity(conn: sqlite3.Connection) -> int:
             expected_id = (
                 current_id
                 if current_id.startswith("evt:")
-                else stable_event_id(row[5], row[6], identity_row)
+                else stable_migration_event_id(row[5], row[6], identity_row)
             )
         except ValueError:
             expected_id = str(current_id or row[1] or "").strip()
@@ -234,7 +236,6 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
 
     conn = sqlite3.connect(str(db_path), timeout=10)
     applied = 0
-    drift = False
 
     try:
         # Ensure migration tracking table exists

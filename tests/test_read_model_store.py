@@ -889,6 +889,43 @@ def test_block_trade_prewrapped_nested_fake_ids_do_not_duplicate_replay(
     ) == (1, 1, 1)
 
 
+def test_block_trade_nested_seller_cannot_complete_missing_top_key(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    base = {
+        "ts_code": "600000.SH",
+        "trade_date": "20260713",
+        "price": 10.0,
+        "vol": 1000,
+        "buyer": "A",
+    }
+
+    rows = []
+    for fake_id, nested_seller in (("forged-a", "B"), ("forged-c", "C")):
+        nested_identity = {**base, "id": fake_id, "seller": nested_seller}
+        rows.append(
+            {
+                **base,
+                "raw_json": json.dumps(
+                    {"metadata": nested_identity},
+                    sort_keys=True,
+                ),
+            }
+        )
+
+    with pytest.raises(ValueError, match="missing required business key.*seller"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_events",
+            "block_trade",
+            rows,
+        )
+
+    assert _count_rows(db_path, "market_events") == 0
+
+
 def test_block_trade_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

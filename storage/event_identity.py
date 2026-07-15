@@ -293,6 +293,14 @@ def _native_identity(provider: str, row: Mapping[str, Any]) -> str:
     return _native_value(row, NATIVE_ID_FIELDS)
 
 
+def _top_level_canonical_url(row: Mapping[str, Any]) -> str:
+    for key in ("url", "link"):
+        value = str(row.get(key) or "").strip().split("#", 1)[0]
+        if value:
+            return value
+    return ""
+
+
 def _canonical_url(row: Mapping[str, Any]) -> str:
     for source in _identity_sources(row):
         for key in ("url", "link"):
@@ -302,20 +310,42 @@ def _canonical_url(row: Mapping[str, Any]) -> str:
     return ""
 
 
-def _provider_composite_identity(
+def _composite_identity_from_sources(
     provider: str,
-    row: Mapping[str, Any],
+    sources: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
 ) -> str:
     field_sets = PROVIDER_COMPOSITE_IDENTITY_FIELDS.get(
         _normalized_provider(provider),
         (),
     )
-    for source in _identity_sources(row):
+    for source in sources:
         for fields in field_sets:
             values = [str(source.get(field) or "").strip() for field in fields]
             if all(values):
                 return "|".join(values)
     return ""
+
+
+def _top_level_provider_composite_identity(
+    provider: str,
+    row: Mapping[str, Any],
+) -> str:
+    return _composite_identity_from_sources(provider, (row,))
+
+
+def _provider_composite_identity(
+    provider: str,
+    row: Mapping[str, Any],
+) -> str:
+    return _composite_identity_from_sources(provider, _identity_sources(row))
+
+
+def _top_level_fallback_identity(row: Mapping[str, Any]) -> str:
+    values = [
+        str(row.get(key) or "").strip()
+        for key in ("datetime", "pub_time", "date", "title")
+    ]
+    return "|".join(values) if any(values) else ""
 
 
 def _fallback_identity(row: Mapping[str, Any]) -> str:
@@ -338,12 +368,13 @@ def _missing_business_key_error(provider: str) -> ValueError:
     )
 
 
-def stable_event_id(
+def _stable_event_id(
     provider: str,
     event_type: str,
     row: Mapping[str, Any],
     *,
-    allow_legacy_fallback: bool = True,
+    allow_legacy_fallback: bool,
+    migration_identity: bool,
 ) -> str:
     normalized_provider = _normalized_provider(provider)
     business = canonical_event_business_payload(
@@ -351,9 +382,31 @@ def stable_event_id(
         provider=normalized_provider,
         event_type=event_type,
     )
-    native = _native_identity(normalized_provider, row)
-    provider_composite = _provider_composite_identity(normalized_provider, business)
-    canonical_url = _canonical_url(business)
+    if normalized_provider in EXPLICIT_ROUTE_IDENTITIES:
+        if migration_identity:
+            native = _native_identity(normalized_provider, row)
+            provider_composite = _provider_composite_identity(
+                normalized_provider,
+                business,
+            )
+            canonical_url = _canonical_url(business)
+            legacy_fallback = _fallback_identity(business)
+        else:
+            native = _native_identity(normalized_provider, row)
+            provider_composite = _top_level_provider_composite_identity(
+                normalized_provider,
+                row,
+            )
+            canonical_url = _top_level_canonical_url(row)
+            legacy_fallback = _top_level_fallback_identity(row)
+    else:
+        native = _native_identity(normalized_provider, row)
+        provider_composite = _provider_composite_identity(
+            normalized_provider,
+            business,
+        )
+        canonical_url = _canonical_url(business)
+        legacy_fallback = _fallback_identity(business)
 
     if normalized_provider in COMPOSITE_ONLY_IDENTITIES:
         if not provider_composite:
@@ -371,7 +424,7 @@ def stable_event_id(
         ):
             # Historical news rows may contain only a title. Migration keeps
             # their established identity; live ingestion disables this fallback.
-            identity = _fallback_identity(business)
+            identity = legacy_fallback
         if not identity:
             raise _missing_business_key_error(normalized_provider)
     else:
@@ -387,6 +440,45 @@ def stable_event_id(
         f"{normalized_provider}|{event_type}|{identity}".encode()
     ).hexdigest()[:32]
     return f"evt:{digest}"
+
+
+def stable_event_id(
+    provider: str,
+    event_type: str,
+    row: Mapping[str, Any],
+    *,
+    allow_legacy_fallback: bool = False,
+) -> str:
+    """Derive live identity from the original provider row.
+
+    Registered routes may use only declared top-level identity fields. Nested
+    raw/content values remain business fingerprint and provenance input. The
+    default is fail-closed; legacy title fallback requires an explicit opt-in.
+    """
+
+    return _stable_event_id(
+        provider,
+        event_type,
+        row,
+        allow_legacy_fallback=allow_legacy_fallback,
+        migration_identity=False,
+    )
+
+
+def stable_migration_event_id(
+    provider: str,
+    event_type: str,
+    row: Mapping[str, Any],
+) -> str:
+    """Rebuild historical identity from legacy nested storage payloads."""
+
+    return _stable_event_id(
+        provider,
+        event_type,
+        row,
+        allow_legacy_fallback=True,
+        migration_identity=True,
+    )
 
 
 def event_content_fingerprint(

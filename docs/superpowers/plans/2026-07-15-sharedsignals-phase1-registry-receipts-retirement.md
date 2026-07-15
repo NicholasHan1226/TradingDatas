@@ -555,13 +555,18 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   immutable `ts_code+trade_date+price+vol+buyer+seller` fact key; changing any
   member is a distinct event at revision 1 because no narrower key proves a
   correction.
-  Generic `id` and `event_id` values at the top level or inside raw, content,
-  or prewrapped provenance never replace that key. Non-registry sources must
-  declare source-specific fields and payload locations; SEC EDGAR alone keeps
-  its nested accession-number contract. Title-only legacy Tushare news identity
-  remains available only for historical migration compatibility, while the
-  live write path disables that fallback and requires a declared native ID,
-  URL, or the explicit route business key.
+  Every registered live-route identity input—declared native ID, URL, and
+  composite business key—must come from the original top-level provider row.
+  Missing, blank, or null top-level keys fail closed; raw JSON, content, lists,
+  or single/double provenance envelopes may contribute only to business
+  fingerprint and provenance, never complete live identity. Non-registry
+  sources must declare source-specific fields and payload locations; SEC EDGAR
+  alone keeps its nested accession-number contract. Historical nested identity
+  reconstruction uses `stable_migration_event_id`; its only production caller
+  is `storage/migrate.py`, and the live write path cannot opt into it through
+  `allow_legacy_fallback`. `stable_event_id` defaults that compatibility flag
+  off; no production caller enables it, while an explicit top-level-title
+  opt-in remains only for the pre-existing compatibility test surface.
 
   Prove paired over- and under-idempotency cases for `cb_issue`, `block_trade`,
   news, and announcements across nested, prewrapped, blank, opaque, spoofed,
@@ -575,16 +580,21 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   distinct block trades or duplicate the same fact. It is not final acceptance
   evidence and must not be amended or rebased away.
 
+  Commit `a598235` also remains in history but failed fresh review: native-ID
+  trust was top-level-only, while recursive URL and composite-key discovery
+  still accepted every tested nested identity shape (12 routes × 5 shapes).
+  It is not final acceptance evidence and must not be amended or rebased away.
+
   ```bash
   /private/tmp/sharedsignals-phase1-py312/bin/python -m pytest -q \
     tests/test_event_identity.py tests/test_read_model_store.py \
     tests/test_migrate.py tests/test_sec_edgar_filings.py
   /Users/nicholashan/.local/bin/ruff check \
-    storage/event_identity.py storage/read_model_store.py \
+    storage/event_identity.py storage/migrate.py storage/read_model_store.py \
     tests/test_event_identity.py tests/test_migrate.py \
     tests/test_read_model_store.py tests/test_sec_edgar_filings.py
   /private/tmp/sharedsignals-phase1-py312/bin/python -m compileall -q \
-    storage/event_identity.py storage/read_model_store.py
+    storage/event_identity.py storage/migrate.py storage/read_model_store.py
   git diff --check
   git commit -m "fix: normalize event replay across raw provenance"
   ```
