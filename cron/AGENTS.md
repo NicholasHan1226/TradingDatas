@@ -1,6 +1,7 @@
 # SharedSignals/cron
 
-This directory contains thin cron wrappers for SharedSignals production jobs.
+This directory contains thin cron wrappers and the repository schedule target
+for SharedSignals jobs.
 
 - Scripts must `cd` to the SharedSignals root before running Python.
 - Scripts may source root `.env` for local configuration, but must not contain secrets.
@@ -9,27 +10,41 @@ This directory contains thin cron wrappers for SharedSignals production jobs.
 - Write stdout/stderr to `logs/cron/`.
 - Keep business logic in the main SharedSignals modules; cron scripts should only orchestrate.
 
-## Active production groups
+## Repository domestic Beta target
 
-- `collectors.sh`: Tushare P0-P6 daily/trading tiered collection; P7 low-frequency bars are handled by `tushare_low_frequency_collect.sh`.
+- `cron/crontab.txt` is the repository target template only. It does not prove
+  that the root `crontab.txt` snapshot or the production live crontab changed.
+- `collectors.sh`: no-argument and `--all` runs are limited to domestic Beta
+  tiers P0, P1, P3, P4, and P6. P7 low-frequency bars remain handled by
+  `tushare_low_frequency_collect.sh`.
 - `tushare_events_collect.sh`: Tushare news/announcement/report event lane; it runs selected P6 event APIs only and must not be replaced by high-frequency full P6 collection.
 - `tushare_low_frequency_collect.sh`: Tushare P7 weekly/monthly lane; it runs low-frequency bars only and must not be folded into daily P6 collection.
-- `crypto_collect.sh` and `pm_collect.sh`: 30-minute Crypto ticker and Polymarket collection; Crypto 1d klines run separately via `SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d` to keep `market_bars_daily` fresh without pulling every kline interval on the intraday cadence.
 - `cn_futures_5min.sh` and `cn_futures_daily.sh`: China futures intraday and settlement data.
-- `duckdb_sync.sh`: SQLite read model to DuckDB analytics mirror sync. This is
-  not the trading read path; keep it off 5-minute cadence unless the merge is
-  incremental and load-tested. The Python worker must create one native SQLite
-  backup snapshot before any DuckDB write, then use that same snapshot for all
-  tables and reconciliation. Do not make the wrapper take the exclusive
-  maintenance lock: collectors use nonblocking shared locks and would skip.
-- `patrol.sh`, `health_sla.sh`, `source_governance_monitor.sh`, `green_gate_report.sh`, `watchdog.sh`: health checks, source governance status, daily operator Green Gate email, and bounded self-heal loop.
 - `external_api_probe.sh`: every 5 minutes verifies the public hostname reaches the SharedSignals authentication gate; it does not need or store a consumer token by default. Production runs this read-only probe from root because the SSH relay key is root-only; the live root crontab supplies `SHAREDSIGNALS_EXTERNAL_PROBE_SSH_TARGET` and `SHAREDSIGNALS_EXTERNAL_PROBE_SSH_KEY`, while the repository cron manifest remains a standard command entry for coverage checks.
-- `capability_scan.sh`: API capability registry refresh.
+- `health_sla.sh`, `source_governance_monitor.sh`, and `capability_scan.sh` are
+  temporarily retained read-only governance/capability checks in the target.
+
+## Retained but unscheduled compatibility wrappers
+
+- `collectors.sh --tier P5_hk_us_daily` remains recognized for explicit
+  compatibility use, but P5 is absent from no-argument, `--all`, and target
+  schedule execution.
+- `crypto_collect.sh`, `pm_collect.sh`, `opening_gate.sh`,
+  `green_gate_report.sh`, `patrol.sh`, `watchdog.sh`, and
+  `proxy_relay_health.sh` remain repository wrappers but have no active entry in
+  the domestic Beta target template. Their presence is not evidence of live
+  scheduling or production state.
+- P2, `duckdb_sync.sh`, `sqlite_maintenance.sh`, and
+  `sw2021_reference_collect.sh` remain disabled/commented pending their existing
+  gates. P2 is not a supported/default `collectors.sh` tier in this target.
+- `duckdb_sync.sh` remains the SQLite-to-DuckDB analytics mirror wrapper. It is
+  not the trading read path; before any future scheduling, its single-snapshot,
+  reconciliation, load-test, and maintenance-lock boundaries still apply.
 
 ## Environment surface
 
-- `PATROL_SCORE_THRESHOLD` controls whether `patrol.sh` triggers `heal.py`.
-- `PATROL_*` variables tune patrol thresholds without code changes.
-- `WATCHDOG_INPUT_DIR` is the shared drop directory for `health_sla` and cross-system health JSON.
-- `WATCHDOG_EXTERNAL_REPORT_MAX_AGE_MIN` controls how long watchdog trusts external reports.
+- `PATROL_SCORE_THRESHOLD` and `PATROL_*` remain compatibility settings for the
+  unscheduled patrol wrapper.
+- `WATCHDOG_INPUT_DIR` and `WATCHDOG_EXTERNAL_REPORT_MAX_AGE_MIN` remain
+  compatibility settings for retained health/watchdog wrappers.
 - `SHAREDSIGNALS_HEALTH_SLA_TIMEOUT` controls the per-table freshness SLA wrapper timeout.

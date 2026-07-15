@@ -10,6 +10,18 @@ from storage.read_model_store import API_TO_TABLE_MAP
 
 
 CRONTAB_FILES = (Path("crontab.txt"), Path("cron/crontab.txt"))
+REPOSITORY_CRON_TEMPLATE = Path("cron/crontab.txt")
+FORBIDDEN_ACTIVE_TOKENS = (
+    "P5_hk_us_daily",
+    "crypto_collect",
+    "pm_collect",
+    "opening_gate",
+    "green_gate_report",
+    "patrol.sh",
+    "watchdog.sh",
+    "proxy_relay_health",
+    "duckdb_sync",
+)
 TUSHARE_CAPABILITY_PLAN = Path("config/tushare_capability_plan.yaml")
 PRODUCTION_CODE_GLOBS = (
     "reader.py",
@@ -23,6 +35,14 @@ PRODUCTION_CODE_GLOBS = (
     "storage/*.py",
     "reference/*.py",
 )
+
+
+def _active_cron_lines(path: Path) -> tuple[str, ...]:
+    return tuple(
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
 
 
 def _configured_tushare_apis() -> list[tuple[str, str, dict]]:
@@ -319,44 +339,47 @@ def test_tushare_low_frequency_wrapper_runs_only_low_frequency_apis() -> None:
     assert "--no-sqlite-bridge" not in wrapper
 
 
-def test_production_cron_declares_required_collection_and_health_cadence() -> None:
+def test_repository_cron_target_declares_domestic_beta_cadence() -> None:
     required_lines = {
         "*/5 9-15 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P0_trading_5min",
         "*/5 9-15,21-23 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_5min.sh",
         "*/5 0-2 * * 2-6 /opt/investment/SharedSignals/cron/cn_futures_5min.sh",
-        "2,32 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh",
-        "7 */6 * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh",
-        "1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh",
+        "25 16 * * 1-5 /opt/investment/SharedSignals/cron/cn_futures_daily.sh",
+        "35 16 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P1_eod_daily",
+        "15 6 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P3_reference_daily",
+        "45 8 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P4_macro_daily",
+        "20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily",
         "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
         "15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh",
         "40 7 * * 0 /opt/investment/SharedSignals/cron/tushare_low_frequency_collect.sh",
-        "*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh",
-        "12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh",
+        "3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh",
         "7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh",
         "5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh",
-        "10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh",
-        "17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh",
         "52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh",
     }
-    tier_lines = {
-        "P1_eod_daily",
-        "P2_financial_daily",
-        "P3_reference_daily",
-        "P4_macro_daily",
-        "P5_hk_us_daily",
-        "P6_other_daily",
+
+    active_lines = _active_cron_lines(REPOSITORY_CRON_TEMPLATE)
+    missing = sorted(required_lines.difference(active_lines))
+
+    assert missing == []
+    assert active_lines.count(
+        "*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh"
+    ) == 1
+    assert active_lines.count(
+        "15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news "
+        "/opt/investment/SharedSignals/cron/tushare_events_collect.sh"
+    ) == 1
+
+
+def test_repository_cron_target_excludes_non_beta_active_jobs() -> None:
+    active_lines = _active_cron_lines(REPOSITORY_CRON_TEMPLATE)
+    offenders = {
+        token: [line for line in active_lines if token in line]
+        for token in FORBIDDEN_ACTIVE_TOKENS
+        if any(token in line for line in active_lines)
     }
 
-    for crontab_path in CRONTAB_FILES:
-        text = crontab_path.read_text(encoding="utf-8")
-        missing = sorted(line for line in required_lines if line not in text)
-        missing_tiers = sorted(
-            tier for tier in tier_lines if f"/opt/investment/SharedSignals/cron/collectors.sh --tier {tier}" not in text
-        )
-        assert missing == []
-        assert missing_tiers == []
-        assert text.count("*/30 8-23 * * 1-6 /opt/investment/SharedSignals/cron/tushare_events_collect.sh") == 1
-        assert text.count("15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh") == 1
+    assert offenders == {}
 
 
 def test_production_cron_keeps_heavy_jobs_out_of_trading_hot_path() -> None:

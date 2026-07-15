@@ -12,13 +12,19 @@ PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"
 LOG_FILE="${LOG_DIR}/collectors.log"
-DEFAULT_TIERS=(
+SUPPORTED_TIERS=(
   P0_trading_5min
   P1_eod_daily
-  P2_financial_daily
   P3_reference_daily
   P4_macro_daily
   P5_hk_us_daily
+  P6_other_daily
+)
+DEFAULT_TIERS=(
+  P0_trading_5min
+  P1_eod_daily
+  P3_reference_daily
+  P4_macro_daily
   P6_other_daily
 )
 TIERS=()
@@ -50,7 +56,7 @@ if [[ ${#TIERS[@]} -eq 0 ]]; then
 fi
 
 for tier in "${TIERS[@]}"; do
-  if [[ ! " ${DEFAULT_TIERS[*]} " =~ " ${tier} " ]]; then
+  if [[ ! " ${SUPPORTED_TIERS[*]} " =~ " ${tier} " ]]; then
     echo "unknown SharedSignals Tushare tier: ${tier}" >&2
     exit 2
   fi

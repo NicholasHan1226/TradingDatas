@@ -4,7 +4,7 @@
 >
 > **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
 >
-> 最后更新：2026-07-14（07:06 code-only smoke 对 `24a9685c` 命中 606 passed/8 failed 后自动 rollback 到 `7c701de`，SQLite size/mtime 未变；7 个 auth 失败是测试 helper 继承生产 `TOKEN_SALT` 等 env，1 个 runtime path 失败是 fixture 使用 canonical production root 并设置 `REQUIRE_MOUNTS=0`。修复仅隔离测试环境并新增 canonical reject 断言，`auth.py`、`runtime_paths.sh` 与生产 drop-in 不改；P2、DuckDB sync 与两条 A 股 sample_ops 继续事故隔离。）
+> 最后更新：2026-07-15（仓库 `cron/crontab.txt` 目标模板收窄为境内 Beta；根 `crontab.txt` 快照未修改，生产 live crontab 未读取、未修改、未验证。此前 2026-07-14 的 code-only smoke/rollback 与事故隔离状态不因本次仓库模板变更而改变。）
 
 ---
 
@@ -21,6 +21,7 @@
 - **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
 - **SW2021 行业接口状态**：本地已实现固定快照的 `/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 与独立 `industry_reference` scope；当前只代表代码和测试层，仍是 `implemented_unscheduled`，不代表生产表已有 promoted 快照、runtime 已部署、外部路由已生效或定时采集已启用。
 - **SQLite routine maintenance 状态**：本地已实现 SharedSignals 自有的 bounded maintenance 工具与 wrapper，只执行 `wal_checkpoint(PASSIVE)`、`optimize(0x10002)`，仅在显式 deep check 时执行 `quick_check`，并原子写入 watchdog JSON；当前 cron 行保持注释，未安装、未运行生产维护。
+- **境内 Beta cron target（仅仓库代码层）**：`cron/crontab.txt` 的 active jobs 只保留境内 Tushare P0/P1/P3/P4/P6、CNFutures、Tushare events/low-frequency、external API probe，以及暂留的只读 health/governance/capability checks。`cron/collectors.sh` 的无参数和 `--all` 使用同一境内默认集合；P5 仅保留显式 `--tier P5_hk_us_daily` 兼容，不进入默认或模板调度。P2、DuckDB、SQLite maintenance 与 SW2021 仍保持注释/禁用。本轮没有修改根 `crontab.txt`，也没有读取、安装或修改生产 live crontab；不能把仓库 target 变化表述成生产已收窄。
 - **外部域名状态**：Wangzhi/internal tier 这类外部账号已在 SharedSignals 侧可控；正式域名 `https://signals.tradingagent.cc` 使用 Cloudflare Tunnel CNAME。广州 API 仍只监听 `127.0.0.1:8082`，通过出站 SSH 反向隧道送到新加坡 cloudflared connector；不再依赖未备案广州公网源站 TLS，外部请求仍必须携带 SharedSignals API token。
 
 ## 二、生产频率

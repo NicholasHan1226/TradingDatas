@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import shlex
 import sqlite3
 import time
 from datetime import datetime
@@ -22,6 +24,25 @@ from collectors.tushare.sync_daily import (
     write_p2_resource_evidence,
 )
 from storage.read_model_store import API_TO_TABLE_MAP
+
+
+COLLECTORS_WRAPPER = Path("cron/collectors.sh")
+DOMESTIC_BETA_DEFAULT_TIERS = (
+    "P0_trading_5min",
+    "P1_eod_daily",
+    "P3_reference_daily",
+    "P4_macro_daily",
+    "P6_other_daily",
+)
+
+
+def _shell_array(script: str, name: str) -> tuple[str, ...]:
+    match = re.search(
+        rf"(?ms)^{re.escape(name)}=\(\s*(.*?)^\)",
+        script,
+    )
+    assert match is not None, f"missing shell array: {name}"
+    return tuple(shlex.split(match.group(1)))
 
 
 def test_resolve_api_window_uses_api_lookback_days() -> None:
@@ -218,6 +239,27 @@ def test_first_batch_planned_apis_are_assigned_to_frequency_lanes() -> None:
 
 def test_sync_daily_tier_choices_come_from_config() -> None:
     assert "P7_low_frequency" in sync_daily_module.valid_tiers()
+
+
+def test_collectors_default_and_all_resolve_to_domestic_beta_without_p5() -> None:
+    wrapper = COLLECTORS_WRAPPER.read_text(encoding="utf-8")
+    default_tiers = _shell_array(wrapper, "DEFAULT_TIERS")
+
+    assert default_tiers == DOMESTIC_BETA_DEFAULT_TIERS
+    assert "P5_hk_us_daily" not in default_tiers
+    assert wrapper.count('TIERS=("${DEFAULT_TIERS[@]}")') == 2
+
+
+def test_collectors_explicit_p5_tier_remains_supported_for_compatibility() -> None:
+    wrapper = COLLECTORS_WRAPPER.read_text(encoding="utf-8")
+    supported_tiers = _shell_array(wrapper, "SUPPORTED_TIERS")
+
+    assert supported_tiers == (
+        *DOMESTIC_BETA_DEFAULT_TIERS[:-1],
+        "P5_hk_us_daily",
+        DOMESTIC_BETA_DEFAULT_TIERS[-1],
+    )
+    assert 'if [[ ! " ${SUPPORTED_TIERS[*]} " =~ " ${tier} " ]]' in wrapper
 
 
 def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:

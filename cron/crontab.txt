@@ -1,7 +1,8 @@
-# SharedSignals cron template - verified against production on 2026-07-04.
+# SharedSignals repository cron target template - domestic Beta scope.
 #
-# This file is an install template. The repository root crontab.txt is the
-# production snapshot; the live server state remains the final source of truth:
+# This file is a code-level target, not evidence that a schedule is installed.
+# The repository root crontab.txt remains a separate production snapshot, and
+# the live server state remains the final source of truth:
 #   sudo -u marketgraph crontab -l
 # Production ops may compose one marketgraph user crontab from the three repos.
 # This template only owns SharedSignals entries; never install it directly over
@@ -28,8 +29,9 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # 45 19 * * 1-5 /opt/investment/SharedSignals/cron/collectors.sh --tier P2_financial_daily
 15 6 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P3_reference_daily
 45 8 * * * /opt/investment/SharedSignals/cron/collectors.sh --tier P4_macro_daily
-10 6,17 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P5_hk_us_daily
 20 20 * * 1-6 /opt/investment/SharedSignals/cron/collectors.sh --tier P6_other_daily
+# P5_hk_us_daily remains an explicit collectors.sh compatibility tier but is
+# intentionally absent from this domestic Beta schedule target.
 
 # Low-frequency weekly/monthly bars run separately so full P6 daily collection
 # does not pull them every night.
@@ -42,31 +44,16 @@ PATH=/opt/sharedsignals/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # research reports, and CCTV stay on the 30-minute full event lane.
 15,45 8-23 * * 1-6 SHAREDSIGNALS_EVENT_APIS=news,major_news /opt/investment/SharedSignals/cron/tushare_events_collect.sh
 
-# Crypto and PM market freshness. These lanes run every 30 minutes to reduce
-# open-session SQLite write contention; crypto 1d support bars refresh every
-# 6 hours because they are not the trading read path.
-2,32 * * * * /opt/investment/SharedSignals/cron/crypto_collect.sh
-7 */6 * * * SHAREDSIGNALS_CRYPTO_MODE=klines SHAREDSIGNALS_CRYPTO_INTERVALS=1d /opt/investment/SharedSignals/cron/crypto_collect.sh
-1,31 * * * * /opt/investment/SharedSignals/cron/pm_collect.sh
-
 # RSS/RSSHub is retired from production collectors. Do not add the old
 # /opt/investment/RSSCollector hot/warm or RSSHub @reboot jobs back.
 
-# Read model sync, patrol, and SLA watchdog.
+# Read model sync remains incident-paused. The domestic Beta target temporarily
+# retains only read-only external, SLA, governance, and capability checks.
 # INCIDENT PAUSE 2026-07-13: do not restore until consistent snapshot P0 is deployed and piloted.
 # 17 0-8,16-23 * * * /opt/investment/SharedSignals/cron/duckdb_sync.sh
-12,42 * * * * /opt/investment/SharedSignals/cron/patrol.sh
-1-59/5 * * * * /opt/investment/SharedSignals/cron/proxy_relay_health.sh
-*/5 * * * * /opt/investment/SharedSignals/cron/watchdog.sh
 3-58/5 * * * * /opt/investment/SharedSignals/cron/external_api_probe.sh
 7-59/15 * * * * /opt/investment/SharedSignals/cron/health_sla.sh
 5 8 * * * /opt/investment/SharedSignals/cron/source_governance_monitor.sh
-10 8 * * * /opt/investment/SharedSignals/cron/green_gate_report.sh
-# Session readiness gates: lightweight read-model checks at the four decision points.
-50 8 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase preopen
-35 9 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase morning_first_sample
-5 13 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase afternoon_resume
-5 15 * * 1-5 /opt/investment/SharedSignals/cron/opening_gate.sh --phase close_check
 52 0-8,16-23 * * * /opt/investment/SharedSignals/cron/capability_scan.sh
 
 # Task 7 wrappers are implemented but intentionally unscheduled until the
