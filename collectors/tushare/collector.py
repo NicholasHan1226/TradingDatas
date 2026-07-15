@@ -20,11 +20,27 @@ from threading import Lock
 from typing import Any
 
 from ..base import BaseCollector  # noqa: E402
-from .tushare_common import ProviderCallOutcome
+from .tushare_common import ProviderCallOutcome, provider_outcome_log_fields
 
 logger = logging.getLogger(__name__)
 _TUSHARE_CALL: Any | None = None
 _TUSHARE_CALL_LOCK = Lock()
+_SAFE_PARAM_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
+
+
+def _parameter_log_summary(params: dict[str, Any]) -> dict[str, Any]:
+    """Describe parameter structure without retaining any parameter value."""
+
+    keys = []
+    for key in params:
+        text = str(key)
+        keys.append(
+            text if _SAFE_PARAM_KEY.fullmatch(text) else "<untrusted-param-key>"
+        )
+    return {
+        "param_count": len(params),
+        "param_keys": tuple(sorted(set(keys))),
+    }
 
 
 def _call_tushare(
@@ -290,14 +306,24 @@ class TushareCollector(BaseCollector):
         self.last_collect_failed = False
         self.last_collect_error = ""
         self._rate_limit(api_name)
-        logger.info("collect %s with params=%s", api_name, params)
+        logger.info(
+            "collect %s with params=%s",
+            api_name,
+            _parameter_log_summary(params),
+        )
+        candidate: Any = None
         try:
-            outcome = _call_tushare(api_name, params, fields or "")
+            candidate = _call_tushare(api_name, params, fields or "")
+            if not isinstance(candidate, ProviderCallOutcome):
+                raise TypeError("collector returned an invalid provider outcome type")
+            candidate.validate_invariants()
+            outcome = candidate
         except Exception as exc:
+            provider_code = getattr(candidate, "provider_code", None)
             outcome = ProviderCallOutcome(
                 state="failed",
                 rows=(),
-                provider_code=None,
+                provider_code=provider_code,
                 error_code="provider_error",
                 error_message=str(exc) or exc.__class__.__name__,
             )
@@ -312,11 +338,9 @@ class TushareCollector(BaseCollector):
             )
             self.collect_failure_count += 1
             logger.error(
-                "collect %s failed: code=%r error=%s message=%s",
+                "collect %s failed: outcome=%s",
                 api_name,
-                outcome.provider_code,
-                outcome.error_code,
-                self.last_collect_error,
+                provider_outcome_log_fields(outcome),
             )
         else:
             logger.info(

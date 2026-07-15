@@ -56,6 +56,18 @@ DOMESTIC_P4_APIS = (
 )
 
 
+class _RawRecordHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+    def raw_record_text(self) -> str:
+        return repr([(record.msg, record.args) for record in self.records])
+
+
 def _provider_outcome(
     rows: list[dict],
     *,
@@ -470,6 +482,46 @@ def test_collector_collect_compatibility_returns_rows_from_typed_outcome(
     assert collector.collect_failure_count == 0
 
 
+def test_collector_logs_only_a_structured_parameter_summary(
+    monkeypatch,
+    caplog,
+) -> None:
+    secret = "DUMMY-PARAM-VALUE-DO-NOT-LOG"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.INFO, logger=collector_module.logger.name):
+            collector.collect_outcome(
+                "daily",
+                {
+                    "ts_code": secret,
+                    "nested": {"credential": secret},
+                },
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "param_count" in caplog.text
+    assert "param_keys" in caplog.text
+
+
 def test_sync_tier_strict_path_preserves_typed_provider_failure(
     tmp_path: Path,
     monkeypatch,
@@ -583,6 +635,103 @@ def test_sync_tier_never_propagates_provider_or_transport_credentials(
     assert secret not in caplog.text
     assert "[REDACTED]" in collector.last_collect_error
     assert "[REDACTED]" in caplog.text
+
+
+def test_collector_and_sync_logs_validate_provider_code_representation(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    secret = "DUMMY-PROVIDER-CODE-DO-NOT-LOG"
+    raw_provider_code = f"token={secret}"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=raw_provider_code,
+        error_code="provider_error",
+        error_message="provider rejected request",
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert outcome.provider_code == raw_provider_code
+    assert collector.last_collect_outcome is outcome
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "untrusted-provider-code" in caplog.text
+    assert "untrusted-provider-code" in raw_handler.raw_record_text()
+
+
+def test_sync_tier_rejects_corrupted_failed_outcome_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    malformed = object.__new__(tushare_common.ProviderCallOutcome)
+    object.__setattr__(malformed, "state", "failed")
+    object.__setattr__(malformed, "rows", ({"value": 1},))
+    object.__setattr__(malformed, "provider_code", -1)
+    object.__setattr__(malformed, "error_code", "provider_error")
+    object.__setattr__(malformed, "error_message", "failed")
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            del api_name, params, fields
+            return malformed
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "corrupted failed outcome rows must not reach the writer"
+        ),
+    )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["rows"] == 0
+    assert stats["daily"]["failure_count"] == 1
+    assert stats["_tier_summary"]["failure_count"] == 1
 
 
 def test_exit_on_failure_considers_sqlite_failures() -> None:

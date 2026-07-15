@@ -161,6 +161,59 @@ def test_tushare_rows_outcome_rejects_non_finite_raw_json_constants(
 
 
 @pytest.mark.parametrize(
+    "raw_payload",
+    [
+        pytest.param(
+            '{"code": -2001, "code": 0, "msg": null, "data": {"fields": ["value"], "items": [[1]]}}',
+            id="top-level-code-last-wins",
+        ),
+        pytest.param(
+            '{"code": 0, "msg": null, "data": {"fields": ["value"], "items": [[{"nested": 1, "nested": 2}]]}}',
+            id="nested-row-object",
+        ),
+    ],
+)
+def test_tushare_rows_outcome_rejects_duplicate_json_keys_at_any_depth(
+    monkeypatch,
+    raw_payload,
+):
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _RawResponse(raw_payload),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.provider_code is None
+    assert outcome.error_code == "provider_error"
+    assert "duplicate JSON object key" in outcome.error_message
+
+
+def test_tushare_rows_outcome_rejects_finite_overflow_outside_data(monkeypatch):
+    raw_payload = (
+        '{"code": 0, "msg": null, "data": '
+        '{"fields": ["value"], "items": [[1]]}, "meta": {"sentinel": 1e400}}'
+    )
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _RawResponse(raw_payload),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_code == "provider_error"
+    assert "non-finite number" in outcome.error_message
+
+
+@pytest.mark.parametrize(
     "value",
     [
         pytest.param(math.nan, id="nan"),
@@ -172,6 +225,26 @@ def test_tushare_rows_outcome_rejects_non_finite_raw_json_constants(
 def test_strict_provider_rows_rejects_non_finite_float_values(value):
     with pytest.raises(ValueError, match="finite"):
         tushare_common._strict_provider_rows({"fields": ["value"], "items": [[value]]})
+
+
+@pytest.mark.parametrize(
+    ("state", "rows"),
+    [
+        pytest.param("failed", ({"value": 1},), id="failed-with-rows"),
+        pytest.param("empty", ({"value": 1},), id="empty-with-rows"),
+        pytest.param("success", (), id="success-without-rows"),
+        pytest.param("unknown", (), id="unknown-state"),
+    ],
+)
+def test_provider_call_outcome_rejects_invalid_state_row_combinations(state, rows):
+    with pytest.raises(ValueError, match="outcome"):
+        tushare_common.ProviderCallOutcome(
+            state=state,
+            rows=rows,
+            provider_code=-1,
+            error_code="provider_error",
+            error_message="failed",
+        )
 
 
 def test_tushare_rows_outcome_keeps_unknown_provider_error_failed(monkeypatch):
@@ -266,6 +339,36 @@ def test_tushare_rows_outcome_does_not_guess_unknown_error_class(monkeypatch):
     ],
 )
 def test_tushare_rows_outcome_classifies_explicit_provider_denials(
+    monkeypatch,
+    message,
+    expected_error_code,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == expected_error_code
+    assert outcome.error_message == message
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_error_code"),
+    [
+        pytest.param("permission denied.", "permission_denied", id="permission-period"),
+        pytest.param("access denied!", "permission_denied", id="access-exclamation"),
+        pytest.param(
+            "rate limit has been exceeded.",
+            "rate_limited",
+            id="rate-limit-period",
+        ),
+    ],
+)
+def test_tushare_rows_outcome_accepts_natural_terminal_punctuation(
     monkeypatch,
     message,
     expected_error_code,
@@ -497,6 +600,55 @@ def test_provider_call_outcome_redacts_credential_styles(message):
     assert "S3CR3T-DO-NOT-LOG" not in outcome.error_message
     assert "[REDACTED]" in outcome.error_message
     assert outcome.provider_code == -2001
+
+
+@pytest.mark.parametrize(
+    ("message", "secrets"),
+    [
+        pytest.param(
+            "provider rejected Cookie: session=DUMMY-COOKIE-SECRET; theme=dark",
+            ("DUMMY-COOKIE-SECRET",),
+            id="cookie-header",
+        ),
+        pytest.param(
+            "provider rejected Set-Cookie: session=DUMMY-SET-COOKIE; Path=/; HttpOnly",
+            ("DUMMY-SET-COOKIE",),
+            id="set-cookie-header",
+        ),
+        pytest.param(
+            "provider URL https://example.test/path?token=DUMMY-URL-SECRET#DUMMY-FRAGMENT-SECRET",
+            ("DUMMY-URL-SECRET", "DUMMY-FRAGMENT-SECRET"),
+            id="url-query-and-fragment",
+        ),
+        pytest.param(
+            "provider rejected credential=DUMMY-CREDENTIAL-SECRET",
+            ("DUMMY-CREDENTIAL-SECRET",),
+            id="credential-field",
+        ),
+        pytest.param(
+            'provider rejected {"client_secret":"DUMMY-CLIENT-SECRET"}',
+            ("DUMMY-CLIENT-SECRET",),
+            id="client-secret-field",
+        ),
+    ],
+)
+def test_provider_call_outcome_redacts_extended_credential_surfaces(
+    message,
+    secrets,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    for secret in secrets:
+        assert secret not in outcome.error_message
+    assert "[REDACTED]" in outcome.error_message
+    if "https://" in message:
+        assert "?[REDACTED]#[REDACTED]" in outcome.error_message
 
 
 def test_tushare_rows_outcome_redacts_provider_error_before_return(monkeypatch):

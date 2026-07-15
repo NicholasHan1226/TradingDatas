@@ -32,6 +32,18 @@ QUICKSYNC_API_URL = "https://api.quicksync.cn"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
 
 _REDACTION_MARKER = "[REDACTED]"
+_URL_PATTERN = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"']+",
+)
+_COOKIE_HEADER_PATTERN = re.compile(
+    r"(?P<prefix>\b(?:set-cookie|cookie)\s*:\s*)(?P<value>[^\r\n]+)",
+    re.IGNORECASE,
+)
+_CREDENTIAL_FIELD_PATTERN = (
+    r"(?:access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|"
+    r"api[_ -]?key|password|passwd|credential(?:s)?|"
+    r"client[_ -]?secret|secret|cookie|set[_ -]?cookie)"
+)
 _AUTHORIZATION_VALUE_PATTERN = re.compile(
     r"""
     (?P<prefix>
@@ -53,7 +65,9 @@ _QUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
     (?P<prefix>
         (?<![A-Za-z0-9_])
         (?P<key_quote>["']?)
-        (?:access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|password|passwd)
+        """
+    + _CREDENTIAL_FIELD_PATTERN
+    + r"""
         (?P=key_quote)\s*[:=]\s*
     )
     (?P<value_quote>["'])
@@ -66,7 +80,9 @@ _UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
     r"""
     (?P<prefix>
         (?<![A-Za-z0-9_])
-        (?:access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|password|passwd)
+        """
+    + _CREDENTIAL_FIELD_PATTERN
+    + r"""
         \s*[:=]\s*
     )
     (?P<credential>
@@ -85,6 +101,25 @@ _BEARER_VALUE_PATTERN = re.compile(
 def _redact_sensitive_text(message: str) -> str:
     """Remove credential values before an error can cross an outcome boundary."""
 
+    def _redact_url(match: re.Match[str]) -> str:
+        raw_url = match.group(0)
+        try:
+            parsed = urllib.parse.urlsplit(raw_url)
+        except ValueError:
+            return _REDACTION_MARKER
+        netloc = parsed.netloc
+        if parsed.username is not None or parsed.password is not None:
+            netloc = f"{_REDACTION_MARKER}@{netloc.rsplit('@', 1)[-1]}"
+        return urllib.parse.urlunsplit(
+            (
+                parsed.scheme,
+                netloc,
+                parsed.path,
+                _REDACTION_MARKER if parsed.query else "",
+                _REDACTION_MARKER if parsed.fragment else "",
+            )
+        )
+
     def _redact_authorization(match: re.Match[str]) -> str:
         scheme = match.group("scheme")
         scheme_prefix = f"{scheme} " if scheme else ""
@@ -100,7 +135,12 @@ def _redact_sensitive_text(message: str) -> str:
     def _redact_unquoted(match: re.Match[str]) -> str:
         return f"{match.group('prefix')}{_REDACTION_MARKER}"
 
-    redacted = _AUTHORIZATION_VALUE_PATTERN.sub(_redact_authorization, message)
+    redacted = _URL_PATTERN.sub(_redact_url, message)
+    redacted = _COOKIE_HEADER_PATTERN.sub(
+        lambda match: f"{match.group('prefix')}{_REDACTION_MARKER}",
+        redacted,
+    )
+    redacted = _AUTHORIZATION_VALUE_PATTERN.sub(_redact_authorization, redacted)
     redacted = _QUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_quoted, redacted)
     redacted = _UNQUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_unquoted, redacted)
     return _BEARER_VALUE_PATTERN.sub(_redact_unquoted, redacted)
@@ -123,6 +163,57 @@ class ProviderCallOutcome:
                 "error_message",
                 _redact_sensitive_text(str(self.error_message)),
             )
+        self.validate_invariants()
+
+    def validate_invariants(self) -> None:
+        if self.state not in ("success", "empty", "failed"):
+            raise ValueError("provider outcome has an invalid state")
+        if self.state == "success" and not self.rows:
+            raise ValueError("provider outcome success requires non-empty rows")
+        if self.state in ("empty", "failed") and self.rows:
+            raise ValueError(f"provider outcome {self.state} must not contain rows")
+
+
+_SAFE_PROVIDER_CODE = re.compile(r"-?(?:0|[1-9][0-9]{0,15})")
+_SAFE_ERROR_CODES = frozenset(
+    (None, "provider_error", "rate_limited", "permission_denied")
+)
+
+
+def provider_outcome_log_fields(outcome: ProviderCallOutcome) -> dict[str, Any]:
+    """Return diagnostic outcome fields with no untrusted log arguments."""
+
+    raw_provider_code = outcome.provider_code
+    if raw_provider_code is None or type(raw_provider_code) is int:
+        provider_code: int | str | None = raw_provider_code
+    elif isinstance(raw_provider_code, str) and _SAFE_PROVIDER_CODE.fullmatch(
+        raw_provider_code
+    ):
+        provider_code = raw_provider_code
+    else:
+        provider_code = "<untrusted-provider-code>"
+
+    error_code = (
+        outcome.error_code
+        if outcome.error_code in _SAFE_ERROR_CODES
+        else "<untrusted-error-code>"
+    )
+    state = (
+        outcome.state
+        if outcome.state in ("success", "empty", "failed")
+        else "<invalid-outcome-state>"
+    )
+    error_message = (
+        _redact_sensitive_text(str(outcome.error_message))
+        if outcome.error_message is not None
+        else None
+    )
+    return {
+        "state": state,
+        "provider_code": provider_code,
+        "error_code": error_code,
+        "error_message": error_message,
+    }
 
 
 _CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001"))
@@ -138,7 +229,7 @@ _INTERNAL_ERROR_PATTERNS = (
     re.compile(r"(?:服务|配置|分类器|缓存|检测).{0,20}(?:异常|故障|失败|不可用)"),
 )
 _ENGLISH_RETRY_SUFFIX = (
-    r"(?:[,.!:;]\s*(?:please\s+(?:try|retry)\s+again\s+later|retry\s+later))?"
+    r"(?:[.!?]|[,.!:;]\s*(?:please\s+(?:try|retry)\s+again\s+later|retry\s+later))?"
 )
 _CHINESE_RETRY_SUFFIX = r"(?:[，,]\s*请稍后(?:再试|重试))?[。.!]?"
 _RATE_LIMIT_PATTERNS = (
@@ -221,8 +312,13 @@ def _reject_non_finite_json_constant(constant: str) -> None:
     raise ValueError(f"Tushare response contains non-finite JSON constant: {constant}")
 
 
-def _loads_provider_json(payload: str) -> Any:
-    return json.loads(payload, parse_constant=_reject_non_finite_json_constant)
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Tushare response contains duplicate JSON object key")
+        result[key] = value
+    return result
 
 
 def _contains_non_finite_float(value: Any) -> bool:
@@ -236,6 +332,17 @@ def _contains_non_finite_float(value: Any) -> bool:
     if isinstance(value, (list, tuple)):
         return any(_contains_non_finite_float(item) for item in value)
     return False
+
+
+def _loads_provider_json(payload: str) -> Any:
+    body = json.loads(
+        payload,
+        parse_constant=_reject_non_finite_json_constant,
+        object_pairs_hook=_reject_duplicate_json_keys,
+    )
+    if _contains_non_finite_float(body):
+        raise ValueError("Tushare response contains a non-finite number")
+    return body
 
 
 def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
