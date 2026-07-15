@@ -1546,3 +1546,212 @@ def test_provider_boundary_allows_explicit_budget_for_large_safe_response(
     assert echoed.rows == ()
     assert echoed.error_message == "Tushare response validation failed"
     assert token not in repr(echoed)
+
+
+_CLASSIFIABLE_DIAGNOSTIC = "too many requests"
+_PERCENT_CLASSIFIER_TOKEN = urllib.parse.quote(
+    _CLASSIFIABLE_DIAGNOSTIC,
+    safe="",
+)
+_UNICODE_CLASSIFIER_TOKEN = "".join(
+    f"\\u{ord(character):04x}" for character in _CLASSIFIABLE_DIAGNOSTIC
+)
+_REPR_CLASSIFIER_TOKEN = repr(_CLASSIFIABLE_DIAGNOSTIC)
+_MULTI_PERCENT_CLASSIFIER_TOKEN = _CLASSIFIABLE_DIAGNOSTIC
+for _ in range(4):
+    _MULTI_PERCENT_CLASSIFIER_TOKEN = urllib.parse.quote(
+        _MULTI_PERCENT_CLASSIFIER_TOKEN,
+        safe="",
+    )
+_BUDGET_CLASSIFIER_TOKEN = "SYNTH/BUDGET?VALUE=5"
+_BUDGET_EXHAUSTING_MESSAGE = _BUDGET_CLASSIFIER_TOKEN
+for _ in range(5):
+    _BUDGET_EXHAUSTING_MESSAGE = urllib.parse.quote(
+        _BUDGET_EXHAUSTING_MESSAGE,
+        safe="",
+    )
+
+
+@pytest.mark.parametrize(
+    ("token", "message", "scan_budget"),
+    [
+        pytest.param(
+            "7314928",
+            "每分钟最多访问7314928次",
+            None,
+            id="long-numeric",
+        ),
+        pytest.param(
+            "7",
+            "每分钟最多访问7次",
+            None,
+            id="short-numeric",
+        ),
+        pytest.param(
+            _PERCENT_CLASSIFIER_TOKEN,
+            _CLASSIFIABLE_DIAGNOSTIC,
+            None,
+            id="percent-equivalent",
+        ),
+        pytest.param(
+            _UNICODE_CLASSIFIER_TOKEN,
+            _CLASSIFIABLE_DIAGNOSTIC,
+            None,
+            id="unicode-equivalent",
+        ),
+        pytest.param(
+            _REPR_CLASSIFIER_TOKEN,
+            _CLASSIFIABLE_DIAGNOSTIC,
+            None,
+            id="repr-equivalent",
+        ),
+        pytest.param(
+            _MULTI_PERCENT_CLASSIFIER_TOKEN,
+            _CLASSIFIABLE_DIAGNOSTIC,
+            None,
+            id="multi-percent-equivalent",
+        ),
+        pytest.param(
+            "SYNTH-NESTED-DIAGNOSTIC",
+            {"detail": [{"echo": "SYNTH-NESTED-DIAGNOSTIC"}]},
+            None,
+            id="nested-diagnostic",
+        ),
+        pytest.param(
+            "SYNTH-UNRELATED-TOKEN",
+            "Authorization -> SYNTH-OPAQUE-CREDENTIAL",
+            None,
+            id="credential-indicator",
+        ),
+        pytest.param(
+            _BUDGET_CLASSIFIER_TOKEN,
+            _BUDGET_EXHAUSTING_MESSAGE,
+            tushare_common.SensitiveScanBudget(max_decode_rounds=2),
+            id="decode-budget-exhausted",
+        ),
+    ],
+)
+def test_untrusted_provider_diagnostic_never_reaches_classifier(
+    monkeypatch,
+    token,
+    message,
+    scan_budget,
+):
+    classifier_inputs = []
+
+    def record_classifier(provider_code, diagnostic):
+        classifier_inputs.append((provider_code, diagnostic))
+        return "rate_limited"
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_error_code",
+        record_classifier,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        token,
+        scan_budget=scan_budget,
+    )
+    log_fields = tushare_common.provider_outcome_log_fields(
+        outcome,
+        sensitive_values=(token,),
+        scan_budget=scan_budget,
+    )
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert classifier_inputs == []
+    assert outcome.state == "failed"
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert log_fields["error_code"] == "provider_error"
+    assert log_fields["error_message"] == outcome.error_message
+    assert token not in repr(receipt)
+    assert str(message) not in repr(receipt)
+
+
+def test_sensitive_provider_code_never_enables_specialized_classification(
+    monkeypatch,
+):
+    token = "-2001"
+    classifier_inputs = []
+
+    def record_classifier(provider_code, diagnostic):
+        classifier_inputs.append((provider_code, diagnostic))
+        return "rate_limited"
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_error_code",
+        record_classifier,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": _CLASSIFIABLE_DIAGNOSTIC, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    log_fields = tushare_common.provider_outcome_log_fields(
+        outcome,
+        sensitive_values=(token,),
+    )
+
+    assert classifier_inputs == []
+    assert outcome.provider_code == "<untrusted-provider-code>"
+    assert outcome.error_code == "provider_error"
+    assert token not in repr({"outcome": outcome, "log_fields": log_fields})
+
+
+@pytest.mark.parametrize(
+    ("token", "message", "derived_error_code"),
+    [
+        ("7314928", "每分钟最多访问7314928次", "rate_limited"),
+        (
+            "permission denied",
+            "permission denied",
+            "permission_denied",
+        ),
+    ],
+)
+def test_outcome_defense_downgrades_code_derived_from_untrusted_diagnostic(
+    token,
+    message,
+    derived_error_code,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code=derived_error_code,
+        error_message=message,
+        sensitive_values=(token,),
+    )
+
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert token not in repr(outcome)
+
+
+def test_log_defense_downgrades_code_derived_from_untrusted_diagnostic():
+    token = "7314928"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="rate_limited",
+        error_message=f"每分钟最多访问{token}次",
+    )
+
+    log_fields = tushare_common.provider_outcome_log_fields(
+        outcome,
+        sensitive_values=(token,),
+    )
+
+    assert log_fields["error_code"] == "provider_error"
+    assert log_fields["error_message"] == "provider diagnostic [REDACTED]"
+    assert token not in repr(log_fields)

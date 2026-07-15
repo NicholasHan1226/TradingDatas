@@ -419,6 +419,36 @@ def _redacted_diagnostic_summary() -> str:
     return f"provider diagnostic {_REDACTION_MARKER}"
 
 
+def _guard_provider_diagnostic(
+    message: Any,
+    *,
+    sensitive_values: Any = (),
+    scan_budget: SensitiveScanBudget | None = None,
+) -> tuple[str, bool]:
+    """Return safe text and whether it may influence derived classifications."""
+
+    if _contains_sensitive_value(
+        message,
+        sensitive_values,
+        scan_budget=scan_budget,
+    ):
+        return _redacted_diagnostic_summary(), False
+    if not isinstance(message, str):
+        try:
+            message = str(message)
+        except Exception:
+            return _redacted_diagnostic_summary(), False
+        if _contains_sensitive_value(
+            message,
+            sensitive_values,
+            scan_budget=scan_budget,
+        ):
+            return _redacted_diagnostic_summary(), False
+    if _contains_credential_indicator(message, scan_budget=scan_budget):
+        return _redacted_diagnostic_summary(), False
+    return message, True
+
+
 def _redact_sensitive_text(
     message: Any,
     *,
@@ -432,20 +462,12 @@ def _redact_sensitive_text(
     the whole value is replaced with a constant summary.
     """
 
-    if not isinstance(message, str):
-        try:
-            message = str(message)
-        except Exception:
-            return _redacted_diagnostic_summary()
-    if _contains_sensitive_value(
+    safe_message, _ = _guard_provider_diagnostic(
         message,
-        sensitive_values,
+        sensitive_values=sensitive_values,
         scan_budget=scan_budget,
-    ):
-        return _redacted_diagnostic_summary()
-    if _contains_credential_indicator(message, scan_budget=scan_budget):
-        return _redacted_diagnostic_summary()
-    return message
+    )
+    return safe_message
 
 
 @dataclass(frozen=True)
@@ -482,34 +504,32 @@ class ProviderCallOutcome:
             raise ValueError(
                 "provider outcome contains sensitive or unscannable values"
             )
-        object.__setattr__(
-            self,
-            "provider_code",
-            _sanitize_provider_code(
-                self.provider_code,
-                guarded_values,
-                scan_budget=scan_budget,
-            ),
+        provider_code = _sanitize_provider_code(
+            self.provider_code,
+            guarded_values,
+            scan_budget=scan_budget,
         )
-        object.__setattr__(
-            self,
-            "error_code",
-            _sanitize_error_code(
-                self.error_code,
-                guarded_values,
-                scan_budget=scan_budget,
-            ),
+        error_code = _sanitize_error_code(
+            self.error_code,
+            guarded_values,
+            scan_budget=scan_budget,
         )
+        error_message = None
+        diagnostic_trusted = True
         if self.error_message is not None:
-            object.__setattr__(
-                self,
-                "error_message",
-                _redact_sensitive_text(
-                    self.error_message,
-                    sensitive_values=guarded_values,
-                    scan_budget=scan_budget,
-                ),
+            error_message, diagnostic_trusted = _guard_provider_diagnostic(
+                self.error_message,
+                sensitive_values=guarded_values,
+                scan_budget=scan_budget,
             )
+        if self.state == "failed" and (
+            not diagnostic_trusted
+            or provider_code == _UNTRUSTED_PROVIDER_CODE
+        ):
+            error_code = "provider_error"
+        object.__setattr__(self, "provider_code", provider_code)
+        object.__setattr__(self, "error_code", error_code)
+        object.__setattr__(self, "error_message", error_message)
         self.validate_invariants()
 
     def validate_invariants(self) -> None:
@@ -602,15 +622,20 @@ def provider_outcome_log_fields(
         if outcome.state in ("success", "empty", "failed")
         else "<invalid-outcome-state>"
     )
-    error_message = (
-        _redact_sensitive_text(
+    if outcome.error_message is not None:
+        error_message, diagnostic_trusted = _guard_provider_diagnostic(
             outcome.error_message,
             sensitive_values=sensitive_values,
             scan_budget=scan_budget,
         )
-        if outcome.error_message is not None
-        else None
-    )
+    else:
+        error_message = None
+        diagnostic_trusted = True
+    if outcome.state == "failed" and (
+        not diagnostic_trusted
+        or provider_code == _UNTRUSTED_PROVIDER_CODE
+    ):
+        error_code = "provider_error"
     return {
         "state": state,
         "provider_code": provider_code,
@@ -1037,21 +1062,30 @@ def tushare_rows_outcome(
             else None
         )
         if provider_code not in (0, "0"):
-            message = str(body.get("msg") or "Tushare request failed")
-            classified_error_code = _provider_error_code(provider_code, message)
-            safe_message = _redact_sensitive_text(
-                message,
+            raw_message = body.get("msg") or "Tushare request failed"
+            safe_message, diagnostic_trusted = _guard_provider_diagnostic(
+                raw_message,
                 sensitive_values=sensitive_values,
                 scan_budget=scan_budget,
             )
+            safe_provider_code = _sanitize_provider_code(
+                provider_code,
+                sensitive_values,
+                scan_budget=scan_budget,
+            )
+            classified_error_code = "provider_error"
+            if (
+                diagnostic_trusted
+                and safe_provider_code != _UNTRUSTED_PROVIDER_CODE
+            ):
+                classified_error_code = _provider_error_code(
+                    safe_provider_code,
+                    safe_message,
+                )
             return ProviderCallOutcome(
                 state="failed",
                 rows=(),
-                provider_code=_sanitize_provider_code(
-                    provider_code,
-                    sensitive_values,
-                    scan_budget=scan_budget,
-                ),
+                provider_code=safe_provider_code,
                 error_code=_sanitize_error_code(
                     classified_error_code,
                     sensitive_values,
