@@ -23,8 +23,8 @@ ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime_paths import marketdata_sqlite_path
-from storage.read_model_store import ingest_rows_to_sqlite
+from runtime_paths import marketdata_sqlite_path  # noqa: E402
+from storage.read_model_store import ingest_rows_to_sqlite  # noqa: E402
 
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
@@ -254,6 +254,7 @@ def run_collection(
             "sec_edgar_companyfacts" if mode == "companyfacts" else "sec_edgar_filings",
             all_rows,
             source_name="sec_edgar_companyfacts" if mode == "companyfacts" else "sec_edgar_filings",
+            provider_discriminator="sec_edgar_companyfacts" if mode == "companyfacts" else SOURCE_ID,
         )
     return {
         "source_id": SOURCE_ID,

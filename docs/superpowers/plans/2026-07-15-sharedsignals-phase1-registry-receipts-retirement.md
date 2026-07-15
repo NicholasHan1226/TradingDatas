@@ -384,9 +384,16 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 - Modify: `storage/read_model_store.py`
 - Modify: `api_server.py`
 - Modify: `tools/interface_runtime_ledger.py`
+- Modify: `collectors/tushare/sync_daily.py`
+- Modify: `tools/collect_cn_futures_5min.py`
+- Modify: `collectors/events/sec_edgar_filings.py`
 - Modify: `tests/test_dataset_registry.py`
 - Modify: `tests/test_capability_coverage.py`
 - Modify: `tests/test_interface_runtime_ledger.py`
+- Modify: `tests/test_read_model_store.py`
+- Modify: `tests/test_tushare_sync_daily.py`
+- Modify: `tests/test_cn_futures_5min_collection.py`
+- Modify: `tests/test_sec_edgar_filings.py`
 
 **Interfaces:**
 
@@ -416,7 +423,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
 
 - [x] **Step 4: Derive compatibility constants from the registry**
 
-  Replace hand-maintained lists in `storage/read_model_store.py`, `api_server.py`, and `tools/interface_runtime_ledger.py` with registry-derived immutable values while preserving public names and existing behavior.
+  Replace hand-maintained lists in `storage/read_model_store.py`, `api_server.py`, and `tools/interface_runtime_ledger.py` with registry-derived immutable values while preserving public names and existing behavior. At the write boundary, derive a unique Tushare binding from the registry or require an explicit trusted `provider_discriminator`; multi-binding and non-Tushare callers must pass that context, unknown or missing context fails closed, and row payload `provider` values are retained only as raw provenance rather than identity.
 
 - [x] **Step 5: Verify parity and imports**
 
@@ -426,18 +433,26 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
     tests/test_capability_coverage.py \
     tests/test_interface_runtime_ledger.py \
     tests/test_read_model_store.py \
-    tests/test_api_server_edge.py
+    tests/test_api_server_edge.py \
+    tests/test_tushare_sync_daily.py \
+    tests/test_cn_futures_5min_collection.py \
+    tests/test_sec_edgar_filings.py
   ./.venv/bin/ruff check \
     dataset_registry.py storage/read_model_store.py api_server.py \
+    collectors/tushare/sync_daily.py tools/collect_cn_futures_5min.py \
+    collectors/events/sec_edgar_filings.py \
     tools/interface_runtime_ledger.py tests/test_dataset_registry.py \
-    tests/test_capability_coverage.py tests/test_interface_runtime_ledger.py
+    tests/test_capability_coverage.py tests/test_interface_runtime_ledger.py \
+    tests/test_read_model_store.py tests/test_tushare_sync_daily.py \
+    tests/test_cn_futures_5min_collection.py tests/test_sec_edgar_filings.py
   ./.venv/bin/python3 -m compileall -q \
     dataset_registry.py storage/read_model_store.py api_server.py \
-    tools/interface_runtime_ledger.py
+    tools/interface_runtime_ledger.py collectors/tushare/sync_daily.py \
+    tools/collect_cn_futures_5min.py collectors/events/sec_edgar_filings.py
   git diff --check
   ```
 
-- [x] **Step 6: Commit the compatibility import**
+- [x] **Step 6: Commit the initial compatibility import**
 
   ```bash
   git add -- \
@@ -451,6 +466,28 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
     tests/test_interface_runtime_ledger.py
   git diff --cached --name-status
   git commit -m "refactor: derive Tushare compatibility from dataset registry"
+  ```
+
+  Commit `56dea7f` remains in history but failed fresh review because a row payload could select another registered provider binding. It is not final acceptance evidence and must not be amended or rebased away.
+
+- [x] **Step 7: Bind provider identity to trusted caller context**
+
+  Require an explicit registry-validated `provider_discriminator` for multi-binding datasets and explicit context for non-Tushare sources. Propagate it from Tushare sync, both CNFutures provider branches, and both SEC EDGAR modes; prove row-level provider spoofing cannot change stored identity.
+
+  ```bash
+  git add -- \
+    storage/read_model_store.py \
+    collectors/tushare/sync_daily.py \
+    tools/collect_cn_futures_5min.py \
+    collectors/events/sec_edgar_filings.py \
+    tests/test_capability_coverage.py \
+    tests/test_read_model_store.py \
+    tests/test_tushare_sync_daily.py \
+    tests/test_cn_futures_5min_collection.py \
+    tests/test_sec_edgar_filings.py \
+    docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md
+  git diff --cached --name-status
+  git commit -m "fix: bind read-model providers from trusted context"
   ```
 
 ---

@@ -45,6 +45,7 @@ from storage.read_model_store import (  # noqa: E402
     API_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
     ingest_rows_to_sqlite,
+    tushare_provider_discriminator,
 )
 from tools.interface_runtime_ledger import record_tushare_stats  # noqa: E402
 
@@ -451,7 +452,14 @@ def sync_tier(
             sqlite_errors.append(error)
             return {"rows": 0, "status": "unmapped", "error": error}
         try:
-            written = ingest_rows_to_sqlite(sqlite_db_path, table, api_name, rows, source_name=source_name)
+            written = ingest_rows_to_sqlite(
+                sqlite_db_path,
+                table,
+                api_name,
+                rows,
+                source_name=source_name,
+                provider_discriminator=tushare_provider_discriminator(api_name),
+            )
             if written == 0:
                 if table == "market_events":
                     logger.info(

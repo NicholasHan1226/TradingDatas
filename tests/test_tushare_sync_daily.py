@@ -382,6 +382,51 @@ def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path
     assert stats["_tier_summary"]["sqlite_failure_count"] == 1
 
 
+def test_sync_tier_passes_registry_provider_discriminator_to_sqlite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class FakeCollector:
+        last_collect_failed = False
+
+        def collect(self, api_name, params, fields=None):
+            return [
+                {
+                    "ts_code": "000001.SZ",
+                    "trade_date": "20260708",
+                    "provider": "row-spoof",
+                }
+            ]
+
+    provider_contexts: list[str | None] = []
+
+    def fake_ingest(_path, _table, _api_name, rows, **kwargs):
+        provider_contexts.append(kwargs.get("provider_discriminator"))
+        return len(rows)
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", fake_ingest)
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [
+            {
+                "api_name": "daily",
+                "per_stock": False,
+                "params": {"trade_date": "{trade_date}"},
+            }
+        ],
+        stock_codes=[],
+        trade_date="20260708",
+        start_date="20260708",
+        end_date="20260708",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["sqlite_status"] == "ok"
+    assert provider_contexts == ["tushare_daily"]
+
+
 def test_sync_tier_accepts_idempotent_market_event_no_change(
     tmp_path: Path,
     monkeypatch,

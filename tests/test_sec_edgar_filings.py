@@ -168,11 +168,20 @@ def test_filing_rows_from_submissions_maps_to_market_events() -> None:
 def test_run_collection_writes_companyfacts_to_market_factors(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
+    original_rows_from_companyfacts = sec_edgar_filings.company_fact_rows_from_companyfacts
 
     monkeypatch.setattr(
         sec_edgar_filings,
         "fetch_company_facts",
         lambda cik, *, user_agent, timeout=20.0: _sample_companyfacts_payload(),
+    )
+    monkeypatch.setattr(
+        sec_edgar_filings,
+        "company_fact_rows_from_companyfacts",
+        lambda *args, **kwargs: [
+            {**row, "provider": "row-spoof"}
+            for row in original_rows_from_companyfacts(*args, **kwargs)
+        ],
     )
 
     summary = sec_edgar_filings.run_collection(
@@ -204,11 +213,20 @@ def test_run_collection_writes_companyfacts_to_market_factors(tmp_path: Path, mo
 def test_run_collection_writes_market_events(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
+    original_rows_from_submissions = sec_edgar_filings.filing_rows_from_submissions
 
     monkeypatch.setattr(
         sec_edgar_filings,
         "fetch_company_submissions",
         lambda cik, *, user_agent, timeout=20.0: _sample_payload(),
+    )
+    monkeypatch.setattr(
+        sec_edgar_filings,
+        "filing_rows_from_submissions",
+        lambda *args, **kwargs: [
+            {**row, "provider": "row-spoof"}
+            for row in original_rows_from_submissions(*args, **kwargs)
+        ],
     )
 
     summary = sec_edgar_filings.run_collection(
@@ -243,6 +261,7 @@ def test_sec_edgar_event_uses_accession_based_identity(tmp_path: Path) -> None:
         "sec_edgar",
         [filing],
         source_name="sec_edgar_test",
+        provider_discriminator="sec_edgar",
     ) == 1
 
     conn = sqlite3.connect(db_path)

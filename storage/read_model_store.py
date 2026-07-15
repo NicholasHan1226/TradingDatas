@@ -235,21 +235,44 @@ def _factor_hash(api_name, symbol, event_time, factor_name, raw_json):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _canonical_provider_value(row, api_name):
-    existing = str(row.get("provider") or "").strip()
-    if not api_name or api_name not in TUSHARE_ALLOWED_API_NAMES:
-        return existing or (f"tushare_{api_name}" if api_name else "")
-
+def tushare_provider_discriminator(api_name: str) -> str:
     dataset = _DATASET_REGISTRY.resolve(f"tushare.{api_name}")
-    registered_values = {
-        binding.read_discriminator_value for binding in dataset.provider_bindings
-    }
-    if existing in registered_values:
-        return existing
     return _DATASET_REGISTRY.provider_binding(
         dataset.dataset_id,
         "tushare",
     ).read_discriminator_value
+
+
+def _resolve_provider_discriminator(
+    api_name: str,
+    provider_discriminator: str | None,
+) -> str:
+    api_name = str(api_name or "").strip()
+    requested = str(provider_discriminator or "").strip()
+    if api_name not in TUSHARE_ALLOWED_API_NAMES:
+        if not requested:
+            raise ValueError(
+                "provider_discriminator is required for unregistered "
+                f"api_name={api_name!r}"
+            )
+        return requested
+
+    dataset = _DATASET_REGISTRY.resolve(f"tushare.{api_name}")
+    registered_values = tuple(
+        binding.read_discriminator_value for binding in dataset.provider_bindings
+    )
+    if not requested:
+        if len(registered_values) != 1:
+            raise ValueError(
+                "provider_discriminator is required for multi-binding "
+                f"api_name={api_name!r}"
+            )
+        return registered_values[0]
+    if requested not in registered_values:
+        raise ValueError(
+            f"unknown provider_discriminator {requested!r} for api_name={api_name!r}"
+        )
+    return requested
 
 
 def _fund_portfolio_hash(
@@ -262,8 +285,20 @@ def _fund_portfolio_hash(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _factor_rows(row, api_name, source_ref):
-    row = _canonical_row("market_factors", dict(row), api_name, source_ref)
+def _factor_rows(
+    row,
+    api_name,
+    source_ref,
+    *,
+    provider_discriminator: str,
+):
+    row = _canonical_row(
+        "market_factors",
+        dict(row),
+        api_name,
+        source_ref,
+        provider_discriminator=provider_discriminator,
+    )
     raw_json = row.get("raw_json") or json.dumps(
         row,
         ensure_ascii=False,
@@ -450,14 +485,20 @@ def _trade_date_from_event_time(event_time):
     return digits[:8] if len(digits) >= 8 else ""
 
 
-def _canonical_row(table, row, api_name, source_ref):
-    canonical_provider = _canonical_provider_value(row, api_name)
-    if (
-        row.get("provider")
-        and canonical_provider != str(row.get("provider") or "").strip()
-        and not row.get("raw_json")
-    ):
+def _canonical_row(
+    table,
+    row,
+    api_name,
+    source_ref,
+    *,
+    provider_discriminator: str,
+):
+    provider_discriminator = str(provider_discriminator or "").strip()
+    if not provider_discriminator:
+        raise ValueError("provider_discriminator is required for canonical rows")
+    if row.get("provider") and not row.get("raw_json"):
         row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    row["provider"] = provider_discriminator
     original_symbol = row.get("symbol")
     symbol = (
         row.get("ts_code")
@@ -555,7 +596,7 @@ def _canonical_row(table, row, api_name, source_ref):
             row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
 
     if table == "market_events":
-        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        provider = provider_discriminator
         event_type = row.get("event_type") or api_name or "event"
         event_time = row.get("event_time") or _event_time_from_row(row)
         trade_date = row.get("trade_date") or _trade_date_from_event_time(event_time)
@@ -575,7 +616,7 @@ def _canonical_row(table, row, api_name, source_ref):
             row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
 
     if table == "market_relationships":
-        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        provider = provider_discriminator
         parent_symbol = _first_present(
             row,
             "parent_symbol",
@@ -640,7 +681,7 @@ def _canonical_row(table, row, api_name, source_ref):
         )
 
     if table == "market_fund_portfolio":
-        provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+        provider = provider_discriminator
         fund_symbol = _first_present(row, "ts_code", "fund_code", "symbol")
         holding_symbol = (
             _first_present(
@@ -676,8 +717,7 @@ def _canonical_row(table, row, api_name, source_ref):
             raw_json,
         )
 
-    if canonical_provider:
-        row["provider"] = canonical_provider
+    row["provider"] = provider_discriminator
     if not row.get("collected_at"):
         row["collected_at"] = _source_collected_at(source_ref)
     if not row.get("source_file"):
@@ -896,6 +936,7 @@ def _ingest_rows_to_sqlite_once(
     rows,
     *,
     source_name: str,
+    provider_discriminator: str,
     max_transaction_rows: int | None = None,
 ):
     """Ingest provider rows directly into an existing SQLite read-model table."""
@@ -951,9 +992,22 @@ def _ingest_rows_to_sqlite_once(
 
         for row_number, row in enumerate(clean_rows, start=1):
             canonical_rows = (
-                _factor_rows(row, str(api_name), source_path)
+                _factor_rows(
+                    row,
+                    str(api_name),
+                    source_path,
+                    provider_discriminator=provider_discriminator,
+                )
                 if table == "market_factors"
-                else [_canonical_row(table, row, str(api_name), source_path)]
+                else [
+                    _canonical_row(
+                        table,
+                        row,
+                        str(api_name),
+                        source_path,
+                        provider_discriminator=provider_discriminator,
+                    )
+                ]
             )
             for canonical_row in canonical_rows:
                 if table == "market_bars_intraday" and api_name == "rt_fut_min":
@@ -1009,8 +1063,13 @@ def _ingest_rows_to_sqlite_unlocked(
     rows,
     *,
     source_name: str,
+    provider_discriminator: str | None = None,
     max_transaction_rows: int | None = None,
 ):
+    trusted_provider = _resolve_provider_discriminator(
+        str(api_name),
+        provider_discriminator,
+    )
     last_error: Exception | None = None
     for attempt in range(1, DB_BUSY_RETRIES + 1):
         try:
@@ -1020,6 +1079,7 @@ def _ingest_rows_to_sqlite_unlocked(
                 api_name,
                 rows,
                 source_name=source_name,
+                provider_discriminator=trusted_provider,
                 max_transaction_rows=max_transaction_rows,
             )
         except sqlite3.OperationalError as exc:
@@ -1038,10 +1098,15 @@ def ingest_rows_to_sqlite(
     rows,
     *,
     source_name: str | None = None,
+    provider_discriminator: str | None = None,
     max_transaction_rows: int | None = None,
 ):
     db_path_obj = Path(db_path)
     source = source_name or f"{api_name}_direct"
+    trusted_provider = _resolve_provider_discriminator(
+        str(api_name),
+        provider_discriminator,
+    )
     with _read_model_lock(db_path_obj):
         rows_written = _ingest_rows_to_sqlite_unlocked(
             db_path_obj,
@@ -1049,6 +1114,7 @@ def ingest_rows_to_sqlite(
             api_name,
             rows,
             source_name=source,
+            provider_discriminator=trusted_provider,
             max_transaction_rows=max_transaction_rows,
         )
         if API_TO_TABLE_MAP.get(api_name) == table:
@@ -1059,6 +1125,7 @@ def ingest_rows_to_sqlite(
                     api_name,
                     rows,
                     source_name=source,
+                    provider_discriminator=trusted_provider,
                     max_transaction_rows=max_transaction_rows,
                 )
         return rows_written

@@ -368,6 +368,7 @@ def run_collection(
         API_NAME,
         rows,
         source_name=f"{API_NAME}_{trade_date}_{freq.lower()}",
+        provider_discriminator=source,
     )
     if summary["sqlite_rows"] <= 0:
         summary["sqlite_status"] = "failed"

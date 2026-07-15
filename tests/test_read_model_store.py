@@ -150,6 +150,7 @@ def test_rt_fut_min_ingests_quote_and_expiry_fields(tmp_path: Path) -> None:
             }
         ],
         source_name="rt_fut_min_rows_test",
+        provider_discriminator="tushare_rt_fut_min",
     )
 
     assert rows == 1
@@ -169,6 +170,41 @@ def test_rt_fut_min_ingests_quote_and_expiry_fields(tmp_path: Path) -> None:
         "20260915",
         "20260930",
     )
+
+
+def test_rt_fut_min_missing_or_unknown_provider_context_fails_closed(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    rows = [
+        {
+            "code": "RB2609.SHF",
+            "time": "2026-07-03 14:55:00",
+            "provider": "sina_futures_minute",
+            "close": 3520,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="provider_discriminator.*required"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_bars_intraday",
+            "rt_fut_min",
+            rows,
+            source_name="ambiguous_rt_fut_min_rows_test",
+        )
+    with pytest.raises(ValueError, match="unknown provider_discriminator"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_bars_intraday",
+            "rt_fut_min",
+            rows,
+            source_name="unknown_rt_fut_min_rows_test",
+            provider_discriminator="row-spoof",
+        )
+
+    assert _count_rows(db_path, "market_bars_intraday") == 0
 
 
 def test_factor_rows_expand_numeric_metrics(tmp_path: Path) -> None:

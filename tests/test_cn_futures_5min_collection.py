@@ -8,6 +8,8 @@ import pytest
 
 from tools.collect_cn_futures_5min import (
     DEFAULT_PRODUCTS,
+    SINA_PROVIDER,
+    TUSHARE_PROVIDER,
     _normalize_sina_bar_time,
     _to_china_time,
     build_params,
@@ -17,6 +19,7 @@ from tools.collect_cn_futures_5min import (
     normalize_product,
     run_collection,
 )
+from storage.schema import SCHEMA_SQL
 
 
 def _create_universe_db(path: Path) -> None:
@@ -58,6 +61,15 @@ def _create_universe_db(path: Path) -> None:
                 ("Futures", "AU2609.SHF", "20260703"),
             ],
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _create_read_model_db(path: Path) -> None:
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.executescript(SCHEMA_SQL)
         conn.commit()
     finally:
         conn.close()
@@ -226,6 +238,92 @@ def test_run_collection_returns_empty_without_fallback_for_empty_tushare_rows(
     assert summary["source"] == "tushare_rt_fut_min"
     assert summary["rows"] == 0
     assert "fallback_from" not in summary
+
+
+def test_tushare_collection_ignores_row_claiming_sina_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeTushareCollector:
+        def _rate_limit(self, _api_name: str) -> None:
+            return None
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_read_model_db(db_path)
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.TushareCollector",
+        FakeTushareCollector,
+    )
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.collect_rt_fut_min_rows",
+        lambda _params, *, fields="": [
+            {
+                "code": "RB2609.SHF",
+                "time": "2026-07-03 09:05:00",
+                "provider": SINA_PROVIDER,
+                "close": 3505,
+                "vol": 120,
+            }
+        ],
+    )
+
+    summary = run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        provider=TUSHARE_PROVIDER,
+        dry_run=False,
+        sqlite_db_path=db_path,
+    )
+
+    assert summary["state"] == "ok"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        stored_provider = conn.execute(
+            "SELECT provider FROM market_bars_intraday"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert stored_provider == TUSHARE_PROVIDER
+
+
+def test_sina_collection_ignores_row_claiming_tushare_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_read_model_db(db_path)
+    monkeypatch.setattr(
+        "tools.collect_cn_futures_5min.collect_sina_futures_minute_rows",
+        lambda symbols, *, period, max_rows_per_symbol, reference_time: [
+            {
+                "code": symbols[0],
+                "time": "2026-07-03 09:10:00",
+                "provider": TUSHARE_PROVIDER,
+                "close": 3510,
+                "vol": 125,
+            }
+        ],
+    )
+
+    summary = run_collection(
+        trade_date="20260703",
+        symbols=["RB2609.SHF"],
+        freq="5MIN",
+        provider=SINA_PROVIDER,
+        dry_run=False,
+        sqlite_db_path=db_path,
+    )
+
+    assert summary["state"] == "ok"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        stored_provider = conn.execute(
+            "SELECT provider FROM market_bars_intraday"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert stored_provider == SINA_PROVIDER
 
 
 def test_run_collection_fails_when_non_empty_rows_do_not_reach_sqlite(
@@ -402,6 +500,7 @@ def test_collector_skips_invalid_ingests_corrected(
     written = ingest_rows_to_sqlite(
         db_path, "market_bars_intraday", "rt_fut_min", rows,
         source_name="rt_fut_min_normalization_test",
+        provider_discriminator=SINA_PROVIDER,
     )
     assert written == 2
 

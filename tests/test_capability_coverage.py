@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import load_config
 from storage.read_model_store import API_TO_TABLE_MAP
@@ -193,6 +195,7 @@ def test_tushare_rows_use_canonical_provider_and_preserve_upstream_provider(
         },
         "daily_basic",
         str(tmp_path / "provider-row.json"),
+        provider_discriminator="tushare_daily_basic",
     )
 
     assert rows
@@ -200,12 +203,16 @@ def test_tushare_rows_use_canonical_provider_and_preserve_upstream_provider(
     assert json.loads(rows[0]["raw_json"])["provider"] == "upstream-row-label"
 
 
-def test_registered_alternate_and_non_tushare_providers_are_not_relabelled(
+def test_trusted_context_overrides_spoofed_row_provider_for_all_source_types(
     tmp_path: Path,
 ) -> None:
-    from storage.read_model_store import _canonical_row, _factor_rows
+    from storage.read_model_store import (
+        _canonical_row,
+        _factor_rows,
+        _resolve_provider_discriminator,
+    )
 
-    sina = _canonical_row(
+    tushare = _canonical_row(
         "market_bars_intraday",
         {
             "ts_code": "RB2609.SHF",
@@ -213,21 +220,44 @@ def test_registered_alternate_and_non_tushare_providers_are_not_relabelled(
             "provider": "sina_futures_minute",
         },
         "rt_fut_min",
+        tmp_path / "tushare.json",
+        provider_discriminator="tushare_rt_fut_min",
+    )
+    sina = _canonical_row(
+        "market_bars_intraday",
+        {
+            "ts_code": "RB2609.SHF",
+            "time": "2026-07-15 09:10:00",
+            "provider": "tushare_rt_fut_min",
+        },
+        "rt_fut_min",
         tmp_path / "sina.json",
+        provider_discriminator="sina_futures_minute",
     )
     sec_rows = _factor_rows(
         {
-            "provider": "sec_edgar_companyfacts",
+            "provider": "row-spoof",
             "symbol": "CIK0000320193",
             "end_date": "2026-03-31",
             "Assets": 331_000_000_000,
         },
         "sec_edgar_companyfacts",
         tmp_path / "sec.json",
+        provider_discriminator="sec_edgar_companyfacts",
     )
 
+    assert tushare["provider"] == "tushare_rt_fut_min"
     assert sina["provider"] == "sina_futures_minute"
     assert {row["provider"] for row in sec_rows} == {"sec_edgar_companyfacts"}
+    assert json.loads(tushare["raw_json"])["provider"] == "sina_futures_minute"
+    assert json.loads(sina["raw_json"])["provider"] == "tushare_rt_fut_min"
+    assert json.loads(sec_rows[0]["raw_json"])["provider"] == "row-spoof"
+
+    assert _resolve_provider_discriminator("daily", None) == "tushare_daily"
+    with pytest.raises(ValueError, match="provider_discriminator.*required"):
+        _resolve_provider_discriminator("rt_fut_min", None)
+    with pytest.raises(ValueError, match="unknown provider_discriminator"):
+        _resolve_provider_discriminator("rt_fut_min", "row-spoof")
 
 
 def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> None:
