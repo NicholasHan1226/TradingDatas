@@ -404,3 +404,107 @@ The intended active documentation set is small and authoritative:
 8. historical status archive.
 
 All other handoff, candidate, duplicated capability, retired subsystem, and superseded planning documents are either folded into this set and deleted or retained only in version history.
+
+## 19. Initial repository retirement inventory
+
+This inventory records the read-only repository audit performed after design approval. It classifies repository content only. Production crontab, installed service state, running processes, and external consumers require a fresh production inventory before any live retirement claim.
+
+### 19.1 Keep as evidence or current authority
+
+- `CLAUDE.md` as a rule-discovery entry;
+- `docs/resource_pressure_2026-07-13.md` as production incident and rollback evidence;
+- `docs/status_history_2026-07.md` as explicitly historical status;
+- this approved external-data-platform Beta design.
+
+### 19.2 Rewrite as the authoritative active set
+
+- `AGENTS.md`;
+- `README.md`;
+- `STATUS.md`;
+- `API_CONTRACT.md`;
+- `collectors/AGENTS.md`;
+- `cron/AGENTS.md`;
+- `cron/crontab.txt`, retained as the sole repository schedule template until registry scheduling replaces it;
+- `docs/AGENTS.md`;
+- `docs/INFRASTRUCTURE.md`;
+- `docs/data_source_onboarding.md`;
+- `docs/external_agent_api_prompt.md`;
+- `docs/market_capability_matrix.md`;
+- `docs/sqlite_recovery_runbook.md`.
+
+### 19.3 Safe first-wave document deletion candidates
+
+These files have no active repository references and contain obsolete candidate, handoff, plan, or report material. Git history remains the rollback source:
+
+- `docs/opening_gate_5min_gate_v2_handoff.md`;
+- `docs/sector_flow_v2_handoff.md`;
+- `docs/sector_flow_v2_implementation_plan.md`;
+- `docs/superpowers/plans/2026-07-11-capital-growth-data-foundation.md`;
+- `docs/superpowers/reports/2026-07-11-sw2021-task4-fix-report.md`.
+
+Deleting these documents does not authorize deletion of the corresponding code, data, schema, schedules, or production services.
+
+### 19.4 Defer until replacement and consumer migration
+
+- root `crontab.txt`, after every reader and test uses one canonical generated schedule;
+- generated `docs/API_CONTRACT.md`, after capability generation is registry-driven;
+- `docs/duckdb_sync_runbook.md`, after DuckDB is removed from recovery and critical paths;
+- `docs/event_lane.md`, after news, announcements, and factual sentiment become registry datasets;
+- `docs/repo_structure.md`, after retained system boundaries are folded into root rules and README;
+- `docs/sector_flow_v2_contract.md`, after objective sector-flow datasets and consumers use the unified query service;
+- `docs/singapore_proxy_relay.md`, after the external API tunnel is separated from crypto/prediction-market proxying;
+- the prior SW2021 dedicated design, after SW2021 is represented by registry datasets and compatibility consumers migrate;
+- `docs/tushare_activation_backlog.md`, after catalog entitlement/runtime states replace the hand-maintained backlog.
+
+### 19.5 Keep core runtime surfaces
+
+- `deploy/systemd/sharedsignals-api.service`;
+- `deploy/systemd/sharedsignals-cloudflared.service`;
+- `deploy/nginx/sharedsignals-origin.conf` during Beta compatibility;
+- code release and rollback framework after separate safety review;
+- deployment/collection coordination lock;
+- domestic Tushare, domestic futures, news/announcement, and SW2021 collection until the registry scheduler replaces their wrappers;
+- external API probe, rewritten for `/v1/catalog`, `/v1/query`, authentication, and tenant isolation;
+- SQLite maintenance as an operator-reviewed maintenance action rather than an unbounded automatic job.
+
+### 19.6 Disable first in production, then remove from templates
+
+After a fresh production inventory and exact rollback capture, disable one schedule at a time:
+
+- Hong Kong and United States P5 collection;
+- cryptocurrency and prediction-market collection;
+- opening-gate generation;
+- real green-gate email;
+- automatic heal, restart, and HALT mutation, while retaining read-only data-service health metrics;
+- crypto/prediction-market proxy relay health;
+- already-disabled DuckDB sync.
+
+`cron/collectors.sh` must also stop including excluded markets in its no-argument and `--all` modes; deleting only explicit P5 cron lines would leave a manual reactivation path.
+
+### 19.7 Migrate before code deletion
+
+The following code surfaces are out of scope but still have active dependency chains:
+
+- opening gate in `tools/opening_gate.py`, API routing, authorization, source governance, health checks, cron, tests, and contracts;
+- real email and self-healing in `tools/green_gate_report.py`, `tools/email_sender.py`, `heal.py`, `tools/watchdog.py`, `tools/auto_restart.sh`, wrappers, tests, and configuration;
+- cryptocurrency, prediction-market, and excluded-market collectors, routes, scopes, configuration, and tests;
+- old source governance, health SLA, and capability scanning that mix objective data health with trading readiness;
+- proxy installation and relay-health tooling after the public API tunnel is isolated;
+- DuckDB sync, schema, snapshots, scheduler, dependency, and recovery code after SQLite-only recovery is proven;
+- dedicated `/sentiment`, `/associations`, `/impacts`, sector-flow, and industry routes after consumers migrate to factual datasets through the unified query service.
+
+One dead helper, `filter_impact_relations()` in `collectors/tushare/tushare_common.py`, has no repository caller and is a first-wave code deletion candidate once focused tests confirm the call graph.
+
+### 19.8 Production retirement proof
+
+Before production retirement, capture read-only evidence for:
+
+- live `crontab -l`;
+- installed systemd services and active timers/processes;
+- current production commit and dirty-file hashes;
+- collection locks and in-flight SQLite transactions;
+- external tenant, TradingAgent, and MarketGraph calls to compatibility routes;
+- current API tunnel and relay ownership;
+- database, backup, and rollback artifact locations.
+
+Live tasks are disabled by exact line or service unit, never by replacing the whole crontab. Repository deletion follows observed inactivity and consumer migration. Production retirement is complete only after fresh API, domestic-ingestion, receipt, catalog/query, authentication, and rollback readback.
