@@ -1755,3 +1755,236 @@ def test_log_defense_downgrades_code_derived_from_untrusted_diagnostic():
     assert log_fields["error_code"] == "provider_error"
     assert log_fields["error_message"] == "provider diagnostic [REDACTED]"
     assert token not in repr(log_fields)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(
+            {"detail": ["too many requests"]},
+            id="mapping",
+        ),
+        pytest.param(["too many requests"], id="list"),
+        pytest.param(429, id="integer"),
+        pytest.param(True, id="boolean"),
+        pytest.param(429.5, id="float"),
+        pytest.param(None, id="null"),
+    ],
+)
+def test_non_string_provider_diagnostic_never_reaches_classifier(
+    monkeypatch,
+    message,
+):
+    classifier_inputs = []
+
+    def record_classifier(provider_code, diagnostic):
+        classifier_inputs.append((provider_code, diagnostic))
+        return "rate_limited"
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_error_code",
+        record_classifier,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-NONSTRING-TOKEN",
+    )
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert classifier_inputs == []
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert log_fields["error_code"] == "provider_error"
+    assert log_fields["error_message"] == outcome.error_message
+    assert str(message) not in repr(receipt)
+
+
+class _DiagnosticStringSubclass(str):
+    pass
+
+
+class _DiagnosticConversionTrap:
+    def __init__(self) -> None:
+        self.conversions = []
+
+    def __str__(self):
+        self.conversions.append("str")
+        return "too many requests"
+
+    def __repr__(self):
+        self.conversions.append("repr")
+        return "too many requests"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(b"too many requests", id="bytes"),
+        pytest.param(bytearray(b"too many requests"), id="bytearray"),
+        pytest.param(
+            _DiagnosticStringSubclass("too many requests"),
+            id="string-subclass",
+        ),
+    ],
+)
+def test_outcome_accepts_only_exact_string_diagnostic_type(message):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="rate_limited",
+        error_message=message,
+    )
+
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+
+
+def test_outcome_non_string_diagnostic_does_not_call_str_or_repr():
+    message = _DiagnosticConversionTrap()
+
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="rate_limited",
+        error_message=message,
+    )
+
+    assert message.conversions == []
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+
+
+def test_log_non_string_diagnostic_does_not_call_str_or_repr():
+    message = _DiagnosticConversionTrap()
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="rate_limited",
+        error_message="too many requests",
+    )
+    object.__setattr__(outcome, "error_message", message)
+
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+
+    assert message.conversions == []
+    assert log_fields["error_code"] == "provider_error"
+    assert log_fields["error_message"] == "provider diagnostic [REDACTED]"
+
+
+_NON_BMP_TOKEN = "🔑S3CRET"
+_LOWER_SURROGATE_PAIR = r"\ud83d\udd11S3CRET"
+_UPPER_HEX_SURROGATE_PAIR = r"\uD83D\uDD11S3CRET"
+_UPPER_U_NON_BMP_ESCAPE = r"\U0001F511S3CRET"
+_DOUBLE_ESCAPED_SURROGATE_PAIR = _LOWER_SURROGATE_PAIR.replace("\\", "\\\\")
+_MULTI_ENCODED_SURROGATE_PAIR = _LOWER_SURROGATE_PAIR
+for _ in range(3):
+    _MULTI_ENCODED_SURROGATE_PAIR = urllib.parse.quote(
+        _MULTI_ENCODED_SURROGATE_PAIR,
+        safe="",
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(_LOWER_SURROGATE_PAIR, id="lower-u-pair"),
+        pytest.param(_UPPER_HEX_SURROGATE_PAIR, id="upper-hex-pair"),
+        pytest.param(_UPPER_U_NON_BMP_ESCAPE, id="upper-U-scalar"),
+        pytest.param(
+            _DOUBLE_ESCAPED_SURROGATE_PAIR,
+            id="double-escaped-pair",
+        ),
+        pytest.param(
+            _MULTI_ENCODED_SURROGATE_PAIR,
+            id="multi-percent-encoded-pair",
+        ),
+    ],
+)
+def test_non_bmp_token_equivalent_diagnostic_fails_closed(
+    monkeypatch,
+    message,
+):
+    classifier_inputs = []
+
+    def record_classifier(provider_code, diagnostic):
+        classifier_inputs.append((provider_code, diagnostic))
+        return "rate_limited"
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_error_code",
+        record_classifier,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", _NON_BMP_TOKEN)
+    log_fields = tushare_common.provider_outcome_log_fields(
+        outcome,
+        sensitive_values=(_NON_BMP_TOKEN,),
+    )
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert classifier_inputs == []
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert _NON_BMP_TOKEN not in repr(receipt)
+    assert "S3CRET" not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(r"\ud83dSYNTH-LONE-HIGH", id="lone-high"),
+        pytest.param(r"\udd11SYNTH-LONE-LOW", id="lone-low"),
+        pytest.param(r"\ud83d\u0041SYNTH-BAD-PAIR", id="high-non-low"),
+        pytest.param(r"\udd11\ud83dSYNTH-REVERSED", id="reversed-pair"),
+        pytest.param(r"\ud83d\ud83dSYNTH-TWO-HIGH", id="two-high"),
+        pytest.param(r"\U0000D83DSYNTH-UPPER-U-HIGH", id="upper-U-high"),
+    ],
+)
+def test_invalid_surrogate_diagnostic_fails_closed_without_classification(
+    monkeypatch,
+    message,
+):
+    classifier_inputs = []
+
+    def record_classifier(provider_code, diagnostic):
+        classifier_inputs.append((provider_code, diagnostic))
+        return "permission_denied"
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_error_code",
+        record_classifier,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-UNRELATED-TOKEN",
+    )
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert classifier_inputs == []
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert "SYNTH" not in repr(receipt)
+    assert "d83d" not in repr(receipt).casefold()
+    assert "dd11" not in repr(receipt).casefold()

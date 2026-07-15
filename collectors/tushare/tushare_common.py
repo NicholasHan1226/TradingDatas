@@ -52,10 +52,6 @@ _AUTH_SCHEME_INDICATOR_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+\S",
     re.IGNORECASE,
 )
-_UNICODE_ESCAPE_PATTERN = re.compile(
-    r"\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|x([0-9A-Fa-f]{2}))"
-)
-_SIMPLE_ESCAPE_PATTERN = re.compile(r"""\\([\\/"'bfnrt])""")
 _SIMPLE_ESCAPES = {
     "\\": "\\",
     "/": "/",
@@ -67,6 +63,7 @@ _SIMPLE_ESCAPES = {
     "r": "\r",
     "t": "\t",
 }
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 @dataclass(frozen=True)
@@ -129,16 +126,72 @@ def _resolve_scan_budget(
     return scan_budget
 
 
-def _decode_backslash_escapes(value: str) -> str:
-    def _unicode_replacement(match: re.Match[str]) -> str:
-        encoded = next(group for group in match.groups() if group is not None)
-        return chr(int(encoded, 16))
+def _normalize_utf16_surrogates(value: str) -> str:
+    normalized: list[str] = []
+    index = 0
+    while index < len(value):
+        code_unit = ord(value[index])
+        if 0xD800 <= code_unit <= 0xDBFF:
+            if index + 1 >= len(value):
+                raise _SensitiveScanFailure from None
+            low_surrogate = ord(value[index + 1])
+            if not 0xDC00 <= low_surrogate <= 0xDFFF:
+                raise _SensitiveScanFailure from None
+            code_point = (
+                0x10000
+                + ((code_unit - 0xD800) << 10)
+                + (low_surrogate - 0xDC00)
+            )
+            normalized.append(chr(code_point))
+            index += 2
+            continue
+        if 0xDC00 <= code_unit <= 0xDFFF:
+            raise _SensitiveScanFailure from None
+        normalized.append(value[index])
+        index += 1
+    return "".join(normalized)
 
-    decoded = _UNICODE_ESCAPE_PATTERN.sub(_unicode_replacement, value)
-    return _SIMPLE_ESCAPE_PATTERN.sub(
-        lambda match: _SIMPLE_ESCAPES[match.group(1)],
-        decoded,
-    )
+
+def _decode_backslash_escapes(value: str) -> str:
+    """Decode one representation layer and validate UTF-16 surrogates."""
+
+    decoded: list[str] = []
+    index = 0
+    while index < len(value):
+        character = value[index]
+        if character != "\\" or index + 1 >= len(value):
+            decoded.append(character)
+            index += 1
+            continue
+
+        marker = value[index + 1]
+        if marker == "\\":
+            decoded.append("\\")
+            index += 2
+            continue
+        if marker in ("u", "U", "x"):
+            width = {"u": 4, "U": 8, "x": 2}[marker]
+            start = index + 2
+            encoded = value[start : start + width]
+            if (
+                len(encoded) != width
+                or any(digit not in _HEX_DIGITS for digit in encoded)
+            ):
+                raise _SensitiveScanFailure from None
+            try:
+                decoded.append(chr(int(encoded, 16)))
+            except (OverflowError, ValueError):
+                raise _SensitiveScanFailure from None
+            index = start + width
+            continue
+        if marker in _SIMPLE_ESCAPES:
+            decoded.append(_SIMPLE_ESCAPES[marker])
+            index += 2
+            continue
+        decoded.append("\\")
+        index += 1
+
+    return _normalize_utf16_surrogates("".join(decoded))
 
 
 def _strip_repr_wrapper(value: str) -> str:
@@ -427,23 +480,14 @@ def _guard_provider_diagnostic(
 ) -> tuple[str, bool]:
     """Return safe text and whether it may influence derived classifications."""
 
+    if type(message) is not str:
+        return _redacted_diagnostic_summary(), False
     if _contains_sensitive_value(
         message,
         sensitive_values,
         scan_budget=scan_budget,
     ):
         return _redacted_diagnostic_summary(), False
-    if not isinstance(message, str):
-        try:
-            message = str(message)
-        except Exception:
-            return _redacted_diagnostic_summary(), False
-        if _contains_sensitive_value(
-            message,
-            sensitive_values,
-            scan_budget=scan_budget,
-        ):
-            return _redacted_diagnostic_summary(), False
     if _contains_credential_indicator(message, scan_budget=scan_budget):
         return _redacted_diagnostic_summary(), False
     return message, True
@@ -1062,7 +1106,7 @@ def tushare_rows_outcome(
             else None
         )
         if provider_code not in (0, "0"):
-            raw_message = body.get("msg") or "Tushare request failed"
+            raw_message = body.get("msg")
             safe_message, diagnostic_trusted = _guard_provider_diagnostic(
                 raw_message,
                 sensitive_values=sensitive_values,
