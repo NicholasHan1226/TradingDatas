@@ -6,6 +6,7 @@ datasets:
     domain: market_data
     market: CN
     entity_type: equity_daily_bar
+    data_classification: objective_factual
     schema_version: 1.0.0
     fields:
       - {name: market, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
@@ -51,6 +52,7 @@ datasets:
       - provider: tushare
         api_name: daily
         adapter_version: tushare-direct-sqlite.v1
+        read_discriminator_value: tushare_daily
         entitlement_state: unknown
         activation_state: paused
         target_tables:
@@ -69,6 +71,7 @@ datasets:
     domain: reference
     market: CN
     entity_type: trade_calendar_entry
+    data_classification: objective_factual
     schema_version: 1.0.0
     fields:
       - {name: factor_hash, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
@@ -106,6 +109,7 @@ datasets:
       - provider: tushare
         api_name: trade_cal
         adapter_version: tushare-direct-sqlite.v1
+        read_discriminator_value: tushare_trade_cal
         entitlement_state: unknown
         activation_state: paused
         target_tables:
@@ -124,6 +128,7 @@ datasets:
     domain: events
     market: CN
     entity_type: market_event
+    data_classification: objective_factual
     schema_version: 1.0.0
     fields:
       - {name: event_hash, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
@@ -175,6 +180,7 @@ datasets:
       - provider: tushare
         api_name: major_news
         adapter_version: tushare-direct-sqlite.v1
+        read_discriminator_value: tushare_major_news
         entitlement_state: unknown
         activation_state: paused
         target_tables:

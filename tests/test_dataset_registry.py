@@ -59,6 +59,7 @@ def _binding(**overrides: object) -> dict[str, object]:
         "provider": "tushare",
         "api_name": "example",
         "adapter_version": "tushare-direct-sqlite.v1",
+        "read_discriminator_value": "tushare_example",
         "entitlement_state": "active",
         "activation_state": "active",
         "target_tables": ["market_factors"],
@@ -92,6 +93,7 @@ def _dataset(
         "domain": "reference",
         "market": "CN",
         "entity_type": "example",
+        "data_classification": "objective_factual",
         "schema_version": "1.0.0",
         "fields": fields,
         "primary_key": ["factor_hash"],
@@ -137,6 +139,7 @@ def test_repository_registry_exposes_complete_daily_contract() -> None:
     assert daily.dataset_id == "cn.equity.daily"
     assert daily.max_page_size == 500
     assert daily.max_lookback_days is None
+    assert daily.data_classification == "objective_factual"
     assert daily.backfill_policy == "provider_limited"
     assert daily.empty_data_policy == "allowed"
     assert daily.default_projection == (
@@ -165,6 +168,7 @@ def test_repository_registry_exposes_complete_daily_contract() -> None:
             provider="tushare",
             api_name="daily",
             adapter_version="tushare-direct-sqlite.v1",
+            read_discriminator_value="tushare_daily",
             entitlement_state="unknown",
             activation_state="paused",
             target_tables=("market_bars_daily",),
@@ -205,9 +209,14 @@ def test_repository_entries_match_schema_types_nullable_and_discriminators() -> 
         assert set(dataset.default_projection) == {
             name for name, field in fields.items() if field.selectable
         }
-        assert fields["raw_json"].selectable is False
-        assert fields["source_file"].selectable is False
+        for internal_field in ("raw_json", "source_file"):
+            assert (
+                fields[internal_field].selectable,
+                fields[internal_field].filterable,
+                fields[internal_field].sortable,
+            ) == (False, False, False)
         assert binding.target_tables == (table_name,)
+        assert binding.read_discriminator_value == f"tushare_{api_name}"
         assert binding.entitlement_state == "unknown"
         assert binding.activation_state == "paused"
         assert dataset.read_model_adapter.primary_table == table_name
@@ -247,7 +256,13 @@ def test_active_for_cadence_requires_entitlement_and_activation_active(
     paused = _dataset(
         "cn.example.paused",
         aliases=["tushare.paused"],
-        provider_bindings=[_binding(api_name="paused", activation_state="paused")],
+        provider_bindings=[
+            _binding(
+                api_name="paused",
+                read_discriminator_value="tushare_paused",
+                activation_state="paused",
+            )
+        ],
         read_model_adapter=_read_model_adapter(
             fixed_field_filters=[
                 {"field": "provider", "allowed_values": ["tushare_paused"]}
@@ -297,6 +312,7 @@ def test_multi_provider_compatibility_maps_each_api_to_same_read_adapter(
                 provider="akshare",
                 api_name="stock_zh_a_hist",
                 adapter_version="akshare-direct-sqlite.v1",
+                read_discriminator_value="akshare_stock_zh_a_hist",
             ),
         ],
         read_model_adapter=_read_model_adapter(
@@ -347,7 +363,12 @@ def test_loader_rejects_alias_shared_by_different_datasets(tmp_path: Path) -> No
     second = _dataset(
         "cn.example.two",
         aliases=["tushare.shared"],
-        provider_bindings=[_binding(api_name="example_two")],
+        provider_bindings=[
+            _binding(
+                api_name="example_two",
+                read_discriminator_value="tushare_example_two",
+            )
+        ],
         read_model_adapter=_read_model_adapter(
             fixed_field_filters=[
                 {
@@ -369,7 +390,12 @@ def test_loader_rejects_alias_that_collides_with_another_dataset_id(
     second = _dataset(
         "cn.example.two",
         aliases=["tushare.example_two"],
-        provider_bindings=[_binding(api_name="example_two")],
+        provider_bindings=[
+            _binding(
+                api_name="example_two",
+                read_discriminator_value="tushare_example_two",
+            )
+        ],
         read_model_adapter=_read_model_adapter(
             fixed_field_filters=[
                 {
@@ -385,7 +411,26 @@ def test_loader_rejects_alias_that_collides_with_another_dataset_id(
 
 
 def test_loader_rejects_duplicate_provider_within_dataset(tmp_path: Path) -> None:
-    dataset = _dataset(provider_bindings=[_binding(), _binding(api_name="example_two")])
+    dataset = _dataset(
+        provider_bindings=[
+            _binding(),
+            _binding(
+                api_name="example_two",
+                read_discriminator_value="tushare_example_two",
+            ),
+        ],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {
+                    "field": "provider",
+                    "allowed_values": [
+                        "tushare_example",
+                        "tushare_example_two",
+                    ],
+                }
+            ]
+        ),
+    )
 
     with pytest.raises(ValueError, match="duplicate provider"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
@@ -472,6 +517,7 @@ def test_loader_rejects_non_positive_configured_lookback(
         ("point_in_time", "latestish"),
         ("backfill_policy", "unbounded"),
         ("empty_data_policy", "pretend_success"),
+        ("data_classification", "derived_opinion"),
     ],
 )
 def test_loader_rejects_invalid_dataset_policy_enums(
@@ -528,16 +574,67 @@ def test_loader_rejects_active_binding_without_active_entitlement(
     [
         ({"adapter_version": ""}, "adapter_version"),
         ({"target_tables": []}, "target_tables"),
+        ({"read_discriminator_value": ""}, "read_discriminator_value"),
     ],
 )
-def test_loader_rejects_active_binding_without_ingest_adapter_or_table(
+def test_loader_rejects_paused_binding_without_complete_static_contract(
     tmp_path: Path,
     binding_override: dict[str, object],
     error: str,
 ) -> None:
-    dataset = _dataset(provider_bindings=[_binding(**binding_override)])
+    dataset = _dataset(
+        provider_bindings=[
+            _binding(
+                entitlement_state="unknown",
+                activation_state="paused",
+                **binding_override,
+            )
+        ]
+    )
 
     with pytest.raises(ValueError, match=error):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+def test_loader_rejects_duplicate_binding_discriminator_values(
+    tmp_path: Path,
+) -> None:
+    dataset = _dataset(
+        provider_bindings=[
+            _binding(),
+            _binding(
+                provider="akshare",
+                api_name="stock_zh_a_hist",
+                adapter_version="akshare-direct-sqlite.v1",
+                read_discriminator_value="tushare_example",
+            ),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="duplicate read_discriminator_value"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize(
+    "allowed_values",
+    [
+        ["ghost_provider_value"],
+        ["tushare_example", "ghost_provider_value"],
+    ],
+)
+def test_loader_rejects_discriminator_filter_not_equal_to_binding_authority(
+    tmp_path: Path,
+    allowed_values: list[str],
+) -> None:
+    dataset = _dataset(
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {"field": "provider", "allowed_values": allowed_values}
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError, match="read_discriminator_value.*allowed_values"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 
@@ -639,17 +736,19 @@ def test_loader_rejects_unknown_unselectable_or_duplicate_default_projection(
 
 
 @pytest.mark.parametrize("internal_field", ["raw_json", "source_file"])
-def test_loader_rejects_internal_fields_marked_selectable(
+@pytest.mark.parametrize("capability", ["selectable", "filterable", "sortable"])
+def test_loader_rejects_internal_fields_with_query_capability(
     tmp_path: Path,
     internal_field: str,
+    capability: str,
 ) -> None:
     fields = _factor_fields()
-    next(field for field in fields if field["name"] == internal_field)["selectable"] = (
+    next(field for field in fields if field["name"] == internal_field)[capability] = (
         True
     )
     dataset = _dataset(fields=fields)
 
-    with pytest.raises(ValueError, match=f"{internal_field}.*selectable"):
+    with pytest.raises(ValueError, match=f"{internal_field}.*{capability}"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 

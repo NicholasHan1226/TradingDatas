@@ -293,6 +293,7 @@ class ProviderBinding:
     provider: str
     api_name: str
     adapter_version: str
+    read_discriminator_value: str
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
@@ -305,6 +306,7 @@ class DatasetDefinition:
     domain: str
     market: str
     entity_type: str
+    data_classification: str
     schema_version: str
     fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
@@ -336,7 +338,7 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 1: Write loader validation tests first**
 
-  Add tests that reject duplicate dataset IDs, aliases, providers, provider API ownership, fields, primary keys, and default-projection entries; invalid field/policy/state enums and booleans; unknown or non-selectable projected fields; non-positive SLA/page limits; non-null non-positive lookbacks; incomplete ingest/read adapters; unknown or duplicate fixed-filter fields; read tables absent from provider target tables; active bindings without active entitlement; internal `raw_json`/`source_file` selection; and unknown keys at every registry level. Add positive tests for `cn.equity.daily`, `tushare.daily`, schema types/nullability, immutable nested contracts, compatibility-table derivation, and the entitlement-plus-activation cadence gate.
+  Add tests that reject duplicate dataset IDs, aliases, providers, provider API ownership, fields, primary keys, default-projection entries, and read discriminator values; invalid field/policy/state/data-classification enums and booleans; unknown or non-selectable projected fields; non-positive SLA/page limits; non-null non-positive lookbacks; incomplete ingest/read adapters even while a binding is paused or its entitlement is unknown; unknown or duplicate fixed-filter fields; provider filter values that do not exactly match binding-owned read discriminator values; read tables absent from provider target tables; active bindings without active entitlement; any selectable/filterable/sortable capability on internal `raw_json`/`source_file` fields; and unknown keys at every registry level. Add positive tests for `cn.equity.daily`, `tushare.daily`, the `objective_factual` classification, schema types/nullability, immutable nested contracts, compatibility-table derivation, and the entitlement-plus-activation cadence gate.
 
 - [ ] **Step 2: Confirm the tests fail because the loader does not exist**
 
@@ -348,11 +350,11 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 3: Implement the immutable loader and validation**
 
-  Use `yaml.safe_load`, reject unknown keys at root/dataset/field/binding/read-adapter/filter levels, normalize lists to tuples of frozen dataclasses, and validate field types and capabilities, primary/default projections, dataset-level page/lookback policy, policy/state enums, provider API ownership, read-table membership, fixed field filters, and active-entitlement coupling. Each fixed field has a non-empty, duplicate-free `allowed_values` tuple: one value compiles to equality and multiple values compile to bounded membership, without accepting arbitrary operators or SQL. Derive compatibility table maps from the dataset read-model adapter, not an ingest binding. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
+  Use `yaml.safe_load`, reject unknown keys at root/dataset/field/binding/read-adapter/filter levels, normalize lists to tuples of frozen dataclasses, and validate field types and capabilities, primary/default projections, dataset-level page/lookback policy, policy/state/data-classification enums, provider API ownership, read-table membership, fixed field filters, and active-entitlement coupling. Require every binding, including paused or unknown-entitlement bindings, to declare non-empty adapter version, target tables, and a unique read discriminator value. Require the read adapter's fixed `provider` filter `allowed_values` to equal exactly the set of binding-owned discriminator values, so missing and ghost values fail closed. Each fixed field has a non-empty, duplicate-free `allowed_values` tuple: one value compiles to equality and multiple values compile to bounded membership, without accepting arbitrary operators or SQL. Derive compatibility table maps from the dataset read-model adapter, not an ingest binding. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
 
 - [ ] **Step 4: Add the first representative registry entries**
 
-  Add `cn.equity.daily`, `cn.market.trade_calendar`, and `cn.event.major_news`. Include stable aliases, typed fields, default/filter/sort/select policy, provider ingest bindings, schema version, primary key, cadence, SLA, point-in-time mode, `provider_limited` backfill, `allowed` empty-data policy, and a read-model adapter. Keep unverified entitlement as `unknown` and activation as `paused`; each representative shared table starts with the single allowed discriminator `provider=tushare_<api_name>`. A future second provider extends that field's `allowed_values` without adding a route, adapter type, arbitrary operator, or SQL. `raw_json` and `source_file` are never selectable.
+  Add `cn.equity.daily`, `cn.market.trade_calendar`, and `cn.event.major_news`. Include stable aliases, typed fields, default/filter/sort/select policy, the `objective_factual` data classification, provider ingest bindings, schema version, primary key, cadence, SLA, point-in-time mode, `provider_limited` backfill, `allowed` empty-data policy, and a read-model adapter. Keep unverified entitlement as `unknown` and activation as `paused`; each binding owns a unique `read_discriminator_value`, and each representative shared table starts with the exactly matching fixed discriminator `provider=tushare_<api_name>`. A future second provider adds a binding and extends that field's `allowed_values` with the binding-owned discriminator without adding a route, adapter type, arbitrary operator, or SQL. `raw_json` and `source_file` are never selectable, filterable, or sortable.
 
 - [ ] **Step 5: Verify the loader**
 

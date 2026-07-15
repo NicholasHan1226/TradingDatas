@@ -27,6 +27,7 @@ _DATASET_KEYS = frozenset(
         "domain",
         "market",
         "entity_type",
+        "data_classification",
         "schema_version",
         "fields",
         "primary_key",
@@ -60,6 +61,7 @@ _BINDING_KEYS = frozenset(
         "provider",
         "api_name",
         "adapter_version",
+        "read_discriminator_value",
         "entitlement_state",
         "activation_state",
         "target_tables",
@@ -76,7 +78,8 @@ _ACTIVATION_STATES = frozenset({"active", "paused"})
 _POINT_IN_TIME_MODES = frozenset({"append_only", "current_snapshot", "unsupported"})
 _BACKFILL_POLICIES = frozenset({"provider_limited", "disabled"})
 _EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
-_INTERNAL_NON_SELECTABLE_FIELDS = frozenset({"raw_json", "source_file"})
+_DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
+_INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,7 @@ class ProviderBinding:
     provider: str
     api_name: str
     adapter_version: str
+    read_discriminator_value: str
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
@@ -121,6 +125,7 @@ class DatasetDefinition:
     domain: str
     market: str
     entity_type: str
+    data_classification: str
     schema_version: str
     fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
@@ -266,12 +271,6 @@ def _non_empty_string(value: Any, path: str) -> str:
     return value.strip()
 
 
-def _string(value: Any, path: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{path} must be a string")
-    return value.strip()
-
-
 def _boolean(value: Any, path: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{path} must be a boolean")
@@ -329,8 +328,18 @@ def _load_field(raw: Any, *, dataset_id: str, index: int) -> DatasetField:
 
     name = _non_empty_string(value["name"], f"{path}.name")
     selectable = _boolean(value["selectable"], f"{path}.selectable")
-    if name in _INTERNAL_NON_SELECTABLE_FIELDS and selectable:
-        raise ValueError(f"dataset {dataset_id} field {name} must not be selectable")
+    filterable = _boolean(value["filterable"], f"{path}.filterable")
+    sortable = _boolean(value["sortable"], f"{path}.sortable")
+    if name in _INTERNAL_NON_QUERYABLE_FIELDS:
+        for capability, enabled in (
+            ("selectable", selectable),
+            ("filterable", filterable),
+            ("sortable", sortable),
+        ):
+            if enabled:
+                raise ValueError(
+                    f"dataset {dataset_id} field {name} must not be {capability}"
+                )
 
     return DatasetField(
         name=name,
@@ -339,8 +348,8 @@ def _load_field(raw: Any, *, dataset_id: str, index: int) -> DatasetField:
         ),
         nullable=_boolean(value["nullable"], f"{path}.nullable"),
         selectable=selectable,
-        filterable=_boolean(value["filterable"], f"{path}.filterable"),
-        sortable=_boolean(value["sortable"], f"{path}.sortable"),
+        filterable=filterable,
+        sortable=sortable,
     )
 
 
@@ -356,7 +365,12 @@ def _load_binding(
 
     provider = _non_empty_string(value["provider"], f"{path}.provider")
     api_name = _non_empty_string(value["api_name"], f"{path}.api_name")
-    adapter_version = _string(value["adapter_version"], f"{path}.adapter_version")
+    adapter_version = _non_empty_string(
+        value["adapter_version"], f"{path}.adapter_version"
+    )
+    read_discriminator_value = _non_empty_string(
+        value["read_discriminator_value"], f"{path}.read_discriminator_value"
+    )
     entitlement_state = _choice(
         value["entitlement_state"],
         _ENTITLEMENT_STATES,
@@ -367,9 +381,7 @@ def _load_binding(
         _ACTIVATION_STATES,
         f"{path}.activation_state",
     )
-    target_tables = _string_tuple(
-        value["target_tables"], f"{path}.target_tables", allow_empty=True
-    )
+    target_tables = _string_tuple(value["target_tables"], f"{path}.target_tables")
     _reject_duplicate_strings(target_tables, f"{path}.target_tables")
 
     if activation_state == "active":
@@ -377,17 +389,11 @@ def _load_binding(
             raise ValueError(
                 f"{path} activation_state=active requires entitlement_state=active"
             )
-        if not adapter_version:
-            raise ValueError(
-                f"{path}.adapter_version is required for an active binding"
-            )
-        if not target_tables:
-            raise ValueError(f"{path}.target_tables is required for an active binding")
-
     return ProviderBinding(
         provider=provider,
         api_name=api_name,
         adapter_version=adapter_version,
+        read_discriminator_value=read_discriminator_value,
         entitlement_state=entitlement_state,
         activation_state=activation_state,
         target_tables=target_tables,
@@ -517,6 +523,14 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
         _load_binding(binding, dataset_id=dataset_id, index=binding_index)
         for binding_index, binding in enumerate(raw_bindings)
     )
+    read_discriminator_values = tuple(
+        binding.read_discriminator_value for binding in provider_bindings
+    )
+    if len(set(read_discriminator_values)) != len(read_discriminator_values):
+        raise ValueError(
+            f"dataset {dataset_id}.provider_bindings contains duplicate "
+            "read_discriminator_value"
+        )
     read_model_adapter = _load_read_model_adapter(
         value["read_model_adapter"],
         dataset_id=dataset_id,
@@ -533,6 +547,18 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
             "provider binding target_tables for: "
             f"{', '.join(missing_read_tables)}"
         )
+    provider_filters = tuple(
+        fixed_filter
+        for fixed_filter in read_model_adapter.fixed_field_filters
+        if fixed_filter.field == "provider"
+    )
+    if len(provider_filters) != 1 or set(provider_filters[0].allowed_values) != set(
+        read_discriminator_values
+    ):
+        raise ValueError(
+            f"dataset {dataset_id} provider binding read_discriminator_value values "
+            "must exactly equal read_model_adapter provider allowed_values"
+        )
 
     return DatasetDefinition(
         dataset_id=dataset_id,
@@ -541,6 +567,11 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
         market=_non_empty_string(value["market"], f"dataset {dataset_id}.market"),
         entity_type=_non_empty_string(
             value["entity_type"], f"dataset {dataset_id}.entity_type"
+        ),
+        data_classification=_choice(
+            value["data_classification"],
+            _DATA_CLASSIFICATIONS,
+            f"dataset {dataset_id}.data_classification",
         ),
         schema_version=_non_empty_string(
             value["schema_version"], f"dataset {dataset_id}.schema_version"
