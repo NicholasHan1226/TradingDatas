@@ -62,10 +62,6 @@ _CREDENTIAL_ASSIGNMENT_VALUE_PATTERN = re.compile(
     rf"{_CREDENTIAL_NAME_PATTERN}[\"']?\s*(?::|=|->|=>)\s*\S",
     re.IGNORECASE,
 )
-_AUTH_SCHEME_VALUE_PATTERN = re.compile(
-    r"(?:bearer|basic)\s+\S+",
-    re.IGNORECASE,
-)
 _AUTH_SCHEME_CONTEXT_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+"
     r"(?P<credential>[A-Za-z0-9._~+/=-]+)"
@@ -530,8 +526,6 @@ def _text_is_credential_value(
         scan_budget=scan_budget,
     ):
         if _CREDENTIAL_ASSIGNMENT_VALUE_PATTERN.search(candidate):
-            return True
-        if _AUTH_SCHEME_VALUE_PATTERN.fullmatch(candidate):
             return True
         for match in _AUTH_SCHEME_CONTEXT_PATTERN.finditer(candidate):
             credential = match.group("credential")

@@ -2056,6 +2056,13 @@ _CONTEXTUAL_AUTH_VALUES = (
     ),
 )
 
+_TWO_WORD_AUTH_PROSE_VALUES = (
+    pytest.param("Bearer bonds", id="lower-bearer-bonds"),
+    pytest.param("Bearer Securities", id="title-bearer-securities"),
+    pytest.param("Basic materials", id="lower-basic-materials"),
+    pytest.param("Basic Materials", id="title-basic-materials"),
+)
+
 
 @pytest.mark.parametrize(
     ("value", "secret_fragment"),
@@ -2113,6 +2120,20 @@ def test_direct_outcome_rejects_contextual_auth_scheme(
         )
 
     assert secret_fragment not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("value", _TWO_WORD_AUTH_PROSE_VALUES)
+def test_direct_outcome_accepts_two_word_auth_prose(value):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"description": value},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{"description": value}]
 
 
 @pytest.mark.parametrize(
@@ -2486,6 +2507,26 @@ def test_foreign_credential_in_success_payload_fails_closed(
             "description",
             "Bearer Securities gained today",
             id="title-case-bearer-securities",
+        ),
+        pytest.param(
+            "description",
+            "Bearer bonds",
+            id="two-word-lower-bearer-bonds",
+        ),
+        pytest.param(
+            "description",
+            "Bearer Securities",
+            id="two-word-title-bearer-securities",
+        ),
+        pytest.param(
+            "description",
+            "Basic materials",
+            id="two-word-lower-basic-materials",
+        ),
+        pytest.param(
+            "description",
+            "Basic Materials",
+            id="two-word-title-basic-materials",
         ),
     ],
 )
