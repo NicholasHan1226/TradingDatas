@@ -40,9 +40,24 @@ _COOKIE_HEADER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _CREDENTIAL_FIELD_PATTERN = (
-    r"(?:access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|"
-    r"api[_ -]?key|password|passwd|credential(?:s)?|"
-    r"client[_ -]?secret|secret|cookie|set[_ -]?cookie)"
+    r"(?:(?:x[_ -]*)?(?:"
+    r"access[_ -]*token|refresh[_ -]*token|id[_ -]*token|"
+    r"auth[_ -]*token|token|api[_ -]*(?:key|token)|"
+    r"password|passwd|credential(?:s)?|client[_ -]*secret|"
+    r"secret|cookie|set[_ -]*cookie))"
+)
+_CREDENTIAL_KEY_PREFIX = r"(?<![A-Za-z0-9_.-])(?:[bB](?=[\"']))?"
+_DIAGNOSTIC_FIELD_PATTERN = (
+    r"(?:[bB](?=[\"']))?[\"']?[A-Za-z][A-Za-z0-9_. -]{0,63}[\"']?\s*[:=]"
+)
+_UNQUOTED_CREDENTIAL_END_PATTERN = (
+    r"(?:"
+    r"\s*[}\])>](?=\s*(?:$|[,;&}\])>]|" + _DIAGNOSTIC_FIELD_PATTERN + r"))"
+    r"|\r?\n"
+    r"|\s*[,;&]\s*" + _DIAGNOSTIC_FIELD_PATTERN + r"|\s*$)"
+)
+_UNQUOTED_REDACTION_MARKER_PATTERN = (
+    re.escape(_REDACTION_MARKER) + r"(?=" + _UNQUOTED_CREDENTIAL_END_PATTERN + r")"
 )
 _AUTHORIZATION_VALUE_PATTERN = re.compile(
     r"""
@@ -63,15 +78,20 @@ _AUTHORIZATION_VALUE_PATTERN = re.compile(
 _QUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
     r"""
     (?P<prefix>
-        (?<![A-Za-z0-9_])
+        """
+    + _CREDENTIAL_KEY_PREFIX
+    + r"""
         (?P<key_quote>["']?)
         """
     + _CREDENTIAL_FIELD_PATTERN
     + r"""
         (?P=key_quote)\s*[:=]\s*
     )
+    (?P<value_bytes>[bB](?=["']))?
     (?P<value_quote>["'])
-    (?P<credential>(?!\[REDACTED\]).*?)
+    (?P<credential>
+        (?:\\[\s\S]|(?!(?P=value_quote))[\s\S])*
+    )
     (?P=value_quote)
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -79,7 +99,9 @@ _QUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
 _UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
     r"""
     (?P<prefix>
-        (?<![A-Za-z0-9_])
+        """
+    + _CREDENTIAL_KEY_PREFIX
+    + r"""
         (?P<key_quote>["']?)
         """
     + _CREDENTIAL_FIELD_PATTERN
@@ -88,8 +110,17 @@ _UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
         \s*[:=]\s*
     )
     (?P<credential>
-        (?!\[REDACTED\])
-        [^"'\s,;&}<>)\]]+
+        (?!"""
+    + _UNQUOTED_REDACTION_MARKER_PATTERN
+    + r""")
+        (?![bB]?["'])
+        (?=\S)
+        [\s\S]*?
+    )
+    (?=
+        """
+    + _UNQUOTED_CREDENTIAL_END_PATTERN
+    + r"""
     )
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -139,7 +170,8 @@ def _redact_sensitive_text(message: str) -> str:
 
     def _redact_quoted(match: re.Match[str]) -> str:
         quote = match.group("value_quote")
-        return f"{match.group('prefix')}{quote}{_REDACTION_MARKER}{quote}"
+        value_bytes = match.group("value_bytes") or ""
+        return f"{match.group('prefix')}{value_bytes}{quote}{_REDACTION_MARKER}{quote}"
 
     def _redact_unquoted(match: re.Match[str]) -> str:
         return f"{match.group('prefix')}{_REDACTION_MARKER}"

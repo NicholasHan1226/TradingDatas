@@ -67,6 +67,9 @@ class _RawRecordHandler(logging.Handler):
     def raw_record_text(self) -> str:
         return repr([(record.msg, record.args) for record in self.records])
 
+    def formatted_record_text(self) -> str:
+        return repr([record.getMessage() for record in self.records])
+
 
 def _provider_outcome(
     rows: list[dict],
@@ -699,6 +702,102 @@ def test_collector_and_sync_raw_log_args_redact_encoded_credential_surfaces(
     assert secret not in caplog.text
     assert secret not in raw_handler.raw_record_text()
     assert "[REDACTED]" in raw_handler.raw_record_text()
+
+
+@pytest.mark.parametrize(
+    ("failure_mode", "message", "sensitive_fragments"),
+    [
+        pytest.param(
+            "provider",
+            "provider bytes={b'X-Auth-Token': "
+            "b'DUMMY-PROVIDER-LEAD +/%=?& DUMMY-PROVIDER-TRAIL', "
+            "b'status': b'401'}",
+            ("DUMMY-PROVIDER-LEAD", "DUMMY-PROVIDER-TRAIL"),
+            id="provider-bytes-repr",
+        ),
+        pytest.param(
+            "transport",
+            "transport%20failed%3B%20headers%3D%7B%27x%20api%20key%27%3A%20%27"
+            "DUMMY-TRANSPORT-LEAD%2B%2F%3D%20DUMMY-TRANSPORT-TRAIL%27%7D",
+            ("DUMMY-TRANSPORT-LEAD", "DUMMY-TRANSPORT-TRAIL"),
+            id="transport-percent-encoded",
+        ),
+    ],
+)
+def test_normalized_header_credentials_never_reach_outcome_logs_or_receipts(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+    message: str,
+    sensitive_fragments: tuple[str, ...],
+) -> None:
+    if failure_mode == "provider":
+        provider_outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=message,
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return provider_outcome
+    else:
+
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(message)
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert collector.last_collect_outcome is not None
+    receipt_metadata = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+    surfaces = (
+        collector.last_collect_outcome.error_message,
+        repr(receipt_metadata),
+        raw_handler.raw_record_text(),
+        raw_handler.formatted_record_text(),
+        caplog.text,
+    )
+    for fragment in sensitive_fragments:
+        for surface in surfaces:
+            assert fragment not in surface
+    assert "[REDACTED]" in collector.last_collect_outcome.error_message
+    assert "[REDACTED]" in raw_handler.raw_record_text()
+    assert "[REDACTED]" in raw_handler.formatted_record_text()
 
 
 def test_collector_and_sync_logs_validate_provider_code_representation(

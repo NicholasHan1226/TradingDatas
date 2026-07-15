@@ -701,6 +701,146 @@ def test_provider_call_outcome_redacts_extended_credential_surfaces(
         assert "?[REDACTED]#[REDACTED]" in outcome.error_message
 
 
+@pytest.mark.parametrize(
+    ("message", "sensitive_fragments", "prefix", "suffix"),
+    [
+        pytest.param(
+            "provider diagnostic-prefix | headers={'X-API-Key': "
+            "'DUMMY-XAPI-LEAD tail+/=?&; DUMMY-XAPI-TRAIL'}; status=401",
+            ("DUMMY-XAPI-LEAD", "DUMMY-XAPI-TRAIL"),
+            "provider diagnostic-prefix | headers=",
+            "; status=401",
+            id="dict-x-api-key-quoted-specials",
+        ),
+        pytest.param(
+            "provider bytes={b'X-Auth-Token': "
+            "b'DUMMY-XAUTH-LEAD +/%=?& DUMMY-XAUTH-TRAIL', "
+            "b'status': b'401'}",
+            ("DUMMY-XAUTH-LEAD", "DUMMY-XAUTH-TRAIL"),
+            "provider bytes=",
+            ", b'status': b'401'}",
+            id="bytes-repr-x-auth-token",
+        ),
+        pytest.param(
+            'provider headers={"x Api Key" : '
+            '"DUMMY-CASE-LEAD with spaces +/= DUMMY-CASE-TRAIL"} tail=kept',
+            ("DUMMY-CASE-LEAD", "DUMMY-CASE-TRAIL"),
+            "provider headers=",
+            " tail=kept",
+            id="mixed-case-space-separated-key",
+        ),
+        pytest.param(
+            "provider diagnostic-prefix | X-API-Key = "
+            "DUMMY-RAW-LEAD with spaces +/%=? DUMMY-RAW-TRAIL ; status=401",
+            ("DUMMY-RAW-LEAD", "DUMMY-RAW-TRAIL"),
+            "provider diagnostic-prefix | X-API-Key = ",
+            "; status=401",
+            id="unquoted-value-with-spaces-and-suffix",
+        ),
+        pytest.param(
+            "provider%20headers%3D%7B%27X-Auth-Token%27%3A%20%27"
+            "DUMMY-ENCODED-LEAD%2B%2F%3D%20DUMMY-ENCODED-TRAIL"
+            "%27%7D%3B%20status%3D401",
+            ("DUMMY-ENCODED-LEAD", "DUMMY-ENCODED-TRAIL"),
+            "provider headers=",
+            "; status=401",
+            id="percent-encoded-x-auth-token",
+        ),
+        pytest.param(
+            "provider diagnostic-prefix | X-API-Key="
+            "DUMMY-BRACKET-LEAD]mid)DUMMY-BRACKET-TRAIL ; status=401",
+            ("DUMMY-BRACKET-LEAD", "DUMMY-BRACKET-TRAIL"),
+            "provider diagnostic-prefix | X-API-Key=",
+            "; status=401",
+            id="unquoted-value-with-bracket-specials",
+        ),
+        pytest.param(
+            "provider headers={'X-Auth-Token': "
+            "'[REDACTED]-DUMMY-MARKER-TRAIL'}; status=401",
+            ("DUMMY-MARKER-TRAIL",),
+            "provider headers=",
+            "; status=401",
+            id="literal-marker-prefix-is-still-untrusted",
+        ),
+    ],
+)
+def test_provider_call_outcome_redacts_normalized_header_credentials_completely(
+    message,
+    sensitive_fragments,
+    prefix,
+    suffix,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    for fragment in sensitive_fragments:
+        assert fragment not in outcome.error_message
+    assert outcome.error_message.startswith(prefix)
+    assert outcome.error_message.endswith(suffix)
+    assert "[REDACTED]" in outcome.error_message
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    for fragment in sensitive_fragments:
+        assert fragment not in repr(log_fields)
+    assert log_fields["error_message"] == outcome.error_message
+
+
+def test_provider_call_outcome_does_not_redact_noncredential_key_prefixes():
+    message = (
+        "provider diagnostic-prefix=kept; x-api-key-count=3; "
+        "x-auth-tokenizer=enabled; api-keyboard=visible"
+    )
+
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    assert outcome.error_message == message
+    assert "[REDACTED]" not in outcome.error_message
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        pytest.param(
+            "provider bytes={b'X-Auth-Token': "
+            "b'DUMMY +/%=?& TRAIL', b'status': b'401'}",
+            "provider bytes={b'X-Auth-Token': b'[REDACTED]', b'status': b'401'}",
+            id="bytes-wrapper",
+        ),
+        pytest.param(
+            r"provider headers={'X-API-Key': "
+            r"'DUMMY \' embedded +/%=?& TRAIL', 'status': 401}",
+            "provider headers={'X-API-Key': '[REDACTED]', 'status': 401}",
+            id="escaped-quote",
+        ),
+    ],
+)
+def test_normalized_header_redaction_preserves_value_wrappers_and_is_idempotent(
+    message,
+    expected,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    assert outcome.error_message == expected
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    assert log_fields["error_message"] == expected
+
+
 def test_tushare_rows_outcome_redacts_provider_error_before_return(monkeypatch):
     _stub_outcome_response(
         monkeypatch,
