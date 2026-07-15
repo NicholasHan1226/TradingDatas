@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 import time
@@ -261,74 +260,3 @@ def daily_map(trade_date: str) -> dict[str, dict[str, Any]]:
 
 def safe_round(value: Any, digits: int = 2) -> float:
     return round(to_float(value), digits)
-
-
-_IMPACT_RELATION_LOGGER = logging.getLogger(__name__)
-
-
-def filter_impact_relations(
-    rows: list[dict[str, Any]],
-    *,
-    logger: logging.Logger | None = None,
-    min_confidence: float = 0.3,
-    exclude_event_ids: set[str] | None = None,
-) -> list[dict[str, Any]]:
-    """Return impact_relations rows that are safe for downstream A-share consumers.
-
-    Filters out rows with confidence below ``min_confidence`` or with a
-    ``reference_status`` indicating the row is still a hypothesis or under
-    review.  When ``reference_status`` is absent we treat the row as acceptable
-    so existing files without that column are not silently dropped.
-
-    If ``exclude_event_ids`` is provided, impact relations whose ``event_id`` is
-    in the set are also skipped. This is used to keep ``pending_review_sample``
-    event-signal associations out of actionable decisions while still allowing
-    them in research/attribution paths.
-    """
-    logger = logger or _IMPACT_RELATION_LOGGER
-    exclude_event_ids = exclude_event_ids or set()
-    kept: list[dict[str, Any]] = []
-    skipped = 0
-    for row in rows:
-        confidence = to_float(row.get("confidence"), 0.0)
-        if confidence < min_confidence:
-            logger.warning(
-                "Skipping impact relation %s/%s/%s: confidence %.2f below %.2f",
-                row.get("event_id", ""),
-                row.get("target_type", ""),
-                row.get("target_id", ""),
-                confidence,
-                min_confidence,
-            )
-            skipped += 1
-            continue
-        reference_status = str(row.get("reference_status", "")).strip().lower()
-        if reference_status in {"hypothesis", "needs_review"}:
-            logger.warning(
-                "Skipping impact relation %s/%s/%s: reference_status=%r",
-                row.get("event_id", ""),
-                row.get("target_type", ""),
-                row.get("target_id", ""),
-                reference_status,
-            )
-            skipped += 1
-            continue
-        event_id = str(row.get("event_id", "")).strip()
-        if event_id and event_id in exclude_event_ids:
-            logger.warning(
-                "Skipping impact relation %s/%s/%s: event_id in pending_review exclusion set",
-                event_id,
-                row.get("target_type", ""),
-                row.get("target_id", ""),
-            )
-            skipped += 1
-            continue
-        kept.append(row)
-    if skipped:
-        logger.warning(
-            "Filtered impact_relations: %d loaded, %d kept, %d skipped",
-            len(rows),
-            len(kept),
-            skipped,
-        )
-    return kept
