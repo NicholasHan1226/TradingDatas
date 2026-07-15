@@ -2123,6 +2123,30 @@ _STRICT_METADATA_SOURCE_VALUES = (
     ),
 )
 
+_KNOWN_SHORT_SECRET = "abcdefgh"
+_KNOWN_SECRET_FORMAT_CONTROL_VALUES = (
+    pytest.param(
+        "Bearer abcd\u200befgh",
+        id="raw-single-format-control",
+    ),
+    pytest.param(
+        "Bearer a\u200bb\u2060c\u200dd\ufeffefgh",
+        id="raw-multiple-format-controls",
+    ),
+    pytest.param(
+        urllib.parse.quote("Bearer abcd\u200befgh"),
+        id="percent-encoded-format-control",
+    ),
+    pytest.param(
+        repr("Bearer abcd\u200befgh"),
+        id="repr-wrapped-format-control",
+    ),
+    pytest.param(
+        urllib.parse.quote(repr("Bearer abcd\u200befgh")),
+        id="percent-encoded-repr-format-control",
+    ),
+)
+
 
 @pytest.mark.parametrize(
     ("value", "secret_fragment"),
@@ -2432,6 +2456,193 @@ def test_success_payload_rejects_caller_known_short_auth_value(
     assert outcome.rows == ()
     assert outcome.error_message == "provider diagnostic [REDACTED]"
     assert token not in repr(receipt)
+
+
+@pytest.mark.parametrize("value", _KNOWN_SECRET_FORMAT_CONTROL_VALUES)
+def test_direct_outcome_rejects_format_control_variant_of_known_value(value):
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"description": value},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=(_KNOWN_SHORT_SECRET,),
+        )
+
+
+@pytest.mark.parametrize("value", _KNOWN_SECRET_FORMAT_CONTROL_VALUES)
+def test_success_payload_rejects_format_control_variant_of_known_value(
+    monkeypatch,
+    value,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["description"], "items": [[value]]},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        _KNOWN_SHORT_SECRET,
+    )
+    receipt = {
+        "outcome": outcome,
+        "log_fields": tushare_common.provider_outcome_log_fields(outcome),
+    }
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert value not in repr(receipt)
+
+
+def test_known_value_with_format_control_matches_plain_candidate():
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"description": f"Bearer {_KNOWN_SHORT_SECRET}"},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("abcd\u200befgh",),
+        )
+
+
+def test_format_control_only_known_value_fails_closed():
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"description": "ordinary business text"},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("\u200b\u2060",),
+        )
+
+
+def test_format_control_only_known_value_cannot_mark_outcome_empty():
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("\u200b\u2060",),
+        )
+
+
+def test_failed_outcome_can_redact_unscannable_known_value():
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=0,
+        error_code="provider_error",
+        error_message="ordinary provider failure",
+        sensitive_values=("\u200b\u2060",),
+    )
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.provider_code == "<untrusted-provider-code>"
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+
+
+@pytest.mark.parametrize(
+    ("token", "value"),
+    [
+        pytest.param(
+            "abcd\u200befgh",
+            f"Bearer {_KNOWN_SHORT_SECRET}",
+            id="known-value-contains-format-control",
+        ),
+        pytest.param(
+            "\u200b\u2060",
+            "ordinary business text",
+            id="known-value-normalizes-empty",
+        ),
+    ],
+)
+def test_success_payload_fails_closed_for_format_control_in_known_value(
+    monkeypatch,
+    token,
+    value,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["description"], "items": [[value]]},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+
+
+@pytest.mark.parametrize(
+    ("value", "scan_budget"),
+    [
+        pytest.param(
+            "Bearer abcd\u200befgh",
+            tushare_common.SensitiveScanBudget(max_views=1),
+            id="view-budget",
+        ),
+        pytest.param(
+            urllib.parse.quote("Bearer abcd\u200befgh"),
+            tushare_common.SensitiveScanBudget(max_decode_rounds=1),
+            id="decode-round-budget",
+        ),
+    ],
+)
+def test_known_value_format_control_normalization_budget_fails_closed(
+    value,
+    scan_budget,
+):
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"description": value},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=(_KNOWN_SHORT_SECRET,),
+            scan_budget=scan_budget,
+        )
+
+
+@pytest.mark.parametrize("value", _KNOWN_SECRET_FORMAT_CONTROL_VALUES)
+def test_format_control_text_without_known_value_remains_neutral_business_data(
+    monkeypatch,
+    value,
+):
+    direct = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"description": value},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["description"], "items": [[value]]},
+        ),
+    )
+
+    public = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-UNRELATED-TOKEN",
+    )
+
+    assert direct.mutable_rows() == [{"description": value}]
+    assert public.state == "success"
+    assert public.mutable_rows() == [{"description": value}]
 
 
 @pytest.mark.parametrize("value", _TWO_WORD_AUTH_PROSE_VALUES)

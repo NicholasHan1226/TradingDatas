@@ -1633,16 +1633,37 @@ def test_delimited_secret_is_absent_from_outcome_logs_and_receipt_metadata(
             assert fragment not in surface
 
 
-@pytest.mark.parametrize("token", ["abcdefgh", "abcdefghijklmno"])
+@pytest.mark.parametrize(
+    ("token", "row_value"),
+    [
+        pytest.param("abcdefgh", "abcdefgh", id="exact-eight"),
+        pytest.param(
+            "abcdefghijklmno",
+            "abcdefghijklmno",
+            id="exact-fifteen",
+        ),
+        pytest.param(
+            "abcdefgh",
+            "Bearer abcd\u200befgh",
+            id="format-control-candidate",
+        ),
+        pytest.param(
+            "abcd\u200befgh",
+            "Bearer abcdefgh",
+            id="format-control-known-value",
+        ),
+    ],
+)
 def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
     tmp_path: Path,
     monkeypatch,
     token,
+    row_value,
 ) -> None:
     payload = {
         "code": 0,
         "msg": None,
-        "data": {"fields": ["value"], "items": [[token]]},
+        "data": {"fields": ["value"], "items": [[row_value]]},
     }
     monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(

@@ -229,6 +229,14 @@ def _safe_text_transform(transform: Any, value: str) -> str:
     return candidate
 
 
+def _strip_unicode_format_controls(value: str) -> str:
+    return "".join(
+        character
+        for character in value
+        if unicodedata.category(character) != "Cf"
+    )
+
+
 def _diagnostic_views(
     message: str,
     *,
@@ -253,6 +261,7 @@ def _diagnostic_views(
                     lambda text: unicodedata.normalize("NFKC", text),
                     value,
                 ),
+                _safe_text_transform(_strip_unicode_format_controls, value),
                 _strip_repr_wrapper(value),
                 _strip_singleton_tuple_repr(value),
             )
@@ -436,11 +445,10 @@ def _sensitive_forms(
             scan_budget=budget,
             state=state,
         ):
-            forms.update(
-                view
-                for view in _diagnostic_views(text, scan_budget=budget)
-                if view
-            )
+            views = _diagnostic_views(text, scan_budget=budget)
+            if text and "" in views:
+                raise _SensitiveScanFailure from None
+            forms.update(view for view in views if view)
     return frozenset(forms)
 
 
@@ -474,18 +482,10 @@ def _credential_detection_views(
     *,
     scan_budget: SensitiveScanBudget,
 ) -> tuple[str, ...]:
-    candidates: list[str] = []
-    for view in _diagnostic_views(value, scan_budget=scan_budget):
-        stripped = view.strip()
-        candidates.append(stripped)
-        without_format_controls = "".join(
-            character
-            for character in stripped
-            if unicodedata.category(character) != "Cf"
-        )
-        if without_format_controls != stripped:
-            candidates.append(without_format_controls)
-    return tuple(candidates)
+    return tuple(
+        view.strip()
+        for view in _diagnostic_views(value, scan_budget=scan_budget)
+    )
 
 
 def _text_is_credential_key(
@@ -859,13 +859,25 @@ class ProviderCallOutcome:
             raise ValueError(
                 "provider outcome contains sensitive or unscannable values"
             ) from None
+        sensitive_values_unscannable = _contains_sensitive_value(
+            (),
+            guarded_values,
+            scan_budget=budget,
+        )
+        if self.state != "failed" and sensitive_values_unscannable:
+            raise ValueError(
+                "provider outcome contains sensitive or unscannable values"
+            )
         if _contains_structured_credential(
             frozen_rows,
             scan_budget=budget,
-        ) or _contains_sensitive_value(
-            frozen_rows,
-            guarded_values,
-            scan_budget=budget,
+        ) or (
+            frozen_rows
+            and _contains_sensitive_value(
+                frozen_rows,
+                guarded_values,
+                scan_budget=budget,
+            )
         ):
             raise ValueError(
                 "provider outcome contains sensitive or unscannable values"
