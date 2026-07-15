@@ -343,6 +343,59 @@ def test_multi_provider_compatibility_maps_each_api_to_same_read_adapter(
     )
 
 
+def test_loader_rejects_read_discriminator_owned_by_multiple_datasets_on_same_table(
+    tmp_path: Path,
+) -> None:
+    first = _dataset("cn.example.one", aliases=["tushare.one"])
+    second = _dataset(
+        "cn.example.two",
+        aliases=["akshare.two"],
+        provider_bindings=[
+            _binding(
+                provider="akshare",
+                api_name="example_two",
+                adapter_version="akshare-direct-sqlite.v1",
+                read_discriminator_value="tushare_example",
+            )
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="read discriminator ownership.*multiple datasets",
+    ):
+        load_dataset_registry(_write_registry(tmp_path, [first, second]))
+
+
+def test_loader_allows_same_read_discriminator_on_different_tables(
+    tmp_path: Path,
+) -> None:
+    first = _dataset("cn.example.one", aliases=["tushare.one"])
+    second = _dataset(
+        "cn.example.two",
+        aliases=["akshare.two"],
+        provider_bindings=[
+            _binding(
+                provider="akshare",
+                api_name="example_two",
+                adapter_version="akshare-direct-sqlite.v1",
+                read_discriminator_value="tushare_example",
+                target_tables=["market_events"],
+            )
+        ],
+        read_model_adapter=_read_model_adapter(primary_table="market_events"),
+    )
+
+    registry = load_dataset_registry(_write_registry(tmp_path, [first, second]))
+
+    assert registry.resolve("cn.example.one").read_model_adapter.primary_table == (
+        "market_factors"
+    )
+    assert registry.resolve("cn.example.two").read_model_adapter.primary_table == (
+        "market_events"
+    )
+
+
 def test_loader_rejects_duplicate_dataset_ids(tmp_path: Path) -> None:
     first = _dataset()
     second = deepcopy(first)

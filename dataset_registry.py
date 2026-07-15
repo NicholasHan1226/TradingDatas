@@ -151,6 +151,7 @@ class DatasetRegistry:
         by_id: dict[str, DatasetDefinition] = {}
         by_name: dict[str, DatasetDefinition] = {}
         provider_api_owners: dict[tuple[str, str], str] = {}
+        read_discriminator_owners: dict[tuple[str, str], str] = {}
 
         for dataset in datasets:
             if dataset.dataset_id in by_id:
@@ -184,6 +185,19 @@ class DatasetRegistry:
                         f"{dataset.dataset_id}"
                     )
                 provider_api_owners[provider_api] = dataset.dataset_id
+
+                read_discriminator = (
+                    dataset.read_model_adapter.primary_table,
+                    binding.read_discriminator_value,
+                )
+                previous = read_discriminator_owners.get(read_discriminator)
+                if previous is not None and previous != dataset.dataset_id:
+                    raise ValueError(
+                        "read discriminator ownership "
+                        f"{read_discriminator!r} maps to multiple datasets: "
+                        f"{previous} and {dataset.dataset_id}"
+                    )
+                read_discriminator_owners[read_discriminator] = dataset.dataset_id
 
         self._datasets = datasets
         self._by_id: Mapping[str, DatasetDefinition] = MappingProxyType(by_id)
