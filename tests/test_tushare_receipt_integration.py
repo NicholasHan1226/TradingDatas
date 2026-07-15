@@ -3,17 +3,27 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
+import storage.ingest_receipts as receipt_module
 import storage.read_model_store as read_model_store
-from storage.ingest_receipts import IngestContext, make_receipt_id
+from storage.ingest_receipts import (
+    IngestContext,
+    IngestCounts,
+    ReceiptEvidence,
+    insert_ingest_receipt_with_evidence,
+    make_receipt_id,
+)
 from storage.read_model_store import ingest_rows_with_receipts
 from storage.schema import SCHEMA_SQL
 
 
 CONFIG_HASH = "a" * 64
+PREBUILT_FINISHED_AT = "2026-07-15T04:05:00.000000Z"
+DIFFERENT_FINISHED_AT = "2099-12-31T23:59:59+00:00"
 
 
 def _create_db(path: Path) -> None:
@@ -199,6 +209,329 @@ def _reserve_receipt_id(
     finally:
         conn.close()
     return receipt_id
+
+
+def _install_trigger(db_path: Path, trigger_sql: str) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(trigger_sql)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _success_counts() -> IngestCounts:
+    return IngestCounts(
+        returned=1,
+        validated=1,
+        inserted=None,
+        updated=None,
+        unchanged=None,
+        rejected=0,
+        committed=1,
+        count_semantics="generic_upsert_outcomes_unavailable",
+    )
+
+
+def test_task7_insert_helper_returns_one_prebuilt_immutable_evidence_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    context = _context("task8-task7-single-evidence-source")
+    counts = _success_counts()
+    payload_calls: list[dict[str, object]] = []
+    original_payload = receipt_module._receipt_payload
+
+    def capture_payload(**kwargs):
+        payload_calls.append(dict(kwargs))
+        return original_payload(**kwargs)
+
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: PREBUILT_FINISHED_AT)
+    monkeypatch.setattr(receipt_module, "_receipt_payload", capture_payload)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        evidence = insert_ingest_receipt_with_evidence(
+            conn,
+            context=context,
+            target_table="market_bars_daily",
+            transaction_index=0,
+            status="success",
+            counts=counts,
+            errors=(),
+            payload_fingerprint="b" * 64,
+        )
+        stored_row = conn.execute(
+            read_model_store._RECEIPT_EVIDENCE_QUERY,
+            (evidence.receipt_id,),
+        ).fetchone()
+
+        assert type(evidence) is ReceiptEvidence
+        assert len(payload_calls) == 1
+        assert evidence.started_at == context.started_at
+        assert evidence.finished_at == PREBUILT_FINISHED_AT
+        assert evidence.status == "success"
+        assert evidence.source == context.dataset_id
+        assert type(evidence.rows_read) is int and evidence.rows_read == 1
+        assert type(evidence.rows_written) is int and evidence.rows_written == 1
+        assert type(evidence.canonical_notes) is bytes
+        assert evidence.schema_version == receipt_module.RECEIPT_SCHEMA_VERSION
+        assert stored_row == evidence.sqlite_row
+        assert conn.in_transaction is True
+        with pytest.raises(FrozenInstanceError):
+            evidence.finished_at = DIFFERENT_FINISHED_AT
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_task7_helper_freezes_evidence_before_insert_trigger_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    _install_trigger(
+        db_path,
+        f"""
+        CREATE TRIGGER tamper_after_receipt_insert
+        AFTER INSERT ON market_ingest_runs
+        WHEN NEW.status = 'success'
+        BEGIN
+          UPDATE market_ingest_runs
+          SET finished_at = '{DIFFERENT_FINISHED_AT}',
+              notes = json_set(
+                  NEW.notes,
+                  '$.finished_at',
+                  '{DIFFERENT_FINISHED_AT}'
+              )
+          WHERE run_id = NEW.run_id;
+        END;
+        """,
+    )
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: PREBUILT_FINISHED_AT)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        evidence = insert_ingest_receipt_with_evidence(
+            conn,
+            context=_context("task8-evidence-precedes-trigger"),
+            target_table="market_bars_daily",
+            transaction_index=0,
+            status="success",
+            counts=_success_counts(),
+            errors=(),
+            payload_fingerprint="c" * 64,
+        )
+        stored_finished_at, stored_notes = conn.execute(
+            "SELECT finished_at, CAST(notes AS BLOB) FROM market_ingest_runs "
+            "WHERE run_id = ?",
+            (evidence.receipt_id,),
+        ).fetchone()
+
+        assert evidence.finished_at == PREBUILT_FINISHED_AT
+        assert stored_finished_at == DIFFERENT_FINISHED_AT
+        assert evidence.canonical_notes != stored_notes
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_task7_helper_rejects_invalid_generated_finished_at_before_insert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: "not-a-timestamp")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        with pytest.raises(ValueError, match="ISO-8601"):
+            insert_ingest_receipt_with_evidence(
+                conn,
+                context=_context("task8-invalid-generated-finished-at"),
+                target_table="market_bars_daily",
+                transaction_index=0,
+                status="success",
+                counts=_success_counts(),
+                errors=(),
+                payload_fingerprint="d" * 64,
+            )
+        assert (
+            conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_atomic_ingest_allows_receipt_neutral_after_insert_trigger(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    _install_trigger(
+        db_path,
+        """
+        CREATE TABLE receipt_trigger_audit (run_id TEXT PRIMARY KEY);
+        CREATE TRIGGER audit_success_receipt
+        AFTER INSERT ON market_ingest_runs
+        WHEN NEW.status = 'success'
+        BEGIN
+          INSERT INTO receipt_trigger_audit(run_id) VALUES (NEW.run_id);
+        END;
+        """,
+    )
+
+    result = ingest_rows_with_receipts(
+        db_path,
+        "market_bars_daily",
+        _daily_rows(1),
+        context=_context("task8-neutral-receipt-trigger"),
+    )
+
+    conn = sqlite3.connect(db_path)
+    try:
+        audit_count = conn.execute(
+            "SELECT COUNT(*) FROM receipt_trigger_audit"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert result.status == "success"
+    assert _db_counts(db_path) == (1, 1)
+    assert audit_count == 1
+
+
+@pytest.mark.parametrize(
+    "trigger_sql",
+    [
+        pytest.param(
+            """
+            CREATE TRIGGER tamper_invalid_finished_at
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET finished_at = 'not-a-timestamp',
+                  notes = json_set(
+                      NEW.notes,
+                      '$.finished_at',
+                      'not-a-timestamp'
+                  )
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="invalid-finished-at",
+        ),
+        pytest.param(
+            f"""
+            CREATE TRIGGER tamper_different_finished_at
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET finished_at = '{DIFFERENT_FINISHED_AT}',
+                  notes = json_set(
+                      NEW.notes,
+                      '$.finished_at',
+                      '{DIFFERENT_FINISHED_AT}'
+                  )
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="valid-but-different-finished-at",
+        ),
+        pytest.param(
+            """
+            CREATE TRIGGER delete_inserted_receipt
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              DELETE FROM market_ingest_runs WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="missing-receipt",
+        ),
+        pytest.param(
+            """
+            CREATE TRIGGER remove_receipt_schema
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET notes = json_remove(NEW.notes, '$.schema_version')
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="missing-schema-key",
+        ),
+        pytest.param(
+            """
+            CREATE TRIGGER duplicate_receipt_schema
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET notes = '{"schema_version":"unrecognized.receipt.v999",'
+                          || substr(NEW.notes, 2)
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="duplicate-schema-key",
+        ),
+        pytest.param(
+            """
+            CREATE TRIGGER change_receipt_count_type
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET notes = json_set(
+                  NEW.notes,
+                  '$.counts.returned',
+                  json('true')
+              )
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="boolean-count-type",
+        ),
+        pytest.param(
+            """
+            CREATE TRIGGER change_receipt_storage_type
+            AFTER INSERT ON market_ingest_runs
+            WHEN NEW.status = 'success'
+            BEGIN
+              UPDATE market_ingest_runs
+              SET notes = CAST(NEW.notes AS BLOB)
+              WHERE run_id = NEW.run_id;
+            END;
+            """,
+            id="blob-notes-type",
+        ),
+    ],
+)
+def test_atomic_ingest_rolls_back_trigger_modified_precommit_receipt(
+    tmp_path: Path,
+    trigger_sql: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    _install_trigger(db_path, trigger_sql)
+
+    with pytest.raises(RuntimeError, match="receipt evidence"):
+        ingest_rows_with_receipts(
+            db_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=_context("task8-precommit-trigger-tamper"),
+        )
+
+    assert _db_counts(db_path) == (0, 0)
 
 
 def test_data_and_success_receipt_commit_in_one_transaction(
@@ -545,18 +878,18 @@ def test_atomic_ingest_rolls_back_parent_swap_before_commit(
     authority_parent.mkdir()
     authority_path = authority_parent / "marketdata.sqlite"
     _create_db(authority_path)
-    original_insert = read_model_store.insert_ingest_receipt
+    original_insert = read_model_store.insert_ingest_receipt_with_evidence
 
     def insert_then_swap_parent(*args, **kwargs):
-        receipt_id = original_insert(*args, **kwargs)
+        evidence = original_insert(*args, **kwargs)
         authority_parent.replace(retired_parent)
         authority_parent.mkdir()
         _create_db(authority_path)
-        return receipt_id
+        return evidence
 
     monkeypatch.setattr(
         read_model_store,
-        "insert_ingest_receipt",
+        "insert_ingest_receipt_with_evidence",
         insert_then_swap_parent,
     )
 

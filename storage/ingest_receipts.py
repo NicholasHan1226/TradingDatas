@@ -2,8 +2,8 @@
 
 The existing ``market_ingest_runs`` table is the physical envelope.  Its
 ``notes`` column stores the canonical provider-neutral receipt payload.  Data
-writers retain transaction ownership: :func:`insert_ingest_receipt` performs a
-plain insert and never commits or rolls back.
+writers retain transaction ownership: receipt insert helpers perform a plain
+insert and never commit or roll back.
 """
 
 from __future__ import annotations
@@ -160,6 +160,17 @@ def _canonical_json(payload: Mapping[str, object]) -> str:
     )
 
 
+def _json_object_without_duplicate_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("canonical receipt JSON must not contain duplicate keys")
+        value[key] = item
+    return value
+
+
 def _utc_now() -> str:
     """Return one canonical UTC timestamp for the receipt write."""
 
@@ -250,6 +261,123 @@ class IngestCounts:
                 raise ValueError(
                     "count conservation requires inserted + updated + unchanged = committed"
                 )
+
+
+@dataclass(frozen=True)
+class ReceiptEvidence:
+    """Immutable pre-insert evidence for one canonical receipt row."""
+
+    receipt_id: str
+    started_at: str
+    finished_at: str
+    status: str
+    source: str
+    rows_read: int
+    rows_written: int
+    canonical_notes: bytes
+    schema_version: str
+    target_table: str | None
+    transaction_index: int
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "receipt_id",
+            "started_at",
+            "finished_at",
+            "status",
+            "source",
+            "schema_version",
+        ):
+            if type(getattr(self, field_name)) is not str:
+                raise TypeError(f"{field_name} must be a string")
+        _require_public_text(self.receipt_id, "receipt_id")
+        _require_timestamp(self.started_at, "started_at")
+        _require_timestamp(self.finished_at, "finished_at")
+        _require_status(self.status)
+        _require_public_text(self.source, "source")
+        if self.schema_version != RECEIPT_SCHEMA_VERSION:
+            raise ValueError("schema_version is not recognized")
+        if self.target_table is not None and type(self.target_table) is not str:
+            raise TypeError("target_table must be a string or None")
+        _validated_target_table(self.target_table)
+        if type(self.transaction_index) is not int:
+            raise TypeError("transaction_index must be an integer")
+        _require_nonnegative_int(self.transaction_index, "transaction_index")
+        for field_name in ("rows_read", "rows_written"):
+            value = getattr(self, field_name)
+            if type(value) is not int:
+                raise TypeError(f"{field_name} must be an integer")
+            _require_nonnegative_int(value, field_name)
+        if self.rows_written > self.rows_read:
+            raise ValueError("rows_written must not exceed rows_read")
+        if type(self.canonical_notes) is not bytes:
+            raise TypeError("canonical_notes must be bytes")
+
+        try:
+            notes_text = self.canonical_notes.decode("utf-8")
+            payload = json.loads(
+                notes_text,
+                object_pairs_hook=_json_object_without_duplicate_keys,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("canonical_notes must contain valid UTF-8 JSON") from exc
+        if type(payload) is not dict:
+            raise ValueError("canonical_notes must contain one JSON object")
+        if _canonical_json(payload).encode("utf-8") != self.canonical_notes:
+            raise ValueError("canonical_notes must use canonical JSON encoding")
+
+        expected_payload_fields: tuple[tuple[str, object], ...] = (
+            ("receipt_id", self.receipt_id),
+            ("started_at", self.started_at),
+            ("finished_at", self.finished_at),
+            ("status", self.status),
+            ("dataset_id", self.source),
+            ("schema_version", self.schema_version),
+            ("target_table", self.target_table),
+            ("transaction_index", self.transaction_index),
+        )
+        missing = object()
+        for field_name, expected in expected_payload_fields:
+            observed = payload.get(field_name, missing)
+            if type(observed) is not type(expected) or observed != expected:
+                raise ValueError(
+                    f"canonical_notes field {field_name} does not match evidence"
+                )
+        count_payload = payload.get("counts")
+        if type(count_payload) is not dict:
+            raise ValueError("canonical_notes counts must be an object")
+        for field_name, expected in (
+            ("returned", self.rows_read),
+            ("committed", self.rows_written),
+        ):
+            observed = count_payload.get(field_name, missing)
+            if type(observed) is not int or observed != expected:
+                raise ValueError(
+                    f"canonical_notes count {field_name} does not match evidence"
+                )
+
+    @property
+    def sqlite_row(self) -> tuple[object, ...]:
+        """Exact SQLite ``typeof`` and value tuple expected on readback."""
+
+        return (
+            "text",
+            self.receipt_id,
+            "text",
+            self.started_at,
+            "text",
+            self.finished_at,
+            "text",
+            self.status,
+            "text",
+            self.source,
+            "integer",
+            self.rows_read,
+            "integer",
+            self.rows_written,
+            "text",
+            self.canonical_notes,
+        )
 
 
 @dataclass(frozen=True)
@@ -502,7 +630,7 @@ def _receipt_payload(
     }
 
 
-def insert_ingest_receipt(
+def insert_ingest_receipt_with_evidence(
     conn: sqlite3.Connection,
     *,
     context: IngestContext,
@@ -512,8 +640,8 @@ def insert_ingest_receipt(
     counts: IngestCounts,
     errors: Sequence[str],
     payload_fingerprint: str,
-) -> str:
-    """Insert one receipt without committing or rolling back its transaction."""
+) -> ReceiptEvidence:
+    """Prebuild immutable evidence, then insert without owning the transaction."""
 
     if not isinstance(conn, sqlite3.Connection):
         raise TypeError("conn must be sqlite3.Connection")
@@ -542,6 +670,19 @@ def insert_ingest_receipt(
         payload_fingerprint=fingerprint,
         finished_at=finished_at,
     )
+    evidence = ReceiptEvidence(
+        receipt_id=receipt_id,
+        started_at=context.started_at,
+        finished_at=finished_at,
+        status=normalized_status,
+        source=context.dataset_id,
+        rows_read=counts.returned,
+        rows_written=counts.committed,
+        canonical_notes=_canonical_json(payload).encode("utf-8"),
+        schema_version=RECEIPT_SCHEMA_VERSION,
+        target_table=table,
+        transaction_index=index,
+    )
 
     conn.execute(
         """INSERT INTO market_ingest_runs
@@ -556,10 +697,36 @@ def insert_ingest_receipt(
             context.dataset_id,
             counts.returned,
             counts.committed,
-            _canonical_json(payload),
+            evidence.canonical_notes.decode("utf-8"),
         ),
     )
-    return receipt_id
+    return evidence
+
+
+def insert_ingest_receipt(
+    conn: sqlite3.Connection,
+    *,
+    context: IngestContext,
+    target_table: str | None,
+    transaction_index: int,
+    status: str,
+    counts: IngestCounts,
+    errors: Sequence[str],
+    payload_fingerprint: str,
+) -> str:
+    """Compatibility wrapper returning the inserted receipt ID."""
+
+    evidence = insert_ingest_receipt_with_evidence(
+        conn,
+        context=context,
+        target_table=target_table,
+        transaction_index=transaction_index,
+        status=status,
+        counts=counts,
+        errors=errors,
+        payload_fingerprint=payload_fingerprint,
+    )
+    return evidence.receipt_id
 
 
 def write_terminal_receipt(

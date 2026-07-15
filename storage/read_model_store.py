@@ -14,7 +14,6 @@ import re
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
@@ -29,12 +28,11 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    ReceiptEvidence,
     _SqlitePathBinding,
-    _canonical_json,
-    _receipt_payload,
     _require_unchanged_sqlite_binding,
     _validated_existing_sqlite_binding,
-    insert_ingest_receipt,
+    insert_ingest_receipt_with_evidence,
 )
 from storage.schema_contract import get_table, table_primary_keys
 from env_bootstrap import env_int
@@ -75,13 +73,6 @@ class StorageAuthorityError(RuntimeError):
             f"reason={reason_code} receipt_id={receipt_id} "
             f"transaction_index={transaction_index}"
         )
-
-
-@dataclass(frozen=True)
-class _ExpectedReceiptEvidence:
-    receipt_id: str
-    transaction_index: int
-    sqlite_row: tuple[object, ...]
 
 
 _RECEIPT_EVIDENCE_QUERY = (
@@ -1247,75 +1238,36 @@ def _open_canonical_receipt_reader(
     )
 
 
-def _strict_receipt_evidence_row(row: object) -> bool:
-    if type(row) is not tuple or len(row) != 16:
+def _receipt_evidence_row_matches(
+    row: object,
+    evidence: ReceiptEvidence,
+) -> bool:
+    expected = evidence.sqlite_row
+    if type(row) is not tuple or len(row) != len(expected):
         return False
-    text_indexes = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14)
-    if any(type(row[index]) is not str for index in text_indexes):
-        return False
-    if type(row[11]) is not int or type(row[13]) is not int:
-        return False
-    return type(row[15]) is bytes
+    return all(
+        type(observed) is type(expected_value) and observed == expected_value
+        for observed, expected_value in zip(row, expected, strict=True)
+    )
 
 
-def _capture_expected_receipt_evidence(
+def _require_inserted_receipt_evidence(
     conn: sqlite3.Connection,
     *,
-    context: IngestContext,
-    table: str,
-    transaction_index: int,
-    receipt_id: str,
-    counts: IngestCounts,
-    payload_fingerprint: str,
-) -> _ExpectedReceiptEvidence:
-    row = conn.execute(_RECEIPT_EVIDENCE_QUERY, (receipt_id,)).fetchone()
-    if not _strict_receipt_evidence_row(row):
-        raise RuntimeError("success receipt evidence is missing or ill-typed before commit")
-    finished_at = row[5]
-    expected_notes = _canonical_json(
-        _receipt_payload(
-            receipt_id=receipt_id,
-            context=context,
-            target_table=table,
-            transaction_index=transaction_index,
-            status="success",
-            counts=counts,
-            errors=(),
-            payload_fingerprint=payload_fingerprint,
-            finished_at=finished_at,
-        )
-    ).encode("utf-8")
-    expected_row: tuple[object, ...] = (
-        "text",
-        receipt_id,
-        "text",
-        context.started_at,
-        "text",
-        finished_at,
-        "text",
-        "success",
-        "text",
-        context.dataset_id,
-        "integer",
-        counts.returned,
-        "integer",
-        counts.committed,
-        "text",
-        expected_notes,
-    )
-    if row != expected_row:
+    evidence: ReceiptEvidence,
+) -> None:
+    row = conn.execute(
+        _RECEIPT_EVIDENCE_QUERY,
+        (evidence.receipt_id,),
+    ).fetchone()
+    if not _receipt_evidence_row_matches(row, evidence):
         raise RuntimeError("success receipt evidence changed before commit")
-    return _ExpectedReceiptEvidence(
-        receipt_id=receipt_id,
-        transaction_index=transaction_index,
-        sqlite_row=expected_row,
-    )
 
 
 def _verify_committed_receipt_on_canonical_authority(
     binding: _SqlitePathBinding,
     *,
-    evidence: _ExpectedReceiptEvidence,
+    evidence: ReceiptEvidence,
 ) -> None:
     receipt_id = evidence.receipt_id
     transaction_index = evidence.transaction_index
@@ -1340,7 +1292,7 @@ def _verify_committed_receipt_on_canonical_authority(
                 receipt_id=receipt_id,
                 transaction_index=transaction_index,
             )
-        if not _strict_receipt_evidence_row(row) or row != evidence.sqlite_row:
+        if not _receipt_evidence_row_matches(row, evidence):
             raise _postcommit_authority_error(
                 reason_code="receipt_evidence_mismatch",
                 receipt_id=receipt_id,
@@ -1573,7 +1525,7 @@ def ingest_rows_with_receipts(
                         sql=sql,
                     )
                     payload_fingerprint = _receipt_payload_fingerprint(chunk)
-                    receipt_id = insert_ingest_receipt(
+                    expected_evidence = insert_ingest_receipt_with_evidence(
                         conn,
                         context=context,
                         target_table=table,
@@ -1583,14 +1535,10 @@ def ingest_rows_with_receipts(
                         errors=(),
                         payload_fingerprint=payload_fingerprint,
                     )
-                    expected_evidence = _capture_expected_receipt_evidence(
+                    receipt_id = expected_evidence.receipt_id
+                    _require_inserted_receipt_evidence(
                         conn,
-                        context=context,
-                        table=table,
-                        transaction_index=transaction_index,
-                        receipt_id=receipt_id,
-                        counts=counts,
-                        payload_fingerprint=payload_fingerprint,
+                        evidence=expected_evidence,
                     )
                     _require_unchanged_sqlite_binding(db_binding)
                     conn.commit()
