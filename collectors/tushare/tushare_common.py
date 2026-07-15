@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -30,6 +31,80 @@ DEFAULT_API_URL = "https://api.tushare.pro"
 QUICKSYNC_API_URL = "https://api.quicksync.cn"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
 
+_REDACTION_MARKER = "[REDACTED]"
+_AUTHORIZATION_VALUE_PATTERN = re.compile(
+    r"""
+    (?P<prefix>
+        (?<![A-Za-z0-9_])
+        (?P<key_quote>["']?)authorization(?P=key_quote)\s*[:=]\s*
+    )
+    (?P<value_quote>["']?)
+    (?:(?P<scheme>bearer|basic)\s+)?
+    (?P<credential>
+        (?!\[REDACTED\])
+        [^"'\s,;&}<>)\]]+
+    )
+    (?P=value_quote)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_QUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
+    r"""
+    (?P<prefix>
+        (?<![A-Za-z0-9_])
+        (?P<key_quote>["']?)
+        (?:access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|password|passwd)
+        (?P=key_quote)\s*[:=]\s*
+    )
+    (?P<value_quote>["'])
+    (?P<credential>(?!\[REDACTED\]).*?)
+    (?P=value_quote)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
+    r"""
+    (?P<prefix>
+        (?<![A-Za-z0-9_])
+        (?:access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|password|passwd)
+        \s*[:=]\s*
+    )
+    (?P<credential>
+        (?!\[REDACTED\])
+        [^"'\s,;&}<>)\]]+
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_BEARER_VALUE_PATTERN = re.compile(
+    r"(?P<prefix>\bbearer\s+)(?P<credential>(?!\[REDACTED\])[^\"'\s,;&}<>)\]]+)",
+    re.IGNORECASE,
+)
+
+
+def _redact_sensitive_text(message: str) -> str:
+    """Remove credential values before an error can cross an outcome boundary."""
+
+    def _redact_authorization(match: re.Match[str]) -> str:
+        scheme = match.group("scheme")
+        scheme_prefix = f"{scheme} " if scheme else ""
+        quote = match.group("value_quote")
+        return (
+            f"{match.group('prefix')}{quote}{scheme_prefix}{_REDACTION_MARKER}{quote}"
+        )
+
+    def _redact_quoted(match: re.Match[str]) -> str:
+        quote = match.group("value_quote")
+        return f"{match.group('prefix')}{quote}{_REDACTION_MARKER}{quote}"
+
+    def _redact_unquoted(match: re.Match[str]) -> str:
+        return f"{match.group('prefix')}{_REDACTION_MARKER}"
+
+    redacted = _AUTHORIZATION_VALUE_PATTERN.sub(_redact_authorization, message)
+    redacted = _QUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_quoted, redacted)
+    redacted = _UNQUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_unquoted, redacted)
+    return _BEARER_VALUE_PATTERN.sub(_redact_unquoted, redacted)
+
 
 @dataclass(frozen=True)
 class ProviderCallOutcome:
@@ -41,54 +116,133 @@ class ProviderCallOutcome:
     error_code: str | None
     error_message: str | None
 
+    def __post_init__(self) -> None:
+        if self.error_message is not None:
+            object.__setattr__(
+                self,
+                "error_message",
+                _redact_sensitive_text(str(self.error_message)),
+            )
 
-_RATE_LIMIT_PATTERNS = (
-    re.compile(r"\brate limit (?:has been )?exceeded\b"),
-    re.compile(r"\btoo many requests?\b"),
-    re.compile(r"\brequests? (?:has been )?throttled\b"),
-    re.compile(r"每(?:秒|分钟|小时|日|天).{0,40}最多(?:可)?访问.{0,20}\d+\s*次"),
-    re.compile(r"(?:请求|访问)过于频繁(?:[，。,:：；;]|$)"),
+
+_CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001"))
+_INTERNAL_ERROR_PATTERNS = (
     re.compile(
-        r"(?:请求|访问)(?:频率|次数).{0,12}"
-        r"(?:过高|过多|超限|达到上限|已达上限|超过限制)"
+        r"\b(?:service|config(?:uration)?|classifier|cache|policy|limiter)\b"
+        r".{0,80}\b(?:unavailable|failure|failed|error)\b"
     ),
-    re.compile(r"(?:触发|已被).{0,6}限流"),
+    re.compile(
+        r"\b(?:unavailable|failure|failed|error)\b"
+        r".{0,80}\b(?:service|config(?:uration)?|classifier|cache|policy|limiter)\b"
+    ),
+    re.compile(r"(?:服务|配置|分类器|缓存|检测).{0,20}(?:异常|故障|失败|不可用)"),
+)
+_ENGLISH_RETRY_SUFFIX = (
+    r"(?:[,.!:;]\s*(?:please\s+(?:try|retry)\s+again\s+later|retry\s+later))?"
+)
+_CHINESE_RETRY_SUFFIX = r"(?:[，,]\s*请稍后(?:再试|重试))?[。.!]?"
+_RATE_LIMIT_PATTERNS = (
+    re.compile(
+        rf"(?:the\s+)?rate\s+limit\s+(?:has\s+been\s+)?exceeded"
+        rf"{_ENGLISH_RETRY_SUFFIX}"
+    ),
+    re.compile(rf"too\s+many\s+requests?{_ENGLISH_RETRY_SUFFIX}"),
+    re.compile(rf"requests?\s+(?:has\s+been\s+)?throttled{_ENGLISH_RETRY_SUFFIX}"),
+    re.compile(
+        rf"(?:抱歉[，,]\s*)?每(?:秒|分钟|小时|日|天).{{0,24}}"
+        rf"最多(?:可)?(?:访问|调用).{{0,24}}\d+\s*次{_CHINESE_RETRY_SUFFIX}"
+    ),
+    re.compile(rf"(?:抱歉[，,]\s*)?(?:请求|访问)过于频繁{_CHINESE_RETRY_SUFFIX}"),
+    re.compile(
+        rf"(?:抱歉[，,]\s*)?(?:请求|访问)频率"
+        rf"(?:太高|过高|超限|超过限制|超出限制|达到上限|已达上限)"
+        rf"{_CHINESE_RETRY_SUFFIX}"
+    ),
+    re.compile(
+        rf"(?:抱歉[，,]\s*)?(?:请求|访问)次数"
+        rf"(?:太多|过多|超限|超过限制|超出限制|达到上限|已达上限)"
+        rf"{_CHINESE_RETRY_SUFFIX}"
+    ),
+    re.compile(rf"(?:触发|已被)限流{_CHINESE_RETRY_SUFFIX}"),
 )
 _PERMISSION_DENIED_PATTERNS = (
-    re.compile(r"\bpermission denied\b"),
-    re.compile(r"\baccess denied\b"),
-    re.compile(r"\bnot authori[sz]ed\b"),
-    re.compile(r"^(?:unauthorized|forbidden)(?:[.:\s]|$)"),
     re.compile(
-        r"\b(?:do not|does not|don't|doesn't) have "
-        r"(?:the )?(?:required )?permission\b"
+        rf"(?:permission|access)\s+denied"
+        rf"(?:\s+(?:for|to)\s+(?:this|the)\s+(?:endpoint|api|interface|service))?"
+        rf"{_ENGLISH_RETRY_SUFFIX}"
     ),
-    re.compile(r"(?:您|你|用户|账户).{0,8}没有.{0,8}(?:访问|调用).{0,16}权限"),
-    re.compile(r"(?:您|你|用户|账户).{0,8}(?:无权|未授权).{0,12}(?:访问|调用)"),
+    re.compile(r"(?:not\s+authori[sz]ed|unauthorized|forbidden)[.!]?"),
     re.compile(
-        r"(?:接口|访问|调用)?权限(?:不足|被拒绝|未开通)"
-        r"(?:[，。,:：；;]|$)"
+        rf"(?:you|the\s+user|this\s+account)\s+(?:are|is)\s+not\s+"
+        rf"(?:authori[sz]ed|allowed)\s+to\s+(?:access|call|use)\s+"
+        rf"(?:this|the)\s+(?:endpoint|api|interface|service)"
+        rf"{_ENGLISH_RETRY_SUFFIX}"
     ),
     re.compile(
-        r"(?:^(?:积分)|(?:您|你|用户|账户).{0,8}积分)不(?:足|够)"
-        r"(?:[，。,:：；;]|$)"
+        rf"(?:you|the\s+user|this\s+account)\s+(?:do|does)\s+not\s+have\s+"
+        rf"(?:the\s+)?(?:required\s+)?permission\s+to\s+"
+        rf"(?:access|call|use)\s+(?:this|the)\s+"
+        rf"(?:endpoint|api|interface|service){_ENGLISH_RETRY_SUFFIX}"
+    ),
+    re.compile(
+        r"(?:抱歉[，,]\s*)?(?:您|你|用户|账户)"
+        r"(?:"
+        r"没有(?:访问|调用|使用)(?:该|此|这个)?(?:接口|api|服务)的?权限"
+        r"|没有权限(?:访问|调用|使用)(?:该|此|这个)?(?:接口|api|服务)"
+        r"|(?:无权|未授权)(?:访问|调用|使用)(?:该|此|这个)?(?:接口|api|服务)"
+        rf"){_CHINESE_RETRY_SUFFIX}"
+    ),
+    re.compile(
+        rf"(?:该|此)?(?:接口|访问|调用)?权限(?:不足|被拒绝|未开通)"
+        rf"{_CHINESE_RETRY_SUFFIX}"
+    ),
+    re.compile(
+        rf"(?:抱歉[，,]\s*)?(?:(?:您|你|用户|账户)的?)?积分(?:不足|不够)"
+        rf"{_CHINESE_RETRY_SUFFIX}"
     ),
 )
 _PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _provider_error_code(message: str) -> str:
-    normalized = message.casefold()
-    if any(pattern.search(normalized) for pattern in _RATE_LIMIT_PATTERNS):
+def _provider_error_code(provider_code: int | str | None, message: str) -> str:
+    normalized = " ".join(message.casefold().split())
+    if provider_code not in _CLASSIFIABLE_PROVIDER_CODES:
+        return "provider_error"
+    if any(pattern.search(normalized) for pattern in _INTERNAL_ERROR_PATTERNS):
+        return "provider_error"
+    if any(pattern.fullmatch(normalized) for pattern in _RATE_LIMIT_PATTERNS):
         return "rate_limited"
-    if any(pattern.search(normalized) for pattern in _PERMISSION_DENIED_PATTERNS):
+    if any(pattern.fullmatch(normalized) for pattern in _PERMISSION_DENIED_PATTERNS):
         return "permission_denied"
     return "provider_error"
+
+
+def _reject_non_finite_json_constant(constant: str) -> None:
+    raise ValueError(f"Tushare response contains non-finite JSON constant: {constant}")
+
+
+def _loads_provider_json(payload: str) -> Any:
+    return json.loads(payload, parse_constant=_reject_non_finite_json_constant)
+
+
+def _contains_non_finite_float(value: Any) -> bool:
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(
+            _contains_non_finite_float(key) or _contains_non_finite_float(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_non_finite_float(item) for item in value)
+    return False
 
 
 def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
     if not isinstance(data, dict):
         raise ValueError("Tushare response data must be a mapping")
+    if _contains_non_finite_float(data):
+        raise ValueError("Tushare response rows must contain only finite numbers")
     if "fields" not in data or "items" not in data:
         raise ValueError("Tushare response data must contain fields and items")
 
@@ -231,7 +385,9 @@ def tushare_data(
             method="POST",
         )
         try:
-            body = json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8"))
+            body = _loads_provider_json(
+                urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8")
+            )
             if body.get("code") != 0:
                 if not strict:
                     return {"fields": [], "items": [], "error": body.get("msg", ""), "code": body.get("code")}
@@ -276,7 +432,7 @@ def tushare_rows_outcome(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        body = json.loads(
+        body = _loads_provider_json(
             urllib.request.urlopen(request, timeout=30).read().decode("utf-8")
         )
         if not isinstance(body, dict):
@@ -295,7 +451,7 @@ def tushare_rows_outcome(
                 state="failed",
                 rows=(),
                 provider_code=provider_code,
-                error_code=_provider_error_code(message),
+                error_code=_provider_error_code(provider_code, message),
                 error_message=message,
             )
 

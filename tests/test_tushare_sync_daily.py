@@ -529,6 +529,62 @@ def test_sync_tier_strict_path_preserves_typed_provider_failure(
     assert outcome.error_message in caplog.text
 
 
+@pytest.mark.parametrize("failure_mode", ["provider", "transport"])
+def test_sync_tier_never_propagates_provider_or_transport_credentials(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+) -> None:
+    secret = "S3CR3T-DO-NOT-LOG"
+    if failure_mode == "provider":
+        outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=f"upstream rejected request token={secret}",
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return outcome
+    else:
+
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(f"transport unavailable token={secret}")
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        stats = sync_tier(
+            collector,
+            "P1_eod_daily",
+            [{"api_name": "daily", "per_stock": False, "params": {}}],
+            stock_codes=[],
+            trade_date="20260715",
+            start_date="20260715",
+            end_date="20260715",
+            sqlite_db_path=tmp_path / "marketdata.sqlite",
+        )
+
+    assert stats["daily"]["failure_count"] == 1
+    assert collector.last_collect_outcome is not None
+    assert secret not in collector.last_collect_outcome.error_message
+    assert secret not in collector.last_collect_error
+    assert secret not in caplog.text
+    assert "[REDACTED]" in collector.last_collect_error
+    assert "[REDACTED]" in caplog.text
+
+
 def test_exit_on_failure_considers_sqlite_failures() -> None:
     assert sync_daily_module._failure_exit_code(
         {"calls": 10, "failure_count": 6, "sqlite_failure_count": 0},

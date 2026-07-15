@@ -1,4 +1,5 @@
 import json
+import math
 import urllib.error
 from dataclasses import FrozenInstanceError
 
@@ -13,6 +14,14 @@ class _Response:
 
     def read(self) -> bytes:
         return json.dumps(self._payload).encode("utf-8")
+
+
+class _RawResponse:
+    def __init__(self, payload: str):
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload.encode("utf-8")
 
 
 def test_tushare_data_retries_transient_http_error(monkeypatch):
@@ -110,6 +119,61 @@ def test_tushare_rows_outcome_marks_valid_zero_rows_empty(monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    ("raw_payload", "constant"),
+    [
+        pytest.param(
+            '{"code": NaN, "msg": null, "data": {"fields": ["value"], "items": []}}',
+            "NaN",
+            id="top-level-nan",
+        ),
+        pytest.param(
+            '{"code": 0, "msg": null, "data": {"fields": ["value"], "items": [[Infinity]]}}',
+            "Infinity",
+            id="row-infinity",
+        ),
+        pytest.param(
+            '{"code": 0, "msg": null, "data": {"fields": ["value"], "items": [[1]]}, "meta": {"sentinel": -Infinity}}',
+            "-Infinity",
+            id="nested-negative-infinity",
+        ),
+    ],
+)
+def test_tushare_rows_outcome_rejects_non_finite_raw_json_constants(
+    monkeypatch,
+    raw_payload,
+    constant,
+):
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _RawResponse(raw_payload),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_code == "provider_error"
+    assert "non-finite JSON constant" in outcome.error_message
+    assert constant in outcome.error_message
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="positive-infinity"),
+        pytest.param(-math.inf, id="negative-infinity"),
+        pytest.param({"nested": [math.nan]}, id="nested-nan"),
+    ],
+)
+def test_strict_provider_rows_rejects_non_finite_float_values(value):
+    with pytest.raises(ValueError, match="finite"):
+        tushare_common._strict_provider_rows({"fields": ["value"], "items": [[value]]})
+
+
 def test_tushare_rows_outcome_keeps_unknown_provider_error_failed(monkeypatch):
     _stub_outcome_response(
         monkeypatch,
@@ -172,6 +236,66 @@ def test_tushare_rows_outcome_does_not_guess_unknown_error_class(monkeypatch):
 
     assert outcome.state == "failed"
     assert outcome.provider_code == -2001
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == message
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_error_code"),
+    [
+        pytest.param(
+            "抱歉，您没有权限访问该接口",
+            "permission_denied",
+            id="chinese-permission-before-action",
+        ),
+        pytest.param(
+            "you are not allowed to access this endpoint",
+            "permission_denied",
+            id="english-not-allowed",
+        ),
+        pytest.param(
+            "请求频率太高，请稍后再试",
+            "rate_limited",
+            id="chinese-frequency-too-high",
+        ),
+        pytest.param(
+            "访问次数超出限制",
+            "rate_limited",
+            id="chinese-access-count-over-limit",
+        ),
+    ],
+)
+def test_tushare_rows_outcome_classifies_explicit_provider_denials(
+    monkeypatch,
+    message,
+    expected_error_code,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == expected_error_code
+    assert outcome.error_message == message
+
+
+def test_tushare_rows_outcome_requires_reliable_code_for_specialized_classification(
+    monkeypatch,
+):
+    message = "you are not allowed to access this endpoint"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 70001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == 70001
     assert outcome.error_code == "provider_error"
     assert outcome.error_message == message
 
@@ -323,6 +447,10 @@ def test_tushare_rows_outcome_rejects_incomplete_or_lossy_success_schema(
         "internal permission service error",
         "rate limiter internal service error",
         "throttling policy cache unavailable",
+        "internal service failure: access denied classifier unavailable",
+        "internal service failure: rate limit has been exceeded classifier unavailable",
+        "permission config unavailable: access denied",
+        "rate classifier failure: too many requests",
         "权限缓存服务异常",
         "访问频率配置服务异常",
         "权限不足检测服务异常",
@@ -346,6 +474,49 @@ def test_tushare_rows_outcome_does_not_classify_internal_service_text(
     assert outcome.error_message == message
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "provider rejected token=S3CR3T-DO-NOT-LOG",
+        "provider rejected api_key: S3CR3T-DO-NOT-LOG",
+        "provider rejected password=S3CR3T-DO-NOT-LOG",
+        "provider rejected Authorization: Bearer S3CR3T-DO-NOT-LOG",
+        "provider rejected Bearer S3CR3T-DO-NOT-LOG",
+        'provider rejected {"api-key":"S3CR3T-DO-NOT-LOG"}',
+    ],
+)
+def test_provider_call_outcome_redacts_credential_styles(message):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    assert "S3CR3T-DO-NOT-LOG" not in outcome.error_message
+    assert "[REDACTED]" in outcome.error_message
+    assert outcome.provider_code == -2001
+
+
+def test_tushare_rows_outcome_redacts_provider_error_before_return(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": -2001,
+            "msg": "upstream rejected request token=S3CR3T-DO-NOT-LOG",
+            "data": None,
+        },
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "upstream rejected request token=[REDACTED]"
+
+
 def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
     monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
@@ -363,3 +534,23 @@ def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
     assert outcome.provider_code is None
     assert outcome.error_code == "provider_error"
     assert "offline" in outcome.error_message
+
+
+def test_tushare_rows_outcome_redacts_transport_error_before_return(monkeypatch):
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            urllib.error.URLError("offline token=S3CR3T-DO-NOT-LOG")
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code is None
+    assert outcome.error_code == "provider_error"
+    assert "offline" in outcome.error_message
+    assert "S3CR3T-DO-NOT-LOG" not in outcome.error_message
+    assert "token=[REDACTED]" in outcome.error_message
