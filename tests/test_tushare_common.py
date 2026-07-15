@@ -1,6 +1,8 @@
 import json
 import math
+import re
 import urllib.error
+import urllib.parse
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -698,7 +700,7 @@ def test_provider_call_outcome_redacts_extended_credential_surfaces(
         assert secret not in repr(log_fields)
     assert log_fields["error_message"] == outcome.error_message
     if "https://" in message:
-        assert "?[REDACTED]#[REDACTED]" in outcome.error_message
+        assert outcome.error_message == "provider diagnostic [REDACTED]"
 
 
 @pytest.mark.parametrize(
@@ -770,6 +772,7 @@ def test_provider_call_outcome_redacts_normalized_header_credentials_completely(
     prefix,
     suffix,
 ):
+    del prefix, suffix
     outcome = tushare_common.ProviderCallOutcome(
         state="failed",
         rows=(),
@@ -780,9 +783,10 @@ def test_provider_call_outcome_redacts_normalized_header_credentials_completely(
 
     for fragment in sensitive_fragments:
         assert fragment not in outcome.error_message
-    assert outcome.error_message.startswith(prefix)
-    assert outcome.error_message.endswith(suffix)
-    assert "[REDACTED]" in outcome.error_message
+    expected = "provider diagnostic [REDACTED]"
+    if "401" in message:
+        expected += " (status=401)"
+    assert outcome.error_message == expected
     log_fields = tushare_common.provider_outcome_log_fields(outcome)
     for fragment in sensitive_fragments:
         assert fragment not in repr(log_fields)
@@ -813,13 +817,13 @@ def test_provider_call_outcome_does_not_redact_noncredential_key_prefixes():
         pytest.param(
             "provider bytes={b'X-Auth-Token': "
             "b'DUMMY +/%=?& TRAIL', b'status': b'401'}",
-            "provider bytes={b'X-Auth-Token': b'[REDACTED]', b'status': b'401'}",
+            "provider diagnostic [REDACTED] (status=401)",
             id="bytes-wrapper",
         ),
         pytest.param(
             r"provider headers={'X-API-Key': "
             r"'DUMMY \' embedded +/%=?& TRAIL', 'status': 401}",
-            "provider headers={'X-API-Key': '[REDACTED]', 'status': 401}",
+            "provider diagnostic [REDACTED] (status=401)",
             id="escaped-quote",
         ),
     ],
@@ -856,7 +860,7 @@ def test_tushare_rows_outcome_redacts_provider_error_before_return(monkeypatch):
     assert outcome.state == "failed"
     assert outcome.provider_code == -2001
     assert outcome.error_code == "provider_error"
-    assert outcome.error_message == "upstream rejected request token=[REDACTED]"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
 
 
 def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
@@ -875,7 +879,7 @@ def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
     assert outcome.rows == ()
     assert outcome.provider_code is None
     assert outcome.error_code == "provider_error"
-    assert "offline" in outcome.error_message
+    assert outcome.error_message == "provider transport unavailable"
 
 
 def test_tushare_rows_outcome_redacts_transport_error_before_return(monkeypatch):
@@ -893,6 +897,292 @@ def test_tushare_rows_outcome_redacts_transport_error_before_return(monkeypatch)
     assert outcome.state == "failed"
     assert outcome.provider_code is None
     assert outcome.error_code == "provider_error"
-    assert "offline" in outcome.error_message
     assert "S3CR3T-DO-NOT-LOG" not in outcome.error_message
-    assert "token=[REDACTED]" in outcome.error_message
+    assert outcome.error_message == "provider transport unavailable"
+
+
+@pytest.mark.parametrize(
+    ("message", "sensitive_fragments"),
+    [
+        pytest.param(
+            "Authorization: Bearer DUMMY-COMMA-LEAD,DUMMY-COMMA-TRAIL status=401",
+            ("DUMMY-COMMA-LEAD", "DUMMY-COMMA-TRAIL"),
+            id="authorization-comma",
+        ),
+        pytest.param(
+            "Authorization: Bearer DUMMY-SEMI-LEAD;DUMMY-SEMI-TRAIL status=401",
+            ("DUMMY-SEMI-LEAD", "DUMMY-SEMI-TRAIL"),
+            id="authorization-semicolon",
+        ),
+        pytest.param(
+            "Authorization: Bearer DUMMY-BRACKET-LEAD]DUMMY-BRACKET-TRAIL status=401",
+            ("DUMMY-BRACKET-LEAD", "DUMMY-BRACKET-TRAIL"),
+            id="authorization-right-bracket",
+        ),
+        pytest.param(
+            "Authorization: Bearer DUMMY-NL-AUTH-LEAD\nDUMMY-NL-AUTH-TRAIL status=401",
+            ("DUMMY-NL-AUTH-LEAD", "DUMMY-NL-AUTH-TRAIL"),
+            id="authorization-newline",
+        ),
+        pytest.param(
+            "X-API-Key: DUMMY-NL-KEY-LEAD\nDUMMY-NL-KEY-TRAIL status=401",
+            ("DUMMY-NL-KEY-LEAD", "DUMMY-NL-KEY-TRAIL"),
+            id="x-api-key-newline",
+        ),
+        pytest.param(
+            "token=DUMMY-AMP-LEAD%26trail=DUMMY-AMP-TRAIL&status=401",
+            ("DUMMY-AMP-LEAD", "DUMMY-AMP-TRAIL"),
+            id="percent-encoded-ampersand",
+        ),
+        pytest.param(
+            "token=DUMMY-NL-TOKEN-LEAD%0ADUMMY-NL-TOKEN-TRAIL status=401",
+            ("DUMMY-NL-TOKEN-LEAD", "DUMMY-NL-TOKEN-TRAIL"),
+            id="percent-encoded-newline",
+        ),
+        pytest.param(
+            "https://api.example.test/v1?token=DUMMY-URL-LEAD%0ADUMMY-URL-TRAIL status=401",
+            ("DUMMY-URL-LEAD", "DUMMY-URL-TRAIL"),
+            id="url-percent-encoded-newline",
+        ),
+        pytest.param(
+            "Cookie: session=DUMMY-COOKIE-LEAD\nDUMMY-COOKIE-TRAIL status=401",
+            ("DUMMY-COOKIE-LEAD", "DUMMY-COOKIE-TRAIL"),
+            id="cookie-newline",
+        ),
+        pytest.param(
+            "Authorization: Bearer [REDACTED]DUMMY-MARKER-TRAIL status=401",
+            ("DUMMY-MARKER-TRAIL",),
+            id="literal-marker-prefix",
+        ),
+        pytest.param(
+            "headers=[('X-API-Key', 'DUMMY-TUPLE-SECRET')]; status=401",
+            ("DUMMY-TUPLE-SECRET",),
+            id="tuple-header-repr",
+        ),
+        pytest.param(
+            "headers=[(b'X-Auth-Token', b'DUMMY-TUPLE-BYTES')]; status=401",
+            ("DUMMY-TUPLE-BYTES",),
+            id="tuple-bytes-header-repr",
+        ),
+        pytest.param(
+            '{"Authorization":"Bearer DUMMY-QUOTED-AUTH-LEAD,DUMMY-QUOTED-AUTH-TRAIL","status":401}',
+            ("DUMMY-QUOTED-AUTH-LEAD", "DUMMY-QUOTED-AUTH-TRAIL"),
+            id="quoted-authorization-comma",
+        ),
+        pytest.param(
+            r'payload="{\"X-API-Key\":\"DUMMY-ESCAPED-JSON-SECRET\",\"status\":401}"',
+            ("DUMMY-ESCAPED-JSON-SECRET",),
+            id="escaped-json-string",
+        ),
+        pytest.param(
+            "x+api+key=DUMMY-FORM-PLUS-SECRET&status=401",
+            ("DUMMY-FORM-PLUS-SECRET",),
+            id="form-percent-plus-encoding",
+        ),
+    ],
+)
+def test_fail_closed_outcome_redaction_covers_adversarial_boundaries(
+    message,
+    sensitive_fragments,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+
+    for fragment in sensitive_fragments:
+        assert fragment not in (outcome.error_message or "")
+        assert fragment not in repr(log_fields)
+    assert "401" in (outcome.error_message or "")
+    assert log_fields["error_message"] == outcome.error_message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Authorization: Bearer DUMMY-IDEMPOTENT,DUMMY-TRAIL status=401",
+        "Authorization: Bearer DUMMY-IDEMPOTENT;DUMMY-TRAIL status=401",
+        "Authorization: Bearer DUMMY-IDEMPOTENT]DUMMY-TRAIL status=401",
+        "Authorization: Bearer DUMMY-IDEMPOTENT\nDUMMY-TRAIL status=401",
+    ],
+)
+def test_fail_closed_redaction_is_idempotent_at_log_boundary(message):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    assert (
+        tushare_common.provider_outcome_log_fields(outcome)["error_message"]
+        == outcome.error_message
+    )
+
+
+@pytest.mark.parametrize("field", ["provider_code", "error_code"])
+def test_untrusted_outcome_codes_are_safe_in_return_and_receipt(field):
+    secret = "DUMMY-CODE-SECRET"
+    kwargs = {
+        "state": "failed",
+        "rows": (),
+        "provider_code": -2001,
+        "error_code": "provider_error",
+        "error_message": "safe diagnostic",
+    }
+    kwargs[field] = f"token={secret}"
+
+    outcome = tushare_common.ProviderCallOutcome(**kwargs)
+    receipt = {"outcome": outcome}
+
+    assert secret not in repr(outcome)
+    assert secret not in repr(receipt)
+
+
+@pytest.mark.parametrize("failure_mode", ["provider", "transport"])
+def test_strict_provider_return_is_safe_for_delimited_secret(
+    monkeypatch,
+    failure_mode,
+):
+    secret = "DUMMY-STRICT-TRAIL"
+    message = f"Authorization: Bearer DUMMY-STRICT-LEAD,{secret} status=401"
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    if failure_mode == "provider":
+        monkeypatch.setattr(
+            tushare_common.urllib.request,
+            "urlopen",
+            lambda *_args, **_kwargs: _Response(
+                {"code": -2001, "msg": message, "data": None}
+            ),
+        )
+    else:
+        def raise_transport(*_args, **_kwargs):
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(
+            tushare_common.urllib.request,
+            "urlopen",
+            raise_transport,
+        )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert secret not in (outcome.error_message or "")
+    assert secret not in repr(outcome)
+
+
+def test_provider_string_code_is_safe_in_return_and_receipt(monkeypatch):
+    secret = "DUMMY-PROVIDER-CODE-SECRET"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": f"token={secret}", "msg": "request rejected", "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+    receipt = {"outcome": outcome}
+
+    assert outcome.state == "failed"
+    assert secret not in repr(outcome)
+    assert secret not in repr(receipt)
+
+
+_EXACT_TOKEN = "DUMMY token+/=\"'\nTAIL"
+
+
+def _lower_percent_escapes(value: str) -> str:
+    return re.sub(r"%[0-9A-F]{2}", lambda match: match.group(0).lower(), value)
+
+
+@pytest.mark.parametrize(
+    "echoed_token",
+    [
+        _EXACT_TOKEN,
+        urllib.parse.quote(_EXACT_TOKEN, safe=""),
+        urllib.parse.quote(_EXACT_TOKEN),
+        _lower_percent_escapes(urllib.parse.quote(_EXACT_TOKEN, safe="")),
+        urllib.parse.quote(_EXACT_TOKEN, safe="").replace("%2B", "%2b"),
+        urllib.parse.quote_plus(_EXACT_TOKEN, safe=""),
+        json.dumps(_EXACT_TOKEN)[1:-1],
+        repr(_EXACT_TOKEN),
+        repr(_EXACT_TOKEN.encode("utf-8")),
+    ],
+    ids=(
+        "raw",
+        "url-encoded",
+        "url-encoded-default-safe",
+        "url-encoded-lowercase",
+        "url-encoded-mixed-case",
+        "form-encoded",
+        "json-escaped",
+        "repr",
+        "bytes-repr",
+    ),
+)
+def test_provider_boundary_replaces_exact_token_equivalent_forms(
+    monkeypatch,
+    echoed_token,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": f"provider echoed {echoed_token}; status=401", "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", _EXACT_TOKEN)
+    fields = tushare_common.provider_outcome_log_fields(outcome)
+
+    assert "DUMMY" not in (outcome.error_message or "")
+    assert "TAIL" not in (outcome.error_message or "")
+    assert fields["error_message"] == outcome.error_message
+
+
+def test_provider_boundary_replaces_percent_decoded_token(monkeypatch):
+    encoded_token = "DUMMY%2FDECODED%20TOKEN"
+    decoded_token = urllib.parse.unquote(encoded_token)
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": -2001,
+            "msg": f"provider echoed {decoded_token}; status=401",
+            "data": None,
+        },
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", encoded_token)
+
+    assert "DUMMY" not in (outcome.error_message or "")
+    assert "DECODED" not in (outcome.error_message or "")
+
+
+def test_transport_summary_does_not_retain_arbitrary_exception_text(monkeypatch):
+    secret = "innocent-looking-private-diagnostic"
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError(secret)),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert secret not in (outcome.error_message or "")
+    assert outcome.error_message == "provider transport failed"
+
+
+def test_redacted_summary_does_not_misreport_three_digit_credential_as_status():
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message="Authorization: Bearer 401",
+    )
+
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert "401" not in outcome.error_message

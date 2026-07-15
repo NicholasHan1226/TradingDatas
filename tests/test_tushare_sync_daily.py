@@ -636,8 +636,11 @@ def test_sync_tier_never_propagates_provider_or_transport_credentials(
     assert secret not in collector.last_collect_outcome.error_message
     assert secret not in collector.last_collect_error
     assert secret not in caplog.text
-    assert "[REDACTED]" in collector.last_collect_error
-    assert "[REDACTED]" in caplog.text
+    if failure_mode == "provider":
+        assert "[REDACTED]" in collector.last_collect_error
+        assert "[REDACTED]" in caplog.text
+    else:
+        assert collector.last_collect_error == "provider transport failed"
 
 
 @pytest.mark.parametrize(
@@ -795,9 +798,12 @@ def test_normalized_header_credentials_never_reach_outcome_logs_or_receipts(
     for fragment in sensitive_fragments:
         for surface in surfaces:
             assert fragment not in surface
-    assert "[REDACTED]" in collector.last_collect_outcome.error_message
-    assert "[REDACTED]" in raw_handler.raw_record_text()
-    assert "[REDACTED]" in raw_handler.formatted_record_text()
+    if failure_mode == "provider":
+        assert "[REDACTED]" in collector.last_collect_outcome.error_message
+        assert "[REDACTED]" in raw_handler.raw_record_text()
+        assert "[REDACTED]" in raw_handler.formatted_record_text()
+    else:
+        assert collector.last_collect_outcome.error_message == "provider transport failed"
 
 
 def test_collector_and_sync_logs_validate_provider_code_representation(
@@ -849,8 +855,9 @@ def test_collector_and_sync_logs_validate_provider_code_representation(
         sync_daily_module.logger.removeHandler(raw_handler)
 
     assert stats["daily"]["failure_count"] == 1
-    assert outcome.provider_code == raw_provider_code
+    assert outcome.provider_code == "<untrusted-provider-code>"
     assert collector.last_collect_outcome is outcome
+    assert secret not in repr(outcome)
     assert secret not in caplog.text
     assert secret not in raw_handler.raw_record_text()
     assert "untrusted-provider-code" in caplog.text
@@ -1537,3 +1544,78 @@ def test_every_p2_api_has_a_bounded_rotation_within_default_call_budget() -> Non
     assert all(int(api.get("bounded_rotation_size") or 0) > 0 for api in p2)
     planned_calls = sum(int(api["bounded_rotation_size"]) for api in p2)
     assert planned_calls <= 2500
+
+
+@pytest.mark.parametrize("failure_mode", ["provider", "transport"])
+def test_delimited_secret_is_absent_from_outcome_logs_and_receipt_metadata(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+) -> None:
+    lead = "DUMMY-INTEGRATION-LEAD"
+    trail = "DUMMY-INTEGRATION-TRAIL"
+    message = f"Authorization: Bearer {lead},{trail} status=401"
+
+    if failure_mode == "provider":
+        provider_outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=message,
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return provider_outcome
+    else:
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(message)
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    handler = _RawRecordHandler()
+    collector_module.logger.addHandler(handler)
+    sync_daily_module.logger.addHandler(handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(handler)
+        sync_daily_module.logger.removeHandler(handler)
+
+    receipt_metadata = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+    surfaces = (
+        repr(collector.last_collect_outcome),
+        collector.last_collect_error,
+        handler.raw_record_text(),
+        handler.formatted_record_text(),
+        caplog.text,
+        repr(receipt_metadata),
+    )
+    assert stats["daily"]["failure_count"] == 1
+    for fragment in (lead, trail):
+        for surface in surfaces:
+            assert fragment not in surface

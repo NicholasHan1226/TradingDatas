@@ -44,6 +44,7 @@ from collectors.tushare.collector import TushareCollector  # noqa: E402
 from collectors.tushare.tushare_common import (  # noqa: E402
     ProviderCallOutcome,
     provider_outcome_log_fields,
+    safe_provider_exception_message,
 )
 from storage.read_model_store import (  # noqa: E402
     API_TO_TABLE_MAP,
@@ -507,9 +508,12 @@ def sync_tier(
             outcome = ProviderCallOutcome(
                 state="failed",
                 rows=(),
-                provider_code=getattr(candidate, "provider_code", None),
+                provider_code=None,
                 error_code="provider_error",
-                error_message=str(exc) or exc.__class__.__name__,
+                error_message=safe_provider_exception_message(
+                    exc,
+                    invalid_outcome=candidate is not None,
+                ),
             )
         if outcome.state == "failed":
             logger.error(

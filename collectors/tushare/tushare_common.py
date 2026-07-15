@@ -8,6 +8,7 @@ import math
 import os
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -32,159 +33,151 @@ QUICKSYNC_API_URL = "https://api.quicksync.cn"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
 
 _REDACTION_MARKER = "[REDACTED]"
-_URL_PATTERN = re.compile(
-    r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"']+",
+_CREDENTIAL_NAME_PATTERN = (
+    r"(?:authorization|proxy[ _-]*authorization|"
+    r"(?:x[ _-]*)?(?:access[ _-]*token|refresh[ _-]*token|id[ _-]*token|"
+    r"auth[ _-]*token|token|api[ _-]*(?:key|token))|"
+    r"password|passwd|credential(?:s)?|client[ _-]*secret|secret|"
+    r"cookie|set[ _-]*cookie)"
 )
-_COOKIE_HEADER_PATTERN = re.compile(
-    r"(?P<prefix>\b(?:set-cookie|cookie)\s*:\s*)(?P<value>[^\r\n]+)",
+_CREDENTIAL_INDICATOR_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9_.-])(?:[bB])?[\"']?{_CREDENTIAL_NAME_PATTERN}"
+    rf"[\"']?(?![A-Za-z0-9_.-])\s*(?::|=|,)",
     re.IGNORECASE,
 )
-_CREDENTIAL_FIELD_PATTERN = (
-    r"(?:(?:x[_ -]*)?(?:"
-    r"access[_ -]*token|refresh[_ -]*token|id[_ -]*token|"
-    r"auth[_ -]*token|token|api[_ -]*(?:key|token)|"
-    r"password|passwd|credential(?:s)?|client[_ -]*secret|"
-    r"secret|cookie|set[_ -]*cookie))"
-)
-_CREDENTIAL_KEY_PREFIX = r"(?<![A-Za-z0-9_.-])(?:[bB](?=[\"']))?"
-_DIAGNOSTIC_FIELD_PATTERN = (
-    r"(?:[bB](?=[\"']))?[\"']?[A-Za-z][A-Za-z0-9_. -]{0,63}[\"']?\s*[:=]"
-)
-_UNQUOTED_CREDENTIAL_END_PATTERN = (
-    r"(?:"
-    r"\s*[}\])>](?=\s*(?:$|[,;&}\])>]|" + _DIAGNOSTIC_FIELD_PATTERN + r"))"
-    r"|\r?\n"
-    r"|\s*[,;&]\s*" + _DIAGNOSTIC_FIELD_PATTERN + r"|\s*$)"
-)
-_UNQUOTED_REDACTION_MARKER_PATTERN = (
-    re.escape(_REDACTION_MARKER) + r"(?=" + _UNQUOTED_CREDENTIAL_END_PATTERN + r")"
-)
-_AUTHORIZATION_VALUE_PATTERN = re.compile(
-    r"""
-    (?P<prefix>
-        (?<![A-Za-z0-9_])
-        (?P<key_quote>["']?)authorization(?P=key_quote)\s*[:=]\s*
-    )
-    (?P<value_quote>["']?)
-    (?:(?P<scheme>bearer|basic)\s+)?
-    (?P<credential>
-        (?!\[REDACTED\])
-        [^"'\s,;&}<>)\]]+
-    )
-    (?P=value_quote)
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-_QUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
-    r"""
-    (?P<prefix>
-        """
-    + _CREDENTIAL_KEY_PREFIX
-    + r"""
-        (?P<key_quote>["']?)
-        """
-    + _CREDENTIAL_FIELD_PATTERN
-    + r"""
-        (?P=key_quote)\s*[:=]\s*
-    )
-    (?P<value_bytes>[bB](?=["']))?
-    (?P<value_quote>["'])
-    (?P<credential>
-        (?:\\[\s\S]|(?!(?P=value_quote))[\s\S])*
-    )
-    (?P=value_quote)
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-_UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
-    r"""
-    (?P<prefix>
-        """
-    + _CREDENTIAL_KEY_PREFIX
-    + r"""
-        (?P<key_quote>["']?)
-        """
-    + _CREDENTIAL_FIELD_PATTERN
-    + r"""
-        (?P=key_quote)
-        \s*[:=]\s*
-    )
-    (?P<credential>
-        (?!"""
-    + _UNQUOTED_REDACTION_MARKER_PATTERN
-    + r""")
-        (?![bB]?["'])
-        (?=\S)
-        [\s\S]*?
-    )
-    (?=
-        """
-    + _UNQUOTED_CREDENTIAL_END_PATTERN
-    + r"""
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-_BEARER_VALUE_PATTERN = re.compile(
-    r"(?P<prefix>\bbearer\s+)(?P<credential>(?!\[REDACTED\])[^\"'\s,;&}<>)\]]+)",
+_AUTH_SCHEME_INDICATOR_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+\S",
     re.IGNORECASE,
 )
+_HTTP_STATUS_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:[bB])?[\"']?"
+    r"(?:http[ _-]*status|status(?:[ _-]*code)?)"
+    r"[\"']?(?![A-Za-z0-9_.-])\s*[:=]\s*"
+    r"(?:[bB])?[\"']?([1-5][0-9]{2})(?![0-9])",
+    re.IGNORECASE,
+)
+_PERCENT_ESCAPE_PATTERN = re.compile(r"%[0-9A-F]{2}")
 
 
-def _redact_sensitive_text(message: str) -> str:
-    """Remove credential values before an error can cross an outcome boundary."""
+def _diagnostic_views(message: str) -> tuple[str, ...]:
+    """Return bounded decoding views for indicator detection, never for output."""
 
-    decoded = message
-    for _ in range(len(message) + 1):
-        next_decoded = urllib.parse.unquote(decoded)
-        if next_decoded == decoded:
-            break
-        decoded = next_decoded
-
-    def _redact_url(match: re.Match[str]) -> str:
-        raw_url = match.group(0)
-        try:
-            parsed = urllib.parse.urlsplit(raw_url)
-        except ValueError:
-            return _REDACTION_MARKER
-        netloc = parsed.netloc
-        if parsed.username is not None or parsed.password is not None:
-            netloc = f"{_REDACTION_MARKER}@{netloc.rsplit('@', 1)[-1]}"
-        return urllib.parse.urlunsplit(
-            (
-                parsed.scheme,
-                netloc,
-                parsed.path,
-                _REDACTION_MARKER if parsed.query else "",
-                _REDACTION_MARKER if parsed.fragment else "",
+    views: list[str] = [message]
+    pending = [message]
+    for _ in range(3):
+        next_pending: list[str] = []
+        for value in pending:
+            candidates = (
+                urllib.parse.unquote(value),
+                urllib.parse.unquote_plus(value),
+                value.replace(r'\"', '"').replace(r"\'", "'").replace("\\\\", "\\"),
             )
+            for candidate in candidates:
+                if candidate not in views:
+                    views.append(candidate)
+                    next_pending.append(candidate)
+        pending = next_pending
+        if not pending:
+            break
+    return tuple(views)
+
+
+def _secret_equivalent_forms(secret: str) -> tuple[str, ...]:
+    """Return a finite set of exact representations for one known call secret."""
+
+    if not secret:
+        return ()
+    decoded = {secret}
+    for _ in range(3):
+        candidates = {
+            urllib.parse.unquote(value)
+            for value in decoded
+        } | {
+            urllib.parse.unquote_plus(value)
+            for value in decoded
+        }
+        if candidates <= decoded:
+            break
+        decoded.update(candidates)
+
+    forms: set[str] = set(decoded)
+    for value in decoded:
+        encoded = {
+            urllib.parse.quote(value, safe=""),
+            urllib.parse.quote(value),
+            urllib.parse.quote_plus(value, safe=""),
+        }
+        forms.update(
+            {
+                json.dumps(value)[1:-1],
+                json.dumps(value, ensure_ascii=False)[1:-1],
+                repr(value),
+                repr(value.encode("utf-8")),
+            }
         )
-
-    def _redact_authorization(match: re.Match[str]) -> str:
-        scheme = match.group("scheme")
-        scheme_prefix = f"{scheme} " if scheme else ""
-        quote = match.group("value_quote")
-        return (
-            f"{match.group('prefix')}{quote}{scheme_prefix}{_REDACTION_MARKER}{quote}"
+        forms.update(encoded)
+        forms.update(
+            _PERCENT_ESCAPE_PATTERN.sub(
+                lambda match: match.group(0).lower(),
+                encoded_value,
+            )
+            for encoded_value in encoded
         )
+    forms.discard("")
+    return tuple(sorted(forms, key=len, reverse=True))
 
-    def _redact_quoted(match: re.Match[str]) -> str:
-        quote = match.group("value_quote")
-        value_bytes = match.group("value_bytes") or ""
-        return f"{match.group('prefix')}{value_bytes}{quote}{_REDACTION_MARKER}{quote}"
 
-    def _redact_unquoted(match: re.Match[str]) -> str:
-        return f"{match.group('prefix')}{_REDACTION_MARKER}"
-
-    redacted = _URL_PATTERN.sub(_redact_url, decoded)
-    redacted = _COOKIE_HEADER_PATTERN.sub(
-        lambda match: f"{match.group('prefix')}{_REDACTION_MARKER}",
-        redacted,
+def _contains_credential_indicator(message: str) -> bool:
+    return any(
+        _CREDENTIAL_INDICATOR_PATTERN.search(view)
+        or _AUTH_SCHEME_INDICATOR_PATTERN.search(view)
+        for view in _diagnostic_views(message)
     )
-    redacted = _AUTHORIZATION_VALUE_PATTERN.sub(_redact_authorization, redacted)
-    redacted = _QUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_quoted, redacted)
-    redacted = _UNQUOTED_CREDENTIAL_VALUE_PATTERN.sub(_redact_unquoted, redacted)
-    return _BEARER_VALUE_PATTERN.sub(_redact_unquoted, redacted)
+
+
+def _redacted_diagnostic_summary(message: str) -> str:
+    status = next(
+        (
+            match.group(1)
+            for view in _diagnostic_views(message)
+            if (match := _HTTP_STATUS_PATTERN.search(view)) is not None
+        ),
+        None,
+    )
+    suffix = f" (status={status})" if status else ""
+    return f"provider diagnostic {_REDACTION_MARKER}{suffix}"
+
+
+def _redact_sensitive_text(
+    message: str,
+    *,
+    sensitive_values: tuple[str, ...] = (),
+) -> str:
+    """Make one diagnostic safe before it crosses an outcome boundary.
+
+    Known per-call secrets are removed by exact finite representations. Any
+    remaining credential-shaped diagnostic is not parsed: the whole value is
+    replaced with a structured summary so punctuation cannot define a secret
+    boundary.
+    """
+
+    redacted = message
+    forms = {
+        form
+        for secret in sensitive_values
+        for form in _secret_equivalent_forms(str(secret))
+    }
+    for form in sorted(forms, key=len, reverse=True):
+        redacted = redacted.replace(form, _REDACTION_MARKER)
+    if forms and any(
+        form in view
+        for view in _diagnostic_views(redacted)
+        for form in forms
+    ):
+        return _redacted_diagnostic_summary(redacted)
+    if _contains_credential_indicator(redacted):
+        return _redacted_diagnostic_summary(redacted)
+    return redacted
 
 
 @dataclass(frozen=True)
@@ -198,6 +191,16 @@ class ProviderCallOutcome:
     error_message: str | None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "provider_code",
+            _sanitize_provider_code(self.provider_code),
+        )
+        object.__setattr__(
+            self,
+            "error_code",
+            _sanitize_error_code(self.error_code),
+        )
         if self.error_message is not None:
             object.__setattr__(
                 self,
@@ -219,26 +222,35 @@ _SAFE_PROVIDER_CODE = re.compile(r"-?(?:0|[1-9][0-9]{0,15})")
 _SAFE_ERROR_CODES = frozenset(
     (None, "provider_error", "rate_limited", "permission_denied")
 )
+_UNTRUSTED_PROVIDER_CODE = "<untrusted-provider-code>"
+_UNTRUSTED_ERROR_CODE = "<untrusted-error-code>"
+
+
+def _sanitize_provider_code(value: Any) -> int | str | None:
+    if value is None or type(value) is int:
+        return value
+    if isinstance(value, str):
+        sanitized = _redact_sensitive_text(value)
+        if _SAFE_PROVIDER_CODE.fullmatch(sanitized):
+            return sanitized
+    return _UNTRUSTED_PROVIDER_CODE
+
+
+def _sanitize_error_code(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        sanitized = _redact_sensitive_text(value)
+        if sanitized in _SAFE_ERROR_CODES:
+            return sanitized
+    return _UNTRUSTED_ERROR_CODE
 
 
 def provider_outcome_log_fields(outcome: ProviderCallOutcome) -> dict[str, Any]:
     """Return diagnostic outcome fields with no untrusted log arguments."""
 
-    raw_provider_code = outcome.provider_code
-    if raw_provider_code is None or type(raw_provider_code) is int:
-        provider_code: int | str | None = raw_provider_code
-    elif isinstance(raw_provider_code, str) and _SAFE_PROVIDER_CODE.fullmatch(
-        raw_provider_code
-    ):
-        provider_code = raw_provider_code
-    else:
-        provider_code = "<untrusted-provider-code>"
-
-    error_code = (
-        outcome.error_code
-        if outcome.error_code in _SAFE_ERROR_CODES
-        else "<untrusted-error-code>"
-    )
+    provider_code = _sanitize_provider_code(outcome.provider_code)
+    error_code = _sanitize_error_code(outcome.error_code)
     state = (
         outcome.state
         if outcome.state in ("success", "empty", "failed")
@@ -255,6 +267,49 @@ def provider_outcome_log_fields(outcome: ProviderCallOutcome) -> dict[str, Any]:
         "error_code": error_code,
         "error_message": error_message,
     }
+
+
+def safe_provider_exception_message(
+    exc: BaseException,
+    *,
+    invalid_outcome: bool = False,
+) -> str:
+    """Classify an exception without retaining its arbitrary text or repr."""
+
+    reason: object = exc
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code
+        if type(code) is int and 100 <= code <= 599:
+            return f"provider transport HTTP failure (status={code})"
+        return "provider transport HTTP failure"
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+    if isinstance(reason, TimeoutError):
+        return "provider transport timed out"
+    if isinstance(exc, urllib.error.URLError) or isinstance(
+        reason,
+        (ConnectionError, OSError),
+    ):
+        return "provider transport unavailable"
+    if invalid_outcome and isinstance(exc, (TypeError, ValueError)):
+        return "provider outcome invalid"
+    return "provider transport failed"
+
+
+class _ProviderResponseValidationError(ValueError):
+    """Internal-only response validation failure with a safe diagnostic."""
+
+
+def _safe_provider_response_error_message(exc: BaseException) -> str:
+    """Preserve only diagnostics generated by our own response validators."""
+
+    if isinstance(exc, UnicodeError):
+        return "Tushare response contains invalid UTF-8"
+    if isinstance(exc, json.JSONDecodeError):
+        return "Tushare response contains invalid JSON"
+    if isinstance(exc, _ProviderResponseValidationError):
+        return str(exc)
+    return "Tushare response validation failed"
 
 
 _CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001"))
@@ -351,14 +406,18 @@ def _provider_error_code(provider_code: int | str | None, message: str) -> str:
 
 
 def _reject_non_finite_json_constant(constant: str) -> None:
-    raise ValueError(f"Tushare response contains non-finite JSON constant: {constant}")
+    raise _ProviderResponseValidationError(
+        f"Tushare response contains non-finite JSON constant: {constant}"
+    )
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError("Tushare response contains duplicate JSON object key")
+            raise _ProviderResponseValidationError(
+                "Tushare response contains duplicate JSON object key"
+            )
         result[key] = value
     return result
 
@@ -383,39 +442,57 @@ def _loads_provider_json(payload: str) -> Any:
         object_pairs_hook=_reject_duplicate_json_keys,
     )
     if _contains_non_finite_float(body):
-        raise ValueError("Tushare response contains a non-finite number")
+        raise _ProviderResponseValidationError(
+            "Tushare response contains a non-finite number"
+        )
     return body
 
 
 def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
     if not isinstance(data, dict):
-        raise ValueError("Tushare response data must be a mapping")
+        raise _ProviderResponseValidationError(
+            "Tushare response data must be a mapping"
+        )
     if _contains_non_finite_float(data):
-        raise ValueError("Tushare response rows must contain only finite numbers")
+        raise _ProviderResponseValidationError(
+            "Tushare response rows must contain only finite numbers"
+        )
     if "fields" not in data or "items" not in data:
-        raise ValueError("Tushare response data must contain fields and items")
+        raise _ProviderResponseValidationError(
+            "Tushare response data must contain fields and items"
+        )
 
     fields = data["fields"]
     if not isinstance(fields, list) or not fields:
-        raise ValueError("Tushare response fields must be a non-empty list")
+        raise _ProviderResponseValidationError(
+            "Tushare response fields must be a non-empty list"
+        )
     if any(
         not isinstance(field, str) or _PROVIDER_FIELD_NAME.fullmatch(field) is None
         for field in fields
     ):
-        raise ValueError("Tushare response fields must contain valid field names")
+        raise _ProviderResponseValidationError(
+            "Tushare response fields must contain valid field names"
+        )
     if len(set(fields)) != len(fields):
-        raise ValueError("Tushare response fields must be unique")
+        raise _ProviderResponseValidationError(
+            "Tushare response fields must be unique"
+        )
 
     items = data["items"]
     if not isinstance(items, list):
-        raise ValueError("Tushare response items must be a list")
+        raise _ProviderResponseValidationError(
+            "Tushare response items must be a list"
+        )
 
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(items):
         if not isinstance(row, list):
-            raise ValueError(f"Tushare response row {index} must be a list")
+            raise _ProviderResponseValidationError(
+                f"Tushare response row {index} must be a list"
+            )
         if len(row) != len(fields):
-            raise ValueError(
+            raise _ProviderResponseValidationError(
                 f"Tushare response row {index} must contain exactly "
                 f"{len(fields)} values"
             )
@@ -581,11 +658,22 @@ def tushare_rows_outcome(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        body = _loads_provider_json(
-            urllib.request.urlopen(request, timeout=30).read().decode("utf-8")
+        response_payload = urllib.request.urlopen(request, timeout=30).read()
+    except Exception as exc:
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=None,
+            error_code="provider_error",
+            error_message=safe_provider_exception_message(exc),
         )
+
+    try:
+        body = _loads_provider_json(response_payload.decode("utf-8"))
         if not isinstance(body, dict):
-            raise ValueError("Tushare response must be a mapping")
+            raise _ProviderResponseValidationError(
+                "Tushare response must be a mapping"
+            )
 
         raw_provider_code = body.get("code")
         provider_code = (
@@ -596,16 +684,22 @@ def tushare_rows_outcome(
         )
         if provider_code not in (0, "0"):
             message = str(body.get("msg") or "Tushare request failed")
+            safe_message = _redact_sensitive_text(
+                message,
+                sensitive_values=(token,),
+            )
             return ProviderCallOutcome(
                 state="failed",
                 rows=(),
                 provider_code=provider_code,
                 error_code=_provider_error_code(provider_code, message),
-                error_message=message,
+                error_message=safe_message,
             )
 
         if "data" not in body:
-            raise ValueError("Tushare response must contain data")
+            raise _ProviderResponseValidationError(
+                "Tushare response must contain data"
+            )
         rows = _strict_provider_rows(body["data"])
         return ProviderCallOutcome(
             state="success" if rows else "empty",
@@ -620,7 +714,7 @@ def tushare_rows_outcome(
             rows=(),
             provider_code=provider_code,
             error_code="provider_error",
-            error_message=str(exc) or exc.__class__.__name__,
+            error_message=_safe_provider_response_error_message(exc),
         )
 
 

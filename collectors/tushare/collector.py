@@ -20,7 +20,11 @@ from threading import Lock
 from typing import Any
 
 from ..base import BaseCollector  # noqa: E402
-from .tushare_common import ProviderCallOutcome, provider_outcome_log_fields
+from .tushare_common import (
+    ProviderCallOutcome,
+    provider_outcome_log_fields,
+    safe_provider_exception_message,
+)
 
 logger = logging.getLogger(__name__)
 _TUSHARE_CALL: Any | None = None
@@ -319,13 +323,15 @@ class TushareCollector(BaseCollector):
             candidate.validate_invariants()
             outcome = candidate
         except Exception as exc:
-            provider_code = getattr(candidate, "provider_code", None)
             outcome = ProviderCallOutcome(
                 state="failed",
                 rows=(),
-                provider_code=provider_code,
+                provider_code=None,
                 error_code="provider_error",
-                error_message=str(exc) or exc.__class__.__name__,
+                error_message=safe_provider_exception_message(
+                    exc,
+                    invalid_outcome=candidate is not None,
+                ),
             )
 
         self.last_collect_outcome = outcome
