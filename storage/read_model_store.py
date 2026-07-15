@@ -18,6 +18,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+import dataset_registry as dataset_registry_contract
 from storage.event_identity import (
     event_content_fingerprint,
     source_family,
@@ -29,7 +30,9 @@ from runtime_paths import marketdata_sqlite_path
 
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
-MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_READ_MODEL_MAX_TRANSACTION_ROWS", 0, min_value=0)
+MAX_TRANSACTION_ROWS = env_int(
+    "SHAREDSIGNALS_READ_MODEL_MAX_TRANSACTION_ROWS", 0, min_value=0
+)
 DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_READ_MODEL_DB_RETRIES", 3, min_value=1)
 
 DEFAULT_SQLITE_PATH = marketdata_sqlite_path()
@@ -52,7 +55,9 @@ def _read_model_lock(db_path: Path):
                 break
             except BlockingIOError as exc:
                 if timeout <= 0 or time.monotonic() >= deadline:
-                    raise TimeoutError(f"timed out waiting for read model store lock: {lock_path}") from exc
+                    raise TimeoutError(
+                        f"timed out waiting for read model store lock: {lock_path}"
+                    ) from exc
                 time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
         try:
             yield
@@ -60,122 +65,10 @@ def _read_model_lock(db_path: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-API_TO_TABLE_MAP = {
-    "adj_factor": "market_bars_daily",
-    "anns_d": "market_events",
-    "bak_basic": "market_factors",
-    "balancesheet": "market_factors",
-    "block_trade": "market_events",
-    "broker_recommend": "market_events",
-    "cashflow": "market_factors",
-    "cb_basic": "market_assets",
-    "cb_daily": "market_bars_daily",
-    "cb_issue": "market_events",
-    "cctv_news": "market_events",
-    "cn_cpi": "market_factors",
-    "cn_m": "market_factors",
-    "cn_pmi": "market_factors",
-    "cn_ppi": "market_factors",
-    "cyq_chips": "market_factors",
-    "cyq_perf": "market_factors",
-    "libor": "market_factors",
-    "hibor": "market_factors",
-    "us_tltr": "market_factors",
-    "us_tbr": "market_factors",
-    "us_tycr": "market_factors",
-    "sf_month": "market_factors",
-    "cn_gdp": "market_factors",
-    "daily": "market_bars_daily",
-    "daily_basic": "market_factors",
-    "dividend": "market_factors",
-    "express": "market_factors",
-    "fina_audit": "market_factors",
-    "fina_indicator": "market_factors",
-    "fina_mainbz": "market_factors",
-    "forecast": "market_factors",
-    "etf_basic": "market_assets",
-    "fund_adj": "market_factors",
-    "fund_basic": "market_assets",
-    "fund_daily": "market_bars_daily",
-    "fund_div": "market_factors",
-    "fund_nav": "market_factors",
-    "fund_portfolio": "market_fund_portfolio",
-    "fund_share": "market_factors",
-    "fut_basic": "market_assets",
-    "fut_daily": "market_bars_daily",
-    "fx_daily": "market_bars_daily",
-    "hk_balancesheet": "market_factors",
-    "hk_basic": "market_assets",
-    "hk_cashflow": "market_factors",
-    "hk_daily": "market_bars_daily",
-    "hk_income": "market_factors",
-    "income": "market_factors",
-    "index_basic": "market_assets",
-    "index_daily": "market_bars_daily",
-    "index_dailybasic": "market_factors",
-    "index_classify": "market_assets",
-    "index_global": "market_bars_daily",
-    "index_member": "market_relationships",
-    "index_member_all": "market_relationships",
-    "index_monthly": "market_bars_intraday",
-    "index_weekly": "market_bars_intraday",
-    "index_weight": "market_relationships",
-    "limit_list": "market_events",
-    "limit_list_d": "market_events",
-    "major_news": "market_events",
-    "margin": "market_factors",
-    "margin_detail": "market_factors",
-    "margin_secs": "market_factors",
-    "moneyflow": "market_factors",
-    "moneyflow_hsgt": "market_factors",
-    "monthly": "market_bars_intraday",
-    "namechange": "market_events",
-    "news": "market_events",
-    "opt_basic": "market_assets",
-    "pledge_detail": "market_factors",
-    "pledge_stat": "market_factors",
-    "repo_daily": "market_factors",
-    "report_rc": "market_events",
-    "repurchase": "market_factors",
-    "concept": "market_assets",
-    "concept_detail": "market_relationships",
-    "dc_index": "market_assets",
-    "ft_limit": "market_factors",
-    "hs_const": "market_relationships",
-    "share_float": "market_factors",
-    "shibor": "market_factors",
-    "shibor_lpr": "market_factors",
-    "limit_step": "market_factors",
-    "stk_auction": "market_factors",
-    "stk_factor": "market_bars_daily",
-    "stk_factor_pro": "market_factors",
-    "stk_limit": "market_factors",
-    "rt_min": "market_bars_intraday",
-    "rt_fut_min": "market_bars_intraday",
-    "stk_holdernumber": "market_factors",
-    "stk_holdertrade": "market_factors",
-    "stk_managers": "market_factors",
-    "stk_surv": "market_factors",
-    "stock_basic": "market_assets",
-    "stock_company": "market_factors",
-    "suspend_d": "market_events",
-    "ths_hot": "market_factors",
-    "ths_index": "market_assets",
-    "ths_member": "market_relationships",
-    "dc_member": "market_relationships",
-    "top_list": "market_factors",
-    "top10_floatholders": "market_factors",
-    "top10_holders": "market_factors",
-    "top_inst": "market_factors",
-    "trade_cal": "market_factors",
-    "ths_daily": "market_bars_daily",
-    "dc_daily": "market_bars_daily",
-    "opt_daily": "market_bars_daily",
-    "fut_holding": "market_factors",
-    "us_basic": "market_assets",
-    "us_daily": "market_bars_daily",
-    "weekly": "market_bars_intraday",
-}
+TUSHARE_API_TO_TABLE_MAP = dataset_registry_contract.TUSHARE_API_TO_TABLE_MAP
+TUSHARE_ALLOWED_API_NAMES = dataset_registry_contract.TUSHARE_ALLOWED_API_NAMES
+API_TO_TABLE_MAP = TUSHARE_API_TO_TABLE_MAP
+_DATASET_REGISTRY = dataset_registry_contract.load_dataset_registry()
 
 ADDITIONAL_TABLES = {
     "repo_daily": ("market_bars_daily",),
@@ -335,22 +228,51 @@ def _factor_event_time(row, api_name=""):
 
 
 def _factor_hash(api_name, symbol, event_time, factor_name, raw_json):
-    payload = "|".join(str(part or "") for part in (api_name, symbol, event_time, factor_name, raw_json))
+    payload = "|".join(
+        str(part or "")
+        for part in (api_name, symbol, event_time, factor_name, raw_json)
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _fund_portfolio_hash(api_name, symbol, holding_symbol, ann_date, end_date, raw_json):
-    payload = "|".join(str(part or "") for part in (api_name, symbol, holding_symbol, ann_date, end_date, raw_json))
+def _canonical_provider_value(row, api_name):
+    existing = str(row.get("provider") or "").strip()
+    if not api_name or api_name not in TUSHARE_ALLOWED_API_NAMES:
+        return existing or (f"tushare_{api_name}" if api_name else "")
+
+    dataset = _DATASET_REGISTRY.resolve(f"tushare.{api_name}")
+    registered_values = {
+        binding.read_discriminator_value for binding in dataset.provider_bindings
+    }
+    if existing in registered_values:
+        return existing
+    return _DATASET_REGISTRY.provider_binding(
+        dataset.dataset_id,
+        "tushare",
+    ).read_discriminator_value
+
+
+def _fund_portfolio_hash(
+    api_name, symbol, holding_symbol, ann_date, end_date, raw_json
+):
+    payload = "|".join(
+        str(part or "")
+        for part in (api_name, symbol, holding_symbol, ann_date, end_date, raw_json)
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _factor_rows(row, api_name, source_ref):
     row = _canonical_row("market_factors", dict(row), api_name, source_ref)
-    raw_json = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    raw_json = row.get("raw_json") or json.dumps(
+        row,
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     symbol = row.get("symbol") or row.get("ts_code") or ""
     event_time = _factor_event_time(row, api_name) or _source_collected_at(source_ref)
     collected_at = row.get("collected_at") or _source_collected_at(source_ref)
-    provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
+    provider = str(row.get("provider") or "")
     source_file = row.get("source_file") or Path(source_ref).name
     market = row.get("market") or _market_for(api_name, symbol)
 
@@ -529,8 +451,20 @@ def _trade_date_from_event_time(event_time):
 
 
 def _canonical_row(table, row, api_name, source_ref):
+    canonical_provider = _canonical_provider_value(row, api_name)
+    if (
+        row.get("provider")
+        and canonical_provider != str(row.get("provider") or "").strip()
+        and not row.get("raw_json")
+    ):
+        row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
     original_symbol = row.get("symbol")
-    symbol = row.get("ts_code") or row.get("symbol") or row.get("code") or row.get("index_code")
+    symbol = (
+        row.get("ts_code")
+        or row.get("symbol")
+        or row.get("code")
+        or row.get("index_code")
+    )
     if symbol:
         row["symbol"] = symbol
         if not row.get("ts_code") and api_name == "rt_fut_min":
@@ -571,7 +505,15 @@ def _canonical_row(table, row, api_name, source_ref):
 
     if table == "market_assets":
         if not row.get("name"):
-            for name_col in ("name", "csname", "cname", "extname", "index_name", "industry_name", "bond_short_name"):
+            for name_col in (
+                "name",
+                "csname",
+                "cname",
+                "extname",
+                "index_name",
+                "industry_name",
+                "bond_short_name",
+            ):
                 if row.get(name_col):
                     row["name"] = row.get(name_col)
                     break
@@ -600,9 +542,13 @@ def _canonical_row(table, row, api_name, source_ref):
         if not row.get("status") and row.get("list_status"):
             row["status"] = row.get("list_status")
         if not row.get("last_trade_date"):
-            row["last_trade_date"] = _first_present(row, "last_trade_date", "last_ddate")
+            row["last_trade_date"] = _first_present(
+                row, "last_trade_date", "last_ddate"
+            )
         if not row.get("expiry_date"):
-            row["expiry_date"] = _first_present(row, "expiry_date", "delist_date", "delivery_date", "end_date")
+            row["expiry_date"] = _first_present(
+                row, "expiry_date", "delist_date", "delivery_date", "end_date"
+            )
         if not row.get("updated_at"):
             row["updated_at"] = _source_collected_at(source_ref)
         if not row.get("raw_json"):
@@ -630,25 +576,56 @@ def _canonical_row(table, row, api_name, source_ref):
 
     if table == "market_relationships":
         provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
-        parent_symbol = _first_present(row, "parent_symbol", "parent_code", "index_code", "ts_code", "index_id", "id")
-        child_symbol = _first_present(row, "child_symbol", "child_code", "con_code", "stock_code", "member_code", "symbol", "code")
+        parent_symbol = _first_present(
+            row,
+            "parent_symbol",
+            "parent_code",
+            "index_code",
+            "ts_code",
+            "index_id",
+            "id",
+        )
+        child_symbol = _first_present(
+            row,
+            "child_symbol",
+            "child_code",
+            "con_code",
+            "stock_code",
+            "member_code",
+            "symbol",
+            "code",
+        )
         if child_symbol == parent_symbol:
-            child_symbol = _first_present(row, "con_code", "stock_code", "member_code", "child_code")
-        parent_name = _first_present(row, "parent_name", "index_name", "name", "industry_name")
-        child_name = _first_present(row, "child_name", "con_name", "stock_name", "member_name")
+            child_symbol = _first_present(
+                row, "con_code", "stock_code", "member_code", "child_code"
+            )
+        parent_name = _first_present(
+            row, "parent_name", "index_name", "name", "industry_name"
+        )
+        child_name = _first_present(
+            row, "child_name", "con_name", "stock_name", "member_name"
+        )
         trade_date = _first_present(row, "trade_date", "ann_date", "date")
         start_date = _first_present(row, "start_date", "in_date", "begin_date")
         end_date = _first_present(row, "end_date", "out_date", "end_date")
-        raw_json = row.get("raw_json") or json.dumps(row, ensure_ascii=False, sort_keys=True)
+        raw_json = row.get("raw_json") or json.dumps(
+            row, ensure_ascii=False, sort_keys=True
+        )
         if provider and not row.get("provider"):
             row["provider"] = provider
-        row["relationship_type"] = row.get("relationship_type") or api_name or "membership"
-        row["market"] = row.get("market") or _market_for(api_name, parent_symbol or child_symbol)
+        row["relationship_type"] = (
+            row.get("relationship_type") or api_name or "membership"
+        )
+        row["market"] = row.get("market") or _market_for(
+            api_name, parent_symbol or child_symbol
+        )
         row["parent_symbol"] = parent_symbol
         row["parent_name"] = parent_name
         row["child_symbol"] = child_symbol
         row["child_name"] = child_name
-        row["trade_date"] = trade_date or start_date or end_date or row.get("collected_at")
+        row["trade_date"] = (
+            trade_date or start_date or end_date or row.get("collected_at")
+        )
         row["start_date"] = start_date
         row["end_date"] = end_date
         row["weight"] = _coerce_float(row.get("weight"))
@@ -665,7 +642,12 @@ def _canonical_row(table, row, api_name, source_ref):
     if table == "market_fund_portfolio":
         provider = row.get("provider") or (f"tushare_{api_name}" if api_name else "")
         fund_symbol = _first_present(row, "ts_code", "fund_code", "symbol")
-        holding_symbol = _first_present(row, "holding_symbol", "holding_code", "stock_code", "stk_code") or original_symbol
+        holding_symbol = (
+            _first_present(
+                row, "holding_symbol", "holding_code", "stock_code", "stk_code"
+            )
+            or original_symbol
+        )
         ann_date = _first_present(row, "ann_date", "trade_date", "date")
         end_date = _first_present(row, "end_date", "period", "report_date")
         raw_json = row.get("raw_json") or json.dumps(
@@ -694,8 +676,8 @@ def _canonical_row(table, row, api_name, source_ref):
             raw_json,
         )
 
-    if api_name and not row.get("provider"):
-        row["provider"] = f"tushare_{api_name}"
+    if canonical_provider:
+        row["provider"] = canonical_provider
     if not row.get("collected_at"):
         row["collected_at"] = _source_collected_at(source_ref)
     if not row.get("source_file"):

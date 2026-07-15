@@ -19,7 +19,24 @@ DATASET_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "dataset_registry.yaml"
 )
 
-_ROOT_KEYS = frozenset({"version", "datasets"})
+_ROOT_KEYS = frozenset({"version", "schema_profiles", "datasets"})
+_ROOT_REQUIRED_KEYS = frozenset({"version", "datasets"})
+_SCHEMA_PROFILE_KEYS = frozenset(
+    {
+        "schema_version",
+        "fields",
+        "primary_key",
+        "default_projection",
+        "max_page_size",
+        "max_lookback_days",
+        "point_in_time",
+        "backfill_policy",
+        "empty_data_policy",
+        "required_scope",
+        "quota_class",
+    }
+)
+_PROFILE_CONTRACT_KEYS = _SCHEMA_PROFILE_KEYS - {"schema_version"}
 _DATASET_KEYS = frozenset(
     {
         "dataset_id",
@@ -29,6 +46,7 @@ _DATASET_KEYS = frozenset(
         "entity_type",
         "data_classification",
         "schema_version",
+        "schema_profile",
         "fields",
         "primary_key",
         "default_projection",
@@ -46,6 +64,7 @@ _DATASET_KEYS = frozenset(
         "read_model_adapter",
     }
 )
+_DATASET_REQUIRED_KEYS = _DATASET_KEYS - _PROFILE_CONTRACT_KEYS - {"schema_profile"}
 _FIELD_KEYS = frozenset(
     {
         "name",
@@ -142,6 +161,21 @@ class DatasetDefinition:
     quota_class: str
     provider_bindings: tuple[ProviderBinding, ...]
     read_model_adapter: ReadModelAdapter
+
+
+@dataclass(frozen=True)
+class DatasetSchemaProfile:
+    schema_version: str
+    fields: tuple[DatasetField, ...]
+    primary_key: tuple[str, ...]
+    default_projection: tuple[str, ...]
+    max_page_size: int
+    max_lookback_days: int | None
+    point_in_time: str
+    backfill_policy: str
+    empty_data_policy: str
+    required_scope: str
+    quota_class: str
 
 
 class DatasetRegistry:
@@ -269,12 +303,16 @@ def _mapping(value: Any, path: str) -> Mapping[str, Any]:
 
 
 def _reject_unknown_keys(
-    value: Mapping[str, Any], allowed: frozenset[str], path: str
+    value: Mapping[str, Any],
+    allowed: frozenset[str],
+    path: str,
+    *,
+    required: frozenset[str] | None = None,
 ) -> None:
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ValueError(f"unknown key(s) in {path}: {', '.join(unknown)}")
-    missing = sorted(allowed - set(value))
+    missing = sorted((allowed if required is None else required) - set(value))
     if missing:
         raise ValueError(f"missing key(s) in {path}: {', '.join(missing)}")
 
@@ -466,35 +504,30 @@ def _load_read_model_adapter(
     )
 
 
-def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
-    path = f"datasets[{index}]"
-    value = _mapping(raw, path)
-    _reject_unknown_keys(value, _DATASET_KEYS, path)
-
-    dataset_id = _non_empty_string(value["dataset_id"], f"{path}.dataset_id")
+def _load_schema_contract(
+    value: Mapping[str, Any],
+    *,
+    owner: str,
+) -> DatasetSchemaProfile:
     raw_fields = value["fields"]
     if not isinstance(raw_fields, list) or not raw_fields:
-        raise ValueError(f"dataset {dataset_id}.fields must be a non-empty list")
+        raise ValueError(f"{owner}.fields must be a non-empty list")
     fields = tuple(
-        _load_field(field, dataset_id=dataset_id, index=field_index)
+        _load_field(field, dataset_id=owner, index=field_index)
         for field_index, field in enumerate(raw_fields)
     )
     fields_by_name: dict[str, DatasetField] = {}
     for field in fields:
         if field.name in fields_by_name:
-            raise ValueError(
-                f"dataset {dataset_id}.fields contains duplicate field: {field.name}"
-            )
+            raise ValueError(f"{owner}.fields contains duplicate field: {field.name}")
         fields_by_name[field.name] = field
 
-    primary_key = _string_tuple(
-        value["primary_key"], f"dataset {dataset_id}.primary_key"
-    )
-    _reject_duplicate_strings(primary_key, f"dataset {dataset_id}.primary_key")
+    primary_key = _string_tuple(value["primary_key"], f"{owner}.primary_key")
+    _reject_duplicate_strings(primary_key, f"{owner}.primary_key")
     missing_primary_fields = sorted(set(primary_key) - set(fields_by_name))
     if missing_primary_fields:
         raise ValueError(
-            f"dataset {dataset_id}.primary_key fields are not declared in fields: "
+            f"{owner}.primary_key fields are not declared in fields: "
             f"{', '.join(missing_primary_fields)}"
         )
     invalid_primary_fields = [
@@ -505,28 +538,132 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
     ]
     if invalid_primary_fields:
         raise ValueError(
-            f"dataset {dataset_id}.primary_key fields must be selectable and sortable: "
+            f"{owner}.primary_key fields must be selectable and sortable: "
             f"{', '.join(invalid_primary_fields)}"
         )
 
     default_projection = _string_tuple(
-        value["default_projection"], f"dataset {dataset_id}.default_projection"
+        value["default_projection"], f"{owner}.default_projection"
     )
-    _reject_duplicate_strings(
-        default_projection, f"dataset {dataset_id}.default_projection"
-    )
+    _reject_duplicate_strings(default_projection, f"{owner}.default_projection")
     for field_name in default_projection:
         field = fields_by_name.get(field_name)
         if field is None:
             raise ValueError(
-                f"dataset {dataset_id}.default_projection references unknown field: "
-                f"{field_name}"
+                f"{owner}.default_projection references unknown field: {field_name}"
             )
         if not field.selectable:
             raise ValueError(
-                f"dataset {dataset_id}.default_projection field is not selectable: "
-                f"{field_name}"
+                f"{owner}.default_projection field is not selectable: {field_name}"
             )
+
+    return DatasetSchemaProfile(
+        schema_version=_non_empty_string(
+            value["schema_version"], f"{owner}.schema_version"
+        ),
+        fields=fields,
+        primary_key=primary_key,
+        default_projection=default_projection,
+        max_page_size=_positive_int(value["max_page_size"], f"{owner}.max_page_size"),
+        max_lookback_days=_optional_positive_int(
+            value["max_lookback_days"], f"{owner}.max_lookback_days"
+        ),
+        point_in_time=_choice(
+            value["point_in_time"], _POINT_IN_TIME_MODES, f"{owner}.point_in_time"
+        ),
+        backfill_policy=_choice(
+            value["backfill_policy"],
+            _BACKFILL_POLICIES,
+            f"{owner}.backfill_policy",
+        ),
+        empty_data_policy=_choice(
+            value["empty_data_policy"],
+            _EMPTY_DATA_POLICIES,
+            f"{owner}.empty_data_policy",
+        ),
+        required_scope=_non_empty_string(
+            value["required_scope"], f"{owner}.required_scope"
+        ),
+        quota_class=_non_empty_string(value["quota_class"], f"{owner}.quota_class"),
+    )
+
+
+def _load_schema_profiles(raw: Any) -> Mapping[str, DatasetSchemaProfile]:
+    if raw is None:
+        return MappingProxyType({})
+    values = _mapping(raw, "registry.schema_profiles")
+    profiles: dict[str, DatasetSchemaProfile] = {}
+    for raw_name, raw_profile in values.items():
+        name = _non_empty_string(raw_name, "registry.schema_profiles key")
+        path = f"registry.schema_profiles.{name}"
+        profile_value = _mapping(raw_profile, path)
+        _reject_unknown_keys(profile_value, _SCHEMA_PROFILE_KEYS, path)
+        profiles[name] = _load_schema_contract(
+            profile_value,
+            owner=f"schema_profile {name}",
+        )
+    return MappingProxyType(profiles)
+
+
+def _load_dataset(
+    raw: Any,
+    index: int,
+    schema_profiles: Mapping[str, DatasetSchemaProfile],
+) -> DatasetDefinition:
+    path = f"datasets[{index}]"
+    value = _mapping(raw, path)
+    _reject_unknown_keys(
+        value,
+        _DATASET_KEYS,
+        path,
+        required=_DATASET_REQUIRED_KEYS,
+    )
+
+    dataset_id = _non_empty_string(value["dataset_id"], f"{path}.dataset_id")
+    schema_version = _non_empty_string(
+        value["schema_version"], f"dataset {dataset_id}.schema_version"
+    )
+    schema_profile_name = value.get("schema_profile")
+    if schema_profile_name is None:
+        missing_contract_keys = sorted(_PROFILE_CONTRACT_KEYS - set(value))
+        if missing_contract_keys:
+            raise ValueError(
+                f"dataset {dataset_id} must declare an inline schema contract or "
+                f"schema_profile; missing: {', '.join(missing_contract_keys)}"
+            )
+        schema_contract = _load_schema_contract(
+            value,
+            owner=f"dataset {dataset_id}",
+        )
+    else:
+        schema_profile_name = _non_empty_string(
+            schema_profile_name,
+            f"dataset {dataset_id}.schema_profile",
+        )
+        inline_contract_keys = sorted(_PROFILE_CONTRACT_KEYS & set(value))
+        if inline_contract_keys:
+            raise ValueError(
+                f"dataset {dataset_id} schema_profile entries must not declare inline "
+                f"contract keys: {', '.join(inline_contract_keys)}"
+            )
+        try:
+            schema_contract = schema_profiles[schema_profile_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"dataset {dataset_id} references unknown schema_profile: "
+                f"{schema_profile_name}"
+            ) from exc
+        if schema_version != schema_contract.schema_version:
+            raise ValueError(
+                f"dataset {dataset_id}.schema_version {schema_version!r} does not "
+                f"match schema_profile {schema_profile_name!r} version "
+                f"{schema_contract.schema_version!r}"
+            )
+
+    fields = schema_contract.fields
+    fields_by_name = {field.name: field for field in fields}
+    primary_key = schema_contract.primary_key
+    default_projection = schema_contract.default_projection
 
     raw_bindings = value["provider_bindings"]
     if not isinstance(raw_bindings, list) or not raw_bindings:
@@ -587,9 +724,7 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
             _DATA_CLASSIFICATIONS,
             f"dataset {dataset_id}.data_classification",
         ),
-        schema_version=_non_empty_string(
-            value["schema_version"], f"dataset {dataset_id}.schema_version"
-        ),
+        schema_version=schema_version,
         fields=fields,
         primary_key=primary_key,
         default_projection=default_projection,
@@ -601,33 +736,13 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
             value["freshness_sla_seconds"],
             f"dataset {dataset_id}.freshness_sla_seconds",
         ),
-        max_page_size=_positive_int(
-            value["max_page_size"], f"dataset {dataset_id}.max_page_size"
-        ),
-        max_lookback_days=_optional_positive_int(
-            value["max_lookback_days"], f"dataset {dataset_id}.max_lookback_days"
-        ),
-        point_in_time=_choice(
-            value["point_in_time"],
-            _POINT_IN_TIME_MODES,
-            f"dataset {dataset_id}.point_in_time",
-        ),
-        backfill_policy=_choice(
-            value["backfill_policy"],
-            _BACKFILL_POLICIES,
-            f"dataset {dataset_id}.backfill_policy",
-        ),
-        empty_data_policy=_choice(
-            value["empty_data_policy"],
-            _EMPTY_DATA_POLICIES,
-            f"dataset {dataset_id}.empty_data_policy",
-        ),
-        required_scope=_non_empty_string(
-            value["required_scope"], f"dataset {dataset_id}.required_scope"
-        ),
-        quota_class=_non_empty_string(
-            value["quota_class"], f"dataset {dataset_id}.quota_class"
-        ),
+        max_page_size=schema_contract.max_page_size,
+        max_lookback_days=schema_contract.max_lookback_days,
+        point_in_time=schema_contract.point_in_time,
+        backfill_policy=schema_contract.backfill_policy,
+        empty_data_policy=schema_contract.empty_data_policy,
+        required_scope=schema_contract.required_scope,
+        quota_class=schema_contract.quota_class,
         provider_bindings=provider_bindings,
         read_model_adapter=read_model_adapter,
     )
@@ -638,7 +753,12 @@ def load_dataset_registry(
 ) -> DatasetRegistry:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     root = _mapping(raw, "registry")
-    _reject_unknown_keys(root, _ROOT_KEYS, "registry")
+    _reject_unknown_keys(
+        root,
+        _ROOT_KEYS,
+        "registry",
+        required=_ROOT_REQUIRED_KEYS,
+    )
 
     version = root["version"]
     if isinstance(version, bool) or version != 1:
@@ -646,9 +766,18 @@ def load_dataset_registry(
     raw_datasets = root["datasets"]
     if not isinstance(raw_datasets, list) or not raw_datasets:
         raise ValueError("registry.datasets must be a non-empty list")
+    schema_profiles = _load_schema_profiles(root.get("schema_profiles"))
 
     return DatasetRegistry(
         tuple(
-            _load_dataset(dataset, index) for index, dataset in enumerate(raw_datasets)
+            _load_dataset(dataset, index, schema_profiles)
+            for index, dataset in enumerate(raw_datasets)
         )
     )
+
+
+_DEFAULT_DATASET_REGISTRY = load_dataset_registry()
+TUSHARE_API_TO_TABLE_MAP: Mapping[str, str] = MappingProxyType(
+    _DEFAULT_DATASET_REGISTRY.compatibility_table_map("tushare")
+)
+TUSHARE_ALLOWED_API_NAMES = _DEFAULT_DATASET_REGISTRY.compatibility_api_names("tushare")

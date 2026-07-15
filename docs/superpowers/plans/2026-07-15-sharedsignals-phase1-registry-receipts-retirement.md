@@ -397,11 +397,11 @@ TUSHARE_ALLOWED_API_NAMES = load_dataset_registry().compatibility_api_names("tus
 
 The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` remain import-compatible aliases of these derived values.
 
-- [ ] **Step 1: Write failing single-authority tests**
+- [x] **Step 1: Write failing single-authority tests**
 
-  Assert that the registry-derived Tushare API set and table map equal the current 114-entry compatibility surface, including independent `rt_fut_min`. Assert that Phase 1 HK, US, global, crypto, and prediction-market bindings are `excluded` or `paused`, never active. Assert that active domestic entries include cadence, SLA, primary key, entitlement, adapter version, and a read table.
+  Assert that the registry-derived Tushare API set and table map equal the current 114-entry compatibility surface, including independent `rt_fut_min`. Assert that current domestic bindings are `unknown` plus `paused`, while Phase 1 HK, US, global, crypto, prediction-market, and explicitly cross-border bindings are `excluded` plus `paused`; this task marks no binding active or entitled. If a domestic binding is activated by a future entitlement task, its cadence, SLA, primary key, entitlement evidence, adapter version, and read table must already form a complete contract.
 
-- [ ] **Step 2: Confirm the tests fail with the representative-only registry**
+- [x] **Step 2: Confirm the tests fail with the representative-only registry**
 
   ```bash
   ./.venv/bin/python3 -m pytest -q \
@@ -410,15 +410,15 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
     tests/test_interface_runtime_ledger.py
   ```
 
-- [ ] **Step 3: Import and classify the 114 compatibility bindings**
+- [x] **Step 3: Import and classify the 114 compatibility bindings**
 
-  Build stable provider-neutral dataset IDs. Preserve the current Tushare API name as an alias and provider binding. Do not mark a dataset active merely because it was configured. Use `active`, `locked`, `unknown`, `excluded`, or `retired` truthfully.
+  Build stable provider-neutral dataset IDs. Preserve the current Tushare API name as an alias and provider binding. Use strict, immutable `schema_profiles` inside the same registry YAML to reuse typed fields, primary keys, default projections, and bounded query policy; the loader materializes every `DatasetDefinition` and rejects unknown profiles, profile-version mismatches, inline overrides, and unknown profile keys. Do not add a generator or second manifest. Do not mark a dataset active merely because it was configured.
 
-- [ ] **Step 4: Derive compatibility constants from the registry**
+- [x] **Step 4: Derive compatibility constants from the registry**
 
   Replace hand-maintained lists in `storage/read_model_store.py`, `api_server.py`, and `tools/interface_runtime_ledger.py` with registry-derived immutable values while preserving public names and existing behavior.
 
-- [ ] **Step 5: Verify parity and imports**
+- [x] **Step 5: Verify parity and imports**
 
   ```bash
   ./.venv/bin/python3 -m pytest -q \
@@ -437,7 +437,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   git diff --check
   ```
 
-- [ ] **Step 6: Commit the compatibility import**
+- [x] **Step 6: Commit the compatibility import**
 
   ```bash
   git add -- \

@@ -1,6 +1,24 @@
 from __future__ import annotations
 
-from tools.interface_runtime_ledger import record_tushare_stats
+import tools.interface_runtime_ledger as ledger_module
+from tools.interface_runtime_ledger import (
+    expected_tushare_api_names,
+    record_tushare_stats,
+)
+
+
+def test_runtime_ledger_expected_names_come_from_registry_authority(
+    monkeypatch,
+) -> None:
+    registry_names = frozenset({"registry_only", "rt_fut_min"})
+    monkeypatch.setattr(
+        ledger_module,
+        "TUSHARE_ALLOWED_API_NAMES",
+        registry_names,
+        raising=False,
+    )
+
+    assert expected_tushare_api_names() == set(registry_names)
 
 
 def test_runtime_ledger_distinguishes_success_empty_failure_and_unobserved(tmp_path):
@@ -197,5 +215,7 @@ def test_runtime_ledger_zero_completed_calls_is_degraded_not_empty(tmp_path):
     assert report["summary"]["degraded"] == 1
     assert report["summary"]["empty"] == 0
     assert report["interfaces"]["income"]["status"] == "degraded"
-    assert report["interfaces"]["income"]["status_reason"] == "no_provider_call_completed"
+    assert (
+        report["interfaces"]["income"]["status_reason"] == "no_provider_call_completed"
+    )
     assert report["interfaces"]["income"]["empty_reason"] == ""

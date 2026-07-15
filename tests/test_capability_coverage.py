@@ -172,11 +172,62 @@ def test_read_model_store_has_no_file_bridge_ingestion_entrypoints() -> None:
         "CSV_BRIDGE",
         "CSV_ADDITIONAL_TABLES",
         "read_csv",
-        "glob(\"*.csv\")",
+        'glob("*.csv")',
     ]
     offenders = [token for token in banned if token in text]
 
     assert offenders == []
+
+
+def test_tushare_rows_use_canonical_provider_and_preserve_upstream_provider(
+    tmp_path: Path,
+) -> None:
+    from storage.read_model_store import _factor_rows
+
+    rows = _factor_rows(
+        {
+            "ts_code": "000001.SZ",
+            "trade_date": "20260715",
+            "provider": "upstream-row-label",
+            "pe": 12.5,
+        },
+        "daily_basic",
+        str(tmp_path / "provider-row.json"),
+    )
+
+    assert rows
+    assert {row["provider"] for row in rows} == {"tushare_daily_basic"}
+    assert json.loads(rows[0]["raw_json"])["provider"] == "upstream-row-label"
+
+
+def test_registered_alternate_and_non_tushare_providers_are_not_relabelled(
+    tmp_path: Path,
+) -> None:
+    from storage.read_model_store import _canonical_row, _factor_rows
+
+    sina = _canonical_row(
+        "market_bars_intraday",
+        {
+            "ts_code": "RB2609.SHF",
+            "time": "2026-07-15 09:05:00",
+            "provider": "sina_futures_minute",
+        },
+        "rt_fut_min",
+        tmp_path / "sina.json",
+    )
+    sec_rows = _factor_rows(
+        {
+            "provider": "sec_edgar_companyfacts",
+            "symbol": "CIK0000320193",
+            "end_date": "2026-03-31",
+            "Assets": 331_000_000_000,
+        },
+        "sec_edgar_companyfacts",
+        tmp_path / "sec.json",
+    )
+
+    assert sina["provider"] == "sina_futures_minute"
+    assert {row["provider"] for row in sec_rows} == {"sec_edgar_companyfacts"}
 
 
 def test_production_code_does_not_reference_retired_csv_or_bridge_paths() -> None:

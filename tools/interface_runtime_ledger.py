@@ -7,25 +7,14 @@ import os
 from pathlib import Path
 from typing import Any, Iterable
 
-import yaml
+from dataset_registry import TUSHARE_ALLOWED_API_NAMES
 
 ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parents[1]))
 DEFAULT_OUTPUT_PATH = ROOT / "logs" / "watchdog_inputs" / "interface_runtime.json"
-CAPABILITY_PLAN_PATH = ROOT / "config" / "tushare_capability_plan.yaml"
 
 
-def expected_tushare_api_names(path: Path = CAPABILITY_PLAN_PATH) -> set[str]:
-    if not path.exists():
-        return set()
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    names: set[str] = set()
-    for module in payload.get("modules") or []:
-        if not isinstance(module, dict):
-            continue
-        for item in module.get("apis") or []:
-            if isinstance(item, dict) and item.get("api_name"):
-                names.add(str(item["api_name"]))
-    return names
+def expected_tushare_api_names() -> set[str]:
+    return set(TUSHARE_ALLOWED_API_NAMES)
 
 
 def _load(path: Path) -> dict[str, Any]:

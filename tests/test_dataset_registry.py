@@ -17,6 +17,178 @@ from dataset_registry import (
 from storage.schema_contract import get_table
 
 
+FROZEN_TUSHARE_API_TO_TABLE_MAP = {
+    "adj_factor": "market_bars_daily",
+    "anns_d": "market_events",
+    "bak_basic": "market_factors",
+    "balancesheet": "market_factors",
+    "block_trade": "market_events",
+    "broker_recommend": "market_events",
+    "cashflow": "market_factors",
+    "cb_basic": "market_assets",
+    "cb_daily": "market_bars_daily",
+    "cb_issue": "market_events",
+    "cctv_news": "market_events",
+    "cn_cpi": "market_factors",
+    "cn_gdp": "market_factors",
+    "cn_m": "market_factors",
+    "cn_pmi": "market_factors",
+    "cn_ppi": "market_factors",
+    "concept": "market_assets",
+    "concept_detail": "market_relationships",
+    "cyq_chips": "market_factors",
+    "cyq_perf": "market_factors",
+    "daily": "market_bars_daily",
+    "daily_basic": "market_factors",
+    "dc_daily": "market_bars_daily",
+    "dc_index": "market_assets",
+    "dc_member": "market_relationships",
+    "dividend": "market_factors",
+    "etf_basic": "market_assets",
+    "express": "market_factors",
+    "fina_audit": "market_factors",
+    "fina_indicator": "market_factors",
+    "fina_mainbz": "market_factors",
+    "forecast": "market_factors",
+    "ft_limit": "market_factors",
+    "fund_adj": "market_factors",
+    "fund_basic": "market_assets",
+    "fund_daily": "market_bars_daily",
+    "fund_div": "market_factors",
+    "fund_nav": "market_factors",
+    "fund_portfolio": "market_fund_portfolio",
+    "fund_share": "market_factors",
+    "fut_basic": "market_assets",
+    "fut_daily": "market_bars_daily",
+    "fut_holding": "market_factors",
+    "fx_daily": "market_bars_daily",
+    "hibor": "market_factors",
+    "hk_balancesheet": "market_factors",
+    "hk_basic": "market_assets",
+    "hk_cashflow": "market_factors",
+    "hk_daily": "market_bars_daily",
+    "hk_income": "market_factors",
+    "hs_const": "market_relationships",
+    "income": "market_factors",
+    "index_basic": "market_assets",
+    "index_classify": "market_assets",
+    "index_daily": "market_bars_daily",
+    "index_dailybasic": "market_factors",
+    "index_global": "market_bars_daily",
+    "index_member": "market_relationships",
+    "index_member_all": "market_relationships",
+    "index_monthly": "market_bars_intraday",
+    "index_weekly": "market_bars_intraday",
+    "index_weight": "market_relationships",
+    "libor": "market_factors",
+    "limit_list": "market_events",
+    "limit_list_d": "market_events",
+    "limit_step": "market_factors",
+    "major_news": "market_events",
+    "margin": "market_factors",
+    "margin_detail": "market_factors",
+    "margin_secs": "market_factors",
+    "moneyflow": "market_factors",
+    "moneyflow_hsgt": "market_factors",
+    "monthly": "market_bars_intraday",
+    "namechange": "market_events",
+    "news": "market_events",
+    "opt_basic": "market_assets",
+    "opt_daily": "market_bars_daily",
+    "pledge_detail": "market_factors",
+    "pledge_stat": "market_factors",
+    "repo_daily": "market_factors",
+    "report_rc": "market_events",
+    "repurchase": "market_factors",
+    "rt_fut_min": "market_bars_intraday",
+    "rt_min": "market_bars_intraday",
+    "sf_month": "market_factors",
+    "share_float": "market_factors",
+    "shibor": "market_factors",
+    "shibor_lpr": "market_factors",
+    "stk_auction": "market_factors",
+    "stk_factor": "market_bars_daily",
+    "stk_factor_pro": "market_factors",
+    "stk_holdernumber": "market_factors",
+    "stk_holdertrade": "market_factors",
+    "stk_limit": "market_factors",
+    "stk_managers": "market_factors",
+    "stk_surv": "market_factors",
+    "stock_basic": "market_assets",
+    "stock_company": "market_factors",
+    "suspend_d": "market_events",
+    "ths_daily": "market_bars_daily",
+    "ths_hot": "market_factors",
+    "ths_index": "market_assets",
+    "ths_member": "market_relationships",
+    "top10_floatholders": "market_factors",
+    "top10_holders": "market_factors",
+    "top_inst": "market_factors",
+    "top_list": "market_factors",
+    "trade_cal": "market_factors",
+    "us_basic": "market_assets",
+    "us_daily": "market_bars_daily",
+    "us_tbr": "market_factors",
+    "us_tltr": "market_factors",
+    "us_tycr": "market_factors",
+    "weekly": "market_bars_intraday",
+}
+
+EXCLUDED_TUSHARE_APIS = frozenset(
+    {
+        "fx_daily",
+        "hibor",
+        "hk_balancesheet",
+        "hk_basic",
+        "hk_cashflow",
+        "hk_daily",
+        "hk_income",
+        "hs_const",
+        "index_global",
+        "libor",
+        "moneyflow_hsgt",
+        "us_basic",
+        "us_daily",
+        "us_tbr",
+        "us_tltr",
+        "us_tycr",
+    }
+)
+
+P2_FINANCIAL_APIS = frozenset(
+    {
+        "balancesheet",
+        "cashflow",
+        "dividend",
+        "express",
+        "fina_audit",
+        "fina_indicator",
+        "fina_mainbz",
+        "forecast",
+        "income",
+        "stk_holdertrade",
+        "top10_floatholders",
+        "top10_holders",
+        "top_inst",
+    }
+)
+
+PROFILE_CONTRACT_KEYS = frozenset(
+    {
+        "fields",
+        "primary_key",
+        "default_projection",
+        "max_page_size",
+        "max_lookback_days",
+        "point_in_time",
+        "backfill_policy",
+        "empty_data_policy",
+        "required_scope",
+        "quota_class",
+    }
+)
+
+
 def _field(
     name: str,
     logical_type: str = "text",
@@ -129,6 +301,205 @@ def _write_registry(
     return path
 
 
+def _factor_schema_profile(**overrides: object) -> dict[str, object]:
+    fields = _factor_fields()
+    profile: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "fields": fields,
+        "primary_key": ["factor_hash"],
+        "default_projection": [
+            field["name"] for field in fields if field["selectable"]
+        ],
+        "max_page_size": 500,
+        "max_lookback_days": None,
+        "point_in_time": "current_snapshot",
+        "backfill_policy": "provider_limited",
+        "empty_data_policy": "allowed",
+        "required_scope": "market_data",
+        "quota_class": "beta_standard",
+    }
+    profile.update(overrides)
+    return profile
+
+
+def _profiled_dataset(**overrides: object) -> dict[str, object]:
+    dataset = _dataset(schema_profile="factor.v1")
+    for key in PROFILE_CONTRACT_KEYS:
+        dataset.pop(key)
+    dataset.update(overrides)
+    return dataset
+
+
+def test_registry_import_matches_frozen_legacy_compatibility_surface() -> None:
+    from api_server import ALLOWED_TUSHARE_APIS
+    from dataset_registry import (
+        TUSHARE_ALLOWED_API_NAMES,
+        TUSHARE_API_TO_TABLE_MAP,
+    )
+    from storage.read_model_store import API_TO_TABLE_MAP
+
+    registry = load_dataset_registry()
+    expected_names = frozenset(FROZEN_TUSHARE_API_TO_TABLE_MAP)
+    capability_plan = yaml.safe_load(
+        Path("config/tushare_capability_plan.yaml").read_text(encoding="utf-8")
+    )
+    planned_names = {
+        item["api_name"]
+        for module in capability_plan["modules"]
+        for item in module["apis"]
+    }
+    collector_config = yaml.safe_load(
+        Path("collectors/tushare/config.yaml").read_text(encoding="utf-8")
+    )
+    configured_names = {
+        item["api_name"]
+        for items in collector_config["priorities"].values()
+        for item in items
+    }
+
+    assert len(FROZEN_TUSHARE_API_TO_TABLE_MAP) == 114
+    assert registry.compatibility_table_map("tushare") == (
+        FROZEN_TUSHARE_API_TO_TABLE_MAP
+    )
+    assert registry.compatibility_api_names("tushare") == expected_names
+    assert TUSHARE_API_TO_TABLE_MAP == FROZEN_TUSHARE_API_TO_TABLE_MAP
+    assert TUSHARE_ALLOWED_API_NAMES == expected_names
+    assert API_TO_TABLE_MAP is TUSHARE_API_TO_TABLE_MAP
+    assert ALLOWED_TUSHARE_APIS is TUSHARE_ALLOWED_API_NAMES
+    assert planned_names == expected_names
+    assert configured_names | {"rt_fut_min"} == expected_names
+    with pytest.raises(TypeError):
+        TUSHARE_API_TO_TABLE_MAP["mutated"] = "market_factors"  # type: ignore[index]
+
+
+def test_imported_registry_entries_are_complete_paused_and_truthfully_excluded() -> (
+    None
+):
+    registry = load_dataset_registry()
+
+    for api_name, table_name in FROZEN_TUSHARE_API_TO_TABLE_MAP.items():
+        dataset = registry.resolve(f"tushare.{api_name}")
+        binding = registry.provider_binding(dataset.dataset_id, "tushare")
+
+        assert dataset.dataset_id.startswith(("cn.", "hk.", "us.", "global."))
+        assert "tushare" not in dataset.dataset_id
+        assert dataset.aliases == (f"tushare.{api_name}",)
+        assert dataset.data_classification == "objective_factual"
+        assert dataset.schema_version
+        assert dataset.fields
+        assert dataset.primary_key
+        assert dataset.default_projection
+        assert dataset.cadence_class
+        assert dataset.timezone
+        assert dataset.freshness_sla_seconds > 0
+        assert dataset.max_page_size > 0
+        assert dataset.required_scope
+        assert dataset.quota_class
+        assert dataset.read_model_adapter.primary_table == table_name
+        assert binding.api_name == api_name
+        assert binding.adapter_version
+        assert binding.target_tables == (table_name,)
+        assert binding.read_discriminator_value == f"tushare_{api_name}"
+        assert binding.activation_state == "paused"
+        assert binding.entitlement_state == (
+            "excluded" if api_name in EXCLUDED_TUSHARE_APIS else "unknown"
+        )
+
+    for api_name in P2_FINANCIAL_APIS:
+        binding = registry.provider_binding(
+            registry.resolve(f"tushare.{api_name}").dataset_id,
+            "tushare",
+        )
+        assert (binding.entitlement_state, binding.activation_state) == (
+            "unknown",
+            "paused",
+        )
+
+    assert registry.active_for_cadence("postclose_daily") == ()
+    assert registry.resolve("tushare.rt_fut_min").cadence_class == (
+        "futures_session_5min"
+    )
+
+
+def test_independent_futures_provider_has_its_own_read_discriminator() -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve("tushare.rt_fut_min")
+
+    assert registry.provider_binding(dataset.dataset_id, "sina") == ProviderBinding(
+        provider="sina",
+        api_name="futures_minute",
+        adapter_version="sina-direct-sqlite.v1",
+        read_discriminator_value="sina_futures_minute",
+        entitlement_state="unknown",
+        activation_state="paused",
+        target_tables=("market_bars_intraday",),
+    )
+    assert dataset.read_model_adapter.fixed_field_filters == (
+        registry_module.FixedFieldFilter(
+            field="provider",
+            allowed_values=("tushare_rt_fut_min", "sina_futures_minute"),
+        ),
+    )
+
+
+def test_schema_profile_materializes_a_complete_immutable_dataset_contract(
+    tmp_path: Path,
+) -> None:
+    registry = load_dataset_registry(
+        _write_registry(
+            tmp_path,
+            [_profiled_dataset()],
+            schema_profiles={"factor.v1": _factor_schema_profile()},
+        )
+    )
+    dataset = registry.resolve("cn.example.dataset")
+
+    assert dataset.schema_version == "1.0.0"
+    assert dataset.fields == tuple(
+        registry_module.DatasetField(**field) for field in _factor_fields()
+    )
+    assert dataset.primary_key == ("factor_hash",)
+    assert dataset.max_page_size == 500
+    assert dataset.point_in_time == "current_snapshot"
+    with pytest.raises(FrozenInstanceError):
+        setattr(dataset.fields[0], "selectable", False)
+
+
+def test_loader_rejects_unknown_schema_profile(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unknown schema_profile"):
+        load_dataset_registry(
+            _write_registry(
+                tmp_path,
+                [_profiled_dataset(schema_profile="missing.v1")],
+                schema_profiles={"factor.v1": _factor_schema_profile()},
+            )
+        )
+
+
+def test_loader_rejects_schema_profile_version_mismatch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="schema_version.*schema_profile"):
+        load_dataset_registry(
+            _write_registry(
+                tmp_path,
+                [_profiled_dataset(schema_version="2.0.0")],
+                schema_profiles={"factor.v1": _factor_schema_profile()},
+            )
+        )
+
+
+def test_loader_rejects_inline_profile_contract_override(tmp_path: Path) -> None:
+    dataset = _profiled_dataset(fields=_factor_fields())
+
+    with pytest.raises(ValueError, match="schema_profile.*inline"):
+        load_dataset_registry(
+            _write_registry(
+                tmp_path,
+                [dataset],
+                schema_profiles={"factor.v1": _factor_schema_profile()},
+            )
+        )
+
+
 def test_repository_registry_exposes_complete_daily_contract() -> None:
     registry = load_dataset_registry()
     daily = registry.resolve("cn.equity.daily")
@@ -233,13 +604,11 @@ def test_registry_compatibility_uses_dataset_read_adapter_and_paused_is_inactive
     registry = load_dataset_registry()
 
     assert registry.compatibility_api_names("tushare") == frozenset(
-        {"daily", "trade_cal", "major_news"}
+        FROZEN_TUSHARE_API_TO_TABLE_MAP
     )
-    assert registry.compatibility_table_map("tushare") == {
-        "daily": "market_bars_daily",
-        "trade_cal": "market_factors",
-        "major_news": "market_events",
-    }
+    assert (
+        registry.compatibility_table_map("tushare") == FROZEN_TUSHARE_API_TO_TABLE_MAP
+    )
     assert registry.active_for_cadence("postclose") == ()
     assert registry.active_for_cadence("preopen") == ()
     assert registry.active_for_cadence("event_30m") == ()
@@ -809,6 +1178,7 @@ def test_loader_rejects_internal_fields_with_query_capability(
     ("level", "unknown_key"),
     [
         ("root", "mystery_root"),
+        ("schema_profile", "mystery_profile"),
         ("dataset", "runtime_state"),
         ("binding", "mystery_binding"),
         ("field", "mystery_field"),
@@ -825,6 +1195,11 @@ def test_loader_rejects_unknown_keys_at_every_level(
     root_overrides: dict[str, object] = {}
     if level == "root":
         root_overrides[unknown_key] = True
+    elif level == "schema_profile":
+        profile = _factor_schema_profile()
+        profile[unknown_key] = True
+        root_overrides["schema_profiles"] = {"factor.v1": profile}
+        dataset = _profiled_dataset()
     elif level == "dataset":
         dataset[unknown_key] = "must not be accepted"
     elif level == "binding":

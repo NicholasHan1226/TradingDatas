@@ -25,6 +25,7 @@ from api_response import (
     validate_json_query_params,
     wrap_response,
 )
+from dataset_registry import TUSHARE_ALLOWED_API_NAMES
 from env_bootstrap import env_float, env_int
 
 ROOT = Path(__file__).resolve().parent
@@ -121,39 +122,11 @@ def _get_health() -> dict[str, Any]:
 
 class NotFoundError(ValueError):
     """Raised when an endpoint or resource is not found (maps to 404)."""
+
     pass
 
 
-ALLOWED_TUSHARE_APIS = frozenset({
-    "daily", "weekly", "monthly", "adj_factor", "daily_basic",
-    "trade_cal", "namechange", "income", "balancesheet", "cashflow",
-    "forecast", "express", "fina_indicator", "fina_audit", "fina_mainbz",
-    "dividend", "margin", "margin_detail", "block_trade", "anns_d",
-    "moneyflow", "moneyflow_hsgt", "stk_limit", "suspend_d", "top10_holders",
-    "top10_floatholders", "stk_holdernumber", "stk_holdertrade",
-    "share_float", "repurchase", "pledge_stat", "pledge_detail",
-    "index_daily", "index_dailybasic", "index_weekly", "index_monthly",
-    "index_classify", "index_member", "index_member_all", "index_basic",
-    "index_weight",
-    "ths_daily", "ths_index", "ths_member", "ths_hot",
-    "dc_index", "dc_daily", "dc_member",
-    "limit_list", "limit_list_d", "limit_step", "broker_recommend",
-    "stk_factor", "stk_factor_pro", "stk_auction", "cyq_perf", "cyq_chips",
-    "rt_min", "rt_fut_min",
-    "stk_surv", "fund_daily", "fund_basic", "fund_nav", "fund_adj",
-    "fund_portfolio", "fund_share", "fund_div",
-    "fut_basic", "fut_daily", "fut_holding", "ft_limit",
-    "cb_basic", "cb_daily", "cb_issue", "opt_basic", "opt_daily",
-    "stock_basic", "stock_company", "bak_basic", "stk_managers",
-    "concept", "concept_detail", "hs_const", "etf_basic",
-    "top_inst", "top_list", "hk_daily", "hk_basic", "index_global",
-    "hk_income", "hk_balancesheet", "hk_cashflow", "us_daily", "us_basic",
-    "major_news", "news", "cctv_news", "report_rc",
-    "fx_daily", "repo_daily", "margin_secs",
-    "cn_cpi", "cn_gdp", "cn_m", "cn_pmi", "cn_ppi", "sf_month",
-    "shibor", "shibor_lpr", "hibor", "libor",
-    "us_tbr", "us_tltr", "us_tycr",
-})
+ALLOWED_TUSHARE_APIS = TUSHARE_ALLOWED_API_NAMES
 
 
 class Handler(BaseHTTPRequestHandler):
