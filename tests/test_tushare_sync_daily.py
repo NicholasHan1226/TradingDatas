@@ -637,6 +637,70 @@ def test_sync_tier_never_propagates_provider_or_transport_credentials(
     assert "[REDACTED]" in caplog.text
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        'provider params={"api_key":DUMMY-SECRET-DO-NOT-LOG}',
+        "provider url=https%3A%2F%2Fexample.test%2F%3Ftoken%3DDUMMY-SECRET-DO-NOT-LOG",
+    ],
+)
+def test_collector_and_sync_raw_log_args_redact_encoded_credential_surfaces(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    message: str,
+) -> None:
+    secret = "DUMMY-SECRET-DO-NOT-LOG"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert outcome.error_message.startswith("provider ")
+    assert secret not in outcome.error_message
+    assert secret not in collector.last_collect_error
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "[REDACTED]" in raw_handler.raw_record_text()
+
+
 def test_collector_and_sync_logs_validate_provider_code_representation(
     tmp_path: Path,
     monkeypatch,

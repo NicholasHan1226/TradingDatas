@@ -366,6 +366,26 @@ def test_tushare_rows_outcome_classifies_explicit_provider_denials(
             "rate_limited",
             id="rate-limit-period",
         ),
+        pytest.param(
+            "permission denied, please try again later.",
+            "permission_denied",
+            id="permission-retry-period",
+        ),
+        pytest.param(
+            "access denied: retry later!",
+            "permission_denied",
+            id="access-retry-exclamation",
+        ),
+        pytest.param(
+            "rate limit has been exceeded, please try again later.",
+            "rate_limited",
+            id="rate-limit-retry-period",
+        ),
+        pytest.param(
+            "too many requests; retry later.",
+            "rate_limited",
+            id="too-many-retry-period",
+        ),
     ],
 )
 def test_tushare_rows_outcome_accepts_natural_terminal_punctuation(
@@ -384,6 +404,21 @@ def test_tushare_rows_outcome_accepts_natural_terminal_punctuation(
     assert outcome.provider_code == -2001
     assert outcome.error_code == expected_error_code
     assert outcome.error_message == message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "permission denied, please try again later.",
+        "too many requests; retry later.",
+    ],
+)
+def test_retry_suffix_classification_remains_fullmatch_and_code_gated(message):
+    assert tushare_common._provider_error_code(70001, message) == "provider_error"
+    assert (
+        tushare_common._provider_error_code(-2001, f"{message} unrelated")
+        == "provider_error"
+    )
 
 
 def test_tushare_rows_outcome_requires_reliable_code_for_specialized_classification(
@@ -630,6 +665,16 @@ def test_provider_call_outcome_redacts_credential_styles(message):
             ("DUMMY-CLIENT-SECRET",),
             id="client-secret-field",
         ),
+        pytest.param(
+            'provider params={"api_key":DUMMY-UNQUOTED-SECRET}',
+            ("DUMMY-UNQUOTED-SECRET",),
+            id="unquoted-json-credential",
+        ),
+        pytest.param(
+            "provider url=https%3A%2F%2Fexample.test%2F%3Ftoken%3DDUMMY-ENCODED-URL-SECRET",
+            ("DUMMY-ENCODED-URL-SECRET",),
+            id="percent-encoded-url",
+        ),
     ],
 )
 def test_provider_call_outcome_redacts_extended_credential_surfaces(
@@ -647,6 +692,11 @@ def test_provider_call_outcome_redacts_extended_credential_surfaces(
     for secret in secrets:
         assert secret not in outcome.error_message
     assert "[REDACTED]" in outcome.error_message
+    assert outcome.error_message.startswith("provider ")
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    for secret in secrets:
+        assert secret not in repr(log_fields)
+    assert log_fields["error_message"] == outcome.error_message
     if "https://" in message:
         assert "?[REDACTED]#[REDACTED]" in outcome.error_message
 

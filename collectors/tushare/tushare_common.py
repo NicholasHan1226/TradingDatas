@@ -80,9 +80,11 @@ _UNQUOTED_CREDENTIAL_VALUE_PATTERN = re.compile(
     r"""
     (?P<prefix>
         (?<![A-Za-z0-9_])
+        (?P<key_quote>["']?)
         """
     + _CREDENTIAL_FIELD_PATTERN
     + r"""
+        (?P=key_quote)
         \s*[:=]\s*
     )
     (?P<credential>
@@ -100,6 +102,13 @@ _BEARER_VALUE_PATTERN = re.compile(
 
 def _redact_sensitive_text(message: str) -> str:
     """Remove credential values before an error can cross an outcome boundary."""
+
+    decoded = message
+    for _ in range(len(message) + 1):
+        next_decoded = urllib.parse.unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
 
     def _redact_url(match: re.Match[str]) -> str:
         raw_url = match.group(0)
@@ -135,7 +144,7 @@ def _redact_sensitive_text(message: str) -> str:
     def _redact_unquoted(match: re.Match[str]) -> str:
         return f"{match.group('prefix')}{_REDACTION_MARKER}"
 
-    redacted = _URL_PATTERN.sub(_redact_url, message)
+    redacted = _URL_PATTERN.sub(_redact_url, decoded)
     redacted = _COOKIE_HEADER_PATTERN.sub(
         lambda match: f"{match.group('prefix')}{_REDACTION_MARKER}",
         redacted,
@@ -229,7 +238,8 @@ _INTERNAL_ERROR_PATTERNS = (
     re.compile(r"(?:服务|配置|分类器|缓存|检测).{0,20}(?:异常|故障|失败|不可用)"),
 )
 _ENGLISH_RETRY_SUFFIX = (
-    r"(?:[.!?]|[,.!:;]\s*(?:please\s+(?:try|retry)\s+again\s+later|retry\s+later))?"
+    r"(?:[.!?]|[,.!:;]\s*"
+    r"(?:please\s+(?:try|retry)\s+again\s+later|retry\s+later)[.!?]?)?"
 )
 _CHINESE_RETRY_SUFFIX = r"(?:[，,]\s*请稍后(?:再试|重试))?[。.!]?"
 _RATE_LIMIT_PATTERNS = (
