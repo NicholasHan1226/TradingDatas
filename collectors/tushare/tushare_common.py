@@ -57,20 +57,6 @@ _CREDENTIAL_KEY_PATTERN = re.compile(
     _CREDENTIAL_NAME_PATTERN,
     re.IGNORECASE,
 )
-_CREDENTIAL_ASSIGNMENT_VALUE_PATTERN = re.compile(
-    rf"(?<![A-Za-z0-9_.-])(?:[bB](?=[\"']))?[\"']?"
-    rf"{_CREDENTIAL_NAME_PATTERN}[\"']?\s*(?::|=|->|=>)\s*\S",
-    re.IGNORECASE,
-)
-_AUTH_SCHEME_CONTEXT_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+"
-    r"(?P<credential>[A-Za-z0-9._~+/=-]+)"
-    r"(?![A-Za-z0-9._~+/=-])",
-    re.IGNORECASE,
-)
-_AUTH_ATTRIBUTE_SUFFIX_PATTERN = re.compile(
-    r"\s+[A-Za-z_][A-Za-z0-9_-]*\s*=\s*\S",
-)
 _SIMPLE_ESCAPES = {
     "\\": "\\",
     "/": "/",
@@ -516,47 +502,6 @@ def _text_is_credential_key(
     )
 
 
-def _text_is_credential_value(
-    value: str,
-    *,
-    scan_budget: SensitiveScanBudget,
-) -> bool:
-    for candidate in _credential_detection_views(
-        value,
-        scan_budget=scan_budget,
-    ):
-        if _CREDENTIAL_ASSIGNMENT_VALUE_PATTERN.search(candidate):
-            return True
-        for match in _AUTH_SCHEME_CONTEXT_PATTERN.finditer(candidate):
-            credential = match.group("credential")
-            if _looks_like_opaque_auth_credential(credential):
-                return True
-            if _AUTH_ATTRIBUTE_SUFFIX_PATTERN.match(
-                candidate,
-                match.end(),
-            ):
-                return True
-    return False
-
-
-def _looks_like_opaque_auth_credential(value: str) -> bool:
-    """Distinguish auth tokens from ordinary words after Bearer/Basic."""
-
-    if len(value) < 8:
-        return False
-    if len(value) >= 16:
-        return True
-    if any(character.isdigit() for character in value):
-        return True
-    if any(character in "._~+/=" for character in value):
-        return True
-    if "-" in value and any(character.isupper() for character in value):
-        return True
-    uppercase_count = sum(character.isupper() for character in value)
-    lowercase_count = sum(character.islower() for character in value)
-    return uppercase_count >= 2 and lowercase_count >= 2
-
-
 def _scan_structured_credentials(
     value: Any,
     *,
@@ -564,13 +509,19 @@ def _scan_structured_credentials(
     state: _SensitiveScanState,
     depth: int = 0,
 ) -> bool:
-    """Scan a provider value without converting unknown runtime objects."""
+    """Scan exact credential keys without guessing from business-row prose.
+
+    Caller-known secrets are handled separately by ``_contains_sensitive_value``.
+    An unknown foreign secret hidden in a neutral business string has no reliable
+    generic signature and is outside this classifier's contract; it requires a
+    credential key/field or a diagnostic/metadata source boundary.
+    """
 
     state.visit(depth)
     value_type = type(value)
 
     if value_type is str:
-        return _text_is_credential_value(value, scan_budget=scan_budget)
+        return False
     if value is None or value_type in (bool, int, float):
         return False
 
@@ -791,10 +742,36 @@ def _contains_credential_indicator(
     scan_budget: SensitiveScanBudget | None = None,
 ) -> bool:
     try:
+        budget = _resolve_scan_budget(scan_budget)
         return any(
             _CREDENTIAL_INDICATOR_PATTERN.search(view)
             or _AUTH_SCHEME_INDICATOR_PATTERN.search(view)
-            for view in _diagnostic_views(message, scan_budget=scan_budget)
+            for view in _credential_detection_views(
+                message,
+                scan_budget=budget,
+            )
+        )
+    except Exception:
+        return True
+
+
+def _contains_provider_metadata_credential(
+    metadata: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> bool:
+    """Strictly scan diagnostic/metadata text, never successful row content."""
+
+    try:
+        budget = _resolve_scan_budget(scan_budget)
+        state = _SensitiveScanState(budget)
+        return any(
+            _contains_credential_indicator(text, scan_budget=budget)
+            for text in _walk_scalar_texts(
+                metadata,
+                scan_budget=budget,
+                state=state,
+            )
         )
     except Exception:
         return True
@@ -1530,12 +1507,18 @@ def tushare_rows_outcome(
                 scan_budget=scan_budget,
             )
 
+        provider_metadata = {
+            key: value for key, value in body.items() if key != "data"
+        }
         if _contains_structured_credential(
             body,
             scan_budget=scan_budget,
         ) or _contains_sensitive_value(
             body,
             sensitive_values,
+            scan_budget=scan_budget,
+        ) or _contains_provider_metadata_credential(
+            provider_metadata,
             scan_budget=scan_budget,
         ):
             raise _ProviderResponseValidationError(

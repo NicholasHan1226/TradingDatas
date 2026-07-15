@@ -1633,11 +1633,12 @@ def test_delimited_secret_is_absent_from_outcome_logs_and_receipt_metadata(
             assert fragment not in surface
 
 
+@pytest.mark.parametrize("token", ["abcdefgh", "abcdefghijklmno"])
 def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
     tmp_path: Path,
     monkeypatch,
+    token,
 ) -> None:
-    token = "SYNTH-SUCCESS-ROW-TOKEN"
     payload = {
         "code": 0,
         "msg": None,
@@ -1706,23 +1707,15 @@ def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
             "value",
             {
                 "note": {
-                    "items": [
-                        "upstream debug Bearer SYNTH-FOREIGN-AUTH-SECRET"
-                    ]
+                    "Authorization": "Bearer SYNTH-FOREIGN-AUTH-SECRET"
                 }
             },
-            id="bearer-prefix",
+            id="nested-authorization-key",
         ),
         pytest.param(
-            "value",
-            {
-                "note": {
-                    "items": [
-                        "Basic SYNTH-FOREIGN-AUTH-SECRET status=401"
-                    ]
-                }
-            },
-            id="basic-suffix",
+            "token",
+            "SYNTH-FOREIGN-AUTH-SECRET",
+            id="token-field",
         ),
     ],
 )
@@ -1793,12 +1786,43 @@ def test_foreign_authorization_row_never_reaches_sqlite_writer_or_receipt(
     assert foreign_secret not in repr(receipt)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(
+            "authorization reform and bearer bonds news",
+            id="business-sentence",
+        ),
+        pytest.param("Bearer bonds", id="two-word-bearer"),
+        pytest.param(
+            "Basic telecommunications",
+            id="two-word-long-basic",
+        ),
+        pytest.param(
+            "Basic telecommunications services expanded",
+            id="long-basic-sentence",
+        ),
+        pytest.param(
+            "Bearer responsibilities transferred",
+            id="long-bearer-sentence",
+        ),
+        pytest.param("Bearer abcdefgh", id="neutral-eight-lowercase"),
+        pytest.param(
+            "Basic abcdefghijklmno",
+            id="neutral-fifteen-lowercase",
+        ),
+        pytest.param(
+            "Bearer abcdefghijklmnop",
+            id="neutral-sixteen-lowercase",
+        ),
+    ],
+)
 def test_safe_business_token_words_reach_sqlite_writer_as_plain_rows(
     tmp_path: Path,
     monkeypatch,
+    value,
 ) -> None:
     field = "tokenized_asset_description"
-    value = "authorization reform and bearer bonds news"
     payload = {
         "code": 0,
         "msg": None,

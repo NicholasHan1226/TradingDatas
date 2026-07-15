@@ -1997,51 +1997,58 @@ def _provider_success_payload(
     return {"code": 0, "msg": None, "data": data, **extra}
 
 
-_CONTEXTUAL_AUTH_SECRET = "SYNTH-CTX-AUTH-9xQ7"
-_CONTEXTUAL_AUTH_VALUES = (
+def _provider_success_payload_with_metadata_value(value):
+    return _provider_success_payload(
+        {"fields": ["value"], "items": [["safe"]]},
+        metadata={"note": value},
+    )
+
+
+_NEUTRAL_SCHEME_REFERENCE = "SYNTH-CTX-AUTH-9xQ7"
+_NEUTRAL_CONTEXTUAL_AUTH_TEXT_VALUES = (
     pytest.param(
-        f"upstream debug Bearer {_CONTEXTUAL_AUTH_SECRET}",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"upstream debug Bearer {_NEUTRAL_SCHEME_REFERENCE}",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="bearer-prefix",
     ),
     pytest.param(
-        f"Bearer {_CONTEXTUAL_AUTH_SECRET} status=401",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"Bearer {_NEUTRAL_SCHEME_REFERENCE} status=401",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="bearer-suffix",
     ),
     pytest.param(
-        f"upstream debug Basic {_CONTEXTUAL_AUTH_SECRET}",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"upstream debug Basic {_NEUTRAL_SCHEME_REFERENCE}",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="basic-prefix",
     ),
     pytest.param(
-        f"Basic {_CONTEXTUAL_AUTH_SECRET} status=401",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"Basic {_NEUTRAL_SCHEME_REFERENCE} status=401",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="basic-suffix",
     ),
     pytest.param(
-        f"upstream%20Bearer%20{_CONTEXTUAL_AUTH_SECRET}",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"upstream%20Bearer%20{_NEUTRAL_SCHEME_REFERENCE}",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="percent-encoded",
     ),
     pytest.param(
-        repr(f"upstream Bearer {_CONTEXTUAL_AUTH_SECRET}"),
-        _CONTEXTUAL_AUTH_SECRET,
+        repr(f"upstream Bearer {_NEUTRAL_SCHEME_REFERENCE}"),
+        _NEUTRAL_SCHEME_REFERENCE,
         id="repr-wrapped",
     ),
     pytest.param(
-        f"u'Bearer {_CONTEXTUAL_AUTH_SECRET}'",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"u'Bearer {_NEUTRAL_SCHEME_REFERENCE}'",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="python2-repr",
     ),
     pytest.param(
-        f"('Bearer {_CONTEXTUAL_AUTH_SECRET}',)",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"('Bearer {_NEUTRAL_SCHEME_REFERENCE}',)",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="tuple-repr",
     ),
     pytest.param(
-        f"upstream Bear\u200ber {_CONTEXTUAL_AUTH_SECRET}",
-        _CONTEXTUAL_AUTH_SECRET,
+        f"upstream Bear\u200ber {_NEUTRAL_SCHEME_REFERENCE}",
+        _NEUTRAL_SCHEME_REFERENCE,
         id="format-control",
     ),
     pytest.param(
@@ -2063,12 +2070,38 @@ _TWO_WORD_AUTH_PROSE_VALUES = (
     pytest.param("Basic Materials", id="title-basic-materials"),
 )
 
+_NEUTRAL_BUSINESS_TEXT_VALUES = (
+    pytest.param("Bearer abcdefgh", id="bearer-eight-lowercase"),
+    pytest.param("Basic abcdefgh", id="basic-eight-lowercase"),
+    pytest.param("Bearer abcdefghijklmno", id="bearer-fifteen-lowercase"),
+    pytest.param("Basic abcdefghijklmno", id="basic-fifteen-lowercase"),
+    pytest.param("Bearer abcdefghijklmnop", id="bearer-sixteen-lowercase"),
+    pytest.param("Basic telecommunications", id="basic-long-business-word"),
+    pytest.param(
+        "Basic telecommunications services expanded",
+        id="basic-long-business-sentence",
+    ),
+    pytest.param(
+        "Bearer responsibilities transferred",
+        id="bearer-long-business-sentence",
+    ),
+    pytest.param("Bearer counterparty", id="bearer-business-control"),
+    pytest.param(
+        "token=SYNTH-NEUTRAL-REFERENCE",
+        id="neutral-token-assignment-text",
+    ),
+    pytest.param(
+        "Authorization: Bearer SYNTH-NEUTRAL-REFERENCE",
+        id="neutral-authorization-reference-text",
+    ),
+)
+
 
 @pytest.mark.parametrize(
     ("value", "secret_fragment"),
-    _CONTEXTUAL_AUTH_VALUES,
+    _NEUTRAL_CONTEXTUAL_AUTH_TEXT_VALUES,
 )
-def test_contextual_auth_scheme_in_success_payload_fails_closed(
+def test_success_payload_accepts_neutral_contextual_auth_scheme_text(
     monkeypatch,
     value,
     secret_fragment,
@@ -2087,6 +2120,49 @@ def test_contextual_auth_scheme_in_success_payload_fails_closed(
         "daily",
         "SYNTH-REQUEST-TOKEN",
     )
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{"value": {"note": {"items": [value]}}}]
+    assert secret_fragment in outcome.rows[0]["value"]["note"]["items"][0]
+
+
+@pytest.mark.parametrize(
+    ("value", "secret_fragment"),
+    _NEUTRAL_CONTEXTUAL_AUTH_TEXT_VALUES,
+)
+def test_direct_outcome_accepts_neutral_contextual_auth_scheme_text(
+    value,
+    secret_fragment,
+):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"note": {"items": [value]}},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert outcome.mutable_rows() == [{"note": {"items": [value]}}]
+    assert secret_fragment in outcome.rows[0]["note"]["items"][0]
+
+
+@pytest.mark.parametrize(
+    ("value", "secret_fragment"),
+    _NEUTRAL_CONTEXTUAL_AUTH_TEXT_VALUES,
+)
+def test_auth_scheme_text_in_provider_metadata_fails_closed(
+    monkeypatch,
+    value,
+    secret_fragment,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload_with_metadata_value(value),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
     receipt = {
         "outcome": outcome,
         "log_fields": tushare_common.provider_outcome_log_fields(outcome),
@@ -2094,32 +2170,125 @@ def test_contextual_auth_scheme_in_success_payload_fails_closed(
 
     assert outcome.state == "failed"
     assert outcome.rows == ()
-    assert outcome.error_code == "provider_error"
     assert outcome.error_message == "provider diagnostic [REDACTED]"
     assert secret_fragment not in repr(receipt)
 
 
-@pytest.mark.parametrize(
-    ("value", "secret_fragment"),
-    _CONTEXTUAL_AUTH_VALUES,
-)
-def test_direct_outcome_rejects_contextual_auth_scheme(
+@pytest.mark.parametrize("value", _NEUTRAL_BUSINESS_TEXT_VALUES)
+def test_neutral_row_text_is_strictly_redacted_when_sourced_from_metadata(
+    monkeypatch,
     value,
-    secret_fragment,
 ):
-    with pytest.raises(
-        ValueError,
-        match="sensitive or unscannable",
-    ) as exc_info:
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload_with_metadata_value(value),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+
+
+def test_noncredential_provider_metadata_preserves_success_rows(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["value"], "items": [["safe"]]},
+            metadata={"note": "ordinary provider provenance"},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{"value": "safe"}]
+
+
+@pytest.mark.parametrize("value", _NEUTRAL_BUSINESS_TEXT_VALUES)
+def test_direct_outcome_accepts_neutral_business_text_without_source_contract(
+    value,
+):
+    source = {"description": value}
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=(source,),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    source["description"] = "mutated"
+    mutable_rows = outcome.mutable_rows()
+    mutable_rows[0]["description"] = "consumer mutation"
+
+    assert outcome.rows == ({"description": value},)
+    assert outcome.mutable_rows() == [{"description": value}]
+
+
+@pytest.mark.parametrize("value", _NEUTRAL_BUSINESS_TEXT_VALUES)
+def test_success_payload_accepts_neutral_business_text_without_source_contract(
+    monkeypatch,
+    value,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["description"], "items": [[value]]},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{"description": value}]
+
+
+@pytest.mark.parametrize("token", ["abcdefgh", "abcdefghijklmno"])
+def test_direct_outcome_rejects_caller_known_short_auth_value(token):
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
         tushare_common.ProviderCallOutcome(
             state="success",
-            rows=({"note": {"items": [value]}},),
+            rows=({"description": f"Bearer {token}"},),
             provider_code=0,
             error_code=None,
             error_message=None,
+            sensitive_values=(token,),
         )
 
-    assert secret_fragment not in str(exc_info.value)
+
+@pytest.mark.parametrize("token", ["abcdefgh", "abcdefghijklmno"])
+def test_success_payload_rejects_caller_known_short_auth_value(
+    monkeypatch,
+    token,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["description"], "items": [[f"Bearer {token}"]]},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    receipt = {
+        "outcome": outcome,
+        "log_fields": tushare_common.provider_outcome_log_fields(outcome),
+    }
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert token not in repr(receipt)
 
 
 @pytest.mark.parametrize("value", _TWO_WORD_AUTH_PROSE_VALUES)
@@ -2279,137 +2448,92 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
             id="repr-wrapped-key",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["Authorization: Bearer SYNTH-FOREIGN-AUTH-VALUE"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "Authorization: Bearer SYNTH-FOREIGN-AUTH-VALUE"
             ),
             "SYNTH-FOREIGN-AUTH-VALUE",
-            id="authorization-header-value",
+            id="metadata-authorization-header-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["token=SYNTH-FOREIGN-ASSIGNMENT"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "token=SYNTH-FOREIGN-ASSIGNMENT"
             ),
             "SYNTH-FOREIGN-ASSIGNMENT",
-            id="token-assignment-value",
+            id="metadata-token-assignment-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["password -> SYNTH-FOREIGN-ARROW"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "password -> SYNTH-FOREIGN-ARROW"
             ),
             "SYNTH-FOREIGN-ARROW",
-            id="password-arrow-value",
+            id="metadata-password-arrow-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["Cookie: sid=SYNTH-FOREIGN-COOKIE-VALUE"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "Cookie: sid=SYNTH-FOREIGN-COOKIE-VALUE"
             ),
             "SYNTH-FOREIGN-COOKIE-VALUE",
-            id="cookie-header-value",
+            id="metadata-cookie-header-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["Bearer SYNTH-FOREIGN-BEARER"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "Bearer SYNTH-FOREIGN-BEARER"
             ),
             "SYNTH-FOREIGN-BEARER",
-            id="standalone-bearer-value",
+            id="metadata-standalone-bearer-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["Basic U1lOVEg6Rk9SRUlHTg=="]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "Basic U1lOVEg6Rk9SRUlHTg=="
             ),
             "U1lOVEg6Rk9SRUlHTg==",
-            id="standalone-basic-value",
+            id="metadata-standalone-basic-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [["Bearer%20SYNTH-FOREIGN-PERCENT-VALUE"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                "Bearer%20SYNTH-FOREIGN-PERCENT-VALUE"
             ),
             "SYNTH-FOREIGN-PERCENT-VALUE",
-            id="percent-encoded-bearer-value",
+            id="metadata-percent-encoded-bearer-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [[r"Bearer\u0020SYNTH-FOREIGN-UNICODE-VALUE"]],
-                }
+            _provider_success_payload_with_metadata_value(
+                r"Bearer\u0020SYNTH-FOREIGN-UNICODE-VALUE"
             ),
             "SYNTH-FOREIGN-UNICODE-VALUE",
-            id="unicode-escaped-bearer-value",
+            id="metadata-unicode-escaped-bearer-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [
-                        [
-                            urllib.parse.quote(
-                                urllib.parse.quote(
-                                    '{"Authorization":"Bearer '
-                                    'SYNTH-FOREIGN-ENCODED-JSON"}',
-                                    safe="",
-                                ),
-                                safe="",
-                            )
-                        ]
-                    ],
-                }
+            _provider_success_payload_with_metadata_value(
+                urllib.parse.quote(
+                    urllib.parse.quote(
+                        '{"Authorization":"Bearer '
+                        'SYNTH-FOREIGN-ENCODED-JSON"}',
+                        safe="",
+                    ),
+                    safe="",
+                )
             ),
             "SYNTH-FOREIGN-ENCODED-JSON",
-            id="multi-percent-encoded-json-value",
+            id="metadata-multi-percent-encoded-json-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [
-                        [
-                            r"{\u0022Authorization\u0022:"
-                            r"\u0022Bearer\u0020SYNTH-FOREIGN-ESCAPED-JSON\u0022}"
-                        ]
-                    ],
-                }
+            _provider_success_payload_with_metadata_value(
+                r"{\u0022Authorization\u0022:"
+                r"\u0022Bearer\u0020SYNTH-FOREIGN-ESCAPED-JSON\u0022}"
             ),
             "SYNTH-FOREIGN-ESCAPED-JSON",
-            id="unicode-escaped-json-value",
+            id="metadata-unicode-escaped-json-value",
         ),
         pytest.param(
-            _provider_success_payload(
-                {
-                    "fields": ["value"],
-                    "items": [
-                        [
-                            repr(
-                                '{"Authorization":"Bearer '
-                                'SYNTH-FOREIGN-REPR-JSON"}'
-                            )
-                        ]
-                    ],
-                }
+            _provider_success_payload_with_metadata_value(
+                repr(
+                    '{"Authorization":"Bearer '
+                    'SYNTH-FOREIGN-REPR-JSON"}'
+                )
             ),
             "SYNTH-FOREIGN-REPR-JSON",
-            id="repr-wrapped-json-value",
+            id="metadata-repr-wrapped-json-value",
         ),
         pytest.param(
             _provider_success_payload(
@@ -2606,7 +2730,10 @@ def test_outcome_rejects_unscannable_success_row_without_conversion():
         ),
     ],
 )
-def test_direct_outcome_rejects_foreign_credential_rows(rows, secret):
+def test_direct_outcome_rejects_caller_known_or_structured_credential_rows(
+    rows,
+    secret,
+):
     with pytest.raises(
         ValueError,
         match="sensitive or unscannable",
@@ -2617,9 +2744,34 @@ def test_direct_outcome_rejects_foreign_credential_rows(rows, secret):
             provider_code=0,
             error_code=None,
             error_message=None,
+            sensitive_values=(secret,),
         )
 
     assert secret not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        pytest.param(
+            ({"Authorization": "Bearer abcdefgh"},),
+            id="authorization-key",
+        ),
+        pytest.param(
+            ({"value": [{"Set-Cookie": "sid=abcdefgh"}]},),
+            id="nested-set-cookie-key",
+        ),
+    ],
+)
+def test_direct_outcome_rejects_structured_credential_without_known_value(rows):
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=rows,
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
 
 
 class _SuccessStringSubclass(str):
