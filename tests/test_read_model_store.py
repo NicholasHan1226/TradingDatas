@@ -479,6 +479,132 @@ def test_event_rows_are_normalized(tmp_path: Path) -> None:
     )
 
 
+REGISTERED_EVENT_IDENTITY_CASES = (
+    (
+        "block_trade",
+        {
+            "ts_code": "600000.SH",
+            "trade_date": "20260713",
+            "price": 10.0,
+            "vol": 1000,
+            "buyer": "buyer-a",
+            "seller": "seller-b",
+        },
+        "trade_date",
+    ),
+    (
+        "limit_list",
+        {"ts_code": "600000.SH", "trade_date": "20260713"},
+        "trade_date",
+    ),
+    (
+        "limit_list_d",
+        {"ts_code": "600000.SH", "trade_date": "20260713"},
+        "trade_date",
+    ),
+    (
+        "broker_recommend",
+        {"month": "202607", "broker": "broker-a", "ts_code": "600000.SH"},
+        "ts_code",
+    ),
+    (
+        "suspend_d",
+        {"ts_code": "600000.SH", "suspend_date": "20260713"},
+        "suspend_date",
+    ),
+    (
+        "namechange",
+        {"ts_code": "600000.SH", "start_date": "20260713", "name": "new-name"},
+        "start_date",
+    ),
+    ("cb_issue", {"ts_code": "123456.SZ"}, "ts_code"),
+    (
+        "news",
+        {"datetime": "2026-07-13 09:00:00", "title": "headline"},
+        "datetime",
+    ),
+    (
+        "major_news",
+        {"pub_time": "2026-07-13 09:00:00", "title": "major headline"},
+        "pub_time",
+    ),
+    (
+        "cctv_news",
+        {"date": "20260713", "broadcast_time": "19:00", "title": "broadcast"},
+        "date",
+    ),
+    (
+        "anns_d",
+        {"ts_code": "600000.SH", "ann_date": "20260713", "title": "announcement"},
+        "ann_date",
+    ),
+    (
+        "report_rc",
+        {
+            "ts_code": "600000.SH",
+            "report_date": "20260713",
+            "report_title": "research report",
+        },
+        "report_date",
+    ),
+)
+
+
+@pytest.mark.parametrize("identity_state", ["missing", "blank", "null", "whitespace"])
+@pytest.mark.parametrize(
+    ("api_name", "complete", "identity_field"),
+    REGISTERED_EVENT_IDENTITY_CASES,
+)
+def test_registered_event_identity_uses_original_fields_before_normalization(
+    tmp_path: Path,
+    api_name: str,
+    complete: dict[str, object],
+    identity_field: str,
+    identity_state: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    canonical_aliases = {
+        "event_time": "2026-07-13 09:00:00",
+        "symbol": str(complete.get("ts_code") or "ALIAS.SYMBOL"),
+        "volume": complete.get("vol", 1000),
+    }
+    incomplete = {**complete, **canonical_aliases}
+    if identity_state == "missing":
+        incomplete.pop(identity_field)
+    elif identity_state == "blank":
+        incomplete[identity_field] = ""
+    elif identity_state == "null":
+        incomplete[identity_field] = None
+    else:
+        incomplete[identity_field] = "   "
+    original_incomplete = dict(incomplete)
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_events",
+            api_name,
+            [incomplete],
+        )
+
+    assert incomplete == original_incomplete
+    assert _count_rows(db_path, "market_events") == 0
+    complete_with_aliases = {**complete, **canonical_aliases}
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        api_name,
+        [complete_with_aliases],
+    ) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        api_name,
+        [complete_with_aliases],
+    ) == 0
+
+
 def test_event_ingest_keeps_logical_id_and_appends_changed_revision(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

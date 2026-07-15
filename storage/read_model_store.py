@@ -16,7 +16,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 import dataset_registry as dataset_registry_contract
 from storage.event_identity import (
@@ -932,13 +933,18 @@ def _stored_event_fingerprint(row: sqlite3.Row) -> str:
     )
 
 
-def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
+def _assign_event_revision(
+    conn: sqlite3.Connection,
+    row: dict[str, Any],
+    *,
+    identity_row: Mapping[str, Any],
+) -> bool:
     provider = str(row.get("provider") or "")
     event_type = str(row.get("event_type") or "event")
     event_id = stable_event_id(
         provider,
         event_type,
-        row,
+        identity_row,
         allow_legacy_fallback=False,
     )
     fingerprint = event_content_fingerprint(
@@ -1058,6 +1064,13 @@ def _ingest_rows_to_sqlite_once(
         transaction_open = True
 
         for row_number, row in enumerate(clean_rows, start=1):
+            if table == "market_events":
+                # Canonical storage normalization may derive aliases such as
+                # event_time -> trade_date. Identity must instead see the
+                # original provider top-level fields. Canonicalization only
+                # rebinds top-level keys, so a protected shallow snapshot is
+                # sufficient and retains nested provenance without mutation.
+                identity_row = MappingProxyType(dict(row))
             canonical_rows = (
                 _factor_rows(
                     row,
@@ -1079,7 +1092,11 @@ def _ingest_rows_to_sqlite_once(
             for canonical_row in canonical_rows:
                 if table == "market_bars_intraday" and api_name == "rt_fut_min":
                     canonical_row = _enrich_futures_intraday_from_assets(conn, canonical_row)
-                if table == "market_events" and not _assign_event_revision(conn, canonical_row):
+                if table == "market_events" and not _assign_event_revision(
+                    conn,
+                    canonical_row,
+                    identity_row=identity_row,
+                ):
                     continue
                 values = _row_values(canonical_row, columns, required_columns, source_path, row_number)
                 if values is None:

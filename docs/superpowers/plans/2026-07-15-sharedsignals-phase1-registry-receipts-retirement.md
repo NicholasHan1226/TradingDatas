@@ -585,6 +585,31 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   still accepted every tested nested identity shape (12 routes × 5 shapes).
   It is not final acceptance evidence and must not be amended or rebased away.
 
+  Commit `cf4cabb` also remains in history but failed fresh review: the live
+  writer passed an already normalized row to `stable_event_id`. In particular,
+  `_canonical_row` could derive `trade_date` from `event_time` before identity
+  validation, so a `limit_list` row with no original `trade_date` wrote once and
+  a later complete row was incorrectly treated as an unchanged replay. It is
+  not final acceptance evidence and must not be amended or rebased away.
+
+- [x] **Step 11: Separate original live identity from storage normalization**
+
+  Snapshot each original provider event row before `_canonical_row` mutates its
+  top-level storage representation. The live `stable_event_id` call reads only
+  that protected original snapshot; trusted provider and event type still come
+  from registry/canonical context, while fingerprinting, provenance, derived
+  `event_time`/`trade_date`, and physical writes continue to use the canonical
+  row. A shallow protected snapshot is sufficient because canonicalization
+  rebinds top-level keys and does not mutate nested payload objects.
+
+  Cover all twelve registered event routes across missing, empty, null, and
+  whitespace identity fields while presenting canonical aliases such as
+  `event_time`, `symbol`, and `volume`. Every incomplete row must roll back with
+  zero writes and leave the caller input unchanged; the subsequent complete row
+  must write once and then replay with zero writes. This matrix specifically
+  prevents `event_time -> trade_date` from completing `block_trade`,
+  `limit_list`, `limit_list_d`, or the alternate `suspend_d` business key.
+
   ```bash
   /private/tmp/sharedsignals-phase1-py312/bin/python -m pytest -q \
     tests/test_event_identity.py tests/test_read_model_store.py \
@@ -596,7 +621,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   /private/tmp/sharedsignals-phase1-py312/bin/python -m compileall -q \
     storage/event_identity.py storage/migrate.py storage/read_model_store.py
   git diff --check
-  git commit -m "fix: normalize event replay across raw provenance"
+  git commit -m "fix: preserve original live event identity input"
   ```
 
 ---
