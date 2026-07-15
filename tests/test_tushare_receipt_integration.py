@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import storage.read_model_store as read_model_store
 from storage.ingest_receipts import IngestContext, make_receipt_id
 from storage.read_model_store import ingest_rows_with_receipts
 from storage.schema import SCHEMA_SQL
@@ -320,3 +321,130 @@ def test_generic_upsert_never_fabricates_insert_update_or_unchanged_counts(
         assert result.counts.updated is None
         assert result.counts.unchanged is None
         assert result.counts.count_semantics == "generic_upsert_outcomes_unavailable"
+
+
+def test_atomic_ingest_rejects_sqlite_symlink_alias_without_writing_target(
+    tmp_path: Path,
+) -> None:
+    authority_path = tmp_path / "authority.sqlite"
+    alias_path = tmp_path / "alias.sqlite"
+    _create_db(authority_path)
+    alias_path.symlink_to(authority_path.name)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        ingest_rows_with_receipts(
+            alias_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=_context("018f47de-0000-7000-8000-000000000013"),
+        )
+
+    conn = sqlite3.connect(authority_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM market_bars_daily").fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_atomic_ingest_rejects_inode_drift_before_rw_connect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_path = tmp_path / "authority.sqlite"
+    replacement_path = tmp_path / "replacement.sqlite"
+    retired_path = tmp_path / "retired.sqlite"
+    _create_db(authority_path)
+    _create_db(replacement_path)
+    original_check = read_model_store._require_unchanged_sqlite_binding
+    swapped = False
+
+    def swap_before_first_binding_check(binding) -> None:
+        nonlocal swapped
+        if not swapped:
+            authority_path.replace(retired_path)
+            replacement_path.replace(authority_path)
+            swapped = True
+        original_check(binding)
+
+    monkeypatch.setattr(
+        read_model_store,
+        "_require_unchanged_sqlite_binding",
+        swap_before_first_binding_check,
+    )
+
+    with pytest.raises(RuntimeError, match="binding changed"):
+        ingest_rows_with_receipts(
+            authority_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=_context("018f47de-0000-7000-8000-000000000014"),
+        )
+
+    for path in (authority_path, retired_path):
+        conn = sqlite3.connect(path)
+        try:
+            assert (
+                conn.execute("SELECT COUNT(*) FROM market_bars_daily").fetchone()[0]
+                == 0
+            )
+            assert (
+                conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0]
+                == 0
+            )
+        finally:
+            conn.close()
+
+
+def test_atomic_ingest_rolls_back_parent_swap_before_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_parent = tmp_path / "authority"
+    retired_parent = tmp_path / "retired"
+    authority_parent.mkdir()
+    authority_path = authority_parent / "marketdata.sqlite"
+    _create_db(authority_path)
+    original_insert = read_model_store.insert_ingest_receipt
+
+    def insert_then_swap_parent(*args, **kwargs):
+        receipt_id = original_insert(*args, **kwargs)
+        authority_parent.replace(retired_parent)
+        authority_parent.mkdir()
+        _create_db(authority_path)
+        return receipt_id
+
+    monkeypatch.setattr(
+        read_model_store,
+        "insert_ingest_receipt",
+        insert_then_swap_parent,
+    )
+
+    with pytest.raises(RuntimeError, match="binding changed"):
+        ingest_rows_with_receipts(
+            authority_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=_context("018f47de-0000-7000-8000-000000000015"),
+        )
+
+    for path in (authority_path, retired_parent / "marketdata.sqlite"):
+        conn = sqlite3.connect(path)
+        try:
+            assert (
+                conn.execute("SELECT COUNT(*) FROM market_bars_daily").fetchone()[0]
+                == 0
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            conn.close()

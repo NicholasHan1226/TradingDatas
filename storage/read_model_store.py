@@ -28,6 +28,8 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    _require_unchanged_sqlite_binding,
+    _validated_existing_sqlite_binding,
     insert_ingest_receipt,
 )
 from storage.schema_contract import get_table, table_primary_keys
@@ -1298,8 +1300,7 @@ def ingest_rows_with_receipts(
         raise TypeError("db_path must be pathlib.Path")
     if not isinstance(context, IngestContext):
         raise TypeError("context must be IngestContext")
-    if not db_path.exists():
-        raise FileNotFoundError(f"sqlite db not found: {db_path}")
+    db_binding = _validated_existing_sqlite_binding(db_path)
 
     clean_rows = _validated_receipt_rows(rows)
     transaction_limit = _validated_transaction_limit(max_transaction_rows)
@@ -1307,10 +1308,17 @@ def ingest_rows_with_receipts(
     receipt_ids: list[str] = []
     aggregate_counts: list[IngestCounts] = []
 
-    with _read_model_lock(db_path):
-        conn = sqlite3.connect(str(db_path), timeout=30)
+    with _read_model_lock(db_binding.canonical_path):
+        _require_unchanged_sqlite_binding(db_binding)
+        conn = sqlite3.connect(
+            f"{db_binding.canonical_path.as_uri()}?mode=rw",
+            uri=True,
+            timeout=30,
+        )
         try:
+            _require_unchanged_sqlite_binding(db_binding)
             _prepare_sqlite_connection(conn)
+            _require_unchanged_sqlite_binding(db_binding)
             columns, required_columns, sql = _receipt_insert_statement(
                 conn,
                 table=table,
@@ -1322,6 +1330,7 @@ def ingest_rows_with_receipts(
             ):
                 try:
                     conn.execute("BEGIN IMMEDIATE")
+                    _require_unchanged_sqlite_binding(db_binding)
                     counts = _write_receipt_chunk(
                         conn,
                         table=table,
@@ -1342,6 +1351,7 @@ def ingest_rows_with_receipts(
                         errors=(),
                         payload_fingerprint=_receipt_payload_fingerprint(chunk),
                     )
+                    _require_unchanged_sqlite_binding(db_binding)
                     conn.commit()
                 except Exception:
                     conn.rollback()
