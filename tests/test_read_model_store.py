@@ -677,6 +677,262 @@ def test_cb_issue_provider_claim_replay_keeps_one_canonical_revision(
     ]
 
 
+def test_registered_event_route_cannot_be_spoofed_by_payload(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "ts_code": "123456.SZ",
+        "ann_date": "20260713",
+        "issue_price": 100.0,
+        "provider": "spoof-source",
+        "event_type": "forged-type",
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "cb_issue", [row]) == 1
+    stored = _fetchone(
+        db_path,
+        "SELECT provider, event_type, raw_json FROM market_events",
+    )
+
+    assert stored[:2] == ("tushare_cb_issue", "cb_issue")
+    raw = json.loads(stored[2])
+    assert raw["_sharedsignals_provenance"]["provider_claim"] == "spoof-source"
+
+
+def test_prewrapped_raw_cannot_replace_current_provider_claim(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    prewrapped = json.dumps(
+        {
+            "_sharedsignals_provenance": {
+                "provider_claim": "nested-forged",
+                "raw_payload_source": "row",
+                "schema": "provider-claim.v1",
+            },
+            "raw_payload": {"ts_code": "123456.SZ", "issue_price": 100.0},
+        },
+        sort_keys=True,
+    )
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [
+            {
+                "ts_code": "123456.SZ",
+                "ann_date": "20260713",
+                "issue_price": 100.0,
+                "provider": "current-spoof",
+                "raw_json": prewrapped,
+            }
+        ],
+    ) == 1
+    raw = json.loads(
+        _fetchone(db_path, "SELECT raw_json FROM market_events")[0]
+    )
+
+    assert raw["_sharedsignals_provenance"]["provider_claim"] == "current-spoof"
+
+
+@pytest.mark.parametrize(
+    "raw_json",
+    [
+        "",
+        "opaque",
+        json.dumps({"ts_code": "123456.SZ", "issue_price": 99.0}),
+    ],
+)
+def test_cb_issue_raw_provenance_cannot_hide_business_revision(
+    tmp_path: Path,
+    raw_json: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "ts_code": "123456.SZ",
+        "ann_date": "20260713",
+        "issue_price": 100.0,
+        "provider": "spoof-source",
+        "raw_json": raw_json,
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "cb_issue", [row]) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [{**row, "issue_price": 101.0}],
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision FROM market_events ORDER BY rowid"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [(rows[0][0], 1), (rows[0][0], 2)]
+
+
+def test_block_trade_without_native_id_keeps_distinct_complete_facts(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "ts_code": "600000.SH",
+        "trade_date": "20260713",
+        "price": 10.0,
+        "vol": 1000,
+        "buyer": "buyer-a",
+        "seller": "seller-b",
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "block_trade", [row]) == 1
+    assert ingest_rows_to_sqlite(db_path, "market_events", "block_trade", [row]) == 0
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "block_trade",
+        [{**row, "price": 10.1}],
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision FROM market_events ORDER BY rowid"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [revision for _, revision in rows] == [1, 1]
+    assert len({event_id for event_id, _ in rows}) == 2
+
+
+def test_block_trade_native_id_allows_changed_fact_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "id": "block-42",
+        "ts_code": "600000.SH",
+        "trade_date": "20260713",
+        "price": 10.0,
+        "vol": 1000,
+        "buyer": "buyer-a",
+        "seller": "seller-b",
+    }
+
+    assert ingest_rows_to_sqlite(db_path, "market_events", "block_trade", [row]) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "block_trade",
+        [{**row, "price": 10.1}],
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT event_id, revision FROM market_events ORDER BY rowid"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [(rows[0][0], 1), (rows[0][0], 2)]
+
+
+def test_block_trade_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    with pytest.raises(ValueError, match="missing required business key"):
+        ingest_rows_to_sqlite(
+            db_path,
+            "market_events",
+            "block_trade",
+            [
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260713",
+                    "price": 10.0,
+                    "vol": 1000,
+                    "buyer": "buyer-a",
+                    "seller": "seller-b",
+                },
+                {
+                    "ts_code": "600001.SH",
+                    "trade_date": "20260713",
+                    "price": 10.0,
+                    "vol": 1000,
+                    "buyer": "buyer-a",
+                },
+            ],
+        )
+
+    assert _count_rows(db_path, "market_events") == 0
+
+
+@pytest.mark.parametrize("api_name", ["news", "anns_d"])
+def test_nested_raw_replay_and_content_change_are_symmetric(
+    tmp_path: Path,
+    api_name: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    if api_name == "news":
+        base = {
+            "id": "news-42",
+            "datetime": "2026-07-13 09:00:00",
+            "title": "headline",
+        }
+    else:
+        base = {
+            "id": "ann-42",
+            "ts_code": "600000.SH",
+            "ann_date": "20260713",
+        }
+    raw_v1 = json.dumps(
+        {
+            "content": "v1",
+            "provider": "nested-forged",
+            "event_type": "nested-forged",
+        },
+        sort_keys=True,
+    )
+    raw_v2 = json.dumps(
+        {
+            "content": "v2",
+            "provider": "nested-forged-2",
+            "event_type": "nested-forged-2",
+        },
+        sort_keys=True,
+    )
+
+    assert ingest_rows_to_sqlite(
+        db_path, "market_events", api_name, [{**base, "raw_json": raw_v1}]
+    ) == 1
+    assert ingest_rows_to_sqlite(
+        db_path, "market_events", api_name, [{**base, "raw_json": raw_v1}]
+    ) == 0
+    assert ingest_rows_to_sqlite(
+        db_path, "market_events", api_name, [{**base, "raw_json": raw_v2}]
+    ) == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT provider, event_type, event_id, revision "
+            "FROM market_events ORDER BY rowid"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [row[:2] for row in rows] == [
+        (f"tushare_{api_name}", api_name),
+        (f"tushare_{api_name}", api_name),
+    ]
+    assert rows[0][2:] == (rows[1][2], 1)
+    assert rows[1][3] == 2
+
+
 def test_cb_issue_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)

@@ -529,6 +529,55 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   git commit -m "fix: keep structured event replay idempotent"
   ```
 
+  Commit `1ea3cb2` remains in history but failed fresh review: registered event
+  routes still accepted a row-level `event_type`, a prewrapped provenance
+  envelope could replace the current provider claim, raw JSON replaced rather
+  than supplemented business fingerprint fields, and incoming/stored generic
+  event normalization was asymmetric. Real-shape `block_trade` rows also had no
+  stable identity. It is not final acceptance evidence and must not be amended
+  or rebased away.
+
+- [x] **Step 10: Normalize every event route across raw provenance and replay**
+
+  Use one canonical business-payload normalization for both incoming and stored
+  event rows. Trusted registry provider and route event type always win; nested
+  provider/event-type values are provenance only. A `provider-claim.v1`
+  envelope retains the supplied raw payload plus the current row payload when
+  both exist, so parseable raw fields may supplement facts that have no
+  read-model column without replacing current top-level facts. Blank and opaque
+  raw payloads never hide a current business-field correction.
+
+  Declare explicit identity alternatives for all twelve registry routes that
+  write `market_events`. `cb_issue` remains strict on `ts_code`. A
+  `block_trade` without a provider-native ID uses the complete immutable
+  `ts_code+trade_date+price+vol+buyer+seller` fact key; changing any member is a
+  distinct event at revision 1 because no narrower key proves a correction.
+  When a provider-native block-trade ID exists, the ID proves logical sameness
+  and changed business fields append revision 2. Title-only legacy Tushare news
+  identity remains available for historical migration compatibility, while the
+  live write path disables that fallback and requires native ID, URL, or the
+  explicit route business key.
+
+  Prove paired over- and under-idempotency cases for `cb_issue`, `block_trade`,
+  news, and announcements across nested, prewrapped, blank, opaque, spoofed,
+  stale, and missing payload shapes. The earlier reviewer assertion that an
+  ID-less block-trade price change must become revision 2 is superseded by the
+  fail-closed complete-fact identity: both rows must be retained under distinct
+  event IDs, each at revision 1.
+
+  ```bash
+  /private/tmp/sharedsignals-phase1-py312/bin/python -m pytest -q \
+    tests/test_event_identity.py tests/test_read_model_store.py \
+    tests/test_migrate.py tests/test_sec_edgar_filings.py
+  /Users/nicholashan/.local/bin/ruff check \
+    storage/event_identity.py storage/read_model_store.py \
+    tests/test_event_identity.py tests/test_read_model_store.py
+  /private/tmp/sharedsignals-phase1-py312/bin/python -m compileall -q \
+    storage/event_identity.py storage/read_model_store.py
+  git diff --check
+  git commit -m "fix: normalize event replay across raw provenance"
+  ```
+
 ---
 
 ## Task 6: Preserve provider call outcomes before row conversion

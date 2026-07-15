@@ -297,37 +297,27 @@ def _canonical_raw_json(row: dict[str, Any]) -> str:
     original = dict(row)
     has_raw_payload = "raw_json" in original
     raw_payload = original.get("raw_json") if has_raw_payload else original
+    has_context_claim = "provider" in original or "event_type" in original
 
-    if has_raw_payload:
-        try:
-            decoded = (
-                raw_payload
-                if isinstance(raw_payload, dict)
-                else json.loads(str(raw_payload))
-            )
-        except (TypeError, ValueError):
-            decoded = None
-        provenance = (
-            decoded.get("_sharedsignals_provenance")
-            if isinstance(decoded, dict)
-            else None
-        )
-        if (
-            isinstance(provenance, dict)
-            and provenance.get("schema") == _PROVIDER_CLAIM_SCHEMA
-        ):
-            return _json_text(raw_payload)
-
-    if "provider" in original:
+    if has_raw_payload or has_context_claim:
+        provenance: dict[str, Any] = {
+            "raw_payload_source": "raw_json" if has_raw_payload else "row",
+            "schema": _PROVIDER_CLAIM_SCHEMA,
+        }
+        if "provider" in original:
+            provenance["provider_claim"] = original.get("provider")
+        if "event_type" in original:
+            provenance["event_type_claim"] = original.get("event_type")
+        envelope: dict[str, Any] = {
+            "_sharedsignals_provenance": provenance,
+            "raw_payload": raw_payload,
+        }
+        if has_raw_payload:
+            envelope["row_payload"] = {
+                key: value for key, value in original.items() if key != "raw_json"
+            }
         return json.dumps(
-            {
-                "_sharedsignals_provenance": {
-                    "provider_claim": original.get("provider"),
-                    "raw_payload_source": "raw_json" if has_raw_payload else "row",
-                    "schema": _PROVIDER_CLAIM_SCHEMA,
-                },
-                "raw_payload": raw_payload,
-            },
+            envelope,
             ensure_ascii=False,
             sort_keys=True,
         )
@@ -558,6 +548,7 @@ def _canonical_row(
     if not provider_discriminator:
         raise ValueError("provider_discriminator is required for canonical rows")
     if "provider" in row or table in {
+        "market_events",
         "market_bars_daily",
         "market_bars_intraday",
     }:
@@ -661,13 +652,15 @@ def _canonical_row(
 
     if table == "market_events":
         provider = provider_discriminator
-        event_type = row.get("event_type") or api_name or "event"
+        event_type = (
+            api_name
+            if api_name in TUSHARE_ALLOWED_API_NAMES
+            else row.get("event_type") or api_name or "event"
+        )
         event_time = row.get("event_time") or _event_time_from_row(row)
         trade_date = row.get("trade_date") or _trade_date_from_event_time(event_time)
-        if provider and not row.get("provider"):
-            row["provider"] = provider
-        if event_type and not row.get("event_type"):
-            row["event_type"] = event_type
+        row["provider"] = provider
+        row["event_type"] = event_type
         if event_time and not row.get("event_time"):
             row["event_time"] = event_time
         if trade_date and not row.get("trade_date"):
@@ -926,34 +919,37 @@ def _stored_event_fingerprint(row: sqlite3.Row) -> str:
         "content": row[4],
         "url": row[5],
         "source": row[6],
-        "symbol": row[7],
-        "event_time": row[8],
-        "trade_date": row[9],
-        "raw_json": row[10],
+        "market": row[7],
+        "symbol": row[8],
+        "event_time": row[9],
+        "trade_date": row[10],
+        "raw_json": row[11],
     }
-    try:
-        raw = json.loads(row[10] or "{}")
-    except (TypeError, ValueError):
-        raw = {}
-    if isinstance(raw, dict):
-        reconstructed = dict(raw)
-        for key, value in stored.items():
-            reconstructed.setdefault(key, value)
-        for canonical_key in ("provider", "event_type", "raw_json"):
-            reconstructed[canonical_key] = stored[canonical_key]
-        stored = reconstructed
-    return event_content_fingerprint(stored)
+    return event_content_fingerprint(
+        stored,
+        provider=str(stored["provider"] or ""),
+        event_type=str(stored["event_type"] or "event"),
+    )
 
 
 def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
     provider = str(row.get("provider") or "")
     event_type = str(row.get("event_type") or "event")
-    event_id = stable_event_id(provider, event_type, row)
-    fingerprint = event_content_fingerprint(row)
+    event_id = stable_event_id(
+        provider,
+        event_type,
+        row,
+        allow_legacy_fallback=False,
+    )
+    fingerprint = event_content_fingerprint(
+        row,
+        provider=provider,
+        event_type=event_type,
+    )
     latest = conn.execute(
         """
         SELECT revision, provider, event_type, title, content, url, source,
-               symbol, event_time, trade_date, raw_json
+               market, symbol, event_time, trade_date, raw_json
         FROM market_events
         WHERE event_id = ?
         ORDER BY revision DESC
