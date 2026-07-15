@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """SharedSignals native Tushare collector — generic collector class.
 
-Uses the Tushare wrapper (_call) to fetch provider rows. Production persistence
-is owned by collectors/tushare/sync_daily.py, which writes rows directly into
-the SQLite read model.
+Uses the strict Tushare outcome helper to fetch provider rows without collapsing
+provider failures into empty results. Production persistence is owned by
+collectors/tushare/sync_daily.py, which writes rows directly into the SQLite
+read model.
 
 Import chain:
-  collect() -> env bootstrap -> tushare_common (token) -> tushare_api (_call)
+  collect() -> collect_outcome() -> env bootstrap -> tushare_common
 """
 
 from __future__ import annotations
@@ -19,14 +20,39 @@ from threading import Lock
 from typing import Any
 
 from ..base import BaseCollector  # noqa: E402
+from .tushare_common import (
+    ProviderCallOutcome,
+    provider_outcome_log_fields,
+    safe_provider_exception_message,
+)
 
 logger = logging.getLogger(__name__)
 _TUSHARE_CALL: Any | None = None
 _TUSHARE_CALL_LOCK = Lock()
+_SAFE_PARAM_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
 
 
-def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> list[dict[str, Any]]:
-    """Load env and Tushare wrapper lazily, only for real API calls."""
+def _parameter_log_summary(params: dict[str, Any]) -> dict[str, Any]:
+    """Describe parameter structure without retaining any parameter value."""
+
+    keys = []
+    for key in params:
+        text = str(key)
+        keys.append(
+            text if _SAFE_PARAM_KEY.fullmatch(text) else "<untrusted-param-key>"
+        )
+    return {
+        "param_count": len(params),
+        "param_keys": tuple(sorted(set(keys))),
+    }
+
+
+def _call_tushare(
+    api_name: str,
+    params: dict[str, Any],
+    fields: str = "",
+) -> ProviderCallOutcome:
+    """Load env and the strict Tushare outcome call lazily."""
     global _TUSHARE_CALL
     if _TUSHARE_CALL is None:
         with _TUSHARE_CALL_LOCK:
@@ -34,9 +60,21 @@ def _call_tushare(api_name: str, params: dict[str, Any], fields: str = "") -> li
                 from env_bootstrap import bootstrap_sharedsignals_env
 
                 bootstrap_sharedsignals_env()
-                from .tushare_api import _call
+                from .tushare_common import get_token, tushare_rows_outcome
 
-                _TUSHARE_CALL = _call
+                def _strict_call(
+                    call_api_name: str,
+                    call_params: dict[str, Any],
+                    call_fields: str,
+                ) -> ProviderCallOutcome:
+                    return tushare_rows_outcome(
+                        call_api_name,
+                        get_token(),
+                        params=call_params,
+                        fields=call_fields,
+                    )
+
+                _TUSHARE_CALL = _strict_call
     return _TUSHARE_CALL(api_name, params, fields)
 
 
@@ -67,6 +105,7 @@ class TushareCollector(BaseCollector):
         super().__init__(config)
         self.last_collect_failed = False
         self.last_collect_error = ""
+        self.last_collect_outcome: ProviderCallOutcome | None = None
         self.collect_call_count = 0
         self.collect_failure_count = 0
 
@@ -259,6 +298,65 @@ class TushareCollector(BaseCollector):
     # collect
     # ------------------------------------------------------------------
 
+    def collect_outcome(
+        self,
+        api_name: str,
+        params: dict[str, Any],
+        fields: str | None = None,
+    ) -> ProviderCallOutcome:
+        """Call the strict provider path and retain its typed outcome."""
+
+        self.collect_call_count += 1
+        self.last_collect_failed = False
+        self.last_collect_error = ""
+        self._rate_limit(api_name)
+        logger.info(
+            "collect %s with params=%s",
+            api_name,
+            _parameter_log_summary(params),
+        )
+        candidate: Any = None
+        try:
+            candidate = _call_tushare(api_name, params, fields or "")
+            if not isinstance(candidate, ProviderCallOutcome):
+                raise TypeError("collector returned an invalid provider outcome type")
+            candidate.validate_invariants()
+            outcome = candidate
+        except Exception as exc:
+            outcome = ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=None,
+                error_code="provider_error",
+                error_message=safe_provider_exception_message(
+                    exc,
+                    invalid_outcome=candidate is not None,
+                ),
+            )
+
+        self.last_collect_outcome = outcome
+        if outcome.state == "failed":
+            self.last_collect_failed = True
+            self.last_collect_error = (
+                outcome.error_message
+                or outcome.error_code
+                or "Tushare provider call failed"
+            )
+            self.collect_failure_count += 1
+            logger.error(
+                "collect %s failed: outcome=%s",
+                api_name,
+                provider_outcome_log_fields(outcome),
+            )
+        else:
+            logger.info(
+                "collect %s → %d rows (%s)",
+                api_name,
+                len(outcome.rows),
+                outcome.state,
+            )
+        return outcome
+
     def collect(
         self,
         api_name: str,
@@ -276,21 +374,7 @@ class TushareCollector(BaseCollector):
         Returns:
             List of row dicts; empty list on error or no results.
         """
-        self.collect_call_count += 1
-        self.last_collect_failed = False
-        self.last_collect_error = ""
-        self._rate_limit(api_name)
-        logger.info("collect %s with params=%s", api_name, params)
-        try:
-            rows = _call_tushare(api_name, params, fields or "")
-            logger.info("collect %s → %d rows", api_name, len(rows))
-            return rows
-        except Exception as exc:
-            self.last_collect_failed = True
-            self.last_collect_error = str(exc)
-            self.collect_failure_count += 1
-            logger.exception("collect %s failed", api_name)
-            return []
+        return self.collect_outcome(api_name, params, fields).mutable_rows()
 
     # ------------------------------------------------------------------
     # BaseCollector-compatible metadata

@@ -41,6 +41,11 @@ if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
+from collectors.tushare.tushare_common import (  # noqa: E402
+    ProviderCallOutcome,
+    provider_outcome_log_fields,
+    safe_provider_exception_message,
+)
 from storage.read_model_store import (  # noqa: E402
     API_TO_TABLE_MAP,
     DEFAULT_SQLITE_PATH,
@@ -495,6 +500,38 @@ def sync_tier(
                 return status
         return "empty"
 
+    def _collect_provider_outcome(
+        api_name: str,
+        params: dict[str, Any],
+        fields: str | None,
+    ) -> ProviderCallOutcome:
+        candidate: Any = None
+        try:
+            candidate = collector.collect_outcome(api_name, params, fields)
+            if not isinstance(candidate, ProviderCallOutcome):
+                raise TypeError("collector returned an invalid provider outcome type")
+            candidate.validate_invariants()
+            outcome = candidate
+        except Exception as exc:
+            outcome = ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=None,
+                error_code="provider_error",
+                error_message=safe_provider_exception_message(
+                    exc,
+                    invalid_outcome=candidate is not None,
+                ),
+            )
+        if outcome.state == "failed":
+            logger.error(
+                "[%s] %s provider failed: outcome=%s",
+                tier_name,
+                api_name,
+                provider_outcome_log_fields(outcome),
+            )
+        return outcome
+
     def _run_per_stock(api_defs: list[dict], codes: list[str], label: str) -> None:
         nonlocal call_idx
         for api_def in api_defs:
@@ -531,8 +568,9 @@ def sync_tier(
                     call_idx += 1
                 api_calls += 1
                 params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
-                rows = collector.collect(api_name, params, fields)
-                call_failed = bool(getattr(collector, "last_collect_failed", False))
+                outcome = _collect_provider_outcome(api_name, params, fields)
+                rows = [] if outcome.state == "failed" else outcome.mutable_rows()
+                call_failed = outcome.state == "failed"
                 if empty_is_failure and not rows:
                     call_failed = True
                     logger.error(
@@ -646,8 +684,9 @@ def sync_tier(
 
         call_idx += 1
         params = fill_params(template, None, trade_date, api_start_date, api_end_date)
-        rows = collector.collect(api_name, params, fields)
-        provider_failed = bool(getattr(collector, "last_collect_failed", False))
+        outcome = _collect_provider_outcome(api_name, params, fields)
+        rows = [] if outcome.state == "failed" else outcome.mutable_rows()
+        provider_failed = outcome.state == "failed"
         row_limit_guard = max(0, int(api_def.get("row_limit_guard") or 0))
         possible_truncation = bool(row_limit_guard and len(rows) >= row_limit_guard)
         coverage_key = str(api_def.get("coverage_key") or "")

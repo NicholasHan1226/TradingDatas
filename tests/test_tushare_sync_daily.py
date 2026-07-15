@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 import shlex
@@ -13,8 +15,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import collectors.tushare.collector as collector_module
 import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
+from collectors.tushare import tushare_common
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     ResourceBudget,
@@ -51,6 +55,43 @@ DOMESTIC_P4_APIS = (
     "index_dailybasic",
     "repo_daily",
 )
+
+
+class _RawRecordHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+    def raw_record_text(self) -> str:
+        return repr([(record.msg, record.args) for record in self.records])
+
+    def formatted_record_text(self) -> str:
+        return repr([record.getMessage() for record in self.records])
+
+
+class _JsonResponse:
+    def __init__(self, payload: object) -> None:
+        self.payload = payload
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def _provider_outcome(
+    rows: list[dict],
+    *,
+    failed: bool = False,
+) -> tushare_common.ProviderCallOutcome:
+    return tushare_common.ProviderCallOutcome(
+        state="failed" if failed else ("success" if rows else "empty"),
+        rows=tuple(rows),
+        provider_code=-2001 if failed else 0,
+        error_code="provider_error" if failed else None,
+        error_message="stub provider failure" if failed else None,
+    )
 
 
 def _shell_array(script: str, name: str) -> tuple[str, ...]:
@@ -359,10 +400,10 @@ def test_collectors_default_p4_invocation_filters_to_domestic_apis(
 
 def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
+            )
 
     monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
 
@@ -387,16 +428,16 @@ def test_sync_tier_passes_registry_provider_discriminator_to_sqlite(
     monkeypatch,
 ) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [
-                {
-                    "ts_code": "000001.SZ",
-                    "trade_date": "20260708",
-                    "provider": "row-spoof",
-                }
-            ]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {
+                        "ts_code": "000001.SZ",
+                        "trade_date": "20260708",
+                        "provider": "row-spoof",
+                    }
+                ]
+            )
 
     provider_contexts: list[str | None] = []
 
@@ -432,15 +473,15 @@ def test_sync_tier_accepts_idempotent_market_event_no_change(
     monkeypatch,
 ) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [
-                {
-                    "title": "same event",
-                    "pub_time": "2026-07-13 10:00:00",
-                }
-            ]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {
+                        "title": "same event",
+                        "pub_time": "2026-07-13 10:00:00",
+                    }
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -468,6 +509,456 @@ def test_sync_tier_accepts_idempotent_market_event_no_change(
     assert stats["major_news"]["sqlite_status"] == "ok"
     assert stats["major_news"]["sqlite_errors"] == []
     assert stats["_tier_summary"]["sqlite_failure_count"] == 0
+
+
+def test_collector_collect_compatibility_returns_rows_from_typed_outcome(
+    monkeypatch,
+) -> None:
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"ts_code": "000001.SZ", "trade_date": "20260715"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+
+    rows = collector.collect("daily", {"trade_date": "20260715"})
+
+    assert rows == [{"ts_code": "000001.SZ", "trade_date": "20260715"}]
+    assert type(rows[0]) is dict
+    rows[0]["Authorization"] = "Bearer SYNTH-CONSUMER-MUTATION"
+    assert "SYNTH-CONSUMER-MUTATION" not in repr(outcome)
+    assert collector.last_collect_outcome is outcome
+    assert collector.last_collect_failed is False
+    assert collector.last_collect_error == ""
+    assert collector.collect_call_count == 1
+    assert collector.collect_failure_count == 0
+
+
+def test_collector_logs_only_a_structured_parameter_summary(
+    monkeypatch,
+    caplog,
+) -> None:
+    secret = "DUMMY-PARAM-VALUE-DO-NOT-LOG"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.INFO, logger=collector_module.logger.name):
+            collector.collect_outcome(
+                "daily",
+                {
+                    "ts_code": secret,
+                    "nested": {"credential": secret},
+                },
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "param_count" in caplog.text
+    assert "param_keys" in caplog.text
+
+
+def test_sync_tier_strict_path_preserves_typed_provider_failure(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="permission_denied",
+        error_message="抱歉，您没有访问该接口的权限",
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        collector,
+        "collect",
+        lambda *_args, **_kwargs: pytest.fail(
+            "sync_tier must consume collect_outcome directly"
+        ),
+    )
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        stats = sync_tier(
+            collector,
+            "P1_eod_daily",
+            [{"api_name": "daily", "per_stock": False, "params": {}}],
+            stock_codes=[],
+            trade_date="20260715",
+            start_date="20260715",
+            end_date="20260715",
+            sqlite_db_path=tmp_path / "marketdata.sqlite",
+        )
+
+    assert stats["daily"]["rows"] == 0
+    assert stats["daily"]["failure_count"] == 1
+    assert stats["_tier_summary"]["failure_count"] == 1
+    assert collector.last_collect_outcome is outcome
+    assert collector.last_collect_failed is True
+    assert collector.last_collect_error == outcome.error_message
+    assert collector.collect_call_count == 1
+    assert collector.collect_failure_count == 1
+    assert repr(outcome.provider_code) in caplog.text
+    assert outcome.error_code in caplog.text
+    assert outcome.error_message in caplog.text
+
+
+@pytest.mark.parametrize("failure_mode", ["provider", "transport"])
+def test_sync_tier_never_propagates_provider_or_transport_credentials(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+) -> None:
+    secret = "S3CR3T-DO-NOT-LOG"
+    if failure_mode == "provider":
+        outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=f"upstream rejected request token={secret}",
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return outcome
+    else:
+
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(f"transport unavailable token={secret}")
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        stats = sync_tier(
+            collector,
+            "P1_eod_daily",
+            [{"api_name": "daily", "per_stock": False, "params": {}}],
+            stock_codes=[],
+            trade_date="20260715",
+            start_date="20260715",
+            end_date="20260715",
+            sqlite_db_path=tmp_path / "marketdata.sqlite",
+        )
+
+    assert stats["daily"]["failure_count"] == 1
+    assert collector.last_collect_outcome is not None
+    assert secret not in collector.last_collect_outcome.error_message
+    assert secret not in collector.last_collect_error
+    assert secret not in caplog.text
+    if failure_mode == "provider":
+        assert "[REDACTED]" in collector.last_collect_error
+        assert "[REDACTED]" in caplog.text
+    else:
+        assert collector.last_collect_error == "provider transport failed"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        'provider params={"api_key":DUMMY-SECRET-DO-NOT-LOG}',
+        "provider url=https%3A%2F%2Fexample.test%2F%3Ftoken%3DDUMMY-SECRET-DO-NOT-LOG",
+    ],
+)
+def test_collector_and_sync_raw_log_args_redact_encoded_credential_surfaces(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    message: str,
+) -> None:
+    secret = "DUMMY-SECRET-DO-NOT-LOG"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert outcome.error_message.startswith("provider ")
+    assert secret not in outcome.error_message
+    assert secret not in collector.last_collect_error
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "[REDACTED]" in raw_handler.raw_record_text()
+
+
+@pytest.mark.parametrize(
+    ("failure_mode", "message", "sensitive_fragments"),
+    [
+        pytest.param(
+            "provider",
+            "provider bytes={b'X-Auth-Token': "
+            "b'DUMMY-PROVIDER-LEAD +/%=?& DUMMY-PROVIDER-TRAIL', "
+            "b'status': b'401'}",
+            ("DUMMY-PROVIDER-LEAD", "DUMMY-PROVIDER-TRAIL"),
+            id="provider-bytes-repr",
+        ),
+        pytest.param(
+            "transport",
+            "transport%20failed%3B%20headers%3D%7B%27x%20api%20key%27%3A%20%27"
+            "DUMMY-TRANSPORT-LEAD%2B%2F%3D%20DUMMY-TRANSPORT-TRAIL%27%7D",
+            ("DUMMY-TRANSPORT-LEAD", "DUMMY-TRANSPORT-TRAIL"),
+            id="transport-percent-encoded",
+        ),
+    ],
+)
+def test_normalized_header_credentials_never_reach_outcome_logs_or_receipts(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+    message: str,
+    sensitive_fragments: tuple[str, ...],
+) -> None:
+    if failure_mode == "provider":
+        provider_outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=message,
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return provider_outcome
+    else:
+
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(message)
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert collector.last_collect_outcome is not None
+    receipt_metadata = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+    surfaces = (
+        collector.last_collect_outcome.error_message,
+        repr(receipt_metadata),
+        raw_handler.raw_record_text(),
+        raw_handler.formatted_record_text(),
+        caplog.text,
+    )
+    for fragment in sensitive_fragments:
+        for surface in surfaces:
+            assert fragment not in surface
+    if failure_mode == "provider":
+        assert "[REDACTED]" in collector.last_collect_outcome.error_message
+        assert "[REDACTED]" in raw_handler.raw_record_text()
+        assert "[REDACTED]" in raw_handler.formatted_record_text()
+    else:
+        assert collector.last_collect_outcome.error_message == "provider transport failed"
+
+
+def test_collector_and_sync_logs_validate_provider_code_representation(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    secret = "DUMMY-PROVIDER-CODE-DO-NOT-LOG"
+    raw_provider_code = f"token={secret}"
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=raw_provider_code,
+        error_code="provider_error",
+        error_message="provider rejected request",
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    raw_handler = _RawRecordHandler()
+    collector_module.logger.addHandler(raw_handler)
+    sync_daily_module.logger.addHandler(raw_handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(raw_handler)
+        sync_daily_module.logger.removeHandler(raw_handler)
+
+    assert stats["daily"]["failure_count"] == 1
+    assert outcome.provider_code == "<untrusted-provider-code>"
+    assert collector.last_collect_outcome is outcome
+    assert secret not in repr(outcome)
+    assert secret not in caplog.text
+    assert secret not in raw_handler.raw_record_text()
+    assert "untrusted-provider-code" in caplog.text
+    assert "untrusted-provider-code" in raw_handler.raw_record_text()
+
+
+def test_sync_tier_rejects_corrupted_failed_outcome_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    malformed = object.__new__(tushare_common.ProviderCallOutcome)
+    object.__setattr__(malformed, "state", "failed")
+    object.__setattr__(malformed, "rows", ({"value": 1},))
+    object.__setattr__(malformed, "provider_code", -1)
+    object.__setattr__(malformed, "error_code", "provider_error")
+    object.__setattr__(malformed, "error_message", "failed")
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            del api_name, params, fields
+            return malformed
+
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "corrupted failed outcome rows must not reach the writer"
+        ),
+    )
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["rows"] == 0
+    assert stats["daily"]["failure_count"] == 1
+    assert stats["_tier_summary"]["failure_count"] == 1
 
 
 def test_exit_on_failure_considers_sqlite_failures() -> None:
@@ -539,15 +1030,19 @@ def test_p0_rt_min_batches_the_complete_stock_universe(tmp_path: Path, monkeypat
     calls: list[str] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             assert api_name == "rt_min"
             calls.append(params["ts_code"])
-            return [
-                {"ts_code": code, "time": "2026-07-10 13:30:00", "close": 10.0}
-                for code in params["ts_code"].split(",")
-            ]
+            return _provider_outcome(
+                [
+                    {
+                        "ts_code": code,
+                        "time": "2026-07-10 13:30:00",
+                        "close": 10.0,
+                    }
+                    for code in params["ts_code"].split(",")
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -582,11 +1077,9 @@ def test_p0_rt_min_batches_the_complete_stock_universe(tmp_path: Path, monkeypat
 
 def test_p0_rt_min_empty_batch_is_counted_as_failure(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, params, fields
-            return []
+            return _provider_outcome([])
 
     monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", lambda *args, **kwargs: 0)
 
@@ -622,20 +1115,22 @@ def test_p0_rt_min_retries_only_failed_batches(tmp_path: Path, monkeypatch) -> N
     sleeps: list[float] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, fields
             ts_code = params["ts_code"]
             attempts[ts_code] = attempts.get(ts_code, 0) + 1
             if ts_code == "000001.SZ,000002.SZ" and attempts[ts_code] == 1:
-                self.last_collect_failed = True
-                return []
-            self.last_collect_failed = False
-            return [
-                {"ts_code": code, "time": "2026-07-10 14:55:00", "close": 10.0}
-                for code in ts_code.split(",")
-            ]
+                return _provider_outcome([], failed=True)
+            return _provider_outcome(
+                [
+                    {
+                        "ts_code": code,
+                        "time": "2026-07-10 14:55:00",
+                        "close": 10.0,
+                    }
+                    for code in ts_code.split(",")
+                ]
+            )
 
     monkeypatch.setattr(sync_daily_module.time, "sleep", sleeps.append)
     monkeypatch.setattr(
@@ -740,15 +1235,15 @@ def test_p1_moneyflow_collects_daily_market_wide_snapshot() -> None:
 
 def test_p1_daily_completeness_guard_marks_silent_truncation_critical(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             assert api_name == "daily"
             assert params == {"trade_date": "20260710"}
-            return [
-                {"ts_code": "000001.SZ", "trade_date": "20260710"},
-                {"ts_code": "000002.SZ", "trade_date": "20260710"},
-            ]
+            return _provider_outcome(
+                [
+                    {"ts_code": "000001.SZ", "trade_date": "20260710"},
+                    {"ts_code": "000002.SZ", "trade_date": "20260710"},
+                ]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -784,11 +1279,11 @@ def test_p1_daily_completeness_guard_marks_silent_truncation_critical(tmp_path: 
 
 def test_p1_global_row_limit_guard_marks_possible_truncation_critical(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, params, fields
-            return [{"ts_code": "000001.SZ", "ann_date": "20260710"}] * 3
+            return _provider_outcome(
+                [{"ts_code": "000001.SZ", "ann_date": "20260710"}] * 3
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -820,12 +1315,12 @@ def test_p1_bounded_rotation_limits_provider_calls_without_batching(tmp_path: Pa
     calls: list[str] = []
 
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             del api_name, fields
             calls.append(params["ts_code"])
-            return [{"ts_code": params["ts_code"], "trade_date": "20260710"}]
+            return _provider_outcome(
+                [{"ts_code": params["ts_code"], "trade_date": "20260710"}]
+            )
 
     monkeypatch.setattr(
         sync_daily_module,
@@ -959,14 +1454,14 @@ def test_p2_window_excludes_opening_and_day_session() -> None:
 
 def test_p2_provider_call_budget_stops_before_next_call(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
         def __init__(self) -> None:
             self.calls = 0
 
-        def collect(self, api_name, params, fields=None):
+        def collect_outcome(self, api_name, params, fields=None):
             self.calls += 1
-            return [{"ts_code": params["ts_code"], "ann_date": "20260713"}]
+            return _provider_outcome(
+                [{"ts_code": params["ts_code"], "ann_date": "20260713"}]
+            )
 
     writes: list[list[dict]] = []
     monkeypatch.setattr(
@@ -1010,13 +1505,13 @@ def test_p2_deadline_checkpoint_marks_completed_late_run_degraded() -> None:
 
 def test_p2_row_budget_fails_before_sqlite_write(tmp_path: Path, monkeypatch) -> None:
     class FakeCollector:
-        last_collect_failed = False
-
-        def collect(self, api_name, params, fields=None):
-            return [
-                {"ts_code": "000001.SZ", "ann_date": "20260713"},
-                {"ts_code": "000002.SZ", "ann_date": "20260713"},
-            ]
+        def collect_outcome(self, api_name, params, fields=None):
+            return _provider_outcome(
+                [
+                    {"ts_code": "000001.SZ", "ann_date": "20260713"},
+                    {"ts_code": "000002.SZ", "ann_date": "20260713"},
+                ]
+            )
 
     writes = 0
 
@@ -1106,3 +1601,343 @@ def test_every_p2_api_has_a_bounded_rotation_within_default_call_budget() -> Non
     assert all(int(api.get("bounded_rotation_size") or 0) > 0 for api in p2)
     planned_calls = sum(int(api["bounded_rotation_size"]) for api in p2)
     assert planned_calls <= 2500
+
+
+@pytest.mark.parametrize("failure_mode", ["provider", "transport"])
+def test_delimited_secret_is_absent_from_outcome_logs_and_receipt_metadata(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+    failure_mode: str,
+) -> None:
+    lead = "DUMMY-INTEGRATION-LEAD"
+    trail = "DUMMY-INTEGRATION-TRAIL"
+    message = f"Authorization: Bearer {lead},{trail} status=401"
+
+    if failure_mode == "provider":
+        provider_outcome = tushare_common.ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=-2001,
+            error_code="provider_error",
+            error_message=message,
+        )
+
+        def strict_call(_api_name, _params, _fields):
+            return provider_outcome
+    else:
+        def strict_call(_api_name, _params, _fields):
+            raise RuntimeError(message)
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    handler = _RawRecordHandler()
+    collector_module.logger.addHandler(handler)
+    sync_daily_module.logger.addHandler(handler)
+
+    try:
+        with caplog.at_level(logging.ERROR):
+            stats = sync_tier(
+                collector,
+                "P1_eod_daily",
+                [{"api_name": "daily", "per_stock": False, "params": {}}],
+                stock_codes=[],
+                trade_date="20260715",
+                start_date="20260715",
+                end_date="20260715",
+                sqlite_db_path=tmp_path / "marketdata.sqlite",
+            )
+    finally:
+        collector_module.logger.removeHandler(handler)
+        sync_daily_module.logger.removeHandler(handler)
+
+    receipt_metadata = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+    surfaces = (
+        repr(collector.last_collect_outcome),
+        collector.last_collect_error,
+        handler.raw_record_text(),
+        handler.formatted_record_text(),
+        caplog.text,
+        repr(receipt_metadata),
+    )
+    assert stats["daily"]["failure_count"] == 1
+    for fragment in (lead, trail):
+        for surface in surfaces:
+            assert fragment not in surface
+
+
+@pytest.mark.parametrize(
+    ("token", "row_value"),
+    [
+        pytest.param("abcdefgh", "abcdefgh", id="exact-eight"),
+        pytest.param(
+            "abcdefghijklmno",
+            "abcdefghijklmno",
+            id="exact-fifteen",
+        ),
+        pytest.param(
+            "abcdefgh",
+            "Bearer abcd\u200befgh",
+            id="format-control-candidate",
+        ),
+        pytest.param(
+            "abcd\u200befgh",
+            "Bearer abcdefgh",
+            id="format-control-known-value",
+        ),
+    ],
+)
+def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
+    tmp_path: Path,
+    monkeypatch,
+    token,
+    row_value,
+) -> None:
+    payload = {
+        "code": 0,
+        "msg": None,
+        "data": {"fields": ["value"], "items": [[row_value]]},
+    }
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _JsonResponse(payload),
+    )
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    writer_inputs: list[tuple[dict, ...]] = []
+
+    def record_writer_input(
+        _db_path,
+        _table,
+        _api_name,
+        rows,
+        **_kwargs,
+    ):
+        writer_inputs.append(tuple(rows))
+        return len(rows)
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", record_writer_input)
+
+    stats = sync_tier(
+        collector,
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+    receipt = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+
+    assert stats["daily"]["failure_count"] == 1
+    assert writer_inputs == []
+    assert collector.last_collect_outcome is not None
+    assert collector.last_collect_outcome.state == "failed"
+    assert token not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    ("field", "row_value"),
+    [
+        pytest.param(
+            "Authorization",
+            "Bearer SYNTH-FOREIGN-AUTH-SECRET",
+            id="authorization-field",
+        ),
+        pytest.param(
+            "value",
+            {
+                "note": {
+                    "Authorization": "Bearer SYNTH-FOREIGN-AUTH-SECRET"
+                }
+            },
+            id="nested-authorization-key",
+        ),
+        pytest.param(
+            "token",
+            "SYNTH-FOREIGN-AUTH-SECRET",
+            id="token-field",
+        ),
+    ],
+)
+def test_foreign_authorization_row_never_reaches_sqlite_writer_or_receipt(
+    tmp_path: Path,
+    monkeypatch,
+    field,
+    row_value,
+) -> None:
+    request_token = "SYNTH-REQUEST-TOKEN"
+    foreign_secret = "SYNTH-FOREIGN-AUTH-SECRET"
+    payload = {
+        "code": 0,
+        "msg": None,
+        "data": {
+            "fields": [field],
+            "items": [[row_value]],
+        },
+    }
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _JsonResponse(payload),
+    )
+    outcome = tushare_common.tushare_rows_outcome("daily", request_token)
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    writer_inputs: list[tuple[dict, ...]] = []
+
+    def record_writer_input(
+        _db_path,
+        _table,
+        _api_name,
+        rows,
+        **_kwargs,
+    ):
+        writer_inputs.append(tuple(rows))
+        return len(rows)
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", record_writer_input)
+
+    stats = sync_tier(
+        collector,
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+    receipt = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+
+    assert stats["daily"]["failure_count"] == 1
+    assert writer_inputs == []
+    assert collector.last_collect_outcome is not None
+    assert collector.last_collect_outcome.state == "failed"
+    assert foreign_secret not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(
+            "authorization reform and bearer bonds news",
+            id="business-sentence",
+        ),
+        pytest.param("Bearer bonds", id="two-word-bearer"),
+        pytest.param(
+            "Basic telecommunications",
+            id="two-word-long-basic",
+        ),
+        pytest.param(
+            "Basic telecommunications services expanded",
+            id="long-basic-sentence",
+        ),
+        pytest.param(
+            "Bearer responsibilities transferred",
+            id="long-bearer-sentence",
+        ),
+        pytest.param("Bearer abcdefgh", id="neutral-eight-lowercase"),
+        pytest.param(
+            "Basic abcdefghijklmno",
+            id="neutral-fifteen-lowercase",
+        ),
+        pytest.param(
+            "Bearer abcdefghijklmnop",
+            id="neutral-sixteen-lowercase",
+        ),
+    ],
+)
+def test_safe_business_token_words_reach_sqlite_writer_as_plain_rows(
+    tmp_path: Path,
+    monkeypatch,
+    value,
+) -> None:
+    field = "tokenized_asset_description"
+    payload = {
+        "code": 0,
+        "msg": None,
+        "data": {"fields": [field], "items": [[value]]},
+    }
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _JsonResponse(payload),
+    )
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    writer_inputs: list[tuple[dict, ...]] = []
+
+    def record_writer_input(
+        _db_path,
+        _table,
+        _api_name,
+        rows,
+        **_kwargs,
+    ):
+        assert all(type(row) is dict for row in rows)
+        writer_inputs.append(tuple(rows))
+        return len(rows)
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", record_writer_input)
+
+    stats = sync_tier(
+        collector,
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["failure_count"] == 0
+    assert writer_inputs == [({field: value},)]
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{field: value}]
