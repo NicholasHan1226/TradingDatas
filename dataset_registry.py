@@ -1,8 +1,8 @@
 """Provider-neutral dataset declarations for SharedSignals.
 
-The registry describes static dataset and provider-binding contracts only.
-Runtime collection state remains authoritative in ingest receipts and is not
-loaded from this YAML file.
+The registry describes immutable dataset, ingest-adapter, and read-model
+contracts only. Runtime collection state remains authoritative in SQLite ingest
+receipts and is deliberately rejected from this YAML authority.
 """
 
 from __future__ import annotations
@@ -30,15 +30,29 @@ _DATASET_KEYS = frozenset(
         "schema_version",
         "fields",
         "primary_key",
+        "default_projection",
         "cadence_class",
         "timezone",
         "freshness_sla_seconds",
         "max_page_size",
         "max_lookback_days",
         "point_in_time",
+        "backfill_policy",
+        "empty_data_policy",
         "required_scope",
         "quota_class",
         "provider_bindings",
+        "read_model_adapter",
+    }
+)
+_FIELD_KEYS = frozenset(
+    {
+        "name",
+        "logical_type",
+        "nullable",
+        "selectable",
+        "filterable",
+        "sortable",
     }
 )
 _BINDING_KEYS = frozenset(
@@ -49,23 +63,55 @@ _BINDING_KEYS = frozenset(
         "entitlement_state",
         "activation_state",
         "target_tables",
-        "primary_read_model_table",
     }
 )
+_READ_MODEL_ADAPTER_KEYS = frozenset(
+    {"adapter_version", "primary_table", "fixed_field_filters"}
+)
+_FIXED_FILTER_KEYS = frozenset({"field", "allowed_values"})
+
+_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
 _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
 _ACTIVATION_STATES = frozenset({"active", "paused"})
 _POINT_IN_TIME_MODES = frozenset({"append_only", "current_snapshot", "unsupported"})
+_BACKFILL_POLICIES = frozenset({"provider_limited", "disabled"})
+_EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
+_INTERNAL_NON_SELECTABLE_FIELDS = frozenset({"raw_json", "source_file"})
+
+
+@dataclass(frozen=True)
+class DatasetField:
+    name: str
+    logical_type: str
+    nullable: bool
+    selectable: bool
+    filterable: bool
+    sortable: bool
+
+
+@dataclass(frozen=True)
+class FixedFieldFilter:
+    field: str
+    allowed_values: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReadModelAdapter:
+    adapter_version: str
+    primary_table: str
+    fixed_field_filters: tuple[FixedFieldFilter, ...]
 
 
 @dataclass(frozen=True)
 class ProviderBinding:
+    """One provider ingest binding; public reads use ``ReadModelAdapter``."""
+
     provider: str
     api_name: str
     adapter_version: str
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
-    primary_read_model_table: str | None
 
 
 @dataclass(frozen=True)
@@ -76,17 +122,21 @@ class DatasetDefinition:
     market: str
     entity_type: str
     schema_version: str
-    fields: tuple[str, ...]
+    fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
+    default_projection: tuple[str, ...]
     cadence_class: str
     timezone: str
     freshness_sla_seconds: int
     max_page_size: int
     max_lookback_days: int | None
     point_in_time: str
+    backfill_policy: str
+    empty_data_policy: str
     required_scope: str
     quota_class: str
     provider_bindings: tuple[ProviderBinding, ...]
+    read_model_adapter: ReadModelAdapter
 
 
 class DatasetRegistry:
@@ -174,11 +224,10 @@ class DatasetRegistry:
 
     def compatibility_table_map(self, provider: str) -> dict[str, str]:
         return {
-            binding.api_name: binding.primary_read_model_table
+            binding.api_name: dataset.read_model_adapter.primary_table
             for dataset in self._datasets
             for binding in dataset.provider_bindings
             if binding.provider == provider
-            and binding.primary_read_model_table is not None
         }
 
     def active_for_cadence(self, cadence_class: str) -> tuple[DatasetDefinition, ...]:
@@ -188,6 +237,7 @@ class DatasetRegistry:
             if dataset.cadence_class == cadence_class
             and any(
                 binding.activation_state == "active"
+                and binding.entitlement_state == "active"
                 for binding in dataset.provider_bindings
             )
         )
@@ -222,6 +272,12 @@ def _string(value: Any, path: str) -> str:
     return value.strip()
 
 
+def _boolean(value: Any, path: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{path} must be a boolean")
+    return value
+
+
 def _string_tuple(
     value: Any,
     path: str,
@@ -236,6 +292,14 @@ def _string_tuple(
     if not allow_empty and not result:
         raise ValueError(f"{path} must not be empty")
     return result
+
+
+def _reject_duplicate_strings(values: tuple[str, ...], path: str) -> None:
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            raise ValueError(f"{path} contains duplicate value: {value}")
+        seen.add(value)
 
 
 def _positive_int(value: Any, path: str) -> int:
@@ -256,6 +320,28 @@ def _choice(value: Any, allowed: frozenset[str], path: str) -> str:
         choices = ", ".join(sorted(allowed))
         raise ValueError(f"{path} must be one of: {choices}")
     return normalized
+
+
+def _load_field(raw: Any, *, dataset_id: str, index: int) -> DatasetField:
+    path = f"dataset {dataset_id}.fields[{index}]"
+    value = _mapping(raw, path)
+    _reject_unknown_keys(value, _FIELD_KEYS, path)
+
+    name = _non_empty_string(value["name"], f"{path}.name")
+    selectable = _boolean(value["selectable"], f"{path}.selectable")
+    if name in _INTERNAL_NON_SELECTABLE_FIELDS and selectable:
+        raise ValueError(f"dataset {dataset_id} field {name} must not be selectable")
+
+    return DatasetField(
+        name=name,
+        logical_type=_choice(
+            value["logical_type"], _LOGICAL_TYPES, f"{path}.logical_type"
+        ),
+        nullable=_boolean(value["nullable"], f"{path}.nullable"),
+        selectable=selectable,
+        filterable=_boolean(value["filterable"], f"{path}.filterable"),
+        sortable=_boolean(value["sortable"], f"{path}.sortable"),
+    )
 
 
 def _load_binding(
@@ -282,21 +368,14 @@ def _load_binding(
         f"{path}.activation_state",
     )
     target_tables = _string_tuple(
-        value["target_tables"],
-        f"{path}.target_tables",
-        allow_empty=True,
+        value["target_tables"], f"{path}.target_tables", allow_empty=True
     )
-    primary_table_raw = value["primary_read_model_table"]
-    primary_table = (
-        None
-        if primary_table_raw is None
-        else _non_empty_string(primary_table_raw, f"{path}.primary_read_model_table")
-    )
+    _reject_duplicate_strings(target_tables, f"{path}.target_tables")
 
     if activation_state == "active":
-        if entitlement_state in {"excluded", "retired"}:
+        if entitlement_state != "active":
             raise ValueError(
-                f"{path} with entitlement_state={entitlement_state} cannot be active"
+                f"{path} activation_state=active requires entitlement_state=active"
             )
         if not adapter_version:
             raise ValueError(
@@ -304,14 +383,6 @@ def _load_binding(
             )
         if not target_tables:
             raise ValueError(f"{path}.target_tables is required for an active binding")
-        if primary_table is None:
-            raise ValueError(
-                f"{path}.primary_read_model_table is required for an active binding"
-            )
-    if primary_table is not None and primary_table not in target_tables:
-        raise ValueError(
-            f"{path}.primary_read_model_table must be listed in target_tables"
-        )
 
     return ProviderBinding(
         provider=provider,
@@ -320,7 +391,58 @@ def _load_binding(
         entitlement_state=entitlement_state,
         activation_state=activation_state,
         target_tables=target_tables,
-        primary_read_model_table=primary_table,
+    )
+
+
+def _load_read_model_adapter(
+    raw: Any,
+    *,
+    dataset_id: str,
+    fields_by_name: Mapping[str, DatasetField],
+) -> ReadModelAdapter:
+    path = f"dataset {dataset_id}.read_model_adapter"
+    value = _mapping(raw, path)
+    _reject_unknown_keys(value, _READ_MODEL_ADAPTER_KEYS, path)
+
+    adapter_version = _non_empty_string(
+        value["adapter_version"], f"{path}.adapter_version"
+    )
+    primary_table = _non_empty_string(value["primary_table"], f"{path}.primary_table")
+    raw_filters = value["fixed_field_filters"]
+    if not isinstance(raw_filters, list) or not raw_filters:
+        raise ValueError(f"{path}.fixed_field_filters must be a non-empty list")
+
+    fixed_filters: list[FixedFieldFilter] = []
+    seen_fields: set[str] = set()
+    for index, raw_filter in enumerate(raw_filters):
+        filter_path = f"{path}.fixed_field_filters[{index}]"
+        filter_value = _mapping(raw_filter, filter_path)
+        _reject_unknown_keys(filter_value, _FIXED_FILTER_KEYS, filter_path)
+        field = _non_empty_string(filter_value["field"], f"{filter_path}.field")
+        if field not in fields_by_name:
+            raise ValueError(
+                f"{path}.fixed_field_filters references unknown field: {field}"
+            )
+        if field in seen_fields:
+            raise ValueError(
+                f"{path}.fixed_field_filters contains duplicate field: {field}"
+            )
+        seen_fields.add(field)
+        allowed_values = _string_tuple(
+            filter_value["allowed_values"], f"{filter_path}.allowed_values"
+        )
+        _reject_duplicate_strings(allowed_values, f"{filter_path}.allowed_values")
+        fixed_filters.append(
+            FixedFieldFilter(
+                field=field,
+                allowed_values=allowed_values,
+            )
+        )
+
+    return ReadModelAdapter(
+        adapter_version=adapter_version,
+        primary_table=primary_table,
+        fixed_field_filters=tuple(fixed_filters),
     )
 
 
@@ -330,16 +452,61 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
     _reject_unknown_keys(value, _DATASET_KEYS, path)
 
     dataset_id = _non_empty_string(value["dataset_id"], f"{path}.dataset_id")
-    fields = _string_tuple(value["fields"], f"dataset {dataset_id}.fields")
+    raw_fields = value["fields"]
+    if not isinstance(raw_fields, list) or not raw_fields:
+        raise ValueError(f"dataset {dataset_id}.fields must be a non-empty list")
+    fields = tuple(
+        _load_field(field, dataset_id=dataset_id, index=field_index)
+        for field_index, field in enumerate(raw_fields)
+    )
+    fields_by_name: dict[str, DatasetField] = {}
+    for field in fields:
+        if field.name in fields_by_name:
+            raise ValueError(
+                f"dataset {dataset_id}.fields contains duplicate field: {field.name}"
+            )
+        fields_by_name[field.name] = field
+
     primary_key = _string_tuple(
         value["primary_key"], f"dataset {dataset_id}.primary_key"
     )
-    missing_primary_fields = sorted(set(primary_key) - set(fields))
+    _reject_duplicate_strings(primary_key, f"dataset {dataset_id}.primary_key")
+    missing_primary_fields = sorted(set(primary_key) - set(fields_by_name))
     if missing_primary_fields:
         raise ValueError(
             f"dataset {dataset_id}.primary_key fields are not declared in fields: "
             f"{', '.join(missing_primary_fields)}"
         )
+    invalid_primary_fields = [
+        field_name
+        for field_name in primary_key
+        if not fields_by_name[field_name].selectable
+        or not fields_by_name[field_name].sortable
+    ]
+    if invalid_primary_fields:
+        raise ValueError(
+            f"dataset {dataset_id}.primary_key fields must be selectable and sortable: "
+            f"{', '.join(invalid_primary_fields)}"
+        )
+
+    default_projection = _string_tuple(
+        value["default_projection"], f"dataset {dataset_id}.default_projection"
+    )
+    _reject_duplicate_strings(
+        default_projection, f"dataset {dataset_id}.default_projection"
+    )
+    for field_name in default_projection:
+        field = fields_by_name.get(field_name)
+        if field is None:
+            raise ValueError(
+                f"dataset {dataset_id}.default_projection references unknown field: "
+                f"{field_name}"
+            )
+        if not field.selectable:
+            raise ValueError(
+                f"dataset {dataset_id}.default_projection field is not selectable: "
+                f"{field_name}"
+            )
 
     raw_bindings = value["provider_bindings"]
     if not isinstance(raw_bindings, list) or not raw_bindings:
@@ -350,6 +517,22 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
         _load_binding(binding, dataset_id=dataset_id, index=binding_index)
         for binding_index, binding in enumerate(raw_bindings)
     )
+    read_model_adapter = _load_read_model_adapter(
+        value["read_model_adapter"],
+        dataset_id=dataset_id,
+        fields_by_name=fields_by_name,
+    )
+    missing_read_tables = [
+        binding.provider
+        for binding in provider_bindings
+        if read_model_adapter.primary_table not in binding.target_tables
+    ]
+    if missing_read_tables:
+        raise ValueError(
+            f"dataset {dataset_id}.read_model_adapter.primary_table must be listed in "
+            "provider binding target_tables for: "
+            f"{', '.join(missing_read_tables)}"
+        )
 
     return DatasetDefinition(
         dataset_id=dataset_id,
@@ -364,6 +547,7 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
         ),
         fields=fields,
         primary_key=primary_key,
+        default_projection=default_projection,
         cadence_class=_non_empty_string(
             value["cadence_class"], f"dataset {dataset_id}.cadence_class"
         ),
@@ -376,13 +560,22 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
             value["max_page_size"], f"dataset {dataset_id}.max_page_size"
         ),
         max_lookback_days=_optional_positive_int(
-            value["max_lookback_days"],
-            f"dataset {dataset_id}.max_lookback_days",
+            value["max_lookback_days"], f"dataset {dataset_id}.max_lookback_days"
         ),
         point_in_time=_choice(
             value["point_in_time"],
             _POINT_IN_TIME_MODES,
             f"dataset {dataset_id}.point_in_time",
+        ),
+        backfill_policy=_choice(
+            value["backfill_policy"],
+            _BACKFILL_POLICIES,
+            f"dataset {dataset_id}.backfill_policy",
+        ),
+        empty_data_policy=_choice(
+            value["empty_data_policy"],
+            _EMPTY_DATA_POLICIES,
+            f"dataset {dataset_id}.empty_data_policy",
         ),
         required_scope=_non_empty_string(
             value["required_scope"], f"dataset {dataset_id}.required_scope"
@@ -391,6 +584,7 @@ def _load_dataset(raw: Any, index: int) -> DatasetDefinition:
             value["quota_class"], f"dataset {dataset_id}.quota_class"
         ),
         provider_bindings=provider_bindings,
+        read_model_adapter=read_model_adapter,
     )
 
 

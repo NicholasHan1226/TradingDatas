@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import dataset_registry as registry_module
 from dataset_registry import (
     DATASET_REGISTRY_PATH,
     DatasetDefinition,
@@ -16,18 +17,66 @@ from dataset_registry import (
 from storage.schema_contract import get_table
 
 
+def _field(
+    name: str,
+    logical_type: str = "text",
+    *,
+    nullable: bool = True,
+    selectable: bool = True,
+    filterable: bool = False,
+    sortable: bool = False,
+    **overrides: object,
+) -> dict[str, object]:
+    field: dict[str, object] = {
+        "name": name,
+        "logical_type": logical_type,
+        "nullable": nullable,
+        "selectable": selectable,
+        "filterable": filterable,
+        "sortable": sortable,
+    }
+    field.update(overrides)
+    return field
+
+
+def _factor_fields() -> list[dict[str, object]]:
+    return [
+        _field("factor_hash", nullable=True, filterable=True, sortable=True),
+        _field("market", filterable=True),
+        _field("symbol", filterable=True),
+        _field("factor_name", filterable=True),
+        _field("event_time", filterable=True, sortable=True),
+        _field("value", "float"),
+        _field("provider"),
+        _field("source_file", selectable=False),
+        _field("collected_at", sortable=True),
+        _field("raw_json", selectable=False),
+    ]
+
+
 def _binding(**overrides: object) -> dict[str, object]:
     binding: dict[str, object] = {
         "provider": "tushare",
         "api_name": "example",
-        "adapter_version": "sqlite-read-model.v1",
-        "entitlement_state": "unknown",
+        "adapter_version": "tushare-direct-sqlite.v1",
+        "entitlement_state": "active",
         "activation_state": "active",
         "target_tables": ["market_factors"],
-        "primary_read_model_table": "market_factors",
     }
     binding.update(overrides)
     return binding
+
+
+def _read_model_adapter(**overrides: object) -> dict[str, object]:
+    adapter: dict[str, object] = {
+        "adapter_version": "sqlite-read-model.v1",
+        "primary_table": "market_factors",
+        "fixed_field_filters": [
+            {"field": "provider", "allowed_values": ["tushare_example"]}
+        ],
+    }
+    adapter.update(overrides)
+    return adapter
 
 
 def _dataset(
@@ -36,6 +85,7 @@ def _dataset(
     aliases: list[str] | None = None,
     **overrides: object,
 ) -> dict[str, object]:
+    fields = _factor_fields()
     dataset: dict[str, object] = {
         "dataset_id": dataset_id,
         "aliases": aliases if aliases is not None else ["tushare.example"],
@@ -43,28 +93,23 @@ def _dataset(
         "market": "CN",
         "entity_type": "example",
         "schema_version": "1.0.0",
-        "fields": [
-            "factor_hash",
-            "market",
-            "symbol",
-            "factor_name",
-            "event_time",
-            "value",
-            "provider",
-            "source_file",
-            "collected_at",
-            "raw_json",
-        ],
+        "fields": fields,
         "primary_key": ["factor_hash"],
+        "default_projection": [
+            field["name"] for field in fields if field["selectable"]
+        ],
         "cadence_class": "preopen",
         "timezone": "Asia/Shanghai",
         "freshness_sla_seconds": 259_200,
         "max_page_size": 500,
         "max_lookback_days": None,
         "point_in_time": "current_snapshot",
+        "backfill_policy": "provider_limited",
+        "empty_data_policy": "allowed",
         "required_scope": "market_data",
         "quota_class": "beta_standard",
         "provider_bindings": [_binding()],
+        "read_model_adapter": _read_model_adapter(),
     }
     dataset.update(overrides)
     return dataset
@@ -82,9 +127,8 @@ def _write_registry(
     return path
 
 
-def test_repository_registry_resolves_provider_neutral_daily_dataset() -> None:
+def test_repository_registry_exposes_complete_daily_contract() -> None:
     registry = load_dataset_registry()
-
     daily = registry.resolve("cn.equity.daily")
 
     assert DATASET_REGISTRY_PATH.name == "dataset_registry.yaml"
@@ -93,39 +137,90 @@ def test_repository_registry_resolves_provider_neutral_daily_dataset() -> None:
     assert daily.dataset_id == "cn.equity.daily"
     assert daily.max_page_size == 500
     assert daily.max_lookback_days is None
+    assert daily.backfill_policy == "provider_limited"
+    assert daily.empty_data_policy == "allowed"
+    assert daily.default_projection == (
+        "market",
+        "symbol",
+        "trade_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "provider",
+        "collected_at",
+    )
+    assert daily.fields[0] == registry_module.DatasetField(
+        name="market",
+        logical_type="text",
+        nullable=False,
+        selectable=True,
+        filterable=True,
+        sortable=True,
+    )
     assert daily.provider_bindings == (
         ProviderBinding(
             provider="tushare",
             api_name="daily",
-            adapter_version="sqlite-read-model.v1",
+            adapter_version="tushare-direct-sqlite.v1",
             entitlement_state="unknown",
-            activation_state="active",
+            activation_state="paused",
             target_tables=("market_bars_daily",),
-            primary_read_model_table="market_bars_daily",
+        ),
+    )
+    assert daily.read_model_adapter == registry_module.ReadModelAdapter(
+        adapter_version="sqlite-read-model.v1",
+        primary_table="market_bars_daily",
+        fixed_field_filters=(
+            registry_module.FixedFieldFilter(
+                field="provider", allowed_values=("tushare_daily",)
+            ),
         ),
     )
 
 
-def test_repository_entries_match_existing_read_model_tables_and_keys() -> None:
+def test_repository_entries_match_schema_types_nullable_and_discriminators() -> None:
     registry = load_dataset_registry()
-    expected_tables = {
-        "cn.equity.daily": "market_bars_daily",
-        "cn.market.trade_calendar": "market_factors",
-        "cn.event.major_news": "market_events",
+    expected = {
+        "cn.equity.daily": ("daily", "market_bars_daily"),
+        "cn.market.trade_calendar": ("trade_cal", "market_factors"),
+        "cn.event.major_news": ("major_news", "market_events"),
     }
 
-    for dataset_id, table_name in expected_tables.items():
+    for dataset_id, (api_name, table_name) in expected.items():
         dataset = registry.resolve(dataset_id)
         table = get_table(table_name)
         binding = dataset.provider_bindings[0]
+        fields = {field.name: field for field in dataset.fields}
 
-        assert dataset.fields == tuple(column.name for column in table.columns)
+        assert tuple(
+            (field.name, field.logical_type, field.nullable) for field in dataset.fields
+        ) == tuple(
+            (column.name, column.logical_type, column.nullable)
+            for column in table.columns
+        )
         assert dataset.primary_key == table.primary_key
+        assert set(dataset.default_projection) == {
+            name for name, field in fields.items() if field.selectable
+        }
+        assert fields["raw_json"].selectable is False
+        assert fields["source_file"].selectable is False
         assert binding.target_tables == (table_name,)
-        assert binding.primary_read_model_table == table_name
+        assert binding.entitlement_state == "unknown"
+        assert binding.activation_state == "paused"
+        assert dataset.read_model_adapter.primary_table == table_name
+        assert dataset.read_model_adapter.fixed_field_filters == (
+            registry_module.FixedFieldFilter(
+                field="provider", allowed_values=(f"tushare_{api_name}",)
+            ),
+        )
 
 
-def test_registry_compatibility_and_active_cadence_views() -> None:
+def test_registry_compatibility_uses_dataset_read_adapter_and_paused_is_inactive() -> (
+    None
+):
     registry = load_dataset_registry()
 
     assert registry.compatibility_api_names("tushare") == frozenset(
@@ -136,27 +231,100 @@ def test_registry_compatibility_and_active_cadence_views() -> None:
         "trade_cal": "market_factors",
         "major_news": "market_events",
     }
-    assert tuple(
-        dataset.dataset_id for dataset in registry.active_for_cadence("event_30m")
-    ) == ("cn.event.major_news",)
+    assert registry.active_for_cadence("postclose") == ()
+    assert registry.active_for_cadence("preopen") == ()
+    assert registry.active_for_cadence("event_30m") == ()
     assert (
         registry.provider_binding("cn.market.trade_calendar", "tushare").api_name
         == "trade_cal"
     )
 
 
-def test_loaded_definitions_are_immutable_and_sequences_are_tuples() -> None:
+def test_active_for_cadence_requires_entitlement_and_activation_active(
+    tmp_path: Path,
+) -> None:
+    active = _dataset()
+    paused = _dataset(
+        "cn.example.paused",
+        aliases=["tushare.paused"],
+        provider_bindings=[_binding(api_name="paused", activation_state="paused")],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {"field": "provider", "allowed_values": ["tushare_paused"]}
+            ]
+        ),
+    )
+    registry = load_dataset_registry(_write_registry(tmp_path, [active, paused]))
+
+    assert tuple(
+        dataset.dataset_id for dataset in registry.active_for_cadence("preopen")
+    ) == ("cn.example.dataset",)
+
+
+def test_loaded_contract_is_deeply_immutable() -> None:
     daily = load_dataset_registry().resolve("cn.equity.daily")
 
-    assert isinstance(daily.aliases, tuple)
     assert isinstance(daily.fields, tuple)
-    assert isinstance(daily.primary_key, tuple)
+    assert isinstance(daily.fields[0], registry_module.DatasetField)
+    assert isinstance(daily.default_projection, tuple)
     assert isinstance(daily.provider_bindings, tuple)
     assert isinstance(daily.provider_bindings[0].target_tables, tuple)
+    assert isinstance(daily.read_model_adapter, registry_module.ReadModelAdapter)
+    assert isinstance(daily.read_model_adapter.fixed_field_filters, tuple)
+    assert isinstance(
+        daily.read_model_adapter.fixed_field_filters[0].allowed_values,
+        tuple,
+    )
     with pytest.raises(FrozenInstanceError):
-        setattr(daily, "domain", "mutated")
+        setattr(daily.fields[0], "selectable", False)
     with pytest.raises(FrozenInstanceError):
-        setattr(daily.provider_bindings[0], "provider", "mutated")
+        setattr(daily.read_model_adapter, "primary_table", "mutated")
+    with pytest.raises(FrozenInstanceError):
+        setattr(
+            daily.read_model_adapter.fixed_field_filters[0],
+            "allowed_values",
+            ("mutated",),
+        )
+
+
+def test_multi_provider_compatibility_maps_each_api_to_same_read_adapter(
+    tmp_path: Path,
+) -> None:
+    dataset = _dataset(
+        provider_bindings=[
+            _binding(),
+            _binding(
+                provider="akshare",
+                api_name="stock_zh_a_hist",
+                adapter_version="akshare-direct-sqlite.v1",
+            ),
+        ],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {
+                    "field": "provider",
+                    "allowed_values": [
+                        "tushare_example",
+                        "akshare_stock_zh_a_hist",
+                    ],
+                }
+            ]
+        ),
+    )
+    registry = load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+    assert registry.compatibility_table_map("tushare") == {"example": "market_factors"}
+    assert registry.compatibility_table_map("akshare") == {
+        "stock_zh_a_hist": "market_factors"
+    }
+    assert registry.resolve(
+        "cn.example.dataset"
+    ).read_model_adapter.fixed_field_filters == (
+        registry_module.FixedFieldFilter(
+            field="provider",
+            allowed_values=("tushare_example", "akshare_stock_zh_a_hist"),
+        ),
+    )
 
 
 def test_loader_rejects_duplicate_dataset_ids(tmp_path: Path) -> None:
@@ -176,8 +344,19 @@ def test_loader_rejects_duplicate_aliases_within_one_dataset(tmp_path: Path) -> 
 
 def test_loader_rejects_alias_shared_by_different_datasets(tmp_path: Path) -> None:
     first = _dataset("cn.example.one", aliases=["tushare.shared"])
-    second = _dataset("cn.example.two", aliases=["tushare.shared"])
-    second["provider_bindings"] = [_binding(api_name="example_two")]
+    second = _dataset(
+        "cn.example.two",
+        aliases=["tushare.shared"],
+        provider_bindings=[_binding(api_name="example_two")],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {
+                    "field": "provider",
+                    "allowed_values": ["tushare_example_two"],
+                }
+            ]
+        ),
+    )
 
     with pytest.raises(ValueError, match="resolves to multiple datasets"):
         load_dataset_registry(_write_registry(tmp_path, [first, second]))
@@ -187,17 +366,70 @@ def test_loader_rejects_alias_that_collides_with_another_dataset_id(
     tmp_path: Path,
 ) -> None:
     first = _dataset("cn.example.one", aliases=["cn.example.two"])
-    second = _dataset("cn.example.two", aliases=["tushare.example_two"])
-    second["provider_bindings"] = [_binding(api_name="example_two")]
+    second = _dataset(
+        "cn.example.two",
+        aliases=["tushare.example_two"],
+        provider_bindings=[_binding(api_name="example_two")],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {
+                    "field": "provider",
+                    "allowed_values": ["tushare_example_two"],
+                }
+            ]
+        ),
+    )
 
     with pytest.raises(ValueError, match="resolves to multiple datasets"):
         load_dataset_registry(_write_registry(tmp_path, [first, second]))
 
 
-def test_loader_rejects_missing_primary_key(tmp_path: Path) -> None:
-    dataset = _dataset(primary_key=[])
+def test_loader_rejects_duplicate_provider_within_dataset(tmp_path: Path) -> None:
+    dataset = _dataset(provider_bindings=[_binding(), _binding(api_name="example_two")])
+
+    with pytest.raises(ValueError, match="duplicate provider"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+def test_loader_rejects_provider_api_owned_by_multiple_datasets(
+    tmp_path: Path,
+) -> None:
+    first = _dataset("cn.example.one", aliases=["tushare.one"])
+    second = _dataset("cn.example.two", aliases=["tushare.two"])
+
+    with pytest.raises(ValueError, match="provider api_name.*multiple datasets"):
+        load_dataset_registry(_write_registry(tmp_path, [first, second]))
+
+
+@pytest.mark.parametrize(
+    "primary_key",
+    [[], ["missing"], ["factor_hash", "factor_hash"]],
+)
+def test_loader_rejects_missing_or_unknown_primary_key(
+    tmp_path: Path,
+    primary_key: list[str],
+) -> None:
+    dataset = _dataset(primary_key=primary_key)
 
     with pytest.raises(ValueError, match="primary_key"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize("capability", ["selectable", "sortable"])
+def test_loader_rejects_primary_key_without_query_capability(
+    tmp_path: Path,
+    capability: str,
+) -> None:
+    fields = _factor_fields()
+    next(field for field in fields if field["name"] == "factor_hash")[capability] = (
+        False
+    )
+    dataset = _dataset(
+        fields=fields,
+        default_projection=[field["name"] for field in fields if field["selectable"]],
+    )
+
+    with pytest.raises(ValueError, match="primary_key.*selectable and sortable"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 
@@ -206,10 +438,10 @@ def test_loader_rejects_non_positive_freshness_sla(
     tmp_path: Path,
     value: int,
 ) -> None:
-    dataset = _dataset(freshness_sla_seconds=value)
-
     with pytest.raises(ValueError, match="freshness_sla_seconds"):
-        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+        load_dataset_registry(
+            _write_registry(tmp_path, [_dataset(freshness_sla_seconds=value)])
+        )
 
 
 @pytest.mark.parametrize("value", [0, -1])
@@ -217,10 +449,10 @@ def test_loader_rejects_non_positive_max_page_size(
     tmp_path: Path,
     value: int,
 ) -> None:
-    dataset = _dataset(max_page_size=value)
-
     with pytest.raises(ValueError, match="max_page_size"):
-        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+        load_dataset_registry(
+            _write_registry(tmp_path, [_dataset(max_page_size=value)])
+        )
 
 
 @pytest.mark.parametrize("value", [0, -1])
@@ -228,9 +460,66 @@ def test_loader_rejects_non_positive_configured_lookback(
     tmp_path: Path,
     value: int,
 ) -> None:
-    dataset = _dataset(max_lookback_days=value)
-
     with pytest.raises(ValueError, match="max_lookback_days"):
+        load_dataset_registry(
+            _write_registry(tmp_path, [_dataset(max_lookback_days=value)])
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid"),
+    [
+        ("point_in_time", "latestish"),
+        ("backfill_policy", "unbounded"),
+        ("empty_data_policy", "pretend_success"),
+    ],
+)
+def test_loader_rejects_invalid_dataset_policy_enums(
+    tmp_path: Path,
+    field_name: str,
+    invalid: str,
+) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        load_dataset_registry(
+            _write_registry(tmp_path, [_dataset(**{field_name: invalid})])
+        )
+
+
+@pytest.mark.parametrize(
+    ("binding_field", "invalid"),
+    [
+        ("entitlement_state", "maybe"),
+        ("activation_state", "scheduled-ish"),
+    ],
+)
+def test_loader_rejects_invalid_binding_state_enums(
+    tmp_path: Path,
+    binding_field: str,
+    invalid: str,
+) -> None:
+    with pytest.raises(ValueError, match=binding_field):
+        load_dataset_registry(
+            _write_registry(
+                tmp_path,
+                [_dataset(provider_bindings=[_binding(**{binding_field: invalid})])],
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "entitlement_state", ["locked", "unknown", "excluded", "retired"]
+)
+def test_loader_rejects_active_binding_without_active_entitlement(
+    tmp_path: Path,
+    entitlement_state: str,
+) -> None:
+    dataset = _dataset(
+        provider_bindings=[_binding(entitlement_state=entitlement_state)]
+    )
+
+    with pytest.raises(
+        ValueError, match="activation_state=active.*entitlement_state=active"
+    ):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 
@@ -239,10 +528,9 @@ def test_loader_rejects_non_positive_configured_lookback(
     [
         ({"adapter_version": ""}, "adapter_version"),
         ({"target_tables": []}, "target_tables"),
-        ({"primary_read_model_table": None}, "primary_read_model_table"),
     ],
 )
-def test_loader_rejects_active_binding_without_adapter_or_table(
+def test_loader_rejects_active_binding_without_ingest_adapter_or_table(
     tmp_path: Path,
     binding_override: dict[str, object],
     error: str,
@@ -253,16 +541,115 @@ def test_loader_rejects_active_binding_without_adapter_or_table(
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 
-@pytest.mark.parametrize("entitlement_state", ["excluded", "retired"])
-def test_loader_rejects_excluded_or_retired_binding_marked_active(
+@pytest.mark.parametrize(
+    ("adapter_override", "error"),
+    [
+        ({"adapter_version": ""}, "read_model_adapter.adapter_version"),
+        ({"primary_table": ""}, "read_model_adapter.primary_table"),
+        ({"fixed_field_filters": []}, "fixed_field_filters"),
+    ],
+)
+def test_loader_rejects_incomplete_read_model_adapter(
     tmp_path: Path,
-    entitlement_state: str,
+    adapter_override: dict[str, object],
+    error: str,
 ) -> None:
+    dataset = _dataset(read_model_adapter=_read_model_adapter(**adapter_override))
+
+    with pytest.raises(ValueError, match=error):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+def test_loader_rejects_read_table_not_produced_by_binding(tmp_path: Path) -> None:
     dataset = _dataset(
-        provider_bindings=[_binding(entitlement_state=entitlement_state)]
+        read_model_adapter=_read_model_adapter(primary_table="market_events")
     )
 
-    with pytest.raises(ValueError, match="cannot be active"):
+    with pytest.raises(ValueError, match="primary_table.*target_tables"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize(
+    "fixed_field_filters",
+    [
+        [{"field": "missing", "allowed_values": ["x"]}],
+        [{"field": "provider", "allowed_values": []}],
+        [{"field": "provider", "allowed_values": [""]}],
+        [{"field": "provider", "allowed_values": ["x", "x"]}],
+        [
+            {"field": "provider", "allowed_values": ["tushare_example"]},
+            {"field": "provider", "allowed_values": ["duplicate"]},
+        ],
+    ],
+)
+def test_loader_rejects_unknown_or_duplicate_adapter_filter_fields(
+    tmp_path: Path,
+    fixed_field_filters: list[dict[str, object]],
+) -> None:
+    dataset = _dataset(
+        read_model_adapter=_read_model_adapter(fixed_field_filters=fixed_field_filters)
+    )
+
+    with pytest.raises(ValueError, match="fixed_field_filters"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        [_field("factor_hash", logical_type="json")],
+        [_field("factor_hash", nullable="yes")],
+        [_field("factor_hash", selectable="yes")],
+        [_field("factor_hash", filterable="yes")],
+        [_field("factor_hash", sortable="yes")],
+        [_field("factor_hash"), _field("factor_hash")],
+    ],
+)
+def test_loader_rejects_invalid_or_duplicate_field_contracts(
+    tmp_path: Path,
+    fields: list[dict[str, object]],
+) -> None:
+    dataset = _dataset(
+        fields=fields,
+        primary_key=["factor_hash"],
+        default_projection=["factor_hash"],
+        read_model_adapter=_read_model_adapter(
+            fixed_field_filters=[
+                {"field": "factor_hash", "allowed_values": ["example"]}
+            ]
+        ),
+    )
+
+    with pytest.raises(ValueError, match="fields"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize(
+    "default_projection",
+    [["missing"], ["raw_json"], ["factor_hash", "factor_hash"]],
+)
+def test_loader_rejects_unknown_unselectable_or_duplicate_default_projection(
+    tmp_path: Path,
+    default_projection: list[str],
+) -> None:
+    dataset = _dataset(default_projection=default_projection)
+
+    with pytest.raises(ValueError, match="default_projection"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize("internal_field", ["raw_json", "source_file"])
+def test_loader_rejects_internal_fields_marked_selectable(
+    tmp_path: Path,
+    internal_field: str,
+) -> None:
+    fields = _factor_fields()
+    next(field for field in fields if field["name"] == internal_field)["selectable"] = (
+        True
+    )
+    dataset = _dataset(fields=fields)
+
+    with pytest.raises(ValueError, match=f"{internal_field}.*selectable"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
 
 
@@ -272,6 +659,9 @@ def test_loader_rejects_excluded_or_retired_binding_marked_active(
         ("root", "mystery_root"),
         ("dataset", "runtime_state"),
         ("binding", "mystery_binding"),
+        ("field", "mystery_field"),
+        ("read_adapter", "mystery_adapter"),
+        ("fixed_filter", "mystery_filter"),
     ],
 )
 def test_loader_rejects_unknown_keys_at_every_level(
@@ -285,10 +675,14 @@ def test_loader_rejects_unknown_keys_at_every_level(
         root_overrides[unknown_key] = True
     elif level == "dataset":
         dataset[unknown_key] = "must not be accepted"
+    elif level == "binding":
+        dataset["provider_bindings"][0][unknown_key] = True
+    elif level == "field":
+        dataset["fields"][0][unknown_key] = True
+    elif level == "read_adapter":
+        dataset["read_model_adapter"][unknown_key] = True
     else:
-        bindings = dataset["provider_bindings"]
-        assert isinstance(bindings, list)
-        bindings[0][unknown_key] = True
+        dataset["read_model_adapter"]["fixed_field_filters"][0][unknown_key] = True
 
     with pytest.raises(ValueError, match=unknown_key):
         load_dataset_registry(_write_registry(tmp_path, [dataset], **root_overrides))

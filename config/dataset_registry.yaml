@@ -8,6 +8,24 @@ datasets:
     entity_type: equity_daily_bar
     schema_version: 1.0.0
     fields:
+      - {name: market, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: symbol, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: open, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: high, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: low, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: close, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: volume, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: amount, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: provider, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source_file, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+      - {name: collected_at, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: raw_json, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+    primary_key:
+      - market
+      - symbol
+      - trade_date
+    default_projection:
       - market
       - symbol
       - trade_date
@@ -18,30 +36,32 @@ datasets:
       - volume
       - amount
       - provider
-      - source_file
       - collected_at
-      - raw_json
-    primary_key:
-      - market
-      - symbol
-      - trade_date
     cadence_class: postclose
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
     max_page_size: 500
     max_lookback_days: null
     point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
     required_scope: market_data
     quota_class: beta_standard
     provider_bindings:
       - provider: tushare
         api_name: daily
-        adapter_version: sqlite-read-model.v1
+        adapter_version: tushare-direct-sqlite.v1
         entitlement_state: unknown
-        activation_state: active
+        activation_state: paused
         target_tables:
           - market_bars_daily
-        primary_read_model_table: market_bars_daily
+    read_model_adapter:
+      adapter_version: sqlite-read-model.v1
+      primary_table: market_bars_daily
+      fixed_field_filters:
+        - field: provider
+          allowed_values:
+            - tushare_daily
 
   - dataset_id: cn.market.trade_calendar
     aliases:
@@ -51,6 +71,19 @@ datasets:
     entity_type: trade_calendar_entry
     schema_version: 1.0.0
     fields:
+      - {name: factor_hash, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: market, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: symbol, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: factor_name, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: event_time, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: value, logical_type: float, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: provider, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source_file, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+      - {name: collected_at, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: raw_json, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+    primary_key:
+      - factor_hash
+    default_projection:
       - factor_hash
       - market
       - symbol
@@ -58,28 +91,32 @@ datasets:
       - event_time
       - value
       - provider
-      - source_file
       - collected_at
-      - raw_json
-    primary_key:
-      - factor_hash
     cadence_class: preopen
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
     max_page_size: 500
     max_lookback_days: null
     point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
     required_scope: market_data
     quota_class: beta_standard
     provider_bindings:
       - provider: tushare
         api_name: trade_cal
-        adapter_version: sqlite-read-model.v1
+        adapter_version: tushare-direct-sqlite.v1
         entitlement_state: unknown
-        activation_state: active
+        activation_state: paused
         target_tables:
           - market_factors
-        primary_read_model_table: market_factors
+    read_model_adapter:
+      adapter_version: sqlite-read-model.v1
+      primary_table: market_factors
+      fixed_field_filters:
+        - field: provider
+          allowed_values:
+            - tushare_trade_cal
 
   - dataset_id: cn.event.major_news
     aliases:
@@ -89,6 +126,26 @@ datasets:
     entity_type: market_event
     schema_version: 1.0.0
     fields:
+      - {name: event_hash, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: event_id, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: revision, logical_type: integer, nullable: true, selectable: true, filterable: false, sortable: true}
+      - {name: source_family, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: provider, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: event_type, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: event_time, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: market, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: symbol, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: title, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: content, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: url, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source_file, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+      - {name: collected_at, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: raw_json, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+    primary_key:
+      - event_hash
+    default_projection:
       - event_hash
       - event_id
       - revision
@@ -103,25 +160,29 @@ datasets:
       - content
       - url
       - source
-      - source_file
       - collected_at
-      - raw_json
-    primary_key:
-      - event_hash
     cadence_class: event_30m
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600
     max_page_size: 500
     max_lookback_days: null
     point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
     required_scope: events
     quota_class: beta_standard
     provider_bindings:
       - provider: tushare
         api_name: major_news
-        adapter_version: sqlite-read-model.v1
+        adapter_version: tushare-direct-sqlite.v1
         entitlement_state: unknown
-        activation_state: active
+        activation_state: paused
         target_tables:
           - market_events
-        primary_read_model_table: market_events
+    read_model_adapter:
+      adapter_version: sqlite-read-model.v1
+      primary_table: market_events
+      fixed_field_filters:
+        - field: provider
+          allowed_values:
+            - tushare_major_news

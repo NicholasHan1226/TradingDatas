@@ -266,6 +266,29 @@ but default domestic Beta execution must not call them.
 
 ```python
 @dataclass(frozen=True)
+class DatasetField:
+    name: str
+    logical_type: str
+    nullable: bool
+    selectable: bool
+    filterable: bool
+    sortable: bool
+
+
+@dataclass(frozen=True)
+class FixedFieldFilter:
+    field: str
+    allowed_values: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReadModelAdapter:
+    adapter_version: str
+    primary_table: str
+    fixed_field_filters: tuple[FixedFieldFilter, ...]
+
+
+@dataclass(frozen=True)
 class ProviderBinding:
     provider: str
     api_name: str
@@ -273,7 +296,6 @@ class ProviderBinding:
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
-    primary_read_model_table: str | None
 
 
 @dataclass(frozen=True)
@@ -284,17 +306,21 @@ class DatasetDefinition:
     market: str
     entity_type: str
     schema_version: str
-    fields: tuple[str, ...]
+    fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
+    default_projection: tuple[str, ...]
     cadence_class: str
     timezone: str
     freshness_sla_seconds: int
     max_page_size: int
     max_lookback_days: int | None
     point_in_time: str
+    backfill_policy: str
+    empty_data_policy: str
     required_scope: str
     quota_class: str
     provider_bindings: tuple[ProviderBinding, ...]
+    read_model_adapter: ReadModelAdapter
 
 
 class DatasetRegistry:
@@ -310,7 +336,7 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 1: Write loader validation tests first**
 
-  Add tests that reject duplicate dataset IDs, duplicate aliases, missing primary keys, non-positive SLA/page limits, non-null non-positive lookbacks, active bindings without adapter/table, excluded/retired bindings marked active, and multiple aliases resolving to different datasets. Add a positive test for `cn.equity.daily` and alias `tushare.daily`.
+  Add tests that reject duplicate dataset IDs, aliases, providers, provider API ownership, fields, primary keys, and default-projection entries; invalid field/policy/state enums and booleans; unknown or non-selectable projected fields; non-positive SLA/page limits; non-null non-positive lookbacks; incomplete ingest/read adapters; unknown or duplicate fixed-filter fields; read tables absent from provider target tables; active bindings without active entitlement; internal `raw_json`/`source_file` selection; and unknown keys at every registry level. Add positive tests for `cn.equity.daily`, `tushare.daily`, schema types/nullability, immutable nested contracts, compatibility-table derivation, and the entitlement-plus-activation cadence gate.
 
 - [ ] **Step 2: Confirm the tests fail because the loader does not exist**
 
@@ -322,11 +348,11 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 3: Implement the immutable loader and validation**
 
-  Use `yaml.safe_load`, reject unknown top-level and entry keys, normalize lists to tuples, validate positive dataset-level page/lookback policy, and return immutable dataclasses. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
+  Use `yaml.safe_load`, reject unknown keys at root/dataset/field/binding/read-adapter/filter levels, normalize lists to tuples of frozen dataclasses, and validate field types and capabilities, primary/default projections, dataset-level page/lookback policy, policy/state enums, provider API ownership, read-table membership, fixed field filters, and active-entitlement coupling. Each fixed field has a non-empty, duplicate-free `allowed_values` tuple: one value compiles to equality and multiple values compile to bounded membership, without accepting arbitrary operators or SQL. Derive compatibility table maps from the dataset read-model adapter, not an ingest binding. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
 
 - [ ] **Step 4: Add the first representative registry entries**
 
-  Add `cn.equity.daily`, `cn.market.trade_calendar`, and a representative domestic event dataset. Include stable aliases, provider bindings, schema version, primary key, cadence, SLA, point-in-time mode, entitlement state, and target/read table.
+  Add `cn.equity.daily`, `cn.market.trade_calendar`, and `cn.event.major_news`. Include stable aliases, typed fields, default/filter/sort/select policy, provider ingest bindings, schema version, primary key, cadence, SLA, point-in-time mode, `provider_limited` backfill, `allowed` empty-data policy, and a read-model adapter. Keep unverified entitlement as `unknown` and activation as `paused`; each representative shared table starts with the single allowed discriminator `provider=tushare_<api_name>`. A future second provider extends that field's `allowed_values` without adding a route, adapter type, arbitrary operator, or SQL. `raw_json` and `source_file` are never selectable.
 
 - [ ] **Step 5: Verify the loader**
 
