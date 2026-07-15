@@ -1286,6 +1286,27 @@ def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
     return tuple(rows)
 
 
+def _provider_response_metadata(body: Mapping[str, Any]) -> dict[str, Any]:
+    """Return every envelope value except the explicit row payload.
+
+    ``data.fields`` and ``data.items`` are the only schema/row contract. Unknown
+    sibling keys remain accepted for compatibility, but callers must strictly
+    scan them as provider metadata before row conversion ignores them.
+    """
+
+    metadata = {key: value for key, value in body.items() if key != "data"}
+    data = body.get("data")
+    if type(data) is dict:
+        data_metadata = {
+            key: value
+            for key, value in data.items()
+            if key not in ("fields", "items")
+        }
+        if data_metadata:
+            metadata["data"] = data_metadata
+    return metadata
+
+
 def _parse_tushare_url(raw_url: str) -> dict[str, str]:
     parsed = urllib.parse.urlparse(raw_url)
     token = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
@@ -1507,9 +1528,7 @@ def tushare_rows_outcome(
                 scan_budget=scan_budget,
             )
 
-        provider_metadata = {
-            key: value for key, value in body.items() if key != "data"
-        }
+        provider_metadata = _provider_response_metadata(body)
         if _contains_structured_credential(
             body,
             scan_budget=scan_budget,

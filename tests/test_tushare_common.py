@@ -2096,6 +2096,33 @@ _NEUTRAL_BUSINESS_TEXT_VALUES = (
     ),
 )
 
+_STRICT_METADATA_SOURCE_VALUES = (
+    pytest.param(
+        "metadata",
+        "Bearer abcdefgh",
+        "abcdefgh",
+        id="raw-bearer",
+    ),
+    pytest.param(
+        "provenance",
+        urllib.parse.quote("Basic abcdefgh"),
+        "abcdefgh",
+        id="url-encoded-basic",
+    ),
+    pytest.param(
+        "debug",
+        repr("Bearer abcdefghijklmno"),
+        "abcdefghijklmno",
+        id="repr-bearer",
+    ),
+    pytest.param(
+        "note",
+        "Bear\u200ber abcdefgh",
+        "abcdefgh",
+        id="format-control-bearer",
+    ),
+)
+
 
 @pytest.mark.parametrize(
     ("value", "secret_fragment"),
@@ -2210,6 +2237,122 @@ def test_noncredential_provider_metadata_preserves_success_rows(monkeypatch):
 
     assert outcome.state == "success"
     assert outcome.mutable_rows() == [{"value": "safe"}]
+
+
+@pytest.mark.parametrize(
+    ("extra_key", "value", "secret_fragment"),
+    _STRICT_METADATA_SOURCE_VALUES,
+)
+def test_extra_data_envelope_metadata_fails_closed(
+    monkeypatch,
+    extra_key,
+    value,
+    secret_fragment,
+):
+    data = {
+        "fields": ["value"],
+        "items": [["safe"]],
+        extra_key: {"note": value},
+    }
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(data),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+    receipt = {
+        "outcome": outcome,
+        "log_fields": tushare_common.provider_outcome_log_fields(outcome),
+    }
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert secret_fragment not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    ("extra_key", "value", "secret_fragment"),
+    _STRICT_METADATA_SOURCE_VALUES,
+)
+def test_top_level_metadata_uses_same_strict_source_contract(
+    monkeypatch,
+    extra_key,
+    value,
+    secret_fragment,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": ["value"], "items": [["safe"]]},
+            **{extra_key: {"note": value}},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+    receipt = {
+        "outcome": outcome,
+        "log_fields": tushare_common.provider_outcome_log_fields(outcome),
+    }
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert secret_fragment not in repr(receipt)
+
+
+def test_benign_extra_data_envelope_metadata_preserves_success_rows(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {
+                "fields": ["value"],
+                "items": [["safe"]],
+                "provenance": {"note": "ordinary provider provenance"},
+            },
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "success"
+    assert outcome.mutable_rows() == [{"value": "safe"}]
+
+
+def test_nested_list_in_extra_data_envelope_metadata_fails_closed(monkeypatch):
+    secret_fragment = "abcdefghijklmno"
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {
+                "fields": ["value"],
+                "items": [["safe"]],
+                "provider_context": [
+                    "ordinary",
+                    {"notes": [f"Bearer {secret_fragment}"]},
+                ],
+            },
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert secret_fragment not in repr(outcome)
 
 
 @pytest.mark.parametrize("value", _NEUTRAL_BUSINESS_TEXT_VALUES)
