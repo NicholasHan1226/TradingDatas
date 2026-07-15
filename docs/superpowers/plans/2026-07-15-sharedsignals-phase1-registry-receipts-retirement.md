@@ -490,9 +490,35 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   git commit -m "fix: bind read-model providers from trusted context"
   ```
 
+  Commit `9d57947` remains in history but failed fresh review: canonical bar writes did not persist a generated `raw_json` column, pre-existing raw payloads lost the row-level provider claim, secondary writes still depended on hand-maintained `ADDITIONAL_TABLES`, and the legacy `expected_tushare_api_names(path=...)` call shape was removed. It is not final acceptance evidence and must not be amended or rebased away.
+
+- [x] **Step 8: Preserve provider claims and derive every storage target from the registry**
+
+  Before trusted context overwrites the canonical provider, persist any row-level claim in the versioned `provider-claim.v1` provenance envelope. The envelope retains either the original row or the pre-existing raw payload, while identity always remains the trusted caller value. Include canonical `raw_json` in physical daily and intraday writes even when the provider row omitted that column.
+
+  Declare the real primary and secondary targets for `repo_daily` and `stk_factor` in each registry binding, delete the hand-maintained secondary-table map, and drive fan-out from `ProviderBinding.target_tables`. Preserve the optional `expected_tushare_api_names(path=...)` compatibility argument but ignore it as an authority source.
+
+  Review counterexamples are database-level assertions for canonical provider plus raw claim provenance on paired daily/intraday writes, preservation of an existing raw payload inside the envelope, registry-to-physical-write parity for both multi-target APIs, rejection of a hand-maintained `ADDITIONAL_TABLES` map, and an ignored legacy capability-plan path.
+
+  ```bash
+  git add -- \
+    config/dataset_registry.yaml \
+    storage/read_model_store.py \
+    tools/interface_runtime_ledger.py \
+    tests/test_dataset_registry.py \
+    tests/test_capability_coverage.py \
+    tests/test_interface_runtime_ledger.py \
+    tests/test_read_model_store.py \
+    docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md
+  git diff --cached --name-status
+  git commit -m "fix: preserve provider provenance from registry routes"
+  ```
+
 ---
 
 ## Task 6: Preserve provider call outcomes before row conversion
+
+**Task 5 integration follow-up:** after Task 6 introduces `ProviderCallOutcome` and `collect_outcome`, update the Task 5 `FakeCollector` used by `test_sync_tier_passes_registry_provider_discriminator_to_sqlite` to expose the new outcome method. The standalone Task 5 branch must not invent a provisional Task 6 type or fake method before that interface exists.
 
 **Files:**
 

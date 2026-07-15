@@ -13,7 +13,9 @@ ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parent
 DEFAULT_OUTPUT_PATH = ROOT / "logs" / "watchdog_inputs" / "interface_runtime.json"
 
 
-def expected_tushare_api_names() -> set[str]:
+def expected_tushare_api_names(path: Path | None = None) -> set[str]:
+    """Return the registry set; ``path`` remains an ignored legacy argument."""
+    del path
     return set(TUSHARE_ALLOWED_API_NAMES)
 
 

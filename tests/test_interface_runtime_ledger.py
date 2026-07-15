@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import tools.interface_runtime_ledger as ledger_module
 from tools.interface_runtime_ledger import (
     expected_tushare_api_names,
@@ -19,6 +21,26 @@ def test_runtime_ledger_expected_names_come_from_registry_authority(
     )
 
     assert expected_tushare_api_names() == set(registry_names)
+
+
+def test_runtime_ledger_legacy_path_argument_does_not_override_registry(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    registry_names = frozenset({"registry_only", "rt_fut_min"})
+    monkeypatch.setattr(
+        ledger_module,
+        "TUSHARE_ALLOWED_API_NAMES",
+        registry_names,
+        raising=False,
+    )
+    legacy_path = tmp_path / "legacy-capability-plan.yaml"
+    legacy_path.write_text(
+        "modules:\n  - apis:\n      - api_name: legacy_only\n",
+        encoding="utf-8",
+    )
+
+    assert expected_tushare_api_names(path=legacy_path) == set(registry_names)
 
 
 def test_runtime_ledger_distinguishes_success_empty_failure_and_unobserved(tmp_path):

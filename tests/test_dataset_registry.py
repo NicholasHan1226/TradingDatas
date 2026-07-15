@@ -134,6 +134,11 @@ FROZEN_TUSHARE_API_TO_TABLE_MAP = {
     "weekly": "market_bars_intraday",
 }
 
+FROZEN_TUSHARE_MULTI_TARGET_TABLES = {
+    "repo_daily": ("market_factors", "market_bars_daily"),
+    "stk_factor": ("market_bars_daily", "market_factors"),
+}
+
 EXCLUDED_TUSHARE_APIS = frozenset(
     {
         "fx_daily",
@@ -398,7 +403,10 @@ def test_imported_registry_entries_are_complete_paused_and_truthfully_excluded()
         assert dataset.read_model_adapter.primary_table == table_name
         assert binding.api_name == api_name
         assert binding.adapter_version
-        assert binding.target_tables == (table_name,)
+        assert binding.target_tables == FROZEN_TUSHARE_MULTI_TARGET_TABLES.get(
+            api_name,
+            (table_name,),
+        )
         assert binding.read_discriminator_value == f"tushare_{api_name}"
         assert binding.activation_state == "paused"
         assert binding.entitlement_state == (

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from dataset_registry import load_dataset_registry
 from storage.read_model_store import API_TO_TABLE_MAP, ingest_rows_to_sqlite
 from storage.schema import SCHEMA_SQL
 
@@ -53,6 +55,107 @@ def test_ingest_rows_to_sqlite_creates_daily_rows(tmp_path: Path) -> None:
 
     assert rows == 2
     assert _count_rows(db_path, "market_bars_daily") == 2
+
+
+@pytest.mark.parametrize(
+    ("table", "api_name", "trusted_provider", "row", "expected_provider"),
+    [
+        (
+            "market_bars_daily",
+            "daily",
+            "tushare_daily",
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260716",
+                "close": 10.0,
+                "provider": "row-spoof-daily",
+            },
+            "tushare_daily",
+        ),
+        (
+            "market_bars_intraday",
+            "rt_fut_min",
+            "tushare_rt_fut_min",
+            {
+                "ts_code": "RB2609.SHF",
+                "time": "2026-07-16 09:05:00",
+                "close": 3500.0,
+                "provider": "sina_futures_minute",
+            },
+            "tushare_rt_fut_min",
+        ),
+    ],
+)
+def test_bar_provider_claim_is_persisted_before_trusted_identity_overwrite(
+    tmp_path: Path,
+    table: str,
+    api_name: str,
+    trusted_provider: str,
+    row: dict,
+    expected_provider: str,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        table,
+        api_name,
+        [row],
+        source_name=f"{api_name}_provider_claim_test",
+        provider_discriminator=trusted_provider,
+    ) == 1
+
+    stored_provider, stored_raw_json = _fetchone(
+        db_path,
+        f"SELECT provider, raw_json FROM {table}",
+    )
+    provenance = json.loads(stored_raw_json)
+    assert stored_provider == expected_provider
+    assert provenance["_sharedsignals_provenance"] == {
+        "provider_claim": row["provider"],
+        "raw_payload_source": "row",
+        "schema": "provider-claim.v1",
+    }
+    assert provenance["raw_payload"] == row
+
+
+def test_existing_raw_json_keeps_payload_and_provider_claim_in_envelope(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    original_raw_json = '{"payload":"kept","nested":{"x":1}}'
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_bars_daily",
+        "daily",
+        [
+            {
+                "ts_code": "000002.SZ",
+                "trade_date": "20260716",
+                "close": 20.0,
+                "provider": "row-spoof-existing-raw",
+                "raw_json": original_raw_json,
+            }
+        ],
+        source_name="daily_existing_raw_provider_claim_test",
+        provider_discriminator="tushare_daily",
+    ) == 1
+
+    stored_provider, stored_raw_json = _fetchone(
+        db_path,
+        "SELECT provider, raw_json FROM market_bars_daily",
+    )
+    provenance = json.loads(stored_raw_json)
+    assert stored_provider == "tushare_daily"
+    assert provenance["_sharedsignals_provenance"] == {
+        "provider_claim": "row-spoof-existing-raw",
+        "raw_payload_source": "raw_json",
+        "schema": "provider-claim.v1",
+    }
+    assert provenance["raw_payload"] == original_raw_json
 
 
 def test_us_daily_adds_tushare_lineage_metadata(tmp_path: Path) -> None:
@@ -285,6 +388,67 @@ def test_repo_daily_projects_to_factors_and_daily_bars(tmp_path: Path) -> None:
         1.4,
         "tushare_repo_daily",
     )
+
+
+@pytest.mark.parametrize(
+    ("api_name", "row"),
+    [
+        (
+            "repo_daily",
+            {
+                "ts_code": "204001.SH",
+                "trade_date": "20260716",
+                "open": 1.2,
+                "high": 1.5,
+                "low": 1.0,
+                "close": 1.4,
+                "vol": 1000,
+                "amount": 1400,
+            },
+        ),
+        (
+            "stk_factor",
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260716",
+                "open": 10.0,
+                "high": 10.5,
+                "low": 9.8,
+                "close": 10.2,
+                "vol": 1000,
+                "amount": 10200,
+                "adj_factor": 1.23,
+            },
+        ),
+    ],
+)
+def test_multitable_ingest_matches_registry_target_tables(
+    tmp_path: Path,
+    api_name: str,
+    row: dict,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    registry = load_dataset_registry()
+    dataset = registry.resolve(f"tushare.{api_name}")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+
+    rows_written = ingest_rows_to_sqlite(
+        db_path,
+        dataset.read_model_adapter.primary_table,
+        api_name,
+        [row],
+        source_name=f"{api_name}_registry_target_test",
+    )
+
+    candidate_tables = {"market_bars_daily", "market_factors"}
+    table_counts = {
+        table: _count_rows(db_path, table) for table in candidate_tables
+    }
+    assert {table for table, count in table_counts.items() if count} == set(
+        binding.target_tables
+    )
+    assert rows_written == sum(table_counts.values())
 
 
 def test_event_rows_are_normalized(tmp_path: Path) -> None:

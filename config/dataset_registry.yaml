@@ -315,7 +315,7 @@ datasets:
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
     provider_bindings:
-      - {provider: tushare, api_name: stk_factor, adapter_version: tushare-direct-sqlite.v1, read_discriminator_value: tushare_stk_factor, entitlement_state: unknown, activation_state: paused, target_tables: [market_bars_daily]}
+      - {provider: tushare, api_name: stk_factor, adapter_version: tushare-direct-sqlite.v1, read_discriminator_value: tushare_stk_factor, entitlement_state: unknown, activation_state: paused, target_tables: [market_bars_daily, market_factors]}
     read_model_adapter:
       adapter_version: sqlite-read-model.v1
       primary_table: market_bars_daily
@@ -1778,7 +1778,7 @@ datasets:
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
     provider_bindings:
-      - {provider: tushare, api_name: repo_daily, adapter_version: tushare-direct-sqlite.v1, read_discriminator_value: tushare_repo_daily, entitlement_state: unknown, activation_state: paused, target_tables: [market_factors]}
+      - {provider: tushare, api_name: repo_daily, adapter_version: tushare-direct-sqlite.v1, read_discriminator_value: tushare_repo_daily, entitlement_state: unknown, activation_state: paused, target_tables: [market_factors, market_bars_daily]}
     read_model_adapter:
       adapter_version: sqlite-read-model.v1
       primary_table: market_factors

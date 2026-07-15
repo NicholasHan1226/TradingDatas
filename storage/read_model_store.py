@@ -69,11 +69,7 @@ TUSHARE_API_TO_TABLE_MAP = dataset_registry_contract.TUSHARE_API_TO_TABLE_MAP
 TUSHARE_ALLOWED_API_NAMES = dataset_registry_contract.TUSHARE_ALLOWED_API_NAMES
 API_TO_TABLE_MAP = TUSHARE_API_TO_TABLE_MAP
 _DATASET_REGISTRY = dataset_registry_contract.load_dataset_registry()
-
-ADDITIONAL_TABLES = {
-    "repo_daily": ("market_bars_daily",),
-    "stk_factor": ("market_factors",),
-}
+_PROVIDER_CLAIM_SCHEMA = "provider-claim.v1"
 
 
 def _quote_identifier(identifier):
@@ -275,6 +271,69 @@ def _resolve_provider_discriminator(
     return requested
 
 
+def _registry_target_tables(
+    api_name: str,
+    provider_discriminator: str,
+) -> tuple[str, ...]:
+    if api_name not in TUSHARE_ALLOWED_API_NAMES:
+        return ()
+    dataset = _DATASET_REGISTRY.resolve(f"tushare.{api_name}")
+    for binding in dataset.provider_bindings:
+        if binding.read_discriminator_value == provider_discriminator:
+            return binding.target_tables
+    raise ValueError(
+        f"unknown provider_discriminator {provider_discriminator!r} "
+        f"for api_name={api_name!r}"
+    )
+
+
+def _json_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _canonical_raw_json(row: dict[str, Any]) -> str:
+    original = dict(row)
+    has_raw_payload = "raw_json" in original
+    raw_payload = original.get("raw_json") if has_raw_payload else original
+
+    if has_raw_payload:
+        try:
+            decoded = (
+                raw_payload
+                if isinstance(raw_payload, dict)
+                else json.loads(str(raw_payload))
+            )
+        except (TypeError, ValueError):
+            decoded = None
+        provenance = (
+            decoded.get("_sharedsignals_provenance")
+            if isinstance(decoded, dict)
+            else None
+        )
+        if (
+            isinstance(provenance, dict)
+            and provenance.get("schema") == _PROVIDER_CLAIM_SCHEMA
+        ):
+            return _json_text(raw_payload)
+
+    if "provider" in original:
+        return json.dumps(
+            {
+                "_sharedsignals_provenance": {
+                    "provider_claim": original.get("provider"),
+                    "raw_payload_source": "raw_json" if has_raw_payload else "row",
+                    "schema": _PROVIDER_CLAIM_SCHEMA,
+                },
+                "raw_payload": raw_payload,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    return _json_text(raw_payload)
+
+
 def _fund_portfolio_hash(
     api_name, symbol, holding_symbol, ann_date, end_date, raw_json
 ):
@@ -429,6 +488,8 @@ def _columns_for_insert(table, row_columns, target_columns, api_name):
                 derived_columns.append(col)
     if api_name and "provider" in target_columns:
         derived_columns.append("provider")
+    if "raw_json" in target_columns:
+        derived_columns.append("raw_json")
     if "collected_at" in target_columns:
         derived_columns.append("collected_at")
     if "source_file" in target_columns:
@@ -496,8 +557,11 @@ def _canonical_row(
     provider_discriminator = str(provider_discriminator or "").strip()
     if not provider_discriminator:
         raise ValueError("provider_discriminator is required for canonical rows")
-    if row.get("provider") and not row.get("raw_json"):
-        row["raw_json"] = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    if "provider" in row or table in {
+        "market_bars_daily",
+        "market_bars_intraday",
+    }:
+        row["raw_json"] = _canonical_raw_json(row)
     row["provider"] = provider_discriminator
     original_symbol = row.get("symbol")
     symbol = (
@@ -1118,7 +1182,12 @@ def ingest_rows_to_sqlite(
             max_transaction_rows=max_transaction_rows,
         )
         if API_TO_TABLE_MAP.get(api_name) == table:
-            for additional_table in ADDITIONAL_TABLES.get(api_name, ()):
+            for additional_table in _registry_target_tables(
+                str(api_name),
+                trusted_provider,
+            ):
+                if additional_table == table:
+                    continue
                 rows_written += _ingest_rows_to_sqlite_unlocked(
                     db_path_obj,
                     additional_table,

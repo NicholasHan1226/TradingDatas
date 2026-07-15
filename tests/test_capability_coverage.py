@@ -173,6 +173,7 @@ def test_read_model_store_has_no_file_bridge_ingestion_entrypoints() -> None:
         "ingest_date_partition",
         "CSV_BRIDGE",
         "CSV_ADDITIONAL_TABLES",
+        "\nADDITIONAL_TABLES =",
         "read_csv",
         'glob("*.csv")',
     ]
@@ -200,7 +201,13 @@ def test_tushare_rows_use_canonical_provider_and_preserve_upstream_provider(
 
     assert rows
     assert {row["provider"] for row in rows} == {"tushare_daily_basic"}
-    assert json.loads(rows[0]["raw_json"])["provider"] == "upstream-row-label"
+    provenance = json.loads(rows[0]["raw_json"])
+    assert provenance["_sharedsignals_provenance"] == {
+        "provider_claim": "upstream-row-label",
+        "raw_payload_source": "row",
+        "schema": "provider-claim.v1",
+    }
+    assert provenance["raw_payload"]["provider"] == "upstream-row-label"
 
 
 def test_trusted_context_overrides_spoofed_row_provider_for_all_source_types(
@@ -249,9 +256,15 @@ def test_trusted_context_overrides_spoofed_row_provider_for_all_source_types(
     assert tushare["provider"] == "tushare_rt_fut_min"
     assert sina["provider"] == "sina_futures_minute"
     assert {row["provider"] for row in sec_rows} == {"sec_edgar_companyfacts"}
-    assert json.loads(tushare["raw_json"])["provider"] == "sina_futures_minute"
-    assert json.loads(sina["raw_json"])["provider"] == "tushare_rt_fut_min"
-    assert json.loads(sec_rows[0]["raw_json"])["provider"] == "row-spoof"
+    assert json.loads(tushare["raw_json"])["_sharedsignals_provenance"][
+        "provider_claim"
+    ] == "sina_futures_minute"
+    assert json.loads(sina["raw_json"])["_sharedsignals_provenance"][
+        "provider_claim"
+    ] == "tushare_rt_fut_min"
+    assert json.loads(sec_rows[0]["raw_json"])["_sharedsignals_provenance"][
+        "provider_claim"
+    ] == "row-spoof"
 
     assert _resolve_provider_discriminator("daily", None) == "tushare_daily"
     with pytest.raises(ValueError, match="provider_discriminator.*required"):
