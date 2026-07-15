@@ -65,6 +65,51 @@ def _patch_rw_connection(
     monkeypatch.setattr(read_model_store.sqlite3, "connect", connect)
 
 
+def _tamper_success_receipt(
+    conn: sqlite3.Connection,
+    *,
+    receipt_id: str,
+    tamper_kind: str,
+) -> None:
+    notes_row = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (receipt_id,),
+    ).fetchone()
+    assert notes_row is not None
+    raw_notes = notes_row[0]
+    if tamper_kind == "duplicate_key":
+        tampered_notes = (
+            '{"schema_version":"unrecognized.receipt.v999",' + raw_notes[1:]
+        )
+        conn.execute(
+            "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+            (tampered_notes, receipt_id),
+        )
+        return
+
+    notes = json.loads(raw_notes)
+    if tamper_kind == "boolean_count":
+        notes["counts"]["returned"] = True
+    elif tamper_kind == "paired_finished_at":
+        replacement = "2099-12-31T23:59:59+00:00"
+        notes["finished_at"] = replacement
+        conn.execute(
+            "UPDATE market_ingest_runs SET finished_at = ? WHERE run_id = ?",
+            (replacement, receipt_id),
+        )
+    elif tamper_kind == "unknown_schema":
+        notes["schema_version"] = "unrecognized.receipt.v999"
+    else:
+        raise AssertionError(f"unsupported tamper_kind: {tamper_kind}")
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+        (
+            json.dumps(notes, separators=(",", ":"), sort_keys=True),
+            receipt_id,
+        ),
+    )
+
+
 def _assert_postcommit_authority_failure(
     error: RuntimeError,
     *,
@@ -675,13 +720,18 @@ def test_atomic_ingest_requires_canonical_receipt_readback_for_every_chunk(
     assert _db_counts(db_path) == (expected_data_rows, transaction_index)
 
 
+@pytest.mark.parametrize(
+    "tamper_kind",
+    ["unknown_schema", "boolean_count", "paired_finished_at", "duplicate_key"],
+)
 def test_atomic_ingest_rejects_tampered_canonical_receipt_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    tamper_kind: str,
 ) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
-    context = _context("018f47de-0000-7000-8000-000000000018")
+    context = _context(f"tampered-canonical-receipt-{tamper_kind}")
     receipt_id = make_receipt_id(context, "market_bars_daily", 0)
     injected = False
 
@@ -691,19 +741,10 @@ def test_atomic_ingest_rejects_tampered_canonical_receipt_evidence(
             super().commit()
             if not injected:
                 injected = True
-                notes_row = self.execute(
-                    "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
-                    (receipt_id,),
-                ).fetchone()
-                assert notes_row is not None
-                notes = json.loads(notes_row[0])
-                notes["schema_version"] = "unrecognized.receipt.v999"
-                self.execute(
-                    "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
-                    (
-                        json.dumps(notes, separators=(",", ":"), sort_keys=True),
-                        receipt_id,
-                    ),
+                _tamper_success_receipt(
+                    self,
+                    receipt_id=receipt_id,
+                    tamper_kind=tamper_kind,
                 )
                 super().commit()
 
@@ -720,6 +761,40 @@ def test_atomic_ingest_rejects_tampered_canonical_receipt_evidence(
     _assert_postcommit_authority_failure(
         captured.value,
         reason_code="receipt_evidence_mismatch",
+        receipt_id=receipt_id,
+    )
+    assert _db_counts(db_path) == (1, 1)
+
+
+def test_atomic_ingest_structures_unexpected_ro_open_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    context = _context("unexpected-ro-open-exception")
+    receipt_id = make_receipt_id(context, "market_bars_daily", 0)
+
+    def fail_open(_binding):
+        raise TypeError("unexpected ro-open failure")
+
+    monkeypatch.setattr(
+        read_model_store,
+        "_open_canonical_receipt_reader",
+        fail_open,
+    )
+
+    with pytest.raises(RuntimeError, match="storage-authority") as captured:
+        ingest_rows_with_receipts(
+            db_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=context,
+        )
+
+    _assert_postcommit_authority_failure(
+        captured.value,
+        reason_code="readback_failed",
         receipt_id=receipt_id,
     )
     assert _db_counts(db_path) == (1, 1)

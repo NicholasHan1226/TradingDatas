@@ -14,6 +14,7 @@ import re
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
@@ -29,6 +30,7 @@ from storage.ingest_receipts import (
     IngestCounts,
     IngestResult,
     _SqlitePathBinding,
+    _canonical_json,
     _receipt_payload,
     _require_unchanged_sqlite_binding,
     _validated_existing_sqlite_binding,
@@ -73,6 +75,26 @@ class StorageAuthorityError(RuntimeError):
             f"reason={reason_code} receipt_id={receipt_id} "
             f"transaction_index={transaction_index}"
         )
+
+
+@dataclass(frozen=True)
+class _ExpectedReceiptEvidence:
+    receipt_id: str
+    transaction_index: int
+    sqlite_row: tuple[object, ...]
+
+
+_RECEIPT_EVIDENCE_QUERY = (
+    "SELECT typeof(run_id), run_id, "
+    "typeof(started_at), started_at, "
+    "typeof(finished_at), finished_at, "
+    "typeof(status), status, "
+    "typeof(source), source, "
+    "typeof(rows_read), rows_read, "
+    "typeof(rows_written), rows_written, "
+    "typeof(notes), CAST(notes AS BLOB) "
+    "FROM market_ingest_runs WHERE run_id = ?"
+)
 
 
 def _read_model_lock_path(db_path: Path) -> Path:
@@ -1201,7 +1223,7 @@ def _require_postcommit_canonical_binding(
 ) -> None:
     try:
         observed = _validated_existing_sqlite_binding(expected.canonical_path)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:
         raise _postcommit_authority_error(
             reason_code="binding_changed",
             receipt_id=receipt_id,
@@ -1225,8 +1247,19 @@ def _open_canonical_receipt_reader(
     )
 
 
-def _receipt_row_has_expected_evidence(
-    row: tuple[object, ...],
+def _strict_receipt_evidence_row(row: object) -> bool:
+    if type(row) is not tuple or len(row) != 16:
+        return False
+    text_indexes = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14)
+    if any(type(row[index]) is not str for index in text_indexes):
+        return False
+    if type(row[11]) is not int or type(row[13]) is not int:
+        return False
+    return type(row[15]) is bytes
+
+
+def _capture_expected_receipt_evidence(
+    conn: sqlite3.Connection,
     *,
     context: IngestContext,
     table: str,
@@ -1234,50 +1267,58 @@ def _receipt_row_has_expected_evidence(
     receipt_id: str,
     counts: IngestCounts,
     payload_fingerprint: str,
-) -> bool:
-    if len(row) != 7:
-        return False
-    started_at, finished_at, status, source, rows_read, rows_written, notes = row
-    if not isinstance(finished_at, str) or not finished_at:
-        return False
-    if (
-        started_at != context.started_at
-        or status != "success"
-        or source != context.dataset_id
-        or rows_read != counts.returned
-        or rows_written != counts.committed
-        or not isinstance(notes, str)
-    ):
-        return False
-    try:
-        payload = json.loads(notes)
-    except (TypeError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-    return payload == _receipt_payload(
+) -> _ExpectedReceiptEvidence:
+    row = conn.execute(_RECEIPT_EVIDENCE_QUERY, (receipt_id,)).fetchone()
+    if not _strict_receipt_evidence_row(row):
+        raise RuntimeError("success receipt evidence is missing or ill-typed before commit")
+    finished_at = row[5]
+    expected_notes = _canonical_json(
+        _receipt_payload(
+            receipt_id=receipt_id,
+            context=context,
+            target_table=table,
+            transaction_index=transaction_index,
+            status="success",
+            counts=counts,
+            errors=(),
+            payload_fingerprint=payload_fingerprint,
+            finished_at=finished_at,
+        )
+    ).encode("utf-8")
+    expected_row: tuple[object, ...] = (
+        "text",
+        receipt_id,
+        "text",
+        context.started_at,
+        "text",
+        finished_at,
+        "text",
+        "success",
+        "text",
+        context.dataset_id,
+        "integer",
+        counts.returned,
+        "integer",
+        counts.committed,
+        "text",
+        expected_notes,
+    )
+    if row != expected_row:
+        raise RuntimeError("success receipt evidence changed before commit")
+    return _ExpectedReceiptEvidence(
         receipt_id=receipt_id,
-        context=context,
-        target_table=table,
         transaction_index=transaction_index,
-        status="success",
-        counts=counts,
-        errors=(),
-        payload_fingerprint=payload_fingerprint,
-        finished_at=finished_at,
+        sqlite_row=expected_row,
     )
 
 
 def _verify_committed_receipt_on_canonical_authority(
     binding: _SqlitePathBinding,
     *,
-    context: IngestContext,
-    table: str,
-    transaction_index: int,
-    receipt_id: str,
-    counts: IngestCounts,
-    payload_fingerprint: str,
+    evidence: _ExpectedReceiptEvidence,
 ) -> None:
+    receipt_id = evidence.receipt_id
+    transaction_index = evidence.transaction_index
     _require_postcommit_canonical_binding(
         binding,
         receipt_id=receipt_id,
@@ -1292,26 +1333,14 @@ def _verify_committed_receipt_on_canonical_authority(
             receipt_id=receipt_id,
             transaction_index=transaction_index,
         )
-        row = reader.execute(
-            "SELECT started_at, finished_at, status, source, rows_read, "
-            "rows_written, notes FROM market_ingest_runs WHERE run_id = ?",
-            (receipt_id,),
-        ).fetchone()
+        row = reader.execute(_RECEIPT_EVIDENCE_QUERY, (receipt_id,)).fetchone()
         if row is None:
             raise _postcommit_authority_error(
                 reason_code="receipt_missing",
                 receipt_id=receipt_id,
                 transaction_index=transaction_index,
             )
-        if not _receipt_row_has_expected_evidence(
-            row,
-            context=context,
-            table=table,
-            transaction_index=transaction_index,
-            receipt_id=receipt_id,
-            counts=counts,
-            payload_fingerprint=payload_fingerprint,
-        ):
+        if not _strict_receipt_evidence_row(row) or row != evidence.sqlite_row:
             raise _postcommit_authority_error(
                 reason_code="receipt_evidence_mismatch",
                 receipt_id=receipt_id,
@@ -1325,7 +1354,7 @@ def _verify_committed_receipt_on_canonical_authority(
     except StorageAuthorityError as exc:
         primary_error = exc
         raise
-    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+    except Exception as exc:
         primary_error = exc
         raise _postcommit_authority_error(
             reason_code="readback_failed",
@@ -1554,6 +1583,15 @@ def ingest_rows_with_receipts(
                         errors=(),
                         payload_fingerprint=payload_fingerprint,
                     )
+                    expected_evidence = _capture_expected_receipt_evidence(
+                        conn,
+                        context=context,
+                        table=table,
+                        transaction_index=transaction_index,
+                        receipt_id=receipt_id,
+                        counts=counts,
+                        payload_fingerprint=payload_fingerprint,
+                    )
                     _require_unchanged_sqlite_binding(db_binding)
                     conn.commit()
                 except Exception:
@@ -1564,12 +1602,7 @@ def ingest_rows_with_receipts(
                     raise
                 _verify_committed_receipt_on_canonical_authority(
                     db_binding,
-                    context=context,
-                    table=table,
-                    transaction_index=transaction_index,
-                    receipt_id=receipt_id,
-                    counts=counts,
-                    payload_fingerprint=payload_fingerprint,
+                    evidence=expected_evidence,
                 )
                 aggregate_counts.append(counts)
                 receipt_ids.append(receipt_id)
