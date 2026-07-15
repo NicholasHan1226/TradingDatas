@@ -28,6 +28,8 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    _SqlitePathBinding,
+    _receipt_payload,
     _require_unchanged_sqlite_binding,
     _validated_existing_sqlite_binding,
     insert_ingest_receipt,
@@ -42,6 +44,35 @@ MAX_TRANSACTION_ROWS = env_int("SHAREDSIGNALS_READ_MODEL_MAX_TRANSACTION_ROWS", 
 DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_READ_MODEL_DB_RETRIES", 3, min_value=1)
 
 DEFAULT_SQLITE_PATH = marketdata_sqlite_path()
+
+
+class StorageAuthorityError(RuntimeError):
+    """A committed transaction could not be proven on canonical authority."""
+
+    error_code = "storage_authority_failed"
+    phase = "post_commit"
+    commit_succeeded = True
+
+    def __init__(
+        self,
+        *,
+        reason_code: str,
+        receipt_id: str,
+        transaction_index: int,
+    ) -> None:
+        self.reason_code = reason_code
+        self.receipt_id = receipt_id
+        self.transaction_index = transaction_index
+        self.commit_state = (
+            "committed_non_authority_possible"
+            if reason_code == "binding_changed"
+            else "committed_authority_unverified"
+        )
+        super().__init__(
+            "storage-authority failure after commit: "
+            f"reason={reason_code} receipt_id={receipt_id} "
+            f"transaction_index={transaction_index}"
+        )
 
 
 def _read_model_lock_path(db_path: Path) -> Path:
@@ -1149,6 +1180,176 @@ def _receipt_payload_fingerprint(rows: Sequence[Mapping[str, Any]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _postcommit_authority_error(
+    *,
+    reason_code: str,
+    receipt_id: str,
+    transaction_index: int,
+) -> StorageAuthorityError:
+    return StorageAuthorityError(
+        reason_code=reason_code,
+        receipt_id=receipt_id,
+        transaction_index=transaction_index,
+    )
+
+
+def _require_postcommit_canonical_binding(
+    expected: _SqlitePathBinding,
+    *,
+    receipt_id: str,
+    transaction_index: int,
+) -> None:
+    try:
+        observed = _validated_existing_sqlite_binding(expected.canonical_path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise _postcommit_authority_error(
+            reason_code="binding_changed",
+            receipt_id=receipt_id,
+            transaction_index=transaction_index,
+        ) from exc
+    if observed != expected:
+        raise _postcommit_authority_error(
+            reason_code="binding_changed",
+            receipt_id=receipt_id,
+            transaction_index=transaction_index,
+        )
+
+
+def _open_canonical_receipt_reader(
+    binding: _SqlitePathBinding,
+) -> sqlite3.Connection:
+    return sqlite3.connect(
+        f"{binding.canonical_path.as_uri()}?mode=ro",
+        uri=True,
+        timeout=30,
+    )
+
+
+def _receipt_row_has_expected_evidence(
+    row: tuple[object, ...],
+    *,
+    context: IngestContext,
+    table: str,
+    transaction_index: int,
+    receipt_id: str,
+    counts: IngestCounts,
+    payload_fingerprint: str,
+) -> bool:
+    if len(row) != 7:
+        return False
+    started_at, finished_at, status, source, rows_read, rows_written, notes = row
+    if not isinstance(finished_at, str) or not finished_at:
+        return False
+    if (
+        started_at != context.started_at
+        or status != "success"
+        or source != context.dataset_id
+        or rows_read != counts.returned
+        or rows_written != counts.committed
+        or not isinstance(notes, str)
+    ):
+        return False
+    try:
+        payload = json.loads(notes)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return payload == _receipt_payload(
+        receipt_id=receipt_id,
+        context=context,
+        target_table=table,
+        transaction_index=transaction_index,
+        status="success",
+        counts=counts,
+        errors=(),
+        payload_fingerprint=payload_fingerprint,
+        finished_at=finished_at,
+    )
+
+
+def _verify_committed_receipt_on_canonical_authority(
+    binding: _SqlitePathBinding,
+    *,
+    context: IngestContext,
+    table: str,
+    transaction_index: int,
+    receipt_id: str,
+    counts: IngestCounts,
+    payload_fingerprint: str,
+) -> None:
+    _require_postcommit_canonical_binding(
+        binding,
+        receipt_id=receipt_id,
+        transaction_index=transaction_index,
+    )
+    reader: sqlite3.Connection | None = None
+    primary_error: BaseException | None = None
+    try:
+        reader = _open_canonical_receipt_reader(binding)
+        _require_postcommit_canonical_binding(
+            binding,
+            receipt_id=receipt_id,
+            transaction_index=transaction_index,
+        )
+        row = reader.execute(
+            "SELECT started_at, finished_at, status, source, rows_read, "
+            "rows_written, notes FROM market_ingest_runs WHERE run_id = ?",
+            (receipt_id,),
+        ).fetchone()
+        if row is None:
+            raise _postcommit_authority_error(
+                reason_code="receipt_missing",
+                receipt_id=receipt_id,
+                transaction_index=transaction_index,
+            )
+        if not _receipt_row_has_expected_evidence(
+            row,
+            context=context,
+            table=table,
+            transaction_index=transaction_index,
+            receipt_id=receipt_id,
+            counts=counts,
+            payload_fingerprint=payload_fingerprint,
+        ):
+            raise _postcommit_authority_error(
+                reason_code="receipt_evidence_mismatch",
+                receipt_id=receipt_id,
+                transaction_index=transaction_index,
+            )
+        _require_postcommit_canonical_binding(
+            binding,
+            receipt_id=receipt_id,
+            transaction_index=transaction_index,
+        )
+    except StorageAuthorityError as exc:
+        primary_error = exc
+        raise
+    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+        primary_error = exc
+        raise _postcommit_authority_error(
+            reason_code="readback_failed",
+            receipt_id=receipt_id,
+            transaction_index=transaction_index,
+        ) from exc
+    finally:
+        if reader is not None:
+            try:
+                reader.close()
+            except Exception as exc:
+                if primary_error is None:
+                    raise _postcommit_authority_error(
+                        reason_code="readback_failed",
+                        receipt_id=receipt_id,
+                        transaction_index=transaction_index,
+                    ) from exc
+    _require_postcommit_canonical_binding(
+        binding,
+        receipt_id=receipt_id,
+        transaction_index=transaction_index,
+    )
+
+
 def _receipt_insert_statement(
     conn: sqlite3.Connection,
     *,
@@ -1315,6 +1516,7 @@ def ingest_rows_with_receipts(
             uri=True,
             timeout=30,
         )
+        primary_error: BaseException | None = None
         try:
             _require_unchanged_sqlite_binding(db_binding)
             _prepare_sqlite_connection(conn)
@@ -1341,6 +1543,7 @@ def ingest_rows_with_receipts(
                         required_columns=required_columns,
                         sql=sql,
                     )
+                    payload_fingerprint = _receipt_payload_fingerprint(chunk)
                     receipt_id = insert_ingest_receipt(
                         conn,
                         context=context,
@@ -1349,17 +1552,36 @@ def ingest_rows_with_receipts(
                         status="success",
                         counts=counts,
                         errors=(),
-                        payload_fingerprint=_receipt_payload_fingerprint(chunk),
+                        payload_fingerprint=payload_fingerprint,
                     )
                     _require_unchanged_sqlite_binding(db_binding)
                     conn.commit()
                 except Exception:
-                    conn.rollback()
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     raise
+                _verify_committed_receipt_on_canonical_authority(
+                    db_binding,
+                    context=context,
+                    table=table,
+                    transaction_index=transaction_index,
+                    receipt_id=receipt_id,
+                    counts=counts,
+                    payload_fingerprint=payload_fingerprint,
+                )
                 aggregate_counts.append(counts)
                 receipt_ids.append(receipt_id)
+        except BaseException as exc:
+            primary_error = exc
+            raise
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                if primary_error is None:
+                    raise
 
     exact_event_outcomes = table == "market_events"
     result_counts = IngestCounts(

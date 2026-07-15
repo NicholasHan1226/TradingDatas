@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,59 @@ def _create_db(path: Path) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def _db_counts(path: Path) -> tuple[int, int]:
+    conn = sqlite3.connect(path)
+    try:
+        data_rows = conn.execute(
+            "SELECT COUNT(*) FROM market_bars_daily"
+        ).fetchone()[0]
+        success_receipts = conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
+        ).fetchone()[0]
+        return data_rows, success_receipts
+    finally:
+        conn.close()
+
+
+def _swap_parent(
+    authority_parent: Path,
+    retired_parent: Path,
+    db_name: str,
+) -> Path:
+    authority_parent.replace(retired_parent)
+    authority_parent.mkdir()
+    replacement = authority_parent / db_name
+    _create_db(replacement)
+    return replacement
+
+
+def _patch_rw_connection(
+    monkeypatch: pytest.MonkeyPatch,
+    connection_type: type[sqlite3.Connection],
+) -> None:
+    real_connect = sqlite3.connect
+
+    def connect(database, *args, **kwargs):
+        if str(database).endswith("?mode=rw"):
+            kwargs["factory"] = connection_type
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(read_model_store.sqlite3, "connect", connect)
+
+
+def _assert_postcommit_authority_failure(
+    error: RuntimeError,
+    *,
+    reason_code: str,
+    receipt_id: str,
+) -> None:
+    assert getattr(error, "error_code", None) == "storage_authority_failed"
+    assert getattr(error, "phase", None) == "post_commit"
+    assert getattr(error, "reason_code", None) == reason_code
+    assert getattr(error, "receipt_id", None) == receipt_id
+    assert getattr(error, "commit_succeeded", None) is True
 
 
 def _context(
@@ -102,9 +156,30 @@ def _reserve_receipt_id(
     return receipt_id
 
 
-def test_data_and_success_receipt_commit_in_one_transaction(tmp_path: Path) -> None:
+def test_data_and_success_receipt_commit_in_one_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
+    canonical_path = db_path.absolute()
+    real_lock = read_model_store._read_model_lock
+    real_connect = sqlite3.connect
+    lock_paths: list[Path] = []
+    connect_calls: list[tuple[object, dict[str, object]]] = []
+
+    @contextmanager
+    def capture_lock(path: Path):
+        lock_paths.append(path)
+        with real_lock(path):
+            yield
+
+    def capture_connect(database, *args, **kwargs):
+        connect_calls.append((database, dict(kwargs)))
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(read_model_store, "_read_model_lock", capture_lock)
+    monkeypatch.setattr(read_model_store.sqlite3, "connect", capture_connect)
 
     result = ingest_rows_with_receipts(
         db_path,
@@ -122,8 +197,19 @@ def test_data_and_success_receipt_commit_in_one_transaction(tmp_path: Path) -> N
     assert result.counts.unchanged is None
     assert result.counts.count_semantics == "generic_upsert_outcomes_unavailable"
     assert len(result.receipt_ids) == 1
+    assert lock_paths == [canonical_path]
+    assert connect_calls == [
+        (
+            f"{canonical_path.as_uri()}?mode=rw",
+            {"uri": True, "timeout": 30},
+        ),
+        (
+            f"{canonical_path.as_uri()}?mode=ro",
+            {"uri": True, "timeout": 30},
+        ),
+    ]
 
-    conn = sqlite3.connect(db_path)
+    conn = real_connect(db_path)
     try:
         assert conn.execute("SELECT COUNT(*) FROM market_bars_daily").fetchone()[0] == 2
         stored = conn.execute(
@@ -182,19 +268,23 @@ def test_transaction_row_limit_creates_one_receipt_per_real_chunk(
 ) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
+    context = _context()
 
     result = ingest_rows_with_receipts(
         db_path,
         "market_bars_daily",
         _daily_rows(5),
-        context=_context(),
+        context=context,
         source_name="chunked_daily_test",
         max_transaction_rows=2,
     )
 
     assert result.counts.returned == result.counts.validated == 5
     assert result.counts.committed == 5
-    assert len(result.receipt_ids) == 3
+    assert result.receipt_ids == tuple(
+        make_receipt_id(context, "market_bars_daily", transaction_index)
+        for transaction_index in range(3)
+    )
     notes = sorted(_receipt_notes(db_path), key=lambda item: item["transaction_index"])
     assert [item["transaction_index"] for item in notes] == [0, 1, 2]
     assert [item["counts"]["returned"] for item in notes] == [2, 2, 1]
@@ -448,3 +538,215 @@ def test_atomic_ingest_rolls_back_parent_swap_before_commit(
             )
         finally:
             conn.close()
+
+
+def test_atomic_ingest_rejects_reviewer_final_check_race_without_false_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_parent = tmp_path / "authority"
+    retired_parent = tmp_path / "retired"
+    authority_parent.mkdir()
+    authority_path = authority_parent / "marketdata.sqlite"
+    _create_db(authority_path)
+    context = _context("018f47de-0000-7000-8000-000000000016")
+    receipt_id = make_receipt_id(context, "market_bars_daily", 0)
+    original_check = read_model_store._require_unchanged_sqlite_binding
+    calls = 0
+
+    def swap_after_final_precommit_check(binding) -> None:
+        nonlocal calls
+        calls += 1
+        original_check(binding)
+        if calls == 5:
+            _swap_parent(authority_parent, retired_parent, authority_path.name)
+
+    monkeypatch.setattr(
+        read_model_store,
+        "_require_unchanged_sqlite_binding",
+        swap_after_final_precommit_check,
+    )
+
+    with pytest.raises(RuntimeError, match="storage-authority") as captured:
+        ingest_rows_with_receipts(
+            authority_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=context,
+        )
+
+    assert calls == 5
+    _assert_postcommit_authority_failure(
+        captured.value,
+        reason_code="binding_changed",
+        receipt_id=receipt_id,
+    )
+    assert _db_counts(authority_path) == (0, 0)
+    assert _db_counts(retired_parent / authority_path.name) == (1, 1)
+
+
+def test_atomic_ingest_rejects_parent_swap_after_commit_without_false_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_parent = tmp_path / "authority"
+    retired_parent = tmp_path / "retired"
+    authority_parent.mkdir()
+    authority_path = authority_parent / "marketdata.sqlite"
+    _create_db(authority_path)
+    context = _context("018f47de-0000-7000-8000-000000000017")
+    receipt_id = make_receipt_id(context, "market_bars_daily", 0)
+    swapped = False
+
+    class SwapAfterCommitConnection(sqlite3.Connection):
+        def commit(self) -> None:
+            nonlocal swapped
+            super().commit()
+            if not swapped:
+                swapped = True
+                _swap_parent(
+                    authority_parent,
+                    retired_parent,
+                    authority_path.name,
+                )
+
+    _patch_rw_connection(monkeypatch, SwapAfterCommitConnection)
+
+    with pytest.raises(RuntimeError, match="storage-authority") as captured:
+        ingest_rows_with_receipts(
+            authority_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=context,
+        )
+
+    _assert_postcommit_authority_failure(
+        captured.value,
+        reason_code="binding_changed",
+        receipt_id=receipt_id,
+    )
+    assert _db_counts(authority_path) == (0, 0)
+    assert _db_counts(retired_parent / authority_path.name) == (1, 1)
+
+
+@pytest.mark.parametrize("transaction_index", [0, 1, 2])
+def test_atomic_ingest_requires_canonical_receipt_readback_for_every_chunk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    transaction_index: int,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    context = _context(f"chunk-readback-missing-{transaction_index}")
+    receipt_id = make_receipt_id(context, "market_bars_daily", transaction_index)
+    commit_index = 0
+    injected = False
+
+    class DeleteReceiptAfterCommitConnection(sqlite3.Connection):
+        def commit(self) -> None:
+            nonlocal commit_index, injected
+            super().commit()
+            if commit_index == transaction_index and not injected:
+                injected = True
+                self.execute(
+                    "DELETE FROM market_ingest_runs WHERE run_id = ?",
+                    (receipt_id,),
+                )
+                super().commit()
+            commit_index += 1
+
+    _patch_rw_connection(monkeypatch, DeleteReceiptAfterCommitConnection)
+
+    with pytest.raises(RuntimeError, match="storage-authority") as captured:
+        ingest_rows_with_receipts(
+            db_path,
+            "market_bars_daily",
+            _daily_rows(5),
+            context=context,
+            max_transaction_rows=2,
+        )
+
+    _assert_postcommit_authority_failure(
+        captured.value,
+        reason_code="receipt_missing",
+        receipt_id=receipt_id,
+    )
+    expected_data_rows = min((transaction_index + 1) * 2, 5)
+    assert _db_counts(db_path) == (expected_data_rows, transaction_index)
+
+
+def test_atomic_ingest_rejects_tampered_canonical_receipt_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    context = _context("018f47de-0000-7000-8000-000000000018")
+    receipt_id = make_receipt_id(context, "market_bars_daily", 0)
+    injected = False
+
+    class TamperReceiptAfterCommitConnection(sqlite3.Connection):
+        def commit(self) -> None:
+            nonlocal injected
+            super().commit()
+            if not injected:
+                injected = True
+                notes_row = self.execute(
+                    "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+                    (receipt_id,),
+                ).fetchone()
+                assert notes_row is not None
+                notes = json.loads(notes_row[0])
+                notes["schema_version"] = "unrecognized.receipt.v999"
+                self.execute(
+                    "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+                    (
+                        json.dumps(notes, separators=(",", ":"), sort_keys=True),
+                        receipt_id,
+                    ),
+                )
+                super().commit()
+
+    _patch_rw_connection(monkeypatch, TamperReceiptAfterCommitConnection)
+
+    with pytest.raises(RuntimeError, match="storage-authority") as captured:
+        ingest_rows_with_receipts(
+            db_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=context,
+        )
+
+    _assert_postcommit_authority_failure(
+        captured.value,
+        reason_code="receipt_evidence_mismatch",
+        receipt_id=receipt_id,
+    )
+    assert _db_counts(db_path) == (1, 1)
+
+
+def test_atomic_ingest_preserves_primary_commit_error_over_rollback_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+
+    class CommitAndRollbackFailConnection(sqlite3.Connection):
+        def commit(self) -> None:
+            raise sqlite3.OperationalError("primary commit failure")
+
+        def rollback(self) -> None:
+            raise RuntimeError("secondary rollback failure")
+
+    _patch_rw_connection(monkeypatch, CommitAndRollbackFailConnection)
+
+    with pytest.raises(sqlite3.OperationalError, match="primary commit failure"):
+        ingest_rows_with_receipts(
+            db_path,
+            "market_bars_daily",
+            _daily_rows(1),
+            context=_context("018f47de-0000-7000-8000-000000000019"),
+        )
+
+    assert _db_counts(db_path) == (0, 0)
