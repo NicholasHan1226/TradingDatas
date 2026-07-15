@@ -13,8 +13,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import collectors.tushare.collector as collector_module
 import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
+from collectors.tushare import tushare_common
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.sync_daily import (
     ResourceBudget,
@@ -423,6 +425,77 @@ def test_sync_tier_accepts_idempotent_market_event_no_change(
     assert stats["major_news"]["sqlite_status"] == "ok"
     assert stats["major_news"]["sqlite_errors"] == []
     assert stats["_tier_summary"]["sqlite_failure_count"] == 0
+
+
+def test_collector_collect_compatibility_returns_rows_from_typed_outcome(
+    monkeypatch,
+) -> None:
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"ts_code": "000001.SZ", "trade_date": "20260715"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+
+    rows = collector.collect("daily", {"trade_date": "20260715"})
+
+    assert rows == [{"ts_code": "000001.SZ", "trade_date": "20260715"}]
+    assert collector.last_collect_outcome is outcome
+    assert collector.last_collect_failed is False
+    assert collector.last_collect_error == ""
+
+
+def test_sync_tier_strict_path_preserves_typed_provider_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="permission_denied",
+        error_message="抱歉，您没有访问该接口的权限",
+    )
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    monkeypatch.setattr(
+        sync_daily_module,
+        "ingest_rows_to_sqlite",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed provider rows must not be written"
+        ),
+    )
+
+    stats = sync_tier(
+        collector,
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+
+    assert stats["daily"]["rows"] == 0
+    assert stats["daily"]["failure_count"] == 1
+    assert stats["_tier_summary"]["failure_count"] == 1
+    assert collector.last_collect_outcome is outcome
+    assert collector.last_collect_failed is True
+    assert collector.last_collect_error == outcome.error_message
 
 
 def test_exit_on_failure_considers_sqlite_failures() -> None:

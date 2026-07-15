@@ -9,9 +9,10 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 try:
     import tomllib
@@ -28,6 +29,51 @@ CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_API_URL = "https://api.tushare.pro"
 QUICKSYNC_API_URL = "https://api.quicksync.cn"
 _TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class ProviderCallOutcome:
+    """Provider truth preserved before compatibility row conversion."""
+
+    state: Literal["success", "empty", "failed"]
+    rows: tuple[dict[str, Any], ...]
+    provider_code: int | str | None
+    error_code: str | None
+    error_message: str | None
+
+
+_RATE_LIMIT_MARKERS = (
+    "rate limit",
+    "too many request",
+    "throttl",
+    "每分钟",
+    "每秒",
+    "最多访问",
+    "访问次数",
+    "频率",
+    "频次",
+)
+_PERMISSION_DENIED_MARKERS = (
+    "permission",
+    "forbidden",
+    "unauthorized",
+    "not authorized",
+    "access denied",
+    "no access",
+    "权限",
+    "无权",
+    "未授权",
+    "积分不足",
+)
+
+
+def _provider_error_code(message: str) -> str:
+    normalized = message.casefold()
+    if any(marker in normalized for marker in _RATE_LIMIT_MARKERS):
+        return "rate_limited"
+    if any(marker in normalized for marker in _PERMISSION_DENIED_MARKERS):
+        return "permission_denied"
+    return "provider_error"
 
 
 def _parse_tushare_url(raw_url: str) -> dict[str, str]:
@@ -159,6 +205,77 @@ def tushare_data(
 def rows_to_dicts(data: dict[str, Any]) -> list[dict[str, Any]]:
     fields = data.get("fields") or []
     return [dict(zip(fields, row)) for row in data.get("items") or []]
+
+
+def tushare_rows_outcome(
+    api_name: str,
+    token: str,
+    *,
+    params: Mapping[str, Any] | None = None,
+    fields: str = "",
+) -> ProviderCallOutcome:
+    """Call Tushare once and preserve success, empty, and failure truth."""
+
+    provider_code: int | str | None = None
+    try:
+        payload = json.dumps(
+            {
+                "api_name": api_name,
+                "token": token,
+                "params": dict(params or {}),
+                "fields": fields,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            get_api_url(),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        body = json.loads(
+            urllib.request.urlopen(request, timeout=30).read().decode("utf-8")
+        )
+        if not isinstance(body, dict):
+            raise ValueError("Tushare response must be a mapping")
+
+        raw_provider_code = body.get("code")
+        provider_code = (
+            raw_provider_code
+            if isinstance(raw_provider_code, (int, str))
+            and not isinstance(raw_provider_code, bool)
+            else None
+        )
+        if provider_code not in (0, "0"):
+            message = str(body.get("msg") or "Tushare request failed")
+            return ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=provider_code,
+                error_code=_provider_error_code(message),
+                error_message=message,
+            )
+
+        data = body.get("data")
+        if data is None:
+            data = {"fields": [], "items": []}
+        if not isinstance(data, dict):
+            raise ValueError("Tushare response data must be a mapping")
+        rows = tuple(rows_to_dicts(data))
+        return ProviderCallOutcome(
+            state="success" if rows else "empty",
+            rows=rows,
+            provider_code=provider_code,
+            error_code=None,
+            error_message=None,
+        )
+    except Exception as exc:
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=provider_code,
+            error_code="provider_error",
+            error_message=str(exc) or exc.__class__.__name__,
+        )
 
 
 def tushare_rows(

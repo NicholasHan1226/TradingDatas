@@ -1,5 +1,8 @@
 import json
 import urllib.error
+from dataclasses import FrozenInstanceError
+
+import pytest
 
 from collectors.tushare import tushare_common
 
@@ -29,3 +32,179 @@ def test_tushare_data_retries_transient_http_error(monkeypatch):
 
     assert result == {"fields": ["value"], "items": [[1]]}
     assert len(attempts) == 2
+
+
+def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
+    requests: list[dict] = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(
+            {
+                "payload": json.loads(request.data.decode("utf-8")),
+                "timeout": timeout,
+            }
+        )
+        return _Response(payload)
+
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+    return requests
+
+
+def test_tushare_rows_outcome_preserves_success_rows_and_is_frozen(monkeypatch):
+    requests = _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": 0,
+            "msg": None,
+            "data": {
+                "fields": ["ts_code", "close"],
+                "items": [["000001.SZ", 10.5]],
+            },
+        },
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        params={"trade_date": "20260715"},
+        fields="ts_code,close",
+    )
+
+    assert outcome == tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"ts_code": "000001.SZ", "close": 10.5},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    assert requests == [
+        {
+            "payload": {
+                "api_name": "daily",
+                "token": "stub-token",
+                "params": {"trade_date": "20260715"},
+                "fields": "ts_code,close",
+            },
+            "timeout": 30,
+        }
+    ]
+    with pytest.raises(FrozenInstanceError):
+        outcome.state = "empty"
+
+
+def test_tushare_rows_outcome_marks_valid_zero_rows_empty(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 0, "msg": None, "data": {"fields": ["ts_code"], "items": []}},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome == tushare_common.ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+
+def test_tushare_rows_outcome_keeps_unknown_provider_error_failed(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": 70001,
+            "msg": "upstream rejected request",
+            "data": {"fields": ["value"], "items": [[1]]},
+        },
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("unknown_api", "stub-token")
+
+    assert outcome == tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=70001,
+        error_code="provider_error",
+        error_message="upstream rejected request",
+    )
+
+
+def test_tushare_rows_outcome_classifies_entitlement_denial(monkeypatch):
+    message = "抱歉，您没有访问该接口的权限"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("income", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == "permission_denied"
+    assert outcome.error_message == message
+
+
+def test_tushare_rows_outcome_classifies_rate_limit(monkeypatch):
+    message = "每分钟最多访问该接口200次"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == "rate_limited"
+    assert outcome.error_message == message
+
+
+def test_tushare_rows_outcome_does_not_guess_unknown_error_class(monkeypatch):
+    message = "upstream internal error"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": -2001, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == -2001
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == message
+
+
+def test_tushare_rows_outcome_rejects_malformed_success_data(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 0, "msg": None, "data": []},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.provider_code == 0
+    assert outcome.error_code == "provider_error"
+    assert "mapping" in outcome.error_message
+
+
+def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            urllib.error.URLError("offline")
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.provider_code is None
+    assert outcome.error_code == "provider_error"
+    assert "offline" in outcome.error_message
