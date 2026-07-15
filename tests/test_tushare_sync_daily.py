@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -69,6 +70,14 @@ class _RawRecordHandler(logging.Handler):
 
     def formatted_record_text(self) -> str:
         return repr([record.getMessage() for record in self.records])
+
+
+class _JsonResponse:
+    def __init__(self, payload: object) -> None:
+        self.payload = payload
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def _provider_outcome(
@@ -1619,3 +1628,64 @@ def test_delimited_secret_is_absent_from_outcome_logs_and_receipt_metadata(
     for fragment in (lead, trail):
         for surface in surfaces:
             assert fragment not in surface
+
+
+def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    token = "SYNTH-SUCCESS-ROW-TOKEN"
+    payload = {
+        "code": 0,
+        "msg": None,
+        "data": {"fields": ["value"], "items": [[token]]},
+    }
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _JsonResponse(payload),
+    )
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda _api_name, _params, _fields: outcome,
+    )
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+    writer_inputs: list[tuple[dict, ...]] = []
+
+    def record_writer_input(
+        _db_path,
+        _table,
+        _api_name,
+        rows,
+        **_kwargs,
+    ):
+        writer_inputs.append(tuple(rows))
+        return len(rows)
+
+    monkeypatch.setattr(sync_daily_module, "ingest_rows_to_sqlite", record_writer_input)
+
+    stats = sync_tier(
+        collector,
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260715",
+        end_date="20260715",
+        sqlite_db_path=tmp_path / "marketdata.sqlite",
+    )
+    receipt = {
+        "outcome": collector.last_collect_outcome,
+        "last_collect_error": collector.last_collect_error,
+        "stats": stats,
+    }
+
+    assert stats["daily"]["failure_count"] == 1
+    assert writer_inputs == []
+    assert collector.last_collect_outcome is not None
+    assert collector.last_collect_outcome.state == "failed"
+    assert token not in repr(receipt)

@@ -8,10 +8,13 @@ import math
 import os
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from collections.abc import Iterable as IterableABC
+from collections.abc import Mapping as MappingABC
+from dataclasses import InitVar, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Mapping
@@ -41,143 +44,408 @@ _CREDENTIAL_NAME_PATTERN = (
     r"cookie|set[ _-]*cookie)"
 )
 _CREDENTIAL_INDICATOR_PATTERN = re.compile(
-    rf"(?<![A-Za-z0-9_.-])(?:[bB])?[\"']?{_CREDENTIAL_NAME_PATTERN}"
-    rf"[\"']?(?![A-Za-z0-9_.-])\s*(?::|=|,)",
+    rf"(?<![A-Za-z0-9_.-])(?:[bB](?=[\"']))?[\"']?"
+    rf"{_CREDENTIAL_NAME_PATTERN}[\"']?(?![A-Za-z0-9_.-])",
     re.IGNORECASE,
 )
 _AUTH_SCHEME_INDICATOR_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+\S",
     re.IGNORECASE,
 )
-_HTTP_STATUS_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9_.-])(?:[bB])?[\"']?"
-    r"(?:http[ _-]*status|status(?:[ _-]*code)?)"
-    r"[\"']?(?![A-Za-z0-9_.-])\s*[:=]\s*"
-    r"(?:[bB])?[\"']?([1-5][0-9]{2})(?![0-9])",
-    re.IGNORECASE,
+_UNICODE_ESCAPE_PATTERN = re.compile(
+    r"\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|x([0-9A-Fa-f]{2}))"
 )
-_PERCENT_ESCAPE_PATTERN = re.compile(r"%[0-9A-F]{2}")
+_SIMPLE_ESCAPE_PATTERN = re.compile(r"""\\([\\/"'bfnrt])""")
+_SIMPLE_ESCAPES = {
+    "\\": "\\",
+    "/": "/",
+    '"': '"',
+    "'": "'",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
 
 
-def _diagnostic_views(message: str) -> tuple[str, ...]:
-    """Return bounded decoding views for indicator detection, never for output."""
+@dataclass(frozen=True)
+class SensitiveScanBudget:
+    """Explicit fail-closed limits for recursive sensitive-value scans.
 
+    ``max_nodes`` covers one recursive value traversal. ``max_views`` and
+    ``max_decode_rounds`` apply to each scalar representation. Callers with a
+    legitimately larger, trusted-shape response can opt into a larger budget.
+    Exhaustion never means "clear": it makes the scanned value untrusted.
+    """
+
+    max_depth: int = 32
+    max_nodes: int = 100_000
+    max_decode_rounds: int = 16
+    max_views: int = 256
+
+    def __post_init__(self) -> None:
+        limits = {
+            "max_depth": (self.max_depth, 0),
+            "max_nodes": (self.max_nodes, 1),
+            "max_decode_rounds": (self.max_decode_rounds, 1),
+            "max_views": (self.max_views, 1),
+        }
+        for name, (value, minimum) in limits.items():
+            if type(value) is not int or value < minimum:
+                raise ValueError(f"{name} must be an integer >= {minimum}")
+
+
+_DEFAULT_SENSITIVE_SCAN_BUDGET = SensitiveScanBudget()
+
+
+class _SensitiveScanFailure(Exception):
+    """Internal marker: a value could not be proven free of known secrets."""
+
+
+class _SensitiveScanState:
+    __slots__ = ("active_containers", "budget", "nodes")
+
+    def __init__(self, budget: SensitiveScanBudget) -> None:
+        self.budget = budget
+        self.nodes = 0
+        self.active_containers: set[int] = set()
+
+    def visit(self, depth: int) -> None:
+        if depth > self.budget.max_depth:
+            raise _SensitiveScanFailure from None
+        self.nodes += 1
+        if self.nodes > self.budget.max_nodes:
+            raise _SensitiveScanFailure from None
+
+
+def _resolve_scan_budget(
+    scan_budget: SensitiveScanBudget | None,
+) -> SensitiveScanBudget:
+    if scan_budget is None:
+        return _DEFAULT_SENSITIVE_SCAN_BUDGET
+    if not isinstance(scan_budget, SensitiveScanBudget):
+        raise _SensitiveScanFailure from None
+    return scan_budget
+
+
+def _decode_backslash_escapes(value: str) -> str:
+    def _unicode_replacement(match: re.Match[str]) -> str:
+        encoded = next(group for group in match.groups() if group is not None)
+        return chr(int(encoded, 16))
+
+    decoded = _UNICODE_ESCAPE_PATTERN.sub(_unicode_replacement, value)
+    return _SIMPLE_ESCAPE_PATTERN.sub(
+        lambda match: _SIMPLE_ESCAPES[match.group(1)],
+        decoded,
+    )
+
+
+def _strip_repr_wrapper(value: str) -> str:
+    prefix_length = 1 if len(value) >= 3 and value[0] in "bBrR" else 0
+    if len(value) - prefix_length < 2:
+        return value
+    quote = value[prefix_length]
+    if quote not in "\"'" or value[-1] != quote:
+        return value
+    return value[prefix_length + 1 : -1]
+
+
+def _safe_text_transform(transform: Any, value: str) -> str:
+    try:
+        candidate = transform(value)
+    except Exception:
+        raise _SensitiveScanFailure from None
+    if not isinstance(candidate, str):
+        raise _SensitiveScanFailure from None
+    return candidate
+
+
+def _diagnostic_views(
+    message: str,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> tuple[str, ...]:
+    """Return bounded representation views for guard checks, never for output."""
+
+    budget = _resolve_scan_budget(scan_budget)
+    if not isinstance(message, str):
+        raise _SensitiveScanFailure from None
     views: list[str] = [message]
+    seen = {message}
     pending = [message]
-    for _ in range(3):
+    for _ in range(budget.max_decode_rounds):
         next_pending: list[str] = []
         for value in pending:
             candidates = (
-                urllib.parse.unquote(value),
-                urllib.parse.unquote_plus(value),
-                value.replace(r'\"', '"').replace(r"\'", "'").replace("\\\\", "\\"),
+                _safe_text_transform(urllib.parse.unquote, value),
+                _safe_text_transform(urllib.parse.unquote_plus, value),
+                _safe_text_transform(_decode_backslash_escapes, value),
+                _safe_text_transform(
+                    lambda text: unicodedata.normalize("NFKC", text),
+                    value,
+                ),
+                _strip_repr_wrapper(value),
             )
             for candidate in candidates:
-                if candidate not in views:
-                    views.append(candidate)
-                    next_pending.append(candidate)
+                if candidate in seen:
+                    continue
+                if len(views) >= budget.max_views:
+                    raise _SensitiveScanFailure from None
+                seen.add(candidate)
+                views.append(candidate)
+                next_pending.append(candidate)
         pending = next_pending
         if not pending:
-            break
-    return tuple(views)
+            return tuple(views)
+    raise _SensitiveScanFailure from None
 
 
-def _secret_equivalent_forms(secret: str) -> tuple[str, ...]:
-    """Return a finite set of exact representations for one known call secret."""
-
-    if not secret:
+def _coerce_sensitive_values(
+    values: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> tuple[Any, ...]:
+    budget = _resolve_scan_budget(scan_budget)
+    if values is None:
         return ()
-    decoded = {secret}
-    for _ in range(3):
-        candidates = {
-            urllib.parse.unquote(value)
-            for value in decoded
-        } | {
-            urllib.parse.unquote_plus(value)
-            for value in decoded
-        }
-        if candidates <= decoded:
-            break
-        decoded.update(candidates)
+    if isinstance(values, (str, bytes, bytearray, memoryview)):
+        return (values,)
+    try:
+        iterator = iter(values)
+    except TypeError:
+        return (values,)
+    except Exception:
+        raise _SensitiveScanFailure from None
 
-    forms: set[str] = set(decoded)
-    for value in decoded:
-        encoded = {
-            urllib.parse.quote(value, safe=""),
-            urllib.parse.quote(value),
-            urllib.parse.quote_plus(value, safe=""),
-        }
-        forms.update(
-            {
-                json.dumps(value)[1:-1],
-                json.dumps(value, ensure_ascii=False)[1:-1],
-                repr(value),
-                repr(value.encode("utf-8")),
-            }
-        )
-        forms.update(encoded)
-        forms.update(
-            _PERCENT_ESCAPE_PATTERN.sub(
-                lambda match: match.group(0).lower(),
-                encoded_value,
+    coerced: list[Any] = []
+    while True:
+        try:
+            value = next(iterator)
+        except StopIteration:
+            return tuple(coerced)
+        except Exception:
+            raise _SensitiveScanFailure from None
+        coerced.append(value)
+        if len(coerced) > budget.max_nodes:
+            raise _SensitiveScanFailure from None
+
+
+def _scalar_texts(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        try:
+            raw = bytes(value)
+        except Exception:
+            raise _SensitiveScanFailure from None
+        texts = [repr(raw)]
+        for encoding in ("utf-8", "latin-1"):
+            try:
+                decoded = raw.decode(encoding)
+            except UnicodeError:
+                continue
+            if decoded not in texts:
+                texts.append(decoded)
+        return tuple(texts)
+    if value is None or isinstance(value, bool):
+        return ()
+    if isinstance(value, (int, float)):
+        return (str(value),)
+    texts: list[str] = []
+    for convert in (str, repr):
+        try:
+            text = convert(value)
+        except Exception:
+            raise _SensitiveScanFailure from None
+        if not isinstance(text, str):
+            raise _SensitiveScanFailure from None
+        if text not in texts:
+            texts.append(text)
+    return tuple(texts)
+
+
+def _walk_scalar_texts(
+    value: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+    state: _SensitiveScanState | None = None,
+    depth: int = 0,
+):
+    budget = _resolve_scan_budget(scan_budget)
+    state = state if state is not None else _SensitiveScanState(budget)
+    state.visit(depth)
+
+    if isinstance(value, (str, bytes, bytearray, memoryview)):
+        yield from _scalar_texts(value)
+        return
+    if value is None or isinstance(value, (bool, int, float)):
+        yield from _scalar_texts(value)
+        return
+
+    if isinstance(value, MappingABC):
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            try:
+                iterator = iter(value.items())
+            except Exception:
+                raise _SensitiveScanFailure from None
+            while True:
+                try:
+                    pair = next(iterator)
+                except StopIteration:
+                    break
+                except Exception:
+                    raise _SensitiveScanFailure from None
+                try:
+                    key, item = pair
+                except Exception:
+                    raise _SensitiveScanFailure from None
+                yield from _walk_scalar_texts(
+                    key,
+                    scan_budget=budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+                yield from _walk_scalar_texts(
+                    item,
+                    scan_budget=budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+        finally:
+            state.active_containers.discard(identity)
+        return
+
+    if isinstance(value, IterableABC):
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            try:
+                iterator = iter(value)
+            except Exception:
+                raise _SensitiveScanFailure from None
+            while True:
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    break
+                except Exception:
+                    raise _SensitiveScanFailure from None
+                yield from _walk_scalar_texts(
+                    item,
+                    scan_budget=budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+        finally:
+            state.active_containers.discard(identity)
+        return
+
+    yield from _scalar_texts(value)
+
+
+def _sensitive_forms(
+    sensitive_values: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> frozenset[str]:
+    budget = _resolve_scan_budget(scan_budget)
+    forms: set[str] = set()
+    state = _SensitiveScanState(budget)
+    for value in _coerce_sensitive_values(
+        sensitive_values,
+        scan_budget=budget,
+    ):
+        for text in _walk_scalar_texts(
+            value,
+            scan_budget=budget,
+            state=state,
+        ):
+            forms.update(
+                view
+                for view in _diagnostic_views(text, scan_budget=budget)
+                if view
             )
-            for encoded_value in encoded
+    return frozenset(forms)
+
+
+def _contains_sensitive_value(
+    value: Any,
+    sensitive_values: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> bool:
+    """Return true for a match *or* an incomplete/unreliable scan."""
+
+    try:
+        budget = _resolve_scan_budget(scan_budget)
+        forms = _sensitive_forms(sensitive_values, scan_budget=budget)
+        state = _SensitiveScanState(budget)
+        for text in _walk_scalar_texts(
+            value,
+            scan_budget=budget,
+            state=state,
+        ):
+            for view in _diagnostic_views(text, scan_budget=budget):
+                if any(form in view for form in forms):
+                    return True
+        return False
+    except Exception:
+        return True
+
+
+def _contains_credential_indicator(
+    message: str,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> bool:
+    try:
+        return any(
+            _CREDENTIAL_INDICATOR_PATTERN.search(view)
+            or _AUTH_SCHEME_INDICATOR_PATTERN.search(view)
+            for view in _diagnostic_views(message, scan_budget=scan_budget)
         )
-    forms.discard("")
-    return tuple(sorted(forms, key=len, reverse=True))
+    except Exception:
+        return True
 
 
-def _contains_credential_indicator(message: str) -> bool:
-    return any(
-        _CREDENTIAL_INDICATOR_PATTERN.search(view)
-        or _AUTH_SCHEME_INDICATOR_PATTERN.search(view)
-        for view in _diagnostic_views(message)
-    )
-
-
-def _redacted_diagnostic_summary(message: str) -> str:
-    status = next(
-        (
-            match.group(1)
-            for view in _diagnostic_views(message)
-            if (match := _HTTP_STATUS_PATTERN.search(view)) is not None
-        ),
-        None,
-    )
-    suffix = f" (status={status})" if status else ""
-    return f"provider diagnostic {_REDACTION_MARKER}{suffix}"
+def _redacted_diagnostic_summary() -> str:
+    return f"provider diagnostic {_REDACTION_MARKER}"
 
 
 def _redact_sensitive_text(
-    message: str,
+    message: Any,
     *,
-    sensitive_values: tuple[str, ...] = (),
+    sensitive_values: Any = (),
+    scan_budget: SensitiveScanBudget | None = None,
 ) -> str:
     """Make one diagnostic safe before it crosses an outcome boundary.
 
-    Known per-call secrets are removed by exact finite representations. Any
-    remaining credential-shaped diagnostic is not parsed: the whole value is
-    replaced with a structured summary so punctuation cannot define a secret
-    boundary.
+    Known per-call secrets are checked across bounded representation views.
+    Credential-shaped diagnostics are never parsed for suffixes or status:
+    the whole value is replaced with a constant summary.
     """
 
-    redacted = message
-    forms = {
-        form
-        for secret in sensitive_values
-        for form in _secret_equivalent_forms(str(secret))
-    }
-    for form in sorted(forms, key=len, reverse=True):
-        redacted = redacted.replace(form, _REDACTION_MARKER)
-    if forms and any(
-        form in view
-        for view in _diagnostic_views(redacted)
-        for form in forms
+    if not isinstance(message, str):
+        try:
+            message = str(message)
+        except Exception:
+            return _redacted_diagnostic_summary()
+    if _contains_sensitive_value(
+        message,
+        sensitive_values,
+        scan_budget=scan_budget,
     ):
-        return _redacted_diagnostic_summary(redacted)
-    if _contains_credential_indicator(redacted):
-        return _redacted_diagnostic_summary(redacted)
-    return redacted
+        return _redacted_diagnostic_summary()
+    if _contains_credential_indicator(message, scan_budget=scan_budget):
+        return _redacted_diagnostic_summary()
+    return message
 
 
 @dataclass(frozen=True)
@@ -189,23 +457,58 @@ class ProviderCallOutcome:
     provider_code: int | str | None
     error_code: str | None
     error_message: str | None
+    sensitive_values: InitVar[Any] = ()
+    scan_budget: InitVar[SensitiveScanBudget | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        sensitive_values: Any,
+        scan_budget: SensitiveScanBudget | None,
+    ) -> None:
+        try:
+            guarded_values = _coerce_sensitive_values(
+                sensitive_values,
+                scan_budget=scan_budget,
+            )
+        except Exception:
+            raise ValueError(
+                "provider outcome contains sensitive or unscannable values"
+            ) from None
+        if _contains_sensitive_value(
+            self.rows,
+            guarded_values,
+            scan_budget=scan_budget,
+        ):
+            raise ValueError(
+                "provider outcome contains sensitive or unscannable values"
+            )
         object.__setattr__(
             self,
             "provider_code",
-            _sanitize_provider_code(self.provider_code),
+            _sanitize_provider_code(
+                self.provider_code,
+                guarded_values,
+                scan_budget=scan_budget,
+            ),
         )
         object.__setattr__(
             self,
             "error_code",
-            _sanitize_error_code(self.error_code),
+            _sanitize_error_code(
+                self.error_code,
+                guarded_values,
+                scan_budget=scan_budget,
+            ),
         )
         if self.error_message is not None:
             object.__setattr__(
                 self,
                 "error_message",
-                _redact_sensitive_text(str(self.error_message)),
+                _redact_sensitive_text(
+                    self.error_message,
+                    sensitive_values=guarded_values,
+                    scan_budget=scan_budget,
+                ),
             )
         self.validate_invariants()
 
@@ -226,38 +529,85 @@ _UNTRUSTED_PROVIDER_CODE = "<untrusted-provider-code>"
 _UNTRUSTED_ERROR_CODE = "<untrusted-error-code>"
 
 
-def _sanitize_provider_code(value: Any) -> int | str | None:
+def _sanitize_provider_code(
+    value: Any,
+    sensitive_values: Any = (),
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> int | str | None:
+    if _contains_sensitive_value(
+        value,
+        sensitive_values,
+        scan_budget=scan_budget,
+    ):
+        return _UNTRUSTED_PROVIDER_CODE
     if value is None or type(value) is int:
         return value
     if isinstance(value, str):
-        sanitized = _redact_sensitive_text(value)
+        sanitized = _redact_sensitive_text(
+            value,
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
+        )
         if _SAFE_PROVIDER_CODE.fullmatch(sanitized):
             return sanitized
     return _UNTRUSTED_PROVIDER_CODE
 
 
-def _sanitize_error_code(value: Any) -> str | None:
+def _sanitize_error_code(
+    value: Any,
+    sensitive_values: Any = (),
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> str | None:
+    if _contains_sensitive_value(
+        value,
+        sensitive_values,
+        scan_budget=scan_budget,
+    ):
+        return _UNTRUSTED_ERROR_CODE
     if value is None:
         return None
     if isinstance(value, str):
-        sanitized = _redact_sensitive_text(value)
+        sanitized = _redact_sensitive_text(
+            value,
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
+        )
         if sanitized in _SAFE_ERROR_CODES:
             return sanitized
     return _UNTRUSTED_ERROR_CODE
 
 
-def provider_outcome_log_fields(outcome: ProviderCallOutcome) -> dict[str, Any]:
+def provider_outcome_log_fields(
+    outcome: ProviderCallOutcome,
+    *,
+    sensitive_values: Any = (),
+    scan_budget: SensitiveScanBudget | None = None,
+) -> dict[str, Any]:
     """Return diagnostic outcome fields with no untrusted log arguments."""
 
-    provider_code = _sanitize_provider_code(outcome.provider_code)
-    error_code = _sanitize_error_code(outcome.error_code)
+    provider_code = _sanitize_provider_code(
+        outcome.provider_code,
+        sensitive_values,
+        scan_budget=scan_budget,
+    )
+    error_code = _sanitize_error_code(
+        outcome.error_code,
+        sensitive_values,
+        scan_budget=scan_budget,
+    )
     state = (
         outcome.state
         if outcome.state in ("success", "empty", "failed")
         else "<invalid-outcome-state>"
     )
     error_message = (
-        _redact_sensitive_text(str(outcome.error_message))
+        _redact_sensitive_text(
+            outcome.error_message,
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
+        )
         if outcome.error_message is not None
         else None
     )
@@ -639,10 +989,12 @@ def tushare_rows_outcome(
     *,
     params: Mapping[str, Any] | None = None,
     fields: str = "",
+    scan_budget: SensitiveScanBudget | None = None,
 ) -> ProviderCallOutcome:
     """Call Tushare once and preserve success, empty, and failure truth."""
 
     provider_code: int | str | None = None
+    sensitive_values = (token,)
     try:
         payload = json.dumps(
             {
@@ -666,6 +1018,8 @@ def tushare_rows_outcome(
             provider_code=None,
             error_code="provider_error",
             error_message=safe_provider_exception_message(exc),
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
         )
 
     try:
@@ -684,18 +1038,38 @@ def tushare_rows_outcome(
         )
         if provider_code not in (0, "0"):
             message = str(body.get("msg") or "Tushare request failed")
+            classified_error_code = _provider_error_code(provider_code, message)
             safe_message = _redact_sensitive_text(
                 message,
-                sensitive_values=(token,),
+                sensitive_values=sensitive_values,
+                scan_budget=scan_budget,
             )
             return ProviderCallOutcome(
                 state="failed",
                 rows=(),
-                provider_code=provider_code,
-                error_code=_provider_error_code(provider_code, message),
+                provider_code=_sanitize_provider_code(
+                    provider_code,
+                    sensitive_values,
+                    scan_budget=scan_budget,
+                ),
+                error_code=_sanitize_error_code(
+                    classified_error_code,
+                    sensitive_values,
+                    scan_budget=scan_budget,
+                ),
                 error_message=safe_message,
+                sensitive_values=sensitive_values,
+                scan_budget=scan_budget,
             )
 
+        if _contains_sensitive_value(
+            body,
+            sensitive_values,
+            scan_budget=scan_budget,
+        ):
+            raise _ProviderResponseValidationError(
+                "Tushare response validation failed"
+            )
         if "data" not in body:
             raise _ProviderResponseValidationError(
                 "Tushare response must contain data"
@@ -704,17 +1078,29 @@ def tushare_rows_outcome(
         return ProviderCallOutcome(
             state="success" if rows else "empty",
             rows=rows,
-            provider_code=provider_code,
+            provider_code=_sanitize_provider_code(
+                provider_code,
+                sensitive_values,
+                scan_budget=scan_budget,
+            ),
             error_code=None,
             error_message=None,
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
         )
     except Exception as exc:
         return ProviderCallOutcome(
             state="failed",
             rows=(),
-            provider_code=provider_code,
+            provider_code=_sanitize_provider_code(
+                provider_code,
+                sensitive_values,
+                scan_budget=scan_budget,
+            ),
             error_code="provider_error",
             error_message=_safe_provider_response_error_message(exc),
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
         )
 
 

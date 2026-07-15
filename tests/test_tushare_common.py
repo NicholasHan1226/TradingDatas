@@ -783,10 +783,7 @@ def test_provider_call_outcome_redacts_normalized_header_credentials_completely(
 
     for fragment in sensitive_fragments:
         assert fragment not in outcome.error_message
-    expected = "provider diagnostic [REDACTED]"
-    if "401" in message:
-        expected += " (status=401)"
-    assert outcome.error_message == expected
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
     log_fields = tushare_common.provider_outcome_log_fields(outcome)
     for fragment in sensitive_fragments:
         assert fragment not in repr(log_fields)
@@ -817,13 +814,13 @@ def test_provider_call_outcome_does_not_redact_noncredential_key_prefixes():
         pytest.param(
             "provider bytes={b'X-Auth-Token': "
             "b'DUMMY +/%=?& TRAIL', b'status': b'401'}",
-            "provider diagnostic [REDACTED] (status=401)",
+            "provider diagnostic [REDACTED]",
             id="bytes-wrapper",
         ),
         pytest.param(
             r"provider headers={'X-API-Key': "
             r"'DUMMY \' embedded +/%=?& TRAIL', 'status': 401}",
-            "provider diagnostic [REDACTED] (status=401)",
+            "provider diagnostic [REDACTED]",
             id="escaped-quote",
         ),
     ],
@@ -997,7 +994,8 @@ def test_fail_closed_outcome_redaction_covers_adversarial_boundaries(
     for fragment in sensitive_fragments:
         assert fragment not in (outcome.error_message or "")
         assert fragment not in repr(log_fields)
-    assert "401" in (outcome.error_message or "")
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert "401" not in outcome.error_message
     assert log_fields["error_message"] == outcome.error_message
 
 
@@ -1186,3 +1184,365 @@ def test_redacted_summary_does_not_misreport_three_digit_credential_as_status():
 
     assert outcome.error_message == "provider diagnostic [REDACTED]"
     assert "401" not in outcome.error_message
+
+
+_RECURSIVE_GUARD_TOKEN = "SYNTH-UNICODE-ARROW-9z"
+_FULL_UNICODE_ESCAPE_TOKEN = "".join(
+    f"\\u{ord(character):04x}" for character in _RECURSIVE_GUARD_TOKEN
+)
+_MIXED_UNICODE_ESCAPE_TOKEN = "".join(
+    character if index % 2 else f"\\u{ord(character):04x}"
+    for index, character in enumerate(_RECURSIVE_GUARD_TOKEN)
+)
+
+
+@pytest.mark.parametrize(
+    "encoded_token",
+    [_FULL_UNICODE_ESCAPE_TOKEN, _MIXED_UNICODE_ESCAPE_TOKEN],
+    ids=("all-ascii-unicode-escapes", "mixed-raw-and-unicode-escapes"),
+)
+def test_provider_boundary_recursively_guards_unicode_escaped_request_token(
+    monkeypatch,
+    encoded_token,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": -2001,
+            "msg": f"Authorization -> {encoded_token}",
+            "data": None,
+        },
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        _RECURSIVE_GUARD_TOKEN,
+    )
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert log_fields["error_message"] == outcome.error_message
+    assert "Authorization" not in repr(receipt)
+    assert "\\u0053" not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Authorization -> SYNTH-UNKNOWN-CREDENTIAL",
+        "X-API-Key -> SYNTH-UNKNOWN-CREDENTIAL",
+        "password=status=418",
+    ],
+)
+def test_unparseable_credential_indicator_replaces_entire_diagnostic(message):
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=message,
+    )
+
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert "418" not in outcome.error_message
+
+
+@pytest.mark.parametrize("provider_code", [7314928, "7314928"])
+def test_request_token_cannot_be_smuggled_as_numeric_provider_code(
+    monkeypatch,
+    provider_code,
+):
+    token = "7314928"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": provider_code, "msg": "request rejected", "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == "<untrusted-provider-code>"
+    assert token not in repr(outcome)
+    assert token not in repr(log_fields)
+    assert token not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    ("token", "data"),
+    [
+        pytest.param(
+            "7314928",
+            {"fields": ["value"], "items": [["7314928"]]},
+            id="string-value",
+        ),
+        pytest.param(
+            "7314928",
+            {"fields": ["value"], "items": [[7314928]]},
+            id="numeric-value",
+        ),
+        pytest.param(
+            "SYNTH_NESTED_TOKEN",
+            {
+                "fields": ["value"],
+                "items": [[{"SYNTH_NESTED_TOKEN": "safe"}]],
+            },
+            id="nested-container-key",
+        ),
+        pytest.param(
+            "SYNTH_FIELD_TOKEN",
+            {"fields": ["SYNTH_FIELD_TOKEN"], "items": [["safe"]]},
+            id="row-key",
+        ),
+        pytest.param(
+            "7314928",
+            {
+                "fields": ["value"],
+                "items": [[r"\u0037\u0033\u0031\u0034\u0039\u0032\u0038"]],
+            },
+            id="unicode-escaped-value",
+        ),
+    ],
+)
+def test_success_payload_echoing_request_token_fails_closed(
+    monkeypatch,
+    token,
+    data,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 0, "msg": None, "data": data},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", token)
+    receipt = {"outcome": outcome}
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "Tushare response validation failed"
+    assert token not in repr(receipt)
+
+
+def test_outcome_defense_rejects_sensitive_bytes_in_success_rows():
+    token = b"SYNTH-BYTES-TOKEN"
+
+    with pytest.raises(ValueError, match="sensitive"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": token},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=(token,),
+        )
+
+
+def _nested_value(depth: int, leaf: object = "safe") -> object:
+    value = leaf
+    for index in range(depth):
+        value = {f"level_{index}": value}
+    return value
+
+
+class _ExplodingItemsDict(dict):
+    def items(self):
+        raise RuntimeError("SYNTH-MAPPING-ITERATION-SECRET")
+
+
+class _ExplodingIterable:
+    def __iter__(self):
+        yield "safe-prefix"
+        raise RuntimeError("SYNTH-ITERATOR-SECRET")
+
+
+def test_sensitive_guard_fails_closed_at_depth_limit_plus_one():
+    budget = tushare_common.SensitiveScanBudget(max_depth=3)
+
+    with pytest.raises(ValueError, match="sensitive or unscannable") as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": _nested_value(4)},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("SYNTH-DEPTH-TOKEN",),
+            scan_budget=budget,
+        )
+
+    assert "SYNTH-DEPTH-TOKEN" not in str(exc_info.value)
+
+
+def test_sensitive_guard_fails_closed_at_node_limit_plus_one():
+    budget = tushare_common.SensitiveScanBudget(
+        max_depth=16,
+        max_nodes=4,
+    )
+
+    with pytest.raises(ValueError, match="sensitive or unscannable") as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": ["safe-one", "safe-two"]},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("SYNTH-NODE-TOKEN",),
+            scan_budget=budget,
+        )
+
+    assert "SYNTH-NODE-TOKEN" not in str(exc_info.value)
+
+
+def test_sensitive_guard_fails_closed_on_container_cycle():
+    cycle = []
+    cycle.append(cycle)
+
+    with pytest.raises(ValueError, match="sensitive or unscannable") as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": cycle},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("SYNTH-CYCLE-TOKEN",),
+        )
+
+    assert "SYNTH-CYCLE-TOKEN" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("value", "secret"),
+    [
+        pytest.param(
+            _ExplodingItemsDict({"safe": "value"}),
+            "SYNTH-MAPPING-ITERATION-SECRET",
+            id="mapping-items",
+        ),
+        pytest.param(
+            _ExplodingIterable(),
+            "SYNTH-ITERATOR-SECRET",
+            id="custom-iterator",
+        ),
+    ],
+)
+def test_sensitive_guard_fails_closed_on_traversal_exception(value, secret):
+    with pytest.raises(ValueError, match="sensitive or unscannable") as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": value},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            sensitive_values=("SYNTH-TRAVERSAL-TOKEN",),
+        )
+
+    assert secret not in str(exc_info.value)
+
+
+def test_sensitive_guard_fails_closed_beyond_decode_round_budget():
+    token = "SYNTH/DEEP?VALUE=9"
+    encoded_token = token
+    for _ in range(6):
+        encoded_token = urllib.parse.quote(encoded_token, safe="")
+    budget = tushare_common.SensitiveScanBudget(max_decode_rounds=4)
+
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=f"provider echoed {encoded_token}",
+        sensitive_values=(token,),
+        scan_budget=budget,
+    )
+
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert encoded_token not in outcome.error_message
+
+
+def test_sensitive_guard_fails_closed_beyond_representation_view_budget():
+    token = "SYNTH/VIEW?VALUE=7"
+    encoded_token = urllib.parse.quote(token, safe="")
+    budget = tushare_common.SensitiveScanBudget(max_views=1)
+
+    outcome = tushare_common.ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="provider_error",
+        error_message=f"provider echoed {encoded_token}",
+        sensitive_values=(token,),
+        scan_budget=budget,
+    )
+
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert encoded_token not in outcome.error_message
+
+
+def test_provider_boundary_allows_explicit_budget_for_large_safe_response(
+    monkeypatch,
+):
+    token = "SYNTH-LARGE-RESPONSE-TOKEN"
+    large_safe_value = {
+        "nested": _nested_value(10),
+        "many": [f"safe-{index}" for index in range(40)],
+    }
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": 0,
+            "msg": None,
+            "data": {"fields": ["value"], "items": [[large_safe_value]]},
+        },
+    )
+
+    constrained = tushare_common.tushare_rows_outcome(
+        "daily",
+        token,
+        scan_budget=tushare_common.SensitiveScanBudget(
+            max_depth=4,
+            max_nodes=10,
+        ),
+    )
+    allowed = tushare_common.tushare_rows_outcome(
+        "daily",
+        token,
+        scan_budget=tushare_common.SensitiveScanBudget(
+            max_depth=32,
+            max_nodes=1_000,
+        ),
+    )
+
+    assert constrained.state == "failed"
+    assert constrained.rows == ()
+    assert constrained.error_message == "Tushare response validation failed"
+    assert allowed.state == "success"
+    assert allowed.rows == ({"value": large_safe_value},)
+    assert token not in repr({"constrained": constrained, "allowed": allowed})
+
+    _stub_outcome_response(
+        monkeypatch,
+        {
+            "code": 0,
+            "msg": None,
+            "data": {
+                "fields": ["value"],
+                "items": [[{"deep": _nested_value(10, token)}]],
+            },
+        },
+    )
+    echoed = tushare_common.tushare_rows_outcome(
+        "daily",
+        token,
+        scan_budget=tushare_common.SensitiveScanBudget(
+            max_depth=32,
+            max_nodes=1_000,
+        ),
+    )
+
+    assert echoed.state == "failed"
+    assert echoed.rows == ()
+    assert echoed.error_message == "Tushare response validation failed"
+    assert token not in repr(echoed)
