@@ -12,6 +12,7 @@ from storage.read_model_store import API_TO_TABLE_MAP
 CRONTAB_FILES = (Path("crontab.txt"), Path("cron/crontab.txt"))
 REPOSITORY_CRON_TEMPLATE = Path("cron/crontab.txt")
 FORBIDDEN_ACTIVE_TOKENS = (
+    "P2_financial_daily",
     "P5_hk_us_daily",
     "crypto_collect",
     "pm_collect",

@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import pytest
 
 import collectors.tushare.sync_daily as sync_daily_module
 from collectors.mixins.dedup import DeduplicatorMixin
@@ -288,8 +291,14 @@ def test_collectors_p2_and_p5_remain_explicit_supported_compatibility_tiers() ->
     assert 'if [[ ! " ${SUPPORTED_TIERS[*]} " =~ " ${tier} " ]]' in wrapper
 
 
+@pytest.mark.parametrize(
+    "collector_args",
+    [(), ("--all",)],
+    ids=("no-argument", "all"),
+)
 def test_collectors_default_p4_invocation_filters_to_domestic_apis(
     tmp_path: Path,
+    collector_args: tuple[str, ...],
 ) -> None:
     root = tmp_path / "SharedSignals"
     cron_dir = root / "cron"
@@ -298,19 +307,7 @@ def test_collectors_default_p4_invocation_filters_to_domestic_apis(
     bin_dir.mkdir()
 
     wrapper = cron_dir / "collectors.sh"
-    wrapper_source = COLLECTORS_WRAPPER.read_text(encoding="utf-8")
-    empty_array_expansion = '"${EXTRA_ARGS[@]}"'
-    assert wrapper_source.count(empty_array_expansion) == 1
-    # macOS Bash 3.2 treats an empty array expansion under nounset as unbound.
-    # Normalize only that expansion so the hermetic run reaches argv capture.
-    wrapper.write_text(
-        wrapper_source.replace(
-            empty_array_expansion,
-            '${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}',
-        ),
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
+    shutil.copy2(COLLECTORS_WRAPPER, wrapper)
     (cron_dir / "maintenance_lock.sh").write_text(
         "acquire_sharedsignals_read_model_lock() { :; }\n",
         encoding="utf-8",
@@ -337,7 +334,7 @@ def test_collectors_default_p4_invocation_filters_to_domestic_apis(
         }
     )
     completed = subprocess.run(
-        ["/bin/bash", str(wrapper)],
+        ["/bin/bash", str(wrapper), *collector_args],
         cwd=root,
         env=env,
         capture_output=True,

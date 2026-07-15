@@ -109,8 +109,16 @@ fi
     elif [ "${tier}" = "P4_macro_daily" ]; then
       EXTRA_ARGS=(--only-api "${P4_DOMESTIC_APIS}")
     fi
-    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${RUNNER[@]}" \
-      collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure "${EXTRA_ARGS[@]}"
+    SYNC_COMMAND=(
+      "${RUNNER[@]}"
+      collectors/tushare/sync_daily.py
+      --tier "${tier}"
+      --exit-on-failure
+    )
+    if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
+      SYNC_COMMAND+=("${EXTRA_ARGS[@]}")
+    fi
+    PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${SYNC_COMMAND[@]}"
   done
   echo "[$(date -Iseconds)] OK collectors"
 } >> "${LOG_FILE}" 2>&1
