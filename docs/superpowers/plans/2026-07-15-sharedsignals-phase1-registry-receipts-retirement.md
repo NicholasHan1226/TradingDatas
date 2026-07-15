@@ -514,6 +514,21 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   git commit -m "fix: preserve provider provenance from registry routes"
   ```
 
+  Commit `45444b3` remains in history but failed fresh review because stored event fingerprint reconstruction replaced the canonical row with the decoded provider-claim envelope. For structured `cb_issue` events that dropped the trusted `provider`, `event_type`, and `raw_json` context during replay, causing identical content to append revision 2. It is not final acceptance evidence and must not be amended or rebased away.
+
+- [x] **Step 9: Keep structured event fingerprints symmetric across storage replay**
+
+  Reconstruct stored event fingerprints with the canonical database `provider`, `event_type`, and original `raw_json`. Decoded raw fields may supplement the reconstructed row, but may not replace those trusted fields. Prove the same `cb_issue` row carrying `provider='spoof-source'` writes once, replays with zero writes, remains at revision 1, retains the provider claim in raw provenance, and keeps the same trusted event identity. Then change a factual field such as `issue_price` and prove it writes once as revision 2 without changing `event_id`, canonical provider, or the preserved row-level claim.
+
+  ```bash
+  git add -- \
+    storage/read_model_store.py \
+    tests/test_read_model_store.py \
+    docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md
+  git diff --cached --name-status
+  git commit -m "fix: keep structured event replay idempotent"
+  ```
+
 ---
 
 ## Task 6: Preserve provider call outcomes before row conversion

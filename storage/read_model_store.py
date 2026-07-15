@@ -920,22 +920,28 @@ def _enrich_futures_intraday_from_assets(conn, row):
 
 def _stored_event_fingerprint(row: sqlite3.Row) -> str:
     stored = {
-        "title": row[1],
-        "content": row[2],
-        "url": row[3],
-        "source": row[4],
-        "symbol": row[5],
-        "event_time": row[6],
-        "trade_date": row[7],
+        "provider": row[1],
+        "event_type": row[2],
+        "title": row[3],
+        "content": row[4],
+        "url": row[5],
+        "source": row[6],
+        "symbol": row[7],
+        "event_time": row[8],
+        "trade_date": row[9],
+        "raw_json": row[10],
     }
     try:
-        raw = json.loads(row[8] or "{}")
+        raw = json.loads(row[10] or "{}")
     except (TypeError, ValueError):
         raw = {}
     if isinstance(raw, dict):
+        reconstructed = dict(raw)
         for key, value in stored.items():
-            raw.setdefault(key, value)
-        stored = raw
+            reconstructed.setdefault(key, value)
+        for canonical_key in ("provider", "event_type", "raw_json"):
+            reconstructed[canonical_key] = stored[canonical_key]
+        stored = reconstructed
     return event_content_fingerprint(stored)
 
 
@@ -946,7 +952,8 @@ def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> boo
     fingerprint = event_content_fingerprint(row)
     latest = conn.execute(
         """
-        SELECT revision, title, content, url, source, symbol, event_time, trade_date, raw_json
+        SELECT revision, provider, event_type, title, content, url, source,
+               symbol, event_time, trade_date, raw_json
         FROM market_events
         WHERE event_id = ?
         ORDER BY revision DESC

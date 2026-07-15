@@ -598,6 +598,85 @@ def test_cb_issue_replay_is_idempotent_and_content_change_is_revision(tmp_path: 
     assert rows == [(rows[0][0], 1), (rows[0][0], 2)]
 
 
+def test_cb_issue_provider_claim_replay_keeps_one_canonical_revision(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "ts_code": "123456.SZ",
+        "ann_date": "20260713",
+        "issue_size": 10.0,
+        "issue_price": 100.0,
+        "provider": "spoof-source",
+    }
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [row],
+        source_name="cb_issue_provider_claim_replay_test",
+    ) == 1
+    first_stored = _fetchone(
+        db_path,
+        "SELECT revision, event_id, provider, event_type, raw_json "
+        "FROM market_events",
+    )
+    assert first_stored[:4] == (
+        1,
+        first_stored[1],
+        "tushare_cb_issue",
+        "cb_issue",
+    )
+    assert json.loads(first_stored[4])["_sharedsignals_provenance"][
+        "provider_claim"
+    ] == "spoof-source"
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [row],
+        source_name="cb_issue_provider_claim_replay_test",
+    ) == 0
+    assert _count_rows(db_path, "market_events") == 1
+    assert _fetchone(
+        db_path,
+        "SELECT revision, event_id, provider, event_type, raw_json "
+        "FROM market_events",
+    ) == first_stored
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "cb_issue",
+        [{**row, "issue_price": 101.0}],
+        source_name="cb_issue_provider_claim_replay_test",
+    ) == 1
+    conn = sqlite3.connect(db_path)
+    try:
+        revisions = conn.execute(
+            "SELECT revision, event_id, provider, raw_json "
+            "FROM market_events ORDER BY revision"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [item[:3] for item in revisions] == [
+        (1, first_stored[1], "tushare_cb_issue"),
+        (2, first_stored[1], "tushare_cb_issue"),
+    ]
+    provenance = [json.loads(item[3]) for item in revisions]
+    assert [
+        item["_sharedsignals_provenance"]["provider_claim"]
+        for item in provenance
+    ] == ["spoof-source", "spoof-source"]
+    assert [item["raw_payload"]["issue_price"] for item in provenance] == [
+        100.0,
+        101.0,
+    ]
+
+
 def test_cb_issue_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
