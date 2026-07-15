@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import sqlite3
@@ -22,6 +23,12 @@ from storage.event_identity import (
     event_content_fingerprint,
     source_family,
     stable_event_id,
+)
+from storage.ingest_receipts import (
+    IngestContext,
+    IngestCounts,
+    IngestResult,
+    insert_ingest_receipt,
 )
 from storage.schema_contract import get_table, table_primary_keys
 from env_bootstrap import env_int
@@ -853,7 +860,10 @@ def _stored_event_fingerprint(row: sqlite3.Row) -> str:
     return event_content_fingerprint(stored)
 
 
-def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
+def _assign_event_revision_outcome(
+    conn: sqlite3.Connection,
+    row: dict[str, Any],
+) -> str:
     provider = str(row.get("provider") or "")
     event_type = str(row.get("event_type") or "event")
     event_id = stable_event_id(provider, event_type, row)
@@ -869,7 +879,7 @@ def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> boo
         (event_id,),
     ).fetchone()
     if latest is not None and _stored_event_fingerprint(latest) == fingerprint:
-        return False
+        return "unchanged"
 
     revision = int(latest[0] or 0) + 1 if latest is not None else 1
     row["event_id"] = event_id
@@ -878,7 +888,11 @@ def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> boo
     row["event_hash"] = hashlib.sha256(
         f"{event_id}|{revision}|{fingerprint}".encode()
     ).hexdigest()
-    return True
+    return "updated" if latest is not None else "inserted"
+
+
+def _assign_event_revision(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
+    return _assign_event_revision_outcome(conn, row) != "unchanged"
 
 
 def _flush_chunk(conn, sql, chunk):
@@ -1080,3 +1094,293 @@ def ingest_rows_to_sqlite(
                     max_transaction_rows=max_transaction_rows,
                 )
         return rows_written
+
+
+def _validated_receipt_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    if isinstance(rows, (str, bytes)) or not isinstance(rows, Sequence):
+        raise TypeError("rows must be a non-string sequence of mappings")
+    clean_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise TypeError("every row must be a mapping")
+        clean_rows.append(dict(row))
+    if not clean_rows:
+        raise ValueError("empty provider results require a terminal empty receipt")
+    return clean_rows
+
+
+def _validated_transaction_limit(max_transaction_rows: int | None) -> int:
+    if max_transaction_rows is None:
+        return MAX_TRANSACTION_ROWS
+    if isinstance(max_transaction_rows, bool) or not isinstance(
+        max_transaction_rows, int
+    ):
+        raise TypeError("max_transaction_rows must be an integer or None")
+    if max_transaction_rows < 0:
+        raise ValueError("max_transaction_rows must be non-negative")
+    return max_transaction_rows
+
+
+def _receipt_row_chunks(
+    rows: Sequence[dict[str, Any]],
+    max_transaction_rows: int,
+) -> list[list[dict[str, Any]]]:
+    if max_transaction_rows == 0:
+        return [list(rows)]
+    return [
+        list(rows[start : start + max_transaction_rows])
+        for start in range(0, len(rows), max_transaction_rows)
+    ]
+
+
+def _receipt_payload_fingerprint(rows: Sequence[Mapping[str, Any]]) -> str:
+    payload = json.dumps(
+        [dict(row) for row in rows],
+        ensure_ascii=False,
+        allow_nan=False,
+        default=str,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _receipt_insert_statement(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    api_name: str,
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[list[str], list[str], str]:
+    target_columns = _table_columns(conn, table)
+    if not target_columns:
+        raise RuntimeError(f"sqlite table does not exist: {table}")
+
+    row_columns: list[str] = []
+    seen_columns: set[str] = set()
+    for row in rows:
+        for column in row:
+            normalized = str(column)
+            if normalized not in seen_columns:
+                row_columns.append(normalized)
+                seen_columns.add(normalized)
+    if table == "market_factors":
+        columns = [
+            column for column in _FACTOR_INSERT_COLUMNS if column in target_columns
+        ]
+    else:
+        columns = _columns_for_insert(table, row_columns, target_columns, api_name)
+    if not columns:
+        raise RuntimeError(
+            f"no matching sqlite columns for table={table} api_name={api_name}"
+        )
+
+    primary_keys = [
+        column
+        for column in table_primary_keys().get(table, [])
+        if column in target_columns
+    ]
+    for primary_key in primary_keys:
+        if primary_key not in columns:
+            columns.append(primary_key)
+    return (
+        columns,
+        _required_columns(table, target_columns),
+        _insert_sql(table, columns, primary_keys),
+    )
+
+
+def _write_receipt_chunk(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    api_name: str,
+    rows: Sequence[Mapping[str, Any]],
+    source_path: Path,
+    columns: Sequence[str],
+    required_columns: Sequence[str],
+    sql: str,
+) -> IngestCounts:
+    values_to_write: list[list[Any]] = []
+    validated = 0
+    rejected = 0
+    inserted = 0
+    updated = 0
+    unchanged = 0
+
+    for row_number, provider_row in enumerate(rows, start=1):
+        canonical_rows = (
+            _factor_rows(dict(provider_row), api_name, source_path)
+            if table == "market_factors"
+            else [_canonical_row(table, dict(provider_row), api_name, source_path)]
+        )
+        provider_row_validated = False
+        for canonical_row in canonical_rows:
+            if table == "market_bars_intraday" and api_name == "rt_fut_min":
+                canonical_row = _enrich_futures_intraday_from_assets(
+                    conn, canonical_row
+                )
+            if table == "market_events":
+                outcome = _assign_event_revision_outcome(conn, canonical_row)
+                if outcome == "unchanged":
+                    provider_row_validated = True
+                    unchanged += 1
+                    continue
+                values = _row_values(
+                    canonical_row,
+                    columns,
+                    required_columns,
+                    source_path,
+                    row_number,
+                )
+                if values is None:
+                    continue
+                provider_row_validated = True
+                _flush_chunk(conn, sql, [values])
+                if outcome == "inserted":
+                    inserted += 1
+                else:
+                    updated += 1
+            else:
+                values = _row_values(
+                    canonical_row,
+                    columns,
+                    required_columns,
+                    source_path,
+                    row_number,
+                )
+                if values is None:
+                    continue
+                provider_row_validated = True
+                values_to_write.append(values)
+
+        if provider_row_validated:
+            validated += 1
+        else:
+            rejected += 1
+
+    if values_to_write:
+        _flush_chunk(conn, sql, values_to_write)
+    if validated == 0:
+        raise ValueError("no provider rows passed read-model validation")
+
+    exact_event_outcomes = table == "market_events"
+    return IngestCounts(
+        returned=len(rows),
+        validated=validated,
+        inserted=inserted if exact_event_outcomes else None,
+        updated=updated if exact_event_outcomes else None,
+        unchanged=unchanged if exact_event_outcomes else None,
+        rejected=rejected,
+        committed=validated,
+        count_semantics=(
+            "event_revision_outcomes_exact"
+            if exact_event_outcomes
+            else "generic_upsert_outcomes_unavailable"
+        ),
+    )
+
+
+def ingest_rows_with_receipts(
+    db_path: Path,
+    table: str,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    context: IngestContext,
+    source_name: str | None = None,
+    max_transaction_rows: int | None = None,
+) -> IngestResult:
+    """Commit provider rows and one success receipt per real SQLite transaction."""
+
+    if not isinstance(db_path, Path):
+        raise TypeError("db_path must be pathlib.Path")
+    if not isinstance(context, IngestContext):
+        raise TypeError("context must be IngestContext")
+    if not db_path.exists():
+        raise FileNotFoundError(f"sqlite db not found: {db_path}")
+
+    clean_rows = _validated_receipt_rows(rows)
+    transaction_limit = _validated_transaction_limit(max_transaction_rows)
+    source_path = Path(source_name or f"{context.provider_api}_direct")
+    receipt_ids: list[str] = []
+    aggregate_counts: list[IngestCounts] = []
+
+    with _read_model_lock(db_path):
+        conn = sqlite3.connect(str(db_path), timeout=30)
+        try:
+            _prepare_sqlite_connection(conn)
+            columns, required_columns, sql = _receipt_insert_statement(
+                conn,
+                table=table,
+                api_name=context.provider_api,
+                rows=clean_rows,
+            )
+            for transaction_index, chunk in enumerate(
+                _receipt_row_chunks(clean_rows, transaction_limit)
+            ):
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                    counts = _write_receipt_chunk(
+                        conn,
+                        table=table,
+                        api_name=context.provider_api,
+                        rows=chunk,
+                        source_path=source_path,
+                        columns=columns,
+                        required_columns=required_columns,
+                        sql=sql,
+                    )
+                    receipt_id = insert_ingest_receipt(
+                        conn,
+                        context=context,
+                        target_table=table,
+                        transaction_index=transaction_index,
+                        status="success",
+                        counts=counts,
+                        errors=(),
+                        payload_fingerprint=_receipt_payload_fingerprint(chunk),
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                aggregate_counts.append(counts)
+                receipt_ids.append(receipt_id)
+        finally:
+            conn.close()
+
+    exact_event_outcomes = table == "market_events"
+    result_counts = IngestCounts(
+        returned=sum(count.returned for count in aggregate_counts),
+        validated=sum(count.validated for count in aggregate_counts),
+        inserted=(
+            sum(count.inserted or 0 for count in aggregate_counts)
+            if exact_event_outcomes
+            else None
+        ),
+        updated=(
+            sum(count.updated or 0 for count in aggregate_counts)
+            if exact_event_outcomes
+            else None
+        ),
+        unchanged=(
+            sum(count.unchanged or 0 for count in aggregate_counts)
+            if exact_event_outcomes
+            else None
+        ),
+        rejected=sum(count.rejected for count in aggregate_counts),
+        committed=sum(count.committed for count in aggregate_counts),
+        count_semantics=(
+            "event_revision_outcomes_exact"
+            if exact_event_outcomes
+            else "generic_upsert_outcomes_unavailable"
+        ),
+    )
+    return IngestResult(
+        status="success",
+        counts=result_counts,
+        receipt_ids=tuple(receipt_ids),
+        errors=(),
+    )
