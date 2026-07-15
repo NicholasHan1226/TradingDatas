@@ -12,9 +12,11 @@ PYTHON_BIN="${SHAREDSIGNALS_VENV_PYTHON:-/opt/sharedsignals/venv/bin/python3}"
 LOG_DIR="${ROOT}/logs/cron"
 LOCK_DIR="${ROOT}/logs/locks"
 LOG_FILE="${LOG_DIR}/collectors.log"
+P4_DOMESTIC_APIS="cn_cpi,cn_pmi,cn_m,cn_ppi,shibor,shibor_lpr,cn_gdp,sf_month,index_dailybasic,repo_daily"
 SUPPORTED_TIERS=(
   P0_trading_5min
   P1_eod_daily
+  P2_financial_daily
   P3_reference_daily
   P4_macro_daily
   P5_hk_us_daily
@@ -104,6 +106,8 @@ fi
       else
         RUNNER=(nice -n 10 "${PYTHON_BIN}")
       fi
+    elif [ "${tier}" = "P4_macro_daily" ]; then
+      EXTRA_ARGS=(--only-api "${P4_DOMESTIC_APIS}")
     fi
     PYTHONPATH="${ROOT}" timeout "${TIMEOUT}" "${RUNNER[@]}" \
       collectors/tushare/sync_daily.py --tier "${tier}" --exit-on-failure "${EXTRA_ARGS[@]}"

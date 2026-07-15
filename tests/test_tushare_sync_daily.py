@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import sqlite3
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +36,18 @@ DOMESTIC_BETA_DEFAULT_TIERS = (
     "P4_macro_daily",
     "P6_other_daily",
 )
+DOMESTIC_P4_APIS = (
+    "cn_cpi",
+    "cn_pmi",
+    "cn_m",
+    "cn_ppi",
+    "shibor",
+    "shibor_lpr",
+    "cn_gdp",
+    "sf_month",
+    "index_dailybasic",
+    "repo_daily",
+)
 
 
 def _shell_array(script: str, name: str) -> tuple[str, ...]:
@@ -43,6 +57,11 @@ def _shell_array(script: str, name: str) -> tuple[str, ...]:
     )
     assert match is not None, f"missing shell array: {name}"
     return tuple(shlex.split(match.group(1)))
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
 
 
 def test_resolve_api_window_uses_api_lookback_days() -> None:
@@ -250,16 +269,95 @@ def test_collectors_default_and_all_resolve_to_domestic_beta_without_p5() -> Non
     assert wrapper.count('TIERS=("${DEFAULT_TIERS[@]}")') == 2
 
 
-def test_collectors_explicit_p5_tier_remains_supported_for_compatibility() -> None:
+def test_collectors_p2_and_p5_remain_explicit_supported_compatibility_tiers() -> None:
     wrapper = COLLECTORS_WRAPPER.read_text(encoding="utf-8")
     supported_tiers = _shell_array(wrapper, "SUPPORTED_TIERS")
+    default_tiers = _shell_array(wrapper, "DEFAULT_TIERS")
 
     assert supported_tiers == (
-        *DOMESTIC_BETA_DEFAULT_TIERS[:-1],
+        "P0_trading_5min",
+        "P1_eod_daily",
+        "P2_financial_daily",
+        "P3_reference_daily",
+        "P4_macro_daily",
         "P5_hk_us_daily",
-        DOMESTIC_BETA_DEFAULT_TIERS[-1],
+        "P6_other_daily",
     )
+    assert "P2_financial_daily" not in default_tiers
+    assert "P5_hk_us_daily" not in default_tiers
     assert 'if [[ ! " ${SUPPORTED_TIERS[*]} " =~ " ${tier} " ]]' in wrapper
+
+
+def test_collectors_default_p4_invocation_filters_to_domestic_apis(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "SharedSignals"
+    cron_dir = root / "cron"
+    bin_dir = root / "test-bin"
+    cron_dir.mkdir(parents=True)
+    bin_dir.mkdir()
+
+    wrapper = cron_dir / "collectors.sh"
+    wrapper_source = COLLECTORS_WRAPPER.read_text(encoding="utf-8")
+    empty_array_expansion = '"${EXTRA_ARGS[@]}"'
+    assert wrapper_source.count(empty_array_expansion) == 1
+    # macOS Bash 3.2 treats an empty array expansion under nounset as unbound.
+    # Normalize only that expansion so the hermetic run reaches argv capture.
+    wrapper.write_text(
+        wrapper_source.replace(
+            empty_array_expansion,
+            '${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}',
+        ),
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    (cron_dir / "maintenance_lock.sh").write_text(
+        "acquire_sharedsignals_read_model_lock() { :; }\n",
+        encoding="utf-8",
+    )
+    _write_executable(bin_dir / "flock", "#!/bin/bash\nexit 0\n")
+    _write_executable(
+        bin_dir / "timeout",
+        "#!/bin/bash\nshift\nexec \"$@\"\n",
+    )
+    capture_file = root / "captured-args.txt"
+    probe = bin_dir / "python-probe"
+    _write_executable(
+        probe,
+        "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$CAPTURE_FILE\"\n",
+    )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "CAPTURE_FILE": str(capture_file),
+            "SHAREDSIGNALS_CRON_USER": "__missing_sharedsignals_user__",
+            "SHAREDSIGNALS_VENV_PYTHON": str(probe),
+        }
+    )
+    completed = subprocess.run(
+        ["/bin/bash", str(wrapper)],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    log_path = root / "logs" / "cron" / "collectors.log"
+    log_text = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+    assert completed.returncode == 0, completed.stderr or log_text
+
+    calls = capture_file.read_text(encoding="utf-8").splitlines()
+    p4_args = shlex.split(next(call for call in calls if "P4_macro_daily" in call))
+    assert "--only-api" in p4_args, p4_args
+    only_api_index = p4_args.index("--only-api")
+    only_api = p4_args[only_api_index + 1]
+
+    assert tuple(only_api.split(",")) == DOMESTIC_P4_APIS
+    config = load_config(Path("collectors/tushare/config.yaml"))
+    selected = filter_apis(config["priorities"]["P4_macro_daily"], only_api)
+    assert tuple(api["api_name"] for api in selected) == DOMESTIC_P4_APIS
 
 
 def test_sync_tier_marks_non_empty_rows_zero_sqlite_writes_failed(tmp_path: Path, monkeypatch) -> None:

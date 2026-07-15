@@ -156,11 +156,17 @@ This plan intentionally stops at the data-platform foundation. The following pla
 **Interfaces:**
 
 ```bash
-SUPPORTED_TIERS=(P0_intraday P1_daily P3_weekly P4_monthly P5_hk_us_daily P6_events)
-DEFAULT_TIERS=(P0_intraday P1_daily P3_weekly P4_monthly P6_events)
+SUPPORTED_TIERS=(P0_trading_5min P1_eod_daily P2_financial_daily P3_reference_daily P4_macro_daily P5_hk_us_daily P6_other_daily)
+DEFAULT_TIERS=(P0_trading_5min P1_eod_daily P3_reference_daily P4_macro_daily P6_other_daily)
+P4_DOMESTIC_APIS=cn_cpi,cn_pmi,cn_m,cn_ppi,shibor,shibor_lpr,cn_gdp,sf_month,index_dailybasic,repo_daily
 ```
 
-No-argument and `--all` execution use `DEFAULT_TIERS`. Explicit `--tier P5_hk_us_daily` remains recognized for compatibility but is not scheduled or run by default.
+No-argument and `--all` execution use `DEFAULT_TIERS`. Explicit
+`--tier P2_financial_daily` and `--tier P5_hk_us_daily` remain recognized for
+future horizontal compatibility, but neither is scheduled or run by default.
+Default P4 execution must pass the exact `P4_DOMESTIC_APIS` value through
+`--only-api`; the config may retain foreign P4 interfaces for future capability,
+but default domestic Beta execution must not call them.
 
 - [ ] **Step 1: Add failing schedule-scope assertions**
 
@@ -180,7 +186,11 @@ No-argument and `--all` execution use `DEFAULT_TIERS`. Explicit `--tier P5_hk_us
   )
   ```
 
-  In `tests/test_tushare_sync_daily.py`, add assertions that default and `--all` tier resolution exclude P5, while explicit validation still accepts P5.
+  In `tests/test_tushare_sync_daily.py`, add assertions that default and `--all`
+  tier resolution exclude P2 and P5 while explicit validation accepts both.
+  Execute the wrapper hermetically and assert that the default P4 invocation
+  passes `--only-api` with exactly `P4_DOMESTIC_APIS` and resolves only those ten
+  APIs from the existing config.
 
 - [ ] **Step 2: Run the new tests and confirm they fail**
 
@@ -190,13 +200,20 @@ No-argument and `--all` execution use `DEFAULT_TIERS`. Explicit `--tier P5_hk_us
     tests/test_tushare_sync_daily.py
   ```
 
-  Expected: fail because the existing target template/default tier list still activates P5 and other retired jobs.
+  Expected: fail because the existing target template/default tier list still
+  activates P5 and other retired jobs, P2 is not separated as explicit-only,
+  and default P4 has no domestic `--only-api` filter.
 
 - [ ] **Step 3: Change the target template and collector defaults**
 
   Remove active P5, crypto, prediction-market, opening-gate, real-email, patrol, watchdog, and proxy-relay commands from `cron/crontab.txt`. Keep domestic Tushare, CN futures, events, external API probe, and temporarily the read-only governance/capability checks. Leave P2, DuckDB, SQLite maintenance, and SW2021 commented.
 
-  Split `SUPPORTED_TIERS` and `DEFAULT_TIERS` in `cron/collectors.sh`. Do not edit the root `crontab.txt`, live crontab, wrappers, systemd, or production.
+  Split `SUPPORTED_TIERS` and `DEFAULT_TIERS` in `cron/collectors.sh`. Keep P2
+  and P5 supported for explicit compatibility but exclude both from defaults.
+  For P4, append `--only-api` with exactly `P4_DOMESTIC_APIS`; do not edit the
+  provider config because the excluded foreign interfaces are retained for
+  future horizontal capability. Do not edit the root `crontab.txt`, live
+  crontab, other wrappers, systemd, or production.
 
 - [ ] **Step 4: Update operational scope documentation**
 
@@ -1016,6 +1033,10 @@ def rebuild_interface_runtime_cache(
 
 - The five verified obsolete documents and the unused impact helper are removed from the repository with Git rollback available.
 - The repository target schedule excludes P5, crypto, prediction markets, opening gate, real email, patrol/watchdog, proxy relay, and DuckDB, while production remains untouched.
+- P2 and P5 remain explicit supported compatibility tiers but are absent from
+  defaults and active target scheduling; default P4 passes the exact ten-API
+  domestic allowlist while foreign P4 config entries remain available for
+  future horizontal capability.
 - One provider-neutral registry is the sole declarative authority for the current Tushare compatibility surface.
 - Phase 1 domestic/excluded/locked classifications are explicit and truthful; configured does not imply active.
 - Provider failures cannot collapse into empty results.
