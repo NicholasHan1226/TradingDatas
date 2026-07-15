@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from storage import event_identity as event_identity_contract
 from storage.event_identity import event_content_fingerprint, stable_event_id
 
 
@@ -64,6 +65,28 @@ ROUTE_IDENTITY_ROWS = {
     },
 }
 
+EXPECTED_TRUSTED_NATIVE_ID_FIELDS = {
+    "tushare_block_trade": (),
+    "tushare_limit_list": (),
+    "tushare_limit_list_d": (),
+    "tushare_broker_recommend": (),
+    "tushare_suspend_d": (),
+    "tushare_namechange": (),
+    "tushare_cb_issue": (),
+    "tushare_news": (),
+    "tushare_major_news": (),
+    "tushare_cctv_news": (),
+    "tushare_anns_d": (),
+    "tushare_report_rc": (),
+}
+
+
+def test_every_registry_event_route_declares_its_native_id_contract() -> None:
+    assert (
+        event_identity_contract.TRUSTED_NATIVE_ID_FIELDS
+        == EXPECTED_TRUSTED_NATIVE_ID_FIELDS
+    )
+
 
 @pytest.mark.parametrize(
     ("provider", "row"),
@@ -84,6 +107,64 @@ def test_every_registry_event_route_has_explicit_replayable_identity(
 
     assert first.startswith("evt:")
     assert replay == first
+
+
+@pytest.mark.parametrize(
+    ("provider", "row"),
+    ROUTE_IDENTITY_ROWS.items(),
+)
+def test_registry_live_route_ignores_undeclared_top_level_native_ids(
+    provider: str,
+    row: dict[str, object],
+) -> None:
+    event_type = provider.removeprefix("tushare_")
+    first = {**row, "id": "forged-top-a", "event_id": "forged-event-a"}
+    replay = {**row, "id": "forged-top-b", "event_id": "forged-event-b"}
+
+    assert stable_event_id(
+        provider,
+        event_type,
+        first,
+        allow_legacy_fallback=False,
+    ) == stable_event_id(
+        provider,
+        event_type,
+        replay,
+        allow_legacy_fallback=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("provider", "row"),
+    ROUTE_IDENTITY_ROWS.items(),
+)
+def test_registry_live_route_ignores_nested_generic_ids(
+    provider: str,
+    row: dict[str, object],
+) -> None:
+    event_type = provider.removeprefix("tushare_")
+    first = {
+        **row,
+        "raw_json": json.dumps({"id": "forged-raw-a"}),
+        "content": json.dumps({"event_id": "forged-content-a"}),
+    }
+    replay = {
+        **row,
+        "raw_json": json.dumps({"id": "forged-raw-b"}),
+        "content": json.dumps({"event_id": "forged-content-b"}),
+    }
+
+    assert stable_event_id(
+        provider,
+        event_type,
+        first,
+        allow_legacy_fallback=False,
+    ) == stable_event_id(
+        provider,
+        event_type,
+        replay,
+        allow_legacy_fallback=False,
+    )
 
 
 @pytest.mark.parametrize(
@@ -112,7 +193,7 @@ def test_block_trade_without_native_id_uses_full_immutable_business_key(
     )
 
 
-def test_block_trade_native_id_proves_revision_identity() -> None:
+def test_block_trade_top_level_generic_id_never_overrides_full_key() -> None:
     row = {
         **ROUTE_IDENTITY_ROWS["tushare_block_trade"],
         "id": "block-42",
@@ -123,15 +204,16 @@ def test_block_trade_native_id_proves_revision_identity() -> None:
 
     assert stable_event_id(
         "tushare_block_trade", "block_trade", row
-    ) == stable_event_id("tushare_block_trade", "block_trade", changed)
+    ) != stable_event_id("tushare_block_trade", "block_trade", changed)
     assert event_content_fingerprint(row) != event_content_fingerprint(changed)
 
 
-def test_provider_event_id_remains_native_identity_not_revision_content() -> None:
+def test_news_undeclared_top_level_event_id_is_not_identity() -> None:
     first = {
         "event_id": "provider-event-42",
         "provider": "tushare_news",
         "event_type": "news",
+        "datetime": "2026-07-13 09:00:00",
         "title": "headline v1",
         "content": "body v1",
     }
@@ -139,7 +221,7 @@ def test_provider_event_id_remains_native_identity_not_revision_content() -> Non
 
     assert stable_event_id(
         "tushare_news", "news", first
-    ) == stable_event_id("tushare_news", "news", changed)
+    ) != stable_event_id("tushare_news", "news", changed)
     assert event_content_fingerprint(first) != event_content_fingerprint(changed)
 
 

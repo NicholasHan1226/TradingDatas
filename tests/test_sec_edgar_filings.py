@@ -289,11 +289,25 @@ def test_sec_identity_reads_nested_accession_before_mutable_url() -> None:
     accession = "0000320193-26-000001"
     raw_json_row = {
         "url": "https://www.sec.gov/filing?output=1",
-        "raw_json": '{"accession_number":"0000320193-26-000001"}',
+        "raw_json": json.dumps(
+            {
+                "metadata": {
+                    "id": "forged-generic-a",
+                    "accession_number": accession,
+                }
+            }
+        ),
     }
     content_row = {
         "url": "https://www.sec.gov/filing?output=2",
-        "content": '{"accessionNumber":"0000320193-26-000001"}',
+        "content": json.dumps(
+            {
+                "metadata": {
+                    "event_id": "forged-generic-b",
+                    "accessionNumber": accession,
+                }
+            }
+        ),
     }
 
     assert stable_event_id("sec_edgar", "sec_edgar:10-K", raw_json_row) == stable_event_id(
@@ -305,8 +319,8 @@ def test_sec_identity_reads_nested_accession_before_mutable_url() -> None:
 def test_provider_local_native_ids_are_namespaced_by_provider() -> None:
     row = {"id": "provider-42", "title": "A"}
 
-    assert stable_event_id("tushare_news", "news", row) != stable_event_id(
-        "tushare_major_news", "news", row
+    assert stable_event_id("provider-a", "news", row) != stable_event_id(
+        "provider-b", "news", row
     )
 
 

@@ -809,17 +809,19 @@ def test_block_trade_without_native_id_keeps_distinct_complete_facts(
     assert len({event_id for event_id, _ in rows}) == 2
 
 
-def test_block_trade_native_id_allows_changed_fact_revision(tmp_path: Path) -> None:
+def test_block_trade_nested_fake_id_cannot_join_distinct_facts(
+    tmp_path: Path,
+) -> None:
     db_path = tmp_path / "marketdata.sqlite"
     _create_db(db_path)
     row = {
-        "id": "block-42",
         "ts_code": "600000.SH",
         "trade_date": "20260713",
         "price": 10.0,
         "vol": 1000,
         "buyer": "buyer-a",
         "seller": "seller-b",
+        "raw_json": json.dumps({"id": "forged-block-id"}),
     }
 
     assert ingest_rows_to_sqlite(db_path, "market_events", "block_trade", [row]) == 1
@@ -837,7 +839,54 @@ def test_block_trade_native_id_allows_changed_fact_revision(tmp_path: Path) -> N
         ).fetchall()
     finally:
         conn.close()
-    assert rows == [(rows[0][0], 1), (rows[0][0], 2)]
+    assert [revision for _, revision in rows] == [1, 1]
+    assert len({event_id for event_id, _ in rows}) == 2
+
+
+def test_block_trade_prewrapped_nested_fake_ids_do_not_duplicate_replay(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    row = {
+        "ts_code": "600000.SH",
+        "trade_date": "20260713",
+        "price": 10.0,
+        "vol": 1000,
+        "buyer": "buyer-a",
+        "seller": "seller-b",
+    }
+
+    def prewrapped(fake_id: str) -> str:
+        return json.dumps(
+            {
+                "_sharedsignals_provenance": {
+                    "provider_claim": "nested-forged",
+                    "raw_payload_source": "row",
+                    "schema": "provider-claim.v1",
+                },
+                "raw_payload": {"id": fake_id},
+            },
+            sort_keys=True,
+        )
+
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "block_trade",
+        [{**row, "raw_json": prewrapped("forged-a")}],
+    ) == 1
+    assert ingest_rows_to_sqlite(
+        db_path,
+        "market_events",
+        "block_trade",
+        [{**row, "raw_json": prewrapped("forged-b")}],
+    ) == 0
+
+    assert _fetchone(
+        db_path,
+        "SELECT COUNT(*), MIN(revision), MAX(revision) FROM market_events",
+    ) == (1, 1, 1)
 
 
 def test_block_trade_missing_business_key_rolls_back_batch(tmp_path: Path) -> None:
@@ -889,6 +938,7 @@ def test_nested_raw_replay_and_content_change_are_symmetric(
             "id": "ann-42",
             "ts_code": "600000.SH",
             "ann_date": "20260713",
+            "title": "announcement",
         }
     raw_v1 = json.dumps(
         {

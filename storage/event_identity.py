@@ -18,10 +18,9 @@ NATIVE_ID_FIELDS = (
 )
 
 # All registry routes that write ``market_events`` have an explicit fallback
-# identity. Native IDs and canonical URLs take priority unless a route is listed
-# in ``COMPOSITE_ONLY_IDENTITIES``. The block-trade key deliberately contains
-# every provider fact that identifies one trade: without a provider-native ID,
-# no narrower subset proves that two changed rows are the same logical event.
+# identity. Only route-declared, top-level native IDs may take priority over it.
+# The block-trade key deliberately contains every provider fact that identifies
+# one trade: no narrower subset proves that two changed rows are the same event.
 PROVIDER_COMPOSITE_IDENTITY_FIELDS = {
     "tushare_block_trade": (
         ("ts_code", "trade_date", "price", "vol", "buyer", "seller"),
@@ -51,6 +50,35 @@ PROVIDER_COMPOSITE_IDENTITY_FIELDS = {
         ("ts_code", "report_date", "report_title"),
         ("ts_code", "report_date", "org_name", "author_name"),
     ),
+}
+
+# Provider contracts for the twelve registered live event routes. An empty
+# tuple is deliberate: the current Tushare response schemas expose no provider
+# native event ID for these routes. In particular, a block-trade ``id`` is not
+# a Tushare field and can never replace its six-field business key.
+TRUSTED_NATIVE_ID_FIELDS = {
+    "tushare_block_trade": (),
+    "tushare_limit_list": (),
+    "tushare_limit_list_d": (),
+    "tushare_broker_recommend": (),
+    "tushare_suspend_d": (),
+    "tushare_namechange": (),
+    "tushare_cb_issue": (),
+    "tushare_news": (),
+    "tushare_major_news": (),
+    "tushare_cctv_news": (),
+    "tushare_anns_d": (),
+    "tushare_report_rc": (),
+}
+
+# Non-registry sources can declare their own provider-native fields and the
+# payload containers in which the source contract places them. This is narrow
+# by design: generic nested ``id`` / ``event_id`` claims are never trusted.
+SOURCE_NATIVE_ID_FIELDS = {
+    "sec_edgar": ("accessionNumber", "accession_number"),
+}
+SOURCE_NATIVE_ID_PAYLOAD_FIELDS = {
+    "sec_edgar": ("raw_json", "content"),
 }
 
 EXPLICIT_ROUTE_IDENTITIES = frozenset(PROVIDER_COMPOSITE_IDENTITY_FIELDS)
@@ -225,15 +253,44 @@ def _identity_sources(row: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return sources
 
 
-def _native_identity(row: Mapping[str, Any]) -> str:
-    for source in _identity_sources(row):
-        for key in NATIVE_ID_FIELDS:
-            value = str(source.get(key) or "").strip()
-            if key == "event_id" and value.startswith("evt:"):
-                continue
-            if value:
-                return value
+def _native_value(row: Mapping[str, Any], fields: tuple[str, ...]) -> str:
+    for key in fields:
+        value = str(row.get(key) or "").strip()
+        if key == "event_id" and value.startswith("evt:"):
+            continue
+        if value:
+            return value
     return ""
+
+
+def _native_identity(provider: str, row: Mapping[str, Any]) -> str:
+    normalized_provider = _normalized_provider(provider)
+    route_fields = TRUSTED_NATIVE_ID_FIELDS.get(normalized_provider)
+    if route_fields is not None:
+        # Registered live routes trust only fields from their top-level
+        # provider response contract. Raw/content provenance cannot add one.
+        return _native_value(row, route_fields)
+
+    source_fields = SOURCE_NATIVE_ID_FIELDS.get(normalized_provider)
+    if source_fields is not None:
+        native = _native_value(row, source_fields)
+        if native:
+            return native
+        for payload_field in SOURCE_NATIVE_ID_PAYLOAD_FIELDS.get(
+            normalized_provider, ()
+        ):
+            decoded = _decoded_mapping(row.get(payload_field))
+            if decoded is None:
+                continue
+            for source in _nested_mappings(decoded):
+                native = _native_value(source, source_fields)
+                if native:
+                    return native
+        return ""
+
+    # Compatibility for unregistered providers is top-level only. Recursive
+    # generic native-ID discovery would let provenance redefine identity.
+    return _native_value(row, NATIVE_ID_FIELDS)
 
 
 def _canonical_url(row: Mapping[str, Any]) -> str:
@@ -294,7 +351,7 @@ def stable_event_id(
         provider=normalized_provider,
         event_type=event_type,
     )
-    native = _native_identity(business)
+    native = _native_identity(normalized_provider, row)
     provider_composite = _provider_composite_identity(normalized_provider, business)
     canonical_url = _canonical_url(business)
 

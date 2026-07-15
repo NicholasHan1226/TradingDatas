@@ -320,6 +320,7 @@ def test_migration_never_reorders_valid_revisions_and_new_hashes_follow_formula(
         "id": "provider-42",
         "provider": "tushare_news",
         "event_type": "news",
+        "datetime": "2026-07-12 09:00:00",
         "event_time": "2026-07-12 09:00:00",
         "trade_date": "20260712",
         "title": "A",

@@ -548,15 +548,20 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   raw payloads never hide a current business-field correction.
 
   Declare explicit identity alternatives for all twelve registry routes that
-  write `market_events`. `cb_issue` remains strict on `ts_code`. A
-  `block_trade` without a provider-native ID uses the complete immutable
-  `ts_code+trade_date+price+vol+buyer+seller` fact key; changing any member is a
-  distinct event at revision 1 because no narrower key proves a correction.
-  When a provider-native block-trade ID exists, the ID proves logical sameness
-  and changed business fields append revision 2. Title-only legacy Tushare news
-  identity remains available for historical migration compatibility, while the
-  live write path disables that fallback and requires native ID, URL, or the
-  explicit route business key.
+  write `market_events`, including an explicit `TRUSTED_NATIVE_ID_FIELDS`
+  entry for every route. The current Tushare response contracts declare no
+  native event ID for these routes, so every entry is intentionally empty.
+  `cb_issue` remains strict on `ts_code`. `block_trade` always uses the complete
+  immutable `ts_code+trade_date+price+vol+buyer+seller` fact key; changing any
+  member is a distinct event at revision 1 because no narrower key proves a
+  correction.
+  Generic `id` and `event_id` values at the top level or inside raw, content,
+  or prewrapped provenance never replace that key. Non-registry sources must
+  declare source-specific fields and payload locations; SEC EDGAR alone keeps
+  its nested accession-number contract. Title-only legacy Tushare news identity
+  remains available only for historical migration compatibility, while the
+  live write path disables that fallback and requires a declared native ID,
+  URL, or the explicit route business key.
 
   Prove paired over- and under-idempotency cases for `cb_issue`, `block_trade`,
   news, and announcements across nested, prewrapped, blank, opaque, spoofed,
@@ -565,13 +570,19 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
   fail-closed complete-fact identity: both rows must be retained under distinct
   event IDs, each at revision 1.
 
+  Commit `5feaf7d` remains in history but failed fresh review because recursive
+  generic native-ID discovery still let nested raw and prewrapped fake IDs join
+  distinct block trades or duplicate the same fact. It is not final acceptance
+  evidence and must not be amended or rebased away.
+
   ```bash
   /private/tmp/sharedsignals-phase1-py312/bin/python -m pytest -q \
     tests/test_event_identity.py tests/test_read_model_store.py \
     tests/test_migrate.py tests/test_sec_edgar_filings.py
   /Users/nicholashan/.local/bin/ruff check \
     storage/event_identity.py storage/read_model_store.py \
-    tests/test_event_identity.py tests/test_read_model_store.py
+    tests/test_event_identity.py tests/test_migrate.py \
+    tests/test_read_model_store.py tests/test_sec_edgar_filings.py
   /private/tmp/sharedsignals-phase1-py312/bin/python -m compileall -q \
     storage/event_identity.py storage/read_model_store.py
   git diff --check
