@@ -289,6 +289,8 @@ class DatasetDefinition:
     cadence_class: str
     timezone: str
     freshness_sla_seconds: int
+    max_page_size: int
+    max_lookback_days: int | None
     point_in_time: str
     required_scope: str
     quota_class: str
@@ -308,7 +310,7 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 1: Write loader validation tests first**
 
-  Add tests that reject duplicate dataset IDs, duplicate aliases, missing primary keys, non-positive SLA/page limits, active bindings without adapter/table, excluded/retired bindings marked active, and multiple aliases resolving to different datasets. Add a positive test for `cn.equity.daily` and alias `tushare.daily`.
+  Add tests that reject duplicate dataset IDs, duplicate aliases, missing primary keys, non-positive SLA/page limits, non-null non-positive lookbacks, active bindings without adapter/table, excluded/retired bindings marked active, and multiple aliases resolving to different datasets. Add a positive test for `cn.equity.daily` and alias `tushare.daily`.
 
 - [ ] **Step 2: Confirm the tests fail because the loader does not exist**
 
@@ -320,7 +322,7 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 
 - [ ] **Step 3: Implement the immutable loader and validation**
 
-  Use `yaml.safe_load`, reject unknown top-level and entry keys, normalize lists to tuples, and return immutable dataclasses. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
+  Use `yaml.safe_load`, reject unknown top-level and entry keys, normalize lists to tuples, validate positive dataset-level page/lookback policy, and return immutable dataclasses. Do not read runtime state from YAML and do not import TradingAgent or MarketGraph.
 
 - [ ] **Step 4: Add the first representative registry entries**
 

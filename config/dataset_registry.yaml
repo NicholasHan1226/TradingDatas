@@ -1,0 +1,127 @@
+version: 1
+datasets:
+  - dataset_id: cn.equity.daily
+    aliases:
+      - tushare.daily
+    domain: market_data
+    market: CN
+    entity_type: equity_daily_bar
+    schema_version: 1.0.0
+    fields:
+      - market
+      - symbol
+      - trade_date
+      - open
+      - high
+      - low
+      - close
+      - volume
+      - amount
+      - provider
+      - source_file
+      - collected_at
+      - raw_json
+    primary_key:
+      - market
+      - symbol
+      - trade_date
+    cadence_class: postclose
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 259200
+    max_page_size: 500
+    max_lookback_days: null
+    point_in_time: current_snapshot
+    required_scope: market_data
+    quota_class: beta_standard
+    provider_bindings:
+      - provider: tushare
+        api_name: daily
+        adapter_version: sqlite-read-model.v1
+        entitlement_state: unknown
+        activation_state: active
+        target_tables:
+          - market_bars_daily
+        primary_read_model_table: market_bars_daily
+
+  - dataset_id: cn.market.trade_calendar
+    aliases:
+      - tushare.trade_cal
+    domain: reference
+    market: CN
+    entity_type: trade_calendar_entry
+    schema_version: 1.0.0
+    fields:
+      - factor_hash
+      - market
+      - symbol
+      - factor_name
+      - event_time
+      - value
+      - provider
+      - source_file
+      - collected_at
+      - raw_json
+    primary_key:
+      - factor_hash
+    cadence_class: preopen
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 259200
+    max_page_size: 500
+    max_lookback_days: null
+    point_in_time: current_snapshot
+    required_scope: market_data
+    quota_class: beta_standard
+    provider_bindings:
+      - provider: tushare
+        api_name: trade_cal
+        adapter_version: sqlite-read-model.v1
+        entitlement_state: unknown
+        activation_state: active
+        target_tables:
+          - market_factors
+        primary_read_model_table: market_factors
+
+  - dataset_id: cn.event.major_news
+    aliases:
+      - tushare.major_news
+    domain: events
+    market: CN
+    entity_type: market_event
+    schema_version: 1.0.0
+    fields:
+      - event_hash
+      - event_id
+      - revision
+      - source_family
+      - provider
+      - event_type
+      - event_time
+      - trade_date
+      - market
+      - symbol
+      - title
+      - content
+      - url
+      - source
+      - source_file
+      - collected_at
+      - raw_json
+    primary_key:
+      - event_hash
+    cadence_class: event_30m
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 129600
+    max_page_size: 500
+    max_lookback_days: null
+    point_in_time: append_only
+    required_scope: events
+    quota_class: beta_standard
+    provider_bindings:
+      - provider: tushare
+        api_name: major_news
+        adapter_version: sqlite-read-model.v1
+        entitlement_state: unknown
+        activation_state: active
+        target_tables:
+          - market_events
+        primary_read_model_table: market_events
