@@ -1694,9 +1694,43 @@ def test_success_row_token_echo_never_reaches_sqlite_writer_or_receipt(
     assert token not in repr(receipt)
 
 
+@pytest.mark.parametrize(
+    ("field", "row_value"),
+    [
+        pytest.param(
+            "Authorization",
+            "Bearer SYNTH-FOREIGN-AUTH-SECRET",
+            id="authorization-field",
+        ),
+        pytest.param(
+            "value",
+            {
+                "note": {
+                    "items": [
+                        "upstream debug Bearer SYNTH-FOREIGN-AUTH-SECRET"
+                    ]
+                }
+            },
+            id="bearer-prefix",
+        ),
+        pytest.param(
+            "value",
+            {
+                "note": {
+                    "items": [
+                        "Basic SYNTH-FOREIGN-AUTH-SECRET status=401"
+                    ]
+                }
+            },
+            id="basic-suffix",
+        ),
+    ],
+)
 def test_foreign_authorization_row_never_reaches_sqlite_writer_or_receipt(
     tmp_path: Path,
     monkeypatch,
+    field,
+    row_value,
 ) -> None:
     request_token = "SYNTH-REQUEST-TOKEN"
     foreign_secret = "SYNTH-FOREIGN-AUTH-SECRET"
@@ -1704,8 +1738,8 @@ def test_foreign_authorization_row_never_reaches_sqlite_writer_or_receipt(
         "code": 0,
         "msg": None,
         "data": {
-            "fields": ["Authorization"],
-            "items": [[f"Bearer {foreign_secret}"]],
+            "fields": [field],
+            "items": [[row_value]],
         },
     }
     monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")

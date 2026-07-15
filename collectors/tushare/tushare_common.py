@@ -66,6 +66,15 @@ _AUTH_SCHEME_VALUE_PATTERN = re.compile(
     r"(?:bearer|basic)\s+\S+",
     re.IGNORECASE,
 )
+_AUTH_SCHEME_CONTEXT_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+"
+    r"(?P<credential>[A-Za-z0-9._~+/=-]+)"
+    r"(?![A-Za-z0-9._~+/=-])",
+    re.IGNORECASE,
+)
+_AUTH_ATTRIBUTE_SUFFIX_PATTERN = re.compile(
+    r"\s+[A-Za-z_][A-Za-z0-9_-]*\s*=\s*\S",
+)
 _SIMPLE_ESCAPES = {
     "\\": "\\",
     "/": "/",
@@ -210,13 +219,22 @@ def _decode_backslash_escapes(value: str) -> str:
 
 
 def _strip_repr_wrapper(value: str) -> str:
-    prefix_length = 1 if len(value) >= 3 and value[0] in "bBrR" else 0
+    prefix_length = 1 if len(value) >= 3 and value[0] in "bBrRuU" else 0
     if len(value) - prefix_length < 2:
         return value
     quote = value[prefix_length]
     if quote not in "\"'" or value[-1] != quote:
         return value
     return value[prefix_length + 1 : -1]
+
+
+def _strip_singleton_tuple_repr(value: str) -> str:
+    stripped = value.strip()
+    if not stripped.startswith("(") or not stripped.endswith(",)"):
+        return value
+    inner = stripped[1:-2].strip()
+    unwrapped = _strip_repr_wrapper(inner)
+    return unwrapped if unwrapped != inner else value
 
 
 def _safe_text_transform(transform: Any, value: str) -> str:
@@ -254,6 +272,7 @@ def _diagnostic_views(
                     value,
                 ),
                 _strip_repr_wrapper(value),
+                _strip_singleton_tuple_repr(value),
             )
             for candidate in candidates:
                 if candidate in seen:
@@ -514,7 +533,34 @@ def _text_is_credential_value(
             return True
         if _AUTH_SCHEME_VALUE_PATTERN.fullmatch(candidate):
             return True
+        for match in _AUTH_SCHEME_CONTEXT_PATTERN.finditer(candidate):
+            credential = match.group("credential")
+            if _looks_like_opaque_auth_credential(credential):
+                return True
+            if _AUTH_ATTRIBUTE_SUFFIX_PATTERN.match(
+                candidate,
+                match.end(),
+            ):
+                return True
     return False
+
+
+def _looks_like_opaque_auth_credential(value: str) -> bool:
+    """Distinguish auth tokens from ordinary words after Bearer/Basic."""
+
+    if len(value) < 8:
+        return False
+    if len(value) >= 16:
+        return True
+    if any(character.isdigit() for character in value):
+        return True
+    if any(character in "._~+/=" for character in value):
+        return True
+    if "-" in value and any(character.isupper() for character in value):
+        return True
+    uppercase_count = sum(character.isupper() for character in value)
+    lowercase_count = sum(character.islower() for character in value)
+    return uppercase_count >= 2 and lowercase_count >= 2
 
 
 def _scan_structured_credentials(

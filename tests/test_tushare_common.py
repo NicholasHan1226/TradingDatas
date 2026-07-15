@@ -1997,6 +1997,124 @@ def _provider_success_payload(
     return {"code": 0, "msg": None, "data": data, **extra}
 
 
+_CONTEXTUAL_AUTH_SECRET = "SYNTH-CTX-AUTH-9xQ7"
+_CONTEXTUAL_AUTH_VALUES = (
+    pytest.param(
+        f"upstream debug Bearer {_CONTEXTUAL_AUTH_SECRET}",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="bearer-prefix",
+    ),
+    pytest.param(
+        f"Bearer {_CONTEXTUAL_AUTH_SECRET} status=401",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="bearer-suffix",
+    ),
+    pytest.param(
+        f"upstream debug Basic {_CONTEXTUAL_AUTH_SECRET}",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="basic-prefix",
+    ),
+    pytest.param(
+        f"Basic {_CONTEXTUAL_AUTH_SECRET} status=401",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="basic-suffix",
+    ),
+    pytest.param(
+        f"upstream%20Bearer%20{_CONTEXTUAL_AUTH_SECRET}",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="percent-encoded",
+    ),
+    pytest.param(
+        repr(f"upstream Bearer {_CONTEXTUAL_AUTH_SECRET}"),
+        _CONTEXTUAL_AUTH_SECRET,
+        id="repr-wrapped",
+    ),
+    pytest.param(
+        f"u'Bearer {_CONTEXTUAL_AUTH_SECRET}'",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="python2-repr",
+    ),
+    pytest.param(
+        f"('Bearer {_CONTEXTUAL_AUTH_SECRET}',)",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="tuple-repr",
+    ),
+    pytest.param(
+        f"upstream Bear\u200ber {_CONTEXTUAL_AUTH_SECRET}",
+        _CONTEXTUAL_AUTH_SECRET,
+        id="format-control",
+    ),
+    pytest.param(
+        "prefix Bearer abcdefghijklmnop",
+        "abcdefghijklmnop",
+        id="lowercase-opaque",
+    ),
+    pytest.param(
+        "prefix Basic dXNlcjpwYXNz",
+        "dXNlcjpwYXNz",
+        id="mixed-case-base64",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("value", "secret_fragment"),
+    _CONTEXTUAL_AUTH_VALUES,
+)
+def test_contextual_auth_scheme_in_success_payload_fails_closed(
+    monkeypatch,
+    value,
+    secret_fragment,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {
+                "fields": ["value"],
+                "items": [[{"note": {"items": [value]}}]],
+            }
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+    receipt = {
+        "outcome": outcome,
+        "log_fields": tushare_common.provider_outcome_log_fields(outcome),
+    }
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert secret_fragment not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    ("value", "secret_fragment"),
+    _CONTEXTUAL_AUTH_VALUES,
+)
+def test_direct_outcome_rejects_contextual_auth_scheme(
+    value,
+    secret_fragment,
+):
+    with pytest.raises(
+        ValueError,
+        match="sensitive or unscannable",
+    ) as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"note": {"items": [value]}},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    assert secret_fragment not in str(exc_info.value)
+
+
 @pytest.mark.parametrize(
     ("payload", "secret_fragment"),
     [
@@ -2334,7 +2452,7 @@ def test_foreign_credential_in_success_payload_fails_closed(
         pytest.param("authorization_status", "approved", id="authorization-status"),
         pytest.param(
             "basic_materials",
-            "Basic materials sector rose today",
+            "Basic materials sector rose",
             id="basic-materials",
         ),
         pytest.param("cookie_sales", 42, id="cookie-sales"),
@@ -2353,6 +2471,21 @@ def test_foreign_credential_in_success_payload_fails_closed(
             "description",
             "Bearer bonds gained today",
             id="bearer-prose",
+        ),
+        pytest.param(
+            "description",
+            "authorization reform passed",
+            id="authorization-reform-prose",
+        ),
+        pytest.param(
+            "description",
+            "Basic Materials sector rose today",
+            id="title-case-basic-materials",
+        ),
+        pytest.param(
+            "description",
+            "Bearer Securities gained today",
+            id="title-case-bearer-securities",
         ),
     ],
 )
