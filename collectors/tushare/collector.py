@@ -374,7 +374,7 @@ class TushareCollector(BaseCollector):
         Returns:
             List of row dicts; empty list on error or no results.
         """
-        return list(self.collect_outcome(api_name, params, fields).rows)
+        return self.collect_outcome(api_name, params, fields).mutable_rows()
 
     # ------------------------------------------------------------------
     # BaseCollector-compatible metadata

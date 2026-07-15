@@ -14,9 +14,10 @@ import urllib.parse
 import urllib.request
 from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping as MappingABC
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
 try:
@@ -52,6 +53,19 @@ _AUTH_SCHEME_INDICATOR_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.-])(?:bearer|basic)\s+\S",
     re.IGNORECASE,
 )
+_CREDENTIAL_KEY_PATTERN = re.compile(
+    _CREDENTIAL_NAME_PATTERN,
+    re.IGNORECASE,
+)
+_CREDENTIAL_ASSIGNMENT_VALUE_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9_.-])(?:[bB](?=[\"']))?[\"']?"
+    rf"{_CREDENTIAL_NAME_PATTERN}[\"']?\s*(?::|=|->|=>)\s*\S",
+    re.IGNORECASE,
+)
+_AUTH_SCHEME_VALUE_PATTERN = re.compile(
+    r"(?:bearer|basic)\s+\S+",
+    re.IGNORECASE,
+)
 _SIMPLE_ESCAPES = {
     "\\": "\\",
     "/": "/",
@@ -64,6 +78,7 @@ _SIMPLE_ESCAPES = {
     "t": "\t",
 }
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_MAPPING_PROXY_TYPE = type(MappingProxyType({}))
 
 
 @dataclass(frozen=True)
@@ -453,6 +468,283 @@ def _contains_sensitive_value(
         return True
 
 
+def _credential_detection_views(
+    value: str,
+    *,
+    scan_budget: SensitiveScanBudget,
+) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for view in _diagnostic_views(value, scan_budget=scan_budget):
+        stripped = view.strip()
+        candidates.append(stripped)
+        without_format_controls = "".join(
+            character
+            for character in stripped
+            if unicodedata.category(character) != "Cf"
+        )
+        if without_format_controls != stripped:
+            candidates.append(without_format_controls)
+    return tuple(candidates)
+
+
+def _text_is_credential_key(
+    value: str,
+    *,
+    scan_budget: SensitiveScanBudget,
+) -> bool:
+    return any(
+        _CREDENTIAL_KEY_PATTERN.fullmatch(view)
+        for view in _credential_detection_views(
+            value,
+            scan_budget=scan_budget,
+        )
+    )
+
+
+def _text_is_credential_value(
+    value: str,
+    *,
+    scan_budget: SensitiveScanBudget,
+) -> bool:
+    for candidate in _credential_detection_views(
+        value,
+        scan_budget=scan_budget,
+    ):
+        if _CREDENTIAL_ASSIGNMENT_VALUE_PATTERN.search(candidate):
+            return True
+        if _AUTH_SCHEME_VALUE_PATTERN.fullmatch(candidate):
+            return True
+    return False
+
+
+def _scan_structured_credentials(
+    value: Any,
+    *,
+    scan_budget: SensitiveScanBudget,
+    state: _SensitiveScanState,
+    depth: int = 0,
+) -> bool:
+    """Scan a provider value without converting unknown runtime objects."""
+
+    state.visit(depth)
+    value_type = type(value)
+
+    if value_type is str:
+        return _text_is_credential_value(value, scan_budget=scan_budget)
+    if value is None or value_type in (bool, int, float):
+        return False
+
+    if value_type in (dict, _MAPPING_PROXY_TYPE):
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise _SensitiveScanFailure from None
+                if _text_is_credential_key(key, scan_budget=scan_budget):
+                    return True
+
+                if key == "fields" and "items" in value:
+                    if type(item) not in (list, tuple):
+                        raise _SensitiveScanFailure from None
+                    for field in item:
+                        if type(field) is not str:
+                            raise _SensitiveScanFailure from None
+                        if _text_is_credential_key(
+                            field,
+                            scan_budget=scan_budget,
+                        ):
+                            return True
+
+                if _scan_structured_credentials(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                ):
+                    return True
+        finally:
+            state.active_containers.discard(identity)
+        return False
+
+    if value_type in (list, tuple):
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            return any(
+                _scan_structured_credentials(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+                for item in value
+            )
+        finally:
+            state.active_containers.discard(identity)
+
+    raise _SensitiveScanFailure from None
+
+
+def _contains_structured_credential(
+    value: Any,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
+) -> bool:
+    """Return true for credential structure or an unreliable strict scan."""
+
+    try:
+        budget = _resolve_scan_budget(scan_budget)
+        return _scan_structured_credentials(
+            value,
+            scan_budget=budget,
+            state=_SensitiveScanState(budget),
+        )
+    except Exception:
+        return True
+
+
+def _freeze_provider_value(
+    value: Any,
+    *,
+    scan_budget: SensitiveScanBudget,
+    state: _SensitiveScanState,
+    depth: int = 0,
+) -> Any:
+    """Copy one exact JSON-native value into an immutable representation."""
+
+    state.visit(depth)
+    value_type = type(value)
+    if value_type is str or value is None or value_type in (bool, int):
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise _SensitiveScanFailure from None
+        return value
+
+    if value_type is dict:
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            frozen: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise _SensitiveScanFailure from None
+                frozen[key] = _freeze_provider_value(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+            return MappingProxyType(frozen)
+        finally:
+            state.active_containers.discard(identity)
+
+    if value_type in (list, tuple):
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            return tuple(
+                _freeze_provider_value(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+                for item in value
+            )
+        finally:
+            state.active_containers.discard(identity)
+
+    raise _SensitiveScanFailure from None
+
+
+def _freeze_provider_rows(
+    rows: Any,
+    *,
+    scan_budget: SensitiveScanBudget,
+) -> tuple[Mapping[str, Any], ...]:
+    if type(rows) is not tuple or any(type(row) is not dict for row in rows):
+        raise _SensitiveScanFailure from None
+    frozen = _freeze_provider_value(
+        rows,
+        scan_budget=scan_budget,
+        state=_SensitiveScanState(scan_budget),
+    )
+    if type(frozen) is not tuple or any(
+        type(row) is not _MAPPING_PROXY_TYPE for row in frozen
+    ):
+        raise _SensitiveScanFailure from None
+    return frozen
+
+
+def _thaw_provider_value(
+    value: Any,
+    *,
+    scan_budget: SensitiveScanBudget,
+    state: _SensitiveScanState,
+    depth: int = 0,
+) -> Any:
+    """Copy an immutable provider value back to plain JSON-native containers."""
+
+    state.visit(depth)
+    value_type = type(value)
+    if value_type is str or value is None or value_type in (bool, int):
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise _SensitiveScanFailure from None
+        return value
+
+    if value_type is _MAPPING_PROXY_TYPE:
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            mutable: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise _SensitiveScanFailure from None
+                mutable[key] = _thaw_provider_value(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+            return mutable
+        finally:
+            state.active_containers.discard(identity)
+
+    if value_type is tuple:
+        identity = id(value)
+        if identity in state.active_containers:
+            raise _SensitiveScanFailure from None
+        state.active_containers.add(identity)
+        try:
+            return [
+                _thaw_provider_value(
+                    item,
+                    scan_budget=scan_budget,
+                    state=state,
+                    depth=depth + 1,
+                )
+                for item in value
+            ]
+        finally:
+            state.active_containers.discard(identity)
+
+    raise _SensitiveScanFailure from None
+
+
 def _contains_credential_indicator(
     message: str,
     *,
@@ -519,12 +811,17 @@ class ProviderCallOutcome:
     """Provider truth preserved before compatibility row conversion."""
 
     state: Literal["success", "empty", "failed"]
-    rows: tuple[dict[str, Any], ...]
+    rows: tuple[Mapping[str, Any], ...]
     provider_code: int | str | None
     error_code: str | None
     error_message: str | None
     sensitive_values: InitVar[Any] = ()
     scan_budget: InitVar[SensitiveScanBudget | None] = None
+    _validation_scan_budget: SensitiveScanBudget = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(
         self,
@@ -532,31 +829,41 @@ class ProviderCallOutcome:
         scan_budget: SensitiveScanBudget | None,
     ) -> None:
         try:
+            budget = _resolve_scan_budget(scan_budget)
             guarded_values = _coerce_sensitive_values(
                 sensitive_values,
-                scan_budget=scan_budget,
+                scan_budget=budget,
+            )
+            frozen_rows = _freeze_provider_rows(
+                self.rows,
+                scan_budget=budget,
             )
         except Exception:
             raise ValueError(
                 "provider outcome contains sensitive or unscannable values"
             ) from None
-        if _contains_sensitive_value(
-            self.rows,
+        if _contains_structured_credential(
+            frozen_rows,
+            scan_budget=budget,
+        ) or _contains_sensitive_value(
+            frozen_rows,
             guarded_values,
-            scan_budget=scan_budget,
+            scan_budget=budget,
         ):
             raise ValueError(
                 "provider outcome contains sensitive or unscannable values"
             )
+        object.__setattr__(self, "rows", frozen_rows)
+        object.__setattr__(self, "_validation_scan_budget", budget)
         provider_code = _sanitize_provider_code(
             self.provider_code,
             guarded_values,
-            scan_budget=scan_budget,
+            scan_budget=budget,
         )
         error_code = _sanitize_error_code(
             self.error_code,
             guarded_values,
-            scan_budget=scan_budget,
+            scan_budget=budget,
         )
         error_message = None
         diagnostic_trusted = True
@@ -564,7 +871,7 @@ class ProviderCallOutcome:
             error_message, diagnostic_trusted = _guard_provider_diagnostic(
                 self.error_message,
                 sensitive_values=guarded_values,
-                scan_budget=scan_budget,
+                scan_budget=budget,
             )
         if self.state == "failed" and (
             not diagnostic_trusted
@@ -583,6 +890,49 @@ class ProviderCallOutcome:
             raise ValueError("provider outcome success requires non-empty rows")
         if self.state in ("empty", "failed") and self.rows:
             raise ValueError(f"provider outcome {self.state} must not contain rows")
+        try:
+            budget = object.__getattribute__(self, "_validation_scan_budget")
+            if type(self.rows) is not tuple or any(
+                type(row) is not _MAPPING_PROXY_TYPE for row in self.rows
+            ):
+                raise _SensitiveScanFailure from None
+            state = _SensitiveScanState(budget)
+            for row in self.rows:
+                thawed = _thaw_provider_value(
+                    row,
+                    scan_budget=budget,
+                    state=state,
+                )
+                if type(thawed) is not dict:
+                    raise _SensitiveScanFailure from None
+            if _contains_structured_credential(
+                self.rows,
+                scan_budget=budget,
+            ):
+                raise _SensitiveScanFailure from None
+        except Exception:
+            raise ValueError("provider outcome contains invalid rows") from None
+
+    def mutable_rows(self) -> list[dict[str, Any]]:
+        """Return independent plain JSON-native rows for mutable consumers."""
+
+        self.validate_invariants()
+        try:
+            budget = object.__getattribute__(self, "_validation_scan_budget")
+            state = _SensitiveScanState(budget)
+            rows = [
+                _thaw_provider_value(
+                    row,
+                    scan_budget=budget,
+                    state=state,
+                )
+                for row in self.rows
+            ]
+            if any(type(row) is not dict for row in rows):
+                raise _SensitiveScanFailure from None
+            return rows
+        except Exception:
+            raise ValueError("provider outcome contains invalid rows") from None
 
 
 _SAFE_PROVIDER_CODE = re.compile(r"-?(?:0|[1-9][0-9]{0,15})")
@@ -1140,13 +1490,16 @@ def tushare_rows_outcome(
                 scan_budget=scan_budget,
             )
 
-        if _contains_sensitive_value(
+        if _contains_structured_credential(
+            body,
+            scan_budget=scan_budget,
+        ) or _contains_sensitive_value(
             body,
             sensitive_values,
             scan_budget=scan_budget,
         ):
             raise _ProviderResponseValidationError(
-                "Tushare response validation failed"
+                _redacted_diagnostic_summary()
             )
         if "data" not in body:
             raise _ProviderResponseValidationError(

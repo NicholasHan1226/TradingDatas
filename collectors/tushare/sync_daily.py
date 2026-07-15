@@ -561,7 +561,7 @@ def sync_tier(
                 api_calls += 1
                 params = fill_params(template, ts_code, trade_date, api_start_date, api_end_date)
                 outcome = _collect_provider_outcome(api_name, params, fields)
-                rows = [] if outcome.state == "failed" else list(outcome.rows)
+                rows = [] if outcome.state == "failed" else outcome.mutable_rows()
                 call_failed = outcome.state == "failed"
                 if empty_is_failure and not rows:
                     call_failed = True
@@ -677,7 +677,7 @@ def sync_tier(
         call_idx += 1
         params = fill_params(template, None, trade_date, api_start_date, api_end_date)
         outcome = _collect_provider_outcome(api_name, params, fields)
-        rows = [] if outcome.state == "failed" else list(outcome.rows)
+        rows = [] if outcome.state == "failed" else outcome.mutable_rows()
         provider_failed = outcome.state == "failed"
         row_limit_guard = max(0, int(api_def.get("row_limit_guard") or 0))
         possible_truncation = bool(row_limit_guard and len(rows) >= row_limit_guard)

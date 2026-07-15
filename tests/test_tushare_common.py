@@ -1322,7 +1322,7 @@ def test_success_payload_echoing_request_token_fails_closed(
     assert outcome.state == "failed"
     assert outcome.rows == ()
     assert outcome.error_code == "provider_error"
-    assert outcome.error_message == "Tushare response validation failed"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
     assert token not in repr(receipt)
 
 
@@ -1517,9 +1517,9 @@ def test_provider_boundary_allows_explicit_budget_for_large_safe_response(
 
     assert constrained.state == "failed"
     assert constrained.rows == ()
-    assert constrained.error_message == "Tushare response validation failed"
+    assert constrained.error_message == "provider diagnostic [REDACTED]"
     assert allowed.state == "success"
-    assert allowed.rows == ({"value": large_safe_value},)
+    assert allowed.mutable_rows() == [{"value": large_safe_value}]
     assert token not in repr({"constrained": constrained, "allowed": allowed})
 
     _stub_outcome_response(
@@ -1544,7 +1544,7 @@ def test_provider_boundary_allows_explicit_budget_for_large_safe_response(
 
     assert echoed.state == "failed"
     assert echoed.rows == ()
-    assert echoed.error_message == "Tushare response validation failed"
+    assert echoed.error_message == "provider diagnostic [REDACTED]"
     assert token not in repr(echoed)
 
 
@@ -1988,3 +1988,557 @@ def test_invalid_surrogate_diagnostic_fails_closed_without_classification(
     assert "SYNTH" not in repr(receipt)
     assert "d83d" not in repr(receipt).casefold()
     assert "dd11" not in repr(receipt).casefold()
+
+
+def _provider_success_payload(
+    data,
+    **extra,
+):
+    return {"code": 0, "msg": None, "data": data, **extra}
+
+
+@pytest.mark.parametrize(
+    ("payload", "secret_fragment"),
+    [
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["Authorization"],
+                    "items": [["Bearer SYNTH-FOREIGN-AUTH-SECRET"]],
+                }
+            ),
+            "SYNTH-FOREIGN-AUTH-SECRET",
+            id="foreign-authorization-row",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {"fields": ["Authorization"], "items": []}
+            ),
+            "Authorization",
+            id="credential-field-with-empty-items",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {"fields": ["token"], "items": [["SYNTH-FOREIGN-TOKEN"]]}
+            ),
+            "SYNTH-FOREIGN-TOKEN",
+            id="token-field",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["access_token"],
+                    "items": [["SYNTH-FOREIGN-ACCESS-TOKEN"]],
+                }
+            ),
+            "SYNTH-FOREIGN-ACCESS-TOKEN",
+            id="access-token-field",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["password"],
+                    "items": [["SYNTH-FOREIGN-PASSWORD"]],
+                }
+            ),
+            "SYNTH-FOREIGN-PASSWORD",
+            id="password-field",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["clientSecret"],
+                    "items": [["SYNTH-FOREIGN-CLIENT-SECRET"]],
+                }
+            ),
+            "SYNTH-FOREIGN-CLIENT-SECRET",
+            id="client-secret-field",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {"fields": ["Cookie"], "items": [["sid=SYNTH-FOREIGN-COOKIE"]]}
+            ),
+            "SYNTH-FOREIGN-COOKIE",
+            id="cookie-field",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [
+                        [
+                            {
+                                "proxy-authorization": (
+                                    "Bearer SYNTH-FOREIGN-PROXY-AUTH"
+                                )
+                            }
+                        ]
+                    ],
+                }
+            ),
+            "SYNTH-FOREIGN-PROXY-AUTH",
+            id="nested-proxy-authorization",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[{"X-API-Key": "SYNTH-FOREIGN-API-KEY"}]],
+                }
+            ),
+            "SYNTH-FOREIGN-API-KEY",
+            id="nested-x-api-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[[{"Set-Cookie": "sid=SYNTH-FOREIGN-SET-COOKIE"}]]],
+                }
+            ),
+            "SYNTH-FOREIGN-SET-COOKIE",
+            id="nested-list-set-cookie",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[{"Author%69zation": "SYNTH-FOREIGN-PERCENT-KEY"}]],
+                }
+            ),
+            "SYNTH-FOREIGN-PERCENT-KEY",
+            id="percent-encoded-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[{"Author%2569zation": "SYNTH-FOREIGN-DEEP-KEY"}]],
+                }
+            ),
+            "SYNTH-FOREIGN-DEEP-KEY",
+            id="multi-percent-encoded-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[{r"\u0041uthorization": "SYNTH-FOREIGN-UNICODE-KEY"}]],
+                }
+            ),
+            "SYNTH-FOREIGN-UNICODE-KEY",
+            id="unicode-escaped-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[{"'Authorization'": "SYNTH-FOREIGN-REPR-KEY"}]],
+                }
+            ),
+            "SYNTH-FOREIGN-REPR-KEY",
+            id="repr-wrapped-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["Authorization: Bearer SYNTH-FOREIGN-AUTH-VALUE"]],
+                }
+            ),
+            "SYNTH-FOREIGN-AUTH-VALUE",
+            id="authorization-header-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["token=SYNTH-FOREIGN-ASSIGNMENT"]],
+                }
+            ),
+            "SYNTH-FOREIGN-ASSIGNMENT",
+            id="token-assignment-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["password -> SYNTH-FOREIGN-ARROW"]],
+                }
+            ),
+            "SYNTH-FOREIGN-ARROW",
+            id="password-arrow-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["Cookie: sid=SYNTH-FOREIGN-COOKIE-VALUE"]],
+                }
+            ),
+            "SYNTH-FOREIGN-COOKIE-VALUE",
+            id="cookie-header-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["Bearer SYNTH-FOREIGN-BEARER"]],
+                }
+            ),
+            "SYNTH-FOREIGN-BEARER",
+            id="standalone-bearer-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["Basic U1lOVEg6Rk9SRUlHTg=="]],
+                }
+            ),
+            "U1lOVEg6Rk9SRUlHTg==",
+            id="standalone-basic-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [["Bearer%20SYNTH-FOREIGN-PERCENT-VALUE"]],
+                }
+            ),
+            "SYNTH-FOREIGN-PERCENT-VALUE",
+            id="percent-encoded-bearer-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [[r"Bearer\u0020SYNTH-FOREIGN-UNICODE-VALUE"]],
+                }
+            ),
+            "SYNTH-FOREIGN-UNICODE-VALUE",
+            id="unicode-escaped-bearer-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [
+                        [
+                            urllib.parse.quote(
+                                urllib.parse.quote(
+                                    '{"Authorization":"Bearer '
+                                    'SYNTH-FOREIGN-ENCODED-JSON"}',
+                                    safe="",
+                                ),
+                                safe="",
+                            )
+                        ]
+                    ],
+                }
+            ),
+            "SYNTH-FOREIGN-ENCODED-JSON",
+            id="multi-percent-encoded-json-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [
+                        [
+                            r"{\u0022Authorization\u0022:"
+                            r"\u0022Bearer\u0020SYNTH-FOREIGN-ESCAPED-JSON\u0022}"
+                        ]
+                    ],
+                }
+            ),
+            "SYNTH-FOREIGN-ESCAPED-JSON",
+            id="unicode-escaped-json-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [
+                        [
+                            repr(
+                                '{"Authorization":"Bearer '
+                                'SYNTH-FOREIGN-REPR-JSON"}'
+                            )
+                        ]
+                    ],
+                }
+            ),
+            "SYNTH-FOREIGN-REPR-JSON",
+            id="repr-wrapped-json-value",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {
+                    "fields": ["value"],
+                    "items": [
+                        [{"Author\u200bization": "SYNTH-FOREIGN-ZERO-WIDTH-KEY"}]
+                    ],
+                }
+            ),
+            "SYNTH-FOREIGN-ZERO-WIDTH-KEY",
+            id="zero-width-credential-key",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {"fields": ["value"], "items": [["safe"]]},
+                metadata={
+                    "Authorization": "Bearer SYNTH-FOREIGN-METADATA-AUTH"
+                },
+            ),
+            "SYNTH-FOREIGN-METADATA-AUTH",
+            id="top-level-metadata-authorization",
+        ),
+        pytest.param(
+            _provider_success_payload(
+                {"fields": ["value"], "items": [["safe"]]},
+                metadata={"token": "SYNTH-FOREIGN-METADATA-TOKEN"},
+            ),
+            "SYNTH-FOREIGN-METADATA-TOKEN",
+            id="top-level-metadata-token",
+        ),
+    ],
+)
+def test_foreign_credential_in_success_payload_fails_closed(
+    monkeypatch,
+    payload,
+    secret_fragment,
+):
+    request_token = "SYNTH-REQUEST-TOKEN"
+    _stub_outcome_response(
+        monkeypatch,
+        payload,
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("daily", request_token)
+    log_fields = tushare_common.provider_outcome_log_fields(outcome)
+    receipt = {"outcome": outcome, "log_fields": log_fields}
+
+    assert outcome.state == "failed"
+    assert outcome.rows == ()
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "provider diagnostic [REDACTED]"
+    assert secret_fragment not in repr(receipt)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("token_count", 12, id="token-count"),
+        pytest.param("tokenized_value", "ordinary", id="tokenized-value"),
+        pytest.param("authorization_status", "approved", id="authorization-status"),
+        pytest.param(
+            "basic_materials",
+            "Basic materials sector rose today",
+            id="basic-materials",
+        ),
+        pytest.param("cookie_sales", 42, id="cookie-sales"),
+        pytest.param("api_keyboard", "ordinary", id="api-keyboard"),
+        pytest.param(
+            "password_policy",
+            "password policy was updated",
+            id="password-policy",
+        ),
+        pytest.param(
+            "description",
+            "token economy adoption rose",
+            id="token-prose",
+        ),
+        pytest.param(
+            "description",
+            "Bearer bonds gained today",
+            id="bearer-prose",
+        ),
+    ],
+)
+def test_normal_business_token_words_remain_valid_success_rows(
+    monkeypatch,
+    field,
+    value,
+):
+    _stub_outcome_response(
+        monkeypatch,
+        _provider_success_payload(
+            {"fields": [field], "items": [[value]]},
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "SYNTH-REQUEST-TOKEN",
+    )
+
+    assert outcome.state == "success"
+    assert outcome.rows == ({field: value},)
+    assert outcome.error_code is None
+    assert outcome.error_message is None
+
+
+class _SuccessRowConversionTrap:
+    def __init__(self):
+        self.conversions = []
+
+    def __str__(self):
+        self.conversions.append("str")
+        return "Authorization: Bearer SYNTH-CONVERSION-TRAP"
+
+    def __repr__(self):
+        self.conversions.append("repr")
+        return "Authorization: Bearer SYNTH-CONVERSION-TRAP"
+
+
+def test_outcome_rejects_unscannable_success_row_without_conversion():
+    trap = _SuccessRowConversionTrap()
+
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": trap},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    assert trap.conversions == []
+
+
+@pytest.mark.parametrize(
+    ("rows", "secret"),
+    [
+        pytest.param(
+            ({"Authorization": "Bearer SYNTH-DIRECT-AUTH"},),
+            "SYNTH-DIRECT-AUTH",
+            id="authorization-key",
+        ),
+        pytest.param(
+            ({"value": "token=SYNTH-DIRECT-TOKEN"},),
+            "SYNTH-DIRECT-TOKEN",
+            id="token-assignment",
+        ),
+        pytest.param(
+            ({"value": [{"Set-Cookie": "sid=SYNTH-DIRECT-COOKIE"}]},),
+            "SYNTH-DIRECT-COOKIE",
+            id="nested-set-cookie",
+        ),
+        pytest.param(
+            ({"value": "Bearer SYNTH-DIRECT-BEARER"},),
+            "SYNTH-DIRECT-BEARER",
+            id="bearer-value",
+        ),
+    ],
+)
+def test_direct_outcome_rejects_foreign_credential_rows(rows, secret):
+    with pytest.raises(
+        ValueError,
+        match="sensitive or unscannable",
+    ) as exc_info:
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=rows,
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    assert secret not in str(exc_info.value)
+
+
+class _SuccessStringSubclass(str):
+    def __new__(cls, value):
+        instance = super().__new__(cls, value)
+        instance.repr_calls = 0
+        return instance
+
+    def __repr__(self):
+        self.repr_calls += 1
+        return "Bearer SYNTH-STRING-SUBCLASS-SECRET"
+
+
+def test_outcome_rejects_string_subclass_without_repr_conversion():
+    value = _SuccessStringSubclass("ordinary visible text")
+
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": value},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    assert value.repr_calls == 0
+
+
+class _SuccessMappingSubclass(dict):
+    pass
+
+
+class _SuccessListSubclass(list):
+    pass
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_SuccessMappingSubclass({"value": "safe"}), id="mapping"),
+        pytest.param(_SuccessListSubclass(["safe"]), id="list"),
+    ],
+)
+def test_outcome_rejects_success_container_subclasses(value):
+    with pytest.raises(ValueError, match="sensitive or unscannable"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"value": value},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+
+def test_outcome_rows_are_defensive_deep_immutable_snapshots():
+    foreign_secret = "SYNTH-POST-CONSTRUCTION-SECRET"
+    source_nested = {"items": ["safe"]}
+    source_row = {"value": source_nested}
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=(source_row,),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    source_row["Authorization"] = f"Bearer {foreign_secret}"
+    source_nested["Authorization"] = f"Bearer {foreign_secret}"
+    source_nested["items"].append(f"Bearer {foreign_secret}")
+
+    assert foreign_secret not in repr(outcome)
+    assert outcome.rows == ({"value": {"items": ("safe",)}},)
+    with pytest.raises(TypeError):
+        outcome.rows[0]["Authorization"] = f"Bearer {foreign_secret}"
+    with pytest.raises(TypeError):
+        outcome.rows[0]["value"]["Authorization"] = f"Bearer {foreign_secret}"
+    with pytest.raises(AttributeError):
+        outcome.rows[0]["value"]["items"].append(foreign_secret)
+
+
+def test_outcome_mutable_rows_are_independent_plain_json_copies():
+    outcome = tushare_common.ProviderCallOutcome(
+        state="success",
+        rows=({"value": {"items": ["safe"]}},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    rows = outcome.mutable_rows()
+    rows[0]["value"]["items"].append("consumer mutation")
+
+    assert type(rows[0]) is dict
+    assert type(rows[0]["value"]) is dict
+    assert type(rows[0]["value"]["items"]) is list
+    assert outcome.rows == ({"value": {"items": ("safe",)}},)
