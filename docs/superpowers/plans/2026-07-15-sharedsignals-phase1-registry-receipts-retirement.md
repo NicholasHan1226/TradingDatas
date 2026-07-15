@@ -992,10 +992,16 @@ def build_ingest_context(
 **Files:**
 
 - Create: `storage/receipt_projection.py`
+- Modify: `dataset_registry.py`
 - Modify: `tools/interface_runtime_ledger.py`
 - Modify: `reader.py`
+- Modify: `tools/source_governance_monitor.py`
+- Modify: `tests/test_dataset_registry.py`
 - Modify: `tests/test_interface_runtime_ledger.py`
 - Create: `tests/test_receipt_projection.py`
+- Modify: `tests/test_reader.py`
+- Modify: `tests/test_source_governance_monitor.py`
+- Modify: `tests/test_api_server_edge.py`
 
 **Interfaces:**
 
@@ -1031,25 +1037,40 @@ def rebuild_interface_runtime_cache(
 ) -> None: ...
 ```
 
-- [ ] **Step 1: Write runtime-state projection tests**
+```python
+@property
+def datasets(self) -> tuple[DatasetDefinition, ...]: ...
+```
+
+- [ ] **Step 1: Write runtime-state and public-authority projection tests**
 
   Cover all six states. Assert that old rows remain queryable but the latest failed receipt makes the dataset degraded; stale is computed against wall-clock and registry SLA; paused comes from registry activation state; unobserved means no recognized receipt; unknown receipt schema fails closed. Delete the flat JSON cache and assert an identical projection can be rebuilt from SQLite.
+
+  Add public-path tests proving `/source_status`, Green Gate, and legacy `/tushare` runtime metadata are derived from SQLite receipts plus the current registry and wall clock. Crafted, missing, or stale `interface_runtime.json` must not change those public results. A missing, unreadable, or damaged SQLite database must fail closed without creating an empty database or falling back to JSON. Validate WAL-visible receipts, registry changes, and the exact SLA boundary.
 
 - [ ] **Step 2: Confirm the tests fail before the projector exists**
 
   ```bash
   ./.venv/bin/python3 -m pytest -q \
     tests/test_receipt_projection.py \
-    tests/test_interface_runtime_ledger.py
+    tests/test_interface_runtime_ledger.py \
+    tests/test_source_governance_monitor.py \
+    tests/test_api_server_edge.py
   ```
 
 - [ ] **Step 3: Implement DB-first projection and atomic cache rebuild**
 
   Read only recognized receipt schema versions. Derive summary counts from per-dataset projections; never trust a stored summary over underlying entries. Write the cache with temp file, file fsync, replace, and directory fsync, but treat cache-write failure as an operational error rather than data-authority loss.
 
+  Add a public, immutable `DatasetRegistry.datasets` tuple accessor instead of reading the private registry store or reconstructing the catalog from Tushare aliases. Open the receipt database with SQLite read-only URI semantics so a missing path cannot create a new database. Validate receipt envelope/payload identity, provider binding, adapter version, target table, count semantics, and deterministic latest-attempt ordering before a receipt can influence runtime state. Use `data_through` in the dataset timezone for freshness; never use receipt completion time as a substitute.
+
+  Change `tools/source_governance_monitor.py` to call the DB projector directly for the public `/source_status` path. Do not read the JSON cache there: a DB watermark alone cannot detect registry changes or a wall-clock transition into `stale`. The cache remains optional diagnostic output only.
+
 - [ ] **Step 4: Keep legacy readers compatible without file authority**
 
   `tools/interface_runtime_ledger.py` may expose existing functions, but they must call the DB projector or read a cache that is verifiably derived from the current DB watermark. No provider/file fallback is allowed in a public read path.
+
+  Preserve the ignored legacy `path` argument and the existing `record_tushare_stats(...)` call shape, but make that function rebuild cache from DB authority rather than infer runtime truth from supplied stats. Preserve old `/tushare` data rows while layering the dataset projection into `degraded`, reasons, and lineage. Ignore non-receipt legacy audit rows; fail closed on receipt-like unknown schema or inconsistent envelopes.
 
 - [ ] **Step 5: Verify runtime semantics**
 
@@ -1057,12 +1078,19 @@ def rebuild_interface_runtime_cache(
   ./.venv/bin/python3 -m pytest -q \
     tests/test_receipt_projection.py \
     tests/test_interface_runtime_ledger.py \
-    tests/test_reader.py
+    tests/test_dataset_registry.py \
+    tests/test_reader.py \
+    tests/test_source_governance_monitor.py \
+    tests/test_api_server_edge.py
   ./.venv/bin/ruff check \
-    storage/receipt_projection.py tools/interface_runtime_ledger.py reader.py \
-    tests/test_receipt_projection.py tests/test_interface_runtime_ledger.py
+    dataset_registry.py storage/receipt_projection.py \
+    tools/interface_runtime_ledger.py tools/source_governance_monitor.py reader.py \
+    tests/test_dataset_registry.py tests/test_receipt_projection.py \
+    tests/test_interface_runtime_ledger.py tests/test_reader.py \
+    tests/test_source_governance_monitor.py tests/test_api_server_edge.py
   ./.venv/bin/python3 -m compileall -q \
-    storage/receipt_projection.py tools/interface_runtime_ledger.py reader.py
+    dataset_registry.py storage/receipt_projection.py \
+    tools/interface_runtime_ledger.py tools/source_governance_monitor.py reader.py
   git diff --check
   ```
 
@@ -1070,11 +1098,12 @@ def rebuild_interface_runtime_cache(
 
   ```bash
   git add -- \
-    storage/receipt_projection.py \
-    tools/interface_runtime_ledger.py \
-    reader.py \
+    dataset_registry.py storage/receipt_projection.py \
+    tools/interface_runtime_ledger.py tools/source_governance_monitor.py \
+    reader.py tests/test_dataset_registry.py \
     tests/test_interface_runtime_ledger.py \
-    tests/test_receipt_projection.py
+    tests/test_receipt_projection.py tests/test_reader.py \
+    tests/test_source_governance_monitor.py tests/test_api_server_edge.py
   git diff --cached --name-status
   git commit -m "refactor: project source runtime from SQLite receipts"
   ```
@@ -1178,6 +1207,8 @@ def rebuild_interface_runtime_cache(
     tests/test_interface_runtime_ledger.py \
     tests/test_tushare_common.py \
     tests/test_reader.py \
+    tests/test_source_governance_monitor.py \
+    tests/test_green_gate_report.py \
     tests/test_api_server_edge.py \
     tests/test_data_platform_docs.py
   ```
