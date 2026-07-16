@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+from types import MappingProxyType
 
 import pytest
 
@@ -546,6 +547,31 @@ def test_service_rechecks_injected_registry_budgets_before_snapshot(
     assert opened is False
 
 
+def test_service_rechecks_injected_max_in_budget_before_snapshot(
+    query_harness: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    base_registry = query_harness["registry"]
+    registry = DatasetRegistry(
+        (query_harness["dataset"],),
+        query_defaults=replace(
+            base_registry.query_defaults,
+            max_in_values=1,
+        ),
+    )
+    before = query_harness["calls"]["snapshot"]
+
+    with pytest.raises(QueryBudgetError, match="max_in_values=1"):
+        _service(tmp_path, registry).execute(
+            _harness_request(filters={"symbol": {"in": ["AAA", "BBB"]}}),
+            access=query_harness["access"],
+            now=NOW,
+            request_id="request-injected-max-in",
+        )
+
+    assert query_harness["calls"]["snapshot"] == before
+
+
 def test_service_uses_injected_budget_when_module_default_is_stricter(
     query_harness: dict[str, object],
     tmp_path: Path,
@@ -584,6 +610,140 @@ def test_service_uses_injected_budget_when_module_default_is_stricter(
 
     assert response["data"]
     assert query_harness["calls"]["snapshot"] == before + 1
+
+
+def test_service_uses_injected_max_in_when_module_default_is_stricter(
+    query_harness: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _harness_request(
+        fields=("symbol",),
+        filters={"symbol": {"in": ["AAA", "BBB"]}},
+        order=("symbol:asc",),
+    )
+    base_registry = query_harness["registry"]
+    registry = DatasetRegistry(
+        (query_harness["dataset"],),
+        query_defaults=replace(
+            base_registry.query_defaults,
+            max_in_values=2,
+        ),
+    )
+    monkeypatch.setattr(
+        query_contract_module,
+        "_QUERY_DEFAULTS",
+        replace(
+            query_contract_module._QUERY_DEFAULTS,
+            max_in_values=1,
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: query_harness["evidence"],
+    )
+    before = query_harness["calls"]["snapshot"]
+
+    response = _service(tmp_path, registry).execute(
+        request,
+        access=query_harness["access"],
+        now=NOW,
+        request_id="request-injected-max-in",
+    )
+
+    assert [row["symbol"] for row in response["data"]] == ["AAA", "AAA", "BBB"]
+    assert query_harness["calls"]["snapshot"] == before + 1
+
+
+def test_revalidate_request_returns_an_owned_deep_frozen_snapshot() -> None:
+    operand = ("AAA",)
+    clause_backing: dict[str, object] = {"in": operand}
+    filters_backing: dict[str, object] = {"symbol": MappingProxyType(clause_backing)}
+    request = _harness_request(
+        fields=("symbol",),
+        filters={"symbol": {"in": ["AAA"]}},
+        order=("symbol:asc",),
+    )
+    object.__setattr__(request, "filters", MappingProxyType(filters_backing))
+
+    snapshot = query_module._revalidate_request(request)
+    snapshot_hash = query_contract_module.normalized_query_hash(snapshot)
+
+    object.__setattr__(request, "fields", ("symbol", "note"))
+    object.__setattr__(request, "order", ("symbol:desc",))
+    clause_backing["in"] = ("AAA", "BBB")
+    filters_backing["trade_date"] = MappingProxyType({"eq": "20260716"})
+
+    assert snapshot is not request
+    assert snapshot.fields == ("symbol",)
+    assert snapshot.order == ("symbol:asc",)
+    assert tuple(snapshot.filters) == ("symbol",)
+    assert snapshot.filters["symbol"]["in"] == ("AAA",)
+    assert snapshot.filters is not request.filters
+    assert snapshot.filters["symbol"] is not request.filters["symbol"]
+    assert snapshot.filters["symbol"]["in"] is not operand
+    assert query_contract_module.normalized_query_hash(snapshot) == snapshot_hash
+
+
+def test_external_filter_mutation_after_injected_budget_check_cannot_expand_query(
+    query_harness: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clause_backing: dict[str, object] = {"in": ("AAA",)}
+    filters_backing: dict[str, object] = {"symbol": MappingProxyType(clause_backing)}
+    request = _harness_request(
+        fields=("symbol", "trade_date"),
+        filters={"symbol": {"in": ["AAA"]}},
+        order=("trade_date:asc",),
+    )
+    object.__setattr__(request, "filters", MappingProxyType(filters_backing))
+    base_registry = query_harness["registry"]
+    registry = DatasetRegistry(
+        (query_harness["dataset"],),
+        query_defaults=replace(
+            base_registry.query_defaults,
+            max_in_values=1,
+        ),
+    )
+    enforce_root_budgets = query_module._enforce_root_budgets
+
+    def mutate_after_budget_check(
+        validated_request: QueryRequest,
+        options: QueryExecutionOptions,
+        injected_registry: DatasetRegistry,
+    ) -> None:
+        enforce_root_budgets(validated_request, options, injected_registry)
+        clause_backing["in"] = ("AAA", "BBB")
+        object.__setattr__(request, "fields", ("symbol", "trade_date", "note"))
+        object.__setattr__(request, "order", ("trade_date:desc",))
+
+    monkeypatch.setattr(
+        query_module,
+        "_enforce_root_budgets",
+        mutate_after_budget_check,
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: query_harness["evidence"],
+    )
+
+    response = _service(tmp_path, registry).execute(
+        request,
+        access=query_harness["access"],
+        now=NOW,
+        request_id="request-owned-snapshot",
+    )
+
+    assert clause_backing["in"] == ("AAA", "BBB")
+    assert [row["symbol"] for row in response["data"]] == ["AAA", "AAA"]
+    assert [row["trade_date"] for row in response["data"]] == [
+        "20260715",
+        "20260716",
+    ]
+    assert all(set(row) == {"symbol", "trade_date"} for row in response["data"])
 
 
 @pytest.mark.parametrize(
