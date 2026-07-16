@@ -14,11 +14,12 @@
 - 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
 - REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
 
-## Phase 2 Task 7 本地候选
+## Phase 2 Task 7 本地验收
 
-- 当前 Task 7 worktree base/HEAD 为 `7541112f43ad12d20278f6de5a6fa31f3dc17ade`
-  （`refactor: route legacy data reads through V1`）；Task 7 保持 exact9 未提交候选，未 commit、
-  push、merge 或 deploy。
+- Task 7 已在 Phase 2 分支形成精确提交 `bde3db2`（`docs: freeze the V1 consumer contract`）；
+  exact9 候选已经 fresh clean-overlay 规格评审 PASS（P0/P1/P2=0）和代码质量评审 PASS
+  （P0/P1=0，唯一 P2 为本节旧状态文字，现已同步）。尚未 fast-forward 到本地 `main`，也未
+  push、merge 到 origin/GitHub 或 deploy。
 - Task 7 初始 RED 为 `4 failed, 4 passed`；第一候选虽达到 focused `8 passed` 和全仓
   `2185 passed`，fresh review 仍以 P0=0/P1=2/P2=1 判定 FINAL FAIL，因此该组 PASS 数字不构成
   acceptance。返工 RED 为 `4 failed, 6 passed`，精确复现 fact-row market、真实 serializer/cursor
@@ -80,10 +81,9 @@
 
 ### 未完成
 
-- Phase 2 Task 7 spec review v2 返工候选已冻结在 local worktree，等待 fresh clean-overlay
-  review；P0=0/P1=1 的 FINAL FAIL 不因本地 tests 变绿而自动清除，fresh reviewer 未给出
-  P0/P1=0 前不得集成。
-  local main、origin/GitHub、生产与真实 dataset 均未因本地候选改变。
+- Phase 2 Task 8 整分支 focused/full、静态、对抗矩阵、证据冻结和 fresh 全分支评审；Task 8
+  P0/P1 未清零前不得 fast-forward 本地 `main`。local main、origin/GitHub、生产与真实 dataset
+  均未因 Task 7 本地提交改变。
 - Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
 - Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
 - Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。
@@ -114,11 +114,10 @@
 
 ## 下一步
 
-1. 按 `docs/superpowers/plans/2026-07-16-sharedsignals-phase2-query-service.md` 在独立 worktree 实现 provider-neutral catalog/query、signed cursor、同 snapshot metadata 和两个代表性 legacy adapter；共享合同只能有一个 owner。
-2. 每个 Task 采用 RED→GREEN→独立 task review，最终再做全分支 clean-overlay review；P0/P1 未清零不得进入本地 `main`。
-3. Phase 2 fresh PASS 后只精确 fast-forward 到 local main 并 readback；不得使用 `git add .`，不得自动 push/deploy。
-4. Phase 3 才推进境内 entitlement/cadence/backfill，Phase 4 才推进受邀账户治理；不得把采集、鉴权、计费或 gateway 顺手塞入 Phase 2。
-5. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
+1. 按 `docs/superpowers/plans/2026-07-16-sharedsignals-phase2-query-service.md` 执行 Task 8 整分支验证、证据冻结和 fresh clean-overlay 全分支评审。
+2. Task 8 P0/P1 清零后只精确 fast-forward 到 local main 并 readback；不得使用 `git add .`，不得自动 push/deploy。
+3. Phase 3 才推进境内 entitlement/cadence/backfill，Phase 4 才推进受邀账户治理；不得把采集、鉴权、计费或 gateway 顺手塞入 Phase 2。
+4. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
 
 ## 验证入口
 
