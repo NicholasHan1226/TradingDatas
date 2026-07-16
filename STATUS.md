@@ -80,7 +80,7 @@
 
 - 最终独立验收发现一个确定性 P1：Task 9 合法 `unmapped.tushare.<digest>` terminal receipt 被 Task 10 当作全局 rogue unknown，污染所有 dataset/interface 状态；原冻结 `435acee` 因此作废。
 - 本地提交 `09927f1 fix: isolate unmapped ingest receipts` 已按 TDD 收口：只有真实 registry alias miss 可生成 synthetic tombstone；已知 dataset 的 binding/adapter/table 故障保留 owner identity 并 fail closed；合法 tombstone 精确绑定 provider/API/digest/adapter/status/error/count/window/UUID/time/envelope/receipt ID，分类不依赖当前 dataset 或未来 onboarding；所有形似但不完整的 unknown receipt 继续 fail closed。
-- 当前候选定向 `244 passed`、Python 3.12 全仓 `1593 passed`，精确 Ruff、collector 既有 E701 例外、`git diff --check` 全绿；fresh 独立 reviewer PASS（P0/P1=0）。这仍只授权 local main fast-forward，不能代替 GitHub 或生产验收。
+- 该修复当时的候选定向为 `244 passed`、Python 3.12 全仓为 `1593 passed`，精确 Ruff、collector 既有 E701 例外、`git diff --check` 全绿；fresh 独立 reviewer PASS（P0/P1=0）。它现已包含在本地 `main` 的 Phase 1 checkpoint 中，但仍不能代替 GitHub 或生产验收。
 - Phase 1 不新增全局 unmapped audit API 字段。SQLite tombstone 继续保留为 durable evidence；未来若公开全局 audit bucket，必须另行定义 latest/resolution 语义，避免历史事件永久把整体状态置红。
 
 ### Task 11：核心文档与防漂移门禁
