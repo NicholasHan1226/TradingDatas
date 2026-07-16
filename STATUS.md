@@ -14,12 +14,14 @@
 - 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
 - REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
 
-## Phase 2 Task 7 本地验收
+## Phase 2 本地主线验收
 
-- Task 7 已在 Phase 2 分支形成精确提交 `bde3db2`（`docs: freeze the V1 consumer contract`）；
-  exact9 候选已经 fresh clean-overlay 规格评审 PASS（P0/P1/P2=0）和代码质量评审 PASS
-  （P0/P1=0，唯一 P2 为本节旧状态文字，现已同步）。尚未 fast-forward 到本地 `main`，也未
-  push、merge 到 origin/GitHub 或 deploy。
+- Task 7 已形成精确提交 `bde3db2`（`docs: freeze the V1 consumer contract`）；exact9 候选
+  已经 fresh clean-overlay 规格和代码质量评审 PASS。Task 8 replacement freeze
+  `998c34eecf0815affb94e3fe3252cc042b8748bb` 已经对抗、规格和代码质量三路 fresh review
+  PASS（P0/P1/P2=0），并从 `d92f0293aa8f5f0d99b5e13de0874648d1c42f82` 精确
+  fast-forward 到本地 `main`。origin/GitHub、production checkout、runtime 和 external route
+  尚未同步或发布。
 - Task 7 初始 RED 为 `4 failed, 4 passed`；第一候选虽达到 focused `8 passed` 和全仓
   `2185 passed`，fresh review 仍以 P0=0/P1=2/P2=1 判定 FINAL FAIL，因此该组 PASS 数字不构成
   acceptance。返工 RED 为 `4 failed, 6 passed`，精确复现 fact-row market、真实 serializer/cursor
@@ -35,15 +37,24 @@
   `GET /v1/catalog`、`POST /v1/query`、六状态、signed cursor 和逐 dataset metadata 消费规则；
   fixture 由真实临时 SQLite writer/receipt 与 V1 services 完整重建，不以手工 JSON 自证。
 - 证据层必须分开：local worktree PASS、local main、origin/GitHub、production checkout、
-  production runtime、external route、real dataset evidence。当前只推进第一层，其余层未改变。
+  production runtime、external route、real dataset evidence。当前完成前两层，其余层未改变。
+- Task 8 最终冻结覆盖 16 commits、39 files；Python 3.12 focused 为 `978 passed`、全仓为
+  `2200 passed`，Ruff、compileall 与 `git diff --check` 均通过。旧 freeze `f243b0a` 因
+  registry `range_field=null` 时猜测日期字段而作废；replacement freeze 已证明这类日期参数在
+  QueryService 前 fail closed。完整证据在
+  `/private/tmp/ss-phase2-task8-final2.hIr4wD`，不能替代远端或生产验收。
+- fast-forward 后已直接从本地 `main` 重跑 query contract、cursor、catalog/query service、V1
+  HTTP、legacy compatibility、consumer fixture 与文档门禁，共 `549 passed, 1 warning`；JUnit 为
+  `/private/tmp/ss-phase2-local-main-postmerge-junit.xml`。该结果只证明本地主线 readback。
 
 ## 代码与 Git 分层
 
 - SharedSignals 本地 remote-tracking `origin/main` 本轮核对为
   `d913d32c12d325edfa539a4704bb82ee14169507`；本轮未 fetch，不能据此声称 GitHub 当前已变化。
-- 本地 `main` 本轮核对为 `d92f0293aa8f5f0d99b5e13de0874648d1c42f82`，比本地
-  `origin/main` tracking ref 领先 52 个提交。该 Git 图不代表 Task 7 已集成，也不代表 GitHub
-  或生产已同步。
+- Phase 2 本地代码 checkpoint 为
+  `998c34eecf0815affb94e3fe3252cc042b8748bb`，比本地 `origin/main` tracking ref
+  领先 68 个提交。该 tracking ref 尚未在本轮 fetch，因此不能据此声称 GitHub 当前状态；
+  更不能声称生产已同步。
 - Phase 1 已经 fresh 独立验收并精确 fast-forward 到本地 `main`；最终代码 checkpoint 为 `09927f1`，状态同步提交为 `032c208`。定向 readback、Python 3.12 全仓 `1593 passed`、Ruff/compile/diff 门禁均通过；这些证据仍只属于本地层。
 - Phase 1 保留 worktree：`.worktrees/sharedsignals-external-data-phase1`。在 Phase 2 本地集成和 rollback evidence 齐全前不清理。
 - 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
@@ -81,9 +92,6 @@
 
 ### 未完成
 
-- Phase 2 Task 8 整分支 focused/full、静态、对抗矩阵、证据冻结和 fresh 全分支评审；Task 8
-  P0/P1 未清零前不得 fast-forward 本地 `main`。local main、origin/GitHub、生产与真实 dataset
-  均未因 Task 7 本地提交改变。
 - Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
 - Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
 - Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。
@@ -114,10 +122,12 @@
 
 ## 下一步
 
-1. 按 `docs/superpowers/plans/2026-07-16-sharedsignals-phase2-query-service.md` 执行 Task 8 整分支验证、证据冻结和 fresh clean-overlay 全分支评审。
-2. Task 8 P0/P1 清零后只精确 fast-forward 到 local main 并 readback；不得使用 `git add .`，不得自动 push/deploy。
-3. Phase 3 才推进境内 entitlement/cadence/backfill，Phase 4 才推进受邀账户治理；不得把采集、鉴权、计费或 gateway 顺手塞入 Phase 2。
-4. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
+1. 按已评审 Phase 3 计划推进境内 entitlement/cadence/backfill 的非迁移纵向切片；任何 schema
+   migration、真实 provider 探测、生产 cron 或生产写入仍需单独 safe-release 授权。
+2. Phase 4 再推进受邀账户治理；不得把采集、鉴权、计费或 gateway 协议混入 Phase 3 的
+   scheduler/backfill 写域。
+3. origin/GitHub 同步后才进入 fresh production safe-release；production readback、external route
+   与真实采集稳定性全部通过后才可声明 Beta 可用。
 
 ## 验证入口
 
