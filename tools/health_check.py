@@ -12,7 +12,6 @@ import os
 import sqlite3
 import subprocess
 import sys
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -290,7 +289,7 @@ def _check_reader_functions() -> dict[str, Any]:
         ("is_trading_day", reader.is_trading_day(samples["calendar_date"])),
         ("market_data", reader.get_market_data(samples["daily_symbol"], samples["daily_date"], samples["daily_date"])),
         ("fundamentals", reader.get_fundamentals(samples["daily_symbol"])),
-        ("reference", reader.get_reference("stock_master")),
+        ("reference", reader.get_reference("stock_master", limit=500)),
         ("macro", reader.get_macro_factors("20260601", "20260629")),
         ("capital_flow", reader.get_capital_flow(samples["moneyflow_date"], ts_code=samples["moneyflow_symbol"])),
         ("events", reader.get_events(samples["event_date"], samples["event_date"])),
@@ -299,7 +298,14 @@ def _check_reader_functions() -> dict[str, Any]:
         ("pm_markets", reader.get_pm_markets(5)),
         ("industry", reader.get_industry(samples["industry_symbol"])),
         ("realtime_5min", reader.get_realtime_5min(ts_code=samples["intraday_symbol"], date=samples["intraday_date"])),
-        ("tushare", reader.get_tushare(api_name="stock_basic", ts_code=samples["industry_symbol"])),
+        (
+            "tushare",
+            reader.get_tushare(
+                api_name="stock_basic",
+                ts_code=samples["industry_symbol"],
+                limit=500,
+            ),
+        ),
     ]
     skipped = {
         "associations": "marketgraph_research_graph_endpoint",
@@ -423,7 +429,7 @@ def _check_cron_activity() -> dict[str, Any]:
             if r.returncode != 0:
                 errors.append(f"{log_dir}: {r.stderr.strip() or r.returncode}")
                 continue
-            active_files.update(l.strip() for l in r.stdout.splitlines() if l.strip())
+            active_files.update(line.strip() for line in r.stdout.splitlines() if line.strip())
         except Exception as exc:
             errors.append(f"{log_dir}: {exc}")
 
@@ -445,7 +451,11 @@ def _check_architecture() -> dict[str, Any]:
 
     source = reader_path.read_text(encoding="utf-8")
     lines = source.splitlines()
-    mg_refs = sum(1 for l in lines if "MARKETGRAPH_ROOT" in l and "MARKETGRAPH_ROOT =" not in l)
+    mg_refs = sum(
+        1
+        for line in lines
+        if "MARKETGRAPH_ROOT" in line and "MARKETGRAPH_ROOT =" not in line
+    )
     legacy_refs = sum(
         1
         for line in lines
@@ -486,8 +496,6 @@ def _check_compile() -> dict[str, Any]:
 
 if __name__ == "__main__":
     _load_env()
-
-    import reader  # noqa: E402
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"=== SharedSignals Health [{now}] ===")

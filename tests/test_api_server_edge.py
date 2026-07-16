@@ -7,11 +7,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 import api_server
+import auth
 from pagination import decode_cursor, encode_cursor
 from tools import health_check
 
@@ -28,7 +30,11 @@ class _FakeAuth:
         self._lock = threading.Lock()
 
     def authenticate(self, headers: Any, client_host: str) -> dict[str, Any]:
-        return {"tenant_id": "test", "tier": "internal", "scopes": ["full"]}
+        return {
+            "tenant_id": headers.get("X-Test-Tenant", "test"),
+            "tier": "internal",
+            "scopes": ["full"],
+        }
 
     def check_endpoint_scope(self, account: dict[str, Any], path: str) -> bool:
         return True
@@ -51,6 +57,86 @@ class _FakeAuth:
     def cache_stats(self) -> dict[str, Any]:
         with self._lock:
             return {"dedup_entries": len(self._cache)}
+
+
+class _FakeLegacyQuery:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def execute(self, request, *, access, now, request_id, options):
+        self.calls.append(
+            {
+                "request": request,
+                "access": access,
+                "now": now,
+                "request_id": request_id,
+                "options": options,
+            }
+        )
+        if options.any_of_eq_filters:
+            data = [
+                {
+                    "parent_symbol": "885001.TI",
+                    "child_symbol": "000001.SZ",
+                }
+            ]
+        else:
+            data = [
+                {
+                    "market": "Ashare",
+                    "symbol": "000001.SZ",
+                    "tenant": access.tenant_id,
+                }
+            ]
+        return {
+            "api_version": "v1",
+            "catalog_version": "catalog-test",
+            "request_id": request_id,
+            "dataset_id": request.dataset_id,
+            "schema_version": "1.0.0",
+            "data": data,
+            "next_cursor": "signed-next-page",
+            "metadata": {
+                "state": "ready",
+                "runtime_state": "success",
+                "degraded": False,
+                "freshness": {
+                    "state": "fresh",
+                    "stale": False,
+                    "sla_seconds": 3600,
+                },
+                "quality": {"state": "valid", "valid": True, "evidence": []},
+                "lineage": {
+                    "authority": "sqlite_ingest_receipts",
+                    "providers": ["tushare"],
+                    "receipt_watermark": "watermark-test",
+                },
+                "receipt_id": "receipt-test",
+                "data_through": "20260716",
+                "observed_at": "2026-07-16T03:00:00+00:00",
+                "reasons": [],
+            },
+        }
+
+
+def _install_fake_legacy_runtime(monkeypatch: pytest.MonkeyPatch) -> _FakeLegacyQuery:
+    from dataset_registry import load_dataset_registry
+    from legacy_query_compat import LegacyQueryCompat
+
+    registry = load_dataset_registry()
+    query = _FakeLegacyQuery()
+    runtime = SimpleNamespace(
+        registry=registry,
+        query=query,
+        legacy=LegacyQueryCompat(registry),
+    )
+    monkeypatch.setattr(
+        api_server,
+        "_build_data_plane_runtime",
+        lambda: runtime,
+        raising=False,
+    )
+    return query
 
 
 class _FakeReader:
@@ -401,12 +487,64 @@ def api_edge_server(monkeypatch):
         thread.join(timeout=5)
 
 
+@pytest.fixture
+def legacy_auth_server(monkeypatch: pytest.MonkeyPatch):
+    fake_reader = _FakeReader()
+    query = _install_fake_legacy_runtime(monkeypatch)
+    tokens = {
+        auth._hash_token("tushare-token"): {
+            "tenant_id": "tenant-tushare",
+            "tier": "research",
+            "scopes": ["tushare"],
+        },
+        auth._hash_token("fundamentals-token"): {
+            "tenant_id": "tenant-fundamentals",
+            "tier": "research",
+            "scopes": ["fundamentals"],
+        },
+    }
+    monkeypatch.setattr(auth, "_TOKEN_HASHES", tokens)
+    monkeypatch.setattr(auth, "LOCALHOST_BYPASS", False)
+    monkeypatch.setattr(auth, "_REQUEST_LOG", auth.OrderedDict())
+    monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
+    monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
+    monkeypatch.setattr(api_server, "auth", auth)
+    monkeypatch.setattr(api_server, "reader", fake_reader)
+    monkeypatch.setattr(api_server, "sector_flow_v2", SimpleNamespace())
+
+    server = api_server.SharedSignalsHTTPServer(
+        ("127.0.0.1", 0),
+        api_server.Handler,
+        request_timeout=5,
+        max_threads=8,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        yield base_url, fake_reader, query
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def _get_json(base_url: str, path: str) -> tuple[int, dict[str, Any]]:
     return _request_json(base_url, path)
 
 
-def _request_json(base_url: str, path: str, *, method: str = "GET") -> tuple[int, dict[str, Any]]:
-    request = urllib.request.Request(base_url + path, method=method)
+def _request_json(
+    base_url: str,
+    path: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    request = urllib.request.Request(
+        base_url + path,
+        method=method,
+        headers={} if headers is None else headers,
+    )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
@@ -504,58 +642,82 @@ def test_api_events_passes_raw_cursor_to_reader(api_edge_server) -> None:
     assert reader.calls[-1][1]["cursor"] == cursor
 
 
-def test_api_tushare_applies_limit(api_edge_server) -> None:
+def test_api_tushare_uses_shared_query_service_and_signed_cursor(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     base_url, reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
 
-    status, payload = _get_json(base_url, "/tushare?api_name=news&limit=2")
+    def forbidden(**_kwargs: Any) -> list[dict[str, Any]]:
+        raise AssertionError("migrated route used the legacy reader")
+
+    monkeypatch.setattr(reader, "get_tushare", forbidden)
+
+    status, payload = _get_json(
+        base_url,
+        "/tushare?api_name=news&limit=2&cursor=signed-prior-page",
+    )
 
     assert status == 200
-    assert [row["title"] for row in payload["data"]] == ["news-1", "news-2"]
+    assert payload["data"] == [
+        {"market": "Ashare", "symbol": "000001.SZ", "tenant": "test"}
+    ]
     assert payload["metadata"]["degraded"] is False
-    assert reader.calls[-1][0] == "get_tushare"
+    assert payload["metadata"]["next_cursor"] == "signed-next-page"
+    assert query.calls[-1]["request"].dataset_id == "cn.event.news"
+    assert query.calls[-1]["request"].limit == 2
+    assert query.calls[-1]["request"].cursor == "signed-prior-page"
+    assert query.calls[-1]["access"].allowed_dataset_ids == ("cn.event.news",)
 
 
 def test_api_tushare_bypasses_response_dedup_cache(
     api_edge_server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    base_url, reader = api_edge_server
-    current = {"title": "old-epoch"}
-    calls = 0
+    base_url, _reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
 
-    def get_tushare(**_kwargs: Any) -> list[dict[str, Any]]:
-        nonlocal calls
-        calls += 1
-        return [
-            {
-                "data": {"title": current["title"]},
-                "degraded": False,
-                "provenance": {"source_id": "tushare_news"},
-            }
-        ]
-
-    monkeypatch.setattr(reader, "get_tushare", get_tushare)
-
-    first_status, first = _get_json(base_url, "/tushare?api_name=news")
-    current["title"] = "new-epoch"
-    second_status, second = _get_json(base_url, "/tushare?api_name=news")
+    first_status, first = _request_json(
+        base_url,
+        "/tushare?api_name=news",
+        headers={"X-Test-Tenant": "tenant-a"},
+    )
+    second_status, second = _request_json(
+        base_url,
+        "/tushare?api_name=news",
+        headers={"X-Test-Tenant": "tenant-b"},
+    )
 
     assert first_status == 200
     assert second_status == 200
-    assert first["data"] == [{"title": "old-epoch"}]
-    assert second["data"] == [{"title": "new-epoch"}]
-    assert calls == 2
+    assert first["data"][0]["tenant"] == "tenant-a"
+    assert second["data"][0]["tenant"] == "tenant-b"
+    assert [call["access"].tenant_id for call in query.calls] == [
+        "tenant-a",
+        "tenant-b",
+    ]
 
 
-def test_api_tushare_relationship_api_is_visible(api_edge_server) -> None:
-    base_url, reader = api_edge_server
+def test_api_tushare_relationship_api_is_visible(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_url, _reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
 
-    status, payload = _get_json(base_url, "/tushare?api_name=ths_member&limit=1")
+    status, payload = _get_json(
+        base_url,
+        "/tushare?api_name=ths_member&ts_code=000001.SZ&limit=1",
+    )
 
     assert status == 200
     assert payload["data"] == [{"parent_symbol": "885001.TI", "child_symbol": "000001.SZ"}]
     assert payload["metadata"]["degraded"] is False
-    assert reader.calls[-1][0] == "get_tushare"
+    assert query.calls[-1]["options"].any_of_eq_filters == (
+        ("child_symbol", "000001.SZ"),
+        ("parent_symbol", "000001.SZ"),
+    )
 
 
 def test_api_crypto_passes_limit_to_reader_and_returns_latest_rows(api_edge_server) -> None:
@@ -578,20 +740,143 @@ def test_api_fundamentals_passes_limit_to_reader(api_edge_server) -> None:
     assert reader.calls[-1] == ("get_fundamentals", {"ts_code": "000001.SZ", "limit": 7})
 
 
-def test_api_stock_master_reference_passes_a_bounded_limit(api_edge_server) -> None:
+def test_api_stock_master_reference_uses_shared_query_and_bypasses_tenant_blind_cache(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     base_url, reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
 
-    status, payload = _get_json(
-        base_url, "/reference?table=stock_master&limit=50000"
+    def forbidden(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        raise AssertionError("stock_master used the independent legacy reader")
+
+    monkeypatch.setattr(reader, "get_reference", forbidden)
+
+    first_status, first = _request_json(
+        base_url,
+        "/reference?table=STOCK_MASTER&limit=500",
+        headers={"X-Test-Tenant": "tenant-a"},
+    )
+    second_status, second = _request_json(
+        base_url,
+        "/reference?table=%20Stock_Master%20&limit=500",
+        headers={"X-Test-Tenant": "tenant-b"},
+    )
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first["data"][0]["tenant"] == "tenant-a"
+    assert second["data"][0]["tenant"] == "tenant-b"
+    assert [call["request"].dataset_id for call in query.calls] == [
+        "cn.equity.security_master",
+        "cn.equity.security_master",
+    ]
+    assert first["metadata"]["next_cursor"] == "signed-next-page"
+    assert query.calls[0]["access"].allowed_dataset_ids == (
+        "cn.equity.security_master",
+    )
+    assert query.calls[0]["access"].policy_id != query.calls[1]["access"].policy_id
+
+
+@pytest.mark.parametrize(
+    ("token", "path", "tenant", "dataset_id"),
+    [
+        (
+            "tushare-token",
+            "/tushare?api_name=news&limit=1",
+            "tenant-tushare",
+            "cn.event.news",
+        ),
+        (
+            "fundamentals-token",
+            "/reference?table=%20STOCK_MASTER%20&limit=1",
+            "tenant-fundamentals",
+            "cn.equity.security_master",
+        ),
+    ],
+)
+def test_real_auth_narrow_legacy_scope_gets_only_the_resolved_request_dataset(
+    legacy_auth_server,
+    token: str,
+    path: str,
+    tenant: str,
+    dataset_id: str,
+) -> None:
+    base_url, _reader, query = legacy_auth_server
+
+    status, _payload = _request_json(
+        base_url,
+        path,
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     assert status == 200
-    assert payload["data"] == [{"market": "Ashare", "symbol": "000001.SZ"}]
-    assert payload["metadata"]["degraded"] is False
-    assert reader.calls[-1] == (
-        "get_reference",
-        {"table": "stock_master", "limit": 10000},
+    access = query.calls[-1]["access"]
+    assert access.tenant_id == tenant
+    assert access.allowed_dataset_ids == (dataset_id,)
+
+
+@pytest.mark.parametrize(
+    ("token", "path"),
+    [
+        ("tushare-token", "/reference?table=stock_master&limit=1"),
+        ("fundamentals-token", "/tushare?api_name=news&limit=1"),
+    ],
+)
+def test_real_auth_missing_legacy_endpoint_scope_stays_403(
+    legacy_auth_server,
+    token: str,
+    path: str,
+) -> None:
+    base_url, _reader, query = legacy_auth_server
+
+    status, _payload = _request_json(
+        base_url,
+        path,
+        headers={"Authorization": f"Bearer {token}"},
     )
+
+    assert status == 403
+    assert query.calls == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/tushare?api_name=daily&limit=501",
+        "/tushare?api_name=daily&limit=6000",
+        "/tushare?api_name=daily&limit=10000",
+        "/reference?table=stock_master&limit=501",
+        "/reference?table=stock_master&limit=6000",
+        "/reference?table=stock_master&limit=10000",
+    ],
+)
+def test_migrated_legacy_limit_above_500_is_http_413(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    base_url, _reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
+
+    status, payload = _get_json(base_url, path)
+
+    assert status == 413
+    assert "500" in payload["error"]
+    assert query.calls == []
+
+
+def test_non_stock_reference_retains_existing_response_cache(api_edge_server) -> None:
+    base_url, reader = api_edge_server
+
+    first_status, first = _get_json(base_url, "/reference?table=legacy_csv")
+    second_status, second = _get_json(base_url, "/reference?table=legacy_csv")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first == second
+    calls = [call for call in reader.calls if call[0] == "get_reference"]
+    assert len(calls) == 1
 
 
 def test_api_industry_snapshot_exposes_promoted_snapshot_and_lineage(

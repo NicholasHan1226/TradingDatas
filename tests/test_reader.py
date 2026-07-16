@@ -10,9 +10,9 @@ import os
 import sqlite3
 import sys
 import time
-from dataclasses import replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,161 +23,129 @@ if str(_SHARED) not in sys.path:
 from pagination import encode_cursor  # noqa: E402
 
 
-def _runtime_registry(*, active: bool = True, sla_seconds: int = 3_600):
-    from dataset_registry import DatasetRegistry, load_dataset_registry
+class _LegacyQueryRecorder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
 
-    base = load_dataset_registry().resolve("tushare.daily")
-    binding = replace(
-        base.provider_bindings[0],
-        entitlement_state="active",
-        activation_state="active" if active else "paused",
+    def execute(self, request, *, access, now, request_id, options):
+        self.calls.append(
+            {
+                "request": request,
+                "access": access,
+                "now": now,
+                "request_id": request_id,
+                "options": options,
+            }
+        )
+        return {
+            "api_version": "v1",
+            "catalog_version": "catalog-test",
+            "request_id": request_id,
+            "dataset_id": request.dataset_id,
+            "schema_version": "1.0.0",
+            "data": [{"symbol": "000001.SZ", "market": "Ashare"}],
+            "next_cursor": "signed-next-page",
+            "metadata": {
+                "state": "ready",
+                "runtime_state": "success",
+                "degraded": False,
+                "freshness": {
+                    "state": "fresh",
+                    "stale": False,
+                    "sla_seconds": 3600,
+                },
+                "quality": {"state": "valid", "valid": True, "evidence": []},
+                "lineage": {
+                    "authority": "sqlite_ingest_receipts",
+                    "providers": ["tushare"],
+                    "receipt_watermark": "watermark-test",
+                },
+                "receipt_id": "receipt-test",
+                "data_through": "20260716",
+                "observed_at": "2026-07-16T03:00:00+00:00",
+                "reasons": [],
+            },
+        }
+
+
+def _legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
+    import reader
+    from dataset_registry import load_dataset_registry
+    from legacy_query_compat import LegacyQueryCompat
+
+    registry = load_dataset_registry()
+    query = _LegacyQueryRecorder()
+    runtime = SimpleNamespace(
+        registry=registry,
+        query=query,
+        legacy=LegacyQueryCompat(registry),
     )
-    dataset = replace(
-        base,
-        provider_bindings=(binding,),
-        freshness_sla_seconds=sla_seconds,
+    monkeypatch.setattr(
+        reader,
+        "_build_data_plane_runtime",
+        lambda: runtime,
+        raising=False,
     )
-    return DatasetRegistry((dataset,))
+    return reader, query
 
 
-def _enable_runtime_read_locks(
-    db_path: Path,
+def _forbid_migrated_independent_readers(
+    reader: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    maintenance_lock = db_path.parent / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (db_path.parent / f".{db_path.name}.read_model_store.lock").touch()
-    monkeypatch.setenv(
-        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
-        str(maintenance_lock),
-    )
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("migrated route touched an independent legacy reader")
+
+    for name in ("_query_tushare_rows", "_sqlite_rows", "_connect_sqlite_ro"):
+        monkeypatch.setattr(reader, name, forbidden, raising=False)
 
 
-def _insert_runtime_receipt(
+def test_migrated_reader_entrypoints_share_query_service_without_legacy_io(
     monkeypatch: pytest.MonkeyPatch,
-    conn: sqlite3.Connection,
-    *,
-    status: str,
-    attempt_id: str,
-    started_at: str,
-    finished_at: str,
-    data_through: str | None,
-) -> str:
-    import storage.ingest_receipts as receipt_module
-    from storage.ingest_receipts import (
-        IngestContext,
-        IngestCounts,
-        insert_ingest_receipt,
-    )
-
-    monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
-    if status == "success":
-        counts = IngestCounts(
-            returned=1,
-            validated=1,
-            inserted=1,
-            updated=0,
-            unchanged=0,
-            rejected=0,
-            committed=1,
-            count_semantics="exact_row_outcomes",
-        )
-        target_table = "market_bars_daily"
-        errors: tuple[str, ...] = ()
-    else:
-        counts = IngestCounts(
-            returned=0,
-            validated=0,
-            inserted=0,
-            updated=0,
-            unchanged=0,
-            rejected=0,
-            committed=0,
-            count_semantics="terminal_no_data_transaction",
-        )
-        target_table = None
-        errors = ("provider_error",) if status == "failed" else ()
-    receipt_id = insert_ingest_receipt(
-        conn,
-        context=IngestContext(
-            attempt_id=attempt_id,
-            dataset_id="cn.equity.daily",
-            provider="tushare",
-            provider_api="daily",
-            request_window={"trade_date": "20260715"},
-            config_hash="a" * 64,
-            adapter_version="tushare-direct-sqlite.v1",
-            started_at=started_at,
-            data_through=data_through,
-        ),
-        target_table=target_table,
-        transaction_index=0,
-        status=status,
-        counts=counts,
-        errors=errors,
-        payload_fingerprint="b" * 64,
-    )
-    conn.commit()
-    return receipt_id
-
-
-def _runtime_daily_db(
-    db_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    latest_status: str = "success",
-    data_through: str = "2026-07-15T12:00:00",
 ) -> None:
-    from storage.schema import SCHEMA_SQL
+    reader, query = _legacy_runtime_recorder(monkeypatch)
+    _forbid_migrated_independent_readers(reader, monkeypatch)
 
-    _enable_runtime_read_locks(db_path, monkeypatch)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.executescript(SCHEMA_SQL)
-        conn.execute(
-            """
-            INSERT INTO market_bars_daily (
-                market, symbol, trade_date, open, high, low, close,
-                volume, amount, provider, source_file, collected_at, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "Ashare",
-                "600000.SH",
-                "20260715",
-                9.0,
-                9.1,
-                8.9,
-                9.0,
-                2_000.0,
-                488_055.0,
-                "tushare_daily",
-                "runtime-test",
-                "2026-07-15T04:00:00+00:00",
-                "{}",
-            ),
-        )
-        _insert_runtime_receipt(
-            monkeypatch,
-            conn,
-            status="success",
-            attempt_id="attempt-success",
-            started_at="2026-07-15T03:00:00+00:00",
-            finished_at="2026-07-15T03:01:00+00:00",
-            data_through=data_through,
-        )
-        if latest_status != "success":
-            _insert_runtime_receipt(
-                monkeypatch,
-                conn,
-                status=latest_status,
-                attempt_id=f"attempt-{latest_status}",
-                started_at="2026-07-15T04:00:00+00:00",
-                finished_at="2026-07-15T04:01:00+00:00",
-                data_through=None,
-            )
-    finally:
-        conn.close()
+    tushare_rows = reader.get_tushare("daily", limit=1)
+    stock_rows = reader.get_reference("stock_master", limit=1)
+
+    assert [row["data"]["symbol"] for row in tushare_rows] == ["000001.SZ"]
+    assert [row["data"]["symbol"] for row in stock_rows] == ["000001.SZ"]
+    assert tushare_rows[0]["lineage"]["next_cursor"] == "signed-next-page"
+    assert stock_rows[0]["lineage"]["next_cursor"] == "signed-next-page"
+    assert [call["request"].dataset_id for call in query.calls] == [
+        "cn.equity.daily",
+        "cn.equity.security_master",
+    ]
+    assert query.calls[0]["options"].latest_partition is True
+    assert query.calls[0]["access"].tenant_id == "legacy-reader"
+    assert query.calls[1]["access"].policy_id == query.calls[0]["access"].policy_id
+
+
+@pytest.mark.parametrize("table", ["stock_master", "STOCK_MASTER", " Stock_Master "])
+def test_reader_stock_master_spellings_share_the_canonical_migrated_branch(
+    monkeypatch: pytest.MonkeyPatch,
+    table: str,
+) -> None:
+    reader, query = _legacy_runtime_recorder(monkeypatch)
+    _forbid_migrated_independent_readers(reader, monkeypatch)
+
+    rows = reader.get_reference(table, limit=1)
+
+    assert [row["data"]["symbol"] for row in rows] == ["000001.SZ"]
+    assert query.calls[-1]["request"].dataset_id == "cn.equity.security_master"
+
+
+def test_non_stock_reference_keeps_the_existing_legacy_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader, query = _legacy_runtime_recorder(monkeypatch)
+
+    rows = reader.get_reference("legacy_csv_table")
+
+    assert rows[0]["degraded"] is True
+    assert "reference CSV endpoints are retired" in rows[0]["lineage"]["reason"]
+    assert query.calls == []
 
 
 # ============================================================================
@@ -750,388 +718,7 @@ class TestReaderEvents:
         with pytest.raises(ValueError, match="^invalid cursor$"):
             reader.get_events_page(limit=2, cursor=cursor)
 
-    def test_get_tushare_fut_basic_reads_futures_assets_not_ashare(self, tmp_path: Path, monkeypatch):
-        import reader
-        from storage.schema import SCHEMA_SQL
-
-        db_path = tmp_path / "marketdata.sqlite"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.executescript(SCHEMA_SQL)
-            conn.executemany(
-                """
-                INSERT INTO market_assets (
-                    market, symbol, name, asset_type, exchange, sector, list_date,
-                    status, provider, source_file, updated_at, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        "Futures",
-                        "RB2609.SHF",
-                        "螺纹钢2609",
-                        "future",
-                        "SHFE",
-                        "",
-                        "20260101",
-                        "listed",
-                        "tushare_fut_basic",
-                        "fut_basic",
-                        "2026-07-08T09:00:00",
-                        "{}",
-                    ),
-                    (
-                        "Ashare",
-                        "000001.SZ",
-                        "平安银行",
-                        "stock",
-                        "SZSE",
-                        "银行",
-                        "19910403",
-                        "active",
-                        "tushare_stock_basic",
-                        "stock_basic",
-                        "2026-07-08T09:00:00",
-                        "{}",
-                    ),
-                ],
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        _enable_runtime_read_locks(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        reader.clear_caches()
-
-        futures = reader.get_tushare("fut_basic")
-        futures_alias = reader.get_tushare("fut_basic", market="CNFutures")
-        stocks = reader.get_tushare("stock_basic")
-
-        assert [row["data"]["symbol"] for row in futures] == ["RB2609.SHF"]
-        assert [row["data"]["symbol"] for row in futures_alias] == ["RB2609.SHF"]
-        assert all(row["data"]["market"] == "Futures" for row in futures)
-        assert [row["data"]["symbol"] for row in stocks] == ["000001.SZ"]
-
-    def test_get_tushare_fund_portfolio_reads_dedicated_table(self, tmp_path: Path, monkeypatch):
-        import reader
-        from storage.schema import SCHEMA_SQL
-
-        db_path = tmp_path / "marketdata.sqlite"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.executescript(SCHEMA_SQL)
-            conn.execute(
-                """
-                INSERT INTO market_fund_portfolio (
-                    portfolio_hash, market, symbol, holding_symbol, ann_date, end_date,
-                    market_value, amount, stk_mkv_ratio, stk_float_ratio,
-                    provider, source_file, collected_at, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "pf-1",
-                    "Fund",
-                    "000001.OF",
-                    "600519.SH",
-                    "20260422",
-                    "20260331",
-                    1200.0,
-                    100.0,
-                    3.5,
-                    0.02,
-                    "tushare_fund_portfolio",
-                    "fund_portfolio_20260422",
-                    "2026-07-09T15:00:00+00:00",
-                    "{}",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        _enable_runtime_read_locks(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        reader.clear_caches()
-
-        rows = reader.get_tushare("fund_portfolio", ts_code="000001.OF", start_date="20260401", end_date="20260430")
-
-        assert len(rows) == 1
-        assert rows[0]["data"]["symbol"] == "000001.OF"
-        assert rows[0]["data"]["holding_symbol"] == "600519.SH"
-        assert rows[0]["data"]["market_value"] == 1200.0
-        assert rows[0]["provenance"]["source_id"] == "tushare_fund_portfolio"
-        assert rows[0]["lineage"]["source"] == "db:market_fund_portfolio"
-
-    def test_get_tushare_daily_without_dates_reads_latest_ashare_day(self, tmp_path: Path, monkeypatch):
-        import reader
-        from storage.schema import SCHEMA_SQL
-
-        db_path = tmp_path / "marketdata.sqlite"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.executescript(SCHEMA_SQL)
-            conn.executemany(
-                """
-                INSERT INTO market_bars_daily (
-                    market, symbol, trade_date, open, high, low, close,
-                    volume, amount, provider, source_file, collected_at, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    ("Ashare", "000001.SZ", "20260707", 10.0, 10.5, 9.9, 10.2, 1000.0, 999999.0, "tushare_daily", "old.csv", "2026-07-07T08:00:00+00:00", "{}"),
-                    ("Ashare", "600000.SH", "20260708", 9.0, 9.1, 8.9, 9.0, 2000.0, 488055.0, "tushare_daily", "latest.csv", "2026-07-08T08:00:00+00:00", "{}"),
-                    ("US", "AAPL", "20260708", 200.0, 201.0, 199.0, 200.5, 100.0, 20050.0, "tushare_us_daily", "us.csv", "2026-07-08T08:00:00+00:00", "{}"),
-                ],
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        _enable_runtime_read_locks(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        reader.clear_caches()
-
-        rows = reader.get_tushare("daily", limit=10)
-
-        assert [row["data"]["symbol"] for row in rows] == ["600000.SH"]
-        assert rows[0]["data"]["trade_date"] == "20260708"
-        assert rows[0]["data"]["market"] == "Ashare"
-
-    def test_get_tushare_preserves_rows_and_overlays_latest_failed_receipt(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        _runtime_daily_db(db_path, monkeypatch, latest_status="failed")
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        monkeypatch.setattr(
-            reader,
-            "load_dataset_registry",
-            lambda: _runtime_registry(),
-            raising=False,
-        )
-        monkeypatch.setattr(
-            reader,
-            "_now",
-            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
-        )
-        reader.clear_caches()
-
-        rows = reader.get_tushare("daily", limit=10)
-
-        assert [row["data"]["symbol"] for row in rows] == ["600000.SH"]
-        assert rows[0]["degraded"] is True
-        assert rows[0]["degraded_reasons"] == ["provider_error"]
-        assert rows[0]["quality"]["score"] > 0
-        assert rows[0]["freshness"]["runtime_state"] == "failed"
-        assert rows[0]["freshness"]["data_through"] == "2026-07-15T12:00:00"
-        assert rows[0]["lineage"]["runtime"] == {
-            "authority": "sqlite_ingest_receipts",
-            "dataset_id": "cn.equity.daily",
-            "state": "failed",
-            "data_through": "2026-07-15T12:00:00",
-            "observed_at": "2026-07-15T04:01:00+00:00",
-            "receipt_id": rows[0]["lineage"]["runtime"]["receipt_id"],
-            "reasons": ["provider_error"],
-        }
-
-    @pytest.mark.parametrize("failure_mode", ["missing", "damaged"])
-    def test_get_tushare_discards_cached_rows_when_sqlite_authority_is_unavailable(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        failure_mode: str,
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        _runtime_daily_db(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        monkeypatch.setattr(
-            reader,
-            "load_dataset_registry",
-            lambda: _runtime_registry(),
-            raising=False,
-        )
-        monkeypatch.setattr(
-            reader,
-            "_now",
-            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
-        )
-        reader.clear_caches()
-        assert reader.get_tushare("daily")[0]["data"]["symbol"] == "600000.SH"
-
-        if failure_mode == "missing":
-            db_path.unlink()
-        else:
-            db_path.write_bytes(b"not a SQLite database")
-
-        rows = reader.get_tushare("daily")
-
-        assert len(rows) == 1
-        assert rows[0]["data"] == {}
-        assert rows[0]["degraded"] is True
-        assert rows[0]["freshness"]["stale"] is True
-        assert rows[0]["lineage"]["runtime"]["state"] == "failed"
-        assert rows[0]["lineage"]["runtime"]["authority"] == (
-            "sqlite_ingest_receipts"
-        )
-        assert rows[0]["lineage"]["runtime"]["dataset_id"] == "cn.equity.daily"
-        assert rows[0]["lineage"]["runtime"]["reasons"] == [
-            "receipt_database_unavailable"
-        ]
-        assert rows[0]["freshness"]["runtime_state"] == "failed"
-        assert rows[0]["degraded_reasons"] == [
-            "receipt_database_unavailable"
-        ]
-        if failure_mode == "missing":
-            assert not db_path.exists()
-
-    def test_get_tushare_reprojects_wall_clock_staleness_without_data_cache_reset(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        _runtime_daily_db(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        monkeypatch.setattr(
-            reader,
-            "load_dataset_registry",
-            lambda: _runtime_registry(sla_seconds=3_600),
-            raising=False,
-        )
-        clock = {"now": datetime(2026, 7, 15, 5, tzinfo=timezone.utc)}
-        monkeypatch.setattr(reader, "_now", lambda: clock["now"])
-        reader.clear_caches()
-
-        exact = reader.get_tushare("daily")
-        clock["now"] += timedelta(microseconds=1)
-        stale = reader.get_tushare("daily")
-
-        assert exact[0]["freshness"]["runtime_state"] == "success"
-        assert exact[0]["degraded"] is False
-        assert stale[0]["freshness"]["runtime_state"] == "stale"
-        assert stale[0]["freshness"]["stale"] is True
-        assert stale[0]["degraded"] is True
-
-    def test_get_tushare_reprojects_registry_change_without_data_cache_reset(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        _runtime_daily_db(db_path, monkeypatch)
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        registry_state = {"active": True}
-        monkeypatch.setattr(
-            reader,
-            "load_dataset_registry",
-            lambda: _runtime_registry(active=registry_state["active"]),
-            raising=False,
-        )
-        monkeypatch.setattr(
-            reader,
-            "_now",
-            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
-        )
-        reader.clear_caches()
-
-        active = reader.get_tushare("daily")
-        registry_state["active"] = False
-        paused = reader.get_tushare("daily")
-
-        assert active[0]["freshness"]["runtime_state"] == "success"
-        assert paused[0]["freshness"]["runtime_state"] == "paused"
-        assert paused[0]["degraded"] is True
-        assert paused[0]["lineage"]["runtime"]["reasons"] == [
-            "registry_activation_paused"
-        ]
-
-    def test_get_tushare_keeps_data_and_receipt_in_one_wal_snapshot(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        _runtime_daily_db(db_path, monkeypatch)
-        writer = sqlite3.connect(db_path)
-        assert writer.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
-        writer.execute("PRAGMA wal_autocheckpoint = 0")
-        writer.execute(
-            "UPDATE market_bars_daily SET source_file = 'initial-wal-epoch' "
-            "WHERE symbol = '600000.SH'"
-        )
-        writer.commit()
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        monkeypatch.setattr(
-            reader,
-            "load_dataset_registry",
-            lambda: _runtime_registry(),
-            raising=False,
-        )
-        monkeypatch.setattr(
-            reader,
-            "_now",
-            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
-        )
-        reader.clear_caches()
-        original_query = reader._query_tushare_rows
-        calls = 0
-        new_receipt_id: str | None = None
-
-        def query_then_commit(*args, **kwargs):
-            nonlocal calls, new_receipt_id
-            result = original_query(*args, **kwargs)
-            calls += 1
-            if calls == 1:
-                writer.execute(
-                    """
-                    INSERT INTO market_bars_daily (
-                        market, symbol, trade_date, open, high, low, close,
-                        volume, amount, provider, source_file, collected_at, raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        "Ashare", "000001.SZ", "20260716", 10.0, 10.2, 9.9,
-                        10.1, 1_000.0, 10_100.0, "tushare_daily", "new-epoch",
-                        "2026-07-16T04:00:00+00:00", "{}",
-                    ),
-                )
-                new_receipt_id = _insert_runtime_receipt(
-                    monkeypatch,
-                    writer,
-                    status="success",
-                    attempt_id="attempt-new-epoch",
-                    started_at="2026-07-15T04:30:00+00:00",
-                    finished_at="2026-07-15T04:31:00+00:00",
-                    data_through="2026-07-15T12:00:00",
-                )
-            return result
-
-        monkeypatch.setattr(reader, "_query_tushare_rows", query_then_commit)
-        try:
-            first = reader.get_tushare("daily", limit=10)
-            second = reader.get_tushare("daily", limit=10)
-        finally:
-            writer.close()
-
-        assert first[0]["data"], first
-        assert [row["data"]["symbol"] for row in first] == ["600000.SH"]
-        assert first[0]["lineage"]["runtime"]["receipt_id"] != new_receipt_id
-        assert [row["data"]["symbol"] for row in second] == ["000001.SZ"]
-        assert second[0]["lineage"]["runtime"]["receipt_id"] == new_receipt_id
-
+    # The migrated Tushare matrix is covered by the shared-runtime tests above.
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader
         from storage.schema import SCHEMA_SQL
@@ -1455,136 +1042,7 @@ class TestReaderEvents:
 # ============================================================================
 
 
-class TestReaderStockMasterReference:
-    @staticmethod
-    def _use_db(monkeypatch, db_path: Path) -> None:
-        import reader
-
-        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
-        reader.clear_caches()
-
-    def test_stock_master_reads_bounded_ashare_stock_rows_with_metadata(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
-        import reader
-        from storage.schema import SCHEMA_SQL
-
-        db_path = tmp_path / "marketdata.sqlite"
-        conn = sqlite3.connect(str(db_path))
-        conn.executescript(SCHEMA_SQL)
-        collected_at = datetime.now(timezone.utc).isoformat()
-        conn.executemany(
-            """
-            INSERT INTO market_assets (
-                market, symbol, name, asset_type, exchange, sector, list_date,
-                status, provider, source_file, updated_at, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    "Ashare", "000001.SZ", "平安银行", "stock", "SZSE",
-                    "银行", "19910403", "L", "tushare_stock_basic",
-                    "run-stock-basic", collected_at, "{}",
-                ),
-                (
-                    "Ashare", "600519.SH", "贵州茅台", "stock", "SSE",
-                    "白酒", "20010827", "L", "tushare_stock_company",
-                    "run-stock-company", collected_at, "{}",
-                ),
-                (
-                    "Ashare", "510300.SH", "沪深300ETF", "etf", "SSE",
-                    "ETF", "20120528", "L", "tushare_etf_basic",
-                    "run-etf-basic", collected_at, "{}",
-                ),
-                (
-                    "US", "AAPL", "Apple", "stock", "NASDAQ",
-                    "Technology", "19801212", "L", "tushare_us_basic",
-                    "run-us-basic", collected_at, "{}",
-                ),
-            ],
-        )
-        conn.commit()
-        conn.close()
-        self._use_db(monkeypatch, db_path)
-
-        rows = reader.get_reference("stock_master", limit=1)
-
-        assert len(rows) == 1
-        row = rows[0]
-        assert row["data"]["symbol"] == "000001.SZ"
-        assert row["data"]["market"] == "Ashare"
-        assert row["data"]["asset_type"] == "stock"
-        assert "raw_json" not in row["data"]
-        assert row["degraded"] is False
-        assert row["provenance"] == {
-            "source_id": "tushare_stock_basic",
-            "source_tier": "reference",
-            "collected_at": collected_at,
-        }
-        assert row["freshness"]["stale"] is False
-        assert row["quality"]["score"] > 0
-        assert row["lineage"] == {
-            "reader": "get_reference",
-            "db_path": str(db_path),
-            "requested_table": "stock_master",
-            "table": "market_assets",
-            "filters": {"market": "Ashare", "asset_type": "stock", "limit": 1},
-        }
-
-    def test_stock_master_empty_read_model_is_explicitly_degraded(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
-        import reader
-        from storage.schema import SCHEMA_SQL
-
-        db_path = tmp_path / "marketdata.sqlite"
-        conn = sqlite3.connect(str(db_path))
-        conn.executescript(SCHEMA_SQL)
-        conn.commit()
-        conn.close()
-        self._use_db(monkeypatch, db_path)
-
-        rows = reader.get_reference("stock_master")
-
-        assert len(rows) == 1
-        assert rows[0]["degraded"] is True
-        assert rows[0]["data"] == {}
-        assert rows[0]["provenance"]["source_id"] == "sqlite:market_assets"
-        assert "no A-share stock rows" in rows[0]["lineage"]["reason"]
-        assert rows[0]["lineage"]["table"] == "market_assets"
-
-    def test_stock_master_missing_table_is_explicitly_degraded(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        sqlite3.connect(str(db_path)).close()
-        self._use_db(monkeypatch, db_path)
-
-        rows = reader.get_reference("stock_master")
-
-        assert len(rows) == 1
-        assert rows[0]["degraded"] is True
-        assert rows[0]["data"] == {}
-        assert rows[0]["lineage"]["table"] == "market_assets"
-        assert "sqlite read failed" in rows[0]["lineage"]["reason"]
-
-    def test_noncanonical_reference_table_keeps_retired_behavior(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
-        import reader
-
-        db_path = tmp_path / "marketdata.sqlite"
-        sqlite3.connect(str(db_path)).close()
-        self._use_db(monkeypatch, db_path)
-
-        rows = reader.get_reference("legacy_csv_table")
-
-        assert len(rows) == 1
-        assert rows[0]["degraded"] is True
-        assert "reference CSV endpoints are retired" in rows[0]["lineage"]["reason"]
-
+# Stock-master compatibility now uses the shared runtime and is covered above.
 
 # ============================================================================
 # reference/market_calendar.py tests

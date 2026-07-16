@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from tools import capability_scan
+from tools import capability_scan, health_check
 
 
 def test_run_scan_can_refresh_registry_without_rewriting_doc(tmp_path, monkeypatch) -> None:
@@ -70,8 +71,10 @@ def test_stock_master_reference_capability_is_active_and_canonical() -> None:
     assert "status_override" not in meta
     assert meta["func"] == "get_reference"
     assert meta["smoke_args"] == ["stock_master"]
+    assert meta["smoke_kwargs"] == {"limit": 500}
     assert "SQLite market_assets" in meta["description"]
     assert "A-share stock" in meta["description"]
+    assert "not a complete universe" in meta["description"]
     assert meta["fields"] == [
         "market",
         "symbol",
@@ -102,14 +105,21 @@ def test_stock_master_reference_is_scanned_in_test_only_mode(tmp_path, monkeypat
     monkeypatch.setattr(capability_scan, "CHANGES_PATH", changes_path)
     monkeypatch.setattr(capability_scan, "DOCS_DIR", tmp_path)
     monkeypatch.setattr(capability_scan, "_load_previous_registry", lambda: {})
-    monkeypatch.setattr(capability_scan, "_resolve_smoke_args", lambda meta: (meta.get("smoke_args", []), {}))
+    monkeypatch.setattr(
+        capability_scan,
+        "_resolve_smoke_args",
+        lambda meta: (
+            meta.get("smoke_args", []),
+            dict(meta.get("smoke_kwargs", {})),
+        ),
+    )
     module = SimpleNamespace()
     monkeypatch.setattr(capability_scan, "_import_module", lambda _name: module)
 
-    calls: list[tuple[str, list[object]]] = []
+    calls: list[tuple[str, list[object], dict[str, object]]] = []
 
     def fake_call(_mod, func, args, _kwargs=None):
-        calls.append((func, args))
+        calls.append((func, args, dict(_kwargs or {})))
         return {
             "latency_ms": 1.0,
             "rows": 1,
@@ -122,9 +132,69 @@ def test_stock_master_reference_is_scanned_in_test_only_mode(tmp_path, monkeypat
     result = capability_scan.run_scan(test_only=True, write_doc=False)
     endpoints = {item["name"]: item for item in result["registry"]["endpoints"]}
 
-    assert ("get_reference", ["stock_master"]) in calls
+    assert ("get_reference", ["stock_master"], {"limit": 500}) in calls
     assert endpoints["get_reference"]["status"] == "ok"
     assert endpoints["get_reference"]["rows"] == 1
+
+
+def test_health_check_requests_only_one_bounded_legacy_page(monkeypatch) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def ok(*_args, **_kwargs):
+        return [{"degraded": False}]
+
+    def get_reference(*args, **kwargs):
+        calls.append(("reference", args, kwargs))
+        return ok()
+
+    def get_tushare(*args, **kwargs):
+        calls.append(("tushare", args, kwargs))
+        return ok()
+
+    fake_reader = SimpleNamespace(
+        is_trading_day=ok,
+        get_market_data=ok,
+        get_fundamentals=ok,
+        get_reference=get_reference,
+        get_macro_factors=ok,
+        get_capital_flow=ok,
+        get_events=ok,
+        get_sentiment=ok,
+        get_crypto_klines=ok,
+        get_pm_markets=ok,
+        get_industry=ok,
+        get_realtime_5min=ok,
+        get_tushare=get_tushare,
+    )
+    monkeypatch.setitem(sys.modules, "reader", fake_reader)
+    monkeypatch.setattr(
+        health_check,
+        "_reader_samples",
+        lambda: {
+            "calendar_date": "20260716",
+            "daily_symbol": "000001.SZ",
+            "daily_date": "20260716",
+            "moneyflow_symbol": "000001.SZ",
+            "moneyflow_date": "20260716",
+            "event_date": "20260716",
+            "sentiment_date": "20260716",
+            "industry_symbol": "000001.SZ",
+            "intraday_symbol": "000001.SZ",
+            "intraday_date": "20260716",
+        },
+    )
+
+    result = health_check._check_reader_functions()
+
+    assert result["status"] == "ok"
+    assert calls == [
+        ("reference", ("stock_master",), {"limit": 500}),
+        (
+            "tushare",
+            (),
+            {"api_name": "stock_basic", "ts_code": "000001.SZ", "limit": 500},
+        ),
+    ]
 
 
 def test_stock_master_reference_is_legacy_compatibility_not_public_target() -> None:
@@ -133,6 +203,7 @@ def test_stock_master_reference_is_legacy_compatibility_not_public_target() -> N
     status = Path("STATUS.md").read_text(encoding="utf-8")
     matrix = Path("docs/market_capability_matrix.md").read_text(encoding="utf-8")
     prompt = Path("docs/external_agent_api_prompt.md").read_text(encoding="utf-8")
+    query_service = Path("docs/query_service.md").read_text(encoding="utf-8")
 
     for document in (readme, status):
         assert "GET /v1/catalog" in document
@@ -144,14 +215,21 @@ def test_stock_master_reference_is_legacy_compatibility_not_public_target() -> N
     assert "migration inventory" in matrix
     assert "Legacy compatibility prompt" in prompt
 
-    assert "/reference?table=stock_master&limit=6000" in contract
-    assert "/reference?table=stock_master&limit=6000" in matrix
-    assert "/reference?table=stock_master&limit=6000" in prompt
+    for document in (contract, matrix, prompt, query_service):
+        assert "/reference?table=stock_master&limit=500" in document
+        assert "cursor" in document
+
+    for document in (contract, matrix, prompt):
+        assert "/reference?table=stock_master&limit=6000" not in document
+
     assert "market_assets" in contract
     assert "market_assets" in matrix
     assert "market_assets" in prompt
-    assert "最大 10,000" in contract
-    assert "缺表或空表" in contract
-    assert "provider/CSV fallback" in contract
+    assert "最大 500" in contract
+    assert "单页" in contract
+    assert "完整股票池" in contract
+    assert "tushare_stock_company" in contract
+    assert "tushare_stock_company" in matrix
+    assert "tushare_stock_company" in prompt
     assert "Only `stock_master`" in matrix
     assert "Do not substitute another reference table" in prompt

@@ -21,6 +21,7 @@ import json
 import os
 import sqlite3
 import time
+import uuid
 from copy import deepcopy
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -35,15 +36,8 @@ except ImportError:
 
 import warnings as _warnings
 from env_bootstrap import env_float, env_int
-from dataset_registry import load_dataset_registry
 from pagination import decode_cursor, encode_cursor
 from runtime_paths import marketdata_sqlite_path, runtime_root, sharedsignals_root
-from storage.receipt_projection import (
-    DatasetRuntimeProjection,
-    RuntimeProjectionError,
-    open_verified_read_model_snapshot,
-    project_dataset_runtime,
-)
 from storage.schema_contract import (
     EVENT_CURSOR_HASH_SQL,
     EVENT_CURSOR_KEY_SQL,
@@ -1284,302 +1278,112 @@ def get_fundamentals(ts_code: str, end_date: str | None = None, limit: int = 200
     return _safe_public("sqlite:market_factors", lineage, lambda generation: _get_fundamentals_cached(generation, str(ts_code), ed, _bounded_limit(limit, 200)))
 
 
-def _query_tushare_rows(
-    conn: sqlite3.Connection,
-    api_name: str,
-    ts_code: str | None,
-    start_date: str | None,
-    end_date: str | None,
-    params_json: str,
-) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-    """Query one already-fixed SQLite snapshot without opening another DB."""
+def _build_data_plane_runtime() -> Any:
+    """Private dependency hook for the one shared lazy runtime."""
 
-    from storage.read_model_store import API_TO_TABLE_MAP
+    from data_plane_runtime import build_data_plane_runtime
 
-    table = API_TO_TABLE_MAP.get(api_name)
-    params = json.loads(params_json) if params_json else {}
-    lineage = {"reader": "get_tushare", "source": f"db:{table or 'unmapped'}", "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params}}
-    if not table:
-        raise ValueError(f"Tushare api_name={api_name} is not mapped")
-    conn.row_factory = sqlite3.Row
-    cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-    code = ts_code or params.get("ts_code", "") or params.get("symbol", "")
-    start = start_date or params.get("start_date", "") or params.get("trade_date", "")
-    end = end_date or params.get("end_date", "")
-    where: list[str] = []
-    vals: list[Any] = []
-    if table == "market_relationships" and code and {"parent_symbol", "child_symbol"} <= set(cols):
-        where.append("(parent_symbol = ? OR child_symbol = ?)")
-        vals.extend([code, code])
-    elif code and "symbol" in cols:
-        where.append("symbol = ?")
-        vals.append(code)
-    date_col = (
-        "trade_date" if "trade_date" in cols else
-        "ann_date" if "ann_date" in cols else
-        "event_time" if "event_time" in cols else
-        "updated_at" if "updated_at" in cols else
-        "collected_at" if "collected_at" in cols else ""
-    )
-    if start and date_col:
-        where.append(f"{date_col} >= ?")
-        vals.append(start)
-    if end and date_col:
-        where.append(f"{date_col} <= ?")
-        vals.append(end)
-    if table == "market_bars_daily" and "market" in cols:
-        market_filter = str(params.get("market") or "").strip()
-        if not market_filter:
-            market_filter = {
-                "daily": "Ashare", "hk_daily": "HK", "us_daily": "US",
-                "fut_daily": "Futures", "index_global": "Global",
-                "opt_daily": "Options", "fund_daily": "Fund",
-            }.get(api_name, "")
-        if market_filter:
-            where.append("market = ?")
-            vals.append(_canonical_market_key(market_filter))
-    if (
-        table == "market_bars_daily" and date_col and not code and not start
-        and not end and "provider" in cols and "market" in cols
-    ):
-        latest_where = [*where, "provider = ?"]
-        latest_vals = [*vals, f"tushare_{api_name}"]
-        latest_row = conn.execute(
-            f"SELECT MAX({date_col}) AS latest_date FROM {table} "
-            f"WHERE {' AND '.join(latest_where)}",
-            latest_vals,
-        ).fetchone()
-        latest_date = str(latest_row["latest_date"] or "") if latest_row else ""
-        if latest_date:
-            where.append(f"{date_col} = ?")
-            vals.append(latest_date)
-    if table == "market_assets" and "market" in cols:
-        market_filter = str(params.get("market") or "").strip()
-        if not market_filter:
-            market_filter = {
-                "stock_basic": "Ashare", "stock_company": "Ashare",
-                "concept": "Ashare", "concept_detail": "Ashare",
-                "hs_const": "Ashare", "trade_cal": "Ashare",
-                "fut_basic": "Futures", "hk_basic": "HK", "us_basic": "US",
-                "etf_basic": "ETF", "fund_basic": "Fund", "fund_nav": "Fund",
-            }.get(api_name, "Ashare")
-        where.append("market = ?")
-        vals.append(_canonical_market_key(market_filter))
-    if table == "market_relationships" and "market" in cols and params.get("market"):
-        where.append("market = ?")
-        vals.append(_canonical_market_key(str(params.get("market") or "").strip()))
-    if "provider" in cols:
-        if table == "market_assets":
-            providers = ["tushare", f"tushare_{api_name}"]
-            if api_name == "stock_basic":
-                providers.append("tushare_stock_company")
-            where.append(f"({' OR '.join('provider = ?' for _ in providers)})")
-            vals.extend(providers)
-        else:
-            where.append("provider = ?")
-            vals.append(f"tushare_{api_name}")
-    where_sql = " AND ".join(where) if where else "1=1"
-    order_col = date_col or cols[0]
-    row_limit = _bounded_limit(params.get("limit"), 6000 if api_name == "stock_basic" else 500)
-    vals.append(row_limit)
-    rows_raw = conn.execute(
-        f"SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_col} DESC LIMIT ?",
-        vals,
-    ).fetchall()
-    return table, lineage, [_clean_row(dict(row)) for row in rows_raw]
+    return build_data_plane_runtime()
 
 
-def _render_tushare_rows(
-    table: str,
-    api_name: str,
-    lineage: dict[str, Any],
-    rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    if rows:
-        return _rows_to_wrappers(
-            rows,
-            source_id=f"db:{table}",
-            source_tier="collector",
-            lineage=lineage,
-            stale_after_hours=48.0,
-        )
-    return _degraded_empty(
-        f"db:{table}",
-        f"no rows in SharedSignals read model for Tushare api_name={api_name}",
-        lineage=lineage,
+def _legacy_reader_access() -> Any:
+    from query_contract import QueryAccessContext
+
+    return QueryAccessContext.from_grants(
+        tenant_id="legacy-reader",
+        scopes=("external_read",),
+        allowed_dataset_ids=(),
     )
 
 
-@_register_cached
-@_bounded_lru_cache(maxsize=512)
-def _get_tushare_cached(_generation: int, api_name: str, ts_code: str | None, start_date: str | None, end_date: str | None, params_json: str) -> str:
-    """Legacy private cache helper; the public route intentionally bypasses it."""
-
-    try:
-        conn = _connect_sqlite_ro()
-        try:
-            table, lineage, rows = _query_tushare_rows(
-                conn, api_name, ts_code, start_date, end_date, params_json
-            )
-        finally:
-            conn.close()
-        return _json_cached(
-            lambda: _render_tushare_rows(table, api_name, lineage, rows)
-        )
-    except Exception as exc:
-        from storage.read_model_store import API_TO_TABLE_MAP
-
-        table = API_TO_TABLE_MAP.get(api_name)
-        lineage = {"reader": "get_tushare", "source": f"db:{table or 'unmapped'}"}
-        reason = f"read-model lookup failed for Tushare api_name={api_name}: {exc}"
-        return _json_cached(
-            lambda: _degraded_empty(f"db:{table}", reason, lineage=lineage)
-        )
-
-
-def _runtime_lineage(
-    projection: DatasetRuntimeProjection,
-) -> dict[str, Any]:
-    return {
-        "authority": "sqlite_ingest_receipts",
-        "dataset_id": projection.dataset_id,
-        "state": projection.state,
-        "data_through": projection.data_through,
-        "observed_at": projection.observed_at,
-        "receipt_id": projection.receipt_id,
-        "reasons": list(projection.reasons),
-    }
-
-
-def _apply_tushare_runtime_projection(
-    rows: list[dict[str, Any]],
-    projection: DatasetRuntimeProjection,
-) -> list[dict[str, Any]]:
-    runtime = _runtime_lineage(projection)
-    for row in rows:
-        lineage = dict(row.get("lineage") or {})
-        lineage["runtime"] = dict(runtime)
-        row["lineage"] = lineage
-
-        freshness = dict(row.get("freshness") or {})
-        freshness.update(
+def _legacy_query_rows(runtime: Any, invocation: Any) -> list[dict[str, Any]]:
+    query_envelope = runtime.query.execute(
+        invocation.request,
+        access=_legacy_reader_access(),
+        now=_now(),
+        request_id=str(uuid.uuid4()),
+        options=invocation.options,
+    )
+    envelope = runtime.legacy.legacy_envelope(query_envelope)
+    data = envelope.get("data")
+    metadata = envelope.get("metadata")
+    if type(data) is not list or type(metadata) is not dict:
+        raise ValueError("legacy query envelope is invalid")
+    degraded = bool(metadata.get("degraded"))
+    freshness = dict(metadata.get("freshness") or {})
+    quality = dict(metadata.get("quality") or {})
+    reasons = list(metadata.get("degraded_reasons") or [])
+    lineage = dict(metadata.get("lineage") or {})
+    lineage.update(
+        {
+            "reader": "query_service_compat",
+            "next_cursor": metadata.get("next_cursor"),
+            "runtime": {
+                "authority": lineage.get("authority"),
+                "dataset_id": metadata.get("dataset_id"),
+                "state": metadata.get("runtime_state"),
+                "data_through": metadata.get("data_through"),
+                "observed_at": metadata.get("observed_at"),
+                "receipt_id": metadata.get("receipt_id"),
+                "reasons": reasons,
+            },
+        }
+    )
+    source_id = str(envelope.get("source") or metadata.get("dataset_id") or "query_service")
+    collected_at = metadata.get("observed_at")
+    if not data:
+        if not degraded:
+            return []
+        return [
             {
-                "runtime_state": projection.state,
-                "data_through": projection.data_through,
-                "observed_at": projection.observed_at,
+                "data": {},
+                "provenance": {
+                    "source_id": source_id,
+                    "source_tier": "query_service",
+                    "collected_at": str(collected_at or ""),
+                },
+                "freshness": freshness,
+                "quality": quality,
+                "degraded": True,
+                "degraded_reasons": reasons,
+                "lineage": lineage,
             }
-        )
-        if projection.state == "stale":
-            freshness["stale"] = True
-            freshness["score"] = 0.0
-        row["freshness"] = freshness
-        row["degraded"] = bool(row.get("degraded")) or projection.degraded
-        if projection.reasons:
-            existing_reasons = row.get("degraded_reasons")
-            reasons = (
-                [str(reason) for reason in existing_reasons if reason]
-                if isinstance(existing_reasons, list)
-                else ([str(existing_reasons)] if existing_reasons else [])
-            )
-            row["degraded_reasons"] = list(
-                dict.fromkeys([*reasons, *projection.reasons])
-            )
-    return rows
-
-
-def _tushare_runtime_failure(
-    api_name: str,
-    lineage: dict[str, Any],
-    *,
-    dataset_id: str,
-    reason: str,
-) -> list[dict[str, Any]]:
-    projection = DatasetRuntimeProjection(
-        dataset_id=dataset_id,
-        state="failed",
-        degraded=True,
-        data_through=None,
-        observed_at=None,
-        receipt_id=None,
-        reasons=(reason,),
-    )
-    rows = _degraded_empty(
-        f"tushare:{api_name}",
-        "runtime authority is unavailable",
-        lineage=lineage,
-    )
-    return _apply_tushare_runtime_projection(rows, projection)
+        ]
+    return [
+        {
+            "data": dict(row),
+            "provenance": {
+                "source_id": source_id,
+                "source_tier": "query_service",
+                "collected_at": str(collected_at or ""),
+            },
+            "freshness": dict(freshness),
+            "quality": dict(quality),
+            "degraded": degraded,
+            "degraded_reasons": list(reasons),
+            "lineage": deepcopy(lineage),
+        }
+        for row in data
+    ]
 
 
 def get_tushare(api_name: str, ts_code: str | None = None, start_date: str | None = None, end_date: str | None = None, **params: Any) -> list[dict[str, Any]]:
-    """Read Tushare API data through SharedSignals reader, returning metadata-wrapped rows.
+    """Translate one legacy Tushare read into the shared query service."""
 
-    Reads from the SharedSignals read-model tables populated by collectors. It
-    never calls the live Tushare provider path from the HTTP API layer. Each
-    call derives data and runtime evidence from one fixed SQLite snapshot.
-
-    Args:
-        api_name: Tushare API name, e.g. "daily", "moneyflow", "fina_indicator",
-                  "income", "balancesheet", "adj_factor", "margin", "limit_list",
-                  "stk_mins", "news", "major_news", "cctv_news", "anns_d", etc.
-        ts_code: Optional stock code; auto-added to params as "ts_code".
-        start_date: Optional start date (YYYYMMDD); auto-added as "start_date".
-        end_date: Optional end date (YYYYMMDD); auto-added as "end_date".
-        **params: Additional filters used only for read-model lookup.
-
-    Returns:
-        list[dict]: Metadata-wrapped rows with source_id="db:{table}" or a degraded wrapper if the collector has not populated the table.
-    """
-    lineage = {
-        "reader": "get_tushare",
-        "filters": {"api_name": api_name, "ts_code": ts_code, "start_date": start_date, "end_date": end_date, **params},
-    }
-    extra = {k: v for k, v in params.items() if k not in ("ts_code", "start_date", "end_date")}
-    params_json = json.dumps(extra, sort_keys=True, default=str) if extra else ""
-    try:
-        registry = load_dataset_registry()
-        dataset = registry.resolve(f"tushare.{api_name}")
-        binding = registry.provider_binding(dataset.dataset_id, "tushare")
-    except (KeyError, OSError, TypeError, ValueError):
-        return _tushare_runtime_failure(
-            str(api_name),
-            lineage,
-            dataset_id=f"unresolved:tushare.{api_name}",
-            reason="dataset_registry_unavailable",
-        )
-    try:
-        snapshot_now = _now()
-        with open_verified_read_model_snapshot(_resolved_path(SQLITE_PATH)) as conn:
-            primary_query = _query_tushare_rows(
-                conn,
-                str(api_name),
-                ts_code,
-                start_date,
-                end_date,
-                params_json,
-            )
-            primary_projection = project_dataset_runtime(
-                conn,
-                dataset,
-                now=snapshot_now,
-                registry=registry,
-                provider_binding=binding,
-            )
-        table, query_lineage, data_rows = primary_query
-        rows = _render_tushare_rows(
-            table,
-            str(api_name),
-            query_lineage,
-            data_rows,
-        )
-    except (OSError, RuntimeProjectionError, TypeError, ValueError):
-        return _tushare_runtime_failure(
-            str(api_name),
-            lineage,
-            dataset_id=dataset.dataset_id,
-            reason="receipt_database_unavailable",
-        )
-    return _apply_tushare_runtime_projection(rows, primary_projection)
+    runtime = _build_data_plane_runtime()
+    legacy_params = {"api_name": str(api_name)}
+    for name, value in (
+        ("ts_code", ts_code),
+        ("start_date", start_date),
+        ("end_date", end_date),
+    ):
+        if value is not None:
+            legacy_params[name] = str(value)
+    legacy_params.update(
+        {name: str(value) for name, value in params.items() if value is not None}
+    )
+    invocation = runtime.legacy.tushare_request(legacy_params)
+    return _legacy_query_rows(runtime, invocation)
 _CAPITAL_FLOW_PROVIDERS = [
     "tushare_moneyflow",
     "tushare_moneyflow_hsgt",
@@ -1869,59 +1673,6 @@ def get_pm_prices(market_id: str | None = None, limit: int = 200) -> list[dict[s
 @_register_cached
 @_bounded_lru_cache(maxsize=512)
 def _get_reference_cached(_generation: int, table: str, limit: int) -> str:
-    if table == "stock_master":
-        lineage = {
-            "reader": "get_reference",
-            "db_path": str(SQLITE_PATH),
-            "requested_table": "stock_master",
-            "table": "market_assets",
-            "filters": {
-                "market": "Ashare",
-                "asset_type": "stock",
-                "limit": limit,
-            },
-        }
-        rows, degraded = _sqlite_rows(
-            """
-            SELECT
-                market, symbol, name, asset_type, exchange, sector, list_date,
-                last_trade_date, expiry_date, status, provider, source_file,
-                updated_at
-            FROM market_assets
-            WHERE market = ? AND asset_type = ?
-            ORDER BY symbol ASC
-            LIMIT ?
-            """,
-            ("Ashare", "stock", limit),
-            "market_assets",
-        )
-        if degraded is not None:
-            for item in degraded:
-                reason = str((item.get("lineage") or {}).get("reason") or "read-model lookup failed")
-                item["lineage"] = {**lineage, "reason": reason}
-            return _json_cached(lambda: degraded)
-        if not rows:
-            return _json_cached(
-                lambda: _degraded_empty(
-                    "sqlite:market_assets",
-                    "no A-share stock rows in SharedSignals read model",
-                    lineage=lineage,
-                )
-            )
-
-        wrapped = [
-            _wrap(
-                row,
-                source_id=_row_source_id(row, "sqlite:market_assets"),
-                source_tier="reference",
-                collected_at=row.get("updated_at"),
-                lineage=lineage,
-                stale_after_hours=48.0,
-            )
-            for row in rows
-        ]
-        return _json_cached(lambda: wrapped)
-
     lineage = {"reader": "get_reference", "filters": {"table": table}}
     return _json_cached(
         lambda: _degraded_empty(
@@ -1932,16 +1683,33 @@ def _get_reference_cached(_generation: int, table: str, limit: int) -> str:
     )
 
 
-def get_reference(table: str, limit: int = 6000) -> list[dict[str, Any]]:
-    table_key = str(table or "").strip().lower()
-    bounded_limit = _bounded_limit(limit, 6000, max_value=10000)
+def get_reference(
+    table: str,
+    limit: int = 500,
+    cursor: str | None = None,
+) -> list[dict[str, Any]]:
+    from legacy_query_compat import normalize_stock_master_table
+
+    raw_table = str(table or "")
+    table_key = raw_table.strip().lower()
+    if normalize_stock_master_table(raw_table) is not None:
+        runtime = _build_data_plane_runtime()
+        legacy_params = {
+            "table": raw_table,
+            "limit": str(limit),
+        }
+        if cursor is not None:
+            legacy_params["cursor"] = str(cursor)
+        invocation = runtime.legacy.stock_master_request(legacy_params)
+        return _legacy_query_rows(runtime, invocation)
+
+    bounded_limit = _bounded_limit(limit, 500, max_value=10000)
     lineage = {
         "reader": "get_reference",
         "filters": {"table": table_key, "limit": bounded_limit},
     }
-    source_id = "sqlite:market_assets" if table_key == "stock_master" else "sqlite:reference"
     return _safe_public(
-        source_id,
+        "sqlite:reference",
         lineage,
         lambda generation: _get_reference_cached(generation, table_key, bounded_limit),
     )

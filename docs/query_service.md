@@ -303,4 +303,13 @@ usage ledger、billing、revocation automation 或 gateway changes；这些属�
 `/tushare?api_name=daily` 只可把 alias `tushare.daily` 翻译为 `cn.equity.daily` 后调用同一
 QueryService；代表性 `/reference?table=stock_master` 同理。adapter 可以翻译旧参数和旧 envelope，
 但不得包含 SQL、table/path、provider call、file fallback、独立 cursor 或独立 metadata aggregation。
+`/reference?table=stock_master&limit=500` 只可解析为 `cn.equity.security_master`，并沿用 registry 的
+`provider=tushare_stock_basic` fixed filter；不得混入 `tushare_stock_company`。legacy `limit` 必须是
+1..500 的 canonical integer，超过 500 返回 413。调用方通过 signed `cursor` 耗尽所有页并逐页保留
+receipt metadata；一页健康探针不等于完整股票池，也不得在工具内聚合成另一套查询引擎。
+trim 后 case-insensitive 的 `stock_master` spelling 由一个共用 normalizer 收口；cache bypass、HTTP
+dispatch 与 reader 不得各自发明判断。HTTP endpoint scope 通过后，adapter 先解析 dataset，再从真实
+account 仅提取 tenant 与 normalized scopes，并以唯一 resolved dataset 的 request-local exact grant
+重算 policy；不得信任 account 自带 policy/grant，也不得借此读取 catalog 或其它 dataset。跨 tenant、
+scope 或 resolved dataset 的 cursor 必须按 policy mismatch 失败。
 deprecation 与删除必须等待 semantic parity、observed no-use window 和 rollback evidence。

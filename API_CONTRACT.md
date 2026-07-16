@@ -9,7 +9,7 @@
 > `/opening_gate`、交易式 blocking、研究关系、资金/持仓/风险/策略与邮件控制不属于 SharedSignals 目标合同，
 > 按“替代 → 迁移消费者 → deprecate → safe-delete”退出。
 >
-> **当前 legacy 版本**: 1.1.42 | **状态**: compatibility-only | **权威设计**:
+> **当前 legacy 版本**: 1.1.43 | **状态**: compatibility-only | **权威设计**:
 > [External Data Platform Beta Design](docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md)
 
 ---
@@ -142,7 +142,7 @@ SharedSignals 提供统一的只读数据访问层。所有消费者（TradingAg
 
 **SW2021 行业快照边界（2026-07-11）**：`/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 只读专用 SQLite 表 `market_industry_snapshots`、`market_industry_taxonomy`、`market_industry_memberships`，不在请求时调用 Tushare，也不回退 `market_assets`、CSV 或其它 provider。默认只解析当前 `promoted` 快照；显式 `snapshot_id` 只允许已发布的 `promoted/superseded` 快照，使多页消费者可完成已固定的历史下载。缺表或无 promoted 快照返回 degraded `data: []`。旧 `/industry?ts_code=` 继续表示 `market_assets.sector`，不得称为 SW2021。
 
-**A 股股票主数据边界（2026-07-12）**：`GET /reference?table=stock_master&limit=6000` 是 `/reference` 唯一现役 canonical 查询，只读 SQLite `market_assets` 中 `market=Ashare AND asset_type=stock` 的明确字段。`limit` 默认 6,000、最大 10,000；响应保留 `provenance`、`freshness`、`quality` 和 `lineage`。reader/API 不现场调用 provider，也没有 provider/CSV fallback；数据库或表缺失、无 A 股股票行时返回 degraded 空数据。其它旧 CSV reference table 继续返回 degraded，不得用它们替代 `stock_master`。这只描述本地代码契约，不代表 production runtime 已部署、生产表已有数据或调度已启用。
+**A 股股票主数据边界（2026-07-16 修订）**：`GET /reference?table=stock_master&limit=500` 是 `/reference` 唯一迁移中的 canonical compatibility 查询。trim 后 case-insensitive 的 `stock_master` spelling 统一规范化为该名称；cache bypass、HTTP dispatch 与 reader 使用同一个 normalizer，不能让大小写变体落入独立 reader 身份。它把 `stock_master` 翻译为 registry dataset `cn.equity.security_master`，并通过同一个 QueryService 读取；registry 的固定 provider discriminator 是 `tushare_stock_basic`，不会混入独立的 `tushare_stock_company` 公司资料。`limit` 默认且最大为 500，超限返回 HTTP 413；`metadata.next_cursor` 是绑定请求、权限和 receipt snapshot 的签名游标。单页只是最多 500 行的分页结果，不是完整股票池证明；消费者必须逐页耗尽游标并保留每页 runtime、freshness、quality 与 receipt lineage。adapter/reader/API 不含独立 SQL、provider/CSV/file fallback、独立 cursor 或独立 metadata aggregation。其它旧 reference table 保持原有 degraded 行为。这只描述本地候选契约，不代表 production runtime 已部署、生产数据可用或下游迁移完成。
 
 **频率参数边界（2026-07-08）**：`/market_data` 的 `freq=daily` 读取 `market_bars_daily`；`freq=1m/5m/15m/30m/60m` 读取 `market_bars_intraday`，并规范化为 `1min/5min/15min/30min/60min`。未传 start/end 时，分钟请求只读取该标的最新一个 intraday 交易日，避免误扫全量分钟表。
 
@@ -605,13 +605,15 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 
 ### A 股股票主数据（canonical reference）
 
-#### `GET /reference?table=stock_master&limit=6000`
+#### `GET /reference?table=stock_master&limit=500`
 
-`stock_master` 是 `/reference` 唯一现役表名。它只读 SQLite `market_assets`，固定筛选 `market=Ashare`、`asset_type=stock` 并按 `symbol` 升序返回；默认 `limit=6000`，服务端最大 10,000。`reader.get_reference("stock_master", limit=6000)` 使用相同契约。
+`stock_master` 是 `/reference` 唯一迁移到 V1 QueryService 的兼容表名。adapter 将它固定翻译为 `cn.equity.security_master`；registry 的 `market_assets.v1` schema、默认 projection、deterministic primary-key order 和 `provider=tushare_stock_basic` discriminator 定义实际读取。`tushare_stock_company` 属于独立的 `cn.company.profile` dataset，不得混入 `stock_master` 或 `tushare.stock_basic`。
 
-每条正常记录的 `data` 只暴露：`market`、`symbol`、`name`、`asset_type`、`exchange`、`sector`、`list_date`、`last_trade_date`、`expiry_date`、`status`、`provider`、`source_file`、`updated_at`；不暴露 `raw_json`。外层 wrapper 同时提供 `provenance`、`freshness`、`quality`、`lineage` 和 `degraded`。`lineage.requested_table=stock_master`、`lineage.table=market_assets` 明确记录 DB-first 来源和实际过滤条件。
+HTTP 先按真实账号执行 legacy endpoint scope 检查；adapter 解析 dataset 后，本次请求只从账号提取 `tenant_id` 与 normalized scopes，并重算 policy，同时追加恰好一个 `allowed_dataset_ids=(resolved_dataset_id,)` 的 request-local grant。账号对象自带的 policy/grant 字段一律不可信；该 grant 不授权 catalog 或其它 dataset。`/tushare` 与 stock-master HTTP 分支共用同一 helper，跨 tenant、scope 或 resolved dataset 的 cursor 因 policy mismatch 失败。
 
-缺数据库、缺表或空表均 fail closed：HTTP 响应是 `data: []` 且 `metadata.degraded=true`，具体原因记录在 `metadata.degraded_reasons`/lineage 中。reader/API 不现场调用 provider，也没有 provider/CSV fallback。请求其它旧 reference table 同样返回 degraded；如需基金、期货、ETF、HK、US 或 provider-native 参考维度，应使用对应业务 endpoint 或 `/tushare` read-model 输出，不得伪装成 `stock_master`。
+`limit` 必须使用 canonical integer text，默认且最大 500；超过 500 返回 HTTP 413。响应的 `metadata.next_cursor` 是 signed keyset cursor，绑定 normalized query、tenant policy 和 receipt snapshot；非空游标表示仍有下一页。调用方必须逐页传回 `cursor` 直至 `next_cursor=null`，并逐页保留 runtime state、data-through、observed-at、freshness、quality、receipt lineage 与 degraded reasons。任何单页都不得宣称为完整股票池。
+
+`success`、`empty`、`unobserved`、`paused`、`failed` 和 `stale` 全部沿用 QueryService 的 receipt 状态与 fail-closed 元数据；兼容层不得再从文件、provider 或独立 SQL 补数。请求其它旧 reference table 继续走原有 degraded 行为；如需基金、期货、ETF、HK、US 或 provider-native 参考维度，应迁移到 V1 catalog/query，不得伪装成 `stock_master`。
 
 ---
 
@@ -667,12 +669,11 @@ if is_trading_day("20260630")[0]["data"]["is_trading_day"]:
 
 **返回**: `list[dict]` — 每条含 `data` / `provenance` / `freshness` / `quality` / `degraded` / `lineage`
 
-**日线批量读取边界**：`get_tushare("daily")` / `GET /tushare?api_name=daily`
-在未传 `ts_code`、`start_date`、`end_date` 时，只读取
-`market_bars_daily` 中 `market="Ashare"` 且 `provider="tushare_daily"`
-的最新交易日 rows，并将 `limit` 下推到 SQL。该路径用于 TradingAgent
-盘前覆盖检查、流动性排序和外部 API 批量读取，不现场调用 Tushare，也不扫全量
-历史日线表。
+**日线兼容读取边界**：`get_tushare("daily")` / `GET /tushare?api_name=daily`
+只把 registry alias `tushare.daily` 翻译为 `cn.equity.daily` 后调用共享 QueryService。
+未传代码和日期时，`latest_partition` 由 QueryService 在同一 receipt snapshot 内解析；
+provider discriminator、默认 projection、排序、500 行上限和 signed cursor 全部来自 frozen registry/query contract，
+兼容 adapter 不执行独立 SQL，也不把单页包装成全量覆盖。
 
 **示例**:
 ```python
@@ -756,7 +757,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 | Polymarket 市场/价格 | Polymarket collector → marketdata.sqlite | Internal reader: `read_pm_markets()` / `read_pm_prices()`；HTTP `/pm_markets` 返回市场元数据和联表最新价，`/pm_prices` 返回价格快照 |
 | 事件/信号 | Tushare news/announcements/sentiment-style events → `market_events`; RSS/Tavily retired/deferred | `reader.get_events()` 只读 SQLite `market_events`；`reader.get_sentiment()` 读取 `reference/sentiment_event_types.yaml` 中配置的 sentiment 源事件类型（默认含 `sentiment`、`major_news`、`news`、`cctv_news`），不回退旧情绪文件 |
 | 交易日历 | `market_bars_daily` read model | DB-first: `reader.is_trading_day()`；未来/周末日期使用 weekday fallback，不现场调用 provider |
-| A 股股票主数据 | SQLite `market_assets` | `reader.get_reference("stock_master", limit=6000)` / HTTP `/reference?table=stock_master&limit=6000`；固定 `market=Ashare AND asset_type=stock`，默认 6,000、最大 10,000，带 provenance/freshness/quality/lineage；缺表或空表 degraded，无 provider/CSV fallback。其它旧 CSV reference table 仍 degraded |
+| A 股股票主数据 | registry dataset `cn.equity.security_master` / SQLite receipt-backed facts | `reader.get_reference("stock_master", limit=500, cursor=...)` / HTTP `/reference?table=stock_master&limit=500&cursor=...`；固定 `provider=tushare_stock_basic`，不混入 `tushare_stock_company`；默认/最大 500，按 signed cursor 逐页读取并保留每页 metadata。单页不是完整股票池；其它旧 reference table 保持原有 degraded 行为 |
 | 宏观因子 | Tushare P4 macro/rates/FX/global + read model | P4 collector → `market_factors`；`/macro` 读取 `cn_cpi/cn_gdp/cn_m/cn_pmi/cn_ppi/sf_month/shibor/shibor_lpr/hibor/libor/us_tycr/us_tbr/us_tltr/fx_daily/repo_daily/index_global/index_dailybasic` 展开行，并兼容 `event_time` 为月度/季度格式 |
 
 ### 关联查询 (Association Queries)
@@ -972,7 +973,8 @@ MCP 工具 `read_marketdata_db` 通过 `dataset` 参数映射到 reader 函数�
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-07-12 | 1.1.42 | 本地将 `/reference?table=stock_master&limit=6000` 收口为唯一现役 canonical reference：DB-first 读取 `market_assets` 的 A 股 stock identity，默认 6,000、最大 10,000，保留 provenance/freshness/quality/lineage；缺表/空表和其它旧 reference table 均 degraded，且无 provider/CSV fallback。该记录不代表 production runtime 已部署、生产表已有数据或调度已启用。 |
+| 2026-07-16 | 1.1.43 | 本地将 `/tushare` 与 canonicalized `stock_master` reference 改为共享 QueryService 的纯兼容 adapter；默认/最大 500，超限 413，按 signed cursor 续页并保留 receipt metadata。两个 HTTP 分支先通过真实 endpoint scope，再仅向本请求授予 resolved dataset，并由真实 tenant/scopes 重算 policy；忽略账号对象自带 grant/policy。cache/dispatch/reader 共用 stock-master normalizer，大小写/空白变体不再落入 `legacy-reader`。`stock_master`/`tushare.stock_basic` 只读 `cn.equity.security_master` 的 `tushare_stock_basic` rows，不再混入 `tushare_stock_company`。健康与能力探针只读一页且不宣称完整股票池。该记录不代表 production release；TradingAgent/MarketGraph 的游标耗尽迁移完成前仍为 NO-GO。 |
+| 2026-07-12 | 1.1.42 | 历史上曾把 `stock_master` 收口为唯一 canonical reference；其大页读取承诺已由 1.1.43 的 500 行 signed-cursor 合同取代。该记录不代表 production runtime 已部署、生产表已有数据或调度已启用。 |
 | 2026-07-11 | 1.1.41 | 本地实现固定快照的 SW2021 `/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 只读接口与最小权限 `industry_reference` scope；列表采用 snapshot-bound keyset、精确总数和 1,000 行上限，缺表/无 promoted 快照 fail closed。该记录不代表已 pilot、部署、对外生效或启用调度。 |
 | 2026-07-10 | 1.1.40 | Crypto `limit` 直接传给 reader 并返回最新记录；周/月线 `bar_time` 统一为 SQL 时间；DuckDB 权威快照支持删除传播并执行全表计数核对；新增 Tushare 逐接口运行台账和 5 分钟公网探针；API systemd 固定使用 SharedSignals venv；外部入口改为新加坡 connector 承载的 Cloudflare Tunnel CNAME。P1 `daily` 改为全市场 trade-date 单次采集并要求 >=90% active-universe 唯一代码覆盖；未验证批量能力的研究接口使用每日 300 只单股轮转；修复 `repurchase/pledge_*` 及 P2/P3 六个逐股接口的空参数重复请求，并增加 provider 行上限截断门。日常 patrol/heal 改为浅层 SQLite 可用性检查，深度完整性扫描只保留在部署、备份和恢复门禁。 |
 | 2026-07-10 | 1.1.39 | A股 P0 从每轮 30 只优先/轮转改为 `rt_min` 每批最多 300 只、每 5 分钟覆盖完整 active universe；移除旧游标与优先池配置，空批次计关键失败；退役重复且盘中无数据的 `stk_mins` 生产能力；health SLA 新增盘中 active-universe 覆盖率门禁。 |

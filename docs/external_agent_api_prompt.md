@@ -68,9 +68,11 @@ Allowed behavior:
    - Do not silently fallback to provider APIs, local files, old CSV/NDJSON, SQLite paths, sibling repos, or retired RSS/RSSHub paths.
 7. Treat `source_status=yellow` as a governance warning, not automatic data failure. Before using a dataset, require `/opening_gate` to be open when a session gate applies and require the relevant endpoint response to have `metadata.degraded=false`, `metadata.freshness.stale=false`, provenance, and an expected timestamp. A red source status or degraded endpoint remains fail-closed.
 8. A-share stock-master reference contract:
-   - Use GET /reference?table=stock_master&limit=6000. It is the only active `/reference` table and reads SQLite `market_assets` rows filtered to `market=Ashare` and `asset_type=stock`.
-   - The default limit is 6000 and the server hard maximum is 10000. Inspect provenance, freshness, quality, and lineage on every response.
-   - A missing database/table or no matching rows must remain degraded/data_unavailable. There is no provider/CSV fallback.
+   - Use GET /reference?table=stock_master&limit=500. It is the only `/reference` name migrated to the shared QueryService and resolves to `cn.equity.security_master`, whose registry adapter reads receipt-scoped `market_assets` facts.
+   - The default and hard maximum are 500; a larger value returns 413. Follow the signed `metadata.next_cursor` until null, passing it back as `cursor`, and preserve every page's runtime, freshness, quality, and receipt lineage.
+   - One page is not a complete stock universe. Do not aggregate pages inside a health probe or claim completeness without exhausting the same snapshot-bound cursor chain.
+   - Registry isolation permits only `provider=tushare_stock_basic`; `tushare_stock_company` is a separate company-profile dataset and must never appear in stock-master or `tushare.stock_basic` results.
+   - Unobserved, paused, failed, stale, or empty receipt states must remain degraded/data_unavailable. There is no provider/CSV/file fallback or independent SQL reader.
    - Do not substitute another reference table. Other legacy CSV reference names remain degraded; use the relevant business endpoint or `/tushare` read-model output for non-stock-master dimensions.
 
 Frequency interpretation:
@@ -94,7 +96,8 @@ Minimal call examples:
 - GET /realtime_5min?market=Futures&ts_code=RB2609.SHF&limit=50
 - GET /market_data?ts_code=600519.SH&freq=daily&start=20260701&end=20260708
 - GET /events?event_type=news&limit=20
-- GET /reference?table=stock_master&limit=6000
+- GET /reference?table=stock_master&limit=500
+- GET /reference?table=stock_master&limit=500&cursor=<SIGNED_NEXT_CURSOR>
 - GET /industry?ts_code=600519.SH
 - GET /tushare?api_name=index_weekly&limit=20
 

@@ -168,9 +168,35 @@ def _ensure_auth_loaded() -> None:
 def _build_v1_services() -> tuple[Any, Any]:
     """Construct V1 services lazily so unrelated process health can start."""
 
-    from data_plane_runtime import build_data_plane_services
+    return _build_data_plane_runtime().services
 
-    return build_data_plane_services()
+
+def _build_data_plane_runtime() -> Any:
+    """Return the one immutable runtime shared by V1 and migrated legacy reads."""
+
+    reader_builder = getattr(reader, "_build_data_plane_runtime", None)
+    if callable(reader_builder):
+        return reader_builder()
+
+    from data_plane_runtime import build_data_plane_runtime
+
+    return build_data_plane_runtime()
+
+
+def _normalize_stock_master_table(value: object) -> str | None:
+    from legacy_query_compat import normalize_stock_master_table
+
+    return normalize_stock_master_table(value)
+
+
+def _bypasses_legacy_response_cache(
+    path: str,
+    params: dict[str, str],
+) -> bool:
+    return path == "/tushare" or (
+        path == "/reference"
+        and _normalize_stock_master_table(params.get("table")) is not None
+    )
 
 
 def _reject_json_constant(_value: str) -> object:
@@ -359,6 +385,26 @@ def _access_context_from_account(account: object) -> QueryAccessContext:
         tenant_id=tenant_id,
         scopes=tuple(raw_scopes),
         allowed_dataset_ids=(),
+    )
+
+
+def _legacy_request_access_context(
+    account: object | None,
+    dataset_id: str,
+) -> QueryAccessContext:
+    """Bind one authenticated legacy request to only its resolved dataset."""
+
+    if account is None:
+        tenant_id = "legacy-dispatch"
+        scopes: tuple[str, ...] = ()
+    else:
+        base = _access_context_from_account(account)
+        tenant_id = base.tenant_id
+        scopes = base.scopes
+    return QueryAccessContext.from_grants(
+        tenant_id=tenant_id,
+        scopes=scopes,
+        allowed_dataset_ids=(dataset_id,),
     )
 
 
@@ -602,11 +648,12 @@ class Handler(BaseHTTPRequestHandler):
         if not auth.check_endpoint_scope(account, path):
             return self._error(403, f"scope does not grant access to {path}")
 
-        fingerprint = (
-            None
-            if path in LIVE_CONTROL_PLANE_ENDPOINTS
-            else auth.request_fingerprint(path, params)
-        )
+        fingerprint = None
+        if (
+            path not in LIVE_CONTROL_PLANE_ENDPOINTS
+            and not _bypasses_legacy_response_cache(path, params)
+        ):
+            fingerprint = auth.request_fingerprint(path, params)
         if fingerprint is not None:
             cached = auth.get_cached_response(fingerprint)
             if cached is not None:
@@ -629,9 +676,27 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             try:
-                response = self._dispatch(path, params)
+                response = self._dispatch(path, params, account=account)
             except NotFoundError as exc:
                 return self._error(404, str(exc))
+            except QueryBudgetError as exc:
+                return self._error(413, str(exc))
+            except CursorMismatch as exc:
+                return self._error(409, str(exc))
+            except InvalidCursor as exc:
+                return self._error(400, str(exc))
+            except QueryAccessDenied as exc:
+                return self._error(403, str(exc))
+            except QueryDatasetNotFound as exc:
+                return self._error(404, str(exc))
+            except (
+                CursorConfigurationError,
+                QueryServiceUnavailable,
+                RuntimeProjectionError,
+            ) as exc:
+                return self._error(503, str(exc))
+            except QueryValidationError as exc:
+                return self._error(400, str(exc))
             except ValueError as exc:
                 return self._error(400, str(exc))
             except FileNotFoundError as exc:
@@ -1042,7 +1107,13 @@ class Handler(BaseHTTPRequestHandler):
             if concurrency_claimed:
                 auth.release_concurrency(account["tenant_id"])
 
-    def _dispatch(self, path: str, params: dict[str, str]) -> dict[str, Any]:
+    def _dispatch(
+        self,
+        path: str,
+        params: dict[str, str],
+        *,
+        account: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if path == "/capabilities":
             scope_map = getattr(auth, "SCOPE_ENDPOINTS", {}) if auth is not None else {}
             payload, metadata, source = api_control_plane.capabilities_payload(
@@ -1174,9 +1245,25 @@ class Handler(BaseHTTPRequestHandler):
             return wrap_response(payload, metadata, source)
 
         if path == "/reference":
-            table = params.get("table", "").strip()
+            raw_table = params.get("table", "")
+            table = raw_table.strip()
             if not table:
                 raise ValueError("table is required")
+            if _normalize_stock_master_table(raw_table) is not None:
+                runtime = _build_data_plane_runtime()
+                invocation = runtime.legacy.stock_master_request(params)
+                access = _legacy_request_access_context(
+                    account,
+                    invocation.request.dataset_id,
+                )
+                query_envelope = runtime.query.execute(
+                    invocation.request,
+                    access=access,
+                    now=datetime.now(timezone.utc),
+                    request_id=str(uuid.uuid4()),
+                    options=invocation.options,
+                )
+                return runtime.legacy.legacy_envelope(query_envelope)
             rows = reader.get_reference(
                 table=table,
                 limit=to_int(params.get("limit"), 6000, max_val=10000),
@@ -1293,23 +1380,20 @@ class Handler(BaseHTTPRequestHandler):
             api_name = params.get("api_name", "").strip()
             if not api_name:
                 raise ValueError("api_name is required")
-            if api_name not in ALLOWED_TUSHARE_APIS:
-                raise ValueError(f"api_name '{api_name}' is not in the allowed list")
-            ts_code = params.get("ts_code", "").strip() or None
-            rows = reader.get_tushare(
-                api_name=api_name,
-                ts_code=ts_code,
-                start_date=params.get("start_date") or None,
-                end_date=params.get("end_date") or None,
-                **{
-                    k: v
-                    for k, v in params.items()
-                    if k not in ("api_name", "ts_code", "start_date", "end_date")
-                },
+            runtime = _build_data_plane_runtime()
+            invocation = runtime.legacy.tushare_request(params)
+            access = _legacy_request_access_context(
+                account,
+                invocation.request.dataset_id,
             )
-            rows = apply_row_limit(rows, params)
-            payload, metadata, source = aggregate_metadata(rows)
-            return wrap_response(payload, metadata, source)
+            query_envelope = runtime.query.execute(
+                invocation.request,
+                access=access,
+                now=datetime.now(timezone.utc),
+                request_id=str(uuid.uuid4()),
+                options=invocation.options,
+            )
+            return runtime.legacy.legacy_envelope(query_envelope)
 
         if path == "/is_trading_day":
             date = params.get("date", "").strip()

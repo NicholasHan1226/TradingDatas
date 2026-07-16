@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
-import os
 import sqlite3
 import sys
 import time
@@ -42,7 +41,7 @@ for _d in (str(SHARED_SIGNALS), str(REFERENCE_DIR), str(BRIDGE_DIR), str(COLLECT
     if _d not in sys.path:
         sys.path.insert(0, _d)
 
-from runtime_paths import marketdata_sqlite_path
+from runtime_paths import marketdata_sqlite_path  # noqa: E402
 
 UTC = timezone.utc
 CST = timezone(timedelta(hours=8))
@@ -251,8 +250,12 @@ READER_REGISTRY: dict[str, dict[str, Any]] = {
         "func": "get_reference",
         "path": "reader.py",
         "category": "reference",
-        "description": "Read the canonical A-share stock master from SQLite market_assets (market=Ashare, asset_type=stock)",
+        "description": (
+            "Probe one cursor-bounded page of the canonical A-share stock master "
+            "from SQLite market_assets; this is not a complete universe"
+        ),
         "smoke_args": ["stock_master"],
+        "smoke_kwargs": {"limit": 500},
         "version": "2.0.0",
         "fields": [
             "market",
@@ -640,7 +643,7 @@ def _generate_api_contract_md(endpoints: list[dict], scan_time: str, summary: di
     lines.append("# SharedSignals API Contract")
     lines.append("")
     lines.append(f"> Auto-generated from `capability_registry.json` at {scan_time}")
-    lines.append(f"> Service: SharedSignals v1.0.0")
+    lines.append("> Service: SharedSignals v1.0.0")
     lines.append("")
     lines.append("## Summary")
     lines.append("")
