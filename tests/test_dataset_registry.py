@@ -183,6 +183,10 @@ PROFILE_CONTRACT_KEYS = frozenset(
         "fields",
         "primary_key",
         "default_projection",
+        "as_of_field",
+        "as_of_format",
+        "range_field",
+        "partition_field",
         "max_page_size",
         "max_lookback_days",
         "point_in_time",
@@ -192,6 +196,20 @@ PROFILE_CONTRACT_KEYS = frozenset(
         "quota_class",
     }
 )
+
+QUERY_DEFAULTS = {
+    "max_request_bytes": 65_536,
+    "max_response_bytes": 4_194_304,
+    "max_page_size": 500,
+    "max_lookback_days": 36_500,
+    "max_selected_fields": 100,
+    "max_filter_terms": 16,
+    "max_in_values": 100,
+    "max_order_terms": 8,
+    "max_catalog_search_chars": 128,
+    "cursor_ttl_seconds": 900,
+    "sqlite_progress_steps": 1_000_000,
+}
 
 
 def _field(
@@ -277,6 +295,10 @@ def _dataset(
         "default_projection": [
             field["name"] for field in fields if field["selectable"]
         ],
+        "as_of_field": None,
+        "as_of_format": None,
+        "range_field": None,
+        "partition_field": None,
         "cadence_class": "preopen",
         "timezone": "Asia/Shanghai",
         "freshness_sla_seconds": 259_200,
@@ -299,7 +321,11 @@ def _write_registry(
     datasets: list[dict[str, object]],
     **root_overrides: object,
 ) -> Path:
-    payload: dict[str, object] = {"version": 1, "datasets": datasets}
+    payload: dict[str, object] = {
+        "version": 1,
+        "query_defaults": QUERY_DEFAULTS,
+        "datasets": datasets,
+    }
     payload.update(root_overrides)
     path = tmp_path / "dataset_registry.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -315,6 +341,10 @@ def _factor_schema_profile(**overrides: object) -> dict[str, object]:
         "default_projection": [
             field["name"] for field in fields if field["selectable"]
         ],
+        "as_of_field": None,
+        "as_of_format": None,
+        "range_field": None,
+        "partition_field": None,
         "max_page_size": 500,
         "max_lookback_days": None,
         "point_in_time": "current_snapshot",
@@ -535,7 +565,7 @@ def test_repository_registry_exposes_complete_daily_contract() -> None:
     assert registry.resolve("tushare.daily") is daily
     assert daily.dataset_id == "cn.equity.daily"
     assert daily.max_page_size == 500
-    assert daily.max_lookback_days is None
+    assert daily.max_lookback_days == 36_500
     assert daily.data_classification == "objective_factual"
     assert daily.backfill_policy == "provider_limited"
     assert daily.empty_data_policy == "allowed"
@@ -1198,6 +1228,145 @@ def test_loader_rejects_internal_fields_with_query_capability(
 
     with pytest.raises(ValueError, match=f"{internal_field}.*{capability}"):
         load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+def test_registry_loads_query_defaults_and_effective_profile_limits() -> None:
+    registry = load_dataset_registry()
+    daily = registry.resolve("cn.equity.daily")
+
+    assert registry.query_defaults == registry_module.QueryDefaults(**QUERY_DEFAULTS)
+    assert daily.max_page_size == QUERY_DEFAULTS["max_page_size"]
+    assert daily.max_lookback_days == QUERY_DEFAULTS["max_lookback_days"]
+    assert daily.as_of_field == "trade_date"
+    assert daily.as_of_format == "yyyymmdd"
+    assert daily.range_field == "trade_date"
+    assert daily.partition_field == "trade_date"
+    assert daily.filter_operators["trade_date"] == (
+        "eq",
+        "in",
+        "gte",
+        "lte",
+        "between",
+    )
+    assert "close" not in daily.filter_operators
+
+
+@pytest.mark.parametrize(
+    ("query_defaults", "error"),
+    [
+        ({**QUERY_DEFAULTS, "mystery_limit": 1}, "mystery_limit"),
+        ({key: value for key, value in QUERY_DEFAULTS.items() if key != "max_page_size"}, "max_page_size"),
+        ({**QUERY_DEFAULTS, "max_page_size": True}, "max_page_size"),
+        ({**QUERY_DEFAULTS, "max_filter_terms": 0}, "max_filter_terms"),
+        ({**QUERY_DEFAULTS, "sqlite_progress_steps": "1000"}, "sqlite_progress_steps"),
+    ],
+)
+def test_registry_rejects_unknown_or_invalid_query_defaults(
+    tmp_path: Path,
+    query_defaults: dict[str, object],
+    error: str,
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        load_dataset_registry(
+            _write_registry(
+                tmp_path,
+                [_dataset()],
+                query_defaults=query_defaults,
+            )
+        )
+
+
+def test_registry_rejects_as_of_field_not_in_schema(tmp_path: Path) -> None:
+    dataset = _dataset(as_of_field="missing", as_of_format="yyyymmdd")
+
+    with pytest.raises(ValueError, match="as_of_field.*missing"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize("field_name", ["value", "collected_at"])
+def test_registry_rejects_non_filterable_as_of_field(
+    tmp_path: Path,
+    field_name: str,
+) -> None:
+    dataset = _dataset(as_of_field=field_name, as_of_format="yyyymmdd")
+
+    with pytest.raises(
+        ValueError,
+        match="as_of_field.*selectable, filterable, and sortable",
+    ):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+@pytest.mark.parametrize("capability", ["range_field", "partition_field"])
+def test_registry_rejects_non_queryable_compatibility_fields(
+    tmp_path: Path,
+    capability: str,
+) -> None:
+    dataset = _dataset(**{capability: "value"})
+
+    with pytest.raises(ValueError, match=f"{capability}.*filterable and sortable"):
+        load_dataset_registry(_write_registry(tmp_path, [dataset]))
+
+
+def test_public_catalog_version_changes_with_public_contract_only(
+    tmp_path: Path,
+) -> None:
+    from query_contract import public_catalog_version
+
+    base = load_dataset_registry(_write_registry(tmp_path, [_dataset()]))
+    changed_dataset = load_dataset_registry(
+        _write_registry(
+            tmp_path,
+            [_dataset(required_scope="events")],
+        )
+    )
+    changed_defaults = load_dataset_registry(
+        _write_registry(
+            tmp_path,
+            [_dataset()],
+            query_defaults={**QUERY_DEFAULTS, "max_response_bytes": 4_194_303},
+        )
+    )
+
+    base_version = public_catalog_version(base)
+    assert base_version.startswith("v1-")
+    assert len(base_version.removeprefix("v1-")) >= 16
+    assert public_catalog_version(changed_dataset) != base_version
+    assert public_catalog_version(changed_defaults) != base_version
+
+
+def test_public_catalog_version_never_exposes_storage_mapping(
+    tmp_path: Path,
+) -> None:
+    from query_contract import public_catalog_version
+
+    base = load_dataset_registry(_write_registry(tmp_path, [_dataset()]))
+    private_table = "/private/market_factors.sqlite"
+    remapped = load_dataset_registry(
+        _write_registry(
+            tmp_path,
+            [
+                _dataset(
+                    provider_bindings=[
+                        _binding(
+                            adapter_version="private-adapter.v99",
+                            target_tables=[private_table],
+                        )
+                    ],
+                    read_model_adapter=_read_model_adapter(
+                        adapter_version="private-read-model.v99",
+                        primary_table=private_table,
+                    ),
+                )
+            ],
+        )
+    )
+
+    base_version = public_catalog_version(base)
+    remapped_version = public_catalog_version(remapped)
+    assert remapped_version == base_version
+    assert private_table not in remapped_version
+    assert "private-adapter" not in remapped_version
 
 
 @pytest.mark.parametrize(

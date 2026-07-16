@@ -13,6 +13,7 @@
 | [Beta 设计规格](superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md) | 外部数据平台目标合同、首期范围、固定 API、Beta access |
 | [Phase 1 计划](superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md) | registry/receipt/退役基础实施与验收 |
 | [../API_CONTRACT.md](../API_CONTRACT.md) | 目标 `/v1` 合同与 legacy compatibility surface；不能把 legacy 路径当成未来扩源模式 |
+| [query_service.md](query_service.md) | Phase 2 provider-neutral catalog/query 请求、分页、状态、错误与访问限制合同 |
 | [dataset_registry.md](dataset_registry.md) | registry authority、字段、provider onboarding 和兼容 alias |
 | [ingest_receipts.md](ingest_receipts.md) | SQLite fact/receipt 原子性、terminal receipt、runtime projection |
 | [data_source_onboarding.md](data_source_onboarding.md) | 新 provider/dataset 的端到端准入清单 |

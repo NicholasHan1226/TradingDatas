@@ -19,14 +19,33 @@ DATASET_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "dataset_registry.yaml"
 )
 
-_ROOT_KEYS = frozenset({"version", "schema_profiles", "datasets"})
-_ROOT_REQUIRED_KEYS = frozenset({"version", "datasets"})
+_ROOT_KEYS = frozenset({"version", "query_defaults", "schema_profiles", "datasets"})
+_ROOT_REQUIRED_KEYS = frozenset({"version", "query_defaults", "datasets"})
+_QUERY_DEFAULT_KEYS = frozenset(
+    {
+        "max_request_bytes",
+        "max_response_bytes",
+        "max_page_size",
+        "max_lookback_days",
+        "max_selected_fields",
+        "max_filter_terms",
+        "max_in_values",
+        "max_order_terms",
+        "max_catalog_search_chars",
+        "cursor_ttl_seconds",
+        "sqlite_progress_steps",
+    }
+)
 _SCHEMA_PROFILE_KEYS = frozenset(
     {
         "schema_version",
         "fields",
         "primary_key",
         "default_projection",
+        "as_of_field",
+        "as_of_format",
+        "range_field",
+        "partition_field",
         "max_page_size",
         "max_lookback_days",
         "point_in_time",
@@ -36,7 +55,12 @@ _SCHEMA_PROFILE_KEYS = frozenset(
         "quota_class",
     }
 )
+_SCHEMA_PROFILE_REQUIRED_KEYS = _SCHEMA_PROFILE_KEYS - {
+    "max_page_size",
+    "max_lookback_days",
+}
 _PROFILE_CONTRACT_KEYS = _SCHEMA_PROFILE_KEYS - {"schema_version"}
+_PROFILE_CONTRACT_REQUIRED_KEYS = _SCHEMA_PROFILE_REQUIRED_KEYS - {"schema_version"}
 _DATASET_KEYS = frozenset(
     {
         "dataset_id",
@@ -50,6 +74,10 @@ _DATASET_KEYS = frozenset(
         "fields",
         "primary_key",
         "default_projection",
+        "as_of_field",
+        "as_of_format",
+        "range_field",
+        "partition_field",
         "cadence_class",
         "timezone",
         "freshness_sla_seconds",
@@ -99,6 +127,38 @@ _BACKFILL_POLICIES = frozenset({"provider_limited", "disabled"})
 _EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
 _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
+_AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
+_ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
+
+
+@dataclass(frozen=True)
+class QueryDefaults:
+    max_request_bytes: int
+    max_response_bytes: int
+    max_page_size: int
+    max_lookback_days: int
+    max_selected_fields: int
+    max_filter_terms: int
+    max_in_values: int
+    max_order_terms: int
+    max_catalog_search_chars: int
+    cursor_ttl_seconds: int
+    sqlite_progress_steps: int
+
+
+DEFAULT_QUERY_DEFAULTS = QueryDefaults(
+    max_request_bytes=65_536,
+    max_response_bytes=4_194_304,
+    max_page_size=500,
+    max_lookback_days=36_500,
+    max_selected_fields=100,
+    max_filter_terms=16,
+    max_in_values=100,
+    max_order_terms=8,
+    max_catalog_search_chars=128,
+    cursor_ttl_seconds=900,
+    sqlite_progress_steps=1_000_000,
+)
 
 
 @dataclass(frozen=True)
@@ -109,6 +169,17 @@ class DatasetField:
     selectable: bool
     filterable: bool
     sortable: bool
+
+
+def field_filter_operators(field: DatasetField) -> tuple[str, ...]:
+    """Return the deterministic public filter grammar for one field."""
+
+    if not field.filterable:
+        return ()
+    operators = ("eq", "in")
+    if field.logical_type in _ORDERED_LOGICAL_TYPES:
+        operators += ("gte", "lte", "between")
+    return operators
 
 
 @dataclass(frozen=True)
@@ -149,11 +220,15 @@ class DatasetDefinition:
     fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
     default_projection: tuple[str, ...]
+    as_of_field: str | None
+    as_of_format: str | None
+    range_field: str | None
+    partition_field: str | None
     cadence_class: str
     timezone: str
     freshness_sla_seconds: int
     max_page_size: int
-    max_lookback_days: int | None
+    max_lookback_days: int
     point_in_time: str
     backfill_policy: str
     empty_data_policy: str
@@ -162,6 +237,16 @@ class DatasetDefinition:
     provider_bindings: tuple[ProviderBinding, ...]
     read_model_adapter: ReadModelAdapter
 
+    @property
+    def filter_operators(self) -> Mapping[str, tuple[str, ...]]:
+        return MappingProxyType(
+            {
+                field.name: operators
+                for field in self.fields
+                if (operators := field_filter_operators(field))
+            }
+        )
+
 
 @dataclass(frozen=True)
 class DatasetSchemaProfile:
@@ -169,8 +254,12 @@ class DatasetSchemaProfile:
     fields: tuple[DatasetField, ...]
     primary_key: tuple[str, ...]
     default_projection: tuple[str, ...]
+    as_of_field: str | None
+    as_of_format: str | None
+    range_field: str | None
+    partition_field: str | None
     max_page_size: int
-    max_lookback_days: int | None
+    max_lookback_days: int
     point_in_time: str
     backfill_policy: str
     empty_data_policy: str
@@ -181,7 +270,11 @@ class DatasetSchemaProfile:
 class DatasetRegistry:
     """Immutable indexes over validated dataset definitions."""
 
-    def __init__(self, datasets: tuple[DatasetDefinition, ...]) -> None:
+    def __init__(
+        self,
+        datasets: tuple[DatasetDefinition, ...],
+        query_defaults: QueryDefaults = DEFAULT_QUERY_DEFAULTS,
+    ) -> None:
         by_id: dict[str, DatasetDefinition] = {}
         by_name: dict[str, DatasetDefinition] = {}
         provider_api_owners: dict[tuple[str, str], str] = {}
@@ -234,6 +327,7 @@ class DatasetRegistry:
                 read_discriminator_owners[read_discriminator] = dataset.dataset_id
 
         self._datasets = datasets
+        self._query_defaults = query_defaults
         self._by_id: Mapping[str, DatasetDefinition] = MappingProxyType(by_id)
         self._by_name: Mapping[str, DatasetDefinition] = MappingProxyType(by_name)
 
@@ -256,6 +350,10 @@ class DatasetRegistry:
         """Return the validated catalog in declaration order."""
 
         return self._datasets
+
+    @property
+    def query_defaults(self) -> QueryDefaults:
+        return self._query_defaults
 
     def resolve(self, name: str) -> DatasetDefinition:
         try:
@@ -365,10 +463,10 @@ def _positive_int(value: Any, path: str) -> int:
     return value
 
 
-def _optional_positive_int(value: Any, path: str) -> int | None:
+def _optional_non_empty_string(value: Any, path: str) -> str | None:
     if value is None:
         return None
-    return _positive_int(value, path)
+    return _non_empty_string(value, path)
 
 
 def _choice(value: Any, allowed: frozenset[str], path: str) -> str:
@@ -377,6 +475,67 @@ def _choice(value: Any, allowed: frozenset[str], path: str) -> str:
         choices = ", ".join(sorted(allowed))
         raise ValueError(f"{path} must be one of: {choices}")
     return normalized
+
+
+def _load_query_defaults(raw: Any) -> QueryDefaults:
+    value = _mapping(raw, "registry.query_defaults")
+    _reject_unknown_keys(value, _QUERY_DEFAULT_KEYS, "registry.query_defaults")
+    return QueryDefaults(
+        **{
+            key: _positive_int(value[key], f"registry.query_defaults.{key}")
+            for key in sorted(_QUERY_DEFAULT_KEYS)
+        }
+    )
+
+
+def _effective_profile_limit(
+    value: Any,
+    *,
+    path: str,
+    default: int,
+) -> int:
+    if value is None:
+        return default
+    limit = _positive_int(value, path)
+    if limit > default:
+        raise ValueError(f"{path} must not exceed registry default {default}")
+    return limit
+
+
+def _query_field(
+    raw_name: Any,
+    *,
+    owner: str,
+    capability: str,
+    fields_by_name: Mapping[str, DatasetField],
+    require_selectable: bool = False,
+) -> str | None:
+    field_name = _optional_non_empty_string(raw_name, f"{owner}.{capability}")
+    if field_name is None:
+        return None
+    field = fields_by_name.get(field_name)
+    if field is None:
+        raise ValueError(f"{owner}.{capability} references unknown field: {field_name}")
+    required = (
+        ("selectable", field.selectable),
+        ("filterable", field.filterable),
+        ("sortable", field.sortable),
+    )
+    missing = [
+        name
+        for name, enabled in required
+        if not enabled and (require_selectable or name != "selectable")
+    ]
+    if missing:
+        required_label = (
+            "selectable, filterable, and sortable"
+            if require_selectable
+            else "filterable and sortable"
+        )
+        raise ValueError(
+            f"{owner}.{capability} field {field_name} must be {required_label}"
+        )
+    return field_name
 
 
 def _load_field(raw: Any, *, dataset_id: str, index: int) -> DatasetField:
@@ -514,6 +673,7 @@ def _load_schema_contract(
     value: Mapping[str, Any],
     *,
     owner: str,
+    query_defaults: QueryDefaults,
 ) -> DatasetSchemaProfile:
     raw_fields = value["fields"]
     if not isinstance(raw_fields, list) or not raw_fields:
@@ -563,6 +723,41 @@ def _load_schema_contract(
                 f"{owner}.default_projection field is not selectable: {field_name}"
             )
 
+    as_of_field = _query_field(
+        value["as_of_field"],
+        owner=owner,
+        capability="as_of_field",
+        fields_by_name=fields_by_name,
+        require_selectable=True,
+    )
+    as_of_format = _optional_non_empty_string(
+        value["as_of_format"], f"{owner}.as_of_format"
+    )
+    if as_of_field is None:
+        if as_of_format is not None:
+            raise ValueError(f"{owner}.as_of_format requires as_of_field")
+    else:
+        if as_of_format is None:
+            raise ValueError(f"{owner}.as_of_field requires as_of_format")
+        if as_of_format not in _AS_OF_FORMATS:
+            choices = ", ".join(sorted(_AS_OF_FORMATS))
+            raise ValueError(f"{owner}.as_of_format must be one of: {choices}")
+        if fields_by_name[as_of_field].logical_type != "text":
+            raise ValueError(f"{owner}.as_of_field must use logical_type text")
+
+    range_field = _query_field(
+        value["range_field"],
+        owner=owner,
+        capability="range_field",
+        fields_by_name=fields_by_name,
+    )
+    partition_field = _query_field(
+        value["partition_field"],
+        owner=owner,
+        capability="partition_field",
+        fields_by_name=fields_by_name,
+    )
+
     return DatasetSchemaProfile(
         schema_version=_non_empty_string(
             value["schema_version"], f"{owner}.schema_version"
@@ -570,9 +765,19 @@ def _load_schema_contract(
         fields=fields,
         primary_key=primary_key,
         default_projection=default_projection,
-        max_page_size=_positive_int(value["max_page_size"], f"{owner}.max_page_size"),
-        max_lookback_days=_optional_positive_int(
-            value["max_lookback_days"], f"{owner}.max_lookback_days"
+        as_of_field=as_of_field,
+        as_of_format=as_of_format,
+        range_field=range_field,
+        partition_field=partition_field,
+        max_page_size=_effective_profile_limit(
+            value.get("max_page_size"),
+            path=f"{owner}.max_page_size",
+            default=query_defaults.max_page_size,
+        ),
+        max_lookback_days=_effective_profile_limit(
+            value.get("max_lookback_days"),
+            path=f"{owner}.max_lookback_days",
+            default=query_defaults.max_lookback_days,
         ),
         point_in_time=_choice(
             value["point_in_time"], _POINT_IN_TIME_MODES, f"{owner}.point_in_time"
@@ -594,7 +799,11 @@ def _load_schema_contract(
     )
 
 
-def _load_schema_profiles(raw: Any) -> Mapping[str, DatasetSchemaProfile]:
+def _load_schema_profiles(
+    raw: Any,
+    *,
+    query_defaults: QueryDefaults,
+) -> Mapping[str, DatasetSchemaProfile]:
     if raw is None:
         return MappingProxyType({})
     values = _mapping(raw, "registry.schema_profiles")
@@ -603,10 +812,16 @@ def _load_schema_profiles(raw: Any) -> Mapping[str, DatasetSchemaProfile]:
         name = _non_empty_string(raw_name, "registry.schema_profiles key")
         path = f"registry.schema_profiles.{name}"
         profile_value = _mapping(raw_profile, path)
-        _reject_unknown_keys(profile_value, _SCHEMA_PROFILE_KEYS, path)
+        _reject_unknown_keys(
+            profile_value,
+            _SCHEMA_PROFILE_KEYS,
+            path,
+            required=_SCHEMA_PROFILE_REQUIRED_KEYS,
+        )
         profiles[name] = _load_schema_contract(
             profile_value,
             owner=f"schema_profile {name}",
+            query_defaults=query_defaults,
         )
     return MappingProxyType(profiles)
 
@@ -615,6 +830,7 @@ def _load_dataset(
     raw: Any,
     index: int,
     schema_profiles: Mapping[str, DatasetSchemaProfile],
+    query_defaults: QueryDefaults,
 ) -> DatasetDefinition:
     path = f"datasets[{index}]"
     value = _mapping(raw, path)
@@ -631,7 +847,9 @@ def _load_dataset(
     )
     schema_profile_name = value.get("schema_profile")
     if schema_profile_name is None:
-        missing_contract_keys = sorted(_PROFILE_CONTRACT_KEYS - set(value))
+        missing_contract_keys = sorted(
+            _PROFILE_CONTRACT_REQUIRED_KEYS - set(value)
+        )
         if missing_contract_keys:
             raise ValueError(
                 f"dataset {dataset_id} must declare an inline schema contract or "
@@ -640,6 +858,7 @@ def _load_dataset(
         schema_contract = _load_schema_contract(
             value,
             owner=f"dataset {dataset_id}",
+            query_defaults=query_defaults,
         )
     else:
         schema_profile_name = _non_empty_string(
@@ -734,6 +953,10 @@ def _load_dataset(
         fields=fields,
         primary_key=primary_key,
         default_projection=default_projection,
+        as_of_field=schema_contract.as_of_field,
+        as_of_format=schema_contract.as_of_format,
+        range_field=schema_contract.range_field,
+        partition_field=schema_contract.partition_field,
         cadence_class=_non_empty_string(
             value["cadence_class"], f"dataset {dataset_id}.cadence_class"
         ),
@@ -772,13 +995,18 @@ def load_dataset_registry(
     raw_datasets = root["datasets"]
     if not isinstance(raw_datasets, list) or not raw_datasets:
         raise ValueError("registry.datasets must be a non-empty list")
-    schema_profiles = _load_schema_profiles(root.get("schema_profiles"))
+    query_defaults = _load_query_defaults(root["query_defaults"])
+    schema_profiles = _load_schema_profiles(
+        root.get("schema_profiles"),
+        query_defaults=query_defaults,
+    )
 
     return DatasetRegistry(
         tuple(
-            _load_dataset(dataset, index, schema_profiles)
+            _load_dataset(dataset, index, schema_profiles, query_defaults)
             for index, dataset in enumerate(raw_datasets)
-        )
+        ),
+        query_defaults=query_defaults,
     )
 
 

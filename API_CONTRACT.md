@@ -34,6 +34,59 @@
 - 本节是已批准目标，不是部署证明。Phase 2/4、GitHub、生产 checkout、production runtime、
   external route 和真实 tenant query 必须分别通过后，才能把 v2 标为 live。
 
+### 0.1 Frozen V1 catalog/query envelope
+
+Phase 2 的完整 normative request、response、filter/order grammar、cursor invalidation、状态映射、
+错误码和访问限制见 [Query Service Contract](docs/query_service.md)。Task 1 当前只冻结 registry 与
+request-contract 本地候选；HTTP handler、同 snapshot SQLite query、signed cursor、legacy adapter
+和生产发布仍未完成。
+
+`POST /v1/query` 根对象只接受以下八个字段：
+
+```json
+{
+  "dataset_id": "cn.equity.daily",
+  "schema_major": 1,
+  "fields": ["symbol", "trade_date", "close"],
+  "filters": {
+    "symbol": "600519.SH",
+    "trade_date": {"between": ["20260701", "20260716"]}
+  },
+  "as_of": null,
+  "order": ["trade_date:desc", "symbol:asc"],
+  "limit": 100,
+  "cursor": null
+}
+```
+
+- `dataset_id` 与 native positive integer `schema_major` 必填；unknown root key、SQL/table/token、
+  duplicate JSON key、non-finite number 和任意表达式拒绝。
+- scalar filter 是 `eq` 简写；operator object 必须恰好包含 `eq`、`in`、`gte`、`lte` 或
+  `between` 之一。字段、operator、native value type、field/filter/`in`/order/page/lookback 与
+  request/response bytes 均受 registry query policy 限制。
+- `order` 省略/`null` 时使用 registry primary key；显式 term 只能是 `field:asc` 或
+  `field:desc`。`cursor` 是 signed keyset token，不是 offset。
+- `as_of` 必须是 timezone-aware RFC3339；只有 profile 显式声明 `as_of_field`/`as_of_format`
+  才支持，语义固定为 inclusive `field <= normalized_cutoff`。同字段的显式上界更严时取更严值。
+- public JSON 不能设置 compatibility-only `latest_partition` 或 `any_of_eq_filters`；二者及
+  resolved partition 都必须参与 normalized query hash 与 cursor binding。
+
+query response 固定包含 `api_version`、provider-neutral `catalog_version`、`request_id`、
+`dataset_id`、`schema_version`、`data`、`next_cursor` 及非空 `metadata`。metadata 必须保留精确
+`success` / `empty` / `unobserved` / `paused` / `failed` / `stale` runtime state、freshness、
+quality、receipt lineage、data-through、observed-at、requested/resolved as-of、degraded 与 reasons。
+只有完整且非 degraded 的 `success` 投影为 top state `ready`；HTTP 200 不表示数据健康。
+
+signed cursor 绑定 catalog、dataset/schema、normalized query、access `policy_id`、receipt
+watermark、sort tuple 与 expiry；跨 dataset/query/policy/snapshot 重用返回 409。协议/请求错误
+为 400，未认证 401，已知 dataset 但缺 query scope 为 403，unknown/excluded/不可发现 dataset
+为 404，资源预算超限 413，rate/quota 429，verified read model/capacity 不可用 503；500 不得
+回显 path、SQL、credential 或 stack trace。
+
+Phase 2 access context 仅包含 tenant、normalized scopes、request-local exact dataset grants 与
+canonical SHA-256 `policy_id`。它不实现 public signup、key issuance、field/lookback tenant policy、
+persistent quota、usage ledger、billing、自动 revocation 或 gateway 改动。
+
 ## Appendix A — Legacy v1 compatibility inventory (non-normative)
 
 以下内容冻结为当前/历史 v1 接口、调度、consumer 和迁移盘点。它用于保持旧客户端可追溯
