@@ -45,6 +45,10 @@ from storage.receipt_projection import (
 
 
 _AGGREGATE_SCOPES = frozenset({"external_read", "read", "full", "*"})
+_DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
+_FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
+_FILTER_OPERATORS = frozenset({"eq", "in", "gte", "lte", "between"})
 _EVIDENCE_ISO_TIMESTAMP_RE = re.compile(
     r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
     r"T(?P<hour>[01][0-9]|2[0-3]):(?P<minute>[0-5][0-9]):"
@@ -85,7 +89,7 @@ def _sqlite_progress_budget(conn: sqlite3.Connection, step_budget: int):
     def progress() -> int:
         nonlocal consumed
         consumed += quantum
-        return int(consumed > step_budget)
+        return int(consumed >= step_budget)
 
     try:
         conn.set_progress_handler(progress, quantum)
@@ -121,22 +125,133 @@ def _query_snapshot(db_path: Path):
         raise QueryServiceUnavailable("query service is unavailable") from None
 
 
+def _request_scalar(value: object, name: str) -> object:
+    if value is None or type(value) in {str, int, bool}:
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    raise QueryValidationError(f"{name} must be a finite JSON scalar")
+
+
+def _request_scalar_key(value: object) -> str:
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError):
+        raise QueryValidationError("request is invalid") from None
+
+
 def _revalidate_request(request: object) -> QueryRequest:
-    if not isinstance(request, QueryRequest):
+    if type(request) is not QueryRequest:
         raise QueryValidationError("request must be QueryRequest")
-    rebuilt = QueryRequest(
-        dataset_id=request.dataset_id,
-        schema_major=request.schema_major,
-        fields=request.fields,
-        filters=request.filters,
-        as_of=request.as_of,
-        order=request.order,
-        limit=request.limit,
-        cursor=request.cursor,
-    )
-    if rebuilt != request:
-        raise QueryValidationError("request is invalid")
-    return rebuilt
+    if (
+        type(request.dataset_id) is not str
+        or not request.dataset_id
+        or request.dataset_id != request.dataset_id.strip()
+        or _DATASET_ID_RE.fullmatch(request.dataset_id) is None
+    ):
+        raise QueryValidationError("dataset_id must be a canonical dataset identifier")
+    if type(request.schema_major) is not int or request.schema_major <= 0:
+        raise QueryValidationError("schema_major must be a positive integer")
+
+    if type(request.fields) is not tuple:
+        raise QueryValidationError("fields must be a tuple")
+    if any(
+        type(field) is not str or _FIELD_NAME_RE.fullmatch(field) is None
+        for field in request.fields
+    ):
+        raise QueryValidationError("fields must contain field identifiers")
+    if len(set(request.fields)) != len(request.fields):
+        raise QueryValidationError("fields must not contain duplicates")
+
+    if not isinstance(request.filters, MappingProxyType):
+        raise QueryValidationError("filters must be immutable")
+    filter_names = tuple(request.filters)
+    if any(
+        type(field_name) is not str or _FIELD_NAME_RE.fullmatch(field_name) is None
+        for field_name in filter_names
+    ):
+        raise QueryValidationError("filters field must be a field identifier")
+    if filter_names != tuple(sorted(filter_names)):
+        raise QueryValidationError("filters must be canonical")
+    for field_name, clause in request.filters.items():
+        if not isinstance(clause, MappingProxyType) or len(clause) != 1:
+            raise QueryValidationError(f"filters.{field_name} is invalid")
+        operator, operand = next(iter(clause.items()))
+        if type(operator) is not str or operator not in _FILTER_OPERATORS:
+            raise QueryValidationError(
+                f"filters.{field_name} uses an unsupported operator"
+            )
+        if operator in {"eq", "gte", "lte"}:
+            _request_scalar(operand, f"filters.{field_name}.{operator}")
+            continue
+        if type(operand) is not tuple:
+            raise QueryValidationError(f"filters.{field_name}.{operator} is invalid")
+        if operator == "between" and len(operand) != 2:
+            raise QueryValidationError(
+                f"filters.{field_name}.between must contain exactly 2 values"
+            )
+        if operator == "in":
+            if not operand:
+                raise QueryValidationError(f"filters.{field_name}.in must not be empty")
+        for index, value in enumerate(operand):
+            _request_scalar(value, f"filters.{field_name}.{operator}[{index}]")
+        if operator == "in":
+            keys = tuple(_request_scalar_key(value) for value in operand)
+            if keys != tuple(sorted(keys)) or len(set(keys)) != len(keys):
+                raise QueryValidationError(
+                    f"filters.{field_name}.in must be canonical and unique"
+                )
+
+    if request.as_of is not None:
+        if type(request.as_of) is not str:
+            raise QueryValidationError("as_of must be a canonical RFC3339 timestamp")
+        match = _EVIDENCE_ISO_TIMESTAMP_RE.fullmatch(request.as_of)
+        if (
+            match is None
+            or match.group("zone") is None
+            or request.as_of.endswith("-00:00")
+        ):
+            raise QueryValidationError("as_of must be a canonical RFC3339 timestamp")
+        try:
+            parsed = datetime.fromisoformat(request.as_of)
+        except (OverflowError, ValueError):
+            raise QueryValidationError(
+                "as_of must be a canonical RFC3339 timestamp"
+            ) from None
+        canonical = parsed.isoformat(
+            timespec="microseconds" if parsed.microsecond else "seconds"
+        )
+        if request.as_of != canonical:
+            raise QueryValidationError("as_of must be a canonical RFC3339 timestamp")
+
+    if request.order is not None:
+        if type(request.order) is not tuple or not request.order:
+            raise QueryValidationError("order must be a non-empty tuple")
+        ordered_fields: list[str] = []
+        for term in request.order:
+            if type(term) is not str or (match := _ORDER_RE.fullmatch(term)) is None:
+                raise QueryValidationError(
+                    "order terms must be exactly field:asc or field:desc"
+                )
+            ordered_fields.append(match.group(1))
+        if len(set(ordered_fields)) != len(ordered_fields):
+            raise QueryValidationError("order must not contain duplicate fields")
+
+    if type(request.limit) is not int or request.limit <= 0:
+        raise QueryValidationError("limit must be a positive integer")
+    if request.cursor is not None and (
+        type(request.cursor) is not str
+        or not request.cursor
+        or request.cursor != request.cursor.strip()
+    ):
+        raise QueryValidationError("cursor must be a canonical non-empty string")
+    return request
 
 
 def _revalidate_access(access: object) -> QueryAccessContext:
@@ -367,6 +482,10 @@ def _prepare_query(
     *,
     now: datetime,
 ) -> _PreparedQuery:
+    try:
+        ZoneInfo(dataset.timezone)
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
     if request.schema_major != _schema_major(dataset):
         raise QueryValidationError("schema_major is incompatible with dataset")
     field_map = {field.name: field for field in dataset.fields}

@@ -12,6 +12,7 @@ import pytest
 
 import storage.ingest_receipts as receipt_module
 import storage.receipt_projection as projection_module
+import query_contract as query_contract_module
 from dataset_registry import (
     DatasetField,
     DatasetRegistry,
@@ -63,6 +64,7 @@ class _TrackingConnection(sqlite3.Connection):
         self.fetchmany_sizes: list[int | None] = []
         self.sql_progress_states: list[bool] = []
         self.progress_active = False
+        self.progress_callback_calls = 0
 
     def cursor(self, factory: type[sqlite3.Cursor] = _TrackingCursor):
         return super().cursor(factory)
@@ -74,7 +76,15 @@ class _TrackingConnection(sqlite3.Connection):
     def set_progress_handler(self, progress_handler: object, n: int) -> None:
         self.progress_events.append((progress_handler, n))
         self.progress_active = progress_handler is not None
-        super().set_progress_handler(progress_handler, n)
+        installed_handler = progress_handler
+        if callable(progress_handler):
+
+            def counted_handler() -> int:
+                self.progress_callback_calls += 1
+                return progress_handler()
+
+            installed_handler = counted_handler
+        super().set_progress_handler(installed_handler, n)
 
 
 def _registry(*, eligible: bool = True, max_selected_fields: int = 100):
@@ -536,19 +546,75 @@ def test_service_rechecks_injected_registry_budgets_before_snapshot(
     assert opened is False
 
 
-def test_service_reconstructs_exact_request_at_entry_before_snapshot(
+def test_service_uses_injected_budget_when_module_default_is_stricter(
+    query_harness: dict[str, object],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    request = _harness_request(fields=("symbol", "trade_date"), limit=2)
+    base_registry = query_harness["registry"]
+    registry = DatasetRegistry(
+        (query_harness["dataset"],),
+        query_defaults=replace(
+            base_registry.query_defaults,
+            max_selected_fields=2,
+        ),
+    )
+    monkeypatch.setattr(
+        query_contract_module,
+        "_QUERY_DEFAULTS",
+        replace(
+            query_contract_module._QUERY_DEFAULTS,
+            max_selected_fields=1,
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: query_harness["evidence"],
+    )
+    before = query_harness["calls"]["snapshot"]
+
+    response = _service(tmp_path, registry).execute(
+        request,
+        access=query_harness["access"],
+        now=NOW,
+        request_id="request-injected-budget",
+    )
+
+    assert response["data"]
+    assert query_harness["calls"]["snapshot"] == before + 1
+
+
+@pytest.mark.parametrize(
+    ("field", "tampered_value", "message"),
+    [
+        ("dataset_id", " tushare.daily", "dataset_id"),
+        ("schema_major", True, "schema_major"),
+        ("fields", ["symbol"], "fields"),
+        ("filters", {}, "filters"),
+        ("as_of", "2026-07-16T00:00:00Z", "as_of"),
+        ("order", ["symbol:asc"], "order"),
+        ("limit", True, "limit"),
+        ("cursor", " cursor ", "cursor"),
+    ],
+)
+def test_service_revalidates_every_request_field_at_entry_before_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    tampered_value: object,
+    message: str,
+) -> None:
     request = _request()
-    object.__setattr__(request, "schema_major", True)
+    object.__setattr__(request, field, tampered_value)
     monkeypatch.setattr(
         query_module,
         "open_verified_read_model_snapshot",
         lambda _path: pytest.fail("snapshot must remain unopened"),
     )
 
-    with pytest.raises(QueryValidationError, match="schema_major"):
+    with pytest.raises(QueryValidationError, match=message):
         _service(tmp_path, _registry()).execute(
             request,
             access=_access(),
@@ -1394,6 +1460,38 @@ def test_progress_handler_spans_every_task4_sql_and_fetches_only_limit_plus_one(
     assert conn.fetchmany_sizes == [3]
 
 
+@pytest.mark.parametrize(
+    ("step_budget", "expected_callback_calls"),
+    [(1, 1), (1000, 1), (1001, 2)],
+)
+def test_sqlite_progress_budget_interrupts_at_first_callback_reaching_budget(
+    step_budget: int,
+    expected_callback_calls: int,
+) -> None:
+    conn = sqlite3.connect(":memory:", factory=_TrackingConnection)
+    assert isinstance(conn, _TrackingConnection)
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+            with query_module._sqlite_progress_budget(conn, step_budget):
+                conn.execute(
+                    """
+                    WITH RECURSIVE counter(value) AS (
+                        VALUES(0)
+                        UNION ALL
+                        SELECT value + 1 FROM counter WHERE value < 1000000
+                    )
+                    SELECT sum(value) FROM counter
+                    """
+                ).fetchone()
+
+        assert conn.progress_callback_calls == expected_callback_calls
+        assert conn.progress_events[-1] == (None, 0)
+        assert conn.progress_active is False
+    finally:
+        conn.close()
+
+
 def test_sqlite_failure_is_sanitized_and_progress_handler_is_cleared(
     query_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
@@ -1786,6 +1884,42 @@ def test_extreme_rfc3339_timezone_conversion_is_400_before_snapshot(
             now=NOW,
             request_id="request-extreme-year",
         )
+
+
+def test_invalid_injected_dataset_timezone_is_sanitized_503_before_snapshot(
+    query_harness: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset = replace(query_harness["dataset"], timezone="Invalid/Timezone")
+    registry = DatasetRegistry(
+        (dataset,),
+        query_defaults=query_harness["registry"].query_defaults,
+    )
+    opened = False
+
+    def forbidden_snapshot(_path: Path):
+        nonlocal opened
+        opened = True
+        raise AssertionError("snapshot must remain unopened")
+
+    monkeypatch.setattr(
+        query_module,
+        "open_verified_read_model_snapshot",
+        forbidden_snapshot,
+    )
+
+    with pytest.raises(QueryServiceUnavailable) as caught:
+        _service(tmp_path, registry).execute(
+            _harness_request(as_of="2026-07-16T00:00:00+00:00"),
+            access=query_harness["access"],
+            now=NOW,
+            request_id="request-invalid-timezone",
+        )
+
+    assert str(caught.value) == "query service is unavailable"
+    assert "Invalid/Timezone" not in str(caught.value)
+    assert opened is False
 
 
 @pytest.mark.parametrize(
