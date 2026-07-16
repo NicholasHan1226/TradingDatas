@@ -2,7 +2,8 @@
 
 > 先读 [AGENTS.md](AGENTS.md)。本文件只保存当前可执行状态、证据分层、阻塞和下一步；历史生产与事故细节保留在 `docs/status_history_2026-07.md` 和外部 evidence 中。
 >
-> 最后更新：2026-07-16。当前所有结果仍是**本地候选**；GitHub、生产 checkout、生产 runtime、外部 route 和真实采集尚未完成对应发布验收，**生产未改变**。
+> 最后更新：2026-07-16。当前所有结果仍是**本地候选**；origin/GitHub、production checkout、
+> production runtime、external route 和 real dataset evidence 尚未完成对应发布验收，**生产未改变**。
 
 ## 当前结论
 
@@ -13,10 +14,35 @@
 - 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
 - REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
 
+## Phase 2 Task 7 本地候选
+
+- 当前 Task 7 worktree base/HEAD 为 `7541112f43ad12d20278f6de5a6fa31f3dc17ade`
+  （`refactor: route legacy data reads through V1`）；Task 7 保持 exact9 未提交候选，未 commit、
+  push、merge 或 deploy。
+- Task 7 初始 RED 为 `4 failed, 4 passed`；第一候选虽达到 focused `8 passed` 和全仓
+  `2185 passed`，fresh review 仍以 P0=0/P1=2/P2=1 判定 FINAL FAIL，因此该组 PASS 数字不构成
+  acceptance。返工 RED 为 `4 failed, 6 passed`，精确复现 fact-row market、真实 serializer/cursor
+  parity、API normative 状态和文档同步缺口；返工候选曾达到 focused `10 passed`、Python 3.12
+  全仓 `2187 passed, 34 warnings`。spec review v2 仍以 P0=0/P1=1 判定 FINAL FAIL，因为测试只
+  解码 page1 cursor、没有把它提交回同一 QueryService。分页续传测试用删除 continuation call
+  的临时 scaffold 取得 RED `1 failed, 10 passed`，恢复真实续页后 focused 为 `11 passed`；最终
+  Python 3.12 全仓为 `2188 passed, 34 warnings`，精确 Ruff、JSON parser 与
+  `git diff --check` 通过。
+  34 warnings 均为测试环境未设置 `SHAREDSIGNALS_TOKEN_SALT` 的既有 RuntimeWarning。
+- [V1 consumer contract](docs/data_contract.md) 与
+  [machine-readable fixture](tests/fixtures/sharedsignals_v1_query_contract.json) 冻结
+  `GET /v1/catalog`、`POST /v1/query`、六状态、signed cursor 和逐 dataset metadata 消费规则；
+  fixture 由真实临时 SQLite writer/receipt 与 V1 services 完整重建，不以手工 JSON 自证。
+- 证据层必须分开：local worktree PASS、local main、origin/GitHub、production checkout、
+  production runtime、external route、real dataset evidence。当前只推进第一层，其余层未改变。
+
 ## 代码与 Git 分层
 
-- SharedSignals `origin/main` 最后核对为 `d913d32c`。
-- 本地 `main` 为 `032c208dcd3b727e6ffdd14bc04fde5dbd5314a7`，比 `origin/main` 领先 51 个本地提交；tracked/index clean，`.codegraphcontext/` 保持 untracked、unstaged。该领先数只描述本地 Git 图，不代表 GitHub 或生产已同步。
+- SharedSignals 本地 remote-tracking `origin/main` 本轮核对为
+  `d913d32c12d325edfa539a4704bb82ee14169507`；本轮未 fetch，不能据此声称 GitHub 当前已变化。
+- 本地 `main` 本轮核对为 `d92f0293aa8f5f0d99b5e13de0874648d1c42f82`，比本地
+  `origin/main` tracking ref 领先 52 个提交。该 Git 图不代表 Task 7 已集成，也不代表 GitHub
+  或生产已同步。
 - Phase 1 已经 fresh 独立验收并精确 fast-forward 到本地 `main`；最终代码 checkpoint 为 `09927f1`，状态同步提交为 `032c208`。定向 readback、Python 3.12 全仓 `1593 passed`、Ruff/compile/diff 门禁均通过；这些证据仍只属于本地层。
 - Phase 1 保留 worktree：`.worktrees/sharedsignals-external-data-phase1`。在 Phase 2 本地集成和 rollback evidence 齐全前不清理。
 - 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
@@ -54,7 +80,10 @@
 
 ### 未完成
 
-- Phase 2 固定 `GET /v1/catalog`、`POST /v1/query`、signed keyset cursor、同 snapshot metadata/query，以及 `/tushare` 与单数据集 `/reference?table=stock_master` 代表性 compatibility adapter。
+- Phase 2 Task 7 spec review v2 返工候选已冻结在 local worktree，等待 fresh clean-overlay
+  review；P0=0/P1=1 的 FINAL FAIL 不因本地 tests 变绿而自动清除，fresh reviewer 未给出
+  P0/P1=0 前不得集成。
+  local main、origin/GitHub、生产与真实 dataset 均未因本地候选改变。
 - Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
 - Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
 - Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。

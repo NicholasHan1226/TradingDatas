@@ -7,6 +7,25 @@ Last updated: 2026-07-16
 This is the mandatory vertical-slice checklist for adding a provider or dataset to the **independent external multi-source financial data platform**. It applies to Tushare and future announcements, news, research, policy, interaction, and objective public-opinion sources.
 
 Onboarding extends the provider-neutral dataset registry and fixed query service. **It never adds a public route per provider or dataset.**
+Completing provider or dataset onboarding does not add a public route; both discovery and reads
+continue through `GET /v1/catalog` and `POST /v1/query`.
+
+## Existing-chain completion gate
+
+Onboarding is complete only when one vertical slice proves every existing-chain step:
+
+1. registry and schema declare the provider-neutral identity and canonical version;
+2. entitlement and activation evidence is recorded without treating configuration as proof;
+3. storage mapping is registry-owned and queryable without exposing internal tables;
+4. normalization, validation, and deduplication preserve truthful provider outcomes;
+5. facts and the success receipt commit in the same SQLite transaction;
+6. the query and metadata contract returns non-empty freshness, quality, and lineage;
+7. focused and full tests pass for the frozen scope;
+8. current documentation records the boundary, evidence, rollback, and unverified layers.
+
+This chain reuses the fixed public data plane. A provider-specific alias or legacy adapter may only
+call the same QueryService; it cannot introduce another query engine, provider live fallback, or
+file fallback.
 
 ## Initial release boundary
 

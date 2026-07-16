@@ -1,8 +1,8 @@
 # SharedSignals Phase 2 Query Service Contract
 
-> 状态：本文件冻结 provider-neutral V1 query contract。Task 1–4 已进入本候选基线；Task 5
-> HTTP/auth 仍只是隔离工作树本地候选。legacy adapter、GitHub main、生产 runtime、external
-> route 和真实 tenant query 尚未由发布层验证，不能称为已上线。
+> 状态：本文件冻结 provider-neutral V1 query contract。Tasks 1–6 已进入当前隔离 worktree
+> 本地候选，Task 7 冻结 consumer fixture/docs/tests。local main、origin/GitHub、生产 runtime、
+> external route 和真实 tenant query 尚未由发布层验证，不能称为已上线。
 
 ## 边界与权威
 
@@ -16,6 +16,10 @@ HTTP 200、缓存、dashboard 或消费者状态当作数据健康证明。
 
 SharedSignals 不处理 opening gate、候选、预测、策略、alpha、资金、持仓、风险、订单、成交、
 执行回执或交易建议。
+
+消费者 handoff 由 [V1 Consumer Data Contract](data_contract.md) 与
+[machine-readable fixture](../tests/fixtures/sharedsignals_v1_query_contract.json) 冻结。fixture
+只含 V1 public fields；消费者不得依赖 table、SQL、provider token 或内部 cursor claims。
 
 ## Registry query policy
 
@@ -225,6 +229,8 @@ fixed dataset filters 之后；第五项属于 413 资源预算错误。两种�
 
 `freshness`、`quality`、`lineage` 始终是非空对象。healthy `success` 必须同时有 receipt、
 data-through、observed-at 与 complete provider-neutral lineage；缺 receipt 不能伪装成 healthy empty。
+消费者必须按逐 dataset metadata fail closed 或 down-weight；HTTP 200、非空 rows 或 global
+source flag 都不能替代 freshness、quality、lineage 与 receipt evidence。
 
 ## Query hash 与 cursor invalidation
 

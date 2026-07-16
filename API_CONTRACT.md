@@ -1,7 +1,8 @@
 # SharedSignals API Contract
 
 > **Target contract (not yet live)**：SharedSignals 的目标公共数据面固定为
-> `GET /v1/catalog` 与 `POST /v1/query`。它们当前仍在设计/实现阶段，不能用本文件中的
+> `GET /v1/catalog` 与 `POST /v1/query`。Phase 2 Tasks 1–6 已形成隔离 worktree 本地候选；
+> Task 7 冻结 consumer handoff。它们尚未进入 local main、GitHub 或生产，不能用本文件中的
 > legacy endpoint、local tests 或 HTTP 200 代替生产可用证明。
 >
 > 下文现有 `/tushare`、`/market_data`、`/events` 等路径是 **legacy compatibility surface**，
@@ -14,32 +15,35 @@
 
 ---
 
-## 0. Target v2 normative contract
+## 0. Target V1 normative contract
 
 本节与上方链接的 Beta 设计规格是本文件**唯一面向未来实现的规范层**。下方
 “Legacy v1 compatibility inventory”只记录待迁移代码与客户端，正文即使使用
 “生产”“必须”“事实源”“新增 endpoint”等旧语气，也不得覆盖本节、不得授权新开发、
-不得证明当前生产可用。
+不得证明当前生产可用。消费者的精确 handoff、六状态和逐 dataset 降级规则见
+[V1 Consumer Data Contract](docs/data_contract.md)，可机读公共字段示例见
+[V1 Contract Fixture](tests/fixtures/sharedsignals_v1_query_contract.json)。
 
 - 公共数据路由恰好固定为 `GET /v1/catalog` 与 `POST /v1/query`；provider、dataset、
   cadence、SLA、auth scope 或分页差异都通过 registry/query policy 表达，不能创建第三类
-  dataset 公共路由。
+  dataset 公共路由；新增 provider 或 dataset 继续复用这两个 route。
 - 数据运行权威固定为 provider-neutral registry、SQLite facts、同事务 ingest receipts 与
   read clock。`/source_status`、`/health`、JSON、邮件、dashboard、cron 文本、allowlist 和
   HTTP 200 都只能是由权威层派生的观察面。
 - `/opening_gate`、Green Gate、候选、预测、策略、alpha、资金决策、持仓、风险、订单、
-  成交与交易建议不属于 SharedSignals；它们只能被迁移/退役，不能移植到 v2。
+  成交与交易建议不属于 SharedSignals；它们只能被迁移/退役，不能移植到 V1 public data plane。
 - 旧 `/tushare`、`/reference`、`/market_data`、`/events` 等 endpoint 在迁移期必须适配到
   同一个 QueryService；不得保留独立 SQL、live-provider 或 file fallback。
-- 本节是已批准目标，不是部署证明。Phase 2/4、GitHub、生产 checkout、production runtime、
-  external route 和真实 tenant query 必须分别通过后，才能把 v2 标为 live。
+- 本节是已批准目标和 local candidate 合同，不是部署证明。local main、GitHub、生产 checkout、
+  production runtime、external route 和真实 tenant query 必须分别通过后，才能把 V1 标为 live。
 
 ### 0.1 Frozen V1 catalog/query envelope
 
 Phase 2 的完整 normative request、response、filter/order grammar、cursor invalidation、状态映射、
-错误码和访问限制见 [Query Service Contract](docs/query_service.md)。Task 1 当前只冻结 registry 与
-request-contract 本地候选；HTTP handler、同 snapshot SQLite query、signed cursor、legacy adapter
-和生产发布仍未完成。
+错误码和访问限制见 [Query Service Contract](docs/query_service.md)。Tasks 1–6 的隔离 worktree
+本地候选已实现 registry/request contract、同 snapshot SQLite catalog/query、signed cursor、
+HTTP/auth 和代表性 legacy adapter；Task 7 只冻结 consumer fixture/docs/tests。上述本地证据仍未
+证明 local main、GitHub、生产发布或真实 dataset 可用。
 
 `POST /v1/query` 根对象只接受以下八个字段：
 
@@ -98,11 +102,15 @@ Phase 2 access context 仅包含 tenant、normalized scopes、request-local exac
 canonical SHA-256 `policy_id`。它不实现 public signup、key issuance、field/lookback tenant policy、
 persistent quota、usage ledger、billing、自动 revocation 或 gateway 改动。
 
+fixture、local worktree PASS 与 HTTP 200 只证明本地合同/协议层。local main、origin/GitHub、
+production checkout、production runtime、external route 和 real dataset evidence 必须分别验证；
+global source flag 不能覆盖逐 dataset `freshness`、`quality`、`lineage` 或 receipt evidence。
+
 ## Appendix A — Legacy v1 compatibility inventory (non-normative)
 
 以下内容冻结为当前/历史 v1 接口、调度、consumer 和迁移盘点。它用于保持旧客户端可追溯
 并指导 deprecate，不是新 provider onboarding 模板，也不是 SharedSignals 产品边界或
-runtime authority。任何与上方 Target v2 冲突的旧句子以上方规则为准。
+runtime authority。任何与上方 Target V1 冲突的旧句子以上方规则为准。
 
 ## 目录
 

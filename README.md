@@ -51,6 +51,19 @@ HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代�
 
 以上 `/v1` 接口当前仍是已批准目标合同，不是已部署能力；以 [STATUS.md](STATUS.md) 的当前证据为准。
 
+## Consumer contract handoff
+
+- [V1 consumer data contract](docs/data_contract.md) 冻结 provider-neutral dataset ID、independent
+  dataset schema version、request/response envelope、六种 runtime state 与 signed keyset cursor 语义。
+- [Machine-readable contract fixture](tests/fixtures/sharedsignals_v1_query_contract.json) 只含 V1 public
+  fields，提供一个 catalog row、一个 healthy query response 与一个 degraded query response；
+  测试用受控 active registry、真实 SQLite writer/ingest receipt、CatalogService、QueryService 和
+  SignedCursorCodec 重建完整结果并逐字段比对，JSON 不是手工自证。
+- 消费者必须按每个 dataset 的 `freshness`、`quality`、`lineage`、receipt 和 reasons fail
+  closed 或 down-weight；HTTP 200、非空 rows 或 global source flag 都不足以证明数据健康。
+- fixture 和本地测试是 handoff evidence，不证明 local main、origin/GitHub、production checkout、
+  production runtime、external route 或 real dataset 已改变。
+
 ## 首期 Beta 范围
 
 - 首期只做中国境内市场和当前账户实际有权使用的 Tushare dataset。

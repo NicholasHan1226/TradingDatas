@@ -1,0 +1,410 @@
+{
+  "public_routes": [
+    "GET /v1/catalog",
+    "POST /v1/query"
+  ],
+  "catalog_response": {
+    "api_version": "v1",
+    "catalog_version": "v1-616c4829fbc5d5cd",
+    "request_id": "00000000-0000-4000-8000-000000000001",
+    "data": [
+      {
+        "dataset_id": "cn.equity.daily",
+        "aliases": [
+          "tushare.daily"
+        ],
+        "domain": "market_data",
+        "market": "CN",
+        "entity_type": "daily",
+        "data_classification": "objective_factual",
+        "schema_version": "1.0.0",
+        "fields": [
+          {
+            "name": "market",
+            "logical_type": "text",
+            "nullable": false,
+            "selectable": true,
+            "filterable": true,
+            "sortable": true,
+            "operators": [
+              "eq",
+              "in",
+              "gte",
+              "lte",
+              "between"
+            ]
+          },
+          {
+            "name": "symbol",
+            "logical_type": "text",
+            "nullable": false,
+            "selectable": true,
+            "filterable": true,
+            "sortable": true,
+            "operators": [
+              "eq",
+              "in",
+              "gte",
+              "lte",
+              "between"
+            ]
+          },
+          {
+            "name": "trade_date",
+            "logical_type": "text",
+            "nullable": false,
+            "selectable": true,
+            "filterable": true,
+            "sortable": true,
+            "operators": [
+              "eq",
+              "in",
+              "gte",
+              "lte",
+              "between"
+            ]
+          },
+          {
+            "name": "open",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "high",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "low",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "close",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "volume",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "amount",
+            "logical_type": "float",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "provider",
+            "logical_type": "text",
+            "nullable": true,
+            "selectable": true,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "source_file",
+            "logical_type": "text",
+            "nullable": true,
+            "selectable": false,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          },
+          {
+            "name": "collected_at",
+            "logical_type": "text",
+            "nullable": true,
+            "selectable": true,
+            "filterable": true,
+            "sortable": true,
+            "operators": [
+              "eq",
+              "in",
+              "gte",
+              "lte",
+              "between"
+            ]
+          },
+          {
+            "name": "raw_json",
+            "logical_type": "text",
+            "nullable": true,
+            "selectable": false,
+            "filterable": false,
+            "sortable": false,
+            "operators": []
+          }
+        ],
+        "default_fields": [
+          "market",
+          "symbol",
+          "trade_date",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "amount",
+          "provider",
+          "collected_at"
+        ],
+        "filter_operators": {
+          "market": [
+            "eq",
+            "in",
+            "gte",
+            "lte",
+            "between"
+          ],
+          "symbol": [
+            "eq",
+            "in",
+            "gte",
+            "lte",
+            "between"
+          ],
+          "trade_date": [
+            "eq",
+            "in",
+            "gte",
+            "lte",
+            "between"
+          ],
+          "collected_at": [
+            "eq",
+            "in",
+            "gte",
+            "lte",
+            "between"
+          ]
+        },
+        "sortable_fields": [
+          "market",
+          "symbol",
+          "trade_date",
+          "collected_at"
+        ],
+        "default_order": [
+          "market:asc",
+          "symbol:asc",
+          "trade_date:asc"
+        ],
+        "cadence": "postclose_daily",
+        "timezone": "Asia/Shanghai",
+        "freshness_sla_seconds": 259200,
+        "limits": {
+          "max_page_size": 500,
+          "max_lookback_days": 36500
+        },
+        "point_in_time": "current_snapshot",
+        "required_scope": "market_data",
+        "quota_class": "beta_standard",
+        "availability": {
+          "entitlement_states": [
+            "active"
+          ],
+          "activation_states": [
+            "active"
+          ]
+        },
+        "queryability": {
+          "queryable": true,
+          "reasons": []
+        },
+        "runtime": {
+          "state": "success",
+          "degraded": false,
+          "data_through": "20260716",
+          "observed_at": "2026-07-16T07:35:00+00:00",
+          "receipt_id": "receipt:9d4e704b99e40dcb4e3406ead2999d4edc9522c22a4cd14c5c38d1f6267bc916",
+          "reasons": []
+        }
+      }
+    ],
+    "next_cursor": null
+  },
+  "healthy_query": {
+    "request": {
+      "dataset_id": "cn.equity.daily",
+      "schema_major": 1,
+      "fields": [
+        "market",
+        "symbol",
+        "trade_date",
+        "close"
+      ],
+      "filters": {
+        "market": "Ashare",
+        "trade_date": {
+          "eq": "20260716"
+        }
+      },
+      "as_of": null,
+      "order": [
+        "market:asc",
+        "symbol:asc",
+        "trade_date:asc"
+      ],
+      "limit": 1,
+      "cursor": null
+    },
+    "response": {
+      "api_version": "v1",
+      "catalog_version": "v1-616c4829fbc5d5cd",
+      "request_id": "00000000-0000-4000-8000-000000000002",
+      "dataset_id": "cn.equity.daily",
+      "schema_version": "1.0.0",
+      "data": [
+        {
+          "market": "Ashare",
+          "symbol": "000001.SZ",
+          "trade_date": "20260716",
+          "close": 10.5
+        }
+      ],
+      "next_cursor": "eyJjYXRhbG9nX3ZlcnNpb24iOiJ2MS02MTZjNDgyOWZiYzVkNWNkIiwiZGF0YXNldF9pZCI6ImNuLmVxdWl0eS5kYWlseSIsImV4cGlyZXNfYXQiOjE3ODQxODk3MDAsImtpbmQiOiJxdWVyeSIsInBvbGljeV9pZCI6IjNkZDY5ZTJmNTA2MDk4ZmQ4YTE0NDE2OGVkZjAzZmFjNmVjODlkMjM4NTA4NDUwMDFlYTc1ZWJmNGUyOGI3NDgiLCJxdWVyeV9oYXNoIjoiNzlhNzk2ZDExYzc1MDE1NTg0MTM5M2E0Yzk3MGJlY2Y3MWFjNzYyMTg3NTI0OGFkMmY4NzI3MDkxMzAyZDMzOCIsInJlY2VpcHRfd2F0ZXJtYXJrIjoiZWJlNzcxM2FiOGNkZWFhMTFjNWYyNTgwZWMxM2U0MDlkMTY5YjY2YmJmNzlhODQ5NGYyN2U2NzM3YjFkYzFmNiIsInNjaGVtYV9tYWpvciI6MSwic29ydF9rZXkiOlswLCJBc2hhcmUiLDAsIjAwMDAwMS5TWiIsMCwiMjAyNjA3MTYiLDFdLCJ2IjoxfQ.PW6lcVmSSwcT883u45uV5xdmWmq_pEsAmbvVS-7c3II",
+      "metadata": {
+        "state": "ready",
+        "runtime_state": "success",
+        "degraded": false,
+        "freshness": {
+          "state": "fresh",
+          "stale": false,
+          "sla_seconds": 259200
+        },
+        "quality": {
+          "state": "valid",
+          "valid": true,
+          "evidence": []
+        },
+        "lineage": {
+          "state": "complete",
+          "complete": true,
+          "provider_neutral": true,
+          "authority": "sqlite_ingest_receipts",
+          "dataset_id": "cn.equity.daily",
+          "providers": [
+            "tushare"
+          ],
+          "receipt_watermark": "ebe7713ab8cdeaa11c5f2580ec13e409d169b66bbf79a8494f27e6737b1dc1f6"
+        },
+        "receipt_id": "receipt:9d4e704b99e40dcb4e3406ead2999d4edc9522c22a4cd14c5c38d1f6267bc916",
+        "data_through": "2026-07-16T00:00:00+08:00",
+        "observed_at": "2026-07-16T07:35:00+00:00",
+        "requested_as_of": null,
+        "resolved_as_of": null,
+        "reasons": []
+      }
+    }
+  },
+  "degraded_query": {
+    "request": {
+      "dataset_id": "cn.equity.daily",
+      "schema_major": 1,
+      "fields": [
+        "market",
+        "symbol",
+        "trade_date",
+        "close"
+      ],
+      "filters": {
+        "market": "Ashare",
+        "trade_date": {
+          "eq": "20260716"
+        }
+      },
+      "as_of": null,
+      "order": [
+        "market:asc",
+        "symbol:asc",
+        "trade_date:asc"
+      ],
+      "limit": 2,
+      "cursor": null
+    },
+    "response": {
+      "api_version": "v1",
+      "catalog_version": "v1-616c4829fbc5d5cd",
+      "request_id": "00000000-0000-4000-8000-000000000003",
+      "dataset_id": "cn.equity.daily",
+      "schema_version": "1.0.0",
+      "data": [
+        {
+          "market": "Ashare",
+          "symbol": "000001.SZ",
+          "trade_date": "20260716",
+          "close": 10.5
+        },
+        {
+          "market": "Ashare",
+          "symbol": "600519.SH",
+          "trade_date": "20260716",
+          "close": 1418.88
+        }
+      ],
+      "next_cursor": null,
+      "metadata": {
+        "state": "stale",
+        "runtime_state": "stale",
+        "degraded": true,
+        "freshness": {
+          "state": "stale",
+          "stale": true,
+          "sla_seconds": 259200
+        },
+        "quality": {
+          "state": "degraded",
+          "valid": false,
+          "evidence": [
+            "freshness_sla_exceeded"
+          ]
+        },
+        "lineage": {
+          "state": "complete",
+          "complete": true,
+          "provider_neutral": true,
+          "authority": "sqlite_ingest_receipts",
+          "dataset_id": "cn.equity.daily",
+          "providers": [
+            "tushare"
+          ],
+          "receipt_watermark": "8e10fa490bb0e7d7a297c4b520fd789914eaf8e4577a82ed3055b56c778c8f23"
+        },
+        "receipt_id": "receipt:9d4e704b99e40dcb4e3406ead2999d4edc9522c22a4cd14c5c38d1f6267bc916",
+        "data_through": "2026-07-16T00:00:00+08:00",
+        "observed_at": "2026-07-16T07:35:00+00:00",
+        "requested_as_of": null,
+        "resolved_as_of": null,
+        "reasons": [
+          "freshness_sla_exceeded"
+        ]
+      }
+    }
+  }
+}

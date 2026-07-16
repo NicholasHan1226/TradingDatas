@@ -62,7 +62,9 @@ def test_api_contract_labels_legacy_routes_as_compatibility_only() -> None:
         1,
     )
 
-    assert "Target contract (not yet live)" in contract
+    assert "Target V1 normative contract" in normative
+    assert "v2" not in normative.casefold()
+    assert "Tasks 1–6" in normative
     assert "GET /v1/catalog" in contract
     assert "POST /v1/query" in contract
     assert "legacy compatibility surface" in contract
@@ -102,3 +104,78 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     assert "DuckDB" in recovery
     assert "must never automatically" in recovery
     assert "强制从 DuckDB 重建" not in recovery
+
+
+def test_consumer_contract_docs_freeze_v1_handoff_and_truth_layers() -> None:
+    readme = _read("README.md")
+    contract = _read("API_CONTRACT.md")
+    query_service = _read("docs/query_service.md")
+    data_contract = _read("docs/data_contract.md")
+    onboarding = _read("docs/data_source_onboarding.md")
+    status = _read("STATUS.md")
+
+    current_docs = (
+        readme,
+        contract.split(
+            "## Appendix A — Legacy v1 compatibility inventory (non-normative)",
+            1,
+        )[0],
+        query_service,
+        data_contract,
+        onboarding,
+        status,
+    )
+    for document in current_docs:
+        assert "GET /v1/catalog" in document
+        assert "POST /v1/query" in document
+
+    assert "exactly two target public data routes" in data_contract
+    assert "provider-neutral dataset ID" in data_contract
+    assert "independent dataset schema version" in data_contract
+    assert "one verified SQLite snapshot" in data_contract
+    assert "signed keyset cursor" in data_contract
+    assert "global source flag" in data_contract
+    assert "HTTP 200" in data_contract
+    assert '"market": "Ashare"' in data_contract
+    assert "catalog dataset.market remains `CN`" in data_contract
+    for state in ("success", "empty", "unobserved", "paused", "failed", "stale"):
+        assert f"`{state}`" in data_contract
+    for metadata in ("freshness", "quality", "lineage"):
+        assert f"`{metadata}`" in data_contract
+
+    assert "same QueryService" in data_contract
+    assert "does not add a public route" in onboarding
+    for gate in (
+        "registry and schema",
+        "entitlement and activation evidence",
+        "storage mapping",
+        "normalization, validation, and deduplication",
+        "same SQLite transaction",
+        "query and metadata contract",
+        "focused and full tests",
+        "current documentation",
+    ):
+        assert gate in onboarding
+
+    for responsibility in (
+        "opening",
+        "strategy",
+        "capital",
+        "position",
+        "risk",
+        "order",
+        "fill",
+    ):
+        assert responsibility in data_contract
+
+    for truth_layer in (
+        "local worktree PASS",
+        "local main",
+        "origin/GitHub",
+        "production checkout",
+        "production runtime",
+        "external route",
+        "real dataset evidence",
+    ):
+        assert truth_layer in data_contract
+        assert truth_layer in status
