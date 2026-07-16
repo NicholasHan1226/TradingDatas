@@ -68,8 +68,11 @@ request-contract 本地候选；HTTP handler、同 snapshot SQLite query、signe
   `field:desc`。`cursor` 是 signed keyset token，不是 offset。
 - `as_of` 必须是 timezone-aware RFC3339；只有 profile 显式声明 `as_of_field`/`as_of_format`
   才支持，语义固定为 inclusive `field <= normalized_cutoff`。同字段的显式上界更严时取更严值；
-  有限 `in` 集合按声明格式逐项解码并以集合最大值参与收紧。fractional seconds 只接受 1–6 位，
-  7 位及以上拒绝，避免 canonical request/hash 截断碰撞。
+  有限 `in` 集合按声明格式逐项解码并以集合最大值参与收紧。支持的严格子集限定 ASCII digits、
+  uppercase `T`/`Z`、真实 calendar date、hour `00–23`、minute/second `00–59`（不支持 leap second）、
+  可省略或 1–6 位 fraction，以及 hour `00–23` / minute `00–59` 的 numeric offset。`Z` 与
+  `+00:00` 有效；unknown-local-offset `-00:00`、非法组件和 7 位以上 fraction 返回 400，不能
+  静默归一化或进入 canonical request/hash。
 - public JSON 不能设置 compatibility-only `latest_partition` 或 `any_of_eq_filters`；二者及
   resolved partition 都必须参与 normalized query hash 与 cursor binding；OR term 最多四项，
   第五项按 413 资源预算错误处理。

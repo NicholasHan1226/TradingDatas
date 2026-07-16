@@ -106,9 +106,13 @@ float、numeric string 不能代替 integer。unknown root key、SQL、table、p
 - `as_of`：可省略或为 `null`；非空时必须是 timezone-aware RFC3339。服务在 dataset timezone
   归一化并按 profile 格式编码，再应用 inclusive `as_of_field <= cutoff`。请求里的同字段上界更
   严时取更严上界；该字段的有限 `in` 集合先按声明格式逐项解码，再以集合最大值参与收紧，任一
-  无效成员都返回 400。fractional seconds 只支持 1–6 位，7 位及以上拒绝，避免不同 cutoff 静默
-  碰撞。`requested_as_of` 回显 canonical aware request；`resolved_as_of` 报告实际 applied aware
-  cutoff。未请求时二者均为 `null`；profile 未声明能力、naive/invalid timestamp 返回 400。
+  无效成员都返回 400。支持的严格子集只使用 ASCII digits、uppercase `T`/`Z` 和真实 calendar
+  date；hour 为 `00–23`、minute/second 为 `00–59`（不支持 leap second `60`）；fractional seconds 可省略或为
+  1–6 位；numeric offset hour 为 `00–23`、minute 为 `00–59`。`Z` 与 `+00:00` 有效；表示
+  unknown-local-offset 的 `-00:00`、非法组件、lowercase `t`/`z` 和 7 位以上 fraction 均返回 400，
+  不得交给 datetime 静默归一化。`requested_as_of` 回显 canonical aware request；`resolved_as_of`
+  报告实际 applied aware cutoff。未请求时二者均为 `null`；profile 未声明能力、naive/invalid
+  timestamp 返回 400。
 - `order`：省略或 `null` 时由 registry primary key 决定；显式值必须是 non-empty、无重复字段的
   `field:asc` / `field:desc` 列表，最多 8 项。QueryService 后续追加缺失 primary-key 与隐藏 rowid
   tie-breaker，隐藏字段不返回到 `data`。

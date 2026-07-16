@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from hashlib import sha256
 import json
 from math import isfinite
@@ -38,8 +38,12 @@ _FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
 _ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
 _RFC3339_RE = re.compile(
-    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
-    r"(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z"
+    r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+    r"T(?P<hour>[01][0-9]|2[0-3]):(?P<minute>[0-5][0-9]):"
+    r"(?P<second>[0-5][0-9])(?:\.(?P<fraction>[0-9]{1,6}))?"
+    r"(?:(?P<zulu>Z)|(?P<offset_sign>[+-])"
+    r"(?P<offset_hour>[01][0-9]|2[0-3]):"
+    r"(?P<offset_minute>[0-5][0-9]))\Z"
 )
 _YYYYMMDD_RE = re.compile(r"\d{8}\Z")
 _QUERY_DEFAULTS = load_dataset_registry().query_defaults
@@ -264,17 +268,44 @@ def _normalized_string_grants(values: tuple[str, ...], name: str) -> tuple[str, 
 
 def _parse_aware_rfc3339(value: object, name: str) -> datetime:
     text = _canonical_non_empty_string(value, name)
-    if _RFC3339_RE.fullmatch(text) is None:
-        raise QueryValidationError(f"{name} must be a timezone-aware RFC3339 timestamp")
-    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    match = _RFC3339_RE.fullmatch(text)
+    if match is None:
+        raise QueryValidationError(
+            f"{name} must be a supported timezone-aware RFC3339 timestamp"
+        )
+
+    fraction = match.group("fraction") or ""
+    microsecond = int(fraction.ljust(6, "0")) if fraction else 0
+    if match.group("zulu") is not None:
+        tzinfo = datetime_timezone.utc
+    else:
+        offset_hour = int(match.group("offset_hour"))
+        offset_minute = int(match.group("offset_minute"))
+        offset_sign = match.group("offset_sign")
+        if offset_sign == "-" and offset_hour == 0 and offset_minute == 0:
+            raise QueryValidationError(
+                f"{name} must not use RFC3339 unknown local offset -00:00"
+            )
+        offset = timedelta(hours=offset_hour, minutes=offset_minute)
+        if offset_sign == "-":
+            offset = -offset
+        tzinfo = datetime_timezone(offset)
+
     try:
-        parsed = datetime.fromisoformat(normalized)
+        parsed = datetime(
+            int(match.group("year")),
+            int(match.group("month")),
+            int(match.group("day")),
+            int(match.group("hour")),
+            int(match.group("minute")),
+            int(match.group("second")),
+            microsecond,
+            tzinfo=tzinfo,
+        )
     except ValueError as exc:
         raise QueryValidationError(
-            f"{name} must be a timezone-aware RFC3339 timestamp"
+            f"{name} must be a supported timezone-aware RFC3339 timestamp"
         ) from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise QueryValidationError(f"{name} must be timezone-aware")
     return parsed
 
 

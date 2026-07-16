@@ -310,18 +310,89 @@ def test_query_request_direct_construction_deeply_freezes_filters() -> None:
     assert contract.normalized_query_hash(replaced) == replacement_hash
 
 
-def test_query_request_rejects_rfc3339_fraction_beyond_microseconds() -> None:
+@pytest.mark.parametrize("construction", ["public", "direct"])
+@pytest.mark.parametrize(
+    "as_of",
+    [
+        "2026-07-16T00:00:00+08:60",
+        "2026-07-16T00:00:00+08:99",
+        "2026-07-16T00:60:00Z",
+        "2026-07-16T00:00:60Z",
+        "2026-07-16T24:00:00Z",
+        "2026-07-16T00:00:00+24:00",
+        "2026-02-30T00:00:00Z",
+        "2026-07-16T00:00:00.1234567Z",
+        "2026-07-16T00:00:00-00:00",
+        "2026-07-16t00:00:00Z",
+        "2026-07-16T00:00:00z",
+        "٢٠٢٦-07-16T00:00:00Z",
+        "2026-٠٧-١٦T00:00:00Z",
+    ],
+)
+def test_query_request_rejects_noncanonical_rfc3339_subset(
+    construction: str,
+    as_of: str,
+) -> None:
     contract = _contract()
 
-    supported = contract.parse_query_request(
-        _payload(as_of="2026-07-16T00:00:00.123456Z")
-    )
-
-    assert supported.as_of == "2026-07-16T00:00:00.123456+00:00"
     with pytest.raises(contract.QueryValidationError, match="RFC3339"):
-        contract.parse_query_request(
-            _payload(as_of="2026-07-16T00:00:00.1234561Z")
-        )
+        if construction == "public":
+            contract.parse_query_request(_payload(as_of=as_of))
+        else:
+            contract.QueryRequest(
+                dataset_id="cn.equity.daily",
+                schema_major=1,
+                fields=(),
+                filters={},
+                as_of=as_of,
+                order=None,
+                limit=1,
+                cursor=None,
+            )
+
+
+@pytest.mark.parametrize(
+    ("as_of", "canonical"),
+    [
+        (
+            "2024-02-29T23:59:59Z",
+            "2024-02-29T23:59:59+00:00",
+        ),
+        (
+            "2026-07-16T23:59:59+23:59",
+            "2026-07-16T23:59:59+23:59",
+        ),
+        (
+            "2026-07-16T23:59:59-23:59",
+            "2026-07-16T23:59:59-23:59",
+        ),
+        (
+            "2026-07-16T00:00:00+08:59",
+            "2026-07-16T00:00:00+08:59",
+        ),
+        (
+            "2026-07-16T00:00:00+00:00",
+            "2026-07-16T00:00:00+00:00",
+        ),
+        (
+            "2026-07-16T00:00:00.1Z",
+            "2026-07-16T00:00:00.100000+00:00",
+        ),
+        (
+            "2026-07-16T00:00:00.123456Z",
+            "2026-07-16T00:00:00.123456+00:00",
+        ),
+    ],
+)
+def test_query_request_accepts_strict_rfc3339_boundaries(
+    as_of: str,
+    canonical: str,
+) -> None:
+    contract = _contract()
+
+    request = contract.parse_query_request(_payload(as_of=as_of))
+
+    assert request.as_of == canonical
 
 
 def test_query_as_of_normalizes_dataset_timezone_and_stricter_upper_bound() -> None:
@@ -438,6 +509,57 @@ def test_query_as_of_rfc3339_in_rejects_invalid_member() -> None:
 
     with pytest.raises(contract.QueryValidationError, match="RFC3339"):
         contract.resolve_query_as_of(request, dataset)
+
+
+@pytest.mark.parametrize(
+    "invalid_bound",
+    [
+        "2026-07-16T00:00:00+08:60",
+        "2026-07-16T00:00:00+08:99",
+        "2026-07-16T00:00:00-00:00",
+    ],
+)
+def test_query_as_of_rfc3339_dataset_bound_rejects_invalid_offset(
+    invalid_bound: str,
+) -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="collected_at",
+        as_of_format="rfc3339",
+        timezone="UTC",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T23:59:59Z",
+            filters={"collected_at": {"eq": invalid_bound}},
+        )
+    )
+
+    with pytest.raises(contract.QueryValidationError, match="RFC3339"):
+        contract.resolve_query_as_of(request, dataset)
+
+
+def test_query_as_of_rfc3339_cross_timezone_preserves_valid_offset_boundary() -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="collected_at",
+        as_of_format="rfc3339",
+        timezone="UTC",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T23:59:59Z",
+            filters={
+                "collected_at": {"eq": "2026-07-16T00:00:00+08:59"}
+            },
+        )
+    )
+
+    resolved = contract.resolve_query_as_of(request, dataset)
+
+    assert resolved.encoded_cutoff == "2026-07-15T15:01:00+00:00"
 
 
 def test_query_as_of_rejects_dataset_without_declared_capability() -> None:
