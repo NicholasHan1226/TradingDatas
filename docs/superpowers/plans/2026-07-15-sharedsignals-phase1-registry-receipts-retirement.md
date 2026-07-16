@@ -1,6 +1,6 @@
 # SharedSignals Phase 1 Registry, Receipts, and Repository Retirement Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Checkboxes are the reproducible execution checklist, not current-state authority; current accepted commits, reviews and remaining work are recorded only in `STATUS.md`.
 
 **Goal:** Retire the first safe set of out-of-scope repository artifacts, establish one provider-neutral dataset registry, and make SQLite transaction receipts the authoritative record of Tushare ingestion without changing the public API, database schema, or production runtime.
 
