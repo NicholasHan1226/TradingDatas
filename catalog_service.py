@@ -63,12 +63,20 @@ _RUNTIME_ROW_KEYS = frozenset(
 _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z", re.ASCII)
 
 
+def _canonical_public_text(value: object, name: str) -> str:
+    if type(value) is not str or not value or value != value.strip():
+        raise QueryValidationError(f"{name} must be a canonical non-empty string")
+    try:
+        value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        raise QueryValidationError(f"{name} must be valid UTF-8 text") from None
+    return value
+
+
 def _canonical_filter(value: object, name: str) -> str | None:
     if value is None:
         return None
-    if type(value) is not str or not value or value != value.strip():
-        raise QueryValidationError(f"{name} must be a canonical non-empty string")
-    return value
+    return _canonical_public_text(value, name)
 
 
 @dataclass(frozen=True)
@@ -216,9 +224,7 @@ def _clock_seconds(now: datetime) -> int:
 
 
 def _canonical_request_id(value: object) -> str:
-    if type(value) is not str or not value or value != value.strip():
-        raise QueryValidationError("request_id must be a canonical non-empty string")
-    return value
+    return _canonical_public_text(value, "request_id")
 
 
 def _validated_limit(value: object, registry: DatasetRegistry) -> int:

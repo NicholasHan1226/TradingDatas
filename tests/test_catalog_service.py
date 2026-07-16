@@ -557,6 +557,39 @@ def test_catalog_filters_reject_noncanonical_values(
         CatalogFilters(**values)
 
 
+@pytest.mark.parametrize("field_name", ["market", "domain", "cadence", "state", "q"])
+@pytest.mark.parametrize("surrogate", ["\ud800", "\udfff"])
+def test_catalog_filters_reject_lone_utf16_surrogates(
+    field_name: str,
+    surrogate: str,
+) -> None:
+    values: dict[str, str | None] = {
+        "market": None,
+        "domain": None,
+        "cadence": None,
+        "state": None,
+        "q": None,
+    }
+    values[field_name] = surrogate
+
+    with pytest.raises(QueryValidationError, match=field_name):
+        CatalogFilters(**values)
+
+
+def test_catalog_filters_accept_valid_unicode_without_normalizing() -> None:
+    filters = CatalogFilters(
+        market="中国",
+        domain="Straße",
+        cadence="每😀日",
+        q="Straße😀",
+    )
+
+    assert filters.market == "中国"
+    assert filters.domain == "Straße"
+    assert filters.cadence == "每😀日"
+    assert filters.q == "Straße😀"
+
+
 def test_initial_release_eligibility_is_cn_and_binding_based_only() -> None:
     base = _dataset()
     locked = replace(
@@ -911,6 +944,27 @@ def test_catalog_rejects_filter_and_limit_budget_overflow_before_snapshot(
     assert calls["snapshot"] == 0
 
 
+def test_catalog_q_budget_counts_unicode_code_points(
+    catalog_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_fake_snapshot(monkeypatch, catalog_harness)
+    service = _service(catalog_harness)
+
+    response = _list(
+        service,
+        catalog_harness,
+        filters=CatalogFilters(q="😀" * 12),
+        request_id="请求-Straße-😀",
+    )
+    assert response["request_id"] == "请求-Straße-😀"
+    assert calls["snapshot"] == 1
+
+    with pytest.raises(QueryBudgetError, match="q"):
+        _list(service, catalog_harness, filters=CatalogFilters(q="😀" * 13))
+    assert calls["snapshot"] == 1
+
+
 @pytest.mark.parametrize("request_id", ["", " request", "request ", 1])
 def test_catalog_rejects_noncanonical_request_id(
     catalog_harness: dict[str, object],
@@ -923,6 +977,23 @@ def test_catalog_rejects_noncanonical_request_id(
             _service(catalog_harness),
             catalog_harness,
             request_id=request_id,  # type: ignore[arg-type]
+        )
+    assert calls["snapshot"] == 0
+
+
+@pytest.mark.parametrize("request_id", ["\ud800", "\udfff"])
+def test_catalog_rejects_lone_utf16_surrogate_request_id_before_snapshot(
+    catalog_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    request_id: str,
+) -> None:
+    calls = _install_fake_snapshot(monkeypatch, catalog_harness)
+
+    with pytest.raises(QueryValidationError, match="request_id"):
+        _list(
+            _service(catalog_harness),
+            catalog_harness,
+            request_id=request_id,
         )
     assert calls["snapshot"] == 0
 
