@@ -67,9 +67,17 @@ request-contract 本地候选；HTTP handler、同 snapshot SQLite query、signe
 - `order` 省略/`null` 时使用 registry primary key；显式 term 只能是 `field:asc` 或
   `field:desc`。`cursor` 是 signed keyset token，不是 offset。
 - `as_of` 必须是 timezone-aware RFC3339；只有 profile 显式声明 `as_of_field`/`as_of_format`
-  才支持，语义固定为 inclusive `field <= normalized_cutoff`。同字段的显式上界更严时取更严值。
+  才支持，语义固定为 inclusive `field <= normalized_cutoff`。同字段的显式上界更严时取更严值；
+  有限 `in` 集合按声明格式逐项解码并以集合最大值参与收紧。fractional seconds 只接受 1–6 位，
+  7 位及以上拒绝，避免 canonical request/hash 截断碰撞。
 - public JSON 不能设置 compatibility-only `latest_partition` 或 `any_of_eq_filters`；二者及
-  resolved partition 都必须参与 normalized query hash 与 cursor binding。
+  resolved partition 都必须参与 normalized query hash 与 cursor binding；OR term 最多四项，
+  第五项按 413 资源预算错误处理。
+
+异构事件 profile 默认不声明日期能力；仅 canonical-row 测试已证明稳定产生 `yyyymmdd trade_date`
+的数据族使用 dated event profile。frozen `QueryRequest` 的所有构造/replace 路径都必须深层
+canonicalize/freeze；`QueryAccessContext` 的所有构造/replace 路径都必须规范化 tenant/scopes/exact
+grants 并重算 `policy_id`，不得保留调用方提供的过期 hash。
 
 query response 固定包含 `api_version`、provider-neutral `catalog_version`、`request_id`、
 `dataset_id`、`schema_version`、`data`、`next_cursor` 及非空 `metadata`。metadata 必须保留精确

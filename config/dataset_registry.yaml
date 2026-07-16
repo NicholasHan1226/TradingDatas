@@ -156,6 +156,39 @@ schema_profiles:
       - {name: raw_json, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
     primary_key: [event_hash]
     default_projection: [event_hash, event_id, revision, source_family, provider, event_type, event_time, trade_date, market, symbol, title, content, url, source, collected_at]
+    as_of_field: null
+    as_of_format: null
+    range_field: null
+    partition_field: null
+    max_page_size: 500
+    max_lookback_days: null
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: events
+    quota_class: beta_standard
+  market_events_dated.v1:
+    schema_version: "1.0.0"
+    fields:
+      - {name: event_hash, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: event_id, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: revision, logical_type: integer, nullable: true, selectable: true, filterable: false, sortable: true}
+      - {name: source_family, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: provider, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: event_type, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: event_time, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: market, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: symbol, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: false}
+      - {name: title, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: content, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: url, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: source_file, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+      - {name: collected_at, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: raw_json, logical_type: text, nullable: true, selectable: false, filterable: false, sortable: false}
+    primary_key: [event_hash]
+    default_projection: [event_hash, event_id, revision, source_family, provider, event_type, event_time, trade_date, market, symbol, title, content, url, source, collected_at]
     as_of_field: trade_date
     as_of_format: yyyymmdd
     range_field: trade_date
@@ -483,7 +516,7 @@ datasets:
     entity_type: block_trade
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
@@ -502,7 +535,7 @@ datasets:
     entity_type: limit_list
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
@@ -521,7 +554,7 @@ datasets:
     entity_type: limit_list_detail
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 259200
@@ -2251,7 +2284,7 @@ datasets:
     entity_type: issuance
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 604800
@@ -2308,7 +2341,7 @@ datasets:
     entity_type: news
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: 30min_active_window
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600
@@ -2327,7 +2360,7 @@ datasets:
     entity_type: major_news
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: 30min_active_window
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600
@@ -2346,7 +2379,7 @@ datasets:
     entity_type: broadcast_news
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: 30min_active_window
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600
@@ -2365,7 +2398,7 @@ datasets:
     entity_type: announcement
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: 30min_active_window
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600
@@ -2384,7 +2417,7 @@ datasets:
     entity_type: research_report
     data_classification: objective_factual
     schema_version: "1.0.0"
-    schema_profile: market_events.v1
+    schema_profile: market_events_dated.v1
     cadence_class: 30min_active_window
     timezone: Asia/Shanghai
     freshness_sla_seconds: 129600

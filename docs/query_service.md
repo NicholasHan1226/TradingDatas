@@ -46,6 +46,10 @@ schema profile 可以声明更小的 page/lookback override；省略或 `null` �
 - 每个 filterable 字段支持 `eq`、`in`；有序 `text`、`integer`、`float` 还支持 `gte`、
   `lte`、`between`。operator 由 registry 字段合同确定，不能由客户端扩展。
 
+异构事件 profile 默认不声明日期能力。只有 canonical-row 回归测试已经证明能稳定生成
+`yyyymmdd trade_date` 的事件 dataset 才使用 dated event profile；月度推荐、停牌日期、名称变更等
+尚未形成 canonical `trade_date` 的 dataset 保持四项能力为 `null`，服务和 legacy adapter 都不得猜测。
+
 `catalog_version` 是 `v1-` 加 provider-neutral public contract 的 canonical SHA-256 前缀。dataset
 identity、schema、query policy、cadence、SLA 或 access policy 变化会改变它；storage table、
 DB path、adapter internals、provider token 和 runtime receipt 不参与，也不得从 fingerprint 反推。
@@ -101,9 +105,10 @@ float、numeric string 不能代替 integer。unknown root key、SQL、table、p
   scalar。最多 16 个 field terms。字段、operator 与 native value type 还须通过 registry 校验。
 - `as_of`：可省略或为 `null`；非空时必须是 timezone-aware RFC3339。服务在 dataset timezone
   归一化并按 profile 格式编码，再应用 inclusive `as_of_field <= cutoff`。请求里的同字段上界更
-  严时取更严上界。`requested_as_of` 回显 canonical aware request；`resolved_as_of` 报告实际
-  applied aware cutoff。未请求时二者均为 `null`；profile 未声明能力、naive/invalid timestamp
-  返回 400。
+  严时取更严上界；该字段的有限 `in` 集合先按声明格式逐项解码，再以集合最大值参与收紧，任一
+  无效成员都返回 400。fractional seconds 只支持 1–6 位，7 位及以上拒绝，避免不同 cutoff 静默
+  碰撞。`requested_as_of` 回显 canonical aware request；`resolved_as_of` 报告实际 applied aware
+  cutoff。未请求时二者均为 `null`；profile 未声明能力、naive/invalid timestamp 返回 400。
 - `order`：省略或 `null` 时由 registry primary key 决定；显式值必须是 non-empty、无重复字段的
   `field:asc` / `field:desc` 列表，最多 8 项。QueryService 后续追加缺失 primary-key 与隐藏 rowid
   tie-breaker，隐藏字段不返回到 `data`。
@@ -111,12 +116,16 @@ float、numeric string 不能代替 integer。unknown root key、SQL、table、p
   page limit 限制。
 - `cursor`：可省略或为 `null`；非空时只能是 opaque signed keyset token，从不解释为 offset。
 
+public parser 与 frozen `QueryRequest` 的每条构造路径都会重新 canonicalize 并深冻结 fields、filters、
+order 和其它值；外部 dict/list 或 `dataclasses.replace()` 后续变化不得改变已生成请求或 query hash。
+
 ### Internal compatibility options
 
 `latest_partition` 与 `any_of_eq_filters` 不是 public JSON 字段，public parser 必须拒绝。legacy
 adapter 仅可在 registry 声明 `partition_field` 时请求 same-snapshot `MAX(partition_field)`；最多四个
 `any_of_eq_filters` 只能是 registry-declared filterable field 的 equality OR group，并位于 mandatory
-fixed dataset filters 之后。两种选项、resolved partition 与 OR terms 都参与 query hash/cursor 绑定。
+fixed dataset filters 之后；第五项属于 413 资源预算错误。两种选项、resolved partition 与 OR terms
+都参与 query hash/cursor 绑定。
 
 ### Response
 
@@ -198,6 +207,9 @@ Phase 2 只注入 `tenant_id`、normalized `scopes`、request-local exact `allow
 canonical SHA-256 `policy_id`。catalog discovery 需要 registry `required_scope` 或既有 aggregate
 `external_read` / `read` / `full` / `*`；exact dataset grant 只能授权该次 direct query，不能让 dataset
 出现在 catalog，也不能授权另一个 dataset。
+
+`QueryAccessContext` 在 direct construction、factory 与 `dataclasses.replace()` 的每条路径都重新排序、
+去重并验证 scopes/grants，同时重算 `policy_id`；调用方传入或沿用的旧 hash 不能覆盖该恒等式。
 
 Phase 2 不实现 public signup、tenant key issuance、field/lookback tenant policy、persistent quota、
 usage ledger、billing、revocation automation 或 gateway changes；这些属于 Phase 4。当前合同与测试只

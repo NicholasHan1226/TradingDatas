@@ -229,6 +229,101 @@ def test_access_policy_hash_binds_tenant_scopes_and_exact_dataset_grants() -> No
     )
 
 
+def test_access_context_direct_construction_normalizes_and_recomputes_policy() -> None:
+    contract = _contract()
+
+    context = contract.QueryAccessContext(
+        tenant_id="tenant-a",
+        scopes=("market_data", "external_read", "market_data"),
+        allowed_dataset_ids=("cn.market.trade_calendar", "cn.equity.daily"),
+        policy_id="stale-or-forged",
+    )
+
+    assert context.scopes == ("external_read", "market_data")
+    assert context.allowed_dataset_ids == (
+        "cn.equity.daily",
+        "cn.market.trade_calendar",
+    )
+    assert context.policy_id == contract.access_policy_hash(
+        context.tenant_id,
+        context.scopes,
+        context.allowed_dataset_ids,
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"tenant_id": "tenant-b"},
+        {"scopes": ("events", "external_read")},
+        {"allowed_dataset_ids": ("cn.equity.weekly",)},
+    ],
+)
+def test_access_context_replace_cannot_retain_stale_policy(
+    changes: dict[str, object],
+) -> None:
+    contract = _contract()
+    original = contract.QueryAccessContext.from_grants(
+        tenant_id="tenant-a",
+        scopes=("external_read",),
+        allowed_dataset_ids=("cn.equity.daily",),
+    )
+
+    changed = replace(original, **changes)
+
+    assert changed.policy_id != original.policy_id
+    assert changed.policy_id == contract.access_policy_hash(
+        changed.tenant_id,
+        changed.scopes,
+        changed.allowed_dataset_ids,
+    )
+
+
+def test_query_request_direct_construction_deeply_freezes_filters() -> None:
+    contract = _contract()
+    source = {"symbol": {"in": ["000001.SZ", "600519.SH"]}}
+    request = contract.QueryRequest(
+        dataset_id="cn.equity.daily",
+        schema_major=1,
+        fields=("symbol",),
+        filters=source,
+        as_of=None,
+        order=None,
+        limit=10,
+        cursor=None,
+    )
+    initial_hash = contract.normalized_query_hash(request)
+
+    source["symbol"]["in"][0] = "300750.SZ"
+
+    assert request.filters["symbol"] == {
+        "in": ("000001.SZ", "600519.SH")
+    }
+    assert contract.normalized_query_hash(request) == initial_hash
+
+    replacement_source = {"symbol": {"eq": "600519.SH"}}
+    replaced = replace(request, filters=replacement_source)
+    replacement_hash = contract.normalized_query_hash(replaced)
+    replacement_source["symbol"]["eq"] = "000001.SZ"
+
+    assert replaced.filters["symbol"] == {"eq": "600519.SH"}
+    assert contract.normalized_query_hash(replaced) == replacement_hash
+
+
+def test_query_request_rejects_rfc3339_fraction_beyond_microseconds() -> None:
+    contract = _contract()
+
+    supported = contract.parse_query_request(
+        _payload(as_of="2026-07-16T00:00:00.123456Z")
+    )
+
+    assert supported.as_of == "2026-07-16T00:00:00.123456+00:00"
+    with pytest.raises(contract.QueryValidationError, match="RFC3339"):
+        contract.parse_query_request(
+            _payload(as_of="2026-07-16T00:00:00.1234561Z")
+        )
+
+
 def test_query_as_of_normalizes_dataset_timezone_and_stricter_upper_bound() -> None:
     contract = _contract()
     daily = load_dataset_registry().resolve("cn.equity.daily")
@@ -245,6 +340,104 @@ def test_query_as_of_normalizes_dataset_timezone_and_stricter_upper_bound() -> N
     assert resolved.requested_as_of == "2026-07-15T16:30:00+00:00"
     assert resolved.resolved_as_of == "2026-07-15T00:00:00+08:00"
     assert resolved.encoded_cutoff == "20260715"
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_cutoff"),
+    [
+        (["20260714", "20260715"], "20260715"),
+        (["20260717", "20260718"], "20260716"),
+    ],
+)
+def test_query_as_of_yyyymmdd_in_uses_declared_maximum_upper_bound(
+    values: list[str],
+    expected_cutoff: str,
+) -> None:
+    contract = _contract()
+    daily = load_dataset_registry().resolve("cn.equity.daily")
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T00:00:00+08:00",
+            filters={"trade_date": {"in": values}},
+        )
+    )
+
+    resolved = contract.resolve_query_as_of(request, daily)
+
+    assert resolved.encoded_cutoff == expected_cutoff
+
+
+def test_query_as_of_yyyymmdd_in_rejects_invalid_member() -> None:
+    contract = _contract()
+    daily = load_dataset_registry().resolve("cn.equity.daily")
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T00:00:00+08:00",
+            filters={"trade_date": {"in": ["20260715", "not-a-date"]}},
+        )
+    )
+
+    with pytest.raises(contract.QueryValidationError, match="yyyymmdd"):
+        contract.resolve_query_as_of(request, daily)
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_cutoff"),
+    [
+        (
+            ["2026-07-16T10:00:00Z", "2026-07-16T11:00:00Z"],
+            "2026-07-16T11:00:00+00:00",
+        ),
+        (
+            ["2026-07-16T13:00:00Z", "2026-07-16T14:00:00Z"],
+            "2026-07-16T12:00:00.123456+00:00",
+        ),
+    ],
+)
+def test_query_as_of_rfc3339_in_uses_declared_maximum_upper_bound(
+    values: list[str],
+    expected_cutoff: str,
+) -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="collected_at",
+        as_of_format="rfc3339",
+        timezone="UTC",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T12:00:00.123456Z",
+            filters={"collected_at": {"in": values}},
+        )
+    )
+
+    resolved = contract.resolve_query_as_of(request, dataset)
+
+    assert resolved.encoded_cutoff == expected_cutoff
+
+
+def test_query_as_of_rfc3339_in_rejects_invalid_member() -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="collected_at",
+        as_of_format="rfc3339",
+        timezone="UTC",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-16T12:00:00Z",
+            filters={
+                "collected_at": {
+                    "in": ["2026-07-16T11:00:00Z", "not-a-timestamp"]
+                }
+            },
+        )
+    )
+
+    with pytest.raises(contract.QueryValidationError, match="RFC3339"):
+        contract.resolve_query_as_of(request, dataset)
 
 
 def test_query_as_of_rejects_dataset_without_declared_capability() -> None:
@@ -275,3 +468,16 @@ def test_internal_query_options_remain_bounded(options: dict[str, object]) -> No
 
     with pytest.raises(contract.QueryValidationError):
         contract.QueryExecutionOptions(**options)
+
+
+def test_internal_query_options_classify_or_term_overflow_as_budget() -> None:
+    contract = _contract()
+    four_terms = (("a", 1), ("b", 2), ("c", 3), ("d", 4))
+
+    options = contract.QueryExecutionOptions(any_of_eq_filters=four_terms)
+
+    assert options.any_of_eq_filters == four_terms
+    with pytest.raises(contract.QueryBudgetError):
+        contract.QueryExecutionOptions(
+            any_of_eq_filters=(*four_terms, ("e", 5))
+        )

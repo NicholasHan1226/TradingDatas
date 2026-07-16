@@ -14,6 +14,7 @@ from dataset_registry import (
     ProviderBinding,
     load_dataset_registry,
 )
+from storage.read_model_store import _canonical_row
 from storage.schema_contract import get_table
 
 
@@ -1249,6 +1250,79 @@ def test_registry_loads_query_defaults_and_effective_profile_limits() -> None:
         "between",
     )
     assert "close" not in daily.filter_operators
+
+
+@pytest.mark.parametrize(
+    ("api_name", "date_field", "date_value"),
+    [
+        ("block_trade", "trade_date", "20260716"),
+        ("limit_list", "trade_date", "20260716"),
+        ("limit_list_d", "trade_date", "20260716"),
+        ("cb_issue", "ann_date", "20260716"),
+        ("news", "datetime", "2026-07-16 09:30:00"),
+        ("major_news", "pub_time", "2026-07-16 09:30:00"),
+        ("cctv_news", "date", "20260716"),
+        ("anns_d", "ann_date", "20260716"),
+        ("report_rc", "report_date", "20260716"),
+    ],
+)
+def test_dated_event_profiles_are_backed_by_canonical_trade_date(
+    api_name: str,
+    date_field: str,
+    date_value: str,
+) -> None:
+    registry = load_dataset_registry()
+    dataset = next(
+        dataset
+        for dataset in registry.datasets
+        if any(binding.api_name == api_name for binding in dataset.provider_bindings)
+    )
+    row = _canonical_row(
+        "market_events",
+        {date_field: date_value},
+        api_name,
+        "fixture.json",
+        provider_discriminator=f"tushare_{api_name}",
+    )
+
+    assert row["trade_date"] == "20260716"
+    assert dataset.as_of_field == "trade_date"
+    assert dataset.as_of_format == "yyyymmdd"
+    assert dataset.range_field == "trade_date"
+    assert dataset.partition_field == "trade_date"
+
+
+@pytest.mark.parametrize(
+    ("api_name", "source"),
+    [
+        ("broker_recommend", {"month": "202607"}),
+        ("suspend_d", {"suspend_date": "20260716"}),
+        ("namechange", {"start_date": "20260716"}),
+    ],
+)
+def test_undated_event_profiles_do_not_advertise_guessed_date_capabilities(
+    api_name: str,
+    source: dict[str, str],
+) -> None:
+    registry = load_dataset_registry()
+    dataset = next(
+        dataset
+        for dataset in registry.datasets
+        if any(binding.api_name == api_name for binding in dataset.provider_bindings)
+    )
+    row = _canonical_row(
+        "market_events",
+        source,
+        api_name,
+        "fixture.json",
+        provider_discriminator=f"tushare_{api_name}",
+    )
+
+    assert row.get("trade_date") is None
+    assert dataset.as_of_field is None
+    assert dataset.as_of_format is None
+    assert dataset.range_field is None
+    assert dataset.partition_field is None
 
 
 @pytest.mark.parametrize(

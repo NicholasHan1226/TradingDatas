@@ -39,7 +39,7 @@ _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
 _ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
 _RFC3339_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
-    r"(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\Z"
+    r"(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z"
 )
 _YYYYMMDD_RE = re.compile(r"\d{8}\Z")
 _QUERY_DEFAULTS = load_dataset_registry().query_defaults
@@ -59,6 +59,26 @@ class QueryAccessContext:
     scopes: tuple[str, ...]
     allowed_dataset_ids: tuple[str, ...]
     policy_id: str
+
+    def __post_init__(self) -> None:
+        normalized_tenant = _canonical_non_empty_string(self.tenant_id, "tenant_id")
+        normalized_scopes = _normalized_string_grants(self.scopes, "scopes")
+        normalized_datasets = _normalized_string_grants(
+            self.allowed_dataset_ids,
+            "allowed_dataset_ids",
+        )
+        object.__setattr__(self, "tenant_id", normalized_tenant)
+        object.__setattr__(self, "scopes", normalized_scopes)
+        object.__setattr__(self, "allowed_dataset_ids", normalized_datasets)
+        object.__setattr__(
+            self,
+            "policy_id",
+            access_policy_hash(
+                normalized_tenant,
+                normalized_scopes,
+                normalized_datasets,
+            ),
+        )
 
     @classmethod
     def from_grants(
@@ -97,6 +117,53 @@ class QueryRequest:
     limit: int
     cursor: str | None
 
+    def __post_init__(self) -> None:
+        defaults = _QUERY_DEFAULTS
+        dataset_id = _canonical_non_empty_string(self.dataset_id, "dataset_id")
+        if _DATASET_ID_RE.fullmatch(dataset_id) is None:
+            raise QueryValidationError(
+                "dataset_id must be a canonical dataset identifier"
+            )
+        schema_major = _native_positive_int(self.schema_major, "schema_major")
+        if type(self.fields) not in {tuple, list}:
+            raise QueryValidationError("fields must be a tuple or list")
+        fields = _parse_fields(list(self.fields), defaults)
+        filters = _parse_filters(
+            self.filters,
+            defaults,
+            allow_immutable=True,
+        )
+        as_of = (
+            None
+            if self.as_of is None
+            else _canonical_rfc3339(_parse_aware_rfc3339(self.as_of, "as_of"))
+        )
+        if self.order is None:
+            order = None
+        elif type(self.order) in {tuple, list}:
+            order = _parse_order(list(self.order), defaults)
+        else:
+            raise QueryValidationError("order must be a tuple or list")
+        limit = _native_positive_int(self.limit, "limit")
+        if limit > defaults.max_page_size:
+            raise QueryBudgetError(
+                f"limit exceeds max_page_size={defaults.max_page_size}"
+            )
+        cursor = (
+            None
+            if self.cursor is None
+            else _canonical_non_empty_string(self.cursor, "cursor")
+        )
+
+        object.__setattr__(self, "dataset_id", dataset_id)
+        object.__setattr__(self, "schema_major", schema_major)
+        object.__setattr__(self, "fields", fields)
+        object.__setattr__(self, "filters", filters)
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "order", order)
+        object.__setattr__(self, "limit", limit)
+        object.__setattr__(self, "cursor", cursor)
+
 
 @dataclass(frozen=True)
 class QueryExecutionOptions:
@@ -109,7 +176,7 @@ class QueryExecutionOptions:
         if type(self.any_of_eq_filters) is not tuple:
             raise QueryValidationError("any_of_eq_filters must be a tuple")
         if len(self.any_of_eq_filters) > 4:
-            raise QueryValidationError("any_of_eq_filters supports at most 4 terms")
+            raise QueryBudgetError("any_of_eq_filters supports at most 4 terms")
 
         normalized: list[tuple[str, object]] = []
         for index, term in enumerate(self.any_of_eq_filters):
@@ -233,8 +300,12 @@ def _normalize_filter_value(
     *,
     field: str,
     defaults: QueryDefaults,
+    allow_immutable: bool = False,
 ) -> Mapping[str, object]:
-    if type(value) is not dict:
+    is_operator_mapping = (
+        isinstance(value, Mapping) if allow_immutable else type(value) is dict
+    )
+    if not is_operator_mapping:
         return MappingProxyType({"eq": _json_scalar(value, f"filters.{field}")})
     if len(value) != 1:
         raise QueryValidationError(
@@ -249,7 +320,12 @@ def _normalize_filter_value(
             f"filters.{field}.{operator}",
         )
     else:
-        if type(operand) is not list:
+        valid_sequence = (
+            type(operand) in {list, tuple}
+            if allow_immutable
+            else type(operand) is list
+        )
+        if not valid_sequence:
             raise QueryValidationError(f"filters.{field}.{operator} must be a list")
         expected_length = 2 if operator == "between" else None
         if expected_length is not None and len(operand) != expected_length:
@@ -288,8 +364,11 @@ def _normalize_filter_value(
 def _parse_filters(
     value: object,
     defaults: QueryDefaults,
+    *,
+    allow_immutable: bool = False,
 ) -> Mapping[str, object]:
-    if type(value) is not dict:
+    valid_mapping = isinstance(value, Mapping) if allow_immutable else type(value) is dict
+    if not valid_mapping:
         raise QueryValidationError("filters must be an object")
     if len(value) > defaults.max_filter_terms:
         raise QueryBudgetError(
@@ -305,6 +384,7 @@ def _parse_filters(
             filter_value,
             field=field,
             defaults=defaults,
+            allow_immutable=allow_immutable,
         )
     return MappingProxyType(filters)
 
@@ -457,22 +537,29 @@ def normalized_query_hash(
     return sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
-def _explicit_as_of_upper_bound(
+def _explicit_as_of_upper_bounds(
     request: QueryRequest,
     field: str,
-) -> object | None:
+) -> tuple[tuple[str, object], ...]:
     raw_filter = request.filters.get(field)
     if not isinstance(raw_filter, Mapping):
-        return None
+        return ()
     if "eq" in raw_filter:
-        return raw_filter["eq"]
+        return ((f"filters.{field}.eq", raw_filter["eq"]),)
     if "lte" in raw_filter:
-        return raw_filter["lte"]
+        return ((f"filters.{field}.lte", raw_filter["lte"]),)
     if "between" in raw_filter:
         values = raw_filter["between"]
         if type(values) is tuple and len(values) == 2:
-            return values[1]
-    return None
+            return ((f"filters.{field}.between[1]", values[1]),)
+    if "in" in raw_filter:
+        values = raw_filter["in"]
+        if type(values) is tuple:
+            return tuple(
+                (f"filters.{field}.in[{index}]", value)
+                for index, value in enumerate(values)
+            )
+    return ()
 
 
 def _decode_dataset_cutoff(
@@ -525,13 +612,16 @@ def resolve_query_as_of(
     if dataset.as_of_format == "yyyymmdd":
         local_cutoff = local_cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    explicit_bound = _explicit_as_of_upper_bound(request, dataset.as_of_field)
-    if explicit_bound is not None:
-        explicit_cutoff = _decode_dataset_cutoff(
-            explicit_bound,
-            as_of_format=dataset.as_of_format,
-            timezone=timezone,
-            name=f"filters.{dataset.as_of_field}",
+    explicit_bounds = _explicit_as_of_upper_bounds(request, dataset.as_of_field)
+    if explicit_bounds:
+        explicit_cutoff = max(
+            _decode_dataset_cutoff(
+                bound,
+                as_of_format=dataset.as_of_format,
+                timezone=timezone,
+                name=name,
+            )
+            for name, bound in explicit_bounds
         )
         local_cutoff = min(local_cutoff, explicit_cutoff)
 
