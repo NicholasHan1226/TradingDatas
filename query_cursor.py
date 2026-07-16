@@ -234,13 +234,19 @@ def _parse_claims_payload(raw_payload: bytes) -> CursorClaims:
             object_pairs_hook=_reject_duplicate_keys,
             parse_constant=_reject_non_finite_constant,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        RecursionError,
+    ) as exc:
         raise InvalidCursor("cursor payload is invalid") from exc
     if type(payload) is not dict:
         raise InvalidCursor("cursor payload is invalid")
     try:
         canonical = _canonical_json_bytes(payload)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise InvalidCursor("cursor payload is invalid") from exc
     if canonical != raw_payload:
         raise InvalidCursor("cursor payload is not canonical")
@@ -311,9 +317,7 @@ class SignedCursorCodec:
         try:
             signing_key = value.encode("utf-8", errors="strict")
         except UnicodeEncodeError as exc:
-            raise CursorConfigurationError(
-                "cursor signing key is unavailable"
-            ) from exc
+            raise CursorConfigurationError("cursor signing key is unavailable") from exc
         return cls(signing_key)
 
     def encode(self, claims: CursorClaims) -> str:

@@ -573,6 +573,63 @@ def test_cursor_rejects_invalid_utf8_and_non_object_json(
             codec.decode(_token_from_raw(raw), expected=expectation, now=NOW)
 
 
+@pytest.mark.parametrize(
+    "raw_payload",
+    [
+        pytest.param(
+            b"[" * 2_000 + b"0" + b"]" * 2_000,
+            id="nested-arrays",
+        ),
+        pytest.param(
+            b"[" + b'{"item":' * 2_000 + b"0" + b"}" * 2_000 + b"]",
+            id="nested-objects",
+        ),
+    ],
+)
+def test_hmac_valid_deep_json_is_category_only_invalid_cursor(
+    codec: SignedCursorCodec,
+    expectation: CursorExpectation,
+    raw_payload: bytes,
+) -> None:
+    token = _token_from_raw(raw_payload)
+
+    with pytest.raises(InvalidCursor) as exc_info:
+        codec.decode(token, expected=expectation, now=NOW)
+
+    assert str(exc_info.value) == "cursor payload is invalid"
+    assert token not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("stage", ["decode", "canonicalize"])
+def test_payload_json_recursion_error_is_category_only_invalid_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+    codec: SignedCursorCodec,
+    claims: CursorClaims,
+    expectation: CursorExpectation,
+    stage: str,
+) -> None:
+    token = codec.encode(claims)
+
+    def raise_recursion_error(*_args: object, **_kwargs: object) -> object:
+        raise RecursionError("sensitive-nesting-marker")
+
+    if stage == "decode":
+        monkeypatch.setattr(query_cursor.json, "loads", raise_recursion_error)
+    else:
+        monkeypatch.setattr(
+            query_cursor,
+            "_canonical_json_bytes",
+            raise_recursion_error,
+        )
+
+    with pytest.raises(InvalidCursor) as exc_info:
+        codec.decode(token, expected=expectation, now=NOW)
+
+    assert str(exc_info.value) == "cursor payload is invalid"
+    assert "sensitive-nesting-marker" not in str(exc_info.value)
+    assert token not in str(exc_info.value)
+
+
 def test_cursor_rejects_signed_nan_payload(
     codec: SignedCursorCodec,
     claims: CursorClaims,
