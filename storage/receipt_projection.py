@@ -121,8 +121,7 @@ LIMIT ?
 """
 _INGEST_RUN_CONTRACT = get_table("market_ingest_runs")
 _INGEST_RUN_PRIMARY_KEY_POSITIONS = {
-    name: index
-    for index, name in enumerate(_INGEST_RUN_CONTRACT.primary_key, start=1)
+    name: index for index, name in enumerate(_INGEST_RUN_CONTRACT.primary_key, start=1)
 }
 _EXPECTED_INGEST_RUN_TABLE_INFO = tuple(
     (
@@ -157,12 +156,60 @@ class DatasetRuntimeProjection:
 
 
 @dataclass(frozen=True)
+class DatasetRuntimeEvidence:
+    projection: DatasetRuntimeProjection
+    current_receipt_status: str | None
+    current_providers: tuple[str, ...]
+    last_success_receipt_id: str | None
+    last_success_providers: tuple[str, ...]
+    last_success_data_through: str | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.projection, DatasetRuntimeProjection):
+            raise TypeError("projection must be DatasetRuntimeProjection")
+        if self.current_receipt_status not in {None, "success", "empty", "failed"}:
+            raise ValueError("current_receipt_status is invalid")
+        for name, providers in (
+            ("current_providers", self.current_providers),
+            ("last_success_providers", self.last_success_providers),
+        ):
+            if type(providers) is not tuple or any(
+                type(provider) is not str or not provider for provider in providers
+            ):
+                raise TypeError(f"{name} must be a tuple of providers")
+            if providers != tuple(sorted(set(providers))):
+                raise ValueError(f"{name} must be sorted and unique")
+        if self.current_receipt_status is None and self.current_providers:
+            raise ValueError("untrusted current receipt cannot expose providers")
+        if self.current_receipt_status is not None and not self.current_providers:
+            raise ValueError("trusted current receipt requires providers")
+        if self.last_success_receipt_id is None:
+            if (
+                self.last_success_providers
+                or self.last_success_data_through is not None
+            ):
+                raise ValueError("last-success evidence is inconsistent")
+        elif (
+            type(self.last_success_receipt_id) is not str
+            or not self.last_success_receipt_id
+            or not self.last_success_providers
+        ):
+            raise ValueError("last-success evidence is inconsistent")
+        if self.last_success_data_through is not None and (
+            type(self.last_success_data_through) is not str
+            or not self.last_success_data_through
+        ):
+            raise ValueError("last_success_data_through is invalid")
+
+
+@dataclass(frozen=True)
 class _Receipt:
     receipt_id: str
     attempt_id: str
     started_at: str
     finished_at: str
     status: str
+    provider: str
     data_through: str | None
     transaction_index: int
     errors: tuple[str, ...]
@@ -318,10 +365,14 @@ def _validate_counts(payload: Mapping[str, object], status: str) -> IngestCounts
 
 def _validate_errors(payload: Mapping[str, object], status: str) -> tuple[str, ...]:
     raw_errors = payload.get("errors")
-    if type(raw_errors) is not list or any(type(item) is not str for item in raw_errors):
+    if type(raw_errors) is not list or any(
+        type(item) is not str for item in raw_errors
+    ):
         raise ValueError("receipt_errors_invalid")
     errors = tuple(raw_errors)
-    if len(errors) != len(set(errors)) or any(code not in _ERROR_CODES for code in errors):
+    if len(errors) != len(set(errors)) or any(
+        code not in _ERROR_CODES for code in errors
+    ):
         raise ValueError("receipt_errors_invalid")
     if status == "failed" and not errors:
         raise ValueError("receipt_errors_invalid")
@@ -341,9 +392,7 @@ def _related_to_dataset(
 def _payload_is_receipt_shaped(payload: Mapping[str, object]) -> bool:
     markers = set(payload).intersection(_RECEIPT_PAYLOAD_MARKERS)
     return bool(
-        markers.intersection(
-            {"schema_version", "receipt_id", "payload_fingerprint"}
-        )
+        markers.intersection({"schema_version", "receipt_id", "payload_fingerprint"})
         or len(markers) >= 4
     )
 
@@ -353,8 +402,8 @@ def _classify_ingest_run_row(row: _IngestRunRow) -> _ScannedIngestRunRow:
     finished_at = row[5]
     notes_type = row[14]
     notes = row[15]
-    envelope_receipt_like = (
-        type(run_id) is str and run_id.casefold().startswith("receipt:")
+    envelope_receipt_like = type(run_id) is str and run_id.casefold().startswith(
+        "receipt:"
     )
     receipt_id = run_id if type(run_id) is str else None
     observed_at = finished_at if type(finished_at) is str else None
@@ -367,8 +416,8 @@ def _classify_ingest_run_row(row: _IngestRunRow) -> _ScannedIngestRunRow:
             raise ValueError
         payload: dict[str, object] = decoded
     except (json.JSONDecodeError, TypeError, ValueError, _DuplicateJsonKey):
-        malformed_json_like = (
-            type(notes) is str and notes.lstrip().startswith(("{", "["))
+        malformed_json_like = type(notes) is str and notes.lstrip().startswith(
+            ("{", "[")
         )
         receipt_like = envelope_receipt_like or malformed_json_like
         invalid = (
@@ -391,8 +440,7 @@ def _scan_ingest_run_rows(
         raise TypeError("conn must be sqlite3.Connection")
     scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
     raw_rows = tuple(
-        tuple(row)
-        for row in conn.execute(_RECEIPT_QUERY, (scan_limit,)).fetchall()
+        tuple(row) for row in conn.execute(_RECEIPT_QUERY, (scan_limit,)).fetchall()
     )
     if len(raw_rows) == scan_limit:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
@@ -482,11 +530,13 @@ def _is_valid_unmapped_tushare_attempt(
         counts = _validate_counts(payload, "failed")
         errors = _validate_errors(payload, "failed")
         request_window = payload.get("request_window")
-        if (
-            type(request_window) is not dict
-            or set(request_window)
-            != {"end_date", "source_name", "start_date", "tier", "trade_date"}
-        ):
+        if type(request_window) is not dict or set(request_window) != {
+            "end_date",
+            "source_name",
+            "start_date",
+            "tier",
+            "trade_date",
+        }:
             return False
         start_date_text = request_window.get("start_date")
         end_date_text = request_window.get("end_date")
@@ -741,6 +791,7 @@ def _validate_receipt_row(
         started_at=started_at,
         finished_at=finished_at,
         status=status,
+        provider=binding.provider,
         data_through=data_through,
         transaction_index=transaction_index,
         errors=errors,
@@ -801,9 +852,7 @@ def _latest_attempt_receipt(receipts: list[_Receipt]) -> _Receipt:
         if receipt.attempt_id == latest_attempt.attempt_id
     ]
     terminal_receipts = [
-        receipt
-        for receipt in attempt_receipts
-        if receipt.status in {"empty", "failed"}
+        receipt for receipt in attempt_receipts if receipt.status in {"empty", "failed"}
     ]
     if terminal_receipts:
         return max(
@@ -1078,7 +1127,10 @@ def project_dataset_runtime(
 
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
-    if provider_binding is not None and provider_binding not in dataset.provider_bindings:
+    if (
+        provider_binding is not None
+        and provider_binding not in dataset.provider_bindings
+    ):
         raise ValueError("provider_binding must belong to dataset")
     known_dataset_ids = (
         frozenset(item.dataset_id for item in registry.datasets)
@@ -1092,6 +1144,144 @@ def project_dataset_runtime(
         known_dataset_ids=known_dataset_ids,
         rows=_scan_ingest_run_rows(conn),
         expected_binding=provider_binding,
+    )
+
+
+def _trusted_receipts_for_evidence(
+    dataset: DatasetDefinition,
+    *,
+    now: datetime,
+    known_dataset_ids: frozenset[str],
+    rows: tuple[_ScannedIngestRunRow, ...],
+    expected_binding: ProviderBinding | None,
+) -> tuple[list[_Receipt], list[_InvalidReceipt]]:
+    receipts: list[_Receipt] = []
+    invalid: list[_InvalidReceipt] = []
+    for scanned_row in rows:
+        validated = _validate_receipt_row(
+            scanned_row,
+            dataset,
+            known_dataset_ids,
+            now,
+            expected_binding,
+        )
+        if isinstance(validated, _Receipt):
+            receipts.append(validated)
+        elif isinstance(validated, _InvalidReceipt):
+            invalid.append(validated)
+
+    now_utc = now.astimezone(timezone.utc)
+    current_receipts: list[_Receipt] = []
+    for receipt in receipts:
+        if receipt.started_sort > now_utc or receipt.finished_sort > now_utc:
+            invalid.append(
+                _InvalidReceipt(
+                    "receipt_timestamp_in_future",
+                    receipt.receipt_id,
+                    receipt.finished_at,
+                )
+            )
+            continue
+        if receipt.data_through is not None:
+            try:
+                data_through_utc = _data_through_in_utc(
+                    receipt.data_through,
+                    dataset.timezone,
+                )
+            except ValueError:
+                data_through_utc = None
+            if data_through_utc is not None and data_through_utc > now_utc:
+                invalid.append(
+                    _InvalidReceipt(
+                        "data_through_in_future",
+                        receipt.receipt_id,
+                        receipt.finished_at,
+                    )
+                )
+                continue
+        current_receipts.append(receipt)
+    invalid.extend(_attempt_context_failures(current_receipts))
+    return current_receipts, invalid
+
+
+def project_dataset_runtime_evidence(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    *,
+    now: datetime,
+    registry: DatasetRegistry | None = None,
+    provider_binding: ProviderBinding | None = None,
+) -> DatasetRuntimeEvidence:
+    """Return one projection and typed lineage evidence from one receipt scan."""
+
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    if (
+        provider_binding is not None
+        and provider_binding not in dataset.provider_bindings
+    ):
+        raise ValueError("provider_binding must belong to dataset")
+    known_dataset_ids = (
+        frozenset(item.dataset_id for item in registry.datasets)
+        if registry is not None
+        else frozenset({dataset.dataset_id})
+    )
+    rows = _scan_ingest_run_rows(conn)
+    projection = _project_dataset_runtime(
+        conn,
+        dataset,
+        now=now,
+        known_dataset_ids=known_dataset_ids,
+        rows=rows,
+        expected_binding=provider_binding,
+    )
+    receipts, invalid = _trusted_receipts_for_evidence(
+        dataset,
+        now=now,
+        known_dataset_ids=known_dataset_ids,
+        rows=rows,
+        expected_binding=provider_binding,
+    )
+    successful = [receipt for receipt in receipts if receipt.status == "success"]
+    last_success = max(successful, key=_success_sort_key, default=None)
+
+    current_status: str | None = None
+    current_providers: tuple[str, ...] = ()
+    if not invalid and projection.state not in {"paused", "unobserved"} and receipts:
+        latest = _latest_attempt_receipt(receipts)
+        current_status = latest.status
+        current_providers = tuple(
+            sorted(
+                {
+                    receipt.provider
+                    for receipt in receipts
+                    if receipt.attempt_id == latest.attempt_id
+                }
+            )
+        )
+
+    last_success_providers: tuple[str, ...] = ()
+    if last_success is not None:
+        last_success_providers = tuple(
+            sorted(
+                {
+                    receipt.provider
+                    for receipt in successful
+                    if receipt.attempt_id == last_success.attempt_id
+                }
+            )
+        )
+    return DatasetRuntimeEvidence(
+        projection=projection,
+        current_receipt_status=current_status,
+        current_providers=current_providers,
+        last_success_receipt_id=(
+            None if last_success is None else last_success.receipt_id
+        ),
+        last_success_providers=last_success_providers,
+        last_success_data_through=(
+            None if last_success is None else last_success.data_through
+        ),
     )
 
 
@@ -1124,9 +1314,7 @@ def project_registry_runtime(
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
     generated_at = _canonical_now(now)
-    known_dataset_ids = frozenset(
-        dataset.dataset_id for dataset in registry.datasets
-    )
+    known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
     rows = _scan_ingest_run_rows(conn)
     projections = tuple(
         _project_dataset_runtime(
@@ -1233,9 +1421,7 @@ def _validated_parent_chain(db_path: Path) -> tuple[_FileIdentity, ...]:
                 "receipt database parent chain is unavailable"
             ) from None
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-            raise RuntimeProjectionError(
-                "receipt database parent chain is unavailable"
-            )
+            raise RuntimeProjectionError("receipt database parent chain is unavailable")
         identities.append(_file_identity(metadata))
     return tuple(identities)
 
@@ -1264,9 +1450,8 @@ def _validated_regular_file_prefix(
     try:
         opened_metadata = os.fstat(descriptor)
         opened_identity = _file_identity(opened_metadata)
-        if (
-            opened_identity != _file_identity(metadata)
-            or not stat.S_ISREG(opened_metadata.st_mode)
+        if opened_identity != _file_identity(metadata) or not stat.S_ISREG(
+            opened_metadata.st_mode
         ):
             raise RuntimeProjectionError("receipt database binding changed")
         prefix = os.read(descriptor, length)
@@ -1367,8 +1552,8 @@ def _validated_database_binding(db_path: Path) -> _ReceiptDatabaseBinding:
     )
     if parent_identities != _validated_parent_chain(candidate):
         raise RuntimeProjectionError("receipt database binding changed")
-    observed_identity, observed_metadata, observed_header = _validated_database_identity(
-        candidate
+    observed_identity, observed_metadata, observed_header = (
+        _validated_database_identity(candidate)
     )
     observed_wal, observed_shm = _validated_sidecar_binding(
         candidate,
@@ -1421,10 +1606,14 @@ def _require_bound_path_identities(expected: _ReceiptDatabaseBinding) -> None:
     ):
         raise RuntimeProjectionError("receipt database binding changed")
     observed_wal = (
-        _current_regular_identity(wal_path) if expected.wal_identity is not None else None
+        _current_regular_identity(wal_path)
+        if expected.wal_identity is not None
+        else None
     )
     observed_shm = (
-        _current_regular_identity(shm_path) if expected.shm_identity is not None else None
+        _current_regular_identity(shm_path)
+        if expected.shm_identity is not None
+        else None
     )
     if (observed_wal, observed_shm) != (
         expected.wal_identity,
@@ -1469,9 +1658,7 @@ def _open_bound_receipt_database_ro(
         )
         primary_indexes = [
             row
-            for row in conn.execute(
-                "PRAGMA index_list(market_ingest_runs)"
-            ).fetchall()
+            for row in conn.execute("PRAGMA index_list(market_ingest_runs)").fetchall()
             if int(row[2]) == 1 and str(row[3]) == "pk"
         ]
         primary_columns = (

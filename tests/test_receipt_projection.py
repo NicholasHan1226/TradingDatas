@@ -19,9 +19,11 @@ import storage.receipt_projection as projection_module
 from dataset_registry import DatasetDefinition, DatasetRegistry, load_dataset_registry
 from storage.ingest_receipts import IngestContext, IngestCounts, insert_ingest_receipt
 from storage.receipt_projection import (
+    DatasetRuntimeEvidence,
     RuntimeProjectionError,
     load_interface_runtime_report,
     project_dataset_runtime,
+    project_dataset_runtime_evidence,
     project_registry_runtime,
 )
 from storage.schema import SCHEMA_SQL
@@ -131,8 +133,7 @@ def _insert_unmapped_tushare_receipt(
     conn: sqlite3.Connection,
     *,
     attempt_id: str = (
-        "11111111-1111-4111-8111-111111111111:"
-        "22222222-2222-4222-8222-222222222222"
+        "11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222"
     ),
     provider_api: str = "not_registered",
     dataset_id: str | None = None,
@@ -830,9 +831,7 @@ def test_registry_projection_scans_ingest_runs_once_with_a_hard_limit() -> None:
     )
 
     receipt_scans = [
-        statement
-        for statement in statements
-        if "FROM market_ingest_runs" in statement
+        statement for statement in statements if "FROM market_ingest_runs" in statement
     ]
     assert len(receipt_scans) == 1
     assert "WHERE source" not in receipt_scans[0]
@@ -1466,9 +1465,7 @@ def test_count_semantics_must_match_status_and_count_shape(
         attempt_id=f"attempt-{status}",
         started_at="2026-07-15T00:00:00+00:00",
         finished_at="2026-07-15T00:01:00+00:00",
-        data_through=(
-            "2026-07-15T08:00:00+08:00" if status != "failed" else None
-        ),
+        data_through=("2026-07-15T08:00:00+08:00" if status != "failed" else None),
     )
     _tamper_notes(
         conn,
@@ -1540,3 +1537,91 @@ def test_runtime_projection_is_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(FrozenInstanceError):
         projection.state = "failed"  # type: ignore[misc]
+
+
+def test_dataset_runtime_evidence_uses_one_scan_and_preserves_typed_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    success_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    failed_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+    )
+    original_scan = projection_module._scan_ingest_run_rows
+    scans = 0
+
+    def counted_scan(connection: sqlite3.Connection):
+        nonlocal scans
+        scans += 1
+        return original_scan(connection)
+
+    monkeypatch.setattr(projection_module, "_scan_ingest_run_rows", counted_scan)
+
+    evidence = project_dataset_runtime_evidence(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert scans == 1
+    assert isinstance(evidence, DatasetRuntimeEvidence)
+    assert evidence.projection.state == "failed"
+    assert evidence.projection.receipt_id == failed_id
+    assert evidence.current_receipt_status == "failed"
+    assert evidence.current_providers == ("tushare",)
+    assert evidence.last_success_receipt_id == success_id
+    assert evidence.last_success_providers == ("tushare",)
+    assert evidence.last_success_data_through == "20260715"
+    with pytest.raises(FrozenInstanceError):
+        evidence.current_receipt_status = "success"  # type: ignore[misc]
+
+
+def test_dataset_runtime_evidence_never_trusts_tampered_current_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    success_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    failed_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+    )
+    _tamper_notes(conn, failed_id, "provider", "untrusted-provider")
+
+    evidence = project_dataset_runtime_evidence(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert evidence.projection.state == "failed"
+    assert evidence.current_receipt_status is None
+    assert evidence.current_providers == ()
+    assert evidence.last_success_receipt_id == success_id
+    assert evidence.last_success_providers == ("tushare",)
