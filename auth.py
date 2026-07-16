@@ -19,7 +19,9 @@ from typing import Any
 from env_bootstrap import env_bool, env_int
 
 ROOT = Path(__file__).resolve().parent
-TOKEN_HASH_FILE = Path(os.environ.get("SHAREDSIGNALS_TOKEN_HASH_FILE", ROOT / "config" / "api_tokens.json"))
+TOKEN_HASH_FILE = Path(
+    os.environ.get("SHAREDSIGNALS_TOKEN_HASH_FILE", ROOT / "config" / "api_tokens.json")
+)
 RATE_LIMITS = {
     "free": 60,
     "starter": 60,
@@ -40,22 +42,42 @@ LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
 LOCALHOST_BYPASS = env_bool("SHAREDSIGNALS_LOCALHOST_BYPASS", False)
 JWT_VERIFY_KEY = os.environ.get("SHAREDSIGNALS_JWT_PUBLIC_KEY", "").strip()
 JWT_ISSUER = os.environ.get("SHAREDSIGNALS_JWT_ISSUER", "").strip()
-JWT_LEEWAY_SECONDS = env_int("SHAREDSIGNALS_JWT_LEEWAY_SECONDS", 60, min_value=0, max_value=3600)
+JWT_ALGORITHM = os.environ.get("SHAREDSIGNALS_JWT_ALGORITHM", "")
+JWT_LEEWAY_SECONDS = env_int(
+    "SHAREDSIGNALS_JWT_LEEWAY_SECONDS", 60, min_value=0, max_value=3600
+)
 _SALT_RAW = os.environ.get("SHAREDSIGNALS_TOKEN_SALT", "")
 if not _SALT_RAW:
     import warnings
-    warnings.warn("SHAREDSIGNALS_TOKEN_SALT is empty — token hashing disabled; set SHAREDSIGNALS_TOKEN_SALT in environment", RuntimeWarning)
+
+    warnings.warn(
+        "SHAREDSIGNALS_TOKEN_SALT is empty — token hashing disabled; set SHAREDSIGNALS_TOKEN_SALT in environment",
+        RuntimeWarning,
+    )
 TOKEN_SALT = _SALT_RAW.encode("utf-8")
 DEDUP_TTL_SECONDS = 60
 RATE_WINDOW_SECONDS = 3600
 DEDUP_MAX_ENTRIES = env_int("SHAREDSIGNALS_DEDUP_MAX_ENTRIES", 2048, min_value=1)
-DEDUP_MAX_BYTES = env_int("SHAREDSIGNALS_DEDUP_MAX_BYTES", 10 * 1024 * 1024, min_value=0)
-DEDUP_MAX_ENTRY_BYTES = env_int("SHAREDSIGNALS_DEDUP_MAX_ENTRY_BYTES", 1024 * 1024, min_value=1)
+DEDUP_MAX_BYTES = env_int(
+    "SHAREDSIGNALS_DEDUP_MAX_BYTES", 10 * 1024 * 1024, min_value=0
+)
+DEDUP_MAX_ENTRY_BYTES = env_int(
+    "SHAREDSIGNALS_DEDUP_MAX_ENTRY_BYTES", 1024 * 1024, min_value=1
+)
 RATE_MAX_TENANTS = env_int("SHAREDSIGNALS_RATE_MAX_TENANTS", 1024, min_value=1)
-RATE_MAX_EVENTS_PER_TENANT = env_int("SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1)
+RATE_MAX_EVENTS_PER_TENANT = env_int(
+    "SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1
+)
 
 # Scope presets — which endpoints each scope grants access to
-STATUS_ENDPOINTS = {"/health", "/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status"}
+STATUS_ENDPOINTS = {
+    "/health",
+    "/capabilities",
+    "/agent_config",
+    "/source_status",
+    "/opening_gate",
+    "/cache/status",
+}
 INDUSTRY_REFERENCE_ENDPOINTS = {
     "/industry/snapshot",
     "/industry/taxonomy",
@@ -66,11 +88,17 @@ SECTOR_FLOW_V2_ENDPOINTS = {
     "/v2/sector-flow/industries",
     "/v2/sector-flow/constituents",
 }
+V1_DATA_ENDPOINTS = {"/v1/catalog", "/v1/query"}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "status": STATUS_ENDPOINTS,
     "health": {*STATUS_ENDPOINTS, "/cache/invalidate"},
-    "market_data": {"/market_data", "/realtime_5min", "/is_trading_day"},
+    "market_data": {
+        "/market_data",
+        "/realtime_5min",
+        "/is_trading_day",
+        *V1_DATA_ENDPOINTS,
+    },
     "industry_reference": INDUSTRY_REFERENCE_ENDPOINTS,
     "sector_flow_v2": SECTOR_FLOW_V2_ENDPOINTS,
     "fundamentals": {
@@ -80,7 +108,7 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
         *INDUSTRY_REFERENCE_ENDPOINTS,
     },
     "macro": {"/macro", "/capital_flow"},
-    "events": {"/events", "/sentiment"},
+    "events": {"/events", "/sentiment", *V1_DATA_ENDPOINTS},
     "crypto": {"/crypto"},
     "pm": {"/pm_markets", "/pm_prices"},
     "associations": {"/associations", "/impacts"},
@@ -125,14 +153,17 @@ class ConcurrencyLimitError(Exception):
     """Raised when per-tenant concurrency is exceeded."""
 
 
-
 def _now() -> float:
     return time.time()
 
 
 def _response_size_bytes(response: dict[str, Any]) -> int:
     try:
-        return len(json.dumps(response, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8"))
+        return len(
+            json.dumps(
+                response, ensure_ascii=False, sort_keys=True, default=str
+            ).encode("utf-8")
+        )
     except Exception:
         return len(str(response).encode("utf-8", errors="replace"))
 
@@ -144,7 +175,6 @@ def _drop_dedup_locked(key: str) -> None:
         _DEDUP_CACHE_BYTES = max(0, _DEDUP_CACHE_BYTES - int(item.get("size_bytes", 0)))
 
 
-
 def _cleanup_dedup_locked(now: float) -> None:
     """Remove expired dedup entries and evict oldest when over DEDUP_MAX_ENTRIES.
 
@@ -152,7 +182,8 @@ def _cleanup_dedup_locked(now: float) -> None:
     """
     # Remove expired entries
     expired = [
-        key for key, item in _DEDUP_CACHE.items()
+        key
+        for key, item in _DEDUP_CACHE.items()
         if now - float(item.get("stored_at", 0.0)) > DEDUP_TTL_SECONDS
     ]
     for key in expired:
@@ -207,7 +238,7 @@ def _parse_der_tlv(data: bytes, offset: int) -> tuple[int, bytes, int]:
         length_size = length_byte & 0x7F
         if length_size == 0 or offset + length_size > len(data):
             raise ValueError("invalid DER length")
-        length = int.from_bytes(data[offset:offset + length_size], "big")
+        length = int.from_bytes(data[offset : offset + length_size], "big")
         offset += length_size
     else:
         length = length_byte
@@ -247,7 +278,12 @@ def _rsa_public_numbers_from_der(der: bytes) -> tuple[int, int]:
         return _der_int(first_value), _der_int(second_value)
 
     bit_tag, bit_value, final_offset = _parse_der_tlv(content, next_offset)
-    if bit_tag != 0x03 or final_offset != len(content) or not bit_value or bit_value[0] != 0:
+    if (
+        bit_tag != 0x03
+        or final_offset != len(content)
+        or not bit_value
+        or bit_value[0] != 0
+    ):
         raise ValueError("invalid SubjectPublicKeyInfo")
     rsa_der = bit_value[1:]
     rsa_tag, rsa_content, rsa_end = _parse_der_tlv(rsa_der, 0)
@@ -269,7 +305,10 @@ def _verify_rs256(signing_input: bytes, signature: bytes, public_key: str) -> bo
     if len(signature) != key_bytes:
         return False
     encoded = pow(int.from_bytes(signature, "big"), e, n).to_bytes(key_bytes, "big")
-    digest_info = bytes.fromhex("3031300d060960864801650304020105000420") + hashlib.sha256(signing_input).digest()
+    digest_info = (
+        bytes.fromhex("3031300d060960864801650304020105000420")
+        + hashlib.sha256(signing_input).digest()
+    )
     if not encoded.startswith(b"\x00\x01"):
         return False
     try:
@@ -277,14 +316,39 @@ def _verify_rs256(signing_input: bytes, signature: bytes, public_key: str) -> bo
     except ValueError:
         return False
     padding = encoded[2:separator]
-    return len(padding) >= 8 and all(byte == 0xFF for byte in padding) and encoded[separator + 1:] == digest_info
+    return (
+        len(padding) >= 8
+        and all(byte == 0xFF for byte in padding)
+        and encoded[separator + 1 :] == digest_info
+    )
 
 
-def _verify_jwt_signature(algorithm: str, signing_input: bytes, signature: bytes) -> bool:
-    if algorithm == "HS256":
-        expected = hmac.new(JWT_VERIFY_KEY.encode("utf-8"), signing_input, hashlib.sha256).digest()
+def _verify_jwt_signature(
+    algorithm: str, signing_input: bytes, signature: bytes
+) -> bool:
+    if JWT_ALGORITHM not in {"HS256", "RS256"} or algorithm != JWT_ALGORITHM:
+        return False
+    if JWT_ALGORITHM == "HS256":
+        if "-----BEGIN " in JWT_VERIFY_KEY or "-----END " in JWT_VERIFY_KEY:
+            return False
+        try:
+            key_bytes = JWT_VERIFY_KEY.encode("utf-8", errors="strict")
+        except UnicodeEncodeError:
+            return False
+        if len(key_bytes) < 32:
+            return False
+        expected = hmac.new(key_bytes, signing_input, hashlib.sha256).digest()
         return hmac.compare_digest(expected, signature)
-    if algorithm == "RS256":
+    if JWT_ALGORITHM == "RS256":
+        lines = JWT_VERIFY_KEY.splitlines()
+        if len(lines) < 3 or (lines[0], lines[-1]) not in {
+            ("-----BEGIN PUBLIC KEY-----", "-----END PUBLIC KEY-----"),
+            (
+                "-----BEGIN RSA PUBLIC KEY-----",
+                "-----END RSA PUBLIC KEY-----",
+            ),
+        }:
+            return False
         return _verify_rs256(signing_input, signature, JWT_VERIFY_KEY)
     return False
 
@@ -293,9 +357,12 @@ def _hash_token(token: str) -> str:
     """Hash a bearer token for lookup. Uses HMAC-SHA256 when TOKEN_SALT is configured,
     falling back to plain SHA256 for backward compatibility."""
     if TOKEN_SALT:
-        return hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), TOKEN_SALT, 100000).hex().lower()
+        return (
+            hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), TOKEN_SALT, 100000)
+            .hex()
+            .lower()
+        )
     return hashlib.sha256(token.encode("utf-8")).hexdigest().lower()
-
 
 
 def _load_token_hashes() -> dict[str, dict[str, Any]]:
@@ -330,10 +397,15 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
     for item in candidates:
         if not isinstance(item, dict):
             continue
-        token_hash = str(item.get("sha256") or item.get("token_hash") or "").strip().lower()
+        token_hash = (
+            str(item.get("sha256") or item.get("token_hash") or "").strip().lower()
+        )
         if len(token_hash) != 64:
             continue
-        tenant_id = str(item.get("tenant_id") or item.get("tenant") or token_hash[:12]).strip() or token_hash[:12]
+        tenant_id = (
+            str(item.get("tenant_id") or item.get("tenant") or token_hash[:12]).strip()
+            or token_hash[:12]
+        )
         tier = str(item.get("tier") or "free").strip().lower() or "free"
         scopes = item.get("scopes", ["read"])
         if isinstance(scopes, str):
@@ -342,7 +414,9 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
             scopes = ["read"]
         raw_max_concurrent = item.get("max_concurrent")
         try:
-            max_concurrent = int(raw_max_concurrent) if raw_max_concurrent is not None else None
+            max_concurrent = (
+                int(raw_max_concurrent) if raw_max_concurrent is not None else None
+            )
         except (TypeError, ValueError):
             max_concurrent = None
         items[token_hash] = {
@@ -358,11 +432,14 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
     return _TOKEN_HASHES
 
 
-
 def _normalize_jwt_scopes(payload: dict[str, Any]) -> list[str]:
     raw_scopes = payload.get("scopes", payload.get("scope"))
     if isinstance(raw_scopes, str):
-        candidates = [part.strip() for part in raw_scopes.replace(",", " ").split() if part.strip()]
+        candidates = [
+            part.strip()
+            for part in raw_scopes.replace(",", " ").split()
+            if part.strip()
+        ]
     elif isinstance(raw_scopes, list):
         candidates = [str(part).strip() for part in raw_scopes if str(part).strip()]
     else:
@@ -376,7 +453,7 @@ def _normalize_jwt_scopes(payload: dict[str, Any]) -> list[str]:
 
 
 def _parse_jwt(token: str) -> dict[str, Any] | None:
-    if not JWT_VERIFY_KEY or not JWT_ISSUER:
+    if not JWT_VERIFY_KEY or not JWT_ISSUER or JWT_ALGORITHM not in {"HS256", "RS256"}:
         return None
     parts = token.split(".")
     if len(parts) != 3:
@@ -387,8 +464,13 @@ def _parse_jwt(token: str) -> dict[str, Any] | None:
         signature = _b64url_decode(parts[2])
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
         return None
+    if type(header) is not dict or type(payload) is not dict:
+        return None
 
-    algorithm = str(header.get("alg") or "").strip()
+    raw_algorithm = header.get("alg")
+    if type(raw_algorithm) is not str:
+        return None
+    algorithm = raw_algorithm
     signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
     if not _verify_jwt_signature(algorithm, signing_input, signature):
         return None
@@ -402,8 +484,15 @@ def _parse_jwt(token: str) -> dict[str, Any] | None:
     if expires_at + JWT_LEEWAY_SECONDS < _now():
         return None
 
-    tenant_id = str(payload.get("tenant_id") or payload.get("tid") or payload.get("sub") or "").strip()
-    tier = str(payload.get("tier") or payload.get("plan") or payload.get("role") or "free").strip().lower() or "free"
+    tenant_id = str(
+        payload.get("tenant_id") or payload.get("tid") or payload.get("sub") or ""
+    ).strip()
+    tier = (
+        str(payload.get("tier") or payload.get("plan") or payload.get("role") or "free")
+        .strip()
+        .lower()
+        or "free"
+    )
     if not tenant_id:
         return None
     return {
@@ -414,26 +503,48 @@ def _parse_jwt(token: str) -> dict[str, Any] | None:
     }
 
 
+def _header_values(headers: Any, name: str) -> tuple[str, ...]:
+    """Return every physical header value without last-value-wins behavior."""
+
+    if not headers:
+        return ()
+    get_all = getattr(headers, "get_all", None)
+    if callable(get_all):
+        values = get_all(name, [])
+        return tuple(str(value) for value in values)
+    value = headers.get(name) if hasattr(headers, "get") else None
+    return () if value is None else (str(value),)
+
 
 def _extract_bearer_token(headers: Any) -> str:
-    header = headers.get("Authorization", "") if headers else ""
-    if header.startswith("Bearer "):
+    authorization_values = _header_values(headers, "Authorization")
+    api_key_values = _header_values(headers, "X-API-Key")
+    if (
+        len(authorization_values) > 1
+        or len(api_key_values) > 1
+        or (authorization_values and api_key_values)
+    ):
+        raise AuthError("ambiguous credential")
+    if authorization_values:
+        header = authorization_values[0]
+        if not header.startswith("Bearer "):
+            raise AuthError("invalid bearer token")
         token = header.split(" ", 1)[1].strip()
         if not token:
             raise AuthError("empty bearer token")
-    else:
-        token = (headers.get("X-API-Key", "") if headers else "").strip()
+        return token
+    if api_key_values:
+        token = api_key_values[0].strip()
         if not token:
-            raise AuthError("missing bearer token")
-    return token
+            raise AuthError("empty api key")
+        return token
+    raise AuthError("missing bearer token")
 
 
 def _has_external_auth_header(headers: Any) -> bool:
-    if not headers:
-        return False
-    authorization = headers.get("Authorization", "")
-    api_key = headers.get("X-API-Key", "")
-    return bool(str(authorization).strip() or str(api_key).strip())
+    return bool(
+        _header_values(headers, "Authorization") or _header_values(headers, "X-API-Key")
+    )
 
 
 def _has_forwarded_client_header(headers: Any) -> bool:
@@ -446,7 +557,7 @@ def _has_forwarded_client_header(headers: Any) -> bool:
         "X-Real-IP",
         "X-Client-IP",
     )
-    return any(bool(str(headers.get(header, "")).strip()) for header in forwarded_headers)
+    return any(_header_values(headers, header) for header in forwarded_headers)
 
 
 def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
@@ -491,7 +602,6 @@ def check_endpoint_scope(account: dict[str, Any], path: str) -> bool:
     return path in allowed
 
 
-
 def enforce_rate_limit(tenant_id: str, tier: str) -> None:
     limit = RATE_LIMITS.get((tier or "free").lower(), RATE_LIMITS["free"])
     if limit is None:
@@ -531,21 +641,28 @@ def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
         except (TypeError, ValueError):
             value = 0
         return None if value <= 0 else value
-    return CONCURRENCY_LIMITS.get(str(account.get("tier") or "free").lower(), CONCURRENCY_LIMITS["free"])
+    return CONCURRENCY_LIMITS.get(
+        str(account.get("tier") or "free").lower(), CONCURRENCY_LIMITS["free"]
+    )
 
 
-def claim_concurrency(account: dict[str, Any]) -> None:
+def claim_concurrency(account: dict[str, Any]) -> bool:
+    """Claim one counted tenant slot and report whether release is required."""
+
     tenant_id = str(account.get("tenant_id") or "").strip()
     if not tenant_id:
         raise ConcurrencyLimitError("missing tenant id")
     limit = _account_concurrency_limit(account)
     if limit is None:
-        return
+        return False
     with _STATE_LOCK:
         active = int(_ACTIVE_REQUESTS.get(tenant_id, 0))
         if active >= limit:
-            raise ConcurrencyLimitError(f"concurrency limit exceeded for tenant={tenant_id}")
+            raise ConcurrencyLimitError(
+                f"concurrency limit exceeded for tenant={tenant_id}"
+            )
         _ACTIVE_REQUESTS[tenant_id] = active + 1
+    return True
 
 
 def release_concurrency(tenant_id: str) -> None:
@@ -560,11 +677,14 @@ def release_concurrency(tenant_id: str) -> None:
             _ACTIVE_REQUESTS[tenant_id] = active - 1
 
 
-
 def request_fingerprint(path: str, params: dict[str, Any]) -> str:
-    normalized = json.dumps({"path": path, "params": params}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    normalized = json.dumps(
+        {"path": path, "params": params},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
 
 
 def get_cached_response(fingerprint: str) -> dict[str, Any] | None:
@@ -582,7 +702,6 @@ def get_cached_response(fingerprint: str) -> dict[str, Any] | None:
     return response
 
 
-
 def store_cached_response(fingerprint: str, response: dict[str, Any]) -> None:
     global _DEDUP_CACHE_BYTES
     now = _now()
@@ -595,7 +714,9 @@ def store_cached_response(fingerprint: str, response: dict[str, Any]) -> None:
         _cleanup_dedup_locked(now)
         existing = _DEDUP_CACHE.pop(fingerprint, None)
         if existing is not None:
-            _DEDUP_CACHE_BYTES = max(0, _DEDUP_CACHE_BYTES - int(existing.get("size_bytes", 0)))
+            _DEDUP_CACHE_BYTES = max(
+                0, _DEDUP_CACHE_BYTES - int(existing.get("size_bytes", 0))
+            )
         _DEDUP_CACHE[fingerprint] = {
             "stored_at": now,
             "response": copy.deepcopy(response),
@@ -605,7 +726,6 @@ def store_cached_response(fingerprint: str, response: dict[str, Any]) -> None:
         # LRU tracking: mark as most recently stored
         _DEDUP_CACHE.move_to_end(fingerprint)
         _cleanup_dedup_locked(now)
-
 
 
 def cache_stats() -> dict[str, Any]:

@@ -1,8 +1,8 @@
 # SharedSignals Phase 2 Query Service Contract
 
-> 状态：本文件冻结 provider-neutral V1 query contract。当前 Task 1 registry/request contract 与
-> Task 2 signed-cursor 仅形成隔离工作树本地候选；HTTP handler、SQLite QueryService、legacy
-> adapter、GitHub、生产 runtime、external route 和真实 tenant query 仍未完成，不能称为已上线。
+> 状态：本文件冻结 provider-neutral V1 query contract。Task 1–4 已进入本候选基线；Task 5
+> HTTP/auth 仍只是隔离工作树本地候选。legacy adapter、GitHub main、生产 runtime、external
+> route 和真实 tenant query 尚未由发布层验证，不能称为已上线。
 
 ## 边界与权威
 
@@ -53,6 +53,51 @@ schema profile 可以声明更小的 page/lookback override；省略或 `null` �
 `catalog_version` 是 `v1-` 加 provider-neutral public contract 的 canonical SHA-256 前缀。dataset
 identity、schema、query policy、cadence、SLA 或 access policy 变化会改变它；storage table、
 DB path、adapter internals、provider token 和 runtime receipt 不参与，也不得从 fingerprint 反推。
+
+## HTTP ingress 与认证合同
+
+公共操作只有精确的 `GET /v1/catalog` 与 `POST /v1/query`；`OPTIONS` 仅是无 body 的 204
+preflight。尾斜杠、大小写变体和其它 `/v1/*` 返回 404；精确路径上的错误方法返回 405，并分别
+给出 `Allow: GET, OPTIONS` 或 `Allow: POST, OPTIONS`。新增 provider 或 dataset 不得生成新路由。
+
+处理顺序固定为：stdlib transport → exact route/method → framing/media/body budget → 认证 → endpoint
+scope → tenant rate/concurrency → JSON/业务合同 → lazy service → 完整响应序列化与预算。成功 claim
+concurrency 后，所有成功、异常、超限和客户端断开路径都必须释放；V1 不读写 legacy response cache
+或 request dedup。过长 request line/header 的 414/431 在 V1 request context 之前发生，因此只要求
+关闭连接，不承诺 V1 JSON envelope。
+
+- `GET /v1/catalog` 不接受 request body、`Transfer-Encoding` 或非零 `Content-Length`。
+- `POST /v1/query` 必须恰有一个 canonical ASCII non-negative decimal `Content-Length`，禁止任何
+  `Transfer-Encoding`；short read、duplicate/non-canonical length 都 fail closed。
+- `Content-Type` 必须唯一且为 `application/json`，只允许省略参数或唯一 `charset=utf-8`；任何
+  `Content-Encoding` 都不支持。raw body 在 JSON decode 前受 `max_request_bytes` 限制。
+- JSON 使用严格 UTF-8，拒绝 BOM、duplicate object key、lone surrogate、NaN/Infinity、非 object
+  根值和过深递归；不得回显或记录 raw body。
+
+认证复用真实 middleware。缺失、无效、过期、同时提供两类 credential 或 duplicate credential
+均为 401；external/forwarded header 不得触发 localhost bypass。只有 `market_data`、`events`、
+`external_read`、`read`、`full`、`*` 可进入 V1；其它 legacy narrow scope 返回 403。
+
+启用 JWT 时必须显式配置 `SHAREDSIGNALS_JWT_ALGORITHM`，且只接受大小写完全一致的 `HS256`
+或 `RS256`；JWT header 的 `alg` 必须与服务端配置完全一致，服务不得按 token 自选算法、猜测或
+fallback。`HS256` 的 `SHAREDSIGNALS_JWT_PUBLIC_KEY` 按共享 secret 使用，UTF-8 编码后至少 32 bytes
+且不得是 PEM 形态；`RS256` 只接受 `PUBLIC KEY` 或 `RSA PUBLIC KEY` PEM 公钥验证材料，禁止私钥、
+共享 secret 或其它 PEM 类型。algorithm 缺失/未知、header 不匹配、key 类型或格式不兼容都按无效
+credential 返回固定 401 envelope；token、key 和验签内部值不得出现在响应或日志。
+
+每个进入 V1 namespace 的请求使用 server-owned UUIDv4 `request_id`，忽略客户端同名 header。
+`QueryAccessContext` 只从已认证账户的 canonical tenant/scopes 新建，`allowed_dataset_ids=()`，并重算
+`policy_id`；不信任账户携带的旧 policy/grant。不同 tenant 复用合法 signed cursor 必须因 policy
+binding 返回 409。
+
+`CatalogService`、`QueryService`、verified read-model binding 和 cursor signing key 只在第一次 V1
+请求时通过线程安全路径构造。缺失/短 signing key、read model 或 server clock 配置只让 V1 返回
+503，不得阻止 process/health 启动，也不得回退 provider、文件或其它数据库。现有 registry
+import-time topology 不在 Task 5 重构范围内，不能据此声称整个 registry 已完全 lazy。
+
+process `main()` 只加载环境与 HTTP server 配置；不得预加载 legacy `reader` 或 sector-flow runtime。
+精确 V1 路由和轻量 `/health` 也不依赖这些 legacy 模块；只有实际 legacy route dispatch 才按需加载
+它们。此隔离只改变加载时机，不删除、迁移或改变 legacy route 的响应语义。
 
 ## `GET /v1/catalog`
 
@@ -154,7 +199,8 @@ fixed dataset filters 之后；第五项属于 413 资源预算错误。两种�
       "provider_neutral": true,
       "authority": "sqlite_ingest_receipts",
       "dataset_id": "cn.equity.daily",
-      "providers": ["tushare"]
+      "providers": ["tushare"],
+      "receipt_watermark": "receipt-20260716-0001"
     },
     "receipt_id": "4a9ef4bfdd9f4f8e8a2f4a146b09c1a3",
     "data_through": "2026-07-16T00:00:00+08:00",
@@ -208,17 +254,34 @@ naive/无效 server clock 属于 503 配置错误。malformed、签名错误、�
 
 ## Error contract
 
-| HTTP | 含义 |
-| ---: | --- |
-| 400 | malformed/unknown request、field/operator/type/order/as-of/cursor 格式错误 |
-| 401 | 未认证或 credential 无效 |
-| 403 | 已知且首期可用 dataset，但当前 context 缺 query scope/精确 grant |
-| 404 | dataset 未知、excluded 或结构上不可发现 |
-| 409 | cursor 与 dataset/schema/query/policy/catalog/receipt snapshot 不匹配 |
-| 413 | request/response、field/filter/`in`/order/page/lookback 预算超限 |
-| 429 | rate、concurrency 或 quota 超限（Phase 4 持久治理） |
-| 503 | verified read model、cursor signing key/server clock 不可用，或 SQLite capacity/progress budget 用尽 |
-| 500 | 内部错误；不得回显 stack trace、path、SQL 或 secret |
+除 transport-level 414/431 外，所有 V1 错误都使用固定、category-only envelope；公开
+`message` 不拼接内部异常、路径、SQL、credential、raw body、cursor、tenant 或 expected/actual：
+
+```json
+{
+  "api_version": "v1",
+  "request_id": "123e4567-e89b-42d3-a456-426614174000",
+  "error": {
+    "code": "invalid_request",
+    "message": "request is invalid",
+    "retryable": false
+  }
+}
+```
+
+| HTTP | `code` | 固定 `message` | `retryable` | 条件 |
+| ---: | --- | --- | :---: | --- |
+| 400 | `invalid_request` | `request is invalid` | false | malformed/unknown request、field/operator/type/order/as-of/cursor 格式错误 |
+| 401 | `unauthenticated` | `authentication required` | false | 未认证或 credential 无效/歧义 |
+| 403 | `forbidden` | `request is forbidden` | false | endpoint scope 或已知首期 dataset scope 不足 |
+| 404 | `not_found` | `resource not found` | false | route/dataset 未知、excluded 或结构上不可发现 |
+| 405 | `method_not_allowed` | `method is not allowed` | false | 精确 V1 path 使用错误 method，并返回固定 `Allow` |
+| 409 | `cursor_mismatch` | `cursor does not match request` | false | cursor 与 dataset/schema/query/policy/catalog/receipt snapshot 不匹配 |
+| 413 | `budget_exceeded` | `request exceeds allowed budget` | false | request/response、field/filter/`in`/order/page/lookback 预算超限 |
+| 415 | `unsupported_media_type` | `unsupported media type` | false | media type、charset 或 content encoding 不支持 |
+| 429 | `rate_limited` | `rate limit exceeded` | true | 当前进程内 tenant rate 或 concurrency 超限 |
+| 503 | `service_unavailable` | `service temporarily unavailable` | true | verified read model、signing key/clock/config 或 SQLite capacity 不可用 |
+| 500 | `internal_error` | `internal error` | false | 未预期内部错误 |
 
 ## Phase 2 access limitation
 
