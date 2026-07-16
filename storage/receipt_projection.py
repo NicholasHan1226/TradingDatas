@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -20,8 +21,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dataset_registry import DatasetDefinition, DatasetRegistry, ProviderBinding
 from storage.ingest_receipts import (
     RECEIPT_SCHEMA_VERSION,
+    UNMAPPED_TUSHARE_ADAPTER_VERSION,
     IngestContext,
     IngestCounts,
+    make_unmapped_tushare_dataset_id,
     make_receipt_id,
 )
 from storage.read_model_store import (
@@ -396,10 +399,171 @@ def _scan_ingest_run_rows(
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
 
 
+def _is_valid_unmapped_tushare_attempt(
+    scanned: _ScannedIngestRunRow,
+    *,
+    now: datetime,
+) -> bool:
+    """Recognize one reserved collector-attempt tombstone, not a dataset row."""
+
+    payload = scanned.payload
+    if payload is None or scanned.invalid is not None:
+        return False
+    (
+        run_id_type,
+        run_id,
+        started_at_type,
+        started_at,
+        finished_at_type,
+        finished_at,
+        status_type,
+        envelope_status,
+        source_type,
+        source,
+        rows_read_type,
+        rows_read,
+        rows_written_type,
+        rows_written,
+        notes_type,
+        notes,
+    ) = scanned.raw
+    if (
+        set(payload) != _RECEIPT_PAYLOAD_KEYS
+        or type(notes) is not str
+        or _canonical_json(payload) != notes
+        or not _is_sha256(payload.get("payload_fingerprint"))
+        or payload.get("payload_fingerprint") != hashlib.sha256(b"").hexdigest()
+    ):
+        return False
+    if (
+        run_id_type,
+        started_at_type,
+        finished_at_type,
+        status_type,
+        source_type,
+        rows_read_type,
+        rows_written_type,
+        notes_type,
+    ) != (
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "integer",
+        "integer",
+        "text",
+    ):
+        return False
+    if (
+        payload.get("schema_version") != RECEIPT_SCHEMA_VERSION
+        or payload.get("receipt_id") != run_id
+        or payload.get("started_at") != started_at
+        or payload.get("finished_at") != finished_at
+        or payload.get("status") != envelope_status
+        or payload.get("dataset_id") != source
+        or envelope_status != "failed"
+        or payload.get("provider") != "tushare"
+        or payload.get("adapter_version") != UNMAPPED_TUSHARE_ADAPTER_VERSION
+        or payload.get("target_table") is not None
+        or payload.get("transaction_index") != 0
+        or payload.get("errors") != ["unmapped_dataset"]
+        or not _is_sha256(payload.get("config_hash"))
+    ):
+        return False
+    provider_api = payload.get("provider_api")
+    try:
+        expected_dataset_id = make_unmapped_tushare_dataset_id(provider_api)
+    except (TypeError, ValueError):
+        return False
+    if source != expected_dataset_id:
+        return False
+    try:
+        counts = _validate_counts(payload, "failed")
+        errors = _validate_errors(payload, "failed")
+        request_window = payload.get("request_window")
+        if (
+            type(request_window) is not dict
+            or set(request_window)
+            != {"end_date", "source_name", "start_date", "tier", "trade_date"}
+        ):
+            return False
+        start_date_text = request_window.get("start_date")
+        end_date_text = request_window.get("end_date")
+        trade_date_text = request_window.get("trade_date")
+        source_name = request_window.get("source_name")
+        tier = request_window.get("tier")
+        if not all(
+            type(value) is str and value
+            for value in (
+                start_date_text,
+                end_date_text,
+                trade_date_text,
+                source_name,
+                tier,
+            )
+        ):
+            return False
+        start_date = datetime.strptime(start_date_text, "%Y%m%d").date()
+        end_date = datetime.strptime(end_date_text, "%Y%m%d").date()
+        trade_date = datetime.strptime(trade_date_text, "%Y%m%d").date()
+        if (
+            start_date.strftime("%Y%m%d") != start_date_text
+            or end_date.strftime("%Y%m%d") != end_date_text
+            or trade_date.strftime("%Y%m%d") != trade_date_text
+            or not start_date <= end_date <= trade_date
+            or payload.get("data_through") != trade_date_text
+            or not source_name.startswith(f"{provider_api}_")
+        ):
+            return False
+        attempt_id = payload.get("attempt_id")
+        if type(attempt_id) is not str:
+            return False
+        attempt_parts = attempt_id.split(":")
+        if len(attempt_parts) != 2:
+            return False
+        attempt_uuids = tuple(uuid.UUID(part) for part in attempt_parts)
+        if any(
+            value.version != 4 or str(value) != part
+            for value, part in zip(attempt_uuids, attempt_parts, strict=True)
+        ):
+            return False
+        context = IngestContext(
+            attempt_id=attempt_id,
+            dataset_id=source,
+            provider="tushare",
+            provider_api=provider_api,
+            request_window=request_window,
+            config_hash=payload.get("config_hash"),
+            adapter_version=UNMAPPED_TUSHARE_ADAPTER_VERSION,
+            started_at=started_at,
+            data_through=payload.get("data_through"),
+        )
+        expected_receipt_id = make_receipt_id(context, None, 0)
+        started_sort = _parse_aware_datetime(started_at)
+        finished_sort = _parse_aware_datetime(finished_at)
+    except (TypeError, ValueError):
+        return False
+    now_utc = now.astimezone(timezone.utc)
+    current_trade_date = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    return bool(
+        errors == ("unmapped_dataset",)
+        and counts.count_semantics == "terminal_no_data_transaction"
+        and counts.returned == rows_read == 0
+        and counts.committed == rows_written == 0
+        and expected_receipt_id == run_id
+        and finished_sort >= started_sort
+        and started_sort <= now_utc
+        and finished_sort <= now_utc
+        and trade_date <= current_trade_date
+    )
+
+
 def _validate_receipt_row(
     scanned: _ScannedIngestRunRow,
     dataset: DatasetDefinition,
     known_dataset_ids: frozenset[str],
+    now: datetime,
     expected_binding: ProviderBinding | None = None,
 ) -> _Receipt | _InvalidReceipt | None:
     if not scanned.receipt_like:
@@ -446,6 +610,8 @@ def _validate_receipt_row(
                 observed_at,
             )
         if source not in known_dataset_ids:
+            if _is_valid_unmapped_tushare_attempt(scanned, now=now):
+                return None
             return _InvalidReceipt(
                 "receipt_dataset_unknown",
                 receipt_id,
@@ -740,6 +906,7 @@ def _project_dataset_runtime(
             scanned_row,
             dataset,
             known_dataset_ids,
+            now,
             expected_binding,
         )
         if isinstance(validated, _Receipt):

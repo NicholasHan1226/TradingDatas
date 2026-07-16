@@ -65,6 +65,37 @@ When SQLite is available, every attempt ends with evidence:
 Provider errors never become empty. Missing registry, adapter version, trusted
 config bytes or target mapping cannot create success.
 
+### Reserved unmapped-attempt tombstones
+
+An unmapped Tushare API attempt is durable operational evidence, but it is not a
+dataset and must not change any registered dataset's runtime state. Its reserved
+identity is `unmapped.tushare.<sha256(provider_api)[:16]>`. The projector may
+isolate it from per-dataset state only when the complete receipt is canonical
+and all of these bindings hold: provider `tushare`, adapter `unresolved.v1`,
+status `failed`, the sole error `unmapped_dataset`, no target table, transaction
+index zero, terminal zero counts, the empty-payload fingerprint, a valid config
+hash, `terminal_no_data_transaction` semantics, the exact collector window keys,
+two canonical UUIDv4 attempt components, non-future receipt/data dates, matching
+envelope fields and a receipt ID recomputed from the context.
+
+Any arbitrary unknown dataset, malformed reserved identity, mismatched digest,
+provider, adapter, error, count, payload, envelope or receipt ID remains invalid
+and fails closed. A reserved tombstone remains queryable as ingest evidence; it
+does not become a registry dataset and cannot be copied into every dataset's
+`failed` state. Classification is independent of the dataset currently being
+projected, so onboarding that API later does not reinterpret historical evidence.
+
+Only a genuine registry alias miss may produce the reserved identity. Once an
+alias resolves, its dataset ID stays the failure owner even if the provider
+binding, adapter or target mapping is missing or invalid. Those configuration
+failures must fail closed on that known dataset and cannot fall back to a
+synthetic tombstone.
+
+Phase 1 keeps unmapped attempts as durable SQLite audit evidence but does not
+add them to `datasets` or `interfaces`. A future additive global audit bucket
+requires a separate latest/resolution contract; historical tombstones must not
+make overall service status permanently red.
+
 ## Runtime projection and query
 
 The runtime projector reads only recognized receipt schema versions and validates

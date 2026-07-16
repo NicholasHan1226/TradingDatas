@@ -51,6 +51,8 @@ from collectors.tushare.tushare_common import (  # noqa: E402
 from dataset_registry import DatasetRegistry, load_dataset_registry  # noqa: E402
 from storage.ingest_receipts import (  # noqa: E402
     IngestContext,
+    UNMAPPED_TUSHARE_ADAPTER_VERSION,
+    make_unmapped_tushare_dataset_id,
     write_terminal_receipt,
 )
 from storage.read_model_store import (  # noqa: E402
@@ -828,17 +830,24 @@ def sync_tier(
         attempt_start_date: str,
         attempt_end_date: str,
     ) -> IngestContext:
-        dataset_id = f"unmapped.tushare.{hashlib.sha256(api_name.encode()).hexdigest()[:16]}"
-        adapter_version = "unresolved.v1"
+        dataset_id = make_unmapped_tushare_dataset_id(api_name)
+        adapter_version = UNMAPPED_TUSHARE_ADAPTER_VERSION
         try:
             dataset = resolved_registry.resolve(f"tushare.{api_name}")
-            binding = resolved_registry.provider_binding(dataset.dataset_id, "tushare")
+        except KeyError:
+            dataset = None
+        if dataset is not None:
             dataset_id = dataset.dataset_id
-            candidate_adapter = str(binding.adapter_version or "").strip()
-            if candidate_adapter:
-                adapter_version = candidate_adapter
-        except (AttributeError, KeyError, TypeError, ValueError):
-            pass
+            try:
+                binding = resolved_registry.provider_binding(
+                    dataset.dataset_id,
+                    "tushare",
+                )
+                candidate_adapter = str(binding.adapter_version or "").strip()
+                if candidate_adapter:
+                    adapter_version = candidate_adapter
+            except (AttributeError, KeyError, TypeError, ValueError):
+                pass
         return IngestContext(
             attempt_id=attempt_id,
             dataset_id=dataset_id,
@@ -895,17 +904,20 @@ def sync_tier(
                 raise ValueError("registry read-model table is missing")
             return context, table, None
         except (AttributeError, KeyError, TypeError, ValueError):
-            return (
-                _failure_context(
-                    api_name,
-                    source_name,
-                    attempt_id=attempt_id,
-                    attempt_start_date=attempt_start_date,
-                    attempt_end_date=attempt_end_date,
-                ),
-                None,
-                "unmapped_dataset",
+            failure_context = _failure_context(
+                api_name,
+                source_name,
+                attempt_id=attempt_id,
+                attempt_start_date=attempt_start_date,
+                attempt_end_date=attempt_end_date,
             )
+            error_code = (
+                "unmapped_dataset"
+                if failure_context.dataset_id
+                == make_unmapped_tushare_dataset_id(api_name)
+                else "config_error"
+            )
+            return failure_context, None, error_code
 
     def _write_terminal(
         api_name: str,

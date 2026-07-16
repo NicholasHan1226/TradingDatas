@@ -93,6 +93,12 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     assert "Green Gate" not in onboarding
     assert "provider-neutral dataset registry" in registry
     assert "transaction-scoped receipts" in receipts
+    assert "Reserved unmapped-attempt tombstones" in receipts
+    assert "must not change any registered dataset's runtime state" in receipts
+    assert "unmapped.tushare.<sha256(provider_api)[:16]>" in receipts
+    assert "Classification is independent" in receipts
+    assert "Only a genuine registry alias miss" in receipts
+    assert "future additive global audit bucket" in receipts
     assert "DuckDB" in recovery
     assert "must never automatically" in recovery
     assert "强制从 DuckDB 重建" not in recovery

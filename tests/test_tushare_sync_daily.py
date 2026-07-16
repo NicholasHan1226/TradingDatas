@@ -11,7 +11,7 @@ import socket
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -37,6 +37,7 @@ from collectors.tushare.sync_daily import (
 )
 from dataset_registry import load_dataset_registry
 from storage.read_model_store import API_TO_TABLE_MAP
+from storage.receipt_projection import project_registry_runtime
 from storage.schema import SCHEMA_SQL
 
 
@@ -452,6 +453,60 @@ def test_sync_tier_unmapped_api_records_failed_receipt_without_provider_call(
     assert [payload["status"] for payload in payloads] == ["failed"]
     assert payloads[0]["errors"] == ["unmapped_dataset"]
     assert stats["not_registered"]["sqlite_status"] == "failed"
+
+    with sqlite3.connect(db_path) as conn:
+        report = project_registry_runtime(
+            conn,
+            load_dataset_registry(),
+            now=datetime.now(ZoneInfo("UTC")) + timedelta(seconds=1),
+        )
+    assert report["summary"]["failed"] == 0
+    assert all(
+        entry["reasons"] != ["receipt_dataset_unknown"]
+        for entry in report["datasets"].values()
+    )
+
+
+def test_sync_tier_known_dataset_binding_failure_keeps_owner_identity(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_receipt_db(db_path)
+    dataset = SimpleNamespace(
+        dataset_id="cn.equity.daily",
+        read_model_adapter=SimpleNamespace(primary_table="market_bars_daily"),
+    )
+
+    def missing_binding(_dataset_id: str, _provider: str) -> object:
+        raise KeyError("missing binding")
+
+    registry = SimpleNamespace(
+        resolve=lambda _alias: dataset,
+        provider_binding=missing_binding,
+    )
+
+    class FakeCollector:
+        def collect_outcome(self, api_name, params, fields=None):
+            raise AssertionError("invalid binding must fail before provider call")
+
+    stats = sync_tier(
+        FakeCollector(),
+        "P1_eod_daily",
+        [{"api_name": "daily", "per_stock": False, "params": {}}],
+        stock_codes=[],
+        trade_date="20260715",
+        start_date="20260708",
+        end_date="20260715",
+        sqlite_db_path=db_path,
+        registry=registry,
+    )
+
+    payloads = _receipt_payloads(db_path)
+    assert [payload["status"] for payload in payloads] == ["failed"]
+    assert payloads[0]["dataset_id"] == "cn.equity.daily"
+    assert payloads[0]["adapter_version"] == "unresolved.v1"
+    assert payloads[0]["errors"] == ["config_error"]
+    assert stats["daily"]["sqlite_status"] == "failed"
 
 
 def test_sync_tier_missing_config_records_config_error_without_empty_hash(

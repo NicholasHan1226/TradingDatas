@@ -22,6 +22,7 @@ from types import MappingProxyType
 
 
 RECEIPT_SCHEMA_VERSION = "sharedsignals.ingest_receipt.v1"
+UNMAPPED_TUSHARE_ADAPTER_VERSION = "unresolved.v1"
 
 _RECEIPT_STATUSES = frozenset({"success", "empty", "failed"})
 _TERMINAL_STATUSES = frozenset({"empty", "failed"})
@@ -115,6 +116,14 @@ def _require_public_text(value: object, field_name: str) -> str:
     text = _require_text(value, field_name)
     _reject_sensitive_material(text, field_name)
     return text
+
+
+def make_unmapped_tushare_dataset_id(provider_api: object) -> str:
+    """Return the reserved non-dataset identity for one unmapped Tushare API."""
+
+    api_name = _require_public_text(provider_api, "provider_api")
+    digest = hashlib.sha256(api_name.encode("utf-8")).hexdigest()[:16]
+    return f"unmapped.tushare.{digest}"
 
 
 def _require_hash(value: object, field_name: str) -> str:

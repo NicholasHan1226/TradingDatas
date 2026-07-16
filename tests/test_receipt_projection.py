@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -120,6 +121,72 @@ def _insert_receipt(
         counts=counts,
         errors=errors,
         payload_fingerprint=PAYLOAD_FINGERPRINT,
+    )
+    conn.commit()
+    return receipt_id
+
+
+def _insert_unmapped_tushare_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str = (
+        "11111111-1111-4111-8111-111111111111:"
+        "22222222-2222-4222-8222-222222222222"
+    ),
+    provider_api: str = "not_registered",
+    dataset_id: str | None = None,
+    provider: str = "tushare",
+    adapter_version: str = "unresolved.v1",
+    error: str = "unmapped_dataset",
+    count_semantics: str = "terminal_no_data_transaction",
+    request_window: dict[str, str] | None = None,
+    started_at: str = "2026-07-15T00:10:00+00:00",
+    finished_at: str = "2026-07-15T00:11:00+00:00",
+    data_through: str = "20260715",
+) -> str:
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
+    resolved_dataset_id = dataset_id or (
+        "unmapped.tushare."
+        + hashlib.sha256(provider_api.encode("utf-8")).hexdigest()[:16]
+    )
+    context = IngestContext(
+        attempt_id=attempt_id,
+        dataset_id=resolved_dataset_id,
+        provider=provider,
+        provider_api=provider_api,
+        request_window=request_window
+        or {
+            "end_date": "20260715",
+            "source_name": f"{provider_api}_20260715",
+            "start_date": "20260708",
+            "tier": "P1_eod_daily",
+            "trade_date": "20260715",
+        },
+        config_hash=CONFIG_HASH,
+        adapter_version=adapter_version,
+        started_at=started_at,
+        data_through=data_through,
+    )
+    counts = IngestCounts(
+        returned=0,
+        validated=0,
+        inserted=0,
+        updated=0,
+        unchanged=0,
+        rejected=0,
+        committed=0,
+        count_semantics=count_semantics,
+    )
+    receipt_id = insert_ingest_receipt(
+        conn,
+        context=context,
+        target_table=None,
+        transaction_index=0,
+        status="failed",
+        counts=counts,
+        errors=(error,),
+        payload_fingerprint=hashlib.sha256(b"").hexdigest(),
     )
     conn.commit()
     return receipt_id
@@ -478,6 +545,125 @@ def test_jointly_tampered_unknown_dataset_cannot_hide_terminal_failure(
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
     assert projection.receipt_id == failed_receipt_id
     assert projection.reasons == ("receipt_dataset_unknown",)
+
+
+def test_valid_unmapped_tushare_attempt_does_not_poison_registered_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    success_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _insert_unmapped_tushare_receipt(monkeypatch, conn)
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.receipt_id == success_receipt_id
+    assert projection.reasons == ()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"dataset_id": "unmapped.tushare.0000000000000000"},
+        {"provider": "other-provider"},
+        {"adapter_version": "other-adapter.v1"},
+        {"error": "provider_error"},
+        {"count_semantics": "storage_failure_before_commit"},
+        {"request_window": {"trade_date": "20260715"}},
+        {"attempt_id": "not-a-collector-attempt"},
+        {"data_through": "20300101"},
+        {
+            "started_at": "2030-01-01T00:10:00+00:00",
+            "finished_at": "2030-01-01T00:11:00+00:00",
+            "data_through": "20300101",
+            "request_window": {
+                "end_date": "20300101",
+                "source_name": "not_registered_20300101",
+                "start_date": "20291225",
+                "tier": "P1_eod_daily",
+                "trade_date": "20300101",
+            },
+        },
+    ],
+)
+def test_tombstone_like_unknown_receipt_still_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    conn = _memory_db()
+    success_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    tombstone_receipt_id = _insert_unmapped_tushare_receipt(
+        monkeypatch,
+        conn,
+        **overrides,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == tombstone_receipt_id
+    assert projection.receipt_id != success_receipt_id
+    assert projection.reasons == ("receipt_dataset_unknown",)
+
+
+def test_historical_unmapped_tombstone_stays_isolated_after_api_onboarding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    success_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _insert_unmapped_tushare_receipt(
+        monkeypatch,
+        conn,
+        provider_api="daily",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.receipt_id == success_receipt_id
 
 
 @pytest.mark.parametrize(
