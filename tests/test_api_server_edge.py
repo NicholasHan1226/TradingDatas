@@ -671,6 +671,29 @@ def test_api_tushare_uses_shared_query_service_and_signed_cursor(
     assert query.calls[-1]["access"].allowed_dataset_ids == ("cn.event.news",)
 
 
+@pytest.mark.parametrize("api_name", ["stock_basic", "daily_basic", "broker_recommend"])
+def test_api_tushare_rejects_dates_without_registry_range_field(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+    api_name: str,
+) -> None:
+    base_url, reader = api_edge_server
+    query = _install_fake_legacy_runtime(monkeypatch)
+
+    def forbidden(**_kwargs: Any) -> list[dict[str, Any]]:
+        raise AssertionError("rejected legacy dates reached the legacy reader")
+
+    monkeypatch.setattr(reader, "get_tushare", forbidden)
+
+    status, _payload = _get_json(
+        base_url,
+        f"/tushare?api_name={api_name}&start_date=20260701&end_date=20260716",
+    )
+
+    assert status == 400
+    assert query.calls == []
+
+
 def test_api_tushare_bypasses_response_dedup_cache(
     api_edge_server,
     monkeypatch: pytest.MonkeyPatch,

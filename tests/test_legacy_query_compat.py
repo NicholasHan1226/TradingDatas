@@ -80,9 +80,6 @@ def test_partitioned_legacy_query_without_dates_requests_internal_latest_partiti
     [
         ("daily", "cn.equity.daily", "symbol", "trade_date"),
         ("weekly", "cn.equity.weekly", "symbol", "trade_date"),
-        ("stock_basic", "cn.equity.security_master", "symbol", "updated_at"),
-        ("daily_basic", "cn.equity.daily_metrics", "symbol", "event_time"),
-        ("broker_recommend", "cn.equity.broker_research", "symbol", "trade_date"),
         ("news", "cn.event.news", "symbol", "trade_date"),
         (
             "fund_portfolio",
@@ -115,6 +112,41 @@ def test_schema_profiles_use_declared_symbol_date_and_default_projection(
     }
     declared = {field.name for field in load_dataset_registry().resolve(dataset_id).fields}
     assert set(invocation.request.filters) <= declared
+
+
+@pytest.mark.parametrize(
+    ("api_name", "dataset_id"),
+    [
+        ("stock_basic", "cn.equity.security_master"),
+        ("daily_basic", "cn.equity.daily_metrics"),
+        ("broker_recommend", "cn.equity.broker_research"),
+    ],
+)
+@pytest.mark.parametrize(
+    "date_params",
+    [
+        {"date": "20260716"},
+        {"start_date": "20260701"},
+        {"end_date": "20260716"},
+        {"start_date": "20260701", "end_date": "20260716"},
+    ],
+    ids=("exact", "start-only", "end-only", "window"),
+)
+def test_legacy_date_filter_requires_registry_declared_range_field(
+    api_name: str,
+    dataset_id: str,
+    date_params: dict[str, str],
+) -> None:
+    dataset = load_dataset_registry().resolve(dataset_id)
+    assert dataset.range_field is None
+
+    with pytest.raises(
+        QueryValidationError,
+        match="date filtering is not supported by this dataset",
+    ):
+        _compat().tushare_request(
+            {"api_name": api_name, "ts_code": "000001.SZ", **date_params}
+        )
 
 
 def test_relationship_symbol_filter_preserves_subject_object_or_semantics() -> None:

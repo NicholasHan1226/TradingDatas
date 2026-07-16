@@ -142,14 +142,7 @@ def _one_legacy_value(
 
 
 def _date_field(dataset: DatasetDefinition) -> str | None:
-    if dataset.range_field is not None:
-        return dataset.range_field
-    declared = {field.name: field for field in dataset.fields}
-    for name in ("trade_date", "ann_date", "event_time", "updated_at", "collected_at"):
-        field = declared.get(name)
-        if field is not None and field.filterable and field.sortable:
-            return name
-    return None
+    return dataset.range_field
 
 
 def _schema_major(dataset: DatasetDefinition) -> int:
