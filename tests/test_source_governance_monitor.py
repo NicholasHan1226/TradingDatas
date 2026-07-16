@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime, timezone
+
+from dataset_registry import DatasetRegistry, load_dataset_registry
 from tools import source_governance_monitor
 
 
@@ -136,6 +140,48 @@ def _green_maintenance_report() -> dict:
     }
 
 
+def _active_dataset_registry() -> DatasetRegistry:
+    registry = load_dataset_registry()
+    return DatasetRegistry(
+        tuple(
+            replace(
+                dataset,
+                provider_bindings=tuple(
+                    replace(
+                        binding,
+                        entitlement_state="active",
+                        activation_state="active",
+                    )
+                    for binding in dataset.provider_bindings
+                ),
+            )
+            for dataset in registry.datasets
+        )
+    )
+
+
+def _eligible_active_dataset_registry() -> DatasetRegistry:
+    registry = load_dataset_registry()
+    return DatasetRegistry(
+        tuple(
+            replace(
+                dataset,
+                provider_bindings=tuple(
+                    binding
+                    if binding.entitlement_state == "excluded"
+                    else replace(
+                        binding,
+                        entitlement_state="active",
+                        activation_state="active",
+                    )
+                    for binding in dataset.provider_bindings
+                ),
+            )
+            for dataset in registry.datasets
+        )
+    )
+
+
 def test_source_governance_monitor_returns_green_when_sources_are_complete() -> None:
     report = source_governance_monitor.evaluate_source_governance(
         agent_config=_agent_config(),
@@ -147,6 +193,7 @@ def test_source_governance_monitor_returns_green_when_sources_are_complete() -> 
             "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
         },
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
     )
 
     assert report["status"] == "green"
@@ -154,6 +201,65 @@ def test_source_governance_monitor_returns_green_when_sources_are_complete() -> 
     assert report["summary"]["endpoint_count"] == 23
     assert report["recommendation"] == "no action required"
     assert all(check["status"] == "green" for check in report["checks"])
+
+
+def test_excluded_tushare_bindings_do_not_make_complete_plan_red() -> None:
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=_agent_config(),
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_eligible_active_dataset_registry(),
+    )
+
+    check = next(
+        item
+        for item in report["checks"]
+        if item["name"] == "tushare_planned_backlog"
+    )
+    assert check["status"] == "green"
+    assert check["evidence"]["active"] == 98
+    assert check["evidence"]["excluded"] == 16
+    assert check["evidence"]["planned_backlog"] == 0
+
+
+def test_source_governance_uses_current_registry_not_legacy_tushare_counts() -> None:
+    registry = load_dataset_registry()
+    agent_config = _agent_config()
+    agent_config["tushare_status"] = {
+        "allowlisted_api_names": 999,
+        "configured_in_production_tiers": 999,
+        "scheduled_or_independent_or_event_lane": 999,
+        "planned_activation_backlog": 0,
+    }
+
+    report = source_governance_monitor.evaluate_source_governance(
+        agent_config=agent_config,
+        crontab_text=_crontab_text(),
+        api_module_catalog=_api_module_catalog(),
+        source_expansion_plan=_source_expansion_plan(),
+        health_sla_report={"status": "ok", "summary": {}},
+        capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=registry,
+    )
+
+    check = next(
+        item for item in report["checks"]
+        if item["name"] == "tushare_planned_backlog"
+    )
+    assert report["status"] == "red"
+    assert report["summary"]["tushare_allowlisted"] == 114
+    assert report["summary"]["tushare_active"] == 0
+    assert report["summary"]["tushare_paused"] == 114
+    assert report["summary"]["tushare_planned_backlog"] == 98
+    assert check["status"] == "red"
+    assert check["evidence"]["allowlisted"] == 114
+    assert check["evidence"]["active"] == 0
+    assert check["evidence"]["paused"] == 114
+    assert check["evidence"]["planned_backlog"] == 98
+    assert check["evidence"]["legacy_agent_config"]["allowlisted"] == 999
 
 
 def test_source_governance_monitor_returns_red_for_bad_module_mapping() -> None:
@@ -215,6 +321,7 @@ def test_source_governance_operator_summary_uses_chinese_status_frame() -> None:
             "summary": {"critical": 0, "warning": 0, "notice": 0, "missing_or_empty": 0},
         },
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         generated_at="2026-07-09T00:05:00+00:00",
     )
 
@@ -253,6 +360,7 @@ def test_source_governance_preserves_unobserved_interface_runtime_as_yellow() ->
         source_expansion_plan=_source_expansion_plan(),
         health_sla_report={"status": "ok", "summary": {}},
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         interface_runtime_report={
             "status": "yellow",
             "summary": {"failed": 0, "degraded": 0, "unobserved": 10},
@@ -273,6 +381,7 @@ def test_source_governance_preserves_empty_interface_runtime_as_yellow() -> None
         source_expansion_plan=_source_expansion_plan(),
         health_sla_report={"status": "ok", "summary": {}},
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         interface_runtime_report={
             "status": "yellow",
             "summary": {"failed": 0, "degraded": 0, "empty": 11, "unobserved": 0},
@@ -313,6 +422,7 @@ def test_sw2021_active_requires_endpoints_cron_and_recent_maintenance() -> None:
         source_expansion_plan=_source_expansion_plan(),
         health_sla_report={"status": "ok", "summary": {}},
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         sw2021_reference_report=_active_sw2021_report(),
         sqlite_maintenance_report=_green_maintenance_report(),
         generated_at="2026-07-11T07:00:00+00:00",
@@ -452,6 +562,7 @@ def test_sw2021_disabled_by_operator_is_yellow_without_heal_or_cron_requirements
         source_expansion_plan=_source_expansion_plan(),
         health_sla_report={"status": "ok", "summary": {}},
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         sw2021_reference_report={"status": "disabled_by_operator"},
         generated_at="2026-07-11T07:00:00+00:00",
     )
@@ -473,6 +584,7 @@ def test_sw2021_implemented_unscheduled_is_yellow_until_pilot() -> None:
         source_expansion_plan=_source_expansion_plan(),
         health_sla_report={"status": "ok", "summary": {}},
         capability_registry={"summary": {"down": 0, "degraded": 0}},
+        dataset_registry=_active_dataset_registry(),
         sw2021_reference_report={"status": "implemented_unscheduled"},
         generated_at="2026-07-11T07:00:00+00:00",
     )
@@ -482,3 +594,145 @@ def test_sw2021_implemented_unscheduled_is_yellow_until_pilot() -> None:
     assert check["evidence"]["state"] == "implemented_unscheduled"
     assert check["evidence"]["automatic_heal_allowed"] is False
     assert check["evidence"]["missing_cron"] == []
+
+
+def test_build_source_governance_projects_current_registry_and_wall_clock_from_db(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    registry = load_dataset_registry()
+    db_path = tmp_path / "marketdata.sqlite"
+    cache_path = tmp_path / "interface_runtime.json"
+    cache_path.write_text(
+        '{"status":"green","summary":{"expected":0,"success":0}}\n',
+        encoding="utf-8",
+    )
+    observed: dict = {}
+
+    def fake_load_runtime(candidate_db, candidate_registry, *, now):
+        observed.update(
+            {
+                "db_path": candidate_db,
+                "registry": candidate_registry,
+                "now": now,
+            }
+        )
+        expected = len(candidate_registry.datasets)
+        return {
+            "report_version": "sharedsignals.interface_runtime.v2",
+            "authority": "sqlite_ingest_receipts",
+            "status": "red",
+            "generated_at": now.isoformat(),
+            "summary": {
+                "expected": expected,
+                "observed": expected - 1,
+                "success": expected - 1,
+                "empty": 0,
+                "unobserved": 0,
+                "paused": 0,
+                "failed": 1,
+                "stale": 0,
+                "degraded": 1,
+            },
+            "datasets": {},
+            "interfaces": {},
+        }
+
+    original_json_file = source_governance_monitor._json_file
+
+    def guarded_json_file(path, default):
+        assert path != cache_path, "interface_runtime.json must never be public authority"
+        return original_json_file(path, default)
+
+    monkeypatch.setattr(source_governance_monitor, "INTERFACE_RUNTIME_PATH", cache_path)
+    monkeypatch.setattr(source_governance_monitor, "load_dataset_registry", lambda: registry)
+    monkeypatch.setattr(source_governance_monitor, "marketdata_sqlite_path", lambda: db_path)
+    monkeypatch.setattr(
+        source_governance_monitor,
+        "load_interface_runtime_report",
+        fake_load_runtime,
+    )
+    monkeypatch.setattr(source_governance_monitor, "_json_file", guarded_json_file)
+
+    report = source_governance_monitor.build_source_governance_report()
+
+    runtime_check = next(
+        check for check in report["checks"]
+        if check["name"] == "interface_runtime_ledger"
+    )
+    assert observed["db_path"] == db_path
+    assert observed["registry"] is registry
+    assert observed["now"] == datetime.fromisoformat(report["generated_at"])
+    assert observed["now"].tzinfo == timezone.utc
+    assert runtime_check["status"] == "red"
+    assert runtime_check["evidence"]["expected"] == len(registry.datasets)
+    assert runtime_check["evidence"]["failed"] == 1
+    assert report["source_files"]["interface_runtime"] == (
+        f"{db_path}#market_ingest_runs"
+    )
+
+
+def test_build_source_governance_fails_closed_when_receipt_db_is_missing(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    missing_db = tmp_path / "missing" / "marketdata.sqlite"
+    cache_path = tmp_path / "interface_runtime.json"
+    crafted_cache = (
+        '{"status":"green","summary":{"expected":114,"success":114}}\n'
+    )
+    cache_path.write_text(crafted_cache, encoding="utf-8")
+    registry = load_dataset_registry()
+
+    monkeypatch.setattr(source_governance_monitor, "INTERFACE_RUNTIME_PATH", cache_path)
+    monkeypatch.setattr(source_governance_monitor, "marketdata_sqlite_path", lambda: missing_db)
+
+    report = source_governance_monitor.build_source_governance_report()
+
+    runtime_check = next(
+        check for check in report["checks"]
+        if check["name"] == "interface_runtime_ledger"
+    )
+    assert report["status"] == "red"
+    assert runtime_check["status"] == "red"
+    assert runtime_check["evidence"]["expected"] == len(registry.datasets)
+    assert runtime_check["evidence"]["failed"] == len(registry.datasets)
+    assert runtime_check["evidence"]["degraded"] == len(registry.datasets)
+    assert runtime_check["evidence"]["authority"] == "sqlite_ingest_receipts"
+    assert runtime_check["evidence"]["authority_error"] == (
+        "receipt_database_unavailable"
+    )
+    assert not missing_db.exists()
+    assert cache_path.read_text(encoding="utf-8") == crafted_cache
+
+
+def test_green_gate_inherits_db_authority_failure_from_source_governance(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from tools import green_gate_report
+
+    missing_db = tmp_path / "marketdata.sqlite"
+    cache_path = tmp_path / "interface_runtime.json"
+    cache_path.write_text(
+        '{"status":"green","summary":{"success":999}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(source_governance_monitor, "INTERFACE_RUNTIME_PATH", cache_path)
+    monkeypatch.setattr(source_governance_monitor, "marketdata_sqlite_path", lambda: missing_db)
+    monkeypatch.setattr(
+        green_gate_report.patrol,
+        "check_data_artifact_guard",
+        lambda: {"status": "ok", "value": 0, "threshold": 0, "offenders": []},
+    )
+
+    payload = green_gate_report.build_green_gate_payload()
+
+    runtime_check = next(
+        check for check in payload["source_governance"]["checks"]
+        if check["name"] == "interface_runtime_ledger"
+    )
+    assert payload["status"] == "red"
+    assert runtime_check["status"] == "red"
+    assert runtime_check["evidence"]["authority"] == "sqlite_ingest_receipts"
+    assert not missing_db.exists()

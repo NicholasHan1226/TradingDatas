@@ -3,8 +3,9 @@
 
 This monitor answers the operator question: are data sources configured,
 scheduled, and exposed consistently enough for consumers to rely on the API?
-It reads existing control-plane artifacts only; it does not call providers or
-scan the marketdata database.
+It reads existing control-plane artifacts and projects dataset runtime state
+directly from the current registry plus immutable SQLite ingest receipts. It
+does not call providers.
 """
 from __future__ import annotations
 
@@ -16,6 +17,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from dataset_registry import DatasetRegistry, load_dataset_registry
+from runtime_paths import marketdata_sqlite_path
+from storage.receipt_projection import (
+    RuntimeProjectionError,
+    load_interface_runtime_report,
+)
 
 ROOT = Path(os.environ.get("SHAREDSIGNALS_ROOT", Path(__file__).resolve().parents[1]))
 AGENT_CONFIG_PATH = ROOT / "config" / "external_agent_api_config.json"
@@ -194,7 +202,43 @@ def _report_age_hours(report: dict[str, Any], generated_at: str) -> float | None
     return max(0.0, (evaluated - completed).total_seconds() / 3600.0)
 
 
-def _evaluate_agent_config(agent_config: dict[str, Any]) -> list[dict[str, Any]]:
+def _tushare_registry_counts(registry: DatasetRegistry) -> dict[str, int]:
+    bindings = tuple(
+        binding
+        for dataset in registry.datasets
+        for binding in dataset.provider_bindings
+        if binding.provider == "tushare"
+    )
+    active = sum(
+        binding.activation_state == "active"
+        and binding.entitlement_state == "active"
+        for binding in bindings
+    )
+    paused = len(bindings) - active
+    excluded = sum(
+        binding.entitlement_state == "excluded" for binding in bindings
+    )
+    planned_backlog = sum(
+        not (
+            binding.activation_state == "active"
+            and binding.entitlement_state == "active"
+        )
+        and binding.entitlement_state != "excluded"
+        for binding in bindings
+    )
+    return {
+        "allowlisted": len(bindings),
+        "active": active,
+        "paused": paused,
+        "excluded": excluded,
+        "planned_backlog": planned_backlog,
+    }
+
+
+def _evaluate_agent_config(
+    agent_config: dict[str, Any],
+    dataset_registry: DatasetRegistry,
+) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     endpoints = _endpoint_paths(agent_config)
     missing_endpoints = sorted(REQUIRED_ENDPOINTS - endpoints)
@@ -220,19 +264,33 @@ def _evaluate_agent_config(agent_config: dict[str, Any]) -> list[dict[str, Any]]
         )
     )
 
-    tushare = agent_config.get("tushare_status") or {}
-    allowlisted = int(tushare.get("allowlisted_api_names") or 0)
-    active = int(tushare.get("scheduled_or_independent_or_event_lane") or 0)
-    backlog = int(tushare.get("planned_activation_backlog") or 0)
-    complete = allowlisted > 0 and active == allowlisted and backlog == 0
+    counts = _tushare_registry_counts(dataset_registry)
+    legacy = agent_config.get("tushare_status") or {}
+    complete = (
+        counts["allowlisted"] > 0
+        and counts["active"] + counts["excluded"] == counts["allowlisted"]
+        and counts["planned_backlog"] == 0
+    )
     checks.append(
         _check(
             "tushare_planned_backlog",
             "green" if complete else "red",
             "all allowlisted Tushare interfaces are assigned to active modes" if complete else "Tushare capability plan is not fully active",
-            allowlisted=allowlisted,
-            active=active,
-            planned_backlog=backlog,
+            allowlisted=counts["allowlisted"],
+            active=counts["active"],
+            paused=counts["paused"],
+            excluded=counts["excluded"],
+            planned_backlog=counts["planned_backlog"],
+            authority="dataset_registry",
+            legacy_agent_config={
+                "allowlisted": int(legacy.get("allowlisted_api_names") or 0),
+                "active": int(
+                    legacy.get("scheduled_or_independent_or_event_lane") or 0
+                ),
+                "planned_backlog": int(
+                    legacy.get("planned_activation_backlog") or 0
+                ),
+            },
         )
     )
     return checks
@@ -582,8 +640,12 @@ def _evaluate_interface_runtime(report: dict[str, Any] | None) -> dict[str, Any]
         degraded=int(summary.get("degraded") or 0),
         empty=int(summary.get("empty") or 0),
         unobserved=int(summary.get("unobserved") or 0),
+        paused=int(summary.get("paused") or 0),
+        stale=int(summary.get("stale") or 0),
         observed=int(summary.get("observed") or 0),
         expected=int(summary.get("expected") or 0),
+        authority=report.get("authority"),
+        authority_error=report.get("authority_error"),
     )
 
 
@@ -617,11 +679,14 @@ def evaluate_source_governance(
     external_api_probe_report: dict[str, Any] | None = None,
     sw2021_reference_report: dict[str, Any] | None = None,
     sqlite_maintenance_report: dict[str, Any] | None = None,
+    dataset_registry: DatasetRegistry | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     evaluated_at = generated_at or utc_now_iso()
+    registry = dataset_registry or load_dataset_registry()
+    tushare_counts = _tushare_registry_counts(registry)
     checks = []
-    checks.extend(_evaluate_agent_config(agent_config))
+    checks.extend(_evaluate_agent_config(agent_config, registry))
     checks.append(
         _evaluate_api_module_catalog(
             agent_config=agent_config,
@@ -652,7 +717,6 @@ def evaluate_source_governance(
             )
         )
     status = _overall(checks)
-    tushare = agent_config.get("tushare_status") or {}
     endpoints = _endpoint_paths(agent_config)
     return {
         "status": status,
@@ -660,9 +724,11 @@ def evaluate_source_governance(
         "generated_at": evaluated_at,
         "summary": {
             "endpoint_count": len(endpoints),
-            "tushare_allowlisted": int(tushare.get("allowlisted_api_names") or 0),
-            "tushare_active": int(tushare.get("scheduled_or_independent_or_event_lane") or 0),
-            "tushare_planned_backlog": int(tushare.get("planned_activation_backlog") or 0),
+            "tushare_allowlisted": tushare_counts["allowlisted"],
+            "tushare_active": tushare_counts["active"],
+            "tushare_paused": tushare_counts["paused"],
+            "tushare_excluded": tushare_counts["excluded"],
+            "tushare_planned_backlog": tushare_counts["planned_backlog"],
             "green_checks": sum(1 for check in checks if check["status"] == "green"),
             "yellow_checks": sum(1 for check in checks if check["status"] == "yellow"),
             "red_checks": sum(1 for check in checks if check["status"] == "red"),
@@ -677,7 +743,7 @@ def evaluate_source_governance(
             "capability_registry": str(CAPABILITY_REGISTRY_PATH),
             "opening_gate": str(OPENING_GATE_PATH),
             "duckdb_sync": str(DUCKDB_SYNC_PATH),
-            "interface_runtime": str(INTERFACE_RUNTIME_PATH),
+            "interface_runtime": "sqlite:market_ingest_runs",
             "external_api_probe": str(EXTERNAL_API_PROBE_PATH),
             "sqlite_maintenance": str(SQLITE_MAINTENANCE_PATH),
             "sw2021_reference": str(SW2021_REFERENCE_PATH),
@@ -727,7 +793,67 @@ def render_operator_summary(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _unavailable_interface_runtime_report(
+    registry: DatasetRegistry,
+    *,
+    generated_at: str,
+) -> dict[str, Any]:
+    """Represent loss of the SQLite authority without consulting a cache."""
+
+    datasets = {
+        dataset.dataset_id: {
+            "dataset_id": dataset.dataset_id,
+            "state": "failed",
+            "degraded": True,
+            "data_through": None,
+            "observed_at": None,
+            "receipt_id": None,
+            "reasons": ["receipt_database_unavailable"],
+        }
+        for dataset in registry.datasets
+    }
+    expected = len(datasets)
+    return {
+        "report_version": "sharedsignals.interface_runtime.v2",
+        "authority": "sqlite_ingest_receipts",
+        "authority_error": "receipt_database_unavailable",
+        "status": "red",
+        "generated_at": generated_at,
+        "summary": {
+            "expected": expected,
+            "observed": 0,
+            "success": 0,
+            "empty": 0,
+            "unobserved": 0,
+            "paused": 0,
+            "failed": expected,
+            "stale": 0,
+            "degraded": expected,
+        },
+        "unobserved_api_names": [],
+        "paused_api_names": [],
+        "datasets": datasets,
+        "interfaces": {},
+    }
+
+
 def build_source_governance_report() -> dict[str, Any]:
+    generated_at = utc_now_iso()
+    now = datetime.fromisoformat(generated_at)
+    registry = load_dataset_registry()
+    receipt_db_path = marketdata_sqlite_path()
+    try:
+        interface_runtime_report = load_interface_runtime_report(
+            receipt_db_path,
+            registry,
+            now=now,
+        )
+    except RuntimeProjectionError:
+        interface_runtime_report = _unavailable_interface_runtime_report(
+            registry,
+            generated_at=generated_at,
+        )
+
     agent_config = _json_file(AGENT_CONFIG_PATH, {})
     api_module_catalog = _yaml_file(API_MODULE_CATALOG_PATH, {})
     source_expansion_plan = _yaml_file(SOURCE_EXPANSION_PRIORITY_PATH, {})
@@ -735,7 +861,6 @@ def build_source_governance_report() -> dict[str, Any]:
     health_sla_report = _json_file(HEALTH_SLA_PATH, {})
     opening_gate_report = _json_file(OPENING_GATE_PATH, {})
     duckdb_sync_report = _json_file(DUCKDB_SYNC_PATH, {})
-    interface_runtime_report = _json_file(INTERFACE_RUNTIME_PATH, {})
     external_api_probe_report = _json_file(EXTERNAL_API_PROBE_PATH, {})
     sqlite_maintenance_report = _json_file(SQLITE_MAINTENANCE_PATH, {})
     sw2021_reference_report = _json_file(
@@ -743,7 +868,7 @@ def build_source_governance_report() -> dict[str, Any]:
         {"status": "implemented_unscheduled"},
     )
     crontab_text = CRONTAB_PATH.read_text(encoding="utf-8", errors="replace") if CRONTAB_PATH.exists() else ""
-    return evaluate_source_governance(
+    report = evaluate_source_governance(
         agent_config=agent_config,
         crontab_text=crontab_text,
         api_module_catalog=api_module_catalog,
@@ -756,7 +881,13 @@ def build_source_governance_report() -> dict[str, Any]:
         external_api_probe_report=external_api_probe_report,
         sw2021_reference_report=sw2021_reference_report,
         sqlite_maintenance_report=sqlite_maintenance_report,
+        dataset_registry=registry,
+        generated_at=generated_at,
     )
+    report["source_files"]["interface_runtime"] = (
+        f"{receipt_db_path}#market_ingest_runs"
+    )
+    return report
 
 
 def main() -> int:

@@ -251,6 +251,12 @@ class DatasetRegistry:
             )
         by_name[name] = dataset
 
+    @property
+    def datasets(self) -> tuple[DatasetDefinition, ...]:
+        """Return the validated catalog in declaration order."""
+
+        return self._datasets
+
     def resolve(self, name: str) -> DatasetDefinition:
         try:
             return self._by_name[name]

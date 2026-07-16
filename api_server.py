@@ -45,7 +45,7 @@ CAPABILITY_PATH = ROOT / "tools" / "capability_registry.json"
 AGENT_CONFIG_PATH = ROOT / "config" / "external_agent_api_config.json"
 HEALTH_CACHE_SECONDS = 60
 HEALTH_DEEP_CHECKS_ENV = "SHAREDSIGNALS_HEALTH_DEEP_CHECKS"
-LIVE_CONTROL_PLANE_ENDPOINTS = {"/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status"}
+LIVE_CONTROL_PLANE_ENDPOINTS = {"/capabilities", "/agent_config", "/source_status", "/opening_gate", "/cache/status", "/tushare"}
 
 
 def _ensure_runtime_loaded() -> None:

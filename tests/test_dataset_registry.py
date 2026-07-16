@@ -377,6 +377,24 @@ def test_registry_import_matches_frozen_legacy_compatibility_surface() -> None:
         TUSHARE_API_TO_TABLE_MAP["mutated"] = "market_factors"  # type: ignore[index]
 
 
+def test_registry_exposes_datasets_as_an_immutable_declaration_order_tuple() -> None:
+    registry = load_dataset_registry()
+
+    datasets = registry.datasets
+
+    assert isinstance(datasets, tuple)
+    assert len(datasets) == 114
+    assert datasets[0] is registry.resolve(datasets[0].dataset_id)
+    assert tuple(dataset.dataset_id for dataset in datasets) == tuple(
+        dataset["dataset_id"]
+        for dataset in yaml.safe_load(
+            DATASET_REGISTRY_PATH.read_text(encoding="utf-8")
+        )["datasets"]
+    )
+    with pytest.raises(TypeError):
+        datasets[0] = datasets[-1]  # type: ignore[index]
+
+
 def test_imported_registry_entries_are_complete_paused_and_truthfully_excluded() -> (
     None
 ):

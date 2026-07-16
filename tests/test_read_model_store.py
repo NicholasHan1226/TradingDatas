@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import fcntl
 import json
+import os
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -1295,6 +1297,253 @@ def test_ingest_rows_honors_global_read_model_lock(tmp_path: Path, monkeypatch: 
         [{"market": "Ashare", "symbol": "000001.SZ", "trade_date": "20260701", "close": 10.5}],
         source_name="daily_rows_test",
     ) == 1
+
+
+def test_snapshot_lock_requires_existing_regular_lock_files_without_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "missing-maintenance.lock"
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+
+    with pytest.raises(read_model_store.ReadModelLockError):
+        with read_model_store.read_model_snapshot_lock(db_path):
+            with read_model_store.read_model_snapshot_open_lock(db_path):
+                pass
+
+    assert not maintenance_lock.exists()
+    assert not read_model_store._read_model_lock_path(db_path).exists()
+
+
+def test_snapshot_lock_holds_only_maintenance_coordination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    writer_lock = read_model_store._read_model_lock_path(db_path)
+    maintenance_lock.touch()
+    writer_lock.touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+
+    with read_model_store.read_model_snapshot_lock(db_path):
+        with read_model_store.read_model_lock(
+            db_path,
+            mode="exclusive",
+            create=False,
+            timeout=0,
+        ):
+            pass
+
+
+def test_snapshot_lock_rejects_symlinked_writer_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    maintenance_lock.touch()
+    writer_target = tmp_path / "writer-target.lock"
+    writer_target.touch()
+    read_model_store._read_model_lock_path(db_path).symlink_to(writer_target)
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+
+    with pytest.raises(read_model_store.ReadModelLockError):
+        with read_model_store.read_model_snapshot_lock(db_path):
+            with read_model_store.read_model_snapshot_open_lock(db_path):
+                pass
+
+
+@pytest.mark.parametrize("target", ["maintenance", "writer"])
+def test_snapshot_lock_rejects_world_writable_coordination_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    writer_lock = read_model_store._read_model_lock_path(db_path)
+    maintenance_lock.touch()
+    writer_lock.touch()
+    (maintenance_lock if target == "maintenance" else writer_lock).chmod(0o666)
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+
+    with pytest.raises(read_model_store.ReadModelLockError):
+        with read_model_store.read_model_snapshot_lock(db_path):
+            with read_model_store.read_model_snapshot_open_lock(db_path):
+                pass
+
+
+def test_snapshot_lock_rejects_untrusted_coordination_file_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    writer_lock = read_model_store._read_model_lock_path(db_path)
+    maintenance_lock.touch()
+    writer_lock.touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    real_effective_uid = os.geteuid()
+    monkeypatch.setattr(
+        read_model_store.os,
+        "geteuid",
+        lambda: real_effective_uid + 1,
+    )
+
+    with pytest.raises(read_model_store.ReadModelLockError):
+        with read_model_store.read_model_snapshot_lock(db_path):
+            with read_model_store.read_model_snapshot_open_lock(db_path):
+                pass
+
+
+@pytest.mark.parametrize("target", ["maintenance", "writer"])
+def test_nonregular_snapshot_lock_failure_does_not_leak_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    writer_lock = read_model_store._read_model_lock_path(db_path)
+    maintenance_lock.touch()
+    writer_lock.touch()
+    bad_path = maintenance_lock if target == "maintenance" else writer_lock
+    bad_path.unlink()
+    bad_path.mkdir()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    before = len(os.listdir("/dev/fd"))
+
+    for _ in range(20):
+        with pytest.raises(read_model_store.ReadModelLockError):
+            with read_model_store.read_model_snapshot_lock(db_path):
+                with read_model_store.read_model_snapshot_open_lock(db_path):
+                    pass
+
+    assert len(os.listdir("/dev/fd")) <= before + 1
+
+
+@pytest.mark.parametrize("failure", ["fstat", "flock"])
+def test_snapshot_lock_closes_descriptor_on_validation_or_lock_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    read_model_store._read_model_lock_path(db_path).touch()
+    maintenance_lock.touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    real_open = os.open
+    real_fstat = os.fstat
+    opened: list[int] = []
+
+    def tracked_open(*args, **kwargs):
+        descriptor = real_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(read_model_store.os, "open", tracked_open)
+    if failure == "fstat":
+        monkeypatch.setattr(
+            read_model_store.os,
+            "fstat",
+            lambda _descriptor: (_ for _ in ()).throw(OSError("injected fstat")),
+        )
+    else:
+        monkeypatch.setattr(
+            read_model_store.fcntl,
+            "flock",
+            lambda _descriptor, _operation: (_ for _ in ()).throw(
+                OSError("injected flock")
+            ),
+        )
+
+    with pytest.raises(read_model_store.ReadModelLockError):
+        with read_model_store.read_model_snapshot_lock(db_path):
+            pass
+
+    assert opened
+    for descriptor in opened:
+        with pytest.raises(OSError):
+            real_fstat(descriptor)
+
+
+def test_snapshot_open_lock_is_nonblocking_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from storage import read_model_store
+
+    db_path = tmp_path / "marketdata.sqlite"
+    _create_db(db_path)
+    maintenance_lock = tmp_path / "maintenance.lock"
+    writer_lock = read_model_store._read_model_lock_path(db_path)
+    maintenance_lock.touch()
+    writer_lock.touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    monkeypatch.setenv("SHAREDSIGNALS_READ_MODEL_LOCK_TIMEOUT", "1")
+    monkeypatch.delenv("SHAREDSIGNALS_READ_MODEL_READ_LOCK_TIMEOUT", raising=False)
+
+    with read_model_store.read_model_lock(
+        db_path,
+        mode="exclusive",
+        create=False,
+        timeout=0,
+    ):
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            with read_model_store.read_model_snapshot_open_lock(db_path):
+                pass
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
 
 
 def test_read_model_store_retries_sqlite_busy(monkeypatch: pytest.MonkeyPatch) -> None:

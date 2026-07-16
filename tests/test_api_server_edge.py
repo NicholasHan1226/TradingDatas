@@ -515,6 +515,38 @@ def test_api_tushare_applies_limit(api_edge_server) -> None:
     assert reader.calls[-1][0] == "get_tushare"
 
 
+def test_api_tushare_bypasses_response_dedup_cache(
+    api_edge_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_url, reader = api_edge_server
+    current = {"title": "old-epoch"}
+    calls = 0
+
+    def get_tushare(**_kwargs: Any) -> list[dict[str, Any]]:
+        nonlocal calls
+        calls += 1
+        return [
+            {
+                "data": {"title": current["title"]},
+                "degraded": False,
+                "provenance": {"source_id": "tushare_news"},
+            }
+        ]
+
+    monkeypatch.setattr(reader, "get_tushare", get_tushare)
+
+    first_status, first = _get_json(base_url, "/tushare?api_name=news")
+    current["title"] = "new-epoch"
+    second_status, second = _get_json(base_url, "/tushare?api_name=news")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first["data"] == [{"title": "old-epoch"}]
+    assert second["data"] == [{"title": "new-epoch"}]
+    assert calls == 2
+
+
 def test_api_tushare_relationship_api_is_visible(api_edge_server) -> None:
     base_url, reader = api_edge_server
 
@@ -917,7 +949,47 @@ def test_source_status_endpoint_returns_governance_report(api_edge_server) -> No
     assert "checks" in payload["data"]
     assert any(check["name"] == "tushare_planned_backlog" for check in payload["data"]["checks"])
     assert payload["data"]["summary"]["endpoint_count"] == 23
+    assert payload["data"]["summary"]["tushare_allowlisted"] == 114
+    assert payload["data"]["summary"]["tushare_active"] == 0
+    assert payload["data"]["summary"]["tushare_paused"] == 114
+    assert payload["data"]["summary"]["tushare_excluded"] == 16
+    assert payload["data"]["summary"]["tushare_planned_backlog"] == 98
     assert payload["metadata"]["lineage"]["source"] == "tools/source_governance_monitor.py"
+
+
+def test_source_status_http_200_does_not_mask_missing_receipt_authority(
+    api_edge_server,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from tools import source_governance_monitor
+
+    base_url, _reader = api_edge_server
+    missing_db = tmp_path / "missing" / "marketdata.sqlite"
+    cache_path = tmp_path / "interface_runtime.json"
+    cache_path.write_text(
+        '{"status":"green","summary":{"success":999}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(source_governance_monitor, "INTERFACE_RUNTIME_PATH", cache_path)
+    monkeypatch.setattr(source_governance_monitor, "marketdata_sqlite_path", lambda: missing_db)
+
+    status, payload = _get_json(base_url, "/source_status")
+
+    runtime_check = next(
+        check for check in payload["data"]["checks"]
+        if check["name"] == "interface_runtime_ledger"
+    )
+    assert status == 200
+    assert payload["data"]["status"] == "red"
+    assert payload["metadata"]["degraded"] is True
+    assert "interface_runtime_ledger" in payload["metadata"]["degraded_reasons"]
+    assert runtime_check["status"] == "red"
+    assert runtime_check["evidence"]["authority"] == "sqlite_ingest_receipts"
+    assert runtime_check["evidence"]["authority_error"] == (
+        "receipt_database_unavailable"
+    )
+    assert not missing_db.exists()
 
 
 def test_opening_gate_endpoint_returns_latest_session_gate(api_edge_server, monkeypatch) -> None:

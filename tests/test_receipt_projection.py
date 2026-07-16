@@ -1,0 +1,1356 @@
+from __future__ import annotations
+
+import contextlib
+import json
+import sqlite3
+import subprocess
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import FrozenInstanceError, replace
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+import storage.ingest_receipts as receipt_module
+import storage.receipt_projection as projection_module
+from dataset_registry import DatasetDefinition, DatasetRegistry, load_dataset_registry
+from storage.ingest_receipts import IngestContext, IngestCounts, insert_ingest_receipt
+from storage.receipt_projection import (
+    RuntimeProjectionError,
+    load_interface_runtime_report,
+    project_dataset_runtime,
+    project_registry_runtime,
+)
+from storage.schema import SCHEMA_SQL
+
+
+CONFIG_HASH = "a" * 64
+PAYLOAD_FINGERPRINT = "b" * 64
+
+
+def _dataset(
+    *,
+    active: bool = True,
+    freshness_sla_seconds: int = 3_600,
+    timezone_name: str = "Asia/Shanghai",
+) -> DatasetDefinition:
+    base = load_dataset_registry().resolve("tushare.daily")
+    binding = replace(
+        base.provider_bindings[0],
+        entitlement_state="active",
+        activation_state="active" if active else "paused",
+    )
+    return replace(
+        base,
+        provider_bindings=(binding,),
+        freshness_sla_seconds=freshness_sla_seconds,
+        timezone=timezone_name,
+    )
+
+
+def _memory_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    return conn
+
+
+def _insert_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: sqlite3.Connection,
+    *,
+    status: str,
+    attempt_id: str,
+    started_at: str,
+    finished_at: str,
+    data_through: str | None,
+    transaction_index: int = 0,
+) -> str:
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
+    context = IngestContext(
+        attempt_id=attempt_id,
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        request_window={"trade_date": "20260715"},
+        config_hash=CONFIG_HASH,
+        adapter_version="tushare-direct-sqlite.v1",
+        started_at=started_at,
+        data_through=data_through,
+    )
+    if status == "success":
+        counts = IngestCounts(
+            returned=1,
+            validated=1,
+            inserted=1,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=1,
+            count_semantics="exact_row_outcomes",
+        )
+        target_table = "market_bars_daily"
+        errors: tuple[str, ...] = ()
+    else:
+        count_semantics = (
+            "storage_failure_before_commit"
+            if status == "failed"
+            else "terminal_no_data_transaction"
+        )
+        counts = IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics=count_semantics,
+        )
+        target_table = None
+        errors = ("provider_error",) if status == "failed" else ()
+    receipt_id = insert_ingest_receipt(
+        conn,
+        context=context,
+        target_table=target_table,
+        transaction_index=transaction_index,
+        status=status,
+        counts=counts,
+        errors=errors,
+        payload_fingerprint=PAYLOAD_FINGERPRINT,
+    )
+    conn.commit()
+    return receipt_id
+
+
+def _canonical_json(value: dict[str, object]) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _tamper_notes(
+    conn: sqlite3.Connection,
+    receipt_id: str,
+    field: str,
+    value: object,
+) -> None:
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    if field.startswith("counts."):
+        payload["counts"][field.removeprefix("counts.")] = value
+    else:
+        payload[field] = value
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+        (_canonical_json(payload), receipt_id),
+    )
+    conn.commit()
+
+
+def test_projector_returns_unobserved_without_a_recognized_receipt() -> None:
+    conn = _memory_db()
+    conn.execute(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "legacy-run",
+            "2026-07-15T00:00:00+00:00",
+            "2026-07-15T00:01:00+00:00",
+            "success",
+            "cn.equity.daily",
+            1,
+            1,
+            "legacy audit row",
+        ),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "unobserved"
+    assert projection.degraded is True
+    assert projection.data_through is None
+    assert projection.observed_at is None
+    assert projection.receipt_id is None
+    assert projection.reasons == ("no_recognized_receipt",)
+
+
+def test_projector_returns_paused_from_registry_activation() -> None:
+    conn = _memory_db()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(active=False),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "paused"
+    assert projection.degraded is True
+    assert projection.reasons == ("registry_activation_paused",)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_degraded", "expected_reason"),
+    [
+        ("success", False, ()),
+        ("empty", False, ("provider_returned_no_rows",)),
+    ],
+)
+def test_projector_accepts_recognized_success_and_empty_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    expected_degraded: bool,
+    expected_reason: tuple[str, ...],
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status=status,
+        attempt_id=f"attempt-{status}",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == status
+    assert projection.degraded is expected_degraded
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.observed_at == "2026-07-15T00:01:00+00:00"
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == expected_reason
+
+
+def test_terminal_failure_overrides_higher_index_success_chunks_in_same_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    for transaction_index, finished_at in (
+        (0, "2026-07-15T00:01:00+00:00"),
+        (1, "2026-07-15T00:02:00+00:00"),
+    ):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id="attempt-partial-then-failed",
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=finished_at,
+            data_through="2026-07-15T08:00:00+08:00",
+            transaction_index=transaction_index,
+        )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-partial-then-failed",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.observed_at == "2026-07-15T00:03:00+00:00"
+    assert projection.receipt_id == failed_receipt_id
+    assert projection.reasons == ("provider_error",)
+
+
+def test_same_attempt_cannot_split_on_started_at_to_hide_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-split",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:12:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-split",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+        transaction_index=1,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == failed_receipt_id
+    assert projection.reasons == ("receipt_attempt_inconsistent",)
+
+
+def test_same_attempt_requires_one_config_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    first_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-context",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    second_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-context",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:02:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+        transaction_index=1,
+    )
+    _tamper_notes(conn, second_receipt_id, "config_hash", "c" * 64)
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id in {first_receipt_id, second_receipt_id}
+    assert projection.reasons == ("receipt_attempt_inconsistent",)
+
+
+def test_latest_failed_receipt_degrades_but_preserves_last_success_data_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through=None,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.observed_at == "2026-07-15T01:01:00+00:00"
+    assert projection.receipt_id == failed_receipt_id
+    assert projection.reasons == ("provider_error",)
+
+
+def test_unassignable_malformed_receipt_like_row_cannot_hide_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through=None,
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET source = ?, notes = ? WHERE run_id = ?",
+        ("ghost.dataset", "{malformed", failed_receipt_id),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == failed_receipt_id
+    assert projection.reasons == ("receipt_payload_invalid",)
+
+
+def test_jointly_tampered_unknown_dataset_cannot_hide_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through=None,
+    )
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (failed_receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    payload["dataset_id"] = "ghost.dataset"
+    conn.execute(
+        "UPDATE market_ingest_runs SET source = ?, notes = ? WHERE run_id = ?",
+        ("ghost.dataset", _canonical_json(payload), failed_receipt_id),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == failed_receipt_id
+    assert projection.reasons == ("receipt_dataset_unknown",)
+
+
+@pytest.mark.parametrize(
+    ("payload_variant", "expected_reason"),
+    [
+        ("current_schema", "receipt_dataset_unknown"),
+        ("schema_removed", "unknown_receipt_schema"),
+        ("malformed_json", "receipt_payload_invalid"),
+    ],
+)
+def test_run_id_and_source_tampering_cannot_escape_receipt_scan(
+    monkeypatch: pytest.MonkeyPatch,
+    payload_variant: str,
+    expected_reason: str,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through=None,
+    )
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (failed_receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    payload["dataset_id"] = "ghost.dataset"
+    payload["receipt_id"] = "tampered-no-prefix"
+    if payload_variant == "schema_removed":
+        payload.pop("schema_version")
+    tampered_notes = (
+        "{malformed"
+        if payload_variant == "malformed_json"
+        else _canonical_json(payload)
+    )
+    conn.execute(
+        """UPDATE market_ingest_runs
+           SET run_id = ?, source = ?, notes = ?
+           WHERE run_id = ?""",
+        (
+            "tampered-no-prefix",
+            "ghost.dataset",
+            tampered_notes,
+            failed_receipt_id,
+        ),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == "tampered-no-prefix"
+    assert projection.reasons == (expected_reason,)
+
+
+def test_uppercase_receipt_marker_with_plain_notes_cannot_hide_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    failed_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through=None,
+    )
+    uppercase_receipt_id = failed_receipt_id.upper()
+    conn.execute(
+        """UPDATE market_ingest_runs
+           SET run_id = ?, notes = ?
+           WHERE run_id = ?""",
+        (uppercase_receipt_id, "tampered receipt payload", failed_receipt_id),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == uppercase_receipt_id
+    assert projection.reasons == ("receipt_payload_invalid",)
+
+
+def test_receipt_scan_row_budget_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                f"legacy-run-{index}",
+                "2026-07-15T00:00:00+00:00",
+                "2026-07-15T00:01:00+00:00",
+                "success",
+                "legacy:provider",
+                1,
+                1,
+                "legacy audit row",
+            )
+            for index in range(3)
+        ],
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        projection_module,
+        "_MAX_INGEST_RUN_SCAN_ROWS",
+        2,
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeProjectionError, match="row budget exceeded"):
+        project_dataset_runtime(
+            conn,
+            _dataset(),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_registry_projection_scans_ingest_runs_once_with_a_hard_limit() -> None:
+    conn = _memory_db()
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+
+    project_registry_runtime(
+        conn,
+        load_dataset_registry(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    receipt_scans = [
+        statement
+        for statement in statements
+        if "FROM market_ingest_runs" in statement
+    ]
+    assert len(receipt_scans) == 1
+    assert "WHERE source" not in receipt_scans[0]
+    assert "run_id LIKE" not in receipt_scans[0]
+    assert "LIMIT" in receipt_scans[0]
+
+
+def test_registry_projection_classifies_each_ingest_row_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                f"legacy-run-{index}",
+                "2026-07-15T00:00:00+00:00",
+                "2026-07-15T00:01:00+00:00",
+                "success",
+                "legacy:provider",
+                1,
+                1,
+                _canonical_json({"legacy": index}),
+            )
+            for index in range(3)
+        ],
+    )
+    conn.commit()
+    original_loads = projection_module.json.loads
+    calls = 0
+
+    def counted_loads(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original_loads(*args, **kwargs)
+
+    monkeypatch.setattr(projection_module.json, "loads", counted_loads)
+
+    project_registry_runtime(
+        conn,
+        load_dataset_registry(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert calls == 3
+
+
+def test_interface_projection_is_scoped_to_its_provider_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset()
+    tushare_binding = dataset.provider_bindings[0]
+    alternate_binding = replace(
+        tushare_binding,
+        provider="alternate",
+        api_name="daily_alt",
+        read_discriminator_value="alternate_daily",
+    )
+    registry = DatasetRegistry(
+        (replace(dataset, provider_bindings=(tushare_binding, alternate_binding)),)
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-tushare-only",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+
+    report = project_registry_runtime(
+        conn,
+        registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert report["interfaces"]["daily"]["state"] == "success"
+    assert report["interfaces"]["alternate:daily_alt"]["state"] == "unobserved"
+    assert report["interfaces"]["alternate:daily_alt"]["receipt_id"] is None
+
+
+def test_file_projection_rejects_ingest_schema_without_primary_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "missing-primary-key.sqlite"
+    maintenance_lock = tmp_path / "read_model_maintenance.lock"
+    maintenance_lock.touch()
+    (tmp_path / f".{db_path.name}.read_model_store.lock").touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """CREATE TABLE market_ingest_runs (
+               run_id TEXT,
+               started_at TEXT,
+               finished_at TEXT,
+               status TEXT,
+               source TEXT,
+               rows_read INTEGER,
+               rows_written INTEGER,
+               notes TEXT
+           )"""
+    )
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(RuntimeProjectionError, match="schema"):
+        load_interface_runtime_report(
+            db_path,
+            load_dataset_registry(),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_file_projection_rejects_hidden_generated_ingest_column(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "hidden-column.sqlite"
+    maintenance_lock = tmp_path / "read_model_maintenance.lock"
+    maintenance_lock.touch()
+    (tmp_path / f".{db_path.name}.read_model_store.lock").touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.execute(
+        "ALTER TABLE market_ingest_runs ADD COLUMN hidden_copy TEXT "
+        "GENERATED ALWAYS AS (run_id) VIRTUAL"
+    )
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(RuntimeProjectionError, match="schema"):
+        load_interface_runtime_report(
+            db_path,
+            load_dataset_registry(),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
+def _exclusive_lock_available(path: Path) -> bool:
+    script = (
+        "import fcntl,os,sys; "
+        "fd=os.open(sys.argv[1], os.O_RDWR); "
+        "\ntry:\n fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)\n"
+        "except BlockingIOError:\n os.close(fd); sys.exit(1)\n"
+        "fcntl.flock(fd, fcntl.LOCK_UN); os.close(fd)"
+    )
+    return (
+        subprocess.run(
+            [sys.executable, "-c", script, str(path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
+def test_large_projection_releases_writer_lock_but_holds_maintenance_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "marketdata.sqlite"
+    maintenance_lock = tmp_path / "read_model_maintenance.lock"
+    writer_lock = tmp_path / f".{db_path.name}.read_model_store.lock"
+    maintenance_lock.touch()
+    writer_lock.touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    conn.close()
+    projection_started = threading.Event()
+    release_projection = threading.Event()
+    calls = 0
+    expected_report = {"status": "green", "datasets": {}}
+
+    def slow_projection(*_args, **_kwargs) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        projection_started.set()
+        assert release_projection.wait(timeout=5)
+        return expected_report
+
+    monkeypatch.setattr(
+        projection_module,
+        "project_registry_runtime",
+        slow_projection,
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            load_interface_runtime_report,
+            db_path,
+            DatasetRegistry(()),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+        assert projection_started.wait(timeout=5)
+        try:
+            assert _exclusive_lock_available(writer_lock) is True
+            assert _exclusive_lock_available(maintenance_lock) is False
+        finally:
+            release_projection.set()
+        assert future.result(timeout=5) == expected_report
+
+    assert calls == 1
+
+
+def test_primary_connection_is_closed_when_snapshot_setup_exits_with_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = sqlite3.connect(":memory:")
+    verifier = sqlite3.connect(":memory:")
+    binding = object()
+
+    @contextlib.contextmanager
+    def fail_after_setup(_path: Path):
+        yield
+        raise OSError("injected setup cleanup failure")
+
+    monkeypatch.setattr(
+        projection_module,
+        "read_model_snapshot_lock",
+        fail_after_setup,
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "read_model_snapshot_open_lock",
+        lambda _path: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "_open_receipt_database_ro",
+        lambda _path: (primary, binding),
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "_connection_epoch_evidence",
+        lambda _conn: ("same-epoch",),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "_open_bound_receipt_database_ro",
+        lambda _binding: verifier,
+    )
+
+    with pytest.raises(RuntimeProjectionError, match="projection failed closed"):
+        with projection_module.open_verified_read_model_snapshot(
+            Path("/private/tmp/unused.sqlite")
+        ):
+            pass
+    with pytest.raises(sqlite3.ProgrammingError):
+        primary.execute("SELECT 1")
+    with pytest.raises(sqlite3.ProgrammingError):
+        verifier.execute("SELECT 1")
+
+
+def test_primary_connection_is_closed_when_lightweight_verifier_open_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = sqlite3.connect(":memory:")
+    binding = object()
+    monkeypatch.setattr(
+        projection_module,
+        "read_model_snapshot_lock",
+        lambda _path: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "read_model_snapshot_open_lock",
+        lambda _path: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "_open_receipt_database_ro",
+        lambda _path: (primary, binding),
+    )
+    monkeypatch.setattr(
+        projection_module,
+        "_connection_epoch_evidence",
+        lambda _conn: ("same-epoch",),
+        raising=False,
+    )
+
+    def fail_verifier(_binding: object) -> sqlite3.Connection:
+        raise RuntimeProjectionError("injected verifier failure")
+
+    monkeypatch.setattr(
+        projection_module,
+        "_open_bound_receipt_database_ro",
+        fail_verifier,
+    )
+
+    with pytest.raises(RuntimeProjectionError, match="injected verifier failure"):
+        with projection_module.open_verified_read_model_snapshot(
+            Path("/private/tmp/unused.sqlite")
+        ):
+            pass
+    with pytest.raises(sqlite3.ProgrammingError):
+        primary.execute("SELECT 1")
+
+
+def test_backwards_receipt_chronology_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-backwards",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    payload["finished_at"] = "2026-07-15T00:59:59+00:00"
+    conn.execute(
+        "UPDATE market_ingest_runs SET finished_at = ?, notes = ? WHERE run_id = ?",
+        (payload["finished_at"], _canonical_json(payload), receipt_id),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("receipt_chronology_invalid",)
+
+
+def test_equal_started_and_finished_timestamps_are_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-instant",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:00:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+
+
+def test_future_receipt_cannot_override_current_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-old-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-current-failed",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through=None,
+    )
+    future_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-future",
+        started_at="2030-01-01T00:00:00+00:00",
+        finished_at="2030-01-01T00:01:00+00:00",
+        data_through="2030-01-01T00:00:00+00:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.receipt_id == future_receipt_id
+    assert projection.reasons == ("receipt_timestamp_in_future",)
+
+
+def test_future_data_through_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-future-data",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T01:00:00+00:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 59, 59, 999999, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through is None
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("data_through_in_future",)
+
+
+def test_receipt_and_data_through_equal_to_now_are_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-now-boundary",
+        started_at="2026-07-15T00:01:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:01:00+00:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+
+
+def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T03:00:00+00:00",
+        finished_at="2026-07-15T03:01:00+00:00",
+        data_through="2026-07-15T12:00:00",
+    )
+    dataset = _dataset(freshness_sla_seconds=3_600)
+    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+
+    exact = project_dataset_runtime(conn, dataset, now=boundary)
+    stale = project_dataset_runtime(
+        conn,
+        dataset,
+        now=boundary + timedelta(microseconds=1),
+    )
+
+    assert exact.state == "success"
+    assert exact.degraded is False
+    assert stale.state == "stale"
+    assert stale.degraded is True
+    assert stale.reasons == ("freshness_sla_exceeded",)
+
+
+def test_empty_receipt_also_transitions_to_stale_after_the_sla_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id="attempt-empty",
+        started_at="2026-07-15T03:00:00+00:00",
+        finished_at="2026-07-15T03:01:00+00:00",
+        data_through="2026-07-15T12:00:00",
+    )
+    dataset = _dataset(freshness_sla_seconds=3_600)
+    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+
+    exact = project_dataset_runtime(conn, dataset, now=boundary)
+    stale = project_dataset_runtime(
+        conn,
+        dataset,
+        now=boundary + timedelta(microseconds=1),
+    )
+
+    assert exact.state == "empty"
+    assert exact.degraded is False
+    assert stale.state == "stale"
+    assert stale.degraded is True
+    assert stale.reasons == (
+        "freshness_sla_exceeded",
+        "latest_receipt_empty",
+    )
+
+
+def test_receipt_like_unknown_schema_fails_closed() -> None:
+    conn = _memory_db()
+    receipt_id = "receipt:unknown-schema"
+    payload = {
+        "dataset_id": "cn.equity.daily",
+        "receipt_id": receipt_id,
+        "schema_version": "sharedsignals.ingest_receipt.v999",
+    }
+    conn.execute(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            receipt_id,
+            "2026-07-15T00:00:00+00:00",
+            "2026-07-15T00:01:00+00:00",
+            "success",
+            "cn.equity.daily",
+            1,
+            1,
+            _canonical_json(payload),
+        ),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("unknown_receipt_schema",)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("receipt_id", "receipt:spoofed", "receipt_identity_mismatch"),
+        ("provider", "other-provider", "provider_binding_mismatch"),
+        ("provider_api", "other-api", "provider_binding_mismatch"),
+        ("adapter_version", "other-adapter.v1", "adapter_version_mismatch"),
+        ("target_table", "market_events", "target_table_mismatch"),
+        ("counts.returned", 2, "receipt_counts_invalid"),
+        ("payload_fingerprint", "not-a-sha256", "receipt_payload_invalid"),
+    ],
+)
+def test_identity_binding_adapter_table_and_counts_tampering_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    reason: str,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _tamper_notes(conn, receipt_id, field, value)
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == (reason,)
+
+
+@pytest.mark.parametrize(
+    ("status", "tampered_semantics"),
+    [
+        ("success", "terminal_no_data_transaction"),
+        ("success", "unknown_success_semantics"),
+        ("empty", "storage_failure_before_commit"),
+    ],
+)
+def test_count_semantics_must_match_status_and_count_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    tampered_semantics: str,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status=status,
+        attempt_id=f"attempt-{status}",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through=(
+            "2026-07-15T08:00:00+08:00" if status != "failed" else None
+        ),
+    )
+    _tamper_notes(
+        conn,
+        receipt_id,
+        "counts.count_semantics",
+        tampered_semantics,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("receipt_counts_invalid",)
+
+
+def test_failed_zero_receipt_accepts_terminal_no_data_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-failed",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through=None,
+    )
+    _tamper_notes(
+        conn,
+        receipt_id,
+        "counts.count_semantics",
+        "terminal_no_data_transaction",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("provider_error",)
+
+
+def test_runtime_projection_is_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        projection.state = "failed"  # type: ignore[misc]

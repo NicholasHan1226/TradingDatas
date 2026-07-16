@@ -5,12 +5,12 @@ and reference/market_calendar.py.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sqlite3
 import sys
 import time
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,7 +20,164 @@ _SHARED = Path(__file__).resolve().parents[1]
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))
 
-from pagination import encode_cursor
+from pagination import encode_cursor  # noqa: E402
+
+
+def _runtime_registry(*, active: bool = True, sla_seconds: int = 3_600):
+    from dataset_registry import DatasetRegistry, load_dataset_registry
+
+    base = load_dataset_registry().resolve("tushare.daily")
+    binding = replace(
+        base.provider_bindings[0],
+        entitlement_state="active",
+        activation_state="active" if active else "paused",
+    )
+    dataset = replace(
+        base,
+        provider_bindings=(binding,),
+        freshness_sla_seconds=sla_seconds,
+    )
+    return DatasetRegistry((dataset,))
+
+
+def _enable_runtime_read_locks(
+    db_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    maintenance_lock = db_path.parent / "read_model_maintenance.lock"
+    maintenance_lock.touch()
+    (db_path.parent / f".{db_path.name}.read_model_store.lock").touch()
+    monkeypatch.setenv(
+        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
+        str(maintenance_lock),
+    )
+
+
+def _insert_runtime_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: sqlite3.Connection,
+    *,
+    status: str,
+    attempt_id: str,
+    started_at: str,
+    finished_at: str,
+    data_through: str | None,
+) -> str:
+    import storage.ingest_receipts as receipt_module
+    from storage.ingest_receipts import (
+        IngestContext,
+        IngestCounts,
+        insert_ingest_receipt,
+    )
+
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
+    if status == "success":
+        counts = IngestCounts(
+            returned=1,
+            validated=1,
+            inserted=1,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=1,
+            count_semantics="exact_row_outcomes",
+        )
+        target_table = "market_bars_daily"
+        errors: tuple[str, ...] = ()
+    else:
+        counts = IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics="terminal_no_data_transaction",
+        )
+        target_table = None
+        errors = ("provider_error",) if status == "failed" else ()
+    receipt_id = insert_ingest_receipt(
+        conn,
+        context=IngestContext(
+            attempt_id=attempt_id,
+            dataset_id="cn.equity.daily",
+            provider="tushare",
+            provider_api="daily",
+            request_window={"trade_date": "20260715"},
+            config_hash="a" * 64,
+            adapter_version="tushare-direct-sqlite.v1",
+            started_at=started_at,
+            data_through=data_through,
+        ),
+        target_table=target_table,
+        transaction_index=0,
+        status=status,
+        counts=counts,
+        errors=errors,
+        payload_fingerprint="b" * 64,
+    )
+    conn.commit()
+    return receipt_id
+
+
+def _runtime_daily_db(
+    db_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    latest_status: str = "success",
+    data_through: str = "2026-07-15T12:00:00",
+) -> None:
+    from storage.schema import SCHEMA_SQL
+
+    _enable_runtime_read_locks(db_path, monkeypatch)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT INTO market_bars_daily (
+                market, symbol, trade_date, open, high, low, close,
+                volume, amount, provider, source_file, collected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "Ashare",
+                "600000.SH",
+                "20260715",
+                9.0,
+                9.1,
+                8.9,
+                9.0,
+                2_000.0,
+                488_055.0,
+                "tushare_daily",
+                "runtime-test",
+                "2026-07-15T04:00:00+00:00",
+                "{}",
+            ),
+        )
+        _insert_runtime_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id="attempt-success",
+            started_at="2026-07-15T03:00:00+00:00",
+            finished_at="2026-07-15T03:01:00+00:00",
+            data_through=data_through,
+        )
+        if latest_status != "success":
+            _insert_runtime_receipt(
+                monkeypatch,
+                conn,
+                status=latest_status,
+                attempt_id=f"attempt-{latest_status}",
+                started_at="2026-07-15T04:00:00+00:00",
+                finished_at="2026-07-15T04:01:00+00:00",
+                data_through=None,
+            )
+    finally:
+        conn.close()
 
 
 # ============================================================================
@@ -44,7 +201,6 @@ class TestSchemaSQL:
             "market_backfill_status", "provider_interface_matrix",
             "market_relationships", "market_fund_portfolio",
         ]
-        schema_upper = SCHEMA_SQL.upper()
         for table in required_tables:
             assert f"CREATE TABLE IF NOT EXISTS {table}" in SCHEMA_SQL, \
                 f"Missing table: {table}"
@@ -644,6 +800,7 @@ class TestReaderEvents:
         finally:
             conn.close()
 
+        _enable_runtime_read_locks(db_path, monkeypatch)
         monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
         reader.clear_caches()
 
@@ -693,6 +850,7 @@ class TestReaderEvents:
         finally:
             conn.close()
 
+        _enable_runtime_read_locks(db_path, monkeypatch)
         monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
         reader.clear_caches()
 
@@ -730,6 +888,7 @@ class TestReaderEvents:
         finally:
             conn.close()
 
+        _enable_runtime_read_locks(db_path, monkeypatch)
         monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
         reader.clear_caches()
 
@@ -738,6 +897,240 @@ class TestReaderEvents:
         assert [row["data"]["symbol"] for row in rows] == ["600000.SH"]
         assert rows[0]["data"]["trade_date"] == "20260708"
         assert rows[0]["data"]["market"] == "Ashare"
+
+    def test_get_tushare_preserves_rows_and_overlays_latest_failed_receipt(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        _runtime_daily_db(db_path, monkeypatch, latest_status="failed")
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        monkeypatch.setattr(
+            reader,
+            "load_dataset_registry",
+            lambda: _runtime_registry(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            reader,
+            "_now",
+            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
+        )
+        reader.clear_caches()
+
+        rows = reader.get_tushare("daily", limit=10)
+
+        assert [row["data"]["symbol"] for row in rows] == ["600000.SH"]
+        assert rows[0]["degraded"] is True
+        assert rows[0]["degraded_reasons"] == ["provider_error"]
+        assert rows[0]["quality"]["score"] > 0
+        assert rows[0]["freshness"]["runtime_state"] == "failed"
+        assert rows[0]["freshness"]["data_through"] == "2026-07-15T12:00:00"
+        assert rows[0]["lineage"]["runtime"] == {
+            "authority": "sqlite_ingest_receipts",
+            "dataset_id": "cn.equity.daily",
+            "state": "failed",
+            "data_through": "2026-07-15T12:00:00",
+            "observed_at": "2026-07-15T04:01:00+00:00",
+            "receipt_id": rows[0]["lineage"]["runtime"]["receipt_id"],
+            "reasons": ["provider_error"],
+        }
+
+    @pytest.mark.parametrize("failure_mode", ["missing", "damaged"])
+    def test_get_tushare_discards_cached_rows_when_sqlite_authority_is_unavailable(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        failure_mode: str,
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        _runtime_daily_db(db_path, monkeypatch)
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        monkeypatch.setattr(
+            reader,
+            "load_dataset_registry",
+            lambda: _runtime_registry(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            reader,
+            "_now",
+            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
+        )
+        reader.clear_caches()
+        assert reader.get_tushare("daily")[0]["data"]["symbol"] == "600000.SH"
+
+        if failure_mode == "missing":
+            db_path.unlink()
+        else:
+            db_path.write_bytes(b"not a SQLite database")
+
+        rows = reader.get_tushare("daily")
+
+        assert len(rows) == 1
+        assert rows[0]["data"] == {}
+        assert rows[0]["degraded"] is True
+        assert rows[0]["freshness"]["stale"] is True
+        assert rows[0]["lineage"]["runtime"]["state"] == "failed"
+        assert rows[0]["lineage"]["runtime"]["authority"] == (
+            "sqlite_ingest_receipts"
+        )
+        assert rows[0]["lineage"]["runtime"]["dataset_id"] == "cn.equity.daily"
+        assert rows[0]["lineage"]["runtime"]["reasons"] == [
+            "receipt_database_unavailable"
+        ]
+        assert rows[0]["freshness"]["runtime_state"] == "failed"
+        assert rows[0]["degraded_reasons"] == [
+            "receipt_database_unavailable"
+        ]
+        if failure_mode == "missing":
+            assert not db_path.exists()
+
+    def test_get_tushare_reprojects_wall_clock_staleness_without_data_cache_reset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        _runtime_daily_db(db_path, monkeypatch)
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        monkeypatch.setattr(
+            reader,
+            "load_dataset_registry",
+            lambda: _runtime_registry(sla_seconds=3_600),
+            raising=False,
+        )
+        clock = {"now": datetime(2026, 7, 15, 5, tzinfo=timezone.utc)}
+        monkeypatch.setattr(reader, "_now", lambda: clock["now"])
+        reader.clear_caches()
+
+        exact = reader.get_tushare("daily")
+        clock["now"] += timedelta(microseconds=1)
+        stale = reader.get_tushare("daily")
+
+        assert exact[0]["freshness"]["runtime_state"] == "success"
+        assert exact[0]["degraded"] is False
+        assert stale[0]["freshness"]["runtime_state"] == "stale"
+        assert stale[0]["freshness"]["stale"] is True
+        assert stale[0]["degraded"] is True
+
+    def test_get_tushare_reprojects_registry_change_without_data_cache_reset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        _runtime_daily_db(db_path, monkeypatch)
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        registry_state = {"active": True}
+        monkeypatch.setattr(
+            reader,
+            "load_dataset_registry",
+            lambda: _runtime_registry(active=registry_state["active"]),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            reader,
+            "_now",
+            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
+        )
+        reader.clear_caches()
+
+        active = reader.get_tushare("daily")
+        registry_state["active"] = False
+        paused = reader.get_tushare("daily")
+
+        assert active[0]["freshness"]["runtime_state"] == "success"
+        assert paused[0]["freshness"]["runtime_state"] == "paused"
+        assert paused[0]["degraded"] is True
+        assert paused[0]["lineage"]["runtime"]["reasons"] == [
+            "registry_activation_paused"
+        ]
+
+    def test_get_tushare_keeps_data_and_receipt_in_one_wal_snapshot(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import reader
+
+        db_path = tmp_path / "marketdata.sqlite"
+        _runtime_daily_db(db_path, monkeypatch)
+        writer = sqlite3.connect(db_path)
+        assert writer.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+        writer.execute("PRAGMA wal_autocheckpoint = 0")
+        writer.execute(
+            "UPDATE market_bars_daily SET source_file = 'initial-wal-epoch' "
+            "WHERE symbol = '600000.SH'"
+        )
+        writer.commit()
+        monkeypatch.setattr(reader, "SQLITE_PATH", db_path)
+        monkeypatch.setattr(
+            reader,
+            "load_dataset_registry",
+            lambda: _runtime_registry(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            reader,
+            "_now",
+            lambda: datetime(2026, 7, 15, 5, tzinfo=timezone.utc),
+        )
+        reader.clear_caches()
+        original_query = reader._query_tushare_rows
+        calls = 0
+        new_receipt_id: str | None = None
+
+        def query_then_commit(*args, **kwargs):
+            nonlocal calls, new_receipt_id
+            result = original_query(*args, **kwargs)
+            calls += 1
+            if calls == 1:
+                writer.execute(
+                    """
+                    INSERT INTO market_bars_daily (
+                        market, symbol, trade_date, open, high, low, close,
+                        volume, amount, provider, source_file, collected_at, raw_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "Ashare", "000001.SZ", "20260716", 10.0, 10.2, 9.9,
+                        10.1, 1_000.0, 10_100.0, "tushare_daily", "new-epoch",
+                        "2026-07-16T04:00:00+00:00", "{}",
+                    ),
+                )
+                new_receipt_id = _insert_runtime_receipt(
+                    monkeypatch,
+                    writer,
+                    status="success",
+                    attempt_id="attempt-new-epoch",
+                    started_at="2026-07-15T04:30:00+00:00",
+                    finished_at="2026-07-15T04:31:00+00:00",
+                    data_through="2026-07-15T12:00:00",
+                )
+            return result
+
+        monkeypatch.setattr(reader, "_query_tushare_rows", query_then_commit)
+        try:
+            first = reader.get_tushare("daily", limit=10)
+            second = reader.get_tushare("daily", limit=10)
+        finally:
+            writer.close()
+
+        assert first[0]["data"], first
+        assert [row["data"]["symbol"] for row in first] == ["600000.SH"]
+        assert first[0]["lineage"]["runtime"]["receipt_id"] != new_receipt_id
+        assert [row["data"]["symbol"] for row in second] == ["000001.SZ"]
+        assert second[0]["lineage"]["runtime"]["receipt_id"] == new_receipt_id
 
     def test_get_events_filters_market_and_code_variants(self, tmp_path: Path, monkeypatch):
         import reader

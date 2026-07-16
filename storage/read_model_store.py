@@ -10,7 +10,9 @@ import fcntl
 import hashlib
 import json
 import logging
+import os
 import re
+import stat
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
@@ -18,7 +20,7 @@ from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 import dataset_registry as dataset_registry_contract
 from storage.event_identity import (
@@ -48,6 +50,11 @@ MAX_TRANSACTION_ROWS = env_int(
 DB_BUSY_RETRIES = env_int("SHAREDSIGNALS_READ_MODEL_DB_RETRIES", 3, min_value=1)
 
 DEFAULT_SQLITE_PATH = marketdata_sqlite_path()
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class ReadModelLockError(RuntimeError):
+    """A required read-model coordination lock is missing or unsafe."""
 
 
 class StorageAuthorityError(RuntimeError):
@@ -97,26 +104,189 @@ def _read_model_lock_path(db_path: Path) -> Path:
 
 
 @contextmanager
-def _read_model_lock(db_path: Path):
-    timeout = env_int("SHAREDSIGNALS_READ_MODEL_LOCK_TIMEOUT", 180, min_value=0)
-    lock_path = _read_model_lock_path(db_path)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + timeout
-    with lock_path.open("a+") as handle:
+def _file_lock(
+    lock_path: Path,
+    *,
+    mode: Literal["shared", "exclusive"],
+    create: bool,
+    timeout: float,
+):
+    lock_path = Path(os.path.abspath(os.fspath(lock_path)))
+    if create:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pre_open: os.stat_result | None
+    try:
+        pre_open = os.lstat(lock_path)
+    except FileNotFoundError:
+        if not create:
+            raise ReadModelLockError(
+                f"read model lock unavailable: {lock_path}"
+            ) from None
+        pre_open = None
+    except OSError as exc:
+        raise ReadModelLockError(
+            f"read model lock unavailable: {lock_path}"
+        ) from exc
+
+    def require_trusted(metadata: os.stat_result) -> None:
+        trusted_owners = {0, os.geteuid()}
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or bool(metadata.st_mode & stat.S_IWOTH)
+            or metadata.st_uid not in trusted_owners
+        ):
+            raise ReadModelLockError(f"read model lock is unsafe: {lock_path}")
+
+    if pre_open is not None:
+        require_trusted(pre_open)
+
+    flags = os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_RDONLY
+    if create:
+        flags = (
+            os.O_CLOEXEC
+            | os.O_NOFOLLOW
+            | os.O_NONBLOCK
+            | os.O_RDWR
+            | os.O_CREAT
+        )
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(lock_path, flags, 0o660)
+        opened = os.fstat(descriptor)
+        observed = os.lstat(lock_path)
+        require_trusted(opened)
+        require_trusted(observed)
+        if (
+            (opened.st_dev, opened.st_ino) != (observed.st_dev, observed.st_ino)
+            or (
+                pre_open is not None
+                and (opened.st_dev, opened.st_ino)
+                != (pre_open.st_dev, pre_open.st_ino)
+            )
+        ):
+            raise ReadModelLockError(f"read model lock is unsafe: {lock_path}")
+        operation = fcntl.LOCK_SH if mode == "shared" else fcntl.LOCK_EX
+        deadline = time.monotonic() + timeout
         while True:
             try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, operation | fcntl.LOCK_NB)
                 break
             except BlockingIOError as exc:
                 if timeout <= 0 or time.monotonic() >= deadline:
                     raise TimeoutError(
-                        f"timed out waiting for read model store lock: {lock_path}"
+                        f"timed out waiting for read model lock: {lock_path}"
                     ) from exc
                 time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
+        observed = os.lstat(lock_path)
+        require_trusted(observed)
+        if (opened.st_dev, opened.st_ino) != (observed.st_dev, observed.st_ino):
+            raise ReadModelLockError(f"read model lock changed: {lock_path}")
+    except (ReadModelLockError, TimeoutError):
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
+    except OSError as exc:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise ReadModelLockError(f"read model lock changed: {lock_path}") from exc
+
+    completed = False
+    try:
+        yield
+        completed = True
+    finally:
         try:
-            yield
+            if completed:
+                try:
+                    observed = os.lstat(lock_path)
+                    require_trusted(observed)
+                except OSError as exc:
+                    raise ReadModelLockError(
+                        f"read model lock changed: {lock_path}"
+                    ) from exc
+                if (opened.st_dev, opened.st_ino) != (
+                    observed.st_dev,
+                    observed.st_ino,
+                ):
+                    raise ReadModelLockError(
+                        f"read model lock changed: {lock_path}"
+                    )
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            os.close(descriptor)
+
+
+@contextmanager
+def read_model_lock(
+    db_path: Path,
+    *,
+    mode: Literal["shared", "exclusive"],
+    create: bool = False,
+    timeout: float | None = None,
+):
+    """Coordinate readers and writers without silently creating reader locks."""
+
+    if mode not in {"shared", "exclusive"}:
+        raise ValueError("mode must be 'shared' or 'exclusive'")
+    if mode == "shared" and create:
+        raise ValueError("shared readers must not create coordination locks")
+    effective_timeout = (
+        float(env_int("SHAREDSIGNALS_READ_MODEL_LOCK_TIMEOUT", 180, min_value=0))
+        if timeout is None
+        else max(0.0, float(timeout))
+    )
+    with _file_lock(
+        _read_model_lock_path(Path(db_path)),
+        mode=mode,
+        create=create,
+        timeout=effective_timeout,
+    ):
+        yield
+
+
+def _maintenance_lock_path() -> Path:
+    configured = os.environ.get("SHAREDSIGNALS_MAINTENANCE_LOCK_FILE")
+    return Path(configured) if configured else ROOT / "logs/locks/read_model_maintenance.lock"
+
+
+def _read_model_read_lock_timeout() -> float:
+    return float(
+        env_int("SHAREDSIGNALS_READ_MODEL_READ_LOCK_TIMEOUT", 0, min_value=0)
+    )
+
+
+@contextmanager
+def read_model_snapshot_lock(db_path: Path):
+    """Hold the maintenance shared lock for one canonical read snapshot."""
+
+    del db_path
+    with _file_lock(
+        _maintenance_lock_path(),
+        mode="shared",
+        create=False,
+        timeout=_read_model_read_lock_timeout(),
+    ):
+        yield
+
+
+@contextmanager
+def read_model_snapshot_open_lock(db_path: Path):
+    """Hold the writer lock only while opening and binding a read transaction."""
+
+    with read_model_lock(
+        Path(db_path),
+        mode="shared",
+        create=False,
+        timeout=_read_model_read_lock_timeout(),
+    ):
+        yield
+
+
+@contextmanager
+def _read_model_lock(db_path: Path):
+    with read_model_lock(Path(db_path), mode="exclusive", create=True):
+        yield
 
 
 TUSHARE_API_TO_TABLE_MAP = dataset_registry_contract.TUSHARE_API_TO_TABLE_MAP
