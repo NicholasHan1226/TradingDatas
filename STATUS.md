@@ -18,7 +18,7 @@
 - SharedSignals `origin/main` 最后核对为 `d913d32c`。
 - 本地 `main` 为 `c127599`，比 `origin/main` 领先 3 个已审计设计/退役计划文档提交；tracked/index clean，`.codegraphcontext/` 保持 untracked、unstaged。
 - Phase 1 主候选 worktree：`.worktrees/sharedsignals-external-data-phase1`。
-- Phase 1 主候选 HEAD：`e73c06d`，已吸收 provider-neutral registry、provider outcome、atomic receipt、Task 9 Tushare authoritative receipt 与 Task 10 SQLite runtime projection；未 push、未 deploy。
+- Phase 1 主候选已包含代码 checkpoint `09927f1`，并吸收 provider-neutral registry、provider outcome、atomic receipt、Task 9 Tushare authoritative receipt、Task 10 SQLite runtime projection、anti-drift 文档和 unmapped receipt 隔离修复；当前 doc-only descendant HEAD 以 `git rev-parse HEAD` 为准，未 push、未 deploy。
 - 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
 
 ## Phase 1 当前进度
@@ -38,16 +38,23 @@
 - 当前合同：同一 SQLite read transaction 返回 data + receipt；只做一次完整 projection；maintenance lock 覆盖 snapshot，writer open lock 只覆盖绑定/open/BEGIN/schema read；不让持续读饿死采集 writer。
 - 精确 14 文件已逐字节吸收到 Phase 1 主候选，并形成本地提交 `e73c06d refactor: project source runtime from SQLite receipts`；与本轮 anti-drift 文档/测试合并后的 Python 3.12 全仓为 `1581 passed`，Ruff、compileall、`git diff --check` 通过。它仍未 push 或生产发布。
 
+### Task 12 交叉层修复
+
+- 最终独立验收发现一个确定性 P1：Task 9 合法 `unmapped.tushare.<digest>` terminal receipt 被 Task 10 当作全局 rogue unknown，污染所有 dataset/interface 状态；原冻结 `435acee` 因此作废。
+- 本地提交 `09927f1 fix: isolate unmapped ingest receipts` 已按 TDD 收口：只有真实 registry alias miss 可生成 synthetic tombstone；已知 dataset 的 binding/adapter/table 故障保留 owner identity 并 fail closed；合法 tombstone 精确绑定 provider/API/digest/adapter/status/error/count/window/UUID/time/envelope/receipt ID，分类不依赖当前 dataset 或未来 onboarding；所有形似但不完整的 unknown receipt 继续 fail closed。
+- 当前候选定向 `244 passed`、Python 3.12 全仓 `1593 passed`，精确 Ruff、collector 既有 E701 例外、`git diff --check` 全绿；fresh 独立 reviewer PASS（P0/P1=0）。这仍只授权 local main fast-forward，不能代替 GitHub 或生产验收。
+- Phase 1 不新增全局 unmapped audit API 字段。SQLite tombstone 继续保留为 durable evidence；未来若公开全局 audit bucket，必须另行定义 latest/resolution 语义，避免历史事件永久把整体状态置红。
+
 ### Task 11：核心文档与防漂移门禁
 
 - `AGENTS.md`、`README.md`、`STATUS.md`、目标 API 合同、registry/receipt/onboarding/recovery 文档和 Phase 1 规格已统一到外部数据平台边界。
 - 三个会把旧 `P0-P7`、5 分钟交易口径、`stock_master` 专用公共路由和旧扩源文件重新写回核心文档的测试已改为新 authority/fixed-API/legacy-compatibility 契约。
 - 旧 external-agent prompt、Tushare activation backlog 与 event lane 已明确标注为 migration inventory/compatibility，而不是目标 API、runtime authority 或生产可用证明。
-- 文档定向门禁 `7/7`、Task 9+10+文档 union 全仓 `1581/1581`；fresh 独立文档审阅仍在进行，PASS 前不提交。
+- 文档定向门禁、Task 9+10+文档 union 全仓 `1581/1581`；fresh 独立 anti-drift 文档审阅 PASS（P0/P1/P2=0），对应本地提交为 `afa7f3b` 与 `435acee`。
 
 ### 未完成
 
-- Phase 1 Task 11 fresh PASS/精确提交、Task 12 全量冻结/独立验收。
+- Phase 1 候选到 local main 的精确 fast-forward/readback。
 - Phase 2 固定 `GET /v1/catalog`、`POST /v1/query`、signed keyset cursor、同 snapshot metadata/query 和 `/tushare` compatibility adapter。
 - Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
 - Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
@@ -79,9 +86,9 @@
 
 ## 下一步
 
-1. 收口 Task 11 fresh 文档审阅，按精确路径提交 anti-drift 文档/测试；不得使用 `git add .`。
-2. 执行 Phase 1 Task 12 全量冻结、fresh 独立验收和 local commit chain readback。
-3. Phase 1 PASS 后实现固定 `/v1/catalog`、`/v1/query` 和 `/tushare` compatibility adapter。
+1. 只把 fresh PASS 候选 fast-forward 到 local main，核对 tracked/index clean 并保留 `.codegraphcontext/`；不得使用 `git add .`，不得自动 push/deploy。
+2. 从 local main fresh readback Phase 1 commit chain、核心文档和定向 smoke；本地 PASS 不能替代 GitHub/生产。
+3. Phase 1 local main PASS 后实现固定 `/v1/catalog`、`/v1/query` 和 `/tushare` compatibility adapter。
 4. 再并行推进境内采集调度与受邀账户治理；共享合同只能有一个 owner。
 5. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
 
