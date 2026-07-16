@@ -1,8 +1,8 @@
 # SharedSignals Phase 2 Query Service Contract
 
-> 状态：本文件冻结 provider-neutral V1 query contract。当前 Task 1 只完成 registry 与
-> request-contract 候选；HTTP handler、SQLite QueryService、signed cursor、legacy adapter、
-> GitHub、生产 runtime、external route 和真实 tenant query 仍未完成，不能称为已上线。
+> 状态：本文件冻结 provider-neutral V1 query contract。当前 Task 1 registry/request contract 与
+> Task 2 signed-cursor 仅形成隔离工作树本地候选；HTTP handler、SQLite QueryService、legacy
+> adapter、GitHub、生产 runtime、external route 和真实 tenant query 仍未完成，不能称为已上线。
 
 ## 边界与权威
 
@@ -186,10 +186,25 @@ normalized query hash 不包含 cursor token 本身，但绑定 resolved dataset
 canonical filters/order、requested/resolved as-of、limit、全部 internal execution options 和 resolved
 partition。对象 key 顺序不改变 hash；任何影响结果的差异必须改变 hash。
 
-signed keyset cursor 还绑定 `catalog_version`、access `policy_id`、receipt watermark、最后 sort tuple
-与 expiry。以下任一变化必须拒绝旧 cursor：dataset、schema major、normalized query、tenant/scopes、
-exact dataset grant、catalog contract、receipt snapshot、requested/resolved as-of、internal options、
-resolved partition 或 TTL。格式/签名错误返回 400；合法 token 与当前 contract/snapshot 不匹配返回 409。
+signed keyset cursor 是两个以单个 `.` 分隔的 non-empty、unpadded base64url segment；只接受
+`[A-Za-z0-9_-]`，解码后必须能逐字节重新编码为原 segment。payload 是 compact、sorted-key、
+`allow_nan=false` 的 canonical UTF-8 JSON，固定键为 `v`、`kind`、`catalog_version`、`dataset_id`、
+`schema_major`、`query_hash`、`policy_id`、`receipt_watermark`、`sort_key` 和 `expires_at`，当前只接受
+native integer `v=1`。`kind=catalog` 时 dataset/schema 必须为 null；`kind=query` 时必须是 canonical
+dataset ID 与 native positive schema major。`sort_key` 只允许 finite JSON scalar tuple，禁止 nested
+container、NaN 或 infinity。
+
+token 使用 HMAC-SHA256 保护完整性，并不加密；有效 keyset sort values（包括隐藏 SQLite rowid
+tie-breaker 的值）可能被解码，但 payload 不得携带其它 hidden row、path、SQL、credential、provider
+token，`data` 也不得返回 `__ss_rowid`。签名密钥只在构造 V1/compatibility service 时由
+`SHAREDSIGNALS_CURSOR_SIGNING_KEY` lazy 读取，UTF-8 编码后至少 32 bytes；无默认、fallback 或
+import-time 读取，缺失/空/短/不可编码配置属于 503，而不是 client cursor 错误。
+
+验证顺序固定为 strict envelope/base64url → constant-time HMAC → canonical JSON/schema → expiry →
+expected binding。expiry 使用 timezone-aware server clock，`expires_at <= floor(now.timestamp())` 即失效；
+naive/无效 server clock 属于 503 配置错误。malformed、签名错误、不支持版本或过期 token 返回 400；
+合法签名 token 与当前 kind/catalog/dataset/schema/query/policy/receipt 任一绑定不匹配返回 409。公开错误
+只给 category，不回显 token、claims、sort values、secret、path、SQL 或 expected/actual value。
 
 ## Error contract
 
@@ -202,7 +217,7 @@ resolved partition 或 TTL。格式/签名错误返回 400；合法 token 与当
 | 409 | cursor 与 dataset/schema/query/policy/catalog/receipt snapshot 不匹配 |
 | 413 | request/response、field/filter/`in`/order/page/lookback 预算超限 |
 | 429 | rate、concurrency 或 quota 超限（Phase 4 持久治理） |
-| 503 | verified read model 不可用或 SQLite capacity/progress budget 用尽 |
+| 503 | verified read model、cursor signing key/server clock 不可用，或 SQLite capacity/progress budget 用尽 |
 | 500 | 内部错误；不得回显 stack trace、path、SQL 或 secret |
 
 ## Phase 2 access limitation
