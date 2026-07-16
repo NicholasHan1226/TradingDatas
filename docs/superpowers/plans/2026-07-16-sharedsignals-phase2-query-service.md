@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Checkboxes are the reproducible execution checklist, not current-state authority; accepted commits, reviews, and remaining work belong only in `STATUS.md`.
 
-**Goal:** Implement the fixed provider-neutral `GET /v1/catalog` and `POST /v1/query` data plane, bind every response to one verified SQLite facts-and-receipts snapshot, add signed keyset pagination, and migrate `/tushare` plus the single-dataset `/reference?table=stock_master` compatibility endpoint to the same query service without changing the database schema or production runtime.
+**Goal:** Implement the fixed provider-neutral `GET /v1/catalog` and `POST /v1/query` data plane, bind every response to one verified SQLite facts-and-receipts snapshot, add signed keyset pagination, and migrate `/tushare` plus the single-dataset `/reference?table=stock_master` compatibility endpoint to the same query service without changing the database schema or production runtime. The migration makes the legacy reads bounded cursor surfaces and keeps production release blocked until every known 5,000/6,000-row consumer has moved to explicit cursor exhaustion.
 
 **Architecture:** `DatasetRegistry` remains the catalog and query-policy authority. `CatalogService` combines registry definitions with one `project_registry_runtime()` result from a verified read-only SQLite snapshot. `QueryService` validates a provider-neutral request, compiles only registry-approved identifiers and operators, reads rows and the dataset runtime projection inside the same `open_verified_read_model_snapshot()` context, and returns a stable V1 envelope. `SignedCursorCodec` binds catalog version, dataset/schema, normalized query, access policy, receipt watermark, sort tuple, and expiry. Legacy adapters translate old request parameters into the same `QueryRequest`; they do not retain SQL, file, cache, or provider fallbacks.
 
@@ -14,6 +14,7 @@
 - Do not push, deploy, restart services, modify production, enable cron, call Tushare, send email, migrate a database, or perform an irreversible action.
 - Do not stage, delete, or move `.codegraphcontext/`, databases, data, receipts, logs, history, evidence, or retained rollback worktrees.
 - Public data routes remain exactly `GET /v1/catalog` and `POST /v1/query`. Existing endpoints are compatibility surfaces, not templates for new routes.
+- The V1 and migrated compatibility page limit remains `1..500`. A legacy request above 500 returns HTTP 413; it is never clamped, silently truncated, or expanded into hidden multi-page aggregation. Existing 5,000/6,000-row consumers are migration blockers, not reasons to weaken the registry/query-service resource contract.
 - SharedSignals remains factual data infrastructure only. Do not add opening gates, predictions, candidate selection, strategy scores, capital, positions, risk, orders, fills, or trading decisions.
 - Initial activation remains domestic China. Prediction-market, crypto, Hong Kong, US, and other excluded datasets may remain catalog evidence but must not become tenant-visible active query lanes in this phase.
 - SQLite is read-only in catalog/query request paths. Missing database, unsafe binding, missing table/column, malformed receipt, or inconsistent metadata fails closed; no request-time provider, file, sibling-database, or stale-response fallback is allowed.
@@ -713,12 +714,18 @@ def parse_json_body(raw: bytes, *, max_bytes: int) -> object: ...
 
 - Add: `legacy_query_compat.py`
 - Add: `tests/test_legacy_query_compat.py`
+- Modify: `data_plane_runtime.py`
 - Modify: `api_server.py`
 - Modify: `reader.py`
 - Modify: `tests/test_reader.py`
 - Modify: `tests/test_api_server_edge.py`
+- Modify: `tools/health_check.py`
+- Modify: `tools/capability_scan.py`
+- Modify: `tests/test_capability_scan.py`
 - Modify: `API_CONTRACT.md`
 - Modify: `docs/query_service.md`
+- Modify: `docs/external_agent_api_prompt.md`
+- Modify: `docs/market_capability_matrix.md`
 
 **Interfaces:**
 
@@ -732,6 +739,15 @@ class LegacyQueryCompat:
     def tushare_request(self, params: Mapping[str, str]) -> LegacyQueryInvocation: ...
     def stock_master_request(self, params: Mapping[str, str]) -> LegacyQueryInvocation: ...
     def legacy_envelope(self, query_envelope: Mapping[str, object]) -> dict[str, object]: ...
+
+@dataclass(frozen=True)
+class DataPlaneRuntime:
+    registry: DatasetRegistry
+    cursor_codec: SignedCursorCodec
+    catalog: CatalogService
+    query: QueryService
+    legacy: LegacyQueryCompat
+    services: tuple[CatalogService, QueryService]
 ```
 
 - [ ] **Step 1: Freeze the compatibility behavior matrix**
@@ -740,18 +756,25 @@ class LegacyQueryCompat:
 
   - `/tushare?api_name=daily` with symbol/date filters, internal latest-partition behavior, order, and limit;
   - `/tushare` success, empty, unobserved, paused, failed, and stale receipt states;
-  - one representative alias for every registry schema profile: `daily`, `weekly`, `stock_basic`, `daily_basic`, `news`, `concept_detail`, and `fund_portfolio`;
+  - one representative alias for every registry schema profile: `daily`, `weekly`, `stock_basic`, `daily_basic`, `broker_recommend`, `news`, `concept_detail`, and `fund_portfolio`;
   - one parameterized contract test over every imported `tushare.*` alias proving it resolves exactly one active registry definition or returns its honest locked/excluded state, uses only declared fields/options, and never falls back to the old API-to-table map;
   - relationship subject/object OR semantics, asset/provider alias isolation, each profile's canonical date field, fixed registry filters, and default projection;
-  - `/reference?table=stock_master` mapping only to `cn.equity.security_master`, with bounded limit, deterministic order, receipt metadata, and no CSV/file fallback;
+  - `/reference?table=stock_master` mapping only to `cn.equity.security_master`, with default/maximum limit 500, signed cursor, deterministic order, receipt metadata, and no CSV/file fallback;
   - `stock_master` success, empty, unobserved, paused, failed, and stale receipt behavior;
-  - multi-row metadata retaining runtime state, data-through, observed-at, quality evidence, and receipt lineage.
+  - multi-row metadata retaining runtime state, data-through, observed-at, quality evidence, and receipt lineage;
+  - every one of the 114 `tushare.*` aliases resolving to exactly one registry definition or returning its honest excluded/locked state;
+  - strict canonical `limit` parsing in the range 1..500, signed cursor continuation, and HTTP 413 for every value above 500;
+  - two-tenant requests proving the migrated routes bypass the legacy response cache whose key omits tenant/policy state.
 
   Preserve relationship subject/object OR matching through `any_of_eq_filters`. Deliberately stop mixing `tushare_stock_company` rows into either the `tushare.stock_basic` alias or `stock_master`: both resolve only `cn.equity.security_master` and its registry fixed provider discriminator. These corrections must be documented and tested; they are not silent parity claims. The matrix is not permission to retain the legacy SQL implementation.
 
 - [ ] **Step 2: Write RED no-independent-reader tests**
 
   Monkeypatch `_query_tushare_rows`, `_sqlite_rows`, `_connect_sqlite_ro`, request-time provider functions, and file fallbacks to raise if the migrated routes touch them. Assert both routes still work by calling the same `QueryService` instance and therefore use the same snapshot, cursor, metadata, authorization, and resource policy.
+
+  Add RED tests that the lazy runtime publishes one immutable `DataPlaneRuntime`: registry, cursor codec, catalog, query, legacy adapter, and the backward-compatible `(CatalogService, QueryService)` tuple are constructed once and shared by `api_server.py` and `reader.py`. Resetting the test runtime invalidates the complete bundle under one lock; partial construction is never published.
+
+  Add RED tests that `/tushare` and only `/reference?table=stock_master` bypass the old response cache. A cursor or envelope produced for one tenant/policy must never be returned to another tenant. Other legacy endpoints retain their existing cache behavior in this task.
 
   Run and confirm RED:
 
@@ -765,6 +788,8 @@ class LegacyQueryCompat:
 
   The compatibility module may normalize aliases, legacy parameter names, schema-profile symbol fields, registry `range_field`, date formats, limits, legacy error codes, and the old envelope shape. Relationship symbol matching uses the bounded `any_of_eq_filters` option. It may not contain SQL, table names, database paths, provider calls, file reads, independent cursors, or independent metadata aggregation.
 
+  Implement `build_data_plane_runtime()` as the sole lazy constructor and keep `build_data_plane_services()` as a backward-compatible view that returns the same tuple identity on every call. Neither the API server nor reader may reload the registry, access private `QueryService` attributes, or construct another cursor/query service.
+
   `/tushare` resolves `tushare.<api_name>` through the registry. The compatibility scope grant never overrides registry exclusion or the initial domestic-market visibility rule. When a legacy API omits its date window and its registry profile declares `partition_field`, the adapter sets `QueryExecutionOptions.latest_partition=True`; resolution stays inside `QueryService` and the same verified snapshot. The adapter cannot invent a partition field or run a separate `MAX()` connection.
 
   `/reference?table=stock_master` maps to `cn.equity.security_master` and the registry default projection. Any other legacy reference table remains unchanged in this phase and must not be mislabeled as migrated. Missing data or receipt authority remains explicit degraded/empty data; no CSV or file fallback is allowed.
@@ -773,7 +798,9 @@ class LegacyQueryCompat:
 
 - [ ] **Step 4: Remove the migrated independent SQL path**
 
-  Make `reader.get_tushare()` and the `stock_master` branch of `reader.get_reference()` compatibility wrappers over the same lazily constructed service from `data_plane_runtime.py`. Tests may inject the service through an explicit private dependency hook; public Python call signatures remain compatible. Delete or retire `_query_tushare_rows`, the migrated `stock_master` direct-SQL branch, and only the now-unreachable migrated SQL helpers after import/call-site tests prove they have no remaining consumer. Never construct a second query engine.
+  Make `reader.get_tushare()` and the `stock_master` branch of `reader.get_reference()` compatibility wrappers over the same lazily constructed service from `data_plane_runtime.py`. Tests may inject the runtime through an explicit private dependency hook. Keep the callable names and parameter names, but change the legacy default and maximum page size to 500 and expose the signed continuation cursor in the existing response metadata; values above 500 fail explicitly. Delete or retire `_query_tushare_rows`, the migrated `stock_master` direct-SQL branch, and only the now-unreachable migrated SQL helpers after import/call-site tests prove they have no remaining consumer. Never construct a second query engine or hide pagination inside the adapter.
+
+  Update SharedSignals' health/capability smoke calls and migration documents so they request at most one 500-row page and never claim that one response is a complete stock universe. Replace the 6,000/10,000 compatibility promise with the cursor contract. These tools are health probes only; they must not aggregate a universe or become another query engine.
 
 - [ ] **Step 5: Verify and commit Task 6**
 
@@ -781,20 +808,27 @@ class LegacyQueryCompat:
   SHAREDSIGNALS_CURSOR_SIGNING_KEY='phase2-test-signing-key-32-bytes-minimum' \
   uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_legacy_query_compat.py tests/test_reader.py tests/test_api_server_edge.py \
-    tests/test_v1_api.py tests/test_query_service.py
+    tests/test_v1_api.py tests/test_query_service.py tests/test_capability_scan.py
   uv run --python 3.12 --with-requirements requirements.txt ruff check \
-    legacy_query_compat.py api_server.py reader.py \
-    tests/test_legacy_query_compat.py tests/test_reader.py tests/test_api_server_edge.py
+    data_plane_runtime.py legacy_query_compat.py api_server.py reader.py \
+    tools/health_check.py tools/capability_scan.py \
+    tests/test_legacy_query_compat.py tests/test_reader.py tests/test_api_server_edge.py \
+    tests/test_capability_scan.py
   uv run --python 3.12 python -m compileall -q \
-    legacy_query_compat.py api_server.py reader.py
+    data_plane_runtime.py legacy_query_compat.py api_server.py reader.py \
+    tools/health_check.py tools/capability_scan.py
   git diff --check
   git add -- \
-    legacy_query_compat.py api_server.py reader.py \
+    data_plane_runtime.py legacy_query_compat.py api_server.py reader.py \
+    tools/health_check.py tools/capability_scan.py \
     tests/test_legacy_query_compat.py tests/test_reader.py tests/test_api_server_edge.py \
-    API_CONTRACT.md docs/query_service.md
+    tests/test_capability_scan.py API_CONTRACT.md docs/query_service.md \
+    docs/external_agent_api_prompt.md docs/market_capability_matrix.md
   git diff --cached --name-status
   git commit -m "refactor: route legacy data reads through V1"
   ```
+
+  A local Task 6 PASS does not authorize production release. TradingAgent's 5,000-row `/tushare` reader and every MarketGraph/SharedSignals consumer that assumes a non-paged `stock_master` response must first migrate to V1 signed-cursor exhaustion and preserve per-page metadata. Until those cross-repository tests pass, the release gate remains NO-GO.
 
 ## Task 7: Freeze the consumer contract and anti-drift documentation
 
