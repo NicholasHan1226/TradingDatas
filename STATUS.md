@@ -16,9 +16,9 @@
 ## 代码与 Git 分层
 
 - SharedSignals `origin/main` 最后核对为 `d913d32c`。
-- 本地 `main` 为 `c127599`，比 `origin/main` 领先 3 个已审计设计/退役计划文档提交；tracked/index clean，`.codegraphcontext/` 保持 untracked、unstaged。
-- Phase 1 主候选 worktree：`.worktrees/sharedsignals-external-data-phase1`。
-- Phase 1 主候选已包含代码 checkpoint `09927f1`，并吸收 provider-neutral registry、provider outcome、atomic receipt、Task 9 Tushare authoritative receipt、Task 10 SQLite runtime projection、anti-drift 文档和 unmapped receipt 隔离修复；当前 doc-only descendant HEAD 以 `git rev-parse HEAD` 为准，未 push、未 deploy。
+- 本地 `main` 为 `032c208dcd3b727e6ffdd14bc04fde5dbd5314a7`，比 `origin/main` 领先 51 个本地提交；tracked/index clean，`.codegraphcontext/` 保持 untracked、unstaged。该领先数只描述本地 Git 图，不代表 GitHub 或生产已同步。
+- Phase 1 已经 fresh 独立验收并精确 fast-forward 到本地 `main`；最终代码 checkpoint 为 `09927f1`，状态同步提交为 `032c208`。定向 readback、Python 3.12 全仓 `1593 passed`、Ruff/compile/diff 门禁均通过；这些证据仍只属于本地层。
+- Phase 1 保留 worktree：`.worktrees/sharedsignals-external-data-phase1`。在 Phase 2 本地集成和 rollback evidence 齐全前不清理。
 - 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
 
 ## Phase 1 当前进度
@@ -54,8 +54,7 @@
 
 ### 未完成
 
-- Phase 1 候选到 local main 的精确 fast-forward/readback。
-- Phase 2 固定 `GET /v1/catalog`、`POST /v1/query`、signed keyset cursor、同 snapshot metadata/query 和 `/tushare` compatibility adapter。
+- Phase 2 固定 `GET /v1/catalog`、`POST /v1/query`、signed keyset cursor、同 snapshot metadata/query，以及 `/tushare` 与单数据集 `/reference?table=stock_master` 代表性 compatibility adapter。
 - Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
 - Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
 - Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。
@@ -86,10 +85,10 @@
 
 ## 下一步
 
-1. 只把 fresh PASS 候选 fast-forward 到 local main，核对 tracked/index clean 并保留 `.codegraphcontext/`；不得使用 `git add .`，不得自动 push/deploy。
-2. 从 local main fresh readback Phase 1 commit chain、核心文档和定向 smoke；本地 PASS 不能替代 GitHub/生产。
-3. Phase 1 local main PASS 后实现固定 `/v1/catalog`、`/v1/query` 和 `/tushare` compatibility adapter。
-4. 再并行推进境内采集调度与受邀账户治理；共享合同只能有一个 owner。
+1. 按 `docs/superpowers/plans/2026-07-16-sharedsignals-phase2-query-service.md` 在独立 worktree 实现 provider-neutral catalog/query、signed cursor、同 snapshot metadata 和两个代表性 legacy adapter；共享合同只能有一个 owner。
+2. 每个 Task 采用 RED→GREEN→独立 task review，最终再做全分支 clean-overlay review；P0/P1 未清零不得进入本地 `main`。
+3. Phase 2 fresh PASS 后只精确 fast-forward 到 local main 并 readback；不得使用 `git add .`，不得自动 push/deploy。
+4. Phase 3 才推进境内 entitlement/cadence/backfill，Phase 4 才推进受邀账户治理；不得把采集、鉴权、计费或 gateway 顺手塞入 Phase 2。
 5. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
 
 ## 验证入口
