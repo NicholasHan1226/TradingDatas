@@ -127,20 +127,31 @@ def test_stock_master_reference_is_scanned_in_test_only_mode(tmp_path, monkeypat
     assert endpoints["get_reference"]["rows"] == 1
 
 
-def test_stock_master_reference_documentation_keeps_canonical_fail_closed_contract() -> None:
+def test_stock_master_reference_is_legacy_compatibility_not_public_target() -> None:
     contract = Path("API_CONTRACT.md").read_text(encoding="utf-8")
     readme = Path("README.md").read_text(encoding="utf-8")
     status = Path("STATUS.md").read_text(encoding="utf-8")
     matrix = Path("docs/market_capability_matrix.md").read_text(encoding="utf-8")
     prompt = Path("docs/external_agent_api_prompt.md").read_text(encoding="utf-8")
 
-    for document in (contract, readme, status, matrix, prompt):
-        assert "/reference?table=stock_master&limit=6000" in document
-        assert "market_assets" in document
+    for document in (readme, status):
+        assert "GET /v1/catalog" in document
+        assert "POST /v1/query" in document
+        assert "/reference?table=stock_master&limit=6000" not in document
 
+    assert "legacy compatibility surface" in contract
+    assert "Target contract (not yet live)" in contract
+    assert "migration inventory" in matrix
+    assert "Legacy compatibility prompt" in prompt
+
+    assert "/reference?table=stock_master&limit=6000" in contract
+    assert "/reference?table=stock_master&limit=6000" in matrix
+    assert "/reference?table=stock_master&limit=6000" in prompt
+    assert "market_assets" in contract
+    assert "market_assets" in matrix
+    assert "market_assets" in prompt
     assert "最大 10,000" in contract
     assert "缺表或空表" in contract
     assert "provider/CSV fallback" in contract
-    assert "production runtime" in status
     assert "Only `stock_master`" in matrix
     assert "Do not substitute another reference table" in prompt

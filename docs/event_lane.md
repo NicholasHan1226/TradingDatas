@@ -1,6 +1,14 @@
 # SharedSignals Event Lane
 
-Last updated: 2026-07-09
+Last updated: 2026-07-16 (legacy migration classification)
+
+> **Legacy migration inventory — not a target API or runtime guarantee.** The
+> source, cadence and dedicated-route descriptions below document the current
+> compatibility surface. Future announcements, news, research, policy and
+> objective public-opinion datasets join the provider-neutral registry and use
+> `GET /v1/catalog` plus `POST /v1/query`; they do not add public routes. Actual
+> availability comes from SQLite facts and transaction-scoped ingest receipts,
+> not this file, cron text, HTTP 200 or a configured provider name.
 
 ## Purpose
 

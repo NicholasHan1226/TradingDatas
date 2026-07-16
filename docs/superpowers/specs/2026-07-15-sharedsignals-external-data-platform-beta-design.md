@@ -63,6 +63,50 @@ Upstream providers
 
 Existing `/tushare` and dedicated data endpoints remain temporary compatibility adapters. They must call the same query service and must not retain independent provider or storage logic.
 
+### 4.1 Binding anti-drift decision (2026-07-16)
+
+The earlier implementation effort drifted in three ways: SharedSignals absorbed
+trading-readiness/control concerns, a flat JSON runtime ledger was treated as an
+authority, and review requirements expanded after candidates were frozen. Those
+directions are rejected. This section is binding for every later phase.
+
+The only approved authority chain is:
+
+```text
+provider-neutral dataset registry
+→ SQLite facts + transaction-scoped ingest receipts
+→ runtime metadata derived from registry + receipts + read clock
+→ fixed catalog/query API
+```
+
+JSON, email, dashboards, HTTP status, compatibility endpoints, consumer state,
+and configured-interface counts are observations or caches. They cannot become
+data authority and cannot add trading/control semantics to SharedSignals.
+
+#### Acceptance Freeze
+
+Before implementation, each task freezes its product boundary, authoritative
+inputs, public/internal interfaces, exact write scope, threat model, P0/P1
+acceptance cases, stop condition, and rollback. After candidate freeze:
+
+- reviewers test only that approved contract;
+- a new finding blocks only when it is in scope, deterministically reproducible,
+  materially affects data correctness, tenant isolation, or service availability,
+  and is P0/P1;
+- contract-external hardening is recorded as P2/backlog rather than silently
+  expanding the release gate;
+- two successive rounds of new structural P1 findings stop patch accumulation
+  and require an architecture decision;
+- the invite-only Beta assumes cooperative service processes and accidental
+  races; a **same-UID malicious** process is outside this release threat model
+  unless a later security specification explicitly adds it.
+
+The implementation sequence is fixed: approved specification → one provider-to-
+API vertical slice → acceptance freeze → TDD → candidate freeze → fresh clean-
+overlay review → exact integration → safe release and production readback.
+Parallel work begins only after shared contracts are frozen and only across
+non-overlapping write domains.
+
 ## 5. Initial dataset scope
 
 The first release covers domestic-market factual datasets:

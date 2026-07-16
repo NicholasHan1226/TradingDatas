@@ -493,7 +493,7 @@ def test_production_cron_keeps_heavy_jobs_out_of_trading_hot_path() -> None:
         assert offenders == []
 
 
-def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None:
+def test_core_docs_freeze_external_data_platform_and_legacy_boundaries() -> None:
     docs = {
         "AGENTS.md": Path("AGENTS.md").read_text(encoding="utf-8"),
         "README.md": Path("README.md").read_text(encoding="utf-8"),
@@ -518,14 +518,19 @@ def test_core_docs_use_current_tushare_capability_and_agent_boundaries() -> None
     offenders = [token for token in stale_tokens if token in combined]
 
     assert offenders == []
-    assert "P0-P7" in docs["README.md"]
-    assert "5 分钟级" in docs["AGENTS.md"]
-    assert "外部 agent" in docs["API_CONTRACT.md"]
-    assert "/agent_config" in docs["API_CONTRACT.md"]
-    assert "不要绕过 SharedSignals" in docs["docs/external_agent_api_prompt.md"]
-    assert "0 planned" in docs["docs/tushare_activation_backlog.md"]
-    assert "event lane" in docs["docs/event_lane.md"]
-    assert "新增数据源" in docs["docs/data_source_onboarding.md"]
+    for path in ("AGENTS.md", "README.md", "STATUS.md"):
+        assert "独立外部多源金融数据平台" in docs[path]
+        assert "GET /v1/catalog" in docs[path]
+        assert "POST /v1/query" in docs[path]
+        assert "SQLite ingest receipt" in docs[path]
+
+    assert "Target contract (not yet live)" in docs["API_CONTRACT.md"]
+    assert "legacy compatibility surface" in docs["API_CONTRACT.md"]
+    assert "不得按 provider 或 dataset 新增公共路由" in docs["API_CONTRACT.md"]
+    assert "Legacy compatibility prompt" in docs["docs/external_agent_api_prompt.md"]
+    assert "migration inventory" in docs["docs/tushare_activation_backlog.md"]
+    assert "migration inventory" in docs["docs/event_lane.md"]
+    assert "never adds a public route per provider or dataset" in docs["docs/data_source_onboarding.md"]
 
 
 def test_external_agent_config_matches_current_capability_counts() -> None:

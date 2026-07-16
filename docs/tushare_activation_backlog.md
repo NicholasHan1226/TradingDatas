@@ -1,6 +1,14 @@
 # Tushare Activation Backlog
 
-Last updated: 2026-07-10
+Last updated: 2026-07-16 (legacy migration classification)
+
+> **Legacy migration inventory — not runtime authority.** Provider allowlists,
+> configured tiers, batch labels and planned counts below are historical operating
+> inputs. They do not prove entitlement, successful collection, freshness,
+> scheduling or external availability. Target truth comes from the provider-neutral
+> registry, SQLite facts, transaction-scoped ingest receipts and the read clock.
+> New datasets are discovered through `GET /v1/catalog` and queried through
+> `POST /v1/query`; they do not create public routes.
 
 SharedSignals currently has 114 Tushare names in the HTTP read allowlist. Of those, 113 are configured in production collection tiers and `rt_fut_min` is an independent 5-minute futures collector option. 0 planned interfaces remain in the activation backlog.
 

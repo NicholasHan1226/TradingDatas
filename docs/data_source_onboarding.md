@@ -1,142 +1,116 @@
-# SharedSignals Data Source Onboarding
+# SharedSignals Provider and Dataset Onboarding
 
-Last updated: 2026-07-09
+Last updated: 2026-07-16
 
 ## Purpose
 
-This is the minimum governance checklist for adding a new data source or expanding an existing source in SharedSignals.
+This is the mandatory vertical-slice checklist for adding a provider or dataset to the **independent external multi-source financial data platform**. It applies to Tushare and future announcements, news, research, policy, interaction, and objective public-opinion sources.
 
-SharedSignals should scale by market, module, cadence, read-model mapping, and API contract. It should not restore the old generic `collectors/registry.yaml`, CSV/NDJSON staging bridge, provider fallback, or sibling-repo file reads.
+Onboarding extends the provider-neutral dataset registry and fixed query service. **It never adds a public route per provider or dataset.**
 
-The first horizontal expansion queue is tracked in `config/source_expansion_priority.yaml`. Entries in that file are planned-only candidates until their collector, direct SQLite write path, API/read-model exposure, freshness SLA, rate limit, degraded behavior, and tests pass the acceptance gate below.
+## Initial release boundary
 
-Before adding a source, map it to `config/api_module_catalog.yaml`. The catalog defines the canonical module, target read-model tables, reusable HTTP surfaces, cadence class, and the narrow conditions for adding a new endpoint.
+- Initial activation is limited to domestic China datasets and actual current-account entitlements.
+- Prediction markets, cryptocurrency, Hong Kong, United States, and other excluded markets stay `excluded` or `paused`; historical rows are not deleted.
+- Planned/configured/allowlisted does not mean entitled, observed, fresh, queryable, scheduled, or externally available.
+- A request-time reader/API may never call a provider or fall back to CSV/NDJSON/Parquet/old directories.
 
-## 新增数据源原则
+## Required registry declaration
 
-新增数据源必须先进入能力计划和 read-model/API 契约，再进入生产调度。没有直接入库、API 可读、频率声明、降级语义和覆盖测试的源，只能保持 `planned` 或实验状态。
+Every dataset must declare in `config/dataset_registry.yaml`:
 
-## Required Fields
-
-Every new source or dataset must declare:
-
-| Field | Meaning |
+| Field | Requirement |
 | --- | --- |
-| `source_id` | Stable internal source id, such as `tushare_news` or `binance_ticker`. |
-| `provider` | External provider or upstream system. |
-| `market` | Canonical market, such as `Ashare`, `Futures`, `Crypto`, `PredictionMarkets`, `US`, `HK`, `Global`, `Events`. |
-| `module` | Functional lane, such as `ashare_intraday`, `event_news_announcements_reports`, `macro`, or `funds_etf_options`. |
-| `api_name_or_dataset` | Provider API name or dataset name. |
-| `activation_mode` | `scheduled`, `independent`, `event_lane`, or `planned`. |
-| `cadence_class` | Collection cadence label, such as `trading_session_5min`, `30min_crypto`, `30min_active_window`, `postclose_daily`, or `weekly_reference`. |
-| `freshness_sla` | Maximum expected age or trading-day lag. |
-| `target_tables` | SQLite read-model table(s) written. |
-| `write_path` | Collector/script that writes read-model rows. |
-| `rate_limit` | Provider rate/concurrency guard. |
-| `degraded_behavior` | Empty, stale, entitlement, provider error, and timeout behavior. |
-| `http_surface` | API/reader endpoint or explicit reason it is internal-only. |
-| `owner_consumer` | Current consumer, such as MarketGraph, TradingAgent, external agent, or internal health. |
-| `expected_write_cost` | Expected row volume/write pressure and hot-path risk. |
+| `dataset_id` | Stable provider-neutral identity such as `cn.equity.daily`. |
+| `aliases` | Compatibility names such as `tushare.daily`; aliases are not public routes. |
+| `domain`, `market`, `entity_type` | Objective-data classification. |
+| `schema_version` | Versioned canonical fields, types, primary key, default projection. |
+| `query_policy` | Selectable/filterable/sortable fields, bounded operators, page/lookback limits, PIT mode. |
+| `provider_bindings` | Provider API, adapter version, storage mapping, provider-specific request rules. |
+| `entitlement_state` | `active`, `locked`, `unknown`, `excluded`, or `retired`, based on evidence. |
+| `cadence` | Registry cadence class, timezone, SLA, backfill policy, overlap key. |
+| `empty_policy` | Whether empty is legitimate for the requested window. |
+| `beta_policy` | Tenant scope, field/lookback limits, quota class, discoverability. |
 
-## Required Artifacts
+The registry is authority. Do not recreate parallel allowlists in API routes, docs, cron tiers, or consumer repositories.
 
-Production-ready means all of these exist or are explicitly marked not applicable:
+## Required provider adapter
 
-| Artifact | Required result |
-| --- | --- |
-| Collector config | Provider params, frequency, rate guard, timeout, retry, fields. |
-| Capability plan row | Market/module/cadence/activation mode are registered. |
-| Read-model mapping | Rows write directly to SQLite read model; no CSV/NDJSON/Parquet bridge or file-only success. |
-| HTTP/API visibility | Consumer can read through SharedSignals API/reader or sees explicit degraded semantics. |
-| Cron wrapper | Scheduled jobs use flock, logs, timeout, env loading, and clear ownership. |
-| Health/SLA rule | Freshness and missing/empty behavior are observable. |
-| Tests | Coverage proves config, mapping, API visibility, frequency, and no retired fallback. |
-| Docs | Market matrix, API contract, and external-agent config are updated when consumer-facing. |
+The adapter must:
 
-## Module And API Planning
+1. preserve provider success/error/permission/rate-limit outcomes before row conversion;
+2. normalize to the canonical schema without losing raw provider payload needed for lineage;
+3. validate identity, timestamps, numeric finiteness, required fields, and request window;
+4. distinguish returned, validated, inserted, updated, unchanged, rejected, and committed counts;
+5. enforce provider rate/concurrency limits and bounded retry;
+6. expose a version that is bound into every ingest receipt;
+7. contain no TradingAgent/MarketGraph import, callback, candidate, position, risk, or strategy logic.
 
-Use this decision order for every new source:
+## SQLite fact and receipt gate
 
-1. Choose the closest `module` in `config/api_module_catalog.yaml`.
-2. Confirm the source can write one of that module's canonical read-model tables.
-3. Reuse the module's default HTTP surface unless the dataset has a genuinely new query shape, auth scope, freshness/SLA contract, pagination model, or rate limit.
-4. Add a new API endpoint only after the new surface is documented in `API_CONTRACT.md`, `/agent_config`, capability tests, auth scope checks, and consumer-facing prompt/docs.
+- Non-empty successful data and its success receipt commit in the same SQLite transaction.
+- A rollback leaves neither committed data from that transaction nor a success receipt.
+- Each real chunk transaction receives its own receipt.
+- Legitimate empty, provider failure, permission denial, throttling, validation failure, resource-budget rejection, and storage failure write terminal receipts when SQLite is available.
+- `attempt_id` is unique per provider call/window; receipt IDs are deterministic within the attempt and cannot collide across reruns.
+- SQLite facts + transaction-scoped ingest receipts are the only runtime authority. Flat JSON is optional rebuildable cache.
 
-This keeps horizontal data expansion broad while keeping the public API stable and understandable.
+## Query/API gate
 
-## Priority Queue
+Every active dataset must be reachable through:
 
-New external sources should be promoted in this order unless a production incident changes the business priority:
+- `GET /v1/catalog` for discovery and current availability;
+- `POST /v1/query` for bounded registry-compiled reads.
 
-| Batch | Focus | Production rule |
-| --- | --- | --- |
-| `B1_event_risk_official_sources` | Official event, filing, and disclosure coverage. | Pilot first, write only to read-model tables, and observe 1-2 trading days before scheduled mode. |
-| `B2_macro_official_sources` | Official macro, rates, and low-frequency redundancy. | Daily pilot first; stale macro series must degrade by source, not block price feeds. |
-| `B3_market_redundancy_and_altdata` | Crypto and prediction-market redundancy or alternative data. | Keep 30-minute or slower by default; no 5-minute mode without hot-path write-pressure proof. |
+The query path must:
 
-Do not install any planned candidate into production cron until it has passed the full gate. Planned source ids are documentation and work-order targets, not active data feeds.
+- validate `dataset_id`, `schema_major`, fields, filters, ordering, lookback and page size against the registry;
+- use keyset pagination and bind cursor to tenant policy, query, schema/catalog version and receipt watermark;
+- read data and receipt/runtime evidence from the same SQLite snapshot;
+- return truthful `success`, `empty`, `unobserved`, `paused`, `failed` or `stale` metadata;
+- keep receipt/time/provider lineage nullable when evidence does not exist; never fabricate them for client compatibility.
 
-## Current Pilot Collectors
+`/tushare` and other legacy endpoints may map provider parameters to a standard QueryRequest, but may not keep independent SQL or live-provider behavior.
 
-| Source | Script | Status | Production rule |
-| --- | --- | --- | --- |
-| `sec_edgar_filings` | `collectors/events/sec_edgar_filings.py` | Manual pilot collector available; 2026-07-09 production pilot wrote 6 filing rows and 16 selected companyfacts rows for Apple/Microsoft CIKs; `/events` and `/fundamentals` readback passed | Requires explicit CIK list and SEC User-Agent; writes filing metadata to `market_events` or selected company facts to `market_factors`; not installed in cron. |
+## Scheduling gate
 
-SEC EDGAR pilot example:
+Cadence comes from the registry, not a growing set of handwritten tiers.
 
-```bash
-SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
-  ./.venv/bin/python3 collectors/events/sec_edgar_filings.py \
-  --cik 0000320193 --limit-per-cik 20 --dry-run
-```
+- Probe current entitlement before scheduling; `locked` is not retried as a continuous failure.
+- Prevent overlapping work for the same dataset/window.
+- Current-session collection has priority over backfill.
+- Backfill has separate rate, row, time and storage budgets.
+- Every attempt writes a receipt, including empty and failure.
+- Schedule installation is a production mutation and requires a separate safe-release plan, live inventory, rollback and operator authorization.
 
-Remove `--dry-run` only after validating the target SQLite path and expected row shape. Scheduled mode requires source governance to remain green after pilot evidence is reviewed.
+## Beta access gate
 
-SEC companyfacts selected-concept pilot example:
+Before an external tenant can discover/query a dataset, prove:
 
-```bash
-SHAREDSIGNALS_SEC_USER_AGENT="SharedSignals contact@example.com" \
-  ./.venv/bin/python3 collectors/events/sec_edgar_filings.py \
-  --mode companyfacts \
-  --ciks 0000320193,0000789019 \
-  --concepts Assets,RevenueFromContractWithCustomerExcludingAssessedTax,NetIncomeLoss,EarningsPerShareDiluted \
-  --limit-per-cik 2 \
-  --dry-run
-```
+- isolated tenant credential and revocation;
+- dataset/field/lookback policy;
+- rate and concurrency limits;
+- persistent quota and usage event without secrets/raw SQL;
+- error sanitization and audit request ID;
+- cross-tenant denial and cursor-policy binding.
 
-Companyfacts rows are written to `market_factors` with factor names such as `sec_edgar_companyfacts:Assets`. Keep the concept allowlist small during pilot; do not bulk-load all SEC facts into the shared read model.
+No public signup, automated billing, automatic tier upgrade, scope expansion or admin mutation is part of invite-only Beta.
 
-API readback example after a pilot write:
+## Acceptance checklist
 
-```bash
-curl "http://127.0.0.1:8082/events?market=US&event_type=sec_edgar:4&subject_code=CIK0000320193&limit=5"
-```
+A dataset is complete only when all are true:
 
-Keep `sec_edgar_filings` in `planned` mode until the pilot has 1-2 trading days of Green Gate/source_status observation and an explicit cadence/SLA decision. Prefer SEC sources over duplicating Tushare-covered China news/announcement/report feeds.
+1. registry declaration and alias resolve deterministically;
+2. provider adapter preserves outcome and passes schema/identity validation;
+3. facts + receipts satisfy transaction atomicity and rerun idempotency;
+4. empty/failure/paused/unobserved/stale are distinguishable from success;
+5. catalog discovery and query return the same canonical schema and truthful metadata;
+6. cadence, SLA, rate limit, backfill and entitlement behavior are tested;
+7. tenant policy and usage governance are tested when externally visible;
+8. docs describe the dataset without adding routes or trading semantics;
+9. dry-run/pilot, rollback and production readback are separately evidenced;
+10. no provider/file/other-system fallback exists in reader/API consumers.
 
-## Lightweight Registry Pattern
+## Acceptance Freeze
 
-Do not create a new central registry unless the existing files become unmaintainable. The current lightweight registry is the combination of:
-
-- `collectors/<source>/config.yaml`,
-- `config/<source>_capability_plan.yaml` or the existing source capability plan,
-- `storage/read_model_store.py` table mapping and rows-only writer,
-- `api_server.py` endpoint/allowlist,
-- `config/external_agent_api_config.json` when externally consumable,
-- `docs/market_capability_matrix.md`,
-- `tests/test_capability_coverage.py` or a source-specific coverage test.
-
-This keeps governance explicit without rebuilding the retired generic registry/orchestrator layer.
-
-## Acceptance Gate
-
-A dataset is not production-ready until it can:
-
-1. collect provider rows with rate protection,
-2. validate/deduplicate rows,
-3. write non-empty provider rows into SQLite read-model tables without file staging,
-4. expose DB-first reader/API output or intentional degraded behavior,
-5. report freshness and collection status,
-6. pass coverage tests,
-7. document cadence and external-agent usage,
-8. fail closed without calling providers, CSV, NDJSON, SQLite files, old directories, or sibling repo internals from consumer systems.
+Freeze product scope, authority, interface, threat model, exact files, P0/P1 cases and stop line before implementation. After freeze, only deterministic in-scope P0/P1 defects block. Contract-external hardening becomes backlog. Two successive structural P1 rounds require architecture review instead of more patch stacking.

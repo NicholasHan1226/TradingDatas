@@ -1,6 +1,14 @@
 # SharedSignals External Agent One-Click Prompt
 
-Last updated: 2026-07-12
+Last updated: 2026-07-16 (legacy compatibility classification)
+
+> **Legacy compatibility prompt — do not issue to new Beta accounts.** This file
+> inventories the currently deployed client surface while consumers migrate. It
+> is not the approved target contract and does not prove that any listed route,
+> dataset, account, cadence, source, or production runtime is live. New clients
+> must converge on `GET /v1/catalog` and `POST /v1/query`; no provider or dataset
+> may add a public route. The provider-neutral registry plus SQLite facts and
+> transaction-scoped ingest receipts is authority.
 
 Copy this prompt into an external agent that needs SharedSignals market data access.
 

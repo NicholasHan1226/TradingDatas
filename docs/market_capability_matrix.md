@@ -1,14 +1,30 @@
 # SharedSignals Market Capability Matrix
 
-Last updated: 2026-07-12
+Last updated: 2026-07-16 (migration inventory; not runtime authority)
 
-This document is the market-facing capability and cadence guide for SharedSignals. It complements the internal Tushare P0-P7 tier config and prevents external consumers from treating every allowlisted provider API as an active production feed.
+> **Migration notice:** the tables below inventory the legacy surface and historical
+> operating intentions. They are not the target public contract and they do not
+> prove entitlement, collection, freshness, scheduling or production availability.
+> The provider-neutral dataset registry plus SQLite ingest receipts is authority.
+> The first Beta activates domestic China datasets only; Crypto, prediction markets,
+> HK and US rows remain historical/excluded until a later approved phase.
+>
+> New sources do not add endpoints. External discovery/query converges on
+> `GET /v1/catalog` and `POST /v1/query`; legacy paths below are compatibility-only
+> and must migrate to the same QueryService.
+
+This document is a migration-facing capability inventory. Current truth must be
+derived per dataset from registry entitlement and SQLite transaction receipts;
+never from an allowlist count, this table, HTTP 200, or a shared table row.
 
 Storage semantics are strict: identity APIs (`stock_basic`, fund/futures/options/ETF/HK/US basics and index identity) write `market_assets`; company, NAV, unlock, holder, manager and calendar facts write `market_factors`; membership/constituent APIs write `market_relationships`. Coverage alone is not sufficient if an API is mapped to the wrong semantic table.
 
-## Current Decision
+## Legacy inventory and target decision
 
-SharedSignals should be managed by market and data-latency need, not by provider name alone.
+SharedSignals is managed by provider-neutral dataset identity, canonical schema,
+entitlement, cadence, SLA and query policy—not by provider name or a handwritten
+endpoint/tier list. The following bullets describe legacy inputs that are being
+replaced or adapted:
 
 - `collectors/tushare/config.yaml` is the active Tushare collection plan: 113 configured interfaces.
 - `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 114 names.

@@ -1,29 +1,36 @@
 # SharedSignals Docs — 文档导航
 
-> **阅读顺序：** 先读 [../AGENTS.md](../AGENTS.md) → [../STATUS.md](../STATUS.md) 了解规则和当前状态，再按需查阅本目录文档。
+> 阅读顺序：[../AGENTS.md](../AGENTS.md) → [../STATUS.md](../STATUS.md) →
+> [Beta 设计规格](superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md)。
+> 根层规则与设计规格冲突时先停止开发并修正文档，不允许选择更方便的旧表述继续实现。
 
-## 文档分类
+## 权威文档
 
-### 活跃的参考文档（反映当前架构）
+| 文档 | 权威范围 |
+| --- | --- |
+| [../AGENTS.md](../AGENTS.md) | 产品边界、权威层、防漂移与发布红线 |
+| [../STATUS.md](../STATUS.md) | 当前候选、Git/生产分层、阻塞和下一步 |
+| [Beta 设计规格](superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md) | 外部数据平台目标合同、首期范围、固定 API、Beta access |
+| [Phase 1 计划](superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md) | registry/receipt/退役基础实施与验收 |
+| [../API_CONTRACT.md](../API_CONTRACT.md) | 目标 `/v1` 合同与 legacy compatibility surface；不能把 legacy 路径当成未来扩源模式 |
+| [dataset_registry.md](dataset_registry.md) | registry authority、字段、provider onboarding 和兼容 alias |
+| [ingest_receipts.md](ingest_receipts.md) | SQLite fact/receipt 原子性、terminal receipt、runtime projection |
+| [data_source_onboarding.md](data_source_onboarding.md) | 新 provider/dataset 的端到端准入清单 |
+| [sqlite_recovery_runbook.md](sqlite_recovery_runbook.md) | SQLite 权威库的 fail-closed 诊断与恢复流程 |
 
-| 文件 | 用途 |
-|------|------|
-| [../API_CONTRACT.md](../API_CONTRACT.md) | SharedSignals 当前对外 API 契约（reader 函数、数据格式、生产边界） |
-| [status_history_2026-07.md](status_history_2026-07.md) | 2026-07 生产化历史状态归档；只作追溯，当前事实以根层 `STATUS.md` 和 live API 为准 |
-| [market_capability_matrix.md](market_capability_matrix.md) | 按市场说明现役数据源、接口能力、采集频率、Tushare 白名单与生产采集计划的边界 |
-| [external_agent_api_prompt.md](external_agent_api_prompt.md) | 可复制给外部 agent 的 API 接入 prompt；必须保持 API-only 和 fail-closed 边界 |
-| [tushare_activation_backlog.md](tushare_activation_backlog.md) | 剩余 planned Tushare 接口按市场/模块/频率分批激活计划 |
-| [../config/api_module_catalog.yaml](../config/api_module_catalog.yaml) | 模块到 API/read-model 的规划目录；新增数据源先归类到模块，默认复用现有 API |
-| [../config/source_expansion_priority.yaml](../config/source_expansion_priority.yaml) | 新增外部数据源横向扩展优先级；当前只表示 planned 候选，不代表生产 collector 已启用 |
-| [data_source_onboarding.md](data_source_onboarding.md) | 新增数据源准入字段、产物、频率、入库/API/降级验收门槛 |
-| [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | 基础设施说明 |
-| [duckdb_sync_runbook.md](duckdb_sync_runbook.md) | DuckDB 一致性 source snapshot 的 fail-closed 运维与验收门禁 |
-| [resource_pressure_2026-07-13.md](resource_pressure_2026-07-13.md) | 2026-07-13 生产磁盘/IO 紧急门禁与备份保留清单 |
-| [repo_structure.md](repo_structure.md) | 仓库结构说明 |
+## 支持与历史文档
 
-`docs/API_CONTRACT.md` 是 `tools/capability_scan.py` 生成的历史能力快照；如需刷新，运行 capability scan 生成新快照。当前生产 API 边界以根层 `API_CONTRACT.md`、`STATUS.md`、`/health` 和 `/capabilities` live 输出为准。
+- `market_capability_matrix.md`：迁移期能力盘点；configured/allowlisted 不等于 entitled、observed、fresh 或 queryable。
+- `status_history_2026-07.md`：历史生产/事故事实，只作追溯。
+- `external_agent_api_prompt.md` 与机器配置：当前 legacy 接入材料；Phase 2/4 完成前不能称为最终 Beta 合同。
+- `tushare_activation_backlog.md` 与 `event_lane.md`：旧调度/专用 endpoint 迁移盘点；不能作为 registry、运行状态或扩路由依据。
+- DuckDB、旧 endpoint、旧 cron、opening/readiness、研究关系和交易式治理文档只可作为迁移/退役证据，不是新开发入口。
 
-## 规则优先级
+## 文档防漂移规则
 
-1. [../AGENTS.md](../AGENTS.md) — SharedSignals 总规则（最高优先级）
-2. 本目录参考文档（补充背景和交接说明）
+- 目标公共数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`；现有专用路径仅是迁移期 compatibility surface。
+- 新增 provider/dataset 只能扩 registry/adapter/storage/receipt/query metadata；不得新增公共 route。
+- 文档不得把 opening gate、候选、策略、资金、持仓、风险或交易决策归入 SharedSignals。
+- 文档不得把 flat JSON、邮件、dashboard、HTTP 200、allowlist 数量或 DuckDB mirror 写成数据 authority。
+- 目标、当前实现、GitHub、生产 runtime、external route 和真实数据必须分别标注；不得用“已实现”概括全部层级。
+- 长期文档不记录临时测试数字；当前数字写 STATUS/evidence，历史数字写 history。

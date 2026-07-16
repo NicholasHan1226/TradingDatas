@@ -1,8 +1,44 @@
 # SharedSignals API Contract
 
-> **版本**: 1.1.42 | **状态**: active | **边界**: 只读数据接口，研究线和交易线共享读取
+> **Target contract (not yet live)**：SharedSignals 的目标公共数据面固定为
+> `GET /v1/catalog` 与 `POST /v1/query`。它们当前仍在设计/实现阶段，不能用本文件中的
+> legacy endpoint、local tests 或 HTTP 200 代替生产可用证明。
+>
+> 下文现有 `/tushare`、`/market_data`、`/events` 等路径是 **legacy compatibility surface**，
+> 只用于迁移消费者；最终必须调用同一个 provider-neutral QueryService。不得按 provider 或 dataset 新增公共路由。
+> `/opening_gate`、交易式 blocking、研究关系、资金/持仓/风险/策略与邮件控制不属于 SharedSignals 目标合同，
+> 按“替代 → 迁移消费者 → deprecate → safe-delete”退出。
+>
+> **当前 legacy 版本**: 1.1.42 | **状态**: compatibility-only | **权威设计**:
+> [External Data Platform Beta Design](docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md)
 
 ---
+
+## 0. Target v2 normative contract
+
+本节与上方链接的 Beta 设计规格是本文件**唯一面向未来实现的规范层**。下方
+“Legacy v1 compatibility inventory”只记录待迁移代码与客户端，正文即使使用
+“生产”“必须”“事实源”“新增 endpoint”等旧语气，也不得覆盖本节、不得授权新开发、
+不得证明当前生产可用。
+
+- 公共数据路由恰好固定为 `GET /v1/catalog` 与 `POST /v1/query`；provider、dataset、
+  cadence、SLA、auth scope 或分页差异都通过 registry/query policy 表达，不能创建第三类
+  dataset 公共路由。
+- 数据运行权威固定为 provider-neutral registry、SQLite facts、同事务 ingest receipts 与
+  read clock。`/source_status`、`/health`、JSON、邮件、dashboard、cron 文本、allowlist 和
+  HTTP 200 都只能是由权威层派生的观察面。
+- `/opening_gate`、Green Gate、候选、预测、策略、alpha、资金决策、持仓、风险、订单、
+  成交与交易建议不属于 SharedSignals；它们只能被迁移/退役，不能移植到 v2。
+- 旧 `/tushare`、`/reference`、`/market_data`、`/events` 等 endpoint 在迁移期必须适配到
+  同一个 QueryService；不得保留独立 SQL、live-provider 或 file fallback。
+- 本节是已批准目标，不是部署证明。Phase 2/4、GitHub、生产 checkout、production runtime、
+  external route 和真实 tenant query 必须分别通过后，才能把 v2 标为 live。
+
+## Appendix A — Legacy v1 compatibility inventory (non-normative)
+
+以下内容冻结为当前/历史 v1 接口、调度、consumer 和迁移盘点。它用于保持旧客户端可追溯
+并指导 deprecate，不是新 provider onboarding 模板，也不是 SharedSignals 产品边界或
+runtime authority。任何与上方 Target v2 冲突的旧句子以上方规则为准。
 
 ## 目录
 

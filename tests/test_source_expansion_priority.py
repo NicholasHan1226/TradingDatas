@@ -128,14 +128,21 @@ def test_api_module_catalog_prefers_endpoint_reuse_before_expansion() -> None:
     }
 
 
-def test_source_expansion_plan_is_exposed_to_external_agent_config_and_docs() -> None:
+def test_legacy_expansion_plan_cannot_override_registry_or_grow_routes() -> None:
     external_config = Path("config/external_agent_api_config.json").read_text(encoding="utf-8")
     onboarding_doc = Path("docs/data_source_onboarding.md").read_text(encoding="utf-8")
     matrix_doc = Path("docs/market_capability_matrix.md").read_text(encoding="utf-8")
 
+    # The current machine-readable compatibility config may still reference the
+    # old planning files until consumers migrate. Core onboarding and capability
+    # docs must not make those files authoritative again.
     assert str(PLAN_PATH) in external_config
     assert str(CATALOG_PATH) in external_config
-    assert str(PLAN_PATH) in onboarding_doc
-    assert str(CATALOG_PATH) in onboarding_doc
-    assert "B1_event_risk_official_sources" in matrix_doc
-    assert "Module And API Catalog" in matrix_doc
+    assert str(PLAN_PATH) not in onboarding_doc
+    assert str(CATALOG_PATH) not in onboarding_doc
+    assert "config/dataset_registry.yaml" in onboarding_doc
+    assert "never adds a public route per provider or dataset" in onboarding_doc
+    assert "provider-neutral dataset registry" in matrix_doc
+    assert "GET /v1/catalog" in matrix_doc
+    assert "POST /v1/query" in matrix_doc
+    assert "migration inventory" in matrix_doc

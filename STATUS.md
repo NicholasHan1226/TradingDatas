@@ -1,99 +1,102 @@
 # SharedSignals 状态
 
-> **给所有 agent：** 读完 [AGENTS.md](AGENTS.md) 后读本文件。这里只保留当前可执行状态、验证入口、风险边界和下一步。历史长记录已归档到 [docs/status_history_2026-07.md](docs/status_history_2026-07.md)。
+> 先读 [AGENTS.md](AGENTS.md)。本文件只保存当前可执行状态、证据分层、阻塞和下一步；历史生产与事故细节保留在 `docs/status_history_2026-07.md` 和外部 evidence 中。
 >
-> **变更规则：** 改采集源、API、频率、read model、治理规则或生产边界后，必须同步更新本文件和对应文档。
->
-> 最后更新：2026-07-15（仓库 `cron/crontab.txt` 目标模板收窄为境内 Beta；根 `crontab.txt` 快照未修改，生产 live crontab 未读取、未修改、未验证。此前 2026-07-14 的 code-only smoke/rollback 与事故隔离状态不因本次仓库模板变更而改变。）
+> 最后更新：2026-07-16。当前所有结果仍是**本地候选**；GitHub、生产 checkout、生产 runtime、外部 route 和真实采集尚未完成对应发布验收，**生产未改变**。
 
----
+## 当前结论
 
-## 一、当前结论
+- SharedSignals 的批准定位是**独立外部多源金融数据平台**，以 Tushare 为首个主要上游，未来横向扩展公告、新闻、研报、政策、互动和客观舆情等事实数据。
+- SharedSignals 不承载 opening gate、候选、策略评分、资金决策、持仓、风险、订单、成交或交易建议；不与 TradingAgent/MarketGraph 共享数据库、跨系统事务或 callback。
+- 权威层已固定为 provider-neutral registry → SQLite facts + transaction-scoped **SQLite ingest receipt** → runtime/API metadata。flat JSON 只能是可重建缓存。
+- 目标公共数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`；新增数据源不得新增 route。`/tushare` 和现有专用 endpoint 只是待迁移兼容层。
+- 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
+- REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
 
-- **系统角色**：SharedSignals 是共享数据采集、整理、增量入库和只读 API 输出层；不做 alpha、买卖方向、仓位、下单、资金、账户或执行回执。
-- **交易边界**：支持分钟级/5 分钟级交易供数，不承诺毫秒级 HFT、订单簿撮合或执行系统能力。
-- **现役数据源**：Tushare、Binance、Polymarket、CNFutures；RSS/RSSHub/Tavily/DeepSeek 不作为现役生产 collector。
-- **存储边界**：SQLite read model 是权威读模型；DuckDB 是分析镜像；CSV/NDJSON/旧目录只能作为历史迁移或审计材料，不能作为生产读取兜底。
-- **生产 storage epoch**：`/dev/nvme1n1` 已建 ext4，UUID=`3f7cbf99-b15e-4c54-94cc-a57e38412874`，挂载根为 `/opt/investment-data`。SharedSignals read model、SharedSignals backups 与 finance runtime-backups 的物理路径迁至该盘，旧 canonical 路径通过 3 个 bind mount 保持；`sharedsignals-api` 的 `20-finance-data-mount.conf` 缺失或 mount 缺失时必须 fail closed，不能静默写回根盘。
-- **资产主数据边界**：`market_assets` 只接收真正的资产/指数 identity 接口；公司资料、基金净值、解禁、股东、高管和交易日历进入 `market_factors`，成分/归属进入 `market_relationships`，不得再用人员姓名或持仓记录覆盖证券名称。
-- **A 股 canonical reference 状态**：`/reference?table=stock_master&limit=6000` 是 `/reference` 唯一现役查询，只读 SQLite `market_assets` 的 `market=Ashare AND asset_type=stock` 行；默认 6,000、最大 10,000，带 provenance/freshness/quality/lineage。2026-07-13 production SQLite 已实证 5,610 个唯一股票代码，provider 全部为 `tushare_stock_basic`；缺数据库、缺表或空表仍返回 degraded，且无 provider/CSV fallback。数据行实证不替代受鉴权 HTTP 路由的独立 readback。
-- **仓库数据边界**：仓库不跟踪生产数据库、旧 CSV/NDJSON、Parquet 冷归档或样本数据；冷归档样本、CSV bridge、旧 query_router/archive_manager 不作为当前 read path 或交接材料，且由测试门禁阻止恢复。
-- **外部消费边界**：TradingAgent、MarketGraph 和外部 agent 必须通过 SharedSignals HTTP API 读取，不得绕过 SharedSignals 直接调用 provider、SQLite 文件、CSV/NDJSON 或兄弟仓库内部文件。
-- **SW2021 行业接口状态**：本地已实现固定快照的 `/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships` 与独立 `industry_reference` scope；当前只代表代码和测试层，仍是 `implemented_unscheduled`，不代表生产表已有 promoted 快照、runtime 已部署、外部路由已生效或定时采集已启用。
-- **SQLite routine maintenance 状态**：本地已实现 SharedSignals 自有的 bounded maintenance 工具与 wrapper，只执行 `wal_checkpoint(PASSIVE)`、`optimize(0x10002)`，仅在显式 deep check 时执行 `quick_check`，并原子写入 watchdog JSON；当前 cron 行保持注释，未安装、未运行生产维护。
-- **境内 Beta cron target（仅仓库代码层）**：`cron/crontab.txt` 的 active jobs 只保留境内 Tushare P0/P1/P3/P4/P6、CNFutures、Tushare events/low-frequency、external API probe，以及暂留的只读 health/governance/capability checks。`cron/collectors.sh` 的无参数和 `--all` 使用同一境内默认集合；其中 P4 固定通过 `--only-api` 只运行 `cn_cpi,cn_pmi,cn_m,cn_ppi,shibor,shibor_lpr,cn_gdp,sf_month,index_dailybasic,repo_daily`，配置内保留的境外宏观接口不进入默认运行。P2 与 P5 均保留显式 `--tier` 兼容能力，但都不进入默认或模板调度；P2、DuckDB、SQLite maintenance 与 SW2021 仍保持注释/禁用。本轮没有修改根 `crontab.txt`，也没有读取、安装或修改生产 live crontab；不能把仓库 target 变化表述成生产已收窄。
-- **外部域名状态**：Wangzhi/internal tier 这类外部账号已在 SharedSignals 侧可控；正式域名 `https://signals.tradingagent.cc` 使用 Cloudflare Tunnel CNAME。广州 API 仍只监听 `127.0.0.1:8082`，通过出站 SSH 反向隧道送到新加坡 cloudflared connector；不再依赖未备案广州公网源站 TLS，外部请求仍必须携带 SharedSignals API token。
+## 代码与 Git 分层
 
-## 二、生产频率
+- SharedSignals `origin/main` 最后核对为 `d913d32c`。
+- 本地 `main` 为 `c127599`，比 `origin/main` 领先 3 个已审计设计/退役计划文档提交；tracked/index clean，`.codegraphcontext/` 保持 untracked、unstaged。
+- Phase 1 主候选 worktree：`.worktrees/sharedsignals-external-data-phase1`。
+- Phase 1 主候选 HEAD：`e73c06d`，已吸收 provider-neutral registry、provider outcome、atomic receipt、Task 9 Tushare authoritative receipt 与 Task 10 SQLite runtime projection；未 push、未 deploy。
+- 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
 
-| 数据 lane | 生产频率 | 说明 |
-| --- | --- | --- |
-| A-share P0 intraday | 交易时段 5 分钟 | `rt_min` 按每批最多 300 只覆盖完整 active universe；空/错误响应不进入 LRU，HTTP 502 先做请求级重试，再仅对失败批次做两轮退避补齐；仍有空批才整轮失败；不再使用 30 只轮转或跨系统优先池 |
-| CNFutures intraday | 日盘/夜盘 5 分钟 | 独立 `cn_futures_5min` wrapper；不走 A-share P0 循环 |
-| Crypto | ticker 30 分钟；1d support bars 每 6 小时 | 不与 A-share/Futures 5 分钟热路径抢写 |
-| Polymarket | markets/prices 30 分钟 | 新加坡 relay 优先，本地 Mihomo/Clash 兜底；默认不直连 |
-| Tushare daily/reference/fundamentals/macro | 盘后、晚间、盘前或低频窗口 | P1 `daily` 按 trade_date 全市场一次采集且 active-universe 唯一代码覆盖率必须 >=90%；未证明全市场/批量安全的 P1 研究接口保持单股调用、每日每接口轮转 300 只；P2 当前事故暂停，本地候选把 9 个原无界接口轮转到 100 只、其余 4 个保持 300 只，并增加 2,500 calls / 100,000 admitted rows / 840s deadline 三重门禁，未生产 pilot 前不得恢复；P3-P7 与低频周/月线保持原分层 |
-| Events/news/announcements/reports | 30 分钟 full event lane；`news/major_news` 15 分钟 supplemental pilot | 写入 `market_events`，不生成交易信号 |
-| DuckDB mirror/capability scan | 避开中国交易高峰 | DuckDB 不是 5 分钟交易 read path |
+## Phase 1 当前进度
 
-## 三、API 与扩展治理
+### 已完成候选
 
-- **HTTP surface**：`/health`、`/capabilities`、`/agent_config`、`/source_status`、`/opening_gate`、`/cache/status`、`/cache/invalidate`、`/market_data`、`/realtime_5min`、`/is_trading_day`、`/events`、`/sentiment`、`/fundamentals`、`/reference`、`/industry`（legacy）、`/industry/snapshot`、`/industry/taxonomy`、`/industry/memberships`、`/macro`、`/capital_flow`、`/crypto`、`/pm_markets`、`/pm_prices`、`/associations`、`/impacts`、`/tushare`。
-- **外部 agent 合同**：`GET /agent_config`，当前合同版本 `1.1.40`。
-- **数据源治理状态**：`GET /source_status`，检查 API surface、频率标签、Tushare 114/114 active、逐接口运行证据、API/module catalog、planned 扩源队列、cron、health SLA、DuckDB 镜像、外部 API 探针和 capability registry。
-- **SW2021 治理状态机**：`implemented_unscheduled` 与 `disabled_by_operator` 是 yellow 且不请求自动 heal/restart；`rejected`、`stale` 是 red；只有 `active` 才要求三个行业 endpoint、两条真实非注释 cron 和最近一次完整 SQLite maintenance evidence。注释中的待启用 cron 不算已调度。
-- **Green Gate 日报**：每日 08:10 `cron/green_gate_report.sh` 发送系统邮件到 `soc@coze.email`，口径复用 `/source_status` 并追加 `data_artifact_guard`。green 时不需要 Nicholas 每天人工追问接口、数据源、频率和扩源边界；yellow/red 时先看邮件列出的检查项。
-- **Session Gate**：`GET /opening_gate` 读取四个时点的轻量定时产物：08:50 预开盘、09:35 上午首样本、13:05 午后恢复、15:05 尾盘 P0 快照；QuickSync `rt_min` 的当日最后可用标签实测为 14:45，该门禁只证明尾盘快照到达，不把它称为正式收盘价；正式收盘价由盘后日线任务确认。`health_sla` 同时按 active universe 检查盘中 5 分钟新鲜覆盖率，默认低于 80% 即阻断。
-- **新增数据源规则**：先进入 [config/source_expansion_priority.yaml](config/source_expansion_priority.yaml) planned 队列，再按 [config/api_module_catalog.yaml](config/api_module_catalog.yaml) 映射模块、表和默认 API；通过 collector、直接入库、API 可读、SLA、限流、降级、测试和 pilot 后才能 scheduled。
-- **新增 API 规则**：默认复用现有 API。只有新查询形态、独立 SLA/auth、分页/限流模型或明确新数据产品无法由现有 endpoint 表达时，才新增 endpoint。
+- 仓库第一批安全退役：5 份已证明无消费者的旧文档和一个未使用 impact helper 已从 Phase 1 候选删除，Git 历史可回滚。
+- 目标 cron template 已收窄到境内 Beta；这只表示仓库目标模板，生产 live crontab 未修改、未验证。
+- provider-neutral dataset registry、Tushare provider outcomes、versioned ingest receipts、数据+success receipt 同 SQLite transaction、terminal empty/failed receipts 和 Task 9 registry-backed sync 已进入 Phase 1 主候选。
+- Task 9 精确提交：`341fd5a feat: make Tushare receipts authoritative`。
 
-## 四、当前风险与未完成项
+### Task 10：SQLite runtime projection
 
-- **外部链路需要双节点监控**：广州 API 与新加坡 cloudflared 任一节点或 SSH 反向隧道异常都会影响公网，但不影响广州本机消费者；`external_api_probe.sh` 每 5 分钟通过现有 SSH relay 让新加坡节点从公网验证请求能到达 SharedSignals 鉴权边界，避免广州到 Cloudflare 的出站网络限制造成误报；525、超时或异常状态会进入 `/source_status`。
-- **SW2021 发布闸门未完成**：新行业路由、专用 collector wrapper 和 maintenance wrapper 当前仅在本地代码层通过测试；collector 尚未完成生产手动 pilot，live SQLite 是否存在三张表及 promoted 快照、API runtime 与外部 route 是否包含新路径、独立 token 是否配置、maintenance evidence 是否生成、cron 是否安装均未验证。`cron/crontab.txt` 中两条新 schedule 仍是注释；无 promoted 快照时三路由按设计返回 degraded empty，不得用本地 wrapper 或测试状态代替 pilot / production proof。
-- **`stock_master` live 分层证据**：production runtime 代码已部署，SQLite 已验证 5,610 行/5,610 唯一 A 股 stock、provider=`tushare_stock_basic`；仍需把受鉴权 HTTP 正常响应 metadata 与缺表/空表 degraded 负例作为独立路由证据，不得用 SQLite 行数或 401 鉴权边界代替。
-- **运行闸门与镜像状态**：`/health` 和 `/source_status` 同时披露 A 股开盘闸门、逐 Tushare 接口最近运行证据与 DuckDB 镜像同步结果。`/realtime_5min` 的无代码批量读取先按 `5min/5m` 解析最新交易日和最新 bar，再做索引化快照查询，避免旧 CTE 在大表上超过 2.5 秒读门禁后 fail-closed 为空；内部上限与 API 一致为 10,000 行，可完整容纳当前 A 股 active universe。`market_events`、`market_factors` 使用按 `collected_at` 水位和哈希主键的增量追加；`market_bars_daily`、`market_bars_intraday` 等权威快照表会删除 DuckDB 中已不在 SQLite 的陈旧主键行，防止日期/时间规范化后旧行残留；全表计数不一致会让同步任务失败。SQLite 始终是权威库，DuckDB 可备份后重建。2026-07-13 P0 code 改为每轮先生成一个原生 SQLite backup snapshot，16 表 sync 和 reconcile 只读该 snapshot，避免 collector 并发提交造成跨表/事后 live 对账漂移；空间、权限、deadline、校验或 cleanup 任一失败都保持 red。
-- **DuckDB 镜像 schema 迁移（2026-07-13 historical green，当前 runtime red）**：production 已部署单事务三阶段迁移（全部表、全部缺列、全部索引）；迁移前 58,698 条旧事件只按 `event_hash` 回填 `event_id/revision/source_family`，正文未重写。12:46 当时增量同步为 16 表 delta=0，SQLite/DuckDB `market_events` 均 67,266，identity mismatch=0，三行业表 0/0；但 17:19 artifact 已变为 `status=error`、`database disk image is malformed`、elapsed 177.96 秒，18:20 live `/source_status` 为 red（8 green/3 yellow/1 red）。旧绿只能作为历史证据，必须等一致性 snapshot P0 生产发布后，以新 artifact 重新证明 16/16、identity=0、无残留和 collector 无丢失。
-- **event/interface runtime ledger（2026-07-13）**：`namechange/report_rc` 使用 provider 专属稳定业务键，重复的 `market_events` revision 以 idempotent no-change 记 success；其它表非空采集写入 0 行仍是失败。生产目标采集新增 6,094 条事件后，6 个 event API 全部 success，interface ledger 为 yellow、failed/degraded=0、unobserved=35；source-governance red_checks=0，不能把 yellow 说成全接口已观察。当前 production `cb_issue` 因无原生 ID 且缺 provider 专属键而 red；本地候选只接受不可变 `ts_code` 作为 Tushare `cb_issue` 逻辑 identity，内容更正进入同 ID 新 revision，缺 `ts_code` 整批事务 fail closed。另一本地 fail-closed 修复把 provider 零行响应记为 `empty` 而非 success：不推进 `last_success`、总体保持 yellow，旧 ledger 的零行 success 也按 empty 归一，避免 P2 接口被同表其它 provider 新行染绿。两项均尚未发布。
-- **日频逐股负载边界**：2026-07-10 旧 P1 配置实测计划 62,398 次调用且一小时内只能推进约 7,000 次。当前 P1 计划降为约 3,012 次：`daily` 全市场单次采集；`repurchase` 按公告日期窗口全市场增量；`pledge_stat/pledge_detail` 补 `ts_code`；10 个未证明可全市场/批量调用的研究接口每日轮转 300 只。2026-07-13 旧 P2 从 18:30 起造成 SQLite 从约 8.49GB 膨胀至约 19.10GB；生产 P2 继续暂停。本地候选让全部 13 个 P2 API 都用确定性轮转，并在 provider call、送写行数和 wall-clock deadline 任一越界时停止后续调用、写 degraded latest 与 append-only history；已经提交的幂等/append-only 行不回滚，处置是停 cron、code-only rollback、复核后同窗口幂等重跑。不得用超时或预算截断后的部分结果声称 full-universe 完成。
-- **B1 扩源仍是 planned**：SEC EDGAR 已完成生产手动 pilot（2 个 CIK、6 条 filing metadata 写入 `market_events`、16 条 selected companyfacts 写入 `market_factors`，`/events` 与 `/fundamentals` API 可读），用于补 Tushare 没有的美国官方披露/结构化事实；但仍未装 cron。Tushare 已覆盖的公告/新闻/研报不重复补，官方交易所公告仍保持 planned。所有 B1 源必须继续先跑 pilot 和治理验收，不得直接装 cron。
-- **`reader.py` / `api_server.py` 仍偏大**：无状态 query/response helpers 已抽到 `api_response.py`，但长期仍应按市场数据、事件、fundamentals/macro、cache/auth 分层拆小。
-- **历史兼容层仍存在**：`bridge/marketgraph_marketdata_db.py` 仅作兼容辅助，不是生产采集入口；未来拆独立服务器前应继续减少跨仓兼容依赖。
-- **生产健康以 live 结果为准**：本地缺少生产 `health_sla.json` 时，`tools/source_governance_monitor.py --json` 可能显示 red；真实状态以生产 `/source_status` 和每日摘要为准。
-- **部署与回滚必须串行**：`deploy.sh` 与手工 `rollback.sh` 共用非阻塞文件锁；部署失败触发的自动回滚会校验当前 HEAD，若代码已被其它部署推进则拒绝恢复代码和数据库，避免旧任务覆盖新版本。部署/回滚另持有 read-model 独占维护锁，现役 cron 任务只取共享锁并在维护时跳过；SQLite 备份使用原生 backup API，恢复先写同目录临时文件、校验后原子替换。生产库存在时，磁盘空间不足或未生成并验证 SQLite 快照会在 pull/migration 之前直接终止部署，不能跳过备份继续迁移；rollback tag 只在快照成功后创建。部署测试通过不等于生产生效，仍须分别核对 Git HEAD、systemd runtime、API 响应和下一轮自动采集。
-- **code-only 发布边界（本地候选，未部署）**：`deploy.sh --code-only` 与 `rollback.sh --code-only` 共读 `deploy/runtime_paths.sh`，先验证 authority、backups、runtime-backups 三个 bind mount、数据盘和 service mount guard，再取独占维护锁；deploy 只允许 `origin/main`/`origin/master` 的 ff-only code move，显式跳过 SQLite snapshot 与 `storage/migrate.py`；rollback 只退代码，显式保留 20:07 后的新盘 SQLite authority。生产旧版尚无该入口，首次采用必须由 fresh `origin/main` 的独立 clean detached worktree 执行 `deploy.sh --code-only --bootstrap-from-candidate`，并在 preflight 与 ff-only 前两次证明候选未变且等于 remote；禁止手工 pull。tracked production checkout dirty、相对路径、cross-root DB、symlink authority、mount/guard 缺失均拒绝。当前仅本地代码/测试层，生产仍未部署。
-- **2026-07-13 storage epoch 已切换但事故未关闭**：迁移证据在 `/opt/investment-data/migration-evidence/storage-migration-20260713T192703+0800`，cron 证据在 `/opt/investment/SharedSignals/logs/cron/storage-migration-20260713T192703+0800`，fstab 回退文件为 `/etc/fstab.before-finance-data-20260713T193012+0800`。20:02:53–20:03:06 独占锁曾提前释放约 13 秒后立即重获；DB/underlay size+mtime 未变、无 collector、无写入，但 production `summary.json` 未补记，必须以仓库事故文档保留。20:07 run `e5a1fd619a6e` 首次写入后，新盘 DB 成为唯一 authority；`read_model.root-predata-20260713T1956` 已 stale，只能取证或设计受控 rollback，绝不能直接回切。经双 SHA 只释放两组旧根盘重复 backups/runtime-backups；旧 read_model、DB、Journals、ledgers、history、evidence 与空 staging 目录全部保留。
-- **当前仍非交易就绪**：writer handoff 的 `/source_status` 为 red（`market_pm_prices` stale，`cb_issue` stable identity 失败，另有 degraded/unobserved）；4 项 heavy cron active=0（SharedSignals P2、DuckDB sync，TradingAgent 两条 A 股 sample_ops），TA cron 因事故隔离为 54/56。A 股双 50,000 CNY fresh/reconciled、`real=false`，但 0 持仓/0 成交、KPI 停在 14:20、Journal 到 19:03、ready=0/N_eff=0，尾部 1,000 labels 全 rejected（996 timezone mismatch、4 missing reference price）；CNFutures 双 50,000 CNY fresh/reconciled、`real=false`，valid sample=1、0 roundtrip。继续 sim-only、人工晋级、不扩风险。
-- **Sina 期货分钟 bar_time 标准化（2026-07-11）**：Sina 夜盘午夜后的 bar 可能携带交易所下一交易日标签（例如周五夜盘标记为周一）而非自然日历时间。`collect_cn_futures_5min.py` 的 `_normalize_sina_bar_time()` 仅在参考时间处于夜盘凌晨窗口（00:00-02:30 北京时间）且 bar 时间也在该窗口内时，将交易所交易日标签修正为参考自然日期。修正后的 bar_time 为北京时间自然时间，原始交易所交易日保留为显式 `trade_date`。超过 5 分钟的未来时间戳且不符合夜盘凌晨窗口形状的 bar 将被拒绝（不写入 SQLite）。TradingAgent 不得添加下游兼容性回退逻辑。
-- **SQLite 检查分层**：30 分钟 patrol/heal 只做数据库可打开、schema、轻量查询、WAL 和锁检查，不再对多 GB 权威库重复全表 `quick_check/integrity_check`；部署快照、恢复源验收和明确损坏后的恢复流程仍执行深度完整性检查。
+- 候选已冻结为精确 14 文件，base `a100ef4`；Task 9 精确 4 文件未被修改。冻结根指纹为 `86db6493…8317`。
+- 两路 fresh clean-overlay reviewer 均 PASS，P0/P1/P2=0；独立 Python 3.12 全仓分别为 `1545/1545`，Task 9+10 overlay 为 `1577/1577`。
+- 独立 10 万 receipt 实测：单次 projection 约 `1.428s`、完整 verified load 约 `1.442s`；maintenance snapshot 与 writer lock 边界通过并发实证。
+- 当前合同：同一 SQLite read transaction 返回 data + receipt；只做一次完整 projection；maintenance lock 覆盖 snapshot，writer open lock 只覆盖绑定/open/BEGIN/schema read；不让持续读饿死采集 writer。
+- 精确 14 文件已逐字节吸收到 Phase 1 主候选，并形成本地提交 `e73c06d refactor: project source runtime from SQLite receipts`；与本轮 anti-drift 文档/测试合并后的 Python 3.12 全仓为 `1581 passed`，Ruff、compileall、`git diff --check` 通过。它仍未 push 或生产发布。
 
-## 五、验证入口
+### Task 11：核心文档与防漂移门禁
 
-本地常用验证：
+- `AGENTS.md`、`README.md`、`STATUS.md`、目标 API 合同、registry/receipt/onboarding/recovery 文档和 Phase 1 规格已统一到外部数据平台边界。
+- 三个会把旧 `P0-P7`、5 分钟交易口径、`stock_master` 专用公共路由和旧扩源文件重新写回核心文档的测试已改为新 authority/fixed-API/legacy-compatibility 契约。
+- 旧 external-agent prompt、Tushare activation backlog 与 event lane 已明确标注为 migration inventory/compatibility，而不是目标 API、runtime authority 或生产可用证明。
+- 文档定向门禁 `7/7`、Task 9+10+文档 union 全仓 `1581/1581`；fresh 独立文档审阅仍在进行，PASS 前不提交。
 
-```bash
-./.venv/bin/python3 -m pytest -q
-./.venv/bin/python3 tools/source_governance_monitor.py --json
-./.venv/bin/python3 tools/green_gate_report.py --dry-run --to soc@coze.email
+### 未完成
+
+- Phase 1 Task 11 fresh PASS/精确提交、Task 12 全量冻结/独立验收。
+- Phase 2 固定 `GET /v1/catalog`、`POST /v1/query`、signed keyset cursor、同 snapshot metadata/query 和 `/tushare` compatibility adapter。
+- Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
+- Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
+- Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。
+
+## Acceptance Freeze
+
+- 候选冻结后只能按已批准合同验收；不得临时扩大产品范围、威胁模型或商业能力。
+- 只有当前范围内、确定性可复现、真实影响数据正确性/隔离/可用性的 P0/P1 才能阻断；其它发现进入 P2/backlog。
+- same-UID malicious process 不属于当前受邀 Beta 合同；协作进程的意外 race、锁泄漏、数据/receipt 不一致和 writer starvation 属于当前合同。
+- 连续两轮出现新的结构性 P1 时必须停止叠加 validation，回到规格/架构裁决。
+- 测试、manifest 和 reviewer PASS 只证明候选；不能代替 main/GitHub/production/runtime/external route/真实数据。
+
+## 退役边界
+
+以下内容不属于目标平台，但当前仍可能存在代码或消费者依赖：opening gate、Green Gate 邮件、交易式 blocking、研究关系/impact、旧专用 endpoint、旧 cron/patrol/heal、DuckDB critical path、Crypto/PM/HK/US 默认调度。
+
+处理顺序固定为：
+
+```text
+提供 registry/query 替代
+→ 迁移消费者
+→ 标记 deprecated 并观测
+→ 证明无 import/test/doc/cron/service/external consumer
+→ safe-delete
 ```
 
-生产常用验证：
+禁止为了“清洁”直接删除数据库、数据、Journal、ledger、history、evidence、rollback worktree 或未知消费者仍在使用的入口。
+
+## 下一步
+
+1. 收口 Task 11 fresh 文档审阅，按精确路径提交 anti-drift 文档/测试；不得使用 `git add .`。
+2. 执行 Phase 1 Task 12 全量冻结、fresh 独立验收和 local commit chain readback。
+3. Phase 1 PASS 后实现固定 `/v1/catalog`、`/v1/query` 和 `/tushare` compatibility adapter。
+4. 再并行推进境内采集调度与受邀账户治理；共享合同只能有一个 owner。
+5. 所有本地/GitHub 证据齐全后才进入 fresh safe-release；生产 readback 与真实采集稳定性通过后才可声明 Beta 可用。
+
+## 验证入口
 
 ```bash
-curl -s http://127.0.0.1:8082/health
-curl -s http://127.0.0.1:8082/source_status
-curl -s http://127.0.0.1:8082/agent_config
+uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q
+uv run --python 3.12 --with-requirements requirements.txt ruff check \
+  tests/test_data_platform_docs.py tests/test_capability_coverage.py \
+  tests/test_capability_scan.py tests/test_source_expansion_priority.py
+uv run --python 3.12 python -m compileall -q .
+git diff --check
 ```
 
-生产状态口径需要分开汇报：
+全仓 Ruff legacy baseline 当前非零，不能报告为全仓绿；Phase 1 只按冻结精确路径执行
+Ruff，完整清单和 `collectors/tushare/collector.py:E701` 既有归因见实施计划 Task 12 Step 4。
 
-- 本地工作树 / GitHub main / 生产文件 / 生产 runtime / 真实 API live response。
-- 不能用“测试通过”替代 `/health`、`/source_status` 和真实 API 响应。
-
-## 六、下一步
-
-1. [ ] B1 official event follow-up：观察 SEC EDGAR pilot 行 1-2 个交易日；若 `/events` 查询、SLA 和 Green Gate 继续正常，再评估 30-60 分钟 filing metadata pilot cron 或优先做官方交易所公告 collector。
-2. [ ] 继续拆小 reader/API：优先抽离无状态配置读取和 response helpers，再逐步拆业务 endpoint。
-3. [ ] DuckDB snapshot P0 生产门禁：storage epoch 与空间止血已完成，但 heavy sync 仍暂停；先把本地 code-only/mount path contract、`cb_issue` identity 与 P2 bounded-run commits 合入/push，再做 fresh 生产 preflight。只有 mount/guard/readback、rollback tag、无并行 writer 和 projected filesystem 使用率全部 green，才可 code-only deploy；随后单实例 pilot 证明 snapshot+sync+reconcile+cleanup <480 秒、16/16、identity mismatch=0、零残留、collector 无丢失和 `/source_status` 无 red。不得重复 schema migration，也不得简单恢复旧 cron。
-4. [ ] 公网链路观察：确认外部探针、SSH reverse tunnel 和新加坡 cloudflared 连续 24 小时稳定；异常时只切换 connector，不改广州权威库或 API 契约。
-5. [ ] `stock_master` 发布验收：在明确发布授权后分别核对 production runtime 代码、live `/reference?table=stock_master&limit=6000` 响应、`market_assets` A 股 stock 数据质量与 degraded 负例；本地完成不替代部署和 live 数据证据。
+每次汇报必须分开：本地 worktree、local main、origin/GitHub、production checkout、production runtime、external route、真实 dataset receipt/API response。

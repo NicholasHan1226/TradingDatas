@@ -22,6 +22,38 @@
 - Every task uses TDD: write the failing test, run it and confirm the expected failure, implement the smallest change, rerun targeted tests, then commit only the exact task files.
 - Never use `git add .`; stage exact paths only.
 
+## Acceptance Freeze and anti-drift execution gate
+
+This plan implements the approved authority chain and must not invent another:
+
+```text
+provider-neutral dataset registry
+→ SQLite facts + transaction-scoped ingest receipts
+→ registry/receipt/read-clock runtime projection
+→ later fixed catalog/query API
+```
+
+Before any task starts, record the exact product boundary, authority, interfaces,
+write scope, non-goals, threat model, deterministic P0/P1 cases, stop condition,
+and rollback. After a candidate is frozen:
+
+- review is limited to that recorded contract;
+- only an in-scope, deterministic, materially harmful P0/P1 can fail the task;
+- additional security or operational hardening becomes P2/backlog and cannot be
+  promoted into the release gate without a written specification change;
+- the Phase 1 invite-only Beta covers cooperative processes and accidental race
+  conditions; a **same-UID malicious** process is out of scope;
+- two successive rounds of new structural P1 findings stop further patch stacking
+  and trigger architecture review;
+- fixes replay the frozen matrix and do not expand files, interfaces, or business
+  responsibilities as a side effect.
+
+Do not start from a horizontal control-plane rewrite. First prove one complete
+provider → registry → SQLite fact/receipt → metadata/API vertical slice. Parallel
+agents may work only after shared interfaces are frozen and only in non-overlapping
+write domains. Local tests, manifests, and reviewer PASS never substitute for
+main/GitHub, production checkout, runtime, external route, or real-ingest evidence.
+
 ## Later implementation plans
 
 This plan intentionally stops at the data-platform foundation. The following plans must be written and reviewed separately:
@@ -108,7 +140,7 @@ This plan intentionally stops at the data-platform foundation. The following pla
 - [ ] **Step 2: Run the targeted baseline**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_common.py \
     tests/test_tushare_sync_daily.py
   ```
@@ -124,11 +156,11 @@ This plan intentionally stops at the data-platform foundation. The following pla
   ```bash
   rg -n 'filter_impact_relations|_IMPACT_RELATION_LOGGER' \
     collectors tests tools api_server.py reader.py && exit 1 || true
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_common.py \
     tests/test_tushare_sync_daily.py
-  ./.venv/bin/python3 -m compileall -q collectors/tushare/tushare_common.py
-  ./.venv/bin/ruff check collectors/tushare/tushare_common.py tests/test_tushare_common.py
+  uv run --python 3.12 python -m compileall -q collectors/tushare/tushare_common.py
+  uv run --python 3.12 --with-requirements requirements.txt ruff check collectors/tushare/tushare_common.py tests/test_tushare_common.py
   git diff --check
   ```
 
@@ -195,7 +227,7 @@ but default domestic Beta execution must not call them.
 - [ ] **Step 2: Run the new tests and confirm they fail**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_capability_coverage.py \
     tests/test_tushare_sync_daily.py
   ```
@@ -223,13 +255,13 @@ but default domestic Beta execution must not call them.
 
   ```bash
   bash -n cron/collectors.sh
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_capability_coverage.py \
     tests/test_tushare_sync_daily.py \
     tests/test_deploy_scripts_safety.py \
     tests/test_source_expansion_priority.py \
     tests/test_source_governance_monitor.py
-  ./.venv/bin/ruff check \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
     tests/test_capability_coverage.py \
     tests/test_tushare_sync_daily.py
   awk 'NF && $1 !~ /^#/' cron/crontab.txt | \
@@ -343,7 +375,7 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 - [ ] **Step 2: Confirm the tests fail because the loader does not exist**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_dataset_registry.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q tests/test_dataset_registry.py
   ```
 
   Expected: import or file-not-found failure.
@@ -359,9 +391,9 @@ def load_dataset_registry(path: Path = DATASET_REGISTRY_PATH) -> DatasetRegistry
 - [ ] **Step 5: Verify the loader**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_dataset_registry.py
-  ./.venv/bin/ruff check dataset_registry.py tests/test_dataset_registry.py
-  ./.venv/bin/python3 -m compileall -q dataset_registry.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q tests/test_dataset_registry.py
+  uv run --python 3.12 --with-requirements requirements.txt ruff check dataset_registry.py tests/test_dataset_registry.py
+  uv run --python 3.12 python -m compileall -q dataset_registry.py
   git diff --check
   ```
 
@@ -411,7 +443,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
 - [x] **Step 2: Confirm the tests fail with the representative-only registry**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_dataset_registry.py \
     tests/test_capability_coverage.py \
     tests/test_interface_runtime_ledger.py
@@ -428,7 +460,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
 - [x] **Step 5: Verify parity and imports**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_dataset_registry.py \
     tests/test_capability_coverage.py \
     tests/test_interface_runtime_ledger.py \
@@ -437,7 +469,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
     tests/test_tushare_sync_daily.py \
     tests/test_cn_futures_5min_collection.py \
     tests/test_sec_edgar_filings.py
-  ./.venv/bin/ruff check \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
     dataset_registry.py storage/read_model_store.py api_server.py \
     collectors/tushare/sync_daily.py tools/collect_cn_futures_5min.py \
     collectors/events/sec_edgar_filings.py \
@@ -445,7 +477,7 @@ The temporary legacy constants `API_TO_TABLE_MAP` and `ALLOWED_TUSHARE_APIS` rem
     tests/test_capability_coverage.py tests/test_interface_runtime_ledger.py \
     tests/test_read_model_store.py tests/test_tushare_sync_daily.py \
     tests/test_cn_futures_5min_collection.py tests/test_sec_edgar_filings.py
-  ./.venv/bin/python3 -m compileall -q \
+  uv run --python 3.12 python -m compileall -q \
     dataset_registry.py storage/read_model_store.py api_server.py \
     tools/interface_runtime_ledger.py collectors/tushare/sync_daily.py \
     tools/collect_cn_futures_5min.py collectors/events/sec_edgar_filings.py
@@ -666,7 +698,7 @@ def tushare_rows_outcome(
 - [ ] **Step 2: Run the tests and observe the existing ambiguity**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_common.py \
     tests/test_tushare_sync_daily.py
   ```
@@ -680,15 +712,15 @@ def tushare_rows_outcome(
 - [ ] **Step 4: Verify provider truth preservation**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_common.py \
     tests/test_tushare_sync_daily.py
-  ./.venv/bin/ruff check \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
     collectors/tushare/collector.py \
     collectors/tushare/tushare_common.py \
     tests/test_tushare_common.py \
     tests/test_tushare_sync_daily.py
-  ./.venv/bin/python3 -m compileall -q \
+  uv run --python 3.12 python -m compileall -q \
     collectors/tushare/collector.py \
     collectors/tushare/tushare_common.py
   git diff --check
@@ -786,7 +818,7 @@ def write_terminal_receipt(
 - [ ] **Step 2: Confirm the new tests fail**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_ingest_receipts.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q tests/test_ingest_receipts.py
   ```
 
 - [ ] **Step 3: Implement receipt serialization using the existing table**
@@ -796,9 +828,9 @@ def write_terminal_receipt(
 - [ ] **Step 4: Verify receipt integrity**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_ingest_receipts.py
-  ./.venv/bin/ruff check storage/ingest_receipts.py tests/test_ingest_receipts.py
-  ./.venv/bin/python3 -m compileall -q storage/ingest_receipts.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q tests/test_ingest_receipts.py
+  uv run --python 3.12 --with-requirements requirements.txt ruff check storage/ingest_receipts.py tests/test_ingest_receipts.py
+  uv run --python 3.12 python -m compileall -q storage/ingest_receipts.py
   git diff --check
   ```
 
@@ -852,7 +884,7 @@ The existing `ingest_rows_to_sqlite(...) -> int` remains available for non-Tusha
 - [ ] **Step 2: Run the tests and confirm they fail**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_ingest_receipts.py \
     tests/test_tushare_receipt_integration.py \
     tests/test_read_model_store.py
@@ -874,16 +906,16 @@ The existing `ingest_rows_to_sqlite(...) -> int` remains available for non-Tusha
 - [ ] **Step 4: Verify atomicity and compatibility**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_ingest_receipts.py \
     tests/test_tushare_receipt_integration.py \
     tests/test_read_model_store.py \
     tests/test_migrate.py
-  ./.venv/bin/ruff check \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
     storage/read_model_store.py storage/ingest_receipts.py \
     tests/test_read_model_store.py tests/test_ingest_receipts.py \
     tests/test_tushare_receipt_integration.py
-  ./.venv/bin/python3 -m compileall -q \
+  uv run --python 3.12 python -m compileall -q \
     storage/read_model_store.py storage/ingest_receipts.py
   git diff --check
   ```
@@ -943,7 +975,7 @@ def build_ingest_context(
 - [ ] **Step 2: Run the tests and confirm the current path fails**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_sync_daily.py \
     tests/test_tushare_receipt_integration.py
   ```
@@ -959,16 +991,16 @@ def build_ingest_context(
 - [ ] **Step 5: Verify the sync path and regression set**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_tushare_sync_daily.py \
     tests/test_tushare_receipt_integration.py \
     tests/test_ingest_receipts.py \
     tests/test_read_model_store.py \
     tests/test_capability_coverage.py
-  ./.venv/bin/ruff check \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
     collectors/tushare/sync_daily.py storage/ingest_receipts.py \
     tests/test_tushare_sync_daily.py tests/test_tushare_receipt_integration.py
-  ./.venv/bin/python3 -m compileall -q \
+  uv run --python 3.12 python -m compileall -q \
     collectors/tushare/sync_daily.py storage/ingest_receipts.py
   git diff --check
   ```
@@ -992,16 +1024,19 @@ def build_ingest_context(
 **Files:**
 
 - Create: `storage/receipt_projection.py`
+- Modify: `api_server.py`
 - Modify: `dataset_registry.py`
+- Modify: `storage/read_model_store.py`
 - Modify: `tools/interface_runtime_ledger.py`
 - Modify: `reader.py`
 - Modify: `tools/source_governance_monitor.py`
+- Modify: `tests/test_api_server_edge.py`
 - Modify: `tests/test_dataset_registry.py`
 - Modify: `tests/test_interface_runtime_ledger.py`
+- Modify: `tests/test_read_model_store.py`
 - Create: `tests/test_receipt_projection.py`
 - Modify: `tests/test_reader.py`
 - Modify: `tests/test_source_governance_monitor.py`
-- Modify: `tests/test_api_server_edge.py`
 
 **Interfaces:**
 
@@ -1046,12 +1081,12 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 
   Cover all six states. Assert that old rows remain queryable but the latest failed receipt makes the dataset degraded; stale is computed against wall-clock and registry SLA; paused comes from registry activation state; unobserved means no recognized receipt; unknown receipt schema fails closed. Delete the flat JSON cache and assert an identical projection can be rebuilt from SQLite.
 
-  Add public-path tests proving `/source_status`, Green Gate, and legacy `/tushare` runtime metadata are derived from SQLite receipts plus the current registry and wall clock. Crafted, missing, or stale `interface_runtime.json` must not change those public results. A missing, unreadable, or damaged SQLite database must fail closed without creating an empty database or falling back to JSON. Validate WAL-visible receipts, registry changes, and the exact SLA boundary.
+  Add public-path tests proving `/source_status` and legacy `/tushare` runtime metadata are derived from SQLite receipts plus the current registry and wall clock. Crafted, missing, or stale `interface_runtime.json` must not change those public results. A missing, unreadable, or damaged SQLite database must fail closed without creating an empty database or falling back to JSON. Validate WAL-visible receipts, registry changes, and the exact SLA boundary. Session-readiness/control-plane behavior is not a SharedSignals data-platform contract and must not be added to this task.
 
 - [ ] **Step 2: Confirm the tests fail before the projector exists**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_receipt_projection.py \
     tests/test_interface_runtime_ledger.py \
     tests/test_source_governance_monitor.py \
@@ -1075,21 +1110,25 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 - [ ] **Step 5: Verify runtime semantics**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     tests/test_receipt_projection.py \
     tests/test_interface_runtime_ledger.py \
     tests/test_dataset_registry.py \
+    tests/test_read_model_store.py \
     tests/test_reader.py \
     tests/test_source_governance_monitor.py \
     tests/test_api_server_edge.py
-  ./.venv/bin/ruff check \
-    dataset_registry.py storage/receipt_projection.py \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
+    api_server.py dataset_registry.py storage/read_model_store.py \
+    storage/receipt_projection.py \
     tools/interface_runtime_ledger.py tools/source_governance_monitor.py reader.py \
-    tests/test_dataset_registry.py tests/test_receipt_projection.py \
+    tests/test_api_server_edge.py tests/test_dataset_registry.py \
+    tests/test_read_model_store.py tests/test_receipt_projection.py \
     tests/test_interface_runtime_ledger.py tests/test_reader.py \
-    tests/test_source_governance_monitor.py tests/test_api_server_edge.py
-  ./.venv/bin/python3 -m compileall -q \
-    dataset_registry.py storage/receipt_projection.py \
+    tests/test_source_governance_monitor.py
+  uv run --python 3.12 python -m compileall -q \
+    api_server.py dataset_registry.py storage/read_model_store.py \
+    storage/receipt_projection.py \
     tools/interface_runtime_ledger.py tools/source_governance_monitor.py reader.py
   git diff --check
   ```
@@ -1098,12 +1137,13 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 
   ```bash
   git add -- \
-    dataset_registry.py storage/receipt_projection.py \
+    api_server.py dataset_registry.py storage/read_model_store.py \
+    storage/receipt_projection.py \
     tools/interface_runtime_ledger.py tools/source_governance_monitor.py \
-    reader.py tests/test_dataset_registry.py \
+    reader.py tests/test_api_server_edge.py tests/test_dataset_registry.py \
     tests/test_interface_runtime_ledger.py \
-    tests/test_receipt_projection.py tests/test_reader.py \
-    tests/test_source_governance_monitor.py tests/test_api_server_edge.py
+    tests/test_read_model_store.py tests/test_receipt_projection.py \
+    tests/test_reader.py tests/test_source_governance_monitor.py
   git diff --cached --name-status
   git commit -m "refactor: project source runtime from SQLite receipts"
   ```
@@ -1115,16 +1155,26 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 **Files:**
 
 - Modify: `AGENTS.md`
+- Modify: `API_CONTRACT.md`
 - Modify: `README.md`
 - Modify: `STATUS.md`
 - Modify: `docs/AGENTS.md`
 - Modify: `docs/data_source_onboarding.md`
+- Modify: `docs/event_lane.md`
+- Modify: `docs/external_agent_api_prompt.md`
 - Modify: `docs/market_capability_matrix.md`
 - Modify: `docs/sqlite_recovery_runbook.md`
+- Modify: `docs/tushare_activation_backlog.md`
+- Modify: `docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md`
+- Modify: `docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md`
 - Create: `docs/dataset_registry.md`
 - Create: `docs/ingest_receipts.md`
+- Modify: `tests/test_capability_coverage.py`
+- Modify: `tests/test_capability_scan.py`
+- Modify: `tests/test_source_expansion_priority.py`
+- Create: `tests/test_data_platform_docs.py`
 
-**Interfaces:** Documentation only; it must describe the code already accepted in Tasks 4–10 and must not claim `/v1/catalog`, `/v1/query`, Beta accounts, production release, or full Tushare activation are complete.
+**Interfaces:** Documentation and anti-drift tests only; they must describe the code already accepted in Tasks 4–10 and must not claim `/v1/catalog`, `/v1/query`, Beta accounts, production release, or full Tushare activation are complete. Existing compatibility docs stay readable but become explicit non-normative migration inventory.
 
 - [ ] **Step 1: Add a documentation contract test**
 
@@ -1135,12 +1185,19 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
   - the registry and SQLite receipts are named as authorities;
   - flat JSON is a rebuildable cache;
   - public v1 API and Beta access are labeled as later phases until implemented;
-  - no active navigation points to the five deleted documents.
+  - no active navigation points to the five deleted documents;
+  - old capability tests cannot force `P0-P7`, a 5-minute trading identity,
+    `stock_master` as a target public route, or the old source-expansion files
+    back into core documentation.
 
 - [ ] **Step 2: Confirm the current documentation fails the new contract**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_data_platform_docs.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
+    tests/test_data_platform_docs.py \
+    tests/test_capability_coverage.py::test_core_docs_freeze_external_data_platform_and_legacy_boundaries \
+    tests/test_capability_scan.py::test_stock_master_reference_is_legacy_compatibility_not_public_target \
+    tests/test_source_expansion_priority.py::test_legacy_expansion_plan_cannot_override_registry_or_grow_routes
   ```
 
 - [ ] **Step 3: Rewrite the minimum active documents**
@@ -1150,9 +1207,18 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 - [ ] **Step 4: Verify links, claims, and formatting**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q tests/test_data_platform_docs.py
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
+    tests/test_data_platform_docs.py \
+    tests/test_capability_coverage.py::test_core_docs_freeze_external_data_platform_and_legacy_boundaries \
+    tests/test_capability_scan.py::test_stock_master_reference_is_legacy_compatibility_not_public_target \
+    tests/test_source_expansion_priority.py::test_legacy_expansion_plan_cannot_override_registry_or_grow_routes
   rg -n 'opening_gate_5min_gate_v2_handoff|sector_flow_v2_handoff|sector_flow_v2_implementation_plan|2026-07-11-capital-growth-data-foundation|2026-07-11-sw2021-task4-fix-report' \
-    AGENTS.md README.md STATUS.md docs cron collectors tests && exit 1 || true
+    AGENTS.md README.md STATUS.md docs/AGENTS.md \
+    docs/data_source_onboarding.md docs/dataset_registry.md \
+    docs/ingest_receipts.md docs/market_capability_matrix.md \
+    docs/sqlite_recovery_runbook.md docs/external_agent_api_prompt.md \
+    docs/tushare_activation_backlog.md docs/event_lane.md \
+    cron collectors tests && exit 1 || true
   git diff --check
   ```
 
@@ -1160,10 +1226,15 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 
   ```bash
   git add -- \
-    AGENTS.md README.md STATUS.md docs/AGENTS.md \
-    docs/data_source_onboarding.md docs/market_capability_matrix.md \
-    docs/sqlite_recovery_runbook.md docs/dataset_registry.md \
-    docs/ingest_receipts.md tests/test_data_platform_docs.py
+    AGENTS.md API_CONTRACT.md README.md STATUS.md docs/AGENTS.md \
+    docs/data_source_onboarding.md docs/dataset_registry.md \
+    docs/event_lane.md docs/external_agent_api_prompt.md \
+    docs/ingest_receipts.md docs/market_capability_matrix.md \
+    docs/sqlite_recovery_runbook.md docs/tushare_activation_backlog.md \
+    docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md \
+    docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md \
+    tests/test_capability_coverage.py tests/test_capability_scan.py \
+    tests/test_data_platform_docs.py tests/test_source_expansion_priority.py
   git diff --cached --name-status
   git commit -m "docs: align SharedSignals with external data platform boundary"
   ```
@@ -1194,7 +1265,7 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 
   ```bash
   EVIDENCE_DIR="$(mktemp -d /private/tmp/sharedsignals-phase1.XXXXXX)"
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     --junitxml="$EVIDENCE_DIR/phase1-focused.xml" \
     tests/test_dataset_registry.py \
     tests/test_ingest_receipts.py \
@@ -1218,7 +1289,7 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 - [ ] **Step 3: Run the complete repository suite**
 
   ```bash
-  ./.venv/bin/python3 -m pytest -q \
+  uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q \
     --junitxml="$EVIDENCE_DIR/full.xml"
   ```
 
@@ -1227,22 +1298,36 @@ def datasets(self) -> tuple[DatasetDefinition, ...]: ...
 - [ ] **Step 4: Run static and syntax checks**
 
   ```bash
-  ./.venv/bin/ruff check \
-    dataset_registry.py \
-    storage/ingest_receipts.py \
-    storage/receipt_projection.py \
-    storage/read_model_store.py \
-    collectors/tushare/collector.py \
-    collectors/tushare/tushare_common.py \
-    collectors/tushare/sync_daily.py \
-    tools/interface_runtime_ledger.py \
-    api_server.py reader.py tests
-  ./.venv/bin/python3 -m compileall -q \
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
+    api_server.py dataset_registry.py reader.py \
+    collectors/events/sec_edgar_filings.py \
+    collectors/tushare/sync_daily.py collectors/tushare/tushare_common.py \
+    storage/event_identity.py storage/ingest_receipts.py storage/migrate.py \
+    storage/read_model_store.py storage/receipt_projection.py \
+    tools/collect_cn_futures_5min.py tools/interface_runtime_ledger.py \
+    tools/source_governance_monitor.py \
+    tests/test_api_server_edge.py tests/test_capability_coverage.py \
+    tests/test_capability_scan.py tests/test_cn_futures_5min_collection.py \
+    tests/test_data_platform_docs.py tests/test_dataset_registry.py \
+    tests/test_event_identity.py tests/test_ingest_receipts.py \
+    tests/test_interface_runtime_ledger.py tests/test_migrate.py \
+    tests/test_read_model_store.py tests/test_reader.py \
+    tests/test_receipt_projection.py tests/test_sec_edgar_filings.py \
+    tests/test_source_expansion_priority.py \
+    tests/test_source_governance_monitor.py tests/test_tushare_common.py \
+    tests/test_tushare_receipt_integration.py tests/test_tushare_sync_daily.py
+  # One pre-existing, blame-verified E701 remains outside Phase 1 hunks.
+  uv run --python 3.12 --with-requirements requirements.txt ruff check \
+    --ignore E701 collectors/tushare/collector.py
+  uv run --python 3.12 python -m compileall -q \
     dataset_registry.py storage collectors/tushare tools \
     api_server.py reader.py
   bash -n cron/collectors.sh
   git diff --check origin/main..HEAD
   ```
+
+  Do not replace the exact-path checks with `ruff check .`: the repository-wide
+  legacy baseline is non-zero and is not evidence that this candidate regressed.
 
 - [ ] **Step 5: Generate and verify the candidate manifest**
 
