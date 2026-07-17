@@ -27,7 +27,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-aaeafec13f3d19d6ba85d3da6b8cc5f839a04297
+5ee3cf91b0f41e2f9ccd7bfab6ac998cf1f6c35f
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -48,7 +48,13 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
    registry，已 fresh PASS 证明 114 个现有 dataset 中 113 个可机械转为 provider-native，普通
    Tushare binding 统一 `requested_fields=[]`，唯一 `rt_fut_min` 保持 paused；
 6. `aaeafec`：把双注册表迁移写成强制门禁，禁止用机械生成结果直接覆盖 legacy 默认注册表，
-   并禁止 HTTP/request/tenant/普通 CLI 选择目标注册表。
+   并禁止 HTTP/request/tenant/普通 CLI 选择目标注册表；
+7. `88d66a5`：纠正直接覆盖默认 registry 的旧状态表述，记录双注册表迁移；
+8. `9ade8c0`：把 legacy cron、基础设施和生成型 capability 文档明确标为历史兼容面，禁止把它们
+   当成 provider-native onboarding 或生产就绪证明；
+9. `6e98b52`：记录 canonical schema 的 symlink 路径阻塞和作废证据；
+10. `5ee3cf9`：加入 provider-native 通用事实表与专用原子迁移，fresh reviewer P0/P1=0，主仓
+    Python 3.12 全量 `2330 passed`，local/origin/GitHub readback 一致。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -56,22 +62,21 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 
 这些结论只证明 local/GitHub 代码与文档层，不能代替生产发布、runtime 或真实租户调用。
 
-## 当前两个本地候选
+## 当前实现与本地候选
 
 ### Canonical provider-row SQLite schema
 
-- 目标：一个通用 `provider_dataset_rows` authority，而不是 114 张接口专用表；
+- 已在 `5ee3cf9` 进入 local/origin/GitHub `main`：一个通用 `provider_dataset_rows` authority，
+  不是 114 张接口专用表；
 - additive SQLite-only schema：14 列、复合主键、CHECK 与 4 个索引；
 - 专用迁移只对显式指定的已存在数据库执行，`BEGIN IMMEDIATE` 单事务，DDL 与 postflight
   同事务，失败完整 rollback，重复执行幂等；
 - 不 rename/copy/update/delete typed-v1 表或数据，不操作生产数据库；
-- 第一版 writer 自验虽为 `2287 passed`，fresh review 仍以 P0=0/P1=2 判定 FAIL：postflight
-  没有拒绝改变身份/写入语义的额外 UNIQUE/NOCASE，旧 migrate CLI 也没有把专用迁移提示实际
-  输出给操作者。该旧候选和旧测试证据已作废；
-- exact8 修正版虽在隔离 worktree 自验 full `2294 passed`，第三次 fresh review 仍已判
-  **FAIL/P1**：专用迁移接受 leaf symlink `--db`，并实际修改链接指向的另一份 SQLite；确定性
-  证据位于 `/private/tmp/ss-schema-link-repro.l8wxgi1u`。该冻结和旧测试证据作废，唯一 writer
-  只在原 exact8 内补 no-follow 路径/身份绑定；全新冻结与 fresh PASS 前未进入 main/GitHub。
+- 最终 exact8 fresh review 覆盖 leaf/ancestor symlink、non-regular file、connect/BEGIN/COMMIT
+  前后路径身份漂移、rollback、0-byte existing SQLite 与 no-follow；定向 `82 passed`、独立 race
+  `7 passed`、全量 `2330 passed`，Ruff/compile/diff-check 全绿；
+- 这只完成代码与 GitHub 层。生产约 22 GB 数据库尚未迁移，仍需隔离 canary、备份/回退和
+  fresh production preflight；不得把 `5ee3cf9` 写成生产 schema 已存在。
 
 ### 双注册表迁移
 
@@ -86,8 +91,23 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
   `config/provider_native_dataset_registry.yaml` 作为 generic target。仅受信进程配置
   `SHAREDSIGNALS_DATASET_REGISTRY_PATH` 可选择 target；请求、tenant、dataset 参数与普通 CLI
   均不能切换；
-- 双注册表 runtime 正在新的隔离 worktree 实现。它必须证明默认 registry 字节和 legacy 行为不变、
-  target 为 114/113/1、env 缺失保持 legacy、无逐接口代码或公共路由增长，并 fresh PASS 后才可集成。
+- 第一版双注册表 runtime 的默认环境与 2308 项全量回归虽绿，但 fresh review 以 **P1=1** 判定
+  FAIL：target env 同时让 `LegacyQueryCompat` 与 legacy `/tushare` 共用 target `QueryService`，
+  把旧 `daily` 从 `market_bars_daily` 错切到 `provider_dataset_rows`；该冻结和所有哈希作废；
+- 当前唯一修复只允许分离 default legacy registry/query 与 target V1 registry/query，并补真实
+  `/tushare`/stock-master dispatch 回归。它仍须全新 freeze 和 fresh PASS，尚未进入 main/GitHub。
+
+### TradingAgent consumer handoff contract
+
+- TradingAgent 已明确只消费 `GET /v1/catalog` 与 `POST /v1/query`，不直读 SQLite、不使用
+  `/tushare`、`/source_status`、provider 专用 route 或 localhost fallback；
+- 本地 contract 候选的 `schema_major`、same-as-of/receipt watermark 实证、fixture 与 2302 项全量
+  回归均绿，但 fresh review 仍以 **P1=1** 判定 FAIL：`docs/data_contract.md` 和
+  `docs/query_service.md` 仍把已进入 GitHub 的 V1 协议误写成仅隔离 worktree 候选，与
+  `API_CONTRACT.md` 和真实 Git 历史冲突；
+- 最小返工只统一三份文档的 truth layer 和停止线，不新增 TA 业务表、因子、交易语义或公共 route。
+  在 generic schema、target registry、真实 backfill、server canary、认证和真实 query readback
+  完成前，状态固定为 **TradingAgent 当前不可接入**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
@@ -152,8 +172,8 @@ generic replacement PASS
 
 ## 下一步
 
-1. 完成 canonical schema 与双注册表 runtime，分别 fresh review 至 P0/P1=0 后
-   精确集成并同步 GitHub；
+1. canonical schema 已进入 GitHub；继续完成双注册表 runtime 与 TA consumer handoff 文档的
+   最小返工，分别 fresh review 至 P0/P1=0 后精确集成；
 2. 在服务器创建与旧生产 DB、cron、端口隔离的 canary：用一个小 `trade_cal` 窗口完成
    `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
 3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
