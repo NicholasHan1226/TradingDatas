@@ -1,161 +1,155 @@
-# SharedSignals 状态
+# SharedSignals 当前状态
 
-> 先读 [AGENTS.md](AGENTS.md)。本文件只保存当前可执行状态、证据分层、阻塞和下一步；历史生产与事故细节保留在 `docs/status_history_2026-07.md` 和外部 evidence 中。
->
-> 最后更新：2026-07-17。当前所有结果仍是**本地候选**；origin/GitHub、production checkout、
-> production runtime、external route 和 real dataset evidence 尚未完成对应发布验收，**生产未改变**。
+> 先读 [AGENTS.md](AGENTS.md)。本文件只记录当前可执行状态、证据分层、阻塞和下一步；
+> 旧阶段、事故和作废候选保留在
+> [docs/status_history_2026-07.md](docs/status_history_2026-07.md) 与仓外 evidence 中，
+> 不再混入当前判断。
+
+最后更新：2026-07-17。
 
 ## 当前结论
 
-- SharedSignals 的批准定位是**独立外部多源金融数据平台**，以 Tushare 为首个主要上游，未来横向扩展公告、新闻、研报、政策、互动和客观舆情等事实数据。
-- SharedSignals 不承载 opening gate、候选、策略评分、资金决策、持仓、风险、订单、成交或交易建议；不与 TradingAgent/MarketGraph 共享数据库、跨系统事务或 callback。
-- 权威层已固定为 provider-neutral registry → SQLite facts + transaction-scoped **SQLite ingest receipt** → runtime/API metadata。flat JSON 只能是可重建缓存。
-- 目标公共数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`；新增数据源不得新增 route。`/tushare` 和现有专用 endpoint 只是待迁移兼容层。
-- 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
-- REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
+- SharedSignals 的唯一批准定位是：面向受邀外部账户和内部消费者的**独立外部多源金融数据平台**，
+  产品形态是**类似 Tushare 的多源金融数据服务**，内部合同保持 provider-neutral。
+- Tushare 是已购买的现成上游。普通 Tushare dataset 只通过统一
+  `api_name + params + fields -> fields/items` transport、registry/config、generic SQLite writer、
+  receipt 和固定 query service 接入；禁止重新采集 Tushare 已提供的数据，也禁止按接口新增
+  collector、业务表、scheduler branch、query branch 或公共 route。
+- 未来自建新闻、公告、研报、政策、互动或客观舆情来源，只在 transport/auth/pagination
+  确实不同时增加 provider-level adapter；仍进入同一个 provider-native 数据面。
+- SharedSignals 不承载 opening gate、候选、预测、策略、资金决策、持仓、风险、订单、成交、
+  执行回执或交易建议；这些由 TradingAgent、MarketGraph 或外部客户处理。
+- 公共数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`。新增 provider 或 dataset 不得新增
+  公共路由；`/tushare` 和其它专用端点只属于迁移期兼容面。
 
-## 2026-07-17 provider-native 架构纠偏
+## 本地与 GitHub 已验证
 
-- fresh 代码审计确认：当前 114 个 registry dataset 仍被压入 8 个 schema profile 和 7 张 typed table；其中 61 个 dataset 走 `market_factors` 并把一条 provider row 拆成多条 `factor_name/value`。这会丢失/降维 provider-native 数据，也是逐接口开发耗时的根因。
-- 上述 typed mapping 不再是新增 dataset 的目标架构。既有表、路由和消费者只作为 compatibility surface 保留；在新路径 parity、消费者迁移、no-use 观察和 rollback 证据完成前不会直接删除。
-- 已批准并 fresh review PASS 的目标：普通 Tushare dataset 只改 registry/config，复用一个 generic provider adapter、一个 provider-row SQLite authority、同事务 receipt 和同一个 QueryService。unknown 字段原样入库；字段/schema/type mismatch 只标记 quality/degraded，不改写或丢行。
-- 当前隔离实现包含 provider-native registry、generic facts/receipt writer、Tushare provider-level ingest、catalog/query compiler、zero-code E2E、测试和同步核心文档。generic table 仍未进入 canonical schema，本轮没有 DB migration、真实 provider、cron、GitHub 或生产变更；本地提交、origin/GitHub 与生产状态必须继续分别验证。
-- 原 Phase 3 逐接口 typed-storage 审计/映射计划已停止，不再按 114 个接口逐个增加表映射、collector 分支或 API 路由。
+SharedSignals 当前 local `main`、`origin/main` 与 GitHub `main` 均为：
 
-### 2026-07-17 产品形态与上游复用再冻结
+```text
+e9f06cad62b4e783dfca5e0fc0d09feee845bafb
+```
 
-- Nicholas 再次确认：SharedSignals 对外提供的是**类似 Tushare 的多源金融数据服务**，不是交易系统。Tushare 是已购买的现成上游能力；SS 直接复用统一 `api_name + params + fields -> fields/items` 协议，不重新生产、抓取或解释 Tushare 已提供的数据。
-- 普通 Tushare dataset 不得逐接口开发 collector、业务表、query compiler、scheduler branch 或公共 route。首批四项 registry 候选只能证明 generic 路径，不得复制成 114 份手工实现；其余接口必须通过 registry/config 批量导入和统一 adapter 调用。
-- 未来自建新闻、公告、舆情等数据源可以新增 provider-level transport adapter，但仍必须进入同一 provider-native SQLite facts、transaction receipt、metadata 和固定 catalog/query API。外部账户不感知上游差异，TradingAgent/MarketGraph/客户自行做特征、预测和交易逻辑。
-- 当前生产仍是旧 checkout `ccff5c8`，本轮只读盘点时 `/v1/catalog` 返回 404；本地候选、GitHub、生产、external route 与真实 provider 数据仍未完成同层验收。该事实禁止用本地 `639a2f3` 或测试 PASS 替代。
+tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untracked 目录，未修改、未暂存、
+未删除。
 
-## Phase 2 本地主线验收
+已经进入 GitHub 的纠偏链：
 
-- Task 7 已形成精确提交 `bde3db2`（`docs: freeze the V1 consumer contract`）；exact9 候选
-  已经 fresh clean-overlay 规格和代码质量评审 PASS。Task 8 replacement freeze
-  `998c34eecf0815affb94e3fe3252cc042b8748bb` 已经对抗、规格和代码质量三路 fresh review
-  PASS（P0/P1/P2=0），并从 `d92f0293aa8f5f0d99b5e13de0874648d1c42f82` 精确
-  fast-forward 到本地 `main`。origin/GitHub、production checkout、runtime 和 external route
-  尚未同步或发布。
-- Task 7 初始 RED 为 `4 failed, 4 passed`；第一候选虽达到 focused `8 passed` 和全仓
-  `2185 passed`，fresh review 仍以 P0=0/P1=2/P2=1 判定 FINAL FAIL，因此该组 PASS 数字不构成
-  acceptance。返工 RED 为 `4 failed, 6 passed`，精确复现 fact-row market、真实 serializer/cursor
-  parity、API normative 状态和文档同步缺口；返工候选曾达到 focused `10 passed`、Python 3.12
-  全仓 `2187 passed, 34 warnings`。spec review v2 仍以 P0=0/P1=1 判定 FINAL FAIL，因为测试只
-  解码 page1 cursor、没有把它提交回同一 QueryService。分页续传测试用删除 continuation call
-  的临时 scaffold 取得 RED `1 failed, 10 passed`，恢复真实续页后 focused 为 `11 passed`；最终
-  Python 3.12 全仓为 `2188 passed, 34 warnings`，精确 Ruff、JSON parser 与
-  `git diff --check` 通过。
-  34 warnings 均为测试环境未设置 `SHAREDSIGNALS_TOKEN_SALT` 的既有 RuntimeWarning。
-- [V1 consumer contract](docs/data_contract.md) 与
-  [machine-readable fixture](tests/fixtures/sharedsignals_v1_query_contract.json) 冻结
-  `GET /v1/catalog`、`POST /v1/query`、六状态、signed cursor 和逐 dataset metadata 消费规则；
-  fixture 由真实临时 SQLite writer/receipt 与 V1 services 完整重建，不以手工 JSON 自证。
-- 证据层必须分开：local worktree PASS、local main、origin/GitHub、production checkout、
-  production runtime、external route、real dataset evidence。当前完成前两层，其余层未改变。
-- Task 8 最终冻结覆盖 16 commits、39 files；Python 3.12 focused 为 `978 passed`、全仓为
-  `2200 passed`，Ruff、compileall 与 `git diff --check` 均通过。旧 freeze `f243b0a` 因
-  registry `range_field=null` 时猜测日期字段而作废；replacement freeze 已证明这类日期参数在
-  QueryService 前 fail closed。完整证据在
-  `/private/tmp/ss-phase2-task8-final2.hIr4wD`，不能替代远端或生产验收。
-- fast-forward 后已直接从本地 `main` 重跑 query contract、cursor、catalog/query service、V1
-  HTTP、legacy compatibility、consumer fixture 与文档门禁，共 `549 passed, 1 warning`；JUnit 为
-  `/private/tmp/ss-phase2-local-main-postmerge-junit.xml`。该结果只证明本地主线 readback。
+1. `9627aa0`：冻结类似 Tushare 的产品边界、防漂移规则和核心文档；
+2. `f026114`：加入 registry-driven generic provider runner；默认只生成安全计划，只有显式
+   `--execute` 才允许调用 provider，并且不能从 CLI 覆盖 provider API、字段或预算；
+3. `e9f06ca`：provider-native query 在省略/空 `fields` 时返回完整上游 payload；显式字段、
+   filter、order、cursor、tenant policy 与 response budget 仍受 registry/query policy 约束，
+   typed-v1 compatibility 路径不变。
 
-## 代码与 Git 分层
+`e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
+结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
+`row_key`、receipt 等技术列。
 
-- SharedSignals 本地 remote-tracking `origin/main` 本轮核对为
-  `d913d32c12d325edfa539a4704bb82ee14169507`；本轮未 fetch，不能据此声称 GitHub 当前已变化。
-- Phase 2 本地代码 checkpoint 为
-  `998c34eecf0815affb94e3fe3252cc042b8748bb`，比本地 `origin/main` tracking ref
-  领先 68 个提交。该 tracking ref 尚未在本轮 fetch，因此不能据此声称 GitHub 当前状态；
-  更不能声称生产已同步。
-- Phase 1 已经 fresh 独立验收并精确 fast-forward 到本地 `main`；最终代码 checkpoint 为 `09927f1`，状态同步提交为 `032c208`。定向 readback、Python 3.12 全仓 `1593 passed`、Ruff/compile/diff 门禁均通过；这些证据仍只属于本地层。
-- Phase 1 保留 worktree：`.worktrees/sharedsignals-external-data-phase1`。在 Phase 2 本地集成和 rollback evidence 齐全前不清理。
-- 结构性作废的 flat-file authority worktree `sharedsignals-source-runtime-ledger-p0` 从未进入主线；在替代方案完成集成且 rollback evidence 齐全前只保留审计证据，不继续修补、不提前删除。
+这些结论只证明 local/GitHub 代码与文档层，不能代替生产发布、runtime 或真实租户调用。
 
-## Phase 1 当前进度
+## 正在独立验收的两个本地候选
 
-### 已完成候选
+### Canonical provider-row SQLite schema
 
-- 仓库第一批安全退役：5 份已证明无消费者的旧文档和一个未使用 impact helper 已从 Phase 1 候选删除，Git 历史可回滚。
-- 目标 cron template 已收窄到境内 Beta；这只表示仓库目标模板，生产 live crontab 未修改、未验证。
-- provider-neutral dataset registry、Tushare provider outcomes、versioned ingest receipts、数据+success receipt 同 SQLite transaction、terminal empty/failed receipts 和 Task 9 registry-backed sync 已进入 Phase 1 主候选。
-- Task 9 精确提交：`341fd5a feat: make Tushare receipts authoritative`。
+- 目标：一个通用 `provider_dataset_rows` authority，而不是 114 张接口专用表；
+- additive SQLite-only schema：14 列、复合主键、CHECK 与 4 个索引；
+- 专用迁移只对显式指定的已存在数据库执行，`BEGIN IMMEDIATE` 单事务，DDL 与 postflight
+  同事务，失败完整 rollback，重复执行幂等；
+- 不 rename/copy/update/delete typed-v1 表或数据，不操作生产数据库；
+- writer 自验为 `2287 passed`；当前必须在最新主线 clean overlay 重新验收，旧 base 结果不能复用。
 
-### Task 10：SQLite runtime projection
+### 114-dataset registry bulk compiler
 
-- 候选已冻结为精确 14 文件，base `a100ef4`；Task 9 精确 4 文件未被修改。冻结根指纹为 `86db6493…8317`。
-- 两路 fresh clean-overlay reviewer 均 PASS，P0/P1/P2=0；独立 Python 3.12 全仓分别为 `1545/1545`，Task 9+10 overlay 为 `1577/1577`。
-- 独立 10 万 receipt 实测：单次 projection 约 `1.428s`、完整 verified load 约 `1.442s`；maintenance snapshot 与 writer lock 边界通过并发实证。
-- 当前合同：同一 SQLite read transaction 返回 data + receipt；只做一次完整 projection；maintenance lock 覆盖 snapshot，writer open lock 只覆盖绑定/open/BEGIN/schema read；不让持续读饿死采集 writer。
-- 精确 14 文件已逐字节吸收到 Phase 1 主候选，并形成本地提交 `e73c06d refactor: project source runtime from SQLite receipts`；与本轮 anti-drift 文档/测试合并后的 Python 3.12 全仓为 `1581 passed`，Ruff、compileall、`git diff --check` 通过。它仍未 push 或生产发布。
+- 目标：从现有 catalog/config 机械生成 provider-native registry，不逐接口写 Python；
+- 普通 Tushare binding 统一 `requested_fields=[]`，让上游返回完整字段；旧 config `fields`
+  只作历史 hint，不作为阻断或投影；
+- 当前冻结结果为 113 个机械转换；唯一未自动转换的是 `rt_fut_min`，因为缺 collector config
+  且存在额外 provider binding，保持 paused；
+- 工具不得包含 API-specific 分支，不调用 provider，不改默认 registry/DB/cron/生产；
+- writer focused 为 `163 passed`；当前必须在最新主线 clean overlay fresh review 后才可集成。
 
-### Task 12 交叉层修复
+候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
-- 最终独立验收发现一个确定性 P1：Task 9 合法 `unmapped.tushare.<digest>` terminal receipt 被 Task 10 当作全局 rogue unknown，污染所有 dataset/interface 状态；原冻结 `435acee` 因此作废。
-- 本地提交 `09927f1 fix: isolate unmapped ingest receipts` 已按 TDD 收口：只有真实 registry alias miss 可生成 synthetic tombstone；已知 dataset 的 binding/adapter/table 故障保留 owner identity 并 fail closed；合法 tombstone 精确绑定 provider/API/digest/adapter/status/error/count/window/UUID/time/envelope/receipt ID，分类不依赖当前 dataset 或未来 onboarding；所有形似但不完整的 unknown receipt 继续 fail closed。
-- 该修复当时的候选定向为 `244 passed`、Python 3.12 全仓为 `1593 passed`，精确 Ruff、collector 既有 E701 例外、`git diff --check` 全绿；fresh 独立 reviewer PASS（P0/P1=0）。它现已包含在本地 `main` 的 Phase 1 checkpoint 中，但仍不能代替 GitHub 或生产验收。
-- Phase 1 不新增全局 unmapped audit API 字段。SQLite tombstone 继续保留为 durable evidence；未来若公开全局 audit bucket，必须另行定义 latest/resolution 语义，避免历史事件永久把整体状态置红。
+## 生产现状（只读证据）
 
-### Task 11：核心文档与防漂移门禁
+- **生产未改变**；下列事实来自本轮只读盘点。
+- 生产 SharedSignals checkout 仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
+  或外部路由写入。
+- 服务仍在旧 runtime 上运行；`/health` 可读，但目标 `/v1/catalog`、`/v1/query` 仍返回 404。
+- 生产 SQLite 约 22 GB；`market_ingest_runs` 存在且仍有旧调度写入，canonical
+  `provider_dataset_rows` 尚不存在。
+- 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；旧 writer/cron 仍活跃，因此
+  不能直接在该数据库上执行 migration 或切换 authority。
+- 只读真实上游 smoke 已用现有 Tushare transport 调用 `trade_cal`：SSE、20260715 返回
+  `success`、1 行。这证明已购买上游和统一调用协议可用；不证明 generic SQLite/API 纵向切片
+  已发布。
+- 生产仍是 NO-GO。HTTP 200、配置存在、旧表有数据或“114/114”都不能代替逐 dataset 的
+  receipt、freshness、quality、lineage 和真实 query 证据。
 
-- `AGENTS.md`、`README.md`、`STATUS.md`、目标 API 合同、registry/receipt/onboarding/recovery 文档和 Phase 1 规格已统一到外部数据平台边界。
-- 三个会把旧 `P0-P7`、5 分钟交易口径、`stock_master` 专用公共路由和旧扩源文件重新写回核心文档的测试已改为新 authority/fixed-API/legacy-compatibility 契约。
-- 旧 external-agent prompt、Tushare activation backlog 与 event lane 已明确标注为 migration inventory/compatibility，而不是目标 API、runtime authority 或生产可用证明。
-- 文档定向门禁、Task 9+10+文档 union 全仓 `1581/1581`；fresh 独立 anti-drift 文档审阅 PASS（P0/P1/P2=0），对应本地提交为 `afa7f3b` 与 `435acee`。
+## 权威层与验收分层
 
-### 未完成
+权威顺序固定为：
 
-- Phase 3 境内 Tushare entitlement probing、registry-driven cadence scheduler、throttled backfill 与频率实证。
-- Phase 4 受邀账户 tenant credential、dataset/field/lookback policy、rate/concurrency、persistent quota、usage ledger、revocation 和 runbook。
-- Phase 5 GitHub readback、安全生产发布、外部 route、真实采集、回滚和稳定性观察。
+```text
+provider-neutral registry
+-> provider-level transport adapter
+-> provider-native SQLite rows + transaction-scoped SQLite ingest receipt
+-> read-clock freshness/quality/lineage/degraded projection
+-> GET /v1/catalog + POST /v1/query
+-> invited tenant
+```
 
-## Acceptance Freeze
+每次汇报必须分开：
 
-- 候选冻结后只能按已批准合同验收；不得临时扩大产品范围、威胁模型或商业能力。
-- 只有当前范围内、确定性可复现、真实影响数据正确性/隔离/可用性的 P0/P1 才能阻断；其它发现进入 P2/backlog。
-- same-UID malicious process 不属于当前受邀 Beta 合同；协作进程的意外 race、锁泄漏、数据/receipt 不一致和 writer starvation 属于当前合同。
-- 连续两轮出现新的结构性 P1 时必须停止叠加 validation，回到规格/架构裁决。
-- 测试、manifest 和 reviewer PASS 只证明候选；不能代替 main/GitHub/production/runtime/external route/真实数据。
+1. local worktree PASS；
+2. local main；
+3. origin/GitHub；
+4. production checkout；
+5. production runtime；
+6. external route；
+7. real dataset evidence（provider receipt 与 API response）。
+
+任一层通过都不能替代后续层。
 
 ## 退役边界
 
-以下内容不属于目标平台，但当前仍可能存在代码或消费者依赖：opening gate、Green Gate 邮件、交易式 blocking、研究关系/impact、旧专用 endpoint、旧 cron/patrol/heal、DuckDB critical path、Crypto/PM/HK/US 默认调度。
-
-处理顺序固定为：
+旧 typed mapping、opening gate、Green Gate 邮件、交易式 blocking、研究关系、旧专用 endpoint、
+旧 cron/patrol/heal、DuckDB critical path 和已作废 worktree 都不是目标架构，但当前不能为了
+“清洁”直接删除。固定顺序为：
 
 ```text
-提供 registry/query 替代
-→ 迁移消费者
-→ 标记 deprecated 并观测
-→ 证明无 import/test/doc/cron/service/external consumer
-→ safe-delete
+generic replacement PASS
+-> migrate consumers
+-> deprecate
+-> no-use observation
+-> fresh rollback evidence
+-> safe-delete
 ```
 
-禁止为了“清洁”直接删除数据库、数据、Journal、ledger、history、evidence、rollback worktree 或未知消费者仍在使用的入口。
+禁止删除或覆盖生产 DB、数据、Journal、ledger、history、evidence、未知消费者仍使用的入口或
+尚未证明可重建的 worktree。
 
 ## 下一步
 
-1. 先完成并 fresh review provider-native zero-code 纵向切片：synthetic dataset 只改 registry/config，完成 provider → 临时 SQLite fact+receipt → `/v1/query`；当前不改 canonical schema 或生产数据库。
-2. 纵向切片 PASS 后再做 additive generic-table migration/backfill/parity/cutover/rollback 方案；未经单独授权不执行 migration。
-3. 将境内 Tushare 接口机械迁入 registry，随后推进 entitlement/cadence/backfill；不再逐接口写 Python 或 route。
-4. Phase 4 再推进受邀账户治理；不得把采集、鉴权、计费或 gateway 协议混入 scheduler/backfill 写域。
-5. origin/GitHub 同步后才进入 fresh production safe-release；production readback、external route
-   与真实采集稳定性全部通过后才可声明 Beta 可用。
+1. 完成 canonical schema 与 registry compiler 的 fresh review，P0/P1=0 后精确集成并同步 GitHub；
+2. 在服务器创建与旧生产 DB、cron、端口隔离的 canary：用一个小 `trade_cal` 窗口完成
+   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
+3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
+   与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
+4. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
+5. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
+   code/runtime readback 和分批启用；
+6. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
 
-## 验证入口
+## 本地验证入口
 
 ```bash
 uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q
-uv run --python 3.12 --with-requirements requirements.txt ruff check \
-  tests/test_data_platform_docs.py tests/test_capability_coverage.py \
-  tests/test_capability_scan.py tests/test_source_expansion_priority.py
-uv run --python 3.12 python -m compileall -q .
+uv run --python 3.12 --with-requirements requirements.txt ruff check <本次精确 Python 路径>
+uv run --python 3.12 python -m compileall -q <本次精确 Python 路径>
 git diff --check
 ```
 
-全仓 Ruff legacy baseline 当前非零，不能报告为全仓绿；Phase 1 只按冻结精确路径执行
-Ruff，完整清单和 `collectors/tushare/collector.py:E701` 既有归因见实施计划 Task 12 Step 4。
-
-每次汇报必须分开：本地 worktree、local main、origin/GitHub、production checkout、production runtime、external route、真实 dataset receipt/API response。
+完整测试、reviewer PASS、manifest 和哈希只证明对应候选字节；candidate 变化或 base 变化后必须
+重新生成 fresh evidence，旧 PASS/JUnit/哈希不得复用。
