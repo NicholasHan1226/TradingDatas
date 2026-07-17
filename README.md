@@ -111,6 +111,25 @@ Task 12 Step 4。
 
 测试通过只证明本地候选；GitHub、生产 checkout、runtime、外部 route、真实采集和回滚必须分别验证。
 
+## Registry-driven provider runner
+
+`tools/collect_provider_dataset.py` 只接受 canonical `dataset_id` 与 registry
+模板所需的 request-window；provider API、静态参数、字段和预算不能从 CLI
+覆盖。默认只生成无敏感值的 plan，不调用 provider，也不打开或创建数据库：
+
+```bash
+python3 tools/collect_provider_dataset.py \
+  --db-path /path/to/already-migrated.sqlite \
+  --dataset-id cn.example.dataset \
+  --request-window-json '{"start_date":"20260701","end_date":"20260717"}'
+```
+
+只有显式增加 `--execute` 才会调用 provider 并写入已存在、已完成独立迁移验收的
+generic SQLite authority。request-window 也可通过 `--request-window-file` 提供；
+`--attempt-id` 与 `--started-at` 可选。退出码固定为 `0=success/plan`、
+`2=validation`、`3=empty`、`4=failed`。输出不包含数据库路径、window 值、
+provider token、provider 错误原文或 receipt ID。
+
 ## 安全边界
 
 - 不提交生产数据库、凭证、日志、缓存或运行证据。
