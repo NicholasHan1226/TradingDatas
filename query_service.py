@@ -600,8 +600,6 @@ def _prepare_query(
 
     if request.order is not None:
         raw_order = request.order
-    elif _is_provider_native(dataset):
-        raw_order = ()
     else:
         raw_order = tuple(f"{field_name}:asc" for field_name in dataset.primary_key)
     order: list[tuple[str, str]] = []

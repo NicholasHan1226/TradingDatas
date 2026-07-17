@@ -500,7 +500,7 @@ def test_native_query_returns_current_rows_for_exact_invalid_data_through_failur
         native_harness,
         _request(
             fields=("symbol", "trade_date"),
-            order=None,
+            order=("symbol:asc",),
         ),
     )
 
@@ -581,6 +581,37 @@ def test_native_cursor_uses_provider_and_row_key_without_sqlite_rowid(
     assert third["next_cursor"] is None
 
 
+def test_native_default_order_matches_catalog_primary_key_and_keeps_stable_cursor(
+    native_harness: dict[str, object],
+) -> None:
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="000-physical-key",
+        payload={"symbol": "ZZZ", "trade_date": "20260716", "big": 4},
+    )
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="zzz-physical-key",
+        payload={"symbol": "000", "trade_date": "20260716", "big": 5},
+    )
+    native_harness["conn"].commit()
+
+    request = _request(fields=("symbol", "trade_date", "note"), order=None, limit=1)
+    pages: list[dict[str, object]] = []
+    while True:
+        response = _execute(native_harness, request)
+        pages.extend(response["data"])
+        if response["next_cursor"] is None:
+            break
+        request = replace(request, cursor=response["next_cursor"])
+
+    assert [row["symbol"] for row in pages] == ["000", "AAA", "BBB", "BBB", "ZZZ"]
+    assert pages[2]["note"] is None
+    assert pages[3]["note"] == "provider-b"
+
+
 def test_native_query_rejects_internal_storage_field_requests(
     native_harness: dict[str, object],
 ) -> None:
@@ -618,7 +649,7 @@ def test_native_query_accepts_hashed_unknown_and_time_format_quality_codes(
     ]
 
 
-def test_native_query_pure_select_preserves_invalid_declared_time_value(
+def test_native_query_select_preserves_invalid_time_when_order_uses_safe_field(
     native_harness: dict[str, object],
 ) -> None:
     _insert_row(
@@ -634,7 +665,7 @@ def test_native_query_pure_select_preserves_invalid_declared_time_value(
         native_harness,
         _request(
             fields=("symbol", "trade_date"),
-            order=None,
+            order=("symbol:asc",),
         ),
     )
 
