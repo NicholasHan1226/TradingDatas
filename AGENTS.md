@@ -50,6 +50,14 @@ HTTP 200、配置存在、allowlist、静态接口数量、旧数据行或消费
 - 外部消费者只能通过受控 HTTP API 访问；不得直连 SQLite、DuckDB、CSV/NDJSON、旧目录或 provider。
 - 横向扩源完成定义是“能发现、能采、能同事务入库、能查询、能返回真实 metadata、能限流/降级、能回滚”，不是“配置里有名字”。
 
+## 注册表迁移门禁
+
+- 迁移期必须同时保留两份职责明确的注册表：现有默认注册表只服务 legacy compatibility；新的 provider-native 目标注册表只服务 generic runner、`/v1/catalog`、`/v1/query` 和隔离 canary。不得用机械生成结果直接覆盖默认注册表。
+- `paused`、`inactive` 或调度禁用只表示“不自动采集”，**不证明旧 collector、receipt projector、query fixture 或其它消费者不会读取该合同**；不得把调度状态当作读取隔离或迁移完成证据。
+- 目标注册表只能由受信任的进程启动配置选择。HTTP 请求、tenant、外部账户、dataset 参数和普通 CLI 参数不得切换注册表路径，也不得绕过固定 catalog/query 合同。
+- 默认注册表切换前必须依次证明：generic SQLite schema 与 receipt 可用、目标数据完成受控 backfill、legacy 与 generic 查询结果达到批准的 parity、旧消费者已迁移、观察期内无旧合同使用、回滚路径和证据完整。任一项未证实则保持双注册表，不宣称迁移完成。
+- 测试必须证明默认配置字节和行为保持兼容、目标注册表可确定性重建、无受信配置时不会隐式启用目标合同、无 request/tenant/CLI 选择器，以及新 dataset onboarding 不增加公共路由或逐接口代码。
+
 ## 首期范围
 
 - 首期只覆盖中国境内市场与已获权的 Tushare 能力；预测市场、加密货币、港股、美股不进入首期采集和公开目录。
