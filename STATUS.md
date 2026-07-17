@@ -68,8 +68,10 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 - 第一版 writer 自验虽为 `2287 passed`，fresh review 仍以 P0=0/P1=2 判定 FAIL：postflight
   没有拒绝改变身份/写入语义的额外 UNIQUE/NOCASE，旧 migrate CLI 也没有把专用迁移提示实际
   输出给操作者。该旧候选和旧测试证据已作废；
-- exact8 修正版已在隔离 worktree 冻结，自验 full `2294 passed`；正在基于最新主线做第三次
-  clean-overlay fresh review。review 最终 P0/P1=0 前仍是候选，未进入 main/GitHub。
+- exact8 修正版虽在隔离 worktree 自验 full `2294 passed`，第三次 fresh review 仍已判
+  **FAIL/P1**：专用迁移接受 leaf symlink `--db`，并实际修改链接指向的另一份 SQLite；确定性
+  证据位于 `/private/tmp/ss-schema-link-repro.l8wxgi1u`。该冻结和旧测试证据作废，唯一 writer
+  只在原 exact8 内补 no-follow 路径/身份绑定；全新冻结与 fresh PASS 前未进入 main/GitHub。
 
 ### 双注册表迁移
 
