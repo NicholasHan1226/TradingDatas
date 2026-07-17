@@ -20,6 +20,11 @@ generic provider-row 查询只把 registry 声明的字段编译为内部受限 
 provider-native 字段，不暴露 `payload_json` 或技术存储列。现有 typed-table 查询仅是迁移期
 compatibility surface，不能成为新 dataset 的目标路径。
 
+对 provider-native dataset，`fields` 省略或传空数组表示返回每行完整的上游 payload；这与
+Tushare 省略 `fields` 时返回全部字段的使用方式一致，也保证新增上游字段无需逐接口修改 SS。
+显式 `fields`、filter 和 order 仍只能使用 registry 已声明且获准的字段，客户端始终不能读取
+`payload_json`、`row_key`、receipt 或其它技术存储列。
+
 声明时间格式不符的 provider-native 原值仍可被普通字段选择，并以 `failed/degraded`、
 `data_through=null` 和真实 receipt/quality lineage 返回；该字段一旦参与 filter、order、as-of
 或 latest-partition 就 fail closed。dataset-wide quality 与 operation issue 检查必须绑定既有

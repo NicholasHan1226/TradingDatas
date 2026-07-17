@@ -77,6 +77,7 @@ class _PreparedQuery:
     order: tuple[tuple[str, str], ...]
     as_of: ResolvedQueryAsOf
     empty_interval: bool
+    provider_native_full_payload: bool
 
 
 class QueryAccessDenied(PermissionError):
@@ -545,7 +546,12 @@ def _prepare_query(
     if request.schema_major != _schema_major(dataset):
         raise QueryValidationError("schema_major is incompatible with dataset")
     field_map = {field.name: field for field in dataset.fields}
-    effective_fields = request.fields or dataset.default_projection
+    provider_native_full_payload = _is_provider_native(dataset) and not request.fields
+    effective_fields = (
+        ()
+        if provider_native_full_payload
+        else request.fields or dataset.default_projection
+    )
     if len(effective_fields) > registry.query_defaults.max_selected_fields:
         raise QueryBudgetError(
             "fields exceeds max_selected_fields="
@@ -651,6 +657,7 @@ def _prepare_query(
                 .date()
             )
         ),
+        provider_native_full_payload=provider_native_full_payload,
     )
 
 
@@ -1771,11 +1778,15 @@ class QueryService:
                                 )
                             issues = _parse_provider_native_quality(row[3], row[4])
                             page_quality_issues.update(issues)
-                            projected = {
-                                field_name: payload[field_name]
-                                for field_name in prepared.fields
-                                if field_name in payload
-                            }
+                            projected = (
+                                dict(payload)
+                                if prepared.provider_native_full_payload
+                                else {
+                                    field_name: payload[field_name]
+                                    for field_name in prepared.fields
+                                    if field_name in payload
+                                }
+                            )
                             data.append(projected)
                             flat_key: list[object] = []
                             for index, (field_name, _direction) in enumerate(

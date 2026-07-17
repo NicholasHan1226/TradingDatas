@@ -377,6 +377,7 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
             "trade_date": "20260717",
             "large_native_integer": large_integer,
             "nullable_native": None,
+            "provider_added_without_registry_change": {"nested": [1, "原样保留"]},
         }
     ]
     if response["data"] != expected_data:

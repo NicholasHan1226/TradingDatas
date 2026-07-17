@@ -36,6 +36,7 @@ def test_core_docs_freeze_sharedsignals_product_boundary() -> None:
     assert "不得为每个 Tushare 接口编写独立 collector" in collectors
     assert "新增普通 Tushare dataset" in collectors
     assert "只改 registry/config" in collectors
+    assert "provider-native 查询省略 `fields`" in readme
     assert "本地候选" in status
     assert "生产未改变" in status
     assert "uv run --python 3.12" in readme

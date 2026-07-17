@@ -14,6 +14,8 @@ SharedSignals 对外提供的是**类似 Tushare 的多源金融数据服务**�
 
 普通 Tushare 接口不得逐个开发 collector、业务表、查询器或公共路由。接口清单、参数模板、字段发现、频率、权限和资源预算由 registry/config 批量声明；同一个 generic Tushare adapter 负责调用，同一个 provider-row SQLite/receipt 管线负责持久化，同一个 `/v1/catalog`、`/v1/query` 数据面负责对外服务。未来自建的新闻、公告、舆情或其它来源只在 transport/auth/pagination 真正不同时增加 provider-level adapter，仍复用相同存储、元数据和公共 API。
 
+provider-native 查询省略 `fields` 或传空数组时返回每行完整的上游 payload，供 TradingAgent 或外部客户自行加工；显式字段、filter 和 order 仍受 registry allowlist 约束，技术存储列永不对外暴露。
+
 SharedSignals 不把上游事实加工成预测、策略、候选、资金决策、持仓、风险或交易建议；这些属于 TradingAgent、MarketGraph 或外部客户自己的系统。
 
 ## 产品边界

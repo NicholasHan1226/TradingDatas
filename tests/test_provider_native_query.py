@@ -363,6 +363,25 @@ def test_native_query_python_projection_preserves_missing_null_and_large_integer
     assert "integer_out_of_int64:big" in response["metadata"]["quality"]["evidence"]
 
 
+def test_native_query_omitted_fields_returns_complete_provider_payload(
+    native_harness: dict[str, object],
+) -> None:
+    response = _execute(native_harness, _request(fields=()))
+
+    first = response["data"][0]
+    assert first == {
+        "big": 2**70,
+        "dataset_id": "forged-dataset",
+        "provider": "forged-provider",
+        "schema_major": 999,
+        "symbol": "AAA",
+        "trade_date": "20260715",
+    }
+    assert "payload_json" not in first
+    assert "row_key" not in first
+    assert "receipt_id" not in first
+
+
 def test_native_query_explicit_null_filter_does_not_match_missing_key(
     native_harness: dict[str, object],
 ) -> None:

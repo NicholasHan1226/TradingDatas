@@ -30,6 +30,9 @@
 - 数据运行权威固定为 provider-neutral registry、SQLite facts、同事务 ingest receipts 与
   read clock。`/source_status`、`/health`、JSON、邮件、dashboard、cron 文本、allowlist 和
   HTTP 200 都只能是由权威层派生的观察面。
+- 对 provider-native dataset，省略 `fields` 或传空数组会返回每行完整上游 payload；显式字段、
+  filter 和 order 仍受 registry allowlist 限制。该规则让上游新增字段无需新增 collector、表、
+  query branch 或公共 route，同时不暴露 `payload_json`、receipt 或其它技术存储列。
 - `/opening_gate`、Green Gate、候选、预测、策略、alpha、资金决策、持仓、风险、订单、
   成交与交易建议不属于 SharedSignals；它们只能被迁移/退役，不能移植到 V1 public data plane。
 - 旧 `/tushare`、`/reference`、`/market_data`、`/events` 等 endpoint 在迁移期必须适配到

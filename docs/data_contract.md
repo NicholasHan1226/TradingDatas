@@ -19,6 +19,10 @@ credential 都不是消费者合同。legacy route 只能翻译旧参数并调�
 provider-neutral registry → SQLite facts + transaction-scoped ingest receipts →
 registry/receipt/read-clock metadata → public envelope。
 
+对 provider-native dataset，`fields: []`（或省略 `fields`）返回每行完整的 provider payload，
+包括 registry 尚未声明的新上游字段；显式字段、filter 与 order 仍只能引用 registry allowlist。
+技术列 `payload_json`、`row_key`、receipt、provider routing 和 SQLite 结构永不直接暴露。
+
 SharedSignals 不承担 opening、strategy、capital、position、risk、order 或 fill 责任，也不生成
 候选、预测、alpha、交易建议或执行回执。TradingAgent 等消费者自己负责研究、降权、风控和执行边界。
 
