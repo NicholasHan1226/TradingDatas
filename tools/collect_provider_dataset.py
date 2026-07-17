@@ -3,8 +3,10 @@
 
 The CLI intentionally accepts a dataset ID and request-window values only.
 Provider API names, provider fields, static request parameters, budgets, and
-activation state always come from the default SharedSignals dataset registry.
-Plan mode is the default and neither calls the provider nor opens the database.
+activation state always come from the process-selected SharedSignals dataset
+registry. Only trusted process configuration can select the provider-native
+target artifact. Plan mode is the default and neither calls the provider nor
+opens the database.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from dataset_registry import (  # noqa: E402
     DatasetDefinition,
     DatasetRegistry,
     ProviderBinding,
-    load_dataset_registry,
+    load_runtime_dataset_registry,
 )
 from storage.ingest_receipts import IngestContext, IngestResult  # noqa: E402
 
@@ -248,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         attempt_id = str(uuid.uuid4()) if args.attempt_id is None else args.attempt_id
         started_at = _utc_now() if args.started_at is None else args.started_at
-        registry = load_dataset_registry()
+        registry = load_runtime_dataset_registry()
         plan = _build_plan(
             registry=registry,
             dataset_id=args.dataset_id,

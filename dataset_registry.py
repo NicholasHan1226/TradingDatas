@@ -8,8 +8,10 @@ receipts and is deliberately rejected from this YAML authority.
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dataclass_field
+import os
 from pathlib import Path
 import re
+import stat
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -19,6 +21,12 @@ import yaml
 DATASET_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "dataset_registry.yaml"
 )
+PROVIDER_NATIVE_DATASET_REGISTRY_PATH = (
+    Path(__file__).resolve().parent
+    / "config"
+    / "provider_native_dataset_registry.yaml"
+)
+DATASET_REGISTRY_PATH_ENV = "SHAREDSIGNALS_DATASET_REGISTRY_PATH"
 
 _ROOT_KEYS = frozenset({"version", "query_defaults", "schema_profiles", "datasets"})
 _ROOT_REQUIRED_KEYS = frozenset({"version", "query_defaults", "datasets"})
@@ -1245,6 +1253,55 @@ def load_dataset_registry(
         ),
         query_defaults=query_defaults,
     )
+
+
+def runtime_dataset_registry_path() -> Path:
+    """Return the process-selected registry without exposing a path selector.
+
+    An unset environment variable preserves the legacy compatibility registry.
+    The only accepted override is the repository-owned provider-native target
+    artifact. Request, tenant, dataset and ordinary CLI input therefore cannot
+    redirect the process to an arbitrary contract.
+    """
+
+    raw_path = os.environ.get(DATASET_REGISTRY_PATH_ENV)
+    if raw_path is None:
+        return DATASET_REGISTRY_PATH
+    if not raw_path or raw_path != raw_path.strip():
+        raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} is invalid")
+
+    selected = Path(raw_path)
+    expected = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
+    if not selected.is_absolute() or os.path.normpath(raw_path) != raw_path:
+        raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} must be canonical")
+    if selected != expected:
+        raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} is not a trusted registry")
+
+    for component in (expected.parent, expected):
+        try:
+            mode = component.lstat().st_mode
+        except FileNotFoundError as exc:
+            raise FileNotFoundError("trusted dataset registry is missing") from exc
+        if stat.S_ISLNK(mode):
+            raise ValueError("trusted dataset registry path cannot contain a symlink")
+    if not stat.S_ISDIR(expected.parent.lstat().st_mode):
+        raise ValueError("trusted dataset registry parent must be a directory")
+    if not stat.S_ISREG(expected.lstat().st_mode):
+        raise ValueError("trusted dataset registry must be a regular file")
+    if expected.resolve(strict=True) != expected:
+        raise ValueError("trusted dataset registry path is not canonical")
+    return expected
+
+
+def load_runtime_dataset_registry() -> DatasetRegistry:
+    """Load the immutable registry chosen by trusted process configuration."""
+
+    path = runtime_dataset_registry_path()
+    if path == DATASET_REGISTRY_PATH:
+        # Preserve the legacy no-argument loader seam for compatibility tests
+        # and consumers that inject the default registry before runtime build.
+        return load_dataset_registry()
+    return load_dataset_registry(path)
 
 
 _DEFAULT_DATASET_REGISTRY = load_dataset_registry()

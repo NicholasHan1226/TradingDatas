@@ -1297,7 +1297,7 @@ def _legacy_reader_access() -> Any:
 
 
 def _legacy_query_rows(runtime: Any, invocation: Any) -> list[dict[str, Any]]:
-    query_envelope = runtime.query.execute(
+    query_envelope = runtime.legacy_query.execute(
         invocation.request,
         access=_legacy_reader_access(),
         now=_now(),

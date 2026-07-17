@@ -22,7 +22,9 @@ class DataPlaneRuntime:
     cursor_codec: SignedCursorCodec
     catalog: CatalogService
     query: QueryService
+    legacy_registry: DatasetRegistry
     legacy: LegacyQueryCompat
+    legacy_query: QueryService
     services: tuple[CatalogService, QueryService]
 
 
@@ -45,13 +47,23 @@ def build_data_plane_runtime() -> DataPlaneRuntime:
         _SERVICES = None
 
         from catalog_service import CatalogService
-        from dataset_registry import load_dataset_registry
+        from dataset_registry import (
+            DATASET_REGISTRY_PATH,
+            load_dataset_registry,
+            runtime_dataset_registry_path,
+        )
         from legacy_query_compat import LegacyQueryCompat
         from query_cursor import SignedCursorCodec
         from query_service import QueryService
         from runtime_paths import marketdata_sqlite_path
 
-        registry = load_dataset_registry()
+        registry_path = runtime_dataset_registry_path()
+        if registry_path == DATASET_REGISTRY_PATH:
+            registry = load_dataset_registry()
+            legacy_registry = registry
+        else:
+            registry = load_dataset_registry(registry_path)
+            legacy_registry = load_dataset_registry()
         db_path = Path(os.path.abspath(os.fspath(marketdata_sqlite_path())))
         cursor_codec = SignedCursorCodec.from_env()
         catalog = CatalogService(
@@ -64,13 +76,20 @@ def build_data_plane_runtime() -> DataPlaneRuntime:
             registry=registry,
             cursor_codec=cursor_codec,
         )
+        legacy_query = QueryService(
+            db_path=db_path,
+            registry=legacy_registry,
+            cursor_codec=cursor_codec,
+        )
         services = (catalog, query)
         runtime = DataPlaneRuntime(
             registry=registry,
             cursor_codec=cursor_codec,
             catalog=catalog,
             query=query,
-            legacy=LegacyQueryCompat(registry),
+            legacy_registry=legacy_registry,
+            legacy=LegacyQueryCompat(legacy_registry),
+            legacy_query=legacy_query,
             services=services,
         )
         _RUNTIME = runtime

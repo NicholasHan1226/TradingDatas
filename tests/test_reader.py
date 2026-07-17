@@ -68,6 +68,11 @@ class _LegacyQueryRecorder:
         }
 
 
+class _ForbiddenV1Query:
+    def execute(self, *_args: object, **_kwargs: object) -> None:
+        raise AssertionError("legacy reader used the target V1 query service")
+
+
 def _legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
     import reader
     from dataset_registry import load_dataset_registry
@@ -78,6 +83,8 @@ def _legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
     runtime = SimpleNamespace(
         registry=registry,
         query=query,
+        legacy_registry=registry,
+        legacy_query=query,
         legacy=LegacyQueryCompat(registry),
     )
     monkeypatch.setattr(
@@ -87,6 +94,34 @@ def _legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
         raising=False,
     )
     return reader, query
+
+
+def _target_registry_legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
+    import reader
+    import dataset_registry
+    from legacy_query_compat import LegacyQueryCompat
+
+    monkeypatch.setenv(
+        dataset_registry.DATASET_REGISTRY_PATH_ENV,
+        str(dataset_registry.PROVIDER_NATIVE_DATASET_REGISTRY_PATH),
+    )
+    target_registry = dataset_registry.load_runtime_dataset_registry()
+    legacy_registry = dataset_registry.load_dataset_registry()
+    legacy_query = _LegacyQueryRecorder()
+    runtime = SimpleNamespace(
+        registry=target_registry,
+        query=_ForbiddenV1Query(),
+        legacy_registry=legacy_registry,
+        legacy_query=legacy_query,
+        legacy=LegacyQueryCompat(legacy_registry),
+    )
+    monkeypatch.setattr(
+        reader,
+        "_build_data_plane_runtime",
+        lambda: runtime,
+        raising=False,
+    )
+    return reader, runtime, legacy_query
 
 
 def _forbid_migrated_independent_readers(
@@ -120,6 +155,42 @@ def test_migrated_reader_entrypoints_share_query_service_without_legacy_io(
     assert query.calls[0]["options"].latest_partition is True
     assert query.calls[0]["access"].tenant_id == "legacy-reader"
     assert query.calls[1]["access"].policy_id == query.calls[0]["access"].policy_id
+
+
+@pytest.mark.parametrize(
+    ("surface", "dataset_id"),
+    [
+        ("tushare", "cn.equity.daily"),
+        ("stock_master", "cn.equity.security_master"),
+    ],
+)
+def test_target_registry_environment_keeps_reader_compat_on_default_bound_query(
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    dataset_id: str,
+) -> None:
+    reader, runtime, legacy_query = _target_registry_legacy_runtime_recorder(
+        monkeypatch
+    )
+    _forbid_migrated_independent_readers(reader, monkeypatch)
+
+    rows = (
+        reader.get_tushare("daily", limit=1)
+        if surface == "tushare"
+        else reader.get_reference("stock_master", limit=1)
+    )
+
+    assert [row["data"]["symbol"] for row in rows] == ["000001.SZ"]
+    assert legacy_query.calls[-1]["request"].dataset_id == dataset_id
+    assert runtime.query is not runtime.legacy_query
+    assert (
+        runtime.registry.resolve(dataset_id).read_model_adapter.primary_table
+        == "provider_dataset_rows"
+    )
+    assert (
+        runtime.legacy_registry.resolve(dataset_id).read_model_adapter.primary_table
+        != "provider_dataset_rows"
+    )
 
 
 @pytest.mark.parametrize("table", ["stock_master", "STOCK_MASTER", " Stock_Master "])

@@ -114,3 +114,33 @@ compiler review cannot by itself authorize a default-registry or production
 switch; that switch requires all backfill, query-parity, consumer-migration,
 no-use-observation and rollback evidence listed in
 [AGENTS.md](../AGENTS.md#注册表迁移门禁).
+
+## Dual-registry runtime migration
+
+The default `config/dataset_registry.yaml` remains the legacy compatibility
+contract during migration. The deterministic compiler output is committed as
+`config/provider_native_dataset_registry.yaml`; it is the target contract for
+the generic runner, `GET /v1/catalog`, `POST /v1/query`, and isolated canaries.
+It does not replace or mutate the default registry.
+
+An unset `SHAREDSIGNALS_DATASET_REGISTRY_PATH` keeps the complete legacy
+behavior. A trusted process may set that variable only to the absolute,
+canonical repository path of `config/provider_native_dataset_registry.yaml`.
+Relative paths, missing files, links, non-regular files, and any other path fail
+closed. HTTP requests, tenants, external accounts, dataset parameters, and the
+ordinary collection CLI have no registry-path selector.
+
+The legacy `/tushare` adapter, canonical
+`/reference?table=stock_master` adapter, and their in-process reader helpers
+always resolve the default registry and execute through a separate QueryService
+bound to that same default registry. They never reuse the V1 target
+QueryService, even when the trusted process selector activates the target
+registry for V1 catalog/query and the generic runner.
+
+The target artifact keeps all bindings paused and not entitled. A deployment or
+canary must explicitly create a reviewed checkout state before enabling an
+entitled dataset; the committed artifact cannot cause collection by itself.
+`paused` is only a scheduling state and is never evidence that legacy readers
+ignore a contract. Replacing the default registry therefore remains blocked
+until generic schema/receipts, backfill, query parity, consumer migration,
+no-use observation, and rollback evidence are independently complete.

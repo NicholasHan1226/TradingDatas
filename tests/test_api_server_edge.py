@@ -119,6 +119,11 @@ class _FakeLegacyQuery:
         }
 
 
+class _ForbiddenV1Query:
+    def execute(self, *_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("legacy HTTP route used the V1 query service")
+
+
 def _install_fake_legacy_runtime(monkeypatch: pytest.MonkeyPatch) -> _FakeLegacyQuery:
     from dataset_registry import load_dataset_registry
     from legacy_query_compat import LegacyQueryCompat
@@ -127,7 +132,9 @@ def _install_fake_legacy_runtime(monkeypatch: pytest.MonkeyPatch) -> _FakeLegacy
     query = _FakeLegacyQuery()
     runtime = SimpleNamespace(
         registry=registry,
-        query=query,
+        query=_ForbiddenV1Query(),
+        legacy_registry=registry,
+        legacy_query=query,
         legacy=LegacyQueryCompat(registry),
     )
     monkeypatch.setattr(

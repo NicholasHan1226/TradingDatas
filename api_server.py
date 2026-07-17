@@ -1256,7 +1256,7 @@ class Handler(BaseHTTPRequestHandler):
                     account,
                     invocation.request.dataset_id,
                 )
-                query_envelope = runtime.query.execute(
+                query_envelope = runtime.legacy_query.execute(
                     invocation.request,
                     access=access,
                     now=datetime.now(timezone.utc),
@@ -1386,7 +1386,7 @@ class Handler(BaseHTTPRequestHandler):
                 account,
                 invocation.request.dataset_id,
             )
-            query_envelope = runtime.query.execute(
+            query_envelope = runtime.legacy_query.execute(
                 invocation.request,
                 access=access,
                 now=datetime.now(timezone.utc),

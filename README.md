@@ -133,6 +133,15 @@ generic SQLite authority。request-window 也可通过 `--request-window-file` �
 `2=validation`、`3=empty`、`4=failed`。输出不包含数据库路径、window 值、
 provider token、provider 错误原文或 receipt ID。
 
+双注册表迁移期，未设置进程环境变量时继续使用 legacy compatibility registry。
+受信任进程只能把 `SHAREDSIGNALS_DATASET_REGISTRY_PATH` 设置为当前仓库内
+`config/provider_native_dataset_registry.yaml` 的绝对路径，才能让 generic runner
+和 V1 data plane 使用 target registry；HTTP request、tenant、dataset 和普通 CLI
+都不能选择注册表路径。迁移期 `/tushare` 与 canonical
+`/reference?table=stock_master` 的 HTTP 和 in-process reader compatibility surface
+始终由 default registry 翻译，并使用与该 default registry 绑定的独立 legacy
+QueryService；target 进程选择不能改变其表或查询合同。
+
 ## 安全边界
 
 - 不提交生产数据库、凭证、日志、缓存或运行证据。

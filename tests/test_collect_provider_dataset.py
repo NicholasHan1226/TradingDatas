@@ -145,7 +145,7 @@ def _run(
 ) -> tuple[int, dict[str, object], _FakeCollector, Path]:
     registry = _registry()
     fake = _FakeCollector(outcome)
-    monkeypatch.setattr(runner, "load_dataset_registry", lambda: registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -178,7 +178,7 @@ def test_default_plan_validates_registry_without_provider_or_database_write(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(runner, "load_dataset_registry", _registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _registry)
     monkeypatch.setattr(
         runner,
         "TushareCollector",
@@ -363,7 +363,7 @@ def test_paused_dataset_is_rejected_before_provider_call(
             error_message=None,
         )
     )
-    monkeypatch.setattr(runner, "load_dataset_registry", lambda: registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -411,7 +411,7 @@ def test_request_window_is_strict_and_fails_before_provider_or_database(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     fake = _FakeCollector()
-    monkeypatch.setattr(runner, "load_dataset_registry", _registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "must-not-be-created.sqlite"
 
@@ -441,7 +441,7 @@ def test_unexpected_provider_exception_cannot_leak_secret_material(
 ) -> None:
     secret = "Bearer provider-token-must-not-escape"
     fake = _FakeCollector(error=RuntimeError(secret))
-    monkeypatch.setattr(runner, "load_dataset_registry", _registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -480,7 +480,7 @@ def test_explicit_empty_optional_identity_is_not_silently_replaced(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     fake = _FakeCollector()
-    monkeypatch.setattr(runner, "load_dataset_registry", _registry)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "must-not-be-created.sqlite"
 
