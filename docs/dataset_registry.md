@@ -108,5 +108,9 @@ projects or blocks provider-native ingestion. Missing configuration, duplicate
 ownership, non-canonical placeholders or additional provider bindings remain
 paused and are listed in the unresolved/conflict report; the compiler never
 guesses parameters or adds dataset-specific branches. A generated candidate is
-still a local artifact and requires a fresh review before any default-registry
-or production change.
+only an input to the separate provider-native target registry and isolated
+canary. The legacy default registry remains unchanged during migration. A fresh
+compiler review cannot by itself authorize a default-registry or production
+switch; that switch requires all backfill, query-parity, consumer-migration,
+no-use-observation and rollback evidence listed in
+[AGENTS.md](../AGENTS.md#注册表迁移门禁).

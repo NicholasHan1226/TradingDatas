@@ -32,16 +32,19 @@ data is missing.
 
 ## SharedSignals
 
-SharedSignals owns external data ingestion. Its collectors validate provider
-rows, write them directly into the SQLite read model, mirror analytical data to
-DuckDB when configured, and expose the result through HTTP API contracts.
+SharedSignals owns external data ingestion. Its target path validates
+provider-native rows, writes facts and transaction receipts to SQLite, and
+exposes them through the fixed provider-neutral catalog/query API. DuckDB and
+typed collectors are legacy compatibility inventory, not the Beta authority.
 
 It supports minute/5-minute trading data inputs. It does not make trading
 decisions, run strategies, write TradingAgent queues, maintain MarketGraph
 research facts, provide millisecond HFT infrastructure, match orders, or touch
 accounts/funds.
 
-Current production collectors include:
+The repository still contains the following **legacy production inventory**.
+This list is not the domestic Beta target, current runtime proof, entitlement
+proof, or authorization to expand these collectors:
 
 - Tushare tiers for A-share, futures, HK/US daily, funds, ETF, macro, news,
   announcements, research, reference data, and P7 weekly/monthly bars.
@@ -50,10 +53,13 @@ Current production collectors include:
 - CN futures 5-minute collection.
 
 CSV/NDJSON/Parquet files are not a production read fallback and are not tracked
-as repository data artifacts. New collectors pass validated provider rows
-directly to the read model.
-Production success means rows reached the read model and can be returned through
-SharedSignals HTTP API access.
+as repository data artifacts. New ordinary datasets are registry/config entries
+that reuse the provider-level adapter and generic SQLite/receipt/query path; they
+do not add dataset-specific collectors or tables.
+Target success means provider-native rows and their receipts committed to
+SQLite and the approved dataset can be returned through `GET /v1/catalog` and
+`POST /v1/query` with truthful metadata. Current production/runtime truth is
+reported only in [STATUS.md](../STATUS.md).
 
 External agents consume SharedSignals through HTTP API only. They must not
 call provider SDKs, old CSV/NDJSON folders, sibling repository internals, or

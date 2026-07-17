@@ -1,6 +1,10 @@
 # SharedSignals API Contract
 
-> **Note**: This is an auto-generated capability snapshot. The authoritative API contract is `../API_CONTRACT.md`.
+> **Historical generated capability snapshot only.** `OK` records one legacy
+> scan result; it is not the target API contract, current runtime, production
+> readiness, entitlement, or tenant-availability evidence.
+> The normative target is [`../API_CONTRACT.md`](../API_CONTRACT.md); fresh
+> current truth is [`../STATUS.md`](../STATUS.md).
 >
 > Auto-generated from `capability_registry.json` at 2026-07-05T15:40:54+08:00
 > Service: SharedSignals v1.0.0

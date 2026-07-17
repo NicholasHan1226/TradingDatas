@@ -1,7 +1,8 @@
 # SharedSignals/cron
 
-This directory contains thin cron wrappers and the repository schedule target
-for SharedSignals jobs.
+This directory contains retained legacy compatibility cron wrappers and a
+repository schedule inventory. It is not the onboarding path for the target
+provider-neutral data service.
 
 - Scripts must `cd` to the SharedSignals root before running Python.
 - Scripts may source root `.env` for local configuration, but must not contain secrets.
@@ -10,7 +11,13 @@ for SharedSignals jobs.
 - Write stdout/stderr to `logs/cron/`.
 - Keep business logic in the main SharedSignals modules; cron scripts should only orchestrate.
 
-## Repository domestic Beta target
+## Legacy compatibility schedule inventory
+
+New datasets must not be onboarded by adding a tier, `--only-api` entry,
+dataset-specific wrapper, or cron branch here. Target scheduling is derived from
+the provider-neutral registry and uses the generic provider runner; these
+wrappers remain only until their consumers are migrated and no-use/rollback
+evidence permits retirement.
 
 - `cron/crontab.txt` is the repository target template only. It does not prove
   that the root `crontab.txt` snapshot or the production live crontab changed.

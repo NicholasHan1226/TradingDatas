@@ -100,6 +100,10 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     recovery = _read("docs/sqlite_recovery_runbook.md")
     registry = _read("docs/dataset_registry.md")
     receipts = _read("docs/ingest_receipts.md")
+    cron_agents = _read("cron/AGENTS.md")
+    repo_structure = _read("docs/repo_structure.md")
+    generated_contract = _read("docs/API_CONTRACT.md")
+    infrastructure = _read("docs/INFRASTRUCTURE.md")
 
     for document in (docs_agents, onboarding, capability, registry):
         assert "GET /v1/catalog" in document
@@ -118,6 +122,14 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     assert "DuckDB" in recovery
     assert "must never automatically" in recovery
     assert "强制从 DuckDB 重建" not in recovery
+    assert "separate provider-native target registry" in registry
+    assert "Legacy compatibility schedule inventory" in cron_agents
+    assert "New datasets must not be onboarded" in cron_agents
+    assert "legacy production inventory" in repo_structure
+    assert "not the domestic Beta target" in repo_structure
+    assert "Historical generated capability snapshot only" in generated_contract
+    assert "not the target API contract" in generated_contract
+    assert "不是当前生产就绪证明" in infrastructure
 
 
 def test_consumer_contract_docs_freeze_v1_handoff_and_truth_layers() -> None:

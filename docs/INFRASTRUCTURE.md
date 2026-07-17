@@ -1,5 +1,10 @@
 # Infrastructure
 
+> 本文件包含稳定拓扑和带日期的 legacy 运行记录，不是当前生产就绪证明。
+> IP、路由、服务、数据路径或“已发布”字样可能已过期；本轮 fresh 生产事实和 NO-GO/GO
+> 只认 [STATUS.md](../STATUS.md)。目标 SharedSignals 产品合同以
+> [AGENTS.md](../AGENTS.md) 与根 [API_CONTRACT.md](../API_CONTRACT.md) 为准。
+
 ## 服务器
 | 角色 | IP | 规格 | 职责 |
 |------|-----|------|------|

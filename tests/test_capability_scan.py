@@ -7,6 +7,25 @@ from types import SimpleNamespace
 from tools import capability_scan, health_check
 
 
+def test_generated_capability_doc_is_explicitly_historical_not_authority() -> None:
+    document = capability_scan._generate_api_contract_md(  # noqa: SLF001
+        [],
+        "2026-07-17T00:00:00+08:00",
+        {
+            "total": 0,
+            "ok": 0,
+            "degraded": 0,
+            "down": 0,
+            "skipped": 0,
+        },
+    )
+
+    assert "Historical generated capability snapshot only" in document
+    assert "not the target API contract" in document
+    assert "../API_CONTRACT.md" in document
+    assert "../STATUS.md" in document
+
+
 def test_run_scan_can_refresh_registry_without_rewriting_doc(tmp_path, monkeypatch) -> None:
     registry_path = tmp_path / "capability_registry.json"
     changes_path = tmp_path / "capability_changes.jsonl"

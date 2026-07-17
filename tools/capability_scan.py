@@ -642,6 +642,16 @@ def _generate_api_contract_md(endpoints: list[dict], scan_time: str, summary: di
     lines: list[str] = []
     lines.append("# SharedSignals API Contract")
     lines.append("")
+    lines.append(
+        "> **Historical generated capability snapshot only.** `OK` records one "
+        "legacy scan result; it is not the target API contract, current runtime, "
+        "production readiness, entitlement, or tenant-availability evidence."
+    )
+    lines.append(
+        "> The normative target is [`../API_CONTRACT.md`](../API_CONTRACT.md); "
+        "fresh current truth is [`../STATUS.md`](../STATUS.md)."
+    )
+    lines.append(">")
     lines.append(f"> Auto-generated from `capability_registry.json` at {scan_time}")
     lines.append("> Service: SharedSignals v1.0.0")
     lines.append("")
