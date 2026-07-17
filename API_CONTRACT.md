@@ -1,9 +1,11 @@
 # SharedSignals API Contract
 
-> **Target contract (not yet live)**：SharedSignals 的目标公共数据面固定为
-> `GET /v1/catalog` 与 `POST /v1/query`。Phase 2 Tasks 1–6 已形成隔离 worktree 本地候选；
-> Task 7 冻结 consumer handoff。它们尚未进入 local main、GitHub 或生产，不能用本文件中的
-> legacy endpoint、local tests 或 HTTP 200 代替生产可用证明。
+> **Target contract (not yet live) — 状态**：Phase 2 协议代码与 consumer fixture 已进入
+> local `main`、`origin/main` 与 GitHub `main`。canonical provider-row schema 代码也已进入
+> GitHub，但 generic target schema 尚未在 production DB 应用和回读，target registry、受控
+> backfill、server canary、external route 与 real dataset readback 均未完成。因此
+> **TradingAgent 当前不可接入**；不得用 local tests、fixture、legacy HTTP 200 或任一较早
+> truth layer 代替后续证据。
 >
 > 下文现有 `/tushare`、`/market_data`、`/events` 等路径是 **legacy compatibility surface**，
 > 只用于迁移消费者；最终必须调用同一个 provider-neutral QueryService。不得按 provider 或 dataset 新增公共路由。
@@ -43,10 +45,11 @@
 ### 0.1 Frozen V1 catalog/query envelope
 
 Phase 2 的完整 normative request、response、filter/order grammar、cursor invalidation、状态映射、
-错误码和访问限制见 [Query Service Contract](docs/query_service.md)。Tasks 1–6 的隔离 worktree
-本地候选已实现 registry/request contract、同 snapshot SQLite catalog/query、signed cursor、
-HTTP/auth 和代表性 legacy adapter；Task 7 只冻结 consumer fixture/docs/tests。上述本地证据仍未
-证明 local main、GitHub、生产发布或真实 dataset 可用。
+错误码和访问限制见 [Query Service Contract](docs/query_service.md)。协议代码、registry/request
+contract、同 snapshot SQLite catalog/query、signed cursor、HTTP/auth、代表性 legacy adapter 与 consumer
+fixture/docs/tests 已在 main/GitHub；但 provider-native generic target schema、backfill、server canary、
+external route 与真实 dataset evidence 尚未完成。故此协议仍不是可供 TradingAgent 联调或生产消费的
+数据服务证明。
 
 `POST /v1/query` 根对象只接受以下八个字段：
 

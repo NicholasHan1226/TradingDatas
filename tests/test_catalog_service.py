@@ -61,6 +61,7 @@ ROW_KEYS = {
     "entity_type",
     "data_classification",
     "schema_version",
+    "schema_major",
     "fields",
     "default_fields",
     "filter_operators",
@@ -684,6 +685,7 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
     assert response["request_id"] == "request-1"
     assert set(row) == ROW_KEYS
     assert row["aliases"] == ["tushare.daily", "StraßeAlpha"]
+    assert row["schema_major"] == 1
     assert row["default_fields"] == ["symbol", "value"]
     assert row["sortable_fields"] == ["symbol", "revision"]
     assert row["default_order"] == ["symbol:asc"]

@@ -1,8 +1,12 @@
 # SharedSignals V1 Consumer Data Contract
 
-> 状态：本文件冻结本地 Phase 2 候选的 consumer handoff。它不是 GitHub、生产
-> checkout、production runtime、external route 或 real dataset 可用证明。可机读示例见
-> [V1 contract fixture](../tests/fixtures/sharedsignals_v1_query_contract.json)。
+> **Target contract (not yet live) — 状态**：Phase 2 协议代码与 consumer fixture 已进入
+> local `main`、`origin/main` 与 GitHub `main`。canonical provider-row schema 代码也已进入
+> GitHub，但 generic target schema 尚未在 production DB 应用和回读，target registry、受控
+> backfill、server canary、external route 与 real dataset readback 均未完成。因此
+> **TradingAgent 当前不可接入**；不得用 local tests、fixture、legacy HTTP 200 或任一较早
+> truth layer 代替后续证据。
+> 可机读示例见 [V1 contract fixture](../tests/fixtures/sharedsignals_v1_query_contract.json)。
 
 ## 固定边界
 
@@ -14,6 +18,10 @@ adapter、SQLite storage mapping、facts/receipt 与 metadata；不新增第三�
 independent dataset schema version。provider 名称、table、SQL、数据库路径、adapter 版本和
 credential 都不是消费者合同。legacy route 只能翻译旧参数并调用 same QueryService，不能成为
 第二个 query engine、独立 SQL、provider live fallback 或 file fallback。
+
+每个 catalog row 同时公开 `schema_version` 与由其严格解析得到的 native positive integer
+`schema_major`。消费者必须把 catalog 的 `schema_major` 原样放入 query request；不得自行解析
+版本字符串、猜测 major，或以 string、float、Boolean 代替该整数。
 
 一次 query 必须从 one verified SQLite snapshot 同时读取 rows 与 metadata。权威顺序是
 provider-neutral registry → SQLite facts + transaction-scoped ingest receipts →
@@ -68,6 +76,11 @@ SharedSignals 不承担 opening、strategy、capital、position、risk、order �
 `freshness`、`quality` 和 `lineage` 必须逐 dataset 解释，不能由全局状态补写。
 `lineage` 标明 provider-neutral receipt authority 和 receipt watermark；缺 receipt 或不完整
 lineage 不能伪装成健康结果。
+
+同一 normalized request 只有在同一 verified SQLite snapshot 且 `receipt_watermark` 相同时，才保证
+除 server-owned `request_id` 外的 response envelope 可复现。`as_of` 只定义数据时间上界，单独使用
+并不能固定 receipt watermark 或 SQLite snapshot；同一个 `as_of` 在新 receipt 提交后是新的数据版本，
+消费者必须比较 receipt lineage，而不是假设结果不变。
 
 ## 六状态与消费规则
 

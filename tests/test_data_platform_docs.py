@@ -78,7 +78,8 @@ def test_api_contract_labels_legacy_routes_as_compatibility_only() -> None:
 
     assert "Target V1 normative contract" in normative
     assert "v2" not in normative.casefold()
-    assert "Tasks 1–6" in normative
+    assert "Phase 2 协议代码与 consumer fixture 已进入" in normative
+    assert "GitHub `main`" in normative
     assert "GET /v1/catalog" in contract
     assert "POST /v1/query" in contract
     assert "legacy compatibility surface" in contract
@@ -158,6 +159,21 @@ def test_consumer_contract_docs_freeze_v1_handoff_and_truth_layers() -> None:
     assert "exactly two target public data routes" in data_contract
     assert "provider-neutral dataset ID" in data_contract
     assert "independent dataset schema version" in data_contract
+    assert "native positive integer `schema_major`" in data_contract
+    assert "同一 normalized request" in data_contract
+    handoff_truth_docs = (contract, query_service, data_contract)
+    for document in handoff_truth_docs:
+        assert "Phase 2 协议代码与 consumer fixture 已进入" in document
+        for truth_layer in ("local `main`", "`origin/main`", "GitHub `main`"):
+            assert truth_layer in document
+        assert "canonical provider-row schema 代码也已进入" in document
+        assert (
+            "generic target schema 尚未在 production DB 应用和回读"
+        ) in document
+        assert "target registry、受控" in document
+        assert "backfill、server canary、external route" in document
+        assert "real dataset readback 均未完成" in document
+        assert "TradingAgent 当前不可接入" in document
     assert "one verified SQLite snapshot" in data_contract
     assert "signed keyset cursor" in data_contract
     assert "global source flag" in data_contract

@@ -1,8 +1,11 @@
 # SharedSignals Phase 2 Query Service Contract
 
-> 状态：本文件冻结 provider-neutral V1 query contract。Tasks 1–6 已进入当前隔离 worktree
-> 本地候选，Task 7 冻结 consumer fixture/docs/tests。local main、origin/GitHub、生产 runtime、
-> external route 和真实 tenant query 尚未由发布层验证，不能称为已上线。
+> **Target contract (not yet live) — 状态**：Phase 2 协议代码与 consumer fixture 已进入
+> local `main`、`origin/main` 与 GitHub `main`。canonical provider-row schema 代码也已进入
+> GitHub，但 generic target schema 尚未在 production DB 应用和回读，target registry、受控
+> backfill、server canary、external route 与 real dataset readback 均未完成。因此
+> **TradingAgent 当前不可接入**；不得用 local tests、fixture、legacy HTTP 200 或任一较早
+> truth layer 代替后续证据。
 
 ## 边界与权威
 
@@ -134,7 +137,8 @@ process `main()` 只加载环境与 HTTP server 配置；不得预加载 legacy 
 }
 ```
 
-catalog row 只暴露 provider-neutral identity、aliases、domain/market/entity/classification、schema、
+catalog row 只暴露 provider-neutral identity、aliases、domain/market/entity/classification、`schema_version`
+及其严格解析的 native positive integer `schema_major`、
 default fields、filter/sort capability、cadence、timezone、SLA、有效 limits、point-in-time、scope、
 quota、entitlement/activation summary 与 receipt-derived runtime metadata。不得暴露 table、SQL、
 DB path、adapter version、provider credential 或内部 hostname。
@@ -253,6 +257,11 @@ source flag 都不能替代 freshness、quality、lineage 与 receipt evidence�
 normalized query hash 不包含 cursor token 本身，但绑定 resolved dataset/schema、effective projection、
 canonical filters/order、requested/resolved as-of、limit、全部 internal execution options 和 resolved
 partition。对象 key 顺序不改变 hash；任何影响结果的差异必须改变 hash。
+
+同一 normalized request 只有在同一 verified SQLite snapshot 且相同 `receipt_watermark` 时，才保证
+除 server-owned `request_id` 外的 response 可复现。`as_of` 仅定义 dataset-time cutoff，不是 snapshot
+pin；新 receipt 即使使用相同 `as_of` 也代表新的 response version，消费者必须依据 receipt lineage
+处理差异。
 
 signed keyset cursor 是两个以单个 `.` 分隔的 non-empty、unpadded base64url segment；只接受
 `[A-Za-z0-9_-]`，解码后必须能逐字节重新编码为原 segment。payload 是 compact、sorted-key、

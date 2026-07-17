@@ -44,6 +44,7 @@ CATALOG_ROW_KEYS = {
     "entity_type",
     "data_classification",
     "schema_version",
+    "schema_major",
     "fields",
     "default_fields",
     "filter_operators",
@@ -269,6 +270,7 @@ def real_contract_harness(
     return {
         "access": access,
         "codec": codec,
+        "db_path": db_path,
         "fixture": generated,
         "query_service": query_service,
     }
@@ -387,6 +389,99 @@ def test_real_cursor_continuation_returns_exact_second_page_without_drift(
     ]["lineage"]["receipt_watermark"]
 
 
+def test_same_as_of_requires_same_receipt_watermark_for_repeatability(
+    real_contract_harness: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _query_payload(market="Ashare", limit=1)
+    request["as_of"] = "2026-07-16T23:59:59+08:00"
+    service = real_contract_harness["query_service"]
+    access = real_contract_harness["access"]
+
+    first = service.execute(
+        parse_query_request(request),
+        access=access,
+        now=HEALTHY_NOW,
+        request_id="00000000-0000-4000-8000-000000000007",
+    )
+    repeated = service.execute(
+        parse_query_request(request),
+        access=access,
+        now=HEALTHY_NOW,
+        request_id="00000000-0000-4000-8000-000000000008",
+    )
+    first_without_request_id = json.loads(json.dumps(first))
+    repeated_without_request_id = json.loads(json.dumps(repeated))
+    first_without_request_id.pop("request_id")
+    repeated_without_request_id.pop("request_id")
+    assert first_without_request_id == repeated_without_request_id
+    assert first["metadata"]["lineage"]["receipt_watermark"] == repeated[
+        "metadata"
+    ]["lineage"]["receipt_watermark"]
+
+    monkeypatch.setattr(
+        receipt_module,
+        "_utc_now",
+        lambda: "2026-07-16T07:50:00+00:00",
+    )
+    updated = ingest_rows_with_receipts(
+        real_contract_harness["db_path"],
+        "market_bars_daily",
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260716",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.6,
+                "vol": 1000.0,
+                "amount": 10600.0,
+                "collected_at": "2026-07-16T07:50:00+00:00",
+            },
+            {
+                "ts_code": "600519.SH",
+                "trade_date": "20260716",
+                "open": 1400.0,
+                "high": 1425.0,
+                "low": 1390.0,
+                "close": 1418.88,
+                "vol": 2000.0,
+                "amount": 2837760.0,
+                "collected_at": "2026-07-16T07:50:00+00:00",
+            },
+        ],
+        context=IngestContext(
+            attempt_id="contract-fixture-daily-success-receipt-two",
+            dataset_id="cn.equity.daily",
+            provider="tushare",
+            provider_api="daily",
+            request_window={"trade_date": "20260716"},
+            config_hash="a" * 64,
+            adapter_version="tushare-direct-sqlite.v1",
+            started_at="2026-07-16T07:45:00+00:00",
+            data_through="20260716",
+        ),
+        source_name="contract_fixture_daily",
+    )
+    assert updated.status == "success"
+    assert len(updated.receipt_ids) == 1
+
+    after_new_receipt = service.execute(
+        parse_query_request(request),
+        access=access,
+        now=HEALTHY_NOW,
+        request_id="00000000-0000-4000-8000-000000000009",
+    )
+    assert request["as_of"] == "2026-07-16T23:59:59+08:00"
+    assert after_new_receipt["metadata"]["lineage"]["receipt_watermark"] != first[
+        "metadata"
+    ]["lineage"]["receipt_watermark"]
+    assert after_new_receipt["metadata"]["receipt_id"] != first["metadata"][
+        "receipt_id"
+    ]
+
+
 def test_fixture_freezes_exact_public_routes_and_catalog_row() -> None:
     fixture = _fixture()
 
@@ -409,6 +504,7 @@ def test_fixture_freezes_exact_public_routes_and_catalog_row() -> None:
     assert row["dataset_id"] == "cn.equity.daily"
     assert row["market"] == "CN"
     assert row["schema_version"] == "1.0.0"
+    assert row["schema_major"] == 1
     assert all(set(field) == FIELD_KEYS for field in row["fields"])
     assert set(row["runtime"]) == {
         "state",

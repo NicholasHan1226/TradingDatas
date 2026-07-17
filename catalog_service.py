@@ -371,6 +371,7 @@ def _serialize_dataset(
         "entity_type": dataset.entity_type,
         "data_classification": dataset.data_classification,
         "schema_version": dataset.schema_version,
+        "schema_major": dataset.schema_major,
         "fields": [
             {
                 "name": field.name,
