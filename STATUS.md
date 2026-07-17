@@ -24,14 +24,16 @@
 
 ## 本地与 GitHub 已验证
 
-SharedSignals 当前 local `main`、`origin/main` 与 GitHub `main` 均为：
+最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-e9f06cad62b4e783dfca5e0fc0d09feee845bafb
+5e1fe1953c8a83b829b277319f397b3407348efb
 ```
 
-tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untracked 目录，未修改、未暂存、
-未删除。
+本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
+`git ls-remote origin refs/heads/main` fresh readback，不能把本文件中的 checkpoint 当作永久 HEAD。
+tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untracked 目录，未修改、
+未暂存、未删除。
 
 已经进入 GitHub 的纠偏链：
 
@@ -40,7 +42,11 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
    `--execute` 才允许调用 provider，并且不能从 CLI 覆盖 provider API、字段或预算；
 3. `e9f06ca`：provider-native query 在省略/空 `fields` 时返回完整上游 payload；显式字段、
    filter、order、cursor、tenant policy 与 response budget 仍受 registry/query policy 约束，
-   typed-v1 compatibility 路径不变。
+   typed-v1 compatibility 路径不变；
+4. `5e6b382`：重置 `STATUS.md`，把已推送代码、生产旧 runtime 和待验候选重新分层；
+5. `5e1fe19`：加入离线、确定性的 Tushare registry bulk compiler；它不调用 provider、不改默认
+   registry，已 fresh PASS 证明 114 个现有 dataset 中 113 个可机械转为 provider-native，普通
+   Tushare binding 统一 `requested_fields=[]`，唯一 `rt_fut_min` 保持 paused。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -48,7 +54,7 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 
 这些结论只证明 local/GitHub 代码与文档层，不能代替生产发布、runtime 或真实租户调用。
 
-## 正在独立验收的两个本地候选
+## 当前两个本地候选
 
 ### Canonical provider-row SQLite schema
 
@@ -57,17 +63,22 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 - 专用迁移只对显式指定的已存在数据库执行，`BEGIN IMMEDIATE` 单事务，DDL 与 postflight
   同事务，失败完整 rollback，重复执行幂等；
 - 不 rename/copy/update/delete typed-v1 表或数据，不操作生产数据库；
-- writer 自验为 `2287 passed`；当前必须在最新主线 clean overlay 重新验收，旧 base 结果不能复用。
+- 第一版 writer 自验虽为 `2287 passed`，fresh review 仍以 P0=0/P1=2 判定 FAIL：postflight
+  没有拒绝改变身份/写入语义的额外 UNIQUE/NOCASE，旧 migrate CLI 也没有把专用迁移提示实际
+  输出给操作者。该候选和旧测试证据已作废，唯一 writer 正在冻结 exact8 内返工；
+- 新候选必须在最新主线 clean overlay 重新达到 P0/P1=0 才可集成。
 
-### 114-dataset registry bulk compiler
+### Default registry 机械激活
 
-- 目标：从现有 catalog/config 机械生成 provider-native registry，不逐接口写 Python；
+- bulk compiler 已进入 GitHub；当前另一个隔离候选只负责用该工具机械生成默认
+  `config/dataset_registry.yaml`，不逐接口写 Python；
 - 普通 Tushare binding 统一 `requested_fields=[]`，让上游返回完整字段；旧 config `fields`
   只作历史 hint，不作为阻断或投影；
-- 当前冻结结果为 113 个机械转换；唯一未自动转换的是 `rt_fut_min`，因为缺 collector config
+- 目标输出为 113 个机械转换；唯一未自动转换的是 `rt_fut_min`，因为缺 collector config
   且存在额外 provider binding，保持 paused；
-- 工具不得包含 API-specific 分支，不调用 provider，不改默认 registry/DB/cron/生产；
-- writer focused 为 `163 passed`；当前必须在最新主线 clean overlay fresh review 后才可集成。
+- activation 候选只能修改默认 registry 和一个最小防漂移测试；不得调用 provider、修改 DB/cron/
+  生产或增加 API-specific 代码；
+- 生成结果尚未冻结、未 review、未进入 main/GitHub，不能把 compiler PASS 写成 registry 已激活。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
@@ -132,7 +143,8 @@ generic replacement PASS
 
 ## 下一步
 
-1. 完成 canonical schema 与 registry compiler 的 fresh review，P0/P1=0 后精确集成并同步 GitHub；
+1. 完成 canonical schema 返工与 default registry 机械激活，分别 fresh review 至 P0/P1=0 后
+   精确集成并同步 GitHub；
 2. 在服务器创建与旧生产 DB、cron、端口隔离的 canary：用一个小 `trade_cal` 窗口完成
    `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
 3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
