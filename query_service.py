@@ -49,6 +49,20 @@ _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
 _FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
 _FILTER_OPERATORS = frozenset({"eq", "in", "gte", "lte", "between"})
+_PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
+_PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
+_PROVIDER_NATIVE_QUALITY_INDEX = "provider_dataset_rows_quality_idx"
+_PROVIDER_NATIVE_ISSUE_RE = re.compile(
+    r"(?:"
+    r"(?:missing_field|unknown_field|null_not_allowed|integer_out_of_int64):"
+    r"[A-Za-z_][A-Za-z0-9_]*"
+    r"|unknown_field_sha256:[0-9a-f]{64}"
+    r"|type_mismatch:[A-Za-z_][A-Za-z0-9_]*:(?:text|integer|float)"
+    r"|time_format_mismatch:[A-Za-z_][A-Za-z0-9_]*:(?:yyyymmdd|rfc3339)"
+    r"|snapshot_key_fallback:(?:missing|null|non_scalar|type_mismatch):"
+    r"[A-Za-z_][A-Za-z0-9_]*"
+    r")\Z"
+)
 _EVIDENCE_ISO_TIMESTAMP_RE = re.compile(
     r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
     r"T(?P<hour>[01][0-9]|2[0-3]):(?P<minute>[0-5][0-9]):"
@@ -584,9 +598,12 @@ def _prepare_query(
     if options.latest_partition and dataset.partition_field is None:
         raise QueryValidationError("dataset does not declare a partition field")
 
-    raw_order = request.order or tuple(
-        f"{field_name}:asc" for field_name in dataset.primary_key
-    )
+    if request.order is not None:
+        raw_order = request.order
+    elif _is_provider_native(dataset):
+        raw_order = ()
+    else:
+        raw_order = tuple(f"{field_name}:asc" for field_name in dataset.primary_key)
     order: list[tuple[str, str]] = []
     seen: set[str] = set()
     for term in raw_order:
@@ -596,12 +613,13 @@ def _prepare_query(
             raise QueryValidationError(f"field {field_name!r} is not sortable")
         order.append((field_name, direction))
         seen.add(field_name)
-    for field_name in dataset.primary_key:
-        if field_name not in seen:
-            field = field_map.get(field_name)
-            if field is None or not field.selectable or not field.sortable:
-                raise QueryServiceUnavailable("query service is unavailable")
-            order.append((field_name, "asc"))
+    if not _is_provider_native(dataset):
+        for field_name in dataset.primary_key:
+            if field_name not in seen:
+                field = field_map.get(field_name)
+                if field is None or not field.selectable or not field.sortable:
+                    raise QueryServiceUnavailable("query service is unavailable")
+                order.append((field_name, "asc"))
 
     if request.limit > dataset.max_page_size:
         raise QueryBudgetError(f"limit exceeds max_page_size={dataset.max_page_size}")
@@ -656,13 +674,91 @@ def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _is_provider_native(dataset: DatasetDefinition) -> bool:
+    return (
+        getattr(dataset.read_model_adapter, "storage_kind", "typed_columns")
+        == _PROVIDER_NATIVE_STORAGE_KIND
+    )
+
+
+def _provider_json_path(field_name: str) -> str:
+    if type(field_name) is not str or _FIELD_NAME_RE.fullmatch(field_name) is None:
+        raise QueryServiceUnavailable("query service is unavailable")
+    return f'$."{field_name}"'
+
+
+def _field_expression(dataset: DatasetDefinition, field_name: str) -> str:
+    if not _is_provider_native(dataset):
+        return _quote_identifier(field_name)
+    path = _provider_json_path(field_name)
+    return f"json_extract({_quote_identifier('payload_json')}, '{path}')"
+
+
+def _field_json_type_expression(
+    dataset: DatasetDefinition,
+    field_name: str,
+) -> str | None:
+    if not _is_provider_native(dataset):
+        return None
+    path = _provider_json_path(field_name)
+    return f"json_type({_quote_identifier('payload_json')}, '{path}')"
+
+
+def _provider_native_providers(dataset: DatasetDefinition) -> tuple[str, ...]:
+    bindings = tuple(dataset.provider_bindings)
+    active = {
+        binding.provider
+        for binding in bindings
+        if binding.entitlement_state == "active"
+    }
+    eligible = active or {
+        binding.provider
+        for binding in bindings
+        if binding.entitlement_state not in {"excluded", "retired"}
+    }
+    providers = tuple(sorted(eligible))
+    if not providers or any(
+        type(provider) is not str or not provider or provider != provider.strip()
+        for provider in providers
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    return providers
+
+
+def _provider_native_schema_major(dataset: DatasetDefinition) -> int:
+    return _schema_major(dataset)
+
+
+def _provider_native_isolation(
+    dataset: DatasetDefinition,
+) -> tuple[list[str], list[object]]:
+    if (
+        not _is_provider_native(dataset)
+        or dataset.read_model_adapter.primary_table != _PROVIDER_NATIVE_TABLE
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    providers = _provider_native_providers(dataset)
+    return (
+        [
+            f"{_quote_identifier('dataset_id')} = ?",
+            f"{_quote_identifier('provider')} IN ({', '.join('?' for _ in providers)})",
+            f"{_quote_identifier('schema_major')} = ?",
+        ],
+        [dataset.dataset_id, *providers, _provider_native_schema_major(dataset)],
+    )
+
+
 def _compile_scalar_filter(
     identifier: str,
     operator: str,
     values: tuple[object, ...],
+    *,
+    json_type_identifier: str | None = None,
 ) -> tuple[str, list[object]]:
     if operator == "eq":
         if values[0] is None:
+            if json_type_identifier is not None:
+                return f"{json_type_identifier} = 'null'", []
             return f"{identifier} IS NULL", []
         return f"{identifier} = ?", [values[0]]
     if operator == "in":
@@ -674,7 +770,11 @@ def _compile_scalar_filter(
             parts.append(f"{identifier} IN ({', '.join('?' for _ in non_null)})")
             params.extend(non_null)
         if has_null:
-            parts.append(f"{identifier} IS NULL")
+            parts.append(
+                f"{json_type_identifier} = 'null'"
+                if json_type_identifier is not None
+                else f"{identifier} IS NULL"
+            )
         return "(" + " OR ".join(parts) + ")", params
     if operator == "gte":
         return f"{identifier} >= ?", [values[0]]
@@ -693,11 +793,16 @@ def _base_predicates(
 ) -> tuple[list[str], list[object]]:
     predicates: list[str] = []
     params: list[object] = []
-    for fixed in dataset.read_model_adapter.fixed_field_filters:
-        identifier = _quote_identifier(fixed.field)
-        placeholders = ", ".join("?" for _ in fixed.allowed_values)
-        predicates.append(f"{identifier} IN ({placeholders})")
-        params.extend(fixed.allowed_values)
+    if _is_provider_native(dataset):
+        isolation_predicates, isolation_params = _provider_native_isolation(dataset)
+        predicates.extend(isolation_predicates)
+        params.extend(isolation_params)
+    else:
+        for fixed in dataset.read_model_adapter.fixed_field_filters:
+            identifier = _quote_identifier(fixed.field)
+            placeholders = ", ".join("?" for _ in fixed.allowed_values)
+            predicates.append(f"{identifier} IN ({placeholders})")
+            params.extend(fixed.allowed_values)
     field_map = {field.name: field for field in dataset.fields}
     for field_name, clause in request.filters.items():
         operator, values = _validate_filter_clause(
@@ -706,23 +811,28 @@ def _base_predicates(
             range_field=dataset.range_field,
         )
         sql, values_params = _compile_scalar_filter(
-            _quote_identifier(field_name),
+            _field_expression(dataset, field_name),
             operator,
             values,
+            json_type_identifier=_field_json_type_expression(dataset, field_name),
         )
         predicates.append(sql)
         params.extend(values_params)
     if prepared.as_of.field is not None:
-        predicates.append(f"{_quote_identifier(prepared.as_of.field)} <= ?")
+        predicates.append(f"{_field_expression(dataset, prepared.as_of.field)} <= ?")
         params.append(prepared.as_of.encoded_cutoff)
     if options.any_of_eq_filters:
         branches: list[str] = []
         branch_params: list[object] = []
         for field_name, value in options.any_of_eq_filters:
             sql, values_params = _compile_scalar_filter(
-                _quote_identifier(field_name),
+                _field_expression(dataset, field_name),
                 "eq",
                 (value,),
+                json_type_identifier=_field_json_type_expression(
+                    dataset,
+                    field_name,
+                ),
             )
             branches.append(sql)
             branch_params.extend(values_params)
@@ -735,6 +845,167 @@ def _base_predicates(
 
 def _where_clause(predicates: list[str]) -> str:
     return "" if not predicates else " WHERE " + " AND ".join(predicates)
+
+
+def _provider_native_valid_type_predicate(
+    dataset: DatasetDefinition,
+    field: DatasetField,
+) -> str:
+    value_expression = _field_expression(dataset, field.name)
+    type_expression = _field_json_type_expression(dataset, field.name)
+    if type_expression is None:
+        raise QueryServiceUnavailable("query service is unavailable")
+    absent_or_null = f"({type_expression} IS NULL OR {type_expression} = 'null')"
+    if field.logical_type == "text":
+        valid_value = f"{type_expression} = 'text'"
+    elif field.logical_type == "integer":
+        valid_value = (
+            f"({type_expression} = 'integer' AND "
+            f"typeof({value_expression}) = 'integer')"
+        )
+    elif field.logical_type == "float":
+        valid_value = (
+            f"({type_expression} = 'real' OR "
+            f"({type_expression} = 'integer' AND "
+            f"typeof({value_expression}) = 'integer'))"
+        )
+    else:
+        raise QueryServiceUnavailable("query service is unavailable")
+    return f"({absent_or_null} OR {valid_value})"
+
+
+def _provider_native_validate_operation_fields(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    request: QueryRequest,
+    options: QueryExecutionOptions,
+    prepared: _PreparedQuery,
+    *,
+    dataset_degraded: bool,
+) -> None:
+    if not _is_provider_native(dataset):
+        return
+    if type(dataset_degraded) is not bool:
+        raise QueryServiceUnavailable("query service is unavailable")
+    if not dataset_degraded:
+        return
+    field_map = {field.name: field for field in dataset.fields}
+    names = set(request.filters)
+    names.update(field_name for field_name, _direction in prepared.order)
+    names.update(field_name for field_name, _value in options.any_of_eq_filters)
+    if prepared.as_of.field is not None:
+        names.add(prepared.as_of.field)
+    if options.latest_partition and dataset.partition_field is not None:
+        names.add(dataset.partition_field)
+    isolation, params = _provider_native_isolation(dataset)
+    degraded_predicate = f"{_quote_identifier('quality_state')} = 'degraded'"
+    indexed_table = (
+        f"main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)} INDEXED BY "
+        f"{_quote_identifier(_PROVIDER_NATIVE_QUALITY_INDEX)}"
+    )
+    for field_name in sorted(names):
+        field = field_map.get(field_name)
+        if field is None:
+            raise QueryServiceUnavailable("query service is unavailable")
+        valid_type = _provider_native_valid_type_predicate(dataset, field)
+        issue_values = (
+            f"time_format_mismatch:{field_name}:yyyymmdd",
+            f"time_format_mismatch:{field_name}:rfc3339",
+        )
+        invalid_declared_time = (
+            "EXISTS (SELECT 1 FROM json_each("
+            f"{_quote_identifier('quality_issues_json')}) AS quality_issue "
+            "WHERE quality_issue.type = 'text' "
+            "AND quality_issue.value IN (?, ?))"
+        )
+        sql = (
+            f"SELECT 1 FROM {indexed_table}"
+            f"{_where_clause([*isolation, degraded_predicate, f'(NOT {valid_type} OR {invalid_declared_time})'])} "
+            "LIMIT 1"
+        )
+        if conn.execute(sql, [*params, *issue_values]).fetchone() is not None:
+            raise QueryServiceUnavailable("query service is unavailable")
+
+
+def _provider_native_dataset_quality_degraded(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+) -> bool:
+    isolation, params = _provider_native_isolation(dataset)
+    table = (
+        f"main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)} INDEXED BY "
+        f"{_quote_identifier(_PROVIDER_NATIVE_QUALITY_INDEX)}"
+    )
+    degraded_predicate = f"{_quote_identifier('quality_state')} = 'degraded'"
+    degraded = (
+        conn.execute(
+            f"SELECT 1 FROM {table}"
+            f"{_where_clause([*isolation, degraded_predicate])} "
+            "LIMIT 1",
+            params,
+        ).fetchone()
+        is not None
+    )
+    if not degraded:
+        return False
+    issues = _quote_identifier("quality_issues_json")
+    invalid_degraded_contract = (
+        f"json_valid({issues}) != 1"
+        f" OR json_type({issues}) != 'array'"
+        f" OR json_array_length({issues}) = 0"
+    )
+    if (
+        conn.execute(
+            f"SELECT 1 FROM {table}"
+            f"{_where_clause([*isolation, degraded_predicate, f'({invalid_degraded_contract})'])} "
+            "LIMIT 1",
+            params,
+        ).fetchone()
+        is not None
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    return True
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError("non-finite JSON constant")
+
+
+def _parse_provider_native_payload(value: object) -> dict[str, object]:
+    if type(value) is not str:
+        raise QueryServiceUnavailable("query service is unavailable")
+    try:
+        parsed = json.loads(value, parse_constant=_reject_json_constant)
+    except (RecursionError, TypeError, ValueError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
+    if type(parsed) is not dict or any(type(key) is not str for key in parsed):
+        raise QueryServiceUnavailable("query service is unavailable")
+    return parsed
+
+
+def _parse_provider_native_quality(
+    state: object,
+    value: object,
+) -> tuple[str, ...]:
+    if state not in {"valid", "degraded"} or type(value) is not str:
+        raise QueryServiceUnavailable("query service is unavailable")
+    try:
+        parsed = json.loads(value, parse_constant=_reject_json_constant)
+    except (RecursionError, TypeError, ValueError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
+    if (
+        type(parsed) is not list
+        or any(
+            type(issue) is not str
+            or len(issue) > 160
+            or _PROVIDER_NATIVE_ISSUE_RE.fullmatch(issue) is None
+            for issue in parsed
+        )
+        or parsed != sorted(set(parsed))
+        or (state == "valid") != (not parsed)
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    return tuple(parsed)
 
 
 def _validate_stored_value(value: object, field: DatasetField) -> object:
@@ -874,18 +1145,30 @@ def _execution_query_hash(
         options=options,
         resolved_partition=resolved_partition,
     )
-    private_routing = _digest(
-        {
-            "primary_table": dataset.read_model_adapter.primary_table,
-            "fixed_field_filters": [
-                [fixed.field, sorted(fixed.allowed_values)]
-                for fixed in sorted(
-                    dataset.read_model_adapter.fixed_field_filters,
-                    key=lambda item: item.field,
-                )
-            ],
-        }
-    )
+    private_routing_payload: dict[str, object] = {
+        "primary_table": dataset.read_model_adapter.primary_table,
+        "fixed_field_filters": [
+            [fixed.field, sorted(fixed.allowed_values)]
+            for fixed in sorted(
+                dataset.read_model_adapter.fixed_field_filters,
+                key=lambda item: item.field,
+            )
+        ],
+    }
+    if _is_provider_native(dataset):
+        private_routing_payload.update(
+            {
+                "storage_kind": _PROVIDER_NATIVE_STORAGE_KIND,
+                "providers": list(_provider_native_providers(dataset)),
+                "schema_major": _provider_native_schema_major(dataset),
+                "row_key_strategy": getattr(
+                    dataset.read_model_adapter,
+                    "row_key_strategy",
+                    None,
+                ),
+            }
+        )
+    private_routing = _digest(private_routing_payload)
     return _digest([public_hash, private_routing])
 
 
@@ -894,7 +1177,8 @@ def _validated_cursor_sort_key(
     prepared: _PreparedQuery,
     dataset: DatasetDefinition,
 ) -> tuple[object, ...]:
-    if type(sort_key) is not tuple or len(sort_key) != 2 * len(prepared.order) + 1:
+    expected_size = 2 * len(prepared.order) + (2 if _is_provider_native(dataset) else 1)
+    if type(sort_key) is not tuple or len(sort_key) != expected_size:
         raise InvalidCursor("cursor sort key is invalid")
     field_map = {field.name: field for field in dataset.fields}
     for index, (field_name, _direction) in enumerate(prepared.order):
@@ -904,15 +1188,37 @@ def _validated_cursor_sort_key(
         if type(rank) is not int or rank not in {0, 1}:
             raise InvalidCursor("cursor sort key is invalid")
         if rank == 1:
-            if value is not None or not field.nullable:
+            if value is not None or (
+                not _is_provider_native(dataset) and not field.nullable
+            ):
                 raise InvalidCursor("cursor sort key is invalid")
         else:
             if value is None:
                 raise InvalidCursor("cursor sort key is invalid")
             try:
-                _validate_stored_value(value, field)
-            except QueryServiceUnavailable:
+                if _is_provider_native(dataset):
+                    _validate_typed_value(
+                        value,
+                        field,
+                        operator="eq",
+                        name=f"cursor.{field_name}",
+                    )
+                else:
+                    _validate_stored_value(value, field)
+            except (QueryServiceUnavailable, QueryValidationError):
                 raise InvalidCursor("cursor sort key is invalid") from None
+    if _is_provider_native(dataset):
+        provider, row_key = sort_key[-2:]
+        if provider not in _provider_native_providers(dataset):
+            raise InvalidCursor("cursor sort key is invalid")
+        if (
+            type(row_key) is not str
+            or not row_key
+            or row_key != row_key.strip()
+            or len(row_key) > 256
+        ):
+            raise InvalidCursor("cursor sort key is invalid")
+        return sort_key
     rowid = sort_key[-1]
     if type(rowid) is not int or rowid < -(2**63) or rowid > 2**63 - 1:
         raise InvalidCursor("cursor sort key is invalid")
@@ -922,13 +1228,14 @@ def _validated_cursor_sort_key(
 def _compile_keyset_predicate(
     prepared: _PreparedQuery,
     sort_key: tuple[object, ...],
+    dataset: DatasetDefinition,
 ) -> tuple[str, list[object]]:
     branches: list[str] = []
     branch_params: list[list[object]] = []
     prefix_sql: list[str] = []
     prefix_params: list[object] = []
     for index, (field_name, direction) in enumerate(prepared.order):
-        identifier = _quote_identifier(field_name)
+        identifier = _field_expression(dataset, field_name)
         rank_expression = f"CASE WHEN {identifier} IS NULL THEN 1 ELSE 0 END"
         rank = sort_key[2 * index]
         value = sort_key[2 * index + 1]
@@ -950,10 +1257,30 @@ def _compile_keyset_predicate(
         prefix_sql.extend((f"{rank_expression} = ?", f"{identifier} IS ?"))
         prefix_params.extend((rank, value))
 
-    branches.append(" AND ".join([*prefix_sql, "rowid > ?"]))
-    branch_params.append([*prefix_params, sort_key[-1]])
+    if _is_provider_native(dataset):
+        provider, row_key = sort_key[-2:]
+        provider_identifier = _quote_identifier("provider")
+        row_key_identifier = _quote_identifier("row_key")
+        branches.append(" AND ".join([*prefix_sql, f"{provider_identifier} > ?"]))
+        branch_params.append([*prefix_params, provider])
+        branches.append(
+            " AND ".join(
+                [
+                    *prefix_sql,
+                    f"{provider_identifier} = ?",
+                    f"{row_key_identifier} > ?",
+                ]
+            )
+        )
+        branch_params.append([*prefix_params, provider, row_key])
+    else:
+        branches.append(" AND ".join([*prefix_sql, "rowid > ?"]))
+        branch_params.append([*prefix_params, sort_key[-1]])
     params = [value for values in branch_params for value in values]
-    return "(" + ") OR (".join(branches) + ")", params
+    compiled = "(" + ") OR (".join(branches) + ")"
+    if _is_provider_native(dataset):
+        compiled = f"({compiled})"
+    return compiled, params
 
 
 def _runtime_metadata(
@@ -1007,6 +1334,7 @@ def _runtime_metadata(
     )
 
     state = projection.state
+    allow_invalid_time_current_rows = False
     if state == "success":
         if (
             projection.degraded
@@ -1030,17 +1358,31 @@ def _runtime_metadata(
         allow_rows = False
         lineage_complete = False
     elif state == "failed":
-        if evidence.current_receipt_status not in {None, "failed"}:
-            raise QueryServiceUnavailable("query service is unavailable")
-        allow_rows = prior_complete
-        lineage_complete = current_complete or prior_complete
+        allow_invalid_time_current_rows = bool(
+            _is_provider_native(dataset)
+            and current_complete
+            and evidence.current_receipt_status == "success"
+            and projection.data_through is None
+            and type(projection.reasons) is tuple
+            and projection.reasons == ("invalid_data_through",)
+        )
+        if allow_invalid_time_current_rows:
+            allow_rows = True
+            lineage_complete = True
+        else:
+            if evidence.current_receipt_status not in {None, "failed"}:
+                raise QueryServiceUnavailable("query service is unavailable")
+            allow_rows = prior_complete
+            lineage_complete = current_complete or prior_complete
     else:
         if evidence.current_receipt_status not in {"success", "empty"}:
             raise QueryServiceUnavailable("query service is unavailable")
         allow_rows = prior_complete
         lineage_complete = prior_complete
 
-    if state in {"success", "empty"} or allow_rows:
+    if allow_invalid_time_current_rows:
+        data_through = None
+    elif state in {"success", "empty"} or allow_rows:
         try:
             data_through = _normalize_data_through(projection.data_through, dataset)
         except QueryServiceUnavailable:
@@ -1104,6 +1446,45 @@ def _runtime_metadata(
         "reasons": reasons,
     }
     return metadata, allow_rows
+
+
+def _merge_provider_native_quality(
+    metadata: dict[str, object],
+    *,
+    dataset_degraded: bool,
+    page_issues: set[str],
+) -> None:
+    if type(dataset_degraded) is not bool or any(
+        type(issue) is not str or _PROVIDER_NATIVE_ISSUE_RE.fullmatch(issue) is None
+        for issue in page_issues
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    quality = metadata.get("quality")
+    if type(quality) is not dict:
+        raise QueryServiceUnavailable("query service is unavailable")
+    runtime_evidence = quality.get("evidence")
+    if type(runtime_evidence) is not list or any(
+        type(reason) is not str for reason in runtime_evidence
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    provider_quality_degraded = dataset_degraded or bool(page_issues)
+    evidence = set(runtime_evidence)
+    if dataset_degraded:
+        evidence.add("provider_dataset_quality_degraded")
+    evidence.update(page_issues)
+    runtime_quality_valid = quality.get("valid") is True
+    quality["valid"] = runtime_quality_valid and not provider_quality_degraded
+    quality["state"] = "valid" if quality["valid"] else "degraded"
+    quality["evidence"] = sorted(evidence)
+    runtime_degraded = metadata.get("degraded")
+    if type(runtime_degraded) is not bool:
+        raise QueryServiceUnavailable("query service is unavailable")
+    metadata["degraded"] = runtime_degraded or provider_quality_degraded
+    if metadata["degraded"] and metadata.get("state") == "ready":
+        runtime_state = metadata.get("runtime_state")
+        if type(runtime_state) is not str or not runtime_state:
+            raise QueryServiceUnavailable("query service is unavailable")
+        metadata["state"] = runtime_state
 
 
 class QueryService:
@@ -1201,6 +1582,19 @@ class QueryService:
                     now=validated_now,
                     registry=self._registry,
                 )
+                provider_native_dataset_degraded = (
+                    _provider_native_dataset_quality_degraded(conn, dataset)
+                    if _is_provider_native(dataset)
+                    else False
+                )
+                _provider_native_validate_operation_fields(
+                    conn,
+                    dataset,
+                    validated_request,
+                    validated_options,
+                    prepared,
+                    dataset_degraded=provider_native_dataset_degraded,
+                )
                 predicates, params = _base_predicates(
                     validated_request,
                     validated_options,
@@ -1218,7 +1612,7 @@ class QueryService:
                     )
                     partition_sql = (
                         "SELECT MAX("
-                        f"{_quote_identifier(dataset.partition_field)}) "
+                        f"{_field_expression(dataset, dataset.partition_field)}) "
                         "FROM main."
                         f"{_quote_identifier(dataset.read_model_adapter.primary_table)}"
                         f"{_where_clause(predicates)}"
@@ -1228,12 +1622,25 @@ class QueryService:
                         raise QueryServiceUnavailable("query service is unavailable")
                     resolved_partition = partition_row[0]
                     if resolved_partition is not None:
-                        resolved_partition = _validate_stored_value(
-                            resolved_partition,
-                            partition_field,
-                        )
+                        if _is_provider_native(dataset):
+                            try:
+                                resolved_partition = _validate_typed_value(
+                                    resolved_partition,
+                                    partition_field,
+                                    operator="eq",
+                                    name=f"stored.{partition_field.name}",
+                                )
+                            except QueryValidationError:
+                                raise QueryServiceUnavailable(
+                                    "query service is unavailable"
+                                ) from None
+                        else:
+                            resolved_partition = _validate_stored_value(
+                                resolved_partition,
+                                partition_field,
+                            )
                         predicates.append(
-                            f"{_quote_identifier(dataset.partition_field)} = ?"
+                            f"{_field_expression(dataset, dataset.partition_field)} = ?"
                         )
                         params.append(resolved_partition)
 
@@ -1267,6 +1674,7 @@ class QueryService:
                     cursor_sql, cursor_params = _compile_keyset_predicate(
                         prepared,
                         cursor_key,
+                        dataset,
                     )
                     predicates.append(cursor_sql)
                     params.extend(cursor_params)
@@ -1282,23 +1690,46 @@ class QueryService:
                     validated_options.latest_partition and resolved_partition is None
                 ):
                     field_map = {field.name: field for field in dataset.fields}
-                    selected_names = list(prepared.fields)
-                    for field_name, _direction in prepared.order:
-                        if field_name not in selected_names:
-                            selected_names.append(field_name)
-                    select_sql = ", ".join(
-                        _quote_identifier(field_name) for field_name in selected_names
-                    )
                     order_sql: list[str] = []
                     for field_name, direction in prepared.order:
-                        identifier = _quote_identifier(field_name)
+                        identifier = _field_expression(dataset, field_name)
                         order_sql.append(
                             f"CASE WHEN {identifier} IS NULL THEN 1 ELSE 0 END ASC"
                         )
                         order_sql.append(f"{identifier} {direction.upper()}")
-                    order_sql.append("rowid ASC")
+                    if _is_provider_native(dataset):
+                        select_parts = [
+                            _quote_identifier("payload_json"),
+                            _quote_identifier("provider"),
+                            _quote_identifier("row_key"),
+                            _quote_identifier("quality_state"),
+                            _quote_identifier("quality_issues_json"),
+                            *(
+                                _field_expression(dataset, field_name)
+                                for field_name, _direction in prepared.order
+                            ),
+                        ]
+                        order_sql.extend(
+                            (
+                                f"{_quote_identifier('provider')} ASC",
+                                f"{_quote_identifier('row_key')} ASC",
+                            )
+                        )
+                    else:
+                        selected_names = list(prepared.fields)
+                        for field_name, _direction in prepared.order:
+                            if field_name not in selected_names:
+                                selected_names.append(field_name)
+                        select_parts = [
+                            *(
+                                _quote_identifier(field_name)
+                                for field_name in selected_names
+                            ),
+                            "rowid",
+                        ]
+                        order_sql.append("rowid ASC")
                     row_sql = (
-                        f"SELECT {select_sql}, rowid "
+                        f"SELECT {', '.join(select_parts)} "
                         "FROM main."
                         f"{_quote_identifier(dataset.read_model_adapter.primary_table)}"
                         f"{_where_clause(predicates)} ORDER BY "
@@ -1318,13 +1749,62 @@ class QueryService:
                 selected_rows = rows[: validated_request.limit]
                 data: list[dict[str, object]] = []
                 sort_keys: list[tuple[object, ...]] = []
+                page_quality_issues: set[str] = set()
                 if selected_rows:
                     field_map = {field.name: field for field in dataset.fields}
-                    selected_names = list(prepared.fields)
-                    for field_name, _direction in prepared.order:
-                        if field_name not in selected_names:
-                            selected_names.append(field_name)
                     for row in selected_rows:
+                        if _is_provider_native(dataset):
+                            if len(row) != len(prepared.order) + 5:
+                                raise QueryServiceUnavailable(
+                                    "query service is unavailable"
+                                )
+                            payload = _parse_provider_native_payload(row[0])
+                            provider = row[1]
+                            row_key = row[2]
+                            if (
+                                provider not in _provider_native_providers(dataset)
+                                or type(row_key) is not str
+                                or not row_key
+                                or row_key != row_key.strip()
+                                or len(row_key) > 256
+                            ):
+                                raise QueryServiceUnavailable(
+                                    "query service is unavailable"
+                                )
+                            issues = _parse_provider_native_quality(row[3], row[4])
+                            page_quality_issues.update(issues)
+                            projected = {
+                                field_name: payload[field_name]
+                                for field_name in prepared.fields
+                                if field_name in payload
+                            }
+                            data.append(projected)
+                            flat_key: list[object] = []
+                            for index, (field_name, _direction) in enumerate(
+                                prepared.order
+                            ):
+                                value = row[5 + index]
+                                if value is not None:
+                                    try:
+                                        _validate_typed_value(
+                                            value,
+                                            field_map[field_name],
+                                            operator="eq",
+                                            name=f"stored.{field_name}",
+                                        )
+                                    except QueryValidationError:
+                                        raise QueryServiceUnavailable(
+                                            "query service is unavailable"
+                                        ) from None
+                                flat_key.extend((int(value is None), value))
+                            flat_key.extend((provider, row_key))
+                            sort_keys.append(tuple(flat_key))
+                            continue
+
+                        selected_names = list(prepared.fields)
+                        for field_name, _direction in prepared.order:
+                            if field_name not in selected_names:
+                                selected_names.append(field_name)
                         if len(row) != len(selected_names) + 1:
                             raise QueryServiceUnavailable(
                                 "query service is unavailable"
@@ -1357,6 +1837,13 @@ class QueryService:
                             flat_key.extend((int(value is None), value))
                         flat_key.append(rowid)
                         sort_keys.append(tuple(flat_key))
+
+                if _is_provider_native(dataset):
+                    _merge_provider_native_quality(
+                        metadata,
+                        dataset_degraded=provider_native_dataset_degraded,
+                        page_issues=page_quality_issues,
+                    )
 
                 next_cursor = None
                 if has_more:

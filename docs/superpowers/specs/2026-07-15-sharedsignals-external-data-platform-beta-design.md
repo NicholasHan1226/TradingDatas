@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-15
 
-**Status:** approved for written-spec review
+**Status:** binding and approved for local implementation; production schema migration remains separately gated
 
 **Owner:** SharedSignals
 
@@ -14,7 +14,7 @@
 
 SharedSignals is an independent, externally consumable, multi-source financial data service. It is not an internal Tushare mirror and it is not a TradingAgent or MarketGraph submodule.
 
-Tushare is the first major upstream and a compatibility benchmark. SharedSignals owns the external contract, dataset identifiers, schema versions, normalization, quality controls, storage, service metadata, account isolation, and long-term provider expansion. Future providers may add exchange data, announcements, news, research, policy, interaction, and factual sentiment or public-opinion data without creating new public API routes.
+Tushare is the first major upstream and a compatibility benchmark. SharedSignals owns the external contract, dataset identifiers, provider-native schema versions, technical validation, quality controls, storage, service metadata, account isolation, and long-term provider expansion. Every provider-native key/value is preserved losslessly, including fields not yet declared in the registry; business interpretation and feature engineering belong to consumers. Future providers may add exchange data, announcements, news, research, policy, interaction, and factual sentiment or public-opinion data without creating new public API routes.
 
 The first release is an invite-only Beta for external accounts. It is designed as an external commercial service from day one, but it does not include public registration, automated billing, self-service privilege escalation, or an open marketplace.
 
@@ -39,13 +39,15 @@ The first release is an invite-only Beta for external accounts. It is designed a
 - No request-time provider fallback. Public queries never call Tushare or another upstream live.
 - No destructive production database migration, data deletion, or historical evidence deletion as part of documentation and schedule retirement.
 - No claim that a configured or allowlisted provider interface is entitled, active, fresh, or externally usable without runtime evidence.
+- No conversion of provider-native rows into factor/value pairs, trading features, research conclusions, or other consumer-specific semantic models inside SharedSignals.
+- No dataset-specific collector, storage writer, query compiler, or public route for an ordinary Tushare dataset that can be described by registry metadata.
 
 ## 4. Selected architecture
 
 Three approaches were considered:
 
 1. Continue extending the current hard-coded Tushare allowlist and dedicated endpoints. Rejected because every dataset would continue to require coordinated edits across configuration, table mappings, routes, authorization, readers, tests, and documentation.
-2. Introduce one provider-neutral dataset registry and one query service while retaining existing SQLite facts and compatibility endpoints during migration. Selected because it provides a stable external contract, supports gradual rollout, and avoids a clean-room rewrite.
+2. Introduce one provider-neutral dataset registry, one generic provider-row SQLite authority, and one query service while retaining existing typed SQLite tables and endpoints only as compatibility surfaces during migration. Selected because it provides a stable external contract, supports gradual rollout, and avoids a clean-room rewrite.
 3. Rebuild the service in a new repository and database. Rejected for the initial release because it duplicates proven ingestion, authentication, and read-model components and creates unnecessary migration risk.
 
 The selected data flow is:
@@ -53,8 +55,8 @@ The selected data flow is:
 ```text
 Upstream providers
   -> provider adapters
-  -> validation / normalization / deduplication
-  -> SQLite facts + transaction-scoped ingest receipt
+  -> technical validation / lossless provider-native rows / deduplication
+  -> generic SQLite dataset rows + transaction-scoped ingest receipt
   -> dataset registry + metadata projector
   -> query service
   -> GET /v1/catalog and POST /v1/query
@@ -107,6 +109,89 @@ overlay review → exact integration → safe release and production readback.
 Parallel work begins only after shared contracts are frozen and only across
 non-overlapping write domains.
 
+### 4.2 Provider-native storage decision (2026-07-17)
+
+The previous mapping model compressed 114 datasets into a small set of research-
+shaped tables and, for many datasets, decomposed provider fields into
+`factor_name/value`. That model forced per-interface schema, key, mapping, and
+review work and made SharedSignals a semantic processing layer. It is rejected.
+
+The default Beta storage contract is one generic, lossless provider-row path:
+
+```text
+provider response fields/items
+-> generic provider adapter
+-> canonical JSON row (all provider-native fields preserved)
+-> registry-declared technical identity/time metadata
+-> generic SQLite dataset-row fact + same-transaction ingest receipt
+-> registry-compiled JSON-field query
+-> flat provider-native row returned by POST /v1/query
+```
+
+The additive generic fact table is designed around technical identity rather
+than research semantics. `payload_json` preserves every provider-native
+key/value, including unknown fields added upstream after the registry was
+published. Its minimum logical columns are `dataset_id`, `provider`,
+`schema_major`, `ingested_schema_version`, `row_key`, `observed_at`,
+`partition_value`, `payload_json`, `payload_hash`, `quality_state`,
+`quality_issues_json`, `collected_at`, `receipt_id`, and `revision`. Technical metadata is stored beside the payload,
+may be null when the provider does not supply a reliable value, and never
+overwrites, renames, drops, coerces, or timezone-normalizes a provider payload
+field. The exact DDL, indexes, migration, backfill, parity, cutover, and rollback
+require a separate safe migration review before any production database change.
+
+Physical identity is isolated by schema major, not the full schema version, so
+a backward-compatible optional-field minor release does not hide older rows.
+`ingested_schema_version` preserves row lineage and the API reports the current
+registry contract version. `current_snapshot` datasets use declared stable keys
+and may update across attempts; `append_only` datasets use payload identity and
+never update. A missing/unusable snapshot key falls back to tagged payload
+identity with degraded quality. Conflicting payloads for one stable key within a
+single attempt are rejected as a damaged envelope rather than silently
+last-write-winning.
+
+Registry metadata supplies the provider API name, request template, native
+field manifest, time/partition field, row-key fields or canonical-row-hash
+fallback, cadence, entitlement, budgets, and query policy. The field manifest
+controls discovery, query allowlisting, and quality annotations; it is not an
+ingest projection and cannot discard an unknown provider field. A provider
+field/schema/type mismatch or an unknown field is stored unchanged and marks
+the row/dataset quality or degraded metadata; it is not a row-admission
+failure. Only an invalid or oversized JSON representation, an approved resource
+budget breach, a damaged technical envelope, or a response matching the existing
+credential/provider-token leakage contract may reject admission, and none
+may rewrite the payload. Ordinary
+Tushare datasets do not add Python branches, target tables, public routes,
+custom fixtures, or custom query code. Provider-level adapters are allowed only
+for a genuinely different transport protocol, not for dataset business
+semantics.
+
+Credential leakage protection takes precedence over lossless storage: a matched
+response is treated as a damaged security envelope and cannot enter facts,
+logs, or the public API. A future provider with a legitimate business field that
+resembles a credential requires a separately reviewed security contract rather
+than a dataset-specific bypass.
+
+For a generic Tushare binding the registry also owns the provider request
+template, requested provider fields, allowed request-window substitutions, and
+row/byte/depth budgets. Collection starts from `dataset_id + request_window`;
+dataset-specific code cannot supply API parameters or receipt lineage behind
+the registry. The generic ingest path constructs dataset/provider/API/adapter,
+config-hash, request-window, and data-through receipt fields from trusted
+registry/config; callers supply only attempt identity and start time. Successful
+non-empty `data_through` is derived generically from the maximum validated
+provider `as_of_field`, otherwise `partition_field`, otherwise collection time
+when no provider data-time field exists; it is never guessed from API names or
+request parameter names. Tests
+inject raw `fields/items` transport envelopes below the existing strict parser,
+not prebuilt provider outcomes.
+
+Existing typed fact tables and their read-model adapters are compatibility
+surfaces during migration. They are not the target authority for newly onboarded
+datasets. Consumers may continue to use them until semantic parity and rollback
+are proven, but the generic path cannot write provider rows into those tables or
+derive research features for them.
+
 ## 5. Initial dataset scope
 
 The first release covers domestic-market factual datasets:
@@ -137,7 +222,7 @@ Each registry entry contains:
 - aliases, including compatibility names such as `tushare.daily`;
 - domain, market, entity type, and objective-data classification;
 - provider bindings and internal adapter version;
-- dataset schema version, field types, primary key, and default projection;
+- provider-native dataset schema version, declared field types for catalog/query validation without ingest coercion, technical row-key fields or row-hash fallback, and default projection;
 - filterable, sortable, and selectable fields;
 - maximum page size and lookback;
 - point-in-time capability: `append_only`, `current_snapshot`, or `unsupported`;
@@ -145,10 +230,10 @@ Each registry entry contains:
 - empty-data policy;
 - entitlement state: `active`, `locked`, `unknown`, `excluded`, or `retired`;
 - runtime state: `success`, `empty`, `unobserved`, `paused`, `failed`, or `stale`;
-- read-model adapter;
+- generic provider-row read adapter; legacy typed read-model adapters are compatibility-only;
 - required tenant scope and Beta quota class.
 
-Adding a provider or dataset must not change the public route set. A change is complete only when the registry, adapter, storage mapping, transaction receipt, query contract, metadata, tests, and documentation agree.
+Adding an ordinary Tushare dataset must change only registry/config metadata. It must not add a public route, dataset-specific collector, storage writer, query compiler, fixture, or business-table mapping. Generic conformance tests enumerate the registry and prove that a synthetic registry-only dataset traverses the provider-to-SQLite-to-query path unchanged; onboarding does not add a per-dataset test branch.
 
 ## 7. Storage and ingest authority
 
@@ -160,13 +245,13 @@ Receipts distinguish:
 
 - provider success with inserted, updated, unchanged, rejected, and returned row counts;
 - legitimate empty response;
-- provider failure, permission denial, throttling, validation failure, storage failure, and resource-budget rejection;
+- provider failure, permission denial, throttling, hard admission failure for invalid/oversized JSON or damaged technical envelopes, storage failure, and resource-budget rejection;
 - paused and never-observed datasets;
 - attempt ID, provider API, dataset ID, request window, config hash, adapter version, collection time, data-through time, and error classification.
 
 Provider errors must not be converted into empty datasets. The latest failed receipt keeps the dataset degraded even when older rows remain queryable.
 
-Existing fact tables may serve the initial registry where they preserve full provider payload and stable keys. Any dataset that cannot be represented losslessly must remain non-active until an additive, reversible storage extension has a separate migration preflight and rollback proof.
+The generic provider-row table is the target authority for newly onboarded datasets. Existing typed fact tables may temporarily serve compatibility consumers where they already preserve full provider payload and stable keys, but they do not define the new public storage model. Production activation remains blocked until the additive generic table, indexes, isolated backfill, parity, cutover, and rollback pass a separate migration preflight.
 
 ## 8. Collection scheduling
 
@@ -207,6 +292,32 @@ The request contains:
 - bounded page limit and opaque cursor.
 
 The query compiler accepts only registry-declared fields and the operators `eq`, `in`, `gte`, `lte`, and `between`. It never accepts SQL, table names, arbitrary expressions, provider tokens, or unbounded offset queries.
+
+For generic provider rows, registry-declared fields compile to bounded,
+type-guarded SQLite JSON expressions only for filtering and ordering. Response
+projection reads the internal canonical `payload_json` and parses it strictly
+in the service so large integers remain exact and a missing key remains distinct
+from an explicit JSON null. The raw storage JSON and technical columns are never
+exposed. Queries never accept arbitrary JSON paths and every statement is
+isolated by qualified technical `dataset_id`, provider, and schema-major
+predicates even when the provider payload contains identically named keys.
+
+Generic keyset cursors use provider plus stable row key as their final signed
+tie-breaker; SQLite `rowid` is not a public pagination identity. Dataset-wide
+indexed quality state and page-level row issues feed response quality evidence.
+Runtime state remains receipt-derived, while top-level `degraded` also reflects
+dataset data-quality degradation. Filtering or ordering a field with incompatible
+stored types fails closed rather than coercing or silently omitting rows.
+Rows whose declared provider time is invalid remain selectable as raw factual
+values with `failed/degraded`, null `data_through`, and truthful receipt/quality
+lineage; any filter, order, as-of, or latest-partition operation touching that
+field fails closed. Dataset-wide and operation-specific quality checks use the
+bounded degraded-row index and cannot fall back to scanning the full dataset
+partition when that index is missing.
+Explicit-null filters use JSON type `null` and never match a missing key. Values
+outside SQLite's exact signed-64-bit integer domain remain lossless in response
+projection, but any filter/order/as-of/partition operation on such a field fails
+closed using stored field-specific quality evidence.
 
 Responses contain data, signed keyset pagination, dataset and schema versions, request ID, and metadata:
 
@@ -369,6 +480,8 @@ The public API envelope is versioned by URI major. Each dataset schema has an in
 
 ### Phase 3: entitlement and scheduling
 
+- replace dataset-specific business-table writes with the one generic provider-row ingest path;
+- prove zero-code onboarding with a synthetic registry/config-only dataset;
 - probe the configured Tushare account without exposing tokens;
 - activate every entitled domestic dataset at its registry cadence;
 - create a separately throttled backfill queue;
@@ -394,6 +507,8 @@ The public API envelope is versioned by URI major. Each dataset schema has an in
 
 - Every in-scope Tushare dataset is cataloged with a provider binding or an explicit locked/unknown state.
 - Every entitled dataset is activated at a documented cadence and is queryable from SQLite.
+- Adding a synthetic ordinary Tushare dataset through registry/config alone completes provider-to-SQLite-to-query without changing collector, storage writer, query service, or API routes.
+- Query results preserve provider-native field names and values; SharedSignals does not decompose them into factor/value or consumer features.
 - Data and successful receipt commit atomically; rollback leaves no success receipt.
 - Provider failure, permission denial, throttle, empty, unobserved, paused, and stale states are independently reproducible.
 - Deleting optional cache artifacts does not destroy data or service-state authority.

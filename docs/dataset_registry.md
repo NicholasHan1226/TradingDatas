@@ -15,8 +15,9 @@ registry policy plus authoritative SQLite ingest receipts and the read clock.
 - `dataset_id` is stable and provider-neutral, for example `cn.equity.daily`.
 - aliases such as `tushare.daily` exist only for compatibility and resolve to one
   canonical dataset.
-- provider API names, SQLite tables and adapters are internal bindings; they are
-  not public dataset identity.
+- provider API names and provider-level transport adapters are internal bindings;
+  they are not public dataset identity. Ordinary datasets share one generic
+  provider-row table and do not declare a business-table mapping.
 - duplicate IDs/aliases, ambiguous bindings and active datasets without a valid
   storage/query mapping fail validation.
 
@@ -25,10 +26,13 @@ registry policy plus authoritative SQLite ingest receipts and the read clock.
 Each dataset records:
 
 - domain, market and objective entity type;
-- canonical schema version, fields, types, primary key and default projection;
+- provider-native schema version, fields, declared query types, technical row-key
+  fields or payload-hash fallback, and default projection;
 - selectable/filterable/sortable fields and bounded operators;
 - keyset ordering, page size, lookback and point-in-time capability;
-- provider binding, adapter version and target fact table;
+- provider binding and provider-level adapter version;
+- for generic bindings, request template, requested provider fields, allowed
+  request-window substitutions, and row/byte/depth budgets;
 - entitlement state: `active`, `locked`, `unknown`, `excluded`, `retired`;
 - cadence class, timezone, freshness SLA, backfill and overlap policy;
 - legitimate-empty policy;
@@ -58,17 +62,22 @@ wall-clock transitions must be visible without waiting for a cache rewrite.
   runtime availability.
 - `POST /v1/query` compiles only registry-declared fields, operators and ordering.
 - `/tushare` resolves aliases and calls the same QueryService.
-- adding a dataset changes the registry and internal adapters, not route count.
+- adding an ordinary Tushare dataset changes only registry/config metadata, not
+  Python, fixtures, storage code, query code, adapters, or route count.
 
 ## Change workflow
 
-1. add a registry contract test and make it fail;
-2. add/update the canonical entry and adapter binding;
-3. prove fact/receipt atomicity and runtime projection;
-4. prove catalog/query behavior and tenant policy;
-5. update onboarding/capability docs;
-6. freeze exact files and receive fresh independent review;
-7. release separately from registry implementation and verify real receipts.
+1. add/update only the provider-native registry/config entry;
+2. let generic conformance tests enumerate and validate it;
+3. prove zero-code provider → generic fact/receipt → catalog/query behavior;
+4. update onboarding/capability docs;
+5. freeze exact files and receive fresh independent review;
+6. release separately from registry implementation and verify real receipts.
 
-Schema-major breaks require a new reviewed API/storage compatibility plan. A
-dataset remains non-active when current storage cannot represent it losslessly.
+The field manifest is a catalog/query allowlist, never an ingest projection.
+Unknown fields are still stored. Physical generic facts are isolated by schema
+major so compatible minor additions do not hide old rows; each row retains its
+ingested full version for lineage. `append_only` uses payload identity and never
+updates; `current_snapshot` uses stable native keys with a quality-marked payload
+fallback when the key is unusable. Schema-major breaks require a new reviewed
+API compatibility plan; production generic-table migration remains separately gated.

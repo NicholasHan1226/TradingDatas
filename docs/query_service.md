@@ -7,12 +7,23 @@
 ## 边界与权威
 
 公共数据面固定为 `GET /v1/catalog` 和 `POST /v1/query`。新增 provider 或 dataset 只能扩展
-registry、adapter、SQLite facts/receipt、storage mapping 和 metadata，不得增加公共 route。
+registry/config；普通 Tushare dataset 复用 generic provider-row SQLite facts/receipt 和 query
+compiler，不得增加 dataset-specific adapter、storage mapping、Python branch 或公共 route。
 
 权威顺序固定为：provider-neutral registry → SQLite facts + transaction-scoped ingest receipts
 → registry/receipt/read-clock metadata → catalog/query envelope。查询只读同一个 verified SQLite
 snapshot；不现场调用 provider，不读 CSV/NDJSON/Parquet、兄弟数据库或其它系统文件，也不把
 HTTP 200、缓存、dashboard 或消费者状态当作数据健康证明。
+
+generic provider-row 查询只把 registry 声明的字段编译为内部受限 JSON extraction，并强制
+`dataset_id/provider/schema_major` 隔离。客户端不能提交 JSON path、SQL 或表名；响应扁平返回
+provider-native 字段，不暴露 `payload_json` 或技术存储列。现有 typed-table 查询仅是迁移期
+compatibility surface，不能成为新 dataset 的目标路径。
+
+声明时间格式不符的 provider-native 原值仍可被普通字段选择，并以 `failed/degraded`、
+`data_through=null` 和真实 receipt/quality lineage 返回；该字段一旦参与 filter、order、as-of
+或 latest-partition 就 fail closed。dataset-wide quality 与 operation issue 检查必须绑定既有
+quality index 并只扫描 degraded rows；缺失该 index 时查询不可用，不能退回全分区扫描。
 
 SharedSignals 不处理 opening gate、候选、预测、策略、alpha、资金、持仓、风险、订单、成交、
 执行回执或交易建议。

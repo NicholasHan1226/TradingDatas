@@ -7,8 +7,9 @@ receipts and is deliberately rejected from this YAML authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
+import re
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -112,9 +113,35 @@ _BINDING_KEYS = frozenset(
         "entitlement_state",
         "activation_state",
         "target_tables",
+        "request_template",
+        "requested_fields",
+        "max_rows_per_attempt",
+        "max_payload_bytes_per_row",
+        "max_batch_bytes",
+        "max_nesting_depth",
+    }
+)
+_BINDING_REQUIRED_KEYS = frozenset(
+    {
+        "provider",
+        "api_name",
+        "adapter_version",
+        "read_discriminator_value",
+        "entitlement_state",
+        "activation_state",
+        "target_tables",
     }
 )
 _READ_MODEL_ADAPTER_KEYS = frozenset(
+    {
+        "adapter_version",
+        "primary_table",
+        "fixed_field_filters",
+        "storage_kind",
+        "row_key_strategy",
+    }
+)
+_READ_MODEL_ADAPTER_REQUIRED_KEYS = frozenset(
     {"adapter_version", "primary_table", "fixed_field_filters"}
 )
 _FIXED_FILTER_KEYS = frozenset({"field", "allowed_values"})
@@ -129,6 +156,23 @@ _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
 _AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
 _ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
+_STORAGE_KINDS = frozenset({"typed_columns", "provider_native_rows"})
+_ROW_KEY_STRATEGIES = frozenset({"primary_key", "payload_hash"})
+_PROVIDER_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_WINDOW_PLACEHOLDER_PATTERN = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
+_SCHEMA_VERSION_PATTERN = re.compile(
+    r"(?P<major>[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+)
+_GENERIC_BINDING_KEYS = frozenset(
+    {
+        "request_template",
+        "requested_fields",
+        "max_rows_per_attempt",
+        "max_payload_bytes_per_row",
+        "max_batch_bytes",
+        "max_nesting_depth",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -193,6 +237,8 @@ class ReadModelAdapter:
     adapter_version: str
     primary_table: str
     fixed_field_filters: tuple[FixedFieldFilter, ...]
+    storage_kind: str = "typed_columns"
+    row_key_strategy: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +252,14 @@ class ProviderBinding:
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
+    request_template: Mapping[str, str] = dataclass_field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    requested_fields: tuple[str, ...] = ()
+    max_rows_per_attempt: int | None = None
+    max_payload_bytes_per_row: int | None = None
+    max_batch_bytes: int | None = None
+    max_nesting_depth: int | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +290,15 @@ class DatasetDefinition:
     quota_class: str
     provider_bindings: tuple[ProviderBinding, ...]
     read_model_adapter: ReadModelAdapter
+
+    @property
+    def schema_major(self) -> int:
+        match = _SCHEMA_VERSION_PATTERN.fullmatch(self.schema_version)
+        if match is None:
+            raise ValueError(
+                f"dataset {self.dataset_id}.schema_version must use MAJOR.MINOR.PATCH"
+            )
+        return int(match.group("major"))
 
     @property
     def filter_operators(self) -> Mapping[str, tuple[str, ...]]:
@@ -463,6 +526,12 @@ def _positive_int(value: Any, path: str) -> int:
     return value
 
 
+def _optional_positive_int(value: Any, path: str) -> int | None:
+    if value is None:
+        return None
+    return _positive_int(value, path)
+
+
 def _optional_non_empty_string(value: Any, path: str) -> str | None:
     if value is None:
         return None
@@ -475,6 +544,33 @@ def _choice(value: Any, allowed: frozenset[str], path: str) -> str:
         choices = ", ".join(sorted(allowed))
         raise ValueError(f"{path} must be one of: {choices}")
     return normalized
+
+
+def _provider_field_name(value: Any, path: str) -> str:
+    name = _non_empty_string(value, path)
+    if _PROVIDER_FIELD_PATTERN.fullmatch(name) is None:
+        raise ValueError(f"{path} must use the provider field name grammar")
+    return name
+
+
+def _request_template(raw: Any, path: str) -> Mapping[str, str]:
+    value = _mapping(raw, path)
+    normalized: dict[str, str] = {}
+    for raw_key, raw_value in value.items():
+        key = _provider_field_name(raw_key, f"{path} key")
+        if not isinstance(raw_value, str):
+            raise ValueError(f"{path}.{key} must be a string")
+        if any(ord(character) < 32 for character in raw_value):
+            raise ValueError(f"{path}.{key} must not contain control characters")
+        if (
+            "${" in raw_value
+            and _WINDOW_PLACEHOLDER_PATTERN.fullmatch(raw_value) is None
+        ):
+            raise ValueError(
+                f"{path}.{key} must use an exact ${{window.<safe_key>}} placeholder"
+            )
+        normalized[key] = raw_value
+    return MappingProxyType(dict(sorted(normalized.items())))
 
 
 def _load_query_defaults(raw: Any) -> QueryDefaults:
@@ -578,7 +674,12 @@ def _load_binding(
 ) -> ProviderBinding:
     path = f"dataset {dataset_id}.provider_bindings[{index}]"
     value = _mapping(raw, path)
-    _reject_unknown_keys(value, _BINDING_KEYS, path)
+    _reject_unknown_keys(
+        value,
+        _BINDING_KEYS,
+        path,
+        required=_BINDING_REQUIRED_KEYS,
+    )
 
     provider = _non_empty_string(value["provider"], f"{path}.provider")
     api_name = _non_empty_string(value["api_name"], f"{path}.api_name")
@@ -600,6 +701,20 @@ def _load_binding(
     )
     target_tables = _string_tuple(value["target_tables"], f"{path}.target_tables")
     _reject_duplicate_strings(target_tables, f"{path}.target_tables")
+    request_template = _request_template(
+        value.get("request_template", {}),
+        f"{path}.request_template",
+    )
+    requested_fields = _string_tuple(
+        value.get("requested_fields", []),
+        f"{path}.requested_fields",
+        allow_empty=True,
+    )
+    requested_fields = tuple(
+        _provider_field_name(field_name, f"{path}.requested_fields[{field_index}]")
+        for field_index, field_name in enumerate(requested_fields)
+    )
+    _reject_duplicate_strings(requested_fields, f"{path}.requested_fields")
 
     if activation_state == "active":
         if entitlement_state != "active":
@@ -614,6 +729,24 @@ def _load_binding(
         entitlement_state=entitlement_state,
         activation_state=activation_state,
         target_tables=target_tables,
+        request_template=request_template,
+        requested_fields=requested_fields,
+        max_rows_per_attempt=_optional_positive_int(
+            value.get("max_rows_per_attempt"),
+            f"{path}.max_rows_per_attempt",
+        ),
+        max_payload_bytes_per_row=_optional_positive_int(
+            value.get("max_payload_bytes_per_row"),
+            f"{path}.max_payload_bytes_per_row",
+        ),
+        max_batch_bytes=_optional_positive_int(
+            value.get("max_batch_bytes"),
+            f"{path}.max_batch_bytes",
+        ),
+        max_nesting_depth=_optional_positive_int(
+            value.get("max_nesting_depth"),
+            f"{path}.max_nesting_depth",
+        ),
     )
 
 
@@ -625,15 +758,20 @@ def _load_read_model_adapter(
 ) -> ReadModelAdapter:
     path = f"dataset {dataset_id}.read_model_adapter"
     value = _mapping(raw, path)
-    _reject_unknown_keys(value, _READ_MODEL_ADAPTER_KEYS, path)
+    _reject_unknown_keys(
+        value,
+        _READ_MODEL_ADAPTER_KEYS,
+        path,
+        required=_READ_MODEL_ADAPTER_REQUIRED_KEYS,
+    )
 
     adapter_version = _non_empty_string(
         value["adapter_version"], f"{path}.adapter_version"
     )
     primary_table = _non_empty_string(value["primary_table"], f"{path}.primary_table")
     raw_filters = value["fixed_field_filters"]
-    if not isinstance(raw_filters, list) or not raw_filters:
-        raise ValueError(f"{path}.fixed_field_filters must be a non-empty list")
+    if not isinstance(raw_filters, list):
+        raise ValueError(f"{path}.fixed_field_filters must be a list")
 
     fixed_filters: list[FixedFieldFilter] = []
     seen_fields: set[str] = set()
@@ -666,6 +804,20 @@ def _load_read_model_adapter(
         adapter_version=adapter_version,
         primary_table=primary_table,
         fixed_field_filters=tuple(fixed_filters),
+        storage_kind=_choice(
+            value.get("storage_kind", "typed_columns"),
+            _STORAGE_KINDS,
+            f"{path}.storage_kind",
+        ),
+        row_key_strategy=(
+            None
+            if value.get("row_key_strategy") is None
+            else _choice(
+                value["row_key_strategy"],
+                _ROW_KEY_STRATEGIES,
+                f"{path}.row_key_strategy",
+            )
+        ),
     )
 
 
@@ -847,9 +999,7 @@ def _load_dataset(
     )
     schema_profile_name = value.get("schema_profile")
     if schema_profile_name is None:
-        missing_contract_keys = sorted(
-            _PROFILE_CONTRACT_REQUIRED_KEYS - set(value)
-        )
+        missing_contract_keys = sorted(_PROFILE_CONTRACT_REQUIRED_KEYS - set(value))
         if missing_contract_keys:
             raise ValueError(
                 f"dataset {dataset_id} must declare an inline schema contract or "
@@ -912,6 +1062,92 @@ def _load_dataset(
         dataset_id=dataset_id,
         fields_by_name=fields_by_name,
     )
+    if read_model_adapter.storage_kind == "typed_columns":
+        if read_model_adapter.row_key_strategy is not None:
+            raise ValueError(
+                f"dataset {dataset_id} typed_columns must not declare row_key_strategy"
+            )
+        if not read_model_adapter.fixed_field_filters:
+            raise ValueError(
+                f"dataset {dataset_id} typed_columns fixed_field_filters "
+                "must be a non-empty list"
+            )
+        for raw_binding_index, raw_binding in enumerate(raw_bindings):
+            binding_value = _mapping(
+                raw_binding,
+                f"dataset {dataset_id}.provider_bindings[{raw_binding_index}]",
+            )
+            unexpected = sorted(_GENERIC_BINDING_KEYS & set(binding_value))
+            if unexpected:
+                raise ValueError(
+                    f"dataset {dataset_id} typed_columns binding must not declare "
+                    f"generic request contract keys: {', '.join(unexpected)}"
+                )
+    else:
+        if read_model_adapter.primary_table != "provider_dataset_rows":
+            raise ValueError(
+                f"dataset {dataset_id} provider_native_rows primary_table must be "
+                "provider_dataset_rows"
+            )
+        if read_model_adapter.fixed_field_filters:
+            raise ValueError(
+                f"dataset {dataset_id} provider_native_rows fixed_field_filters "
+                "must be empty"
+            )
+        expected_strategy = {
+            "current_snapshot": "primary_key",
+            "append_only": "payload_hash",
+        }.get(schema_contract.point_in_time)
+        if expected_strategy is None:
+            raise ValueError(
+                f"dataset {dataset_id} point_in_time=unsupported cannot use "
+                "provider_native_rows"
+            )
+        if read_model_adapter.row_key_strategy != expected_strategy:
+            raise ValueError(
+                f"dataset {dataset_id} {schema_contract.point_in_time} requires "
+                f"row_key_strategy={expected_strategy}"
+            )
+        if _SCHEMA_VERSION_PATTERN.fullmatch(schema_version) is None:
+            raise ValueError(
+                f"dataset {dataset_id}.schema_version must use MAJOR.MINOR.PATCH"
+            )
+        invalid_field_names = sorted(
+            field.name
+            for field in fields
+            if _PROVIDER_FIELD_PATTERN.fullmatch(field.name) is None
+        )
+        if invalid_field_names:
+            raise ValueError(
+                f"dataset {dataset_id} field name must use provider field grammar: "
+                f"{', '.join(invalid_field_names)}"
+            )
+        for raw_binding_index, (raw_binding, binding) in enumerate(
+            zip(raw_bindings, provider_bindings)
+        ):
+            binding_path = (
+                f"dataset {dataset_id}.provider_bindings[{raw_binding_index}]"
+            )
+            binding_value = _mapping(raw_binding, binding_path)
+            missing_generic_keys = sorted(_GENERIC_BINDING_KEYS - set(binding_value))
+            if missing_generic_keys:
+                raise ValueError(
+                    f"{binding_path} missing generic request contract key(s): "
+                    f"{', '.join(missing_generic_keys)}"
+                )
+            if binding.target_tables != ("provider_dataset_rows",):
+                raise ValueError(
+                    f"{binding_path}.target_tables must be exactly "
+                    "provider_dataset_rows"
+                )
+            undeclared_requested_fields = sorted(
+                set(binding.requested_fields) - set(fields_by_name)
+            )
+            if undeclared_requested_fields:
+                raise ValueError(
+                    f"{binding_path}.requested_fields reference undeclared field(s): "
+                    f"{', '.join(undeclared_requested_fields)}"
+                )
     missing_read_tables = [
         binding.provider
         for binding in provider_bindings
@@ -923,18 +1159,19 @@ def _load_dataset(
             "provider binding target_tables for: "
             f"{', '.join(missing_read_tables)}"
         )
-    provider_filters = tuple(
-        fixed_filter
-        for fixed_filter in read_model_adapter.fixed_field_filters
-        if fixed_filter.field == "provider"
-    )
-    if len(provider_filters) != 1 or set(provider_filters[0].allowed_values) != set(
-        read_discriminator_values
-    ):
-        raise ValueError(
-            f"dataset {dataset_id} provider binding read_discriminator_value values "
-            "must exactly equal read_model_adapter provider allowed_values"
+    if read_model_adapter.storage_kind == "typed_columns":
+        provider_filters = tuple(
+            fixed_filter
+            for fixed_filter in read_model_adapter.fixed_field_filters
+            if fixed_filter.field == "provider"
         )
+        if len(provider_filters) != 1 or set(provider_filters[0].allowed_values) != set(
+            read_discriminator_values
+        ):
+            raise ValueError(
+                f"dataset {dataset_id} provider binding read_discriminator_value "
+                "values must exactly equal read_model_adapter provider allowed_values"
+            )
 
     return DatasetDefinition(
         dataset_id=dataset_id,

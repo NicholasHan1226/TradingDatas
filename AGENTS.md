@@ -10,13 +10,17 @@ SharedSignals 是**独立外部多源金融数据平台**。Tushare 是首个主
 
 SharedSignals 只负责：
 
-- provider-neutral dataset catalog、provider adapter 和 canonical schema；
-- 采集、校验、标准化、去重和数据质量；
+- provider-neutral dataset catalog、provider-level transport adapter 和 provider-native schema contract；
+- 采集、技术校验、无损保留 provider-native 字段、去重和数据质量；
 - SQLite facts 与同事务的 SQLite ingest receipt；
 - 客观 `freshness`、`quality`、`lineage`、`degraded`、`data_through` 和 runtime state；
 - DB-first 只读 HTTP API/SDK，以及受邀外部账户的数据访问治理。
 
 SharedSignals **不承载 opening gate**、候选选择、预测、策略评分、alpha、资金、持仓、风险、订单、成交、执行回执或交易建议；不读取 TradingAgent/MarketGraph 的业务状态决定采集，不共享数据库，不做跨系统事务、callback 或直接 import 它们的业务代码。事实型资金流或持仓排名可以作为 provider 原始数据存储，但不得被解释成交易判断。
+
+provider-native 原始行是默认数据产品形式。`payload_json` 必须无损保留 provider 返回的全部 key/value，包括 registry 尚未认识的新字段；技术性的 `row_key`、`observed_at`、`partition_value` 和采集时间是独立 metadata，可以为空，不能覆盖、改名、删减或重写 payload 字段。field manifest 只控制字段发现、查询白名单和质量标注。provider 字段/schema/type 不符合声明或出现未知字段时，原行仍须入库并标记真实 quality/degraded；只有无法形成合法且有界 JSON、超过批准的资源预算或技术 envelope 损坏等硬 admission failure 才能拒绝入库，且不得静默转换、删除或伪造原值。SharedSignals 不得把 provider 字段拆成 `factor_name/value`、交易信号、研究特征或其它业务语义；TradingAgent、MarketGraph 或其它消费者负责后续加工。
+
+无损保留不覆盖凭证泄漏：命中既有 credential/provider-token 防泄漏合同的响应必须作为损坏的安全 envelope fail closed，不能写入事实表、日志或 API。若未来 provider 确有与凭证同名的合法业务字段，必须先通过独立安全合同和验收，不能在普通 dataset onboarding 中弱化扫描器。
 
 ## 权威层
 
@@ -32,7 +36,8 @@ HTTP 200、配置存在、allowlist、静态接口数量、旧数据行或消费
 ## 固定公共接口
 
 - 目标数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`。
-- **新增数据源不得新增公共 API 路由**；新增 provider/dataset 通过 registry、adapter、storage mapping、receipt、query contract 和 metadata 扩展。
+- **新增数据源不得新增公共 API 路由**；普通 dataset 只通过 registry/config 接入既有 generic ingest、receipt、query 和 metadata 管线。只有新增 transport 协议时才扩 provider-level adapter。
+- **新增普通 provider/dataset 不得新增 dataset-specific 采集、存储或查询代码**；只允许在 registry/config 声明 API、参数、provider-native 字段、时间字段、行键/行哈希策略、频率、权限和预算。只有真实 transport 协议差异（例如非 Tushare 的分页或鉴权方式）才允许新增 provider-level adapter。
 - `/tushare` 与现有专用端点是迁移期 legacy compatibility surface，最终必须调用同一个 query service，不能保留独立 SQL、provider live fallback 或文件 fallback。
 - 外部消费者只能通过受控 HTTP API 访问；不得直连 SQLite、DuckDB、CSV/NDJSON、旧目录或 provider。
 - 横向扩源完成定义是“能发现、能采、能同事务入库、能查询、能返回真实 metadata、能限流/降级、能回滚”，不是“配置里有名字”。
@@ -53,6 +58,8 @@ HTTP 200、配置存在、allowlist、静态接口数量、旧数据行或消费
 3. 威胁模型和运行假设；当前 Beta 只承诺协作进程与意外 race，不承诺抵御恶意 same-UID 进程；
 4. 可复现的 P0/P1 验收项、停止条件和回滚方式；
 5. 本地候选、Git 主线、GitHub、生产文件、生产 runtime、外部 route 和真实数据分别如何证明。
+
+每个采集/查询架构候选还必须通过 **zero-code dataset onboarding** 验收：在临时 registry/config 中增加一个 synthetic Tushare dataset，不修改 collector、storage writer、query service 或 API route，即可用 injected provider response 完成 `provider -> SQLite facts+receipt -> POST /v1/query`。无法做到时视为架构 FAIL，不得用逐接口补丁绕过。
 
 实现顺序固定为：
 

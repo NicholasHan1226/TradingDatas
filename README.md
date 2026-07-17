@@ -2,9 +2,9 @@
 
 > 阅读顺序：[AGENTS.md](AGENTS.md) → [STATUS.md](STATUS.md) →
 > [外部 Beta 设计规格](docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md) →
-> [Phase 1 实施计划](docs/superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md)。
+> [Provider-native generic slice 计划](docs/superpowers/plans/2026-07-17-sharedsignals-provider-native-generic-slice.md)。
 
-SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为首个主要上游和能力基准，把行情、基本面、资金事实、参考数据、公告、新闻、研报、政策和未来客观舆情等数据统一采集、标准化、质检、入库，并通过稳定 API 提供给受邀外部账户和内部消费者。
+SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为首个主要上游和能力基准，把行情、基本面、资金事实、参考数据、公告、新闻、研报、政策和未来客观舆情等数据统一采集、技术校验、质检、入库，并通过稳定 API 提供给受邀外部账户和内部消费者。
 
 它不是 TradingAgent 或 MarketGraph 的内部模块，也不是交易控制层。
 
@@ -12,8 +12,8 @@ SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为�
 
 SharedSignals 做：
 
-- provider-neutral dataset registry 与 provider adapter；
-- canonical schema、校验、标准化、去重和质量控制；
+- provider-neutral dataset registry 与 provider-level transport adapter；
+- provider-native 字段无损入库、技术校验、去重和质量标注；
 - SQLite facts 与同事务的 SQLite ingest receipt；
 - freshness、quality、lineage、degraded、data-through 和 runtime state；
 - DB-first HTTP API/SDK，以及受邀账户的读取隔离、限流和审计。
@@ -25,8 +25,8 @@ SharedSignals 不做：opening gate、候选、预测、策略评分、alpha、�
 ```text
 Tushare / future providers
   → provider adapter
-  → validation / normalization / deduplication
-  → SQLite facts + transaction-scoped ingest receipt
+  → lossless provider-native rows / technical validation / deduplication
+  → generic SQLite dataset rows + transaction-scoped ingest receipt
   → provider-neutral dataset registry + metadata projection
   → fixed query service
   → GET /v1/catalog + POST /v1/query
@@ -47,7 +47,7 @@ HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代�
 - `GET /v1/catalog`：发现当前账户可见的 dataset、schema、查询能力、cadence、SLA、entitlement 和 runtime state。
 - `POST /v1/query`：按 registry 白名单执行字段、过滤、排序、时间和 keyset cursor 查询。
 - `/tushare` 与现有专用端点是 legacy compatibility surface；迁移后必须调用同一个 QueryService。
-- **新增数据源不得新增公共 API 路由**。横向扩展通过 registry、adapter、storage mapping、receipt 和 metadata 完成。
+- **新增数据源不得新增公共 API 路由**。普通 Tushare dataset 只改 registry/config，复用同一 generic ingest、receipt 和 query 管线；只有 transport 协议变化才增加 provider-level adapter。
 
 以上 `/v1` 接口当前仍是已批准目标合同，不是已部署能力；以 [STATUS.md](STATUS.md) 的当前证据为准。
 
@@ -76,9 +76,10 @@ HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代�
 
 - 每个真实 SQLite 写事务必须把成功数据和 success receipt 同事务提交。
 - rollback 后不能残留 success receipt；成功数据不能没有对应 receipt。
-- legitimate empty、provider failure、permission denied、rate limit、validation failure、storage failure 和 resource budget 必须分别记录。
+- legitimate empty、provider failure、permission denied、rate limit、硬 admission failure、storage failure 和 resource budget 必须分别记录；provider 字段/schema/type mismatch 或未知字段原样入库，只标记 quality/degraded。
+- credential/provider-token 防泄漏优先于无损入库；命中既有敏感信息合同的响应按损坏安全 envelope fail closed，不能进入 facts、日志或 API。
 - reader/API 只读 SQLite，不现场调用 provider，不回退 CSV/NDJSON/Parquet/旧目录，也不创建缺失数据库。
-- 新 dataset 的完成定义是：registry 可发现、adapter 可采、事实与 receipt 原子入库、API 可查、metadata 真实、限流/降级/回滚可验证。
+- 新普通 Tushare dataset 的完成定义是：只改 registry/config 即可发现、采集、事实与 receipt 原子入库、API 查询并返回真实 metadata；若必须新增 dataset-specific Python 或 route，架构验收直接失败。
 
 ## 防漂移开发方式
 

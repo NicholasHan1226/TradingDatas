@@ -40,6 +40,7 @@ _RUNTIME_STATES = frozenset(
 )
 _QUERYABILITY_REASONS = frozenset(
     {
+        "json_functions_unavailable",
         "primary_table_unavailable",
         "rowid_unavailable",
         "query_columns_unavailable",
@@ -47,6 +48,23 @@ _QUERYABILITY_REASONS = frozenset(
         "fixed_filter_columns_unavailable",
     }
 )
+_PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
+_PROVIDER_NATIVE_COLUMNS = {
+    "dataset_id": "TEXT",
+    "provider": "TEXT",
+    "schema_major": "INTEGER",
+    "ingested_schema_version": "TEXT",
+    "row_key": "TEXT",
+    "observed_at": "TEXT",
+    "partition_value": "TEXT",
+    "payload_json": "TEXT",
+    "payload_hash": "TEXT",
+    "quality_state": "TEXT",
+    "quality_issues_json": "TEXT",
+    "collected_at": "TEXT",
+    "receipt_id": "TEXT",
+    "revision": "INTEGER",
+}
 _ROWID_NAMES = frozenset({"rowid", "_rowid_", "oid"})
 _AGGREGATE_SCOPES = frozenset({"external_read", "read", "full", "*"})
 _RUNTIME_ROW_KEYS = frozenset(
@@ -139,6 +157,17 @@ def inspect_dataset_queryability(
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
 
+    storage_kind = getattr(
+        dataset.read_model_adapter,
+        "storage_kind",
+        "typed_columns",
+    )
+    if (
+        storage_kind == _PROVIDER_NATIVE_STORAGE_KIND
+        and dataset.read_model_adapter.primary_table != "provider_dataset_rows"
+    ):
+        return DatasetQueryability(False, ("primary_table_unavailable",))
+
     try:
         table_rows = conn.execute("PRAGMA main.table_list").fetchall()
         matching = [
@@ -152,8 +181,6 @@ def inspect_dataset_queryability(
             return DatasetQueryability(False, ("primary_table_unavailable",))
 
         reasons: set[str] = set()
-        if matching[0][4] == 1:
-            reasons.add("rowid_unavailable")
 
         column_rows = conn.execute(
             "SELECT name, type FROM pragma_table_xinfo(?, 'main')",
@@ -164,29 +191,49 @@ def inspect_dataset_queryability(
             for name, declared_type in column_rows
             if type(name) is str
         }
-        if any(name.casefold() in _ROWID_NAMES for name in columns):
-            reasons.add("rowid_unavailable")
+        if storage_kind == _PROVIDER_NATIVE_STORAGE_KIND:
+            if not set(_PROVIDER_NATIVE_COLUMNS).issubset(columns):
+                reasons.add("query_columns_unavailable")
+            for name, expected in _PROVIDER_NATIVE_COLUMNS.items():
+                if name not in columns:
+                    continue
+                actual = columns[name]
+                if type(actual) is not str or actual.strip().upper() != expected:
+                    reasons.add("query_column_types_incompatible")
+            try:
+                json_probe = conn.execute(
+                    "SELECT json_valid('{}'), json_extract('{\"probe\":1}', '$.probe')"
+                ).fetchone()
+            except sqlite3.Error:
+                reasons.add("json_functions_unavailable")
+            else:
+                if json_probe != (1, 1):
+                    reasons.add("json_functions_unavailable")
+        else:
+            if matching[0][4] == 1:
+                reasons.add("rowid_unavailable")
+            if any(name.casefold() in _ROWID_NAMES for name in columns):
+                reasons.add("rowid_unavailable")
+            declared_fields = {field.name: field for field in dataset.fields}
+            if not set(declared_fields).issubset(columns):
+                reasons.add("query_columns_unavailable")
+            for name, field in declared_fields.items():
+                if name not in columns:
+                    continue
+                expected = TYPE_MAP["sqlite"].get(field.logical_type)
+                actual = columns[name]
+                if (
+                    expected is None
+                    or type(actual) is not str
+                    or actual.strip().upper() != expected
+                ):
+                    reasons.add("query_column_types_incompatible")
 
-        declared_fields = {field.name: field for field in dataset.fields}
-        if not set(declared_fields).issubset(columns):
-            reasons.add("query_columns_unavailable")
-        for name, field in declared_fields.items():
-            if name not in columns:
-                continue
-            expected = TYPE_MAP["sqlite"].get(field.logical_type)
-            actual = columns[name]
-            if (
-                expected is None
-                or type(actual) is not str
-                or actual.strip().upper() != expected
-            ):
-                reasons.add("query_column_types_incompatible")
-
-        fixed_fields = {
-            item.field for item in dataset.read_model_adapter.fixed_field_filters
-        }
-        if not fixed_fields.issubset(columns):
-            reasons.add("fixed_filter_columns_unavailable")
+            fixed_fields = {
+                item.field for item in dataset.read_model_adapter.fixed_field_filters
+            }
+            if not fixed_fields.issubset(columns):
+                reasons.add("fixed_filter_columns_unavailable")
     except (KeyError, sqlite3.Error):
         raise RuntimeProjectionError(
             "catalog queryability inspection failed closed"

@@ -16,8 +16,8 @@ Onboarding is complete only when one vertical slice proves every existing-chain 
 
 1. registry and schema declare the provider-neutral identity and canonical version;
 2. entitlement and activation evidence is recorded without treating configuration as proof;
-3. storage mapping is registry-owned and queryable without exposing internal tables;
-4. normalization, validation, and deduplication preserve truthful provider outcomes;
+3. the shared generic storage mapping always targets the provider-row store, never a per-dataset business table;
+4. representation-only normalization, validation, and deduplication preserve every provider-native key/value and truthful provider outcome;
 5. facts and the success receipt commit in the same SQLite transaction;
 6. the query and metadata contract returns non-empty freshness, quality, and lineage;
 7. focused and full tests pass for the frozen scope;
@@ -43,27 +43,33 @@ Every dataset must declare in `config/dataset_registry.yaml`:
 | `dataset_id` | Stable provider-neutral identity such as `cn.equity.daily`. |
 | `aliases` | Compatibility names such as `tushare.daily`; aliases are not public routes. |
 | `domain`, `market`, `entity_type` | Objective-data classification. |
-| `schema_version` | Versioned canonical fields, types, primary key, default projection. |
+| `schema_version` | Versioned provider-native fields, declared query types, technical row key, default projection. |
 | `query_policy` | Selectable/filterable/sortable fields, bounded operators, page/lookback limits, PIT mode. |
-| `provider_bindings` | Provider API, adapter version, storage mapping, provider-specific request rules. |
+| `provider_bindings` | Provider API, provider-level adapter version, request template/fields, allowed window substitutions, and row/byte/depth budgets; no ordinary dataset-specific storage mapping. |
 | `entitlement_state` | `active`, `locked`, `unknown`, `excluded`, or `retired`, based on evidence. |
 | `cadence` | Registry cadence class, timezone, SLA, backfill policy, overlap key. |
 | `empty_policy` | Whether empty is legitimate for the requested window. |
 | `beta_policy` | Tenant scope, field/lookback limits, quota class, discoverability. |
 
-The registry is authority. Do not recreate parallel allowlists in API routes, docs, cron tiers, or consumer repositories.
+The registry is authority. Do not recreate parallel allowlists in API routes, docs, cron tiers, or consumer repositories. Adding an ordinary Tushare dataset changes only registry/config; generic tests enumerate it automatically.
 
 ## Required provider adapter
 
 The adapter must:
 
 1. preserve provider success/error/permission/rate-limit outcomes before row conversion;
-2. normalize to the canonical schema without losing raw provider payload needed for lineage;
-3. validate identity, timestamps, numeric finiteness, required fields, and request window;
+2. preserve every provider-native key/value in canonical JSON, including unknown fields;
+3. derive technical identity/time metadata without rewriting payload; declared type/schema mismatches remain stored and produce quality/degraded evidence;
 4. distinguish returned, validated, inserted, updated, unchanged, rejected, and committed counts;
 5. enforce provider rate/concurrency limits and bounded retry;
 6. expose a version that is bound into every ingest receipt;
 7. contain no TradingAgent/MarketGraph import, callback, candidate, position, risk, or strategy logic.
+
+Collection starts from `dataset_id + request_window`. The generic path resolves
+API name, provider fields, parameters, and budgets from registry/config; a
+dataset-specific caller cannot inject a hidden parameter branch. Tests inject a
+raw `fields/items` transport envelope below the strict provider parser, not a
+prebuilt success object.
 
 ## SQLite fact and receipt gate
 
@@ -73,6 +79,11 @@ The adapter must:
 - Legitimate empty, provider failure, permission denial, throttling, validation failure, resource-budget rejection, and storage failure write terminal receipts when SQLite is available.
 - `attempt_id` is unique per provider call/window; receipt IDs are deterministic within the attempt and cannot collide across reruns.
 - SQLite facts + transaction-scoped ingest receipts are the only runtime authority. Flat JSON is optional rebuildable cache.
+- Generic facts preserve schema major plus the full ingested schema version.
+  Compatible minor additions keep older rows visible. Append-only datasets never
+  update; current snapshots use stable native keys, with explicit degraded
+  payload-hash fallback for missing/unusable keys and no silent conflicting-key
+  last-write-wins.
 
 ## Query/API gate
 
@@ -88,6 +99,11 @@ The query path must:
 - read data and receipt/runtime evidence from the same SQLite snapshot;
 - return truthful `success`, `empty`, `unobserved`, `paused`, `failed` or `stale` metadata;
 - keep receipt/time/provider lineage nullable when evidence does not exist; never fabricate them for client compatibility.
+- project response fields by strict Python parsing of the stored canonical
+  payload so large integers and missing-versus-null remain lossless; use only
+  registry-generated type-guarded JSON expressions for filtering/ordering;
+- use provider plus stable row key, not SQLite rowid, as the final generic cursor
+  tie-breaker, and derive page/dataset quality metadata from stored quality evidence.
 
 `/tushare` and other legacy endpoints may map provider parameters to a standard QueryRequest, but may not keep independent SQL or live-provider behavior.
 
@@ -120,7 +136,7 @@ No public signup, automated billing, automatic tier upgrade, scope expansion or 
 A dataset is complete only when all are true:
 
 1. registry declaration and alias resolve deterministically;
-2. provider adapter preserves outcome and passes schema/identity validation;
+2. provider adapter preserves outcome and the original row; only invalid/oversized JSON, approved resource limits, or damaged envelopes may reject admission;
 3. facts + receipts satisfy transaction atomicity and rerun idempotency;
 4. empty/failure/paused/unobserved/stale are distinguishable from success;
 5. catalog discovery and query return the same canonical schema and truthful metadata;
@@ -129,6 +145,7 @@ A dataset is complete only when all are true:
 8. docs describe the dataset without adding routes or trading semantics;
 9. dry-run/pilot, rollback and production readback are separately evidenced;
 10. no provider/file/other-system fallback exists in reader/API consumers.
+11. a synthetic ordinary Tushare dataset added through registry/config alone completes provider → SQLite fact+receipt → `/v1/query` without dataset-specific Python, fixture, route, or table mapping.
 
 ## Acceptance Freeze
 

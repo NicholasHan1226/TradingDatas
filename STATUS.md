@@ -2,7 +2,7 @@
 
 > 先读 [AGENTS.md](AGENTS.md)。本文件只保存当前可执行状态、证据分层、阻塞和下一步；历史生产与事故细节保留在 `docs/status_history_2026-07.md` 和外部 evidence 中。
 >
-> 最后更新：2026-07-16。当前所有结果仍是**本地候选**；origin/GitHub、production checkout、
+> 最后更新：2026-07-17。当前所有结果仍是**本地候选**；origin/GitHub、production checkout、
 > production runtime、external route 和 real dataset evidence 尚未完成对应发布验收，**生产未改变**。
 
 ## 当前结论
@@ -13,6 +13,14 @@
 - 目标公共数据面固定为 `GET /v1/catalog` 与 `POST /v1/query`；新增数据源不得新增 route。`/tushare` 和现有专用 endpoint 只是待迁移兼容层。
 - 首期只覆盖中国境内市场与当前账户真实有权使用的 Tushare dataset；预测市场、加密货币、港股和美股不进入首期激活/默认调度。
 - REAL_TRADING、broker、真实邮件、自动扩权、生产 cron/systemd/nginx、DB migration 和不可逆删除均不在当前授权内。
+
+## 2026-07-17 provider-native 架构纠偏
+
+- fresh 代码审计确认：当前 114 个 registry dataset 仍被压入 8 个 schema profile 和 7 张 typed table；其中 61 个 dataset 走 `market_factors` 并把一条 provider row 拆成多条 `factor_name/value`。这会丢失/降维 provider-native 数据，也是逐接口开发耗时的根因。
+- 上述 typed mapping 不再是新增 dataset 的目标架构。既有表、路由和消费者只作为 compatibility surface 保留；在新路径 parity、消费者迁移、no-use 观察和 rollback 证据完成前不会直接删除。
+- 已批准并 fresh review PASS 的目标：普通 Tushare dataset 只改 registry/config，复用一个 generic provider adapter、一个 provider-row SQLite authority、同事务 receipt 和同一个 QueryService。unknown 字段原样入库；字段/schema/type mismatch 只标记 quality/degraded，不改写或丢行。
+- 当前隔离实现包含 provider-native registry、generic facts/receipt writer、Tushare provider-level ingest、catalog/query compiler、zero-code E2E、测试和同步核心文档。generic table 仍未进入 canonical schema，本轮没有 DB migration、真实 provider、cron、GitHub 或生产变更；本地提交、origin/GitHub 与生产状态必须继续分别验证。
+- 原 Phase 3 逐接口 typed-storage 审计/映射计划已停止，不再按 114 个接口逐个增加表映射、collector 分支或 API 路由。
 
 ## Phase 2 本地主线验收
 
@@ -122,11 +130,11 @@
 
 ## 下一步
 
-1. 按已评审 Phase 3 计划推进境内 entitlement/cadence/backfill 的非迁移纵向切片；任何 schema
-   migration、真实 provider 探测、生产 cron 或生产写入仍需单独 safe-release 授权。
-2. Phase 4 再推进受邀账户治理；不得把采集、鉴权、计费或 gateway 协议混入 Phase 3 的
-   scheduler/backfill 写域。
-3. origin/GitHub 同步后才进入 fresh production safe-release；production readback、external route
+1. 先完成并 fresh review provider-native zero-code 纵向切片：synthetic dataset 只改 registry/config，完成 provider → 临时 SQLite fact+receipt → `/v1/query`；当前不改 canonical schema 或生产数据库。
+2. 纵向切片 PASS 后再做 additive generic-table migration/backfill/parity/cutover/rollback 方案；未经单独授权不执行 migration。
+3. 将境内 Tushare 接口机械迁入 registry，随后推进 entitlement/cadence/backfill；不再逐接口写 Python 或 route。
+4. Phase 4 再推进受邀账户治理；不得把采集、鉴权、计费或 gateway 协议混入 scheduler/backfill 写域。
+5. origin/GitHub 同步后才进入 fresh production safe-release；production readback、external route
    与真实采集稳定性全部通过后才可声明 Beta 可用。
 
 ## 验证入口
