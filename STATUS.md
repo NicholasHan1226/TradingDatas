@@ -27,7 +27,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-53e2b96b24f89185abe88d294f6528152b472cae
+3b18eeee7bc736154860dff585afe7c0f46464c5
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -62,6 +62,7 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 12. `53e2b96`：加入独立 provider-native target registry，并把 V1/generic runner 与 legacy
     registry/query 彻底分离。第三轮 fresh reviewer P0/P1=0、focused `493 passed`、全量
     `2341 passed`；local/origin/GitHub readback 一致。
+13. `3b18eee`：同步双注册表完成后的状态文档；local/origin/GitHub readback 一致。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -119,6 +120,32 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
   **TradingAgent 当前不可接入**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
+
+### 隔离服务器 canary（2026-07-17 13:25–14:00 CST）
+
+- canary 位于 `/opt/investment/canaries/sharedsignals/20260717T1325-3b18eee`，使用 detached
+  `3b18eee`、独立 SQLite、独立两把锁和 `127.0.0.1:18082`；没有创建 systemd、cron、nginx
+  或外部路由，也没有触碰生产数据库；
+- additive base/provider migration 在全新 canary SQLite 上成功，`provider_dataset_rows` 为
+  14 列、5 个索引；缺失 DB 的负例先行失败且未隐式创建数据库；
+- 真实采集前，`/v1/catalog` 与 `/v1/query` 正确返回
+  `unobserved/degraded`、空数据和 null receipt/data-through/observed-at；相同请求除
+  `request_id` 外可复现，伪装外部来源且无凭证时返回 401；
+- 两次 `trade_cal` generic runner 都 fail closed：第一次是 30 秒 transport timeout；第二次
+  收到 provider code 0 后因默认敏感扫描预算不足而拒绝。canary SQLite 最终为 0 facts、2 条
+  failed receipt，API 投影为 `failed/degraded`，没有伪装 success/empty；
+- 独立 transport probe 证明上游仍可用：一次 HTTP 200 返回 13,162 行、4 个真实字段
+  `exchange/cal_date/is_open/pretrade_date`。这同时暴露当前 target registry 的真实 P1：
+  `cn.market.trade_calendar` 仍继承旧 `market_factors.v1` 字段合同
+  `factor_hash/event_time/value/...`，不是 provider-native field manifest；空窗口还超过统一
+  `max_rows_per_attempt=10000`。因此当前生成的 113 个 native 条目只能证明机械 storage/runtime
+  转换，不能证明其字段、窗口和资源预算已经达到可采可查合同；
+- canary 已安全停止，`18082` 不再监听；生产 `8082` 继续运行，生产 checkout 仍为 clean
+  `ccff5c8`，生产数据库仍没有 `provider_dataset_rows`，systemd/cron 中没有 canary 引用。
+
+结论：canary 正确阻止了错误 schema 进入生产。修复必须是通用、版本化的 provider field/window
+manifest 编译输入，不能为 `trade_cal` 或其它接口增加专用 collector、表、query branch 或 route；
+修复后须从新 candidate 重新执行 fresh review 与真实 canary，旧 PASS/hash/JUnit 不复用。
 
 ## 生产现状（2026-07-17 12:50 CST fresh 只读证据）
 
@@ -187,15 +214,17 @@ generic replacement PASS
 ## 下一步
 
 1. canonical schema、TA consumer handoff 与双注册表 runtime 已进入 GitHub；
-2. 对 `53e2b96` 做 fresh safe-release preflight 后，在服务器创建与旧生产 DB、cron、端口隔离
-   的 canary：用一个小 `trade_cal` 窗口完成
-   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
-3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
+2. 冻结 provider-native field/window manifest 的唯一权威输入，并修正 bulk compiler、敏感扫描预算
+   与 `trade_cal` 窗口合同；要求 ordinary dataset 继续只改 registry/config，不新增专用 Python/route；
+3. 新 candidate fresh PASS 后重建隔离 canary，用受限 `trade_cal` 窗口完成
+   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`，并证明 catalog 字段与真实
+   provider payload 一致；
+4. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
    与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
-4. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
-5. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
+5. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
+6. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
    code/runtime readback 和分批启用；
-6. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
+7. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
 
 ## 本地验证入口
 
