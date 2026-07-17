@@ -81,3 +81,32 @@ ingested full version for lineage. `append_only` uses payload identity and never
 updates; `current_snapshot` uses stable native keys with a quality-marked payload
 fallback when the key is unusable. Schema-major breaks require a new reviewed
 API compatibility plan; production generic-table migration remains separately gated.
+
+## Offline provider-native compiler
+
+`tools/compile_provider_native_registry.py` mechanically combines the current
+dataset registry, Tushare capability plan and Tushare collector configuration.
+It does not call Tushare, change the default registry, migrate SQLite or activate
+any dataset. By default it writes a deterministic candidate/report bundle only
+to stdout:
+
+```bash
+python tools/compile_provider_native_registry.py
+python tools/compile_provider_native_registry.py --kind report
+python tools/compile_provider_native_registry.py \
+  --kind candidate \
+  --output /private/tmp/provider-native-registry.yaml
+```
+
+The compiler preserves provider-neutral identity, schema, point-in-time and
+query policy, converts exact legacy `{window_key}` parameter placeholders to
+`${window.window_key}`, and keeps entitlement/activation unchanged for resolved
+entries. Every ordinary Tushare binding emits `requested_fields: []`, so the
+generic adapter omits `fields` and receives the complete upstream `fields/items`
+envelope. A legacy collector `fields` value is only a diagnostic hint; it never
+projects or blocks provider-native ingestion. Missing configuration, duplicate
+ownership, non-canonical placeholders or additional provider bindings remain
+paused and are listed in the unresolved/conflict report; the compiler never
+guesses parameters or adds dataset-specific branches. A generated candidate is
+still a local artifact and requires a fresh review before any default-registry
+or production change.
