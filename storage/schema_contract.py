@@ -66,6 +66,86 @@ SQLITE_EXPRESSION_INDEXES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = 
 }
 
 
+# ``provider_dataset_rows`` is intentionally SQLite-only.  It is the generic
+# provider-native fact authority used by the external data service and must not
+# silently enter the retired DuckDB mirror path.  Keep its complete DDL here so
+# fresh SQLite databases and the dedicated additive migration share one
+# canonical contract.
+PROVIDER_DATASET_ROWS_TABLE = "provider_dataset_rows"
+PROVIDER_DATASET_ROWS_COLUMNS: tuple[tuple[str, str, bool, str | None, int], ...] = (
+    ("dataset_id", "TEXT", False, None, 1),
+    ("provider", "TEXT", False, None, 2),
+    ("schema_major", "INTEGER", False, None, 3),
+    ("ingested_schema_version", "TEXT", False, None, 0),
+    ("row_key", "TEXT", False, None, 4),
+    ("observed_at", "TEXT", True, None, 0),
+    ("partition_value", "TEXT", True, None, 0),
+    ("payload_json", "TEXT", False, None, 0),
+    ("payload_hash", "TEXT", False, None, 0),
+    ("quality_state", "TEXT", False, None, 0),
+    ("quality_issues_json", "TEXT", False, "'[]'", 0),
+    ("collected_at", "TEXT", False, None, 0),
+    ("receipt_id", "TEXT", False, None, 0),
+    ("revision", "INTEGER", False, None, 0),
+)
+PROVIDER_DATASET_ROWS_INDEX_COLUMNS: dict[str, tuple[str, ...]] = {
+    "provider_dataset_rows_partition_idx": (
+        "dataset_id",
+        "provider",
+        "schema_major",
+        "partition_value",
+        "row_key",
+    ),
+    "provider_dataset_rows_observed_idx": (
+        "dataset_id",
+        "provider",
+        "schema_major",
+        "observed_at",
+        "row_key",
+    ),
+    "provider_dataset_rows_quality_idx": (
+        "dataset_id",
+        "provider",
+        "schema_major",
+        "quality_state",
+    ),
+    "provider_dataset_rows_receipt_idx": ("receipt_id",),
+}
+PROVIDER_DATASET_ROWS_CREATE_SQL = """CREATE TABLE IF NOT EXISTS provider_dataset_rows (
+    dataset_id          TEXT NOT NULL,
+    provider            TEXT NOT NULL,
+    schema_major        INTEGER NOT NULL CHECK (schema_major >= 1),
+    ingested_schema_version TEXT NOT NULL,
+    row_key             TEXT NOT NULL,
+    observed_at         TEXT,
+    partition_value     TEXT,
+    payload_json        TEXT NOT NULL
+                        CHECK (json_valid(payload_json)
+                               AND json_type(payload_json) = 'object'),
+    payload_hash        TEXT NOT NULL,
+    quality_state       TEXT NOT NULL CHECK (quality_state IN ('valid', 'degraded')),
+    quality_issues_json TEXT NOT NULL DEFAULT '[]'
+                        CHECK (json_valid(quality_issues_json)
+                               AND json_type(quality_issues_json) = 'array'),
+    collected_at        TEXT NOT NULL,
+    receipt_id          TEXT NOT NULL,
+    revision            INTEGER NOT NULL CHECK (revision >= 1),
+    PRIMARY KEY (dataset_id, provider, schema_major, row_key)
+)"""
+PROVIDER_DATASET_ROWS_INDEX_SQL: tuple[str, ...] = tuple(
+    f"CREATE INDEX IF NOT EXISTS {name} ON {PROVIDER_DATASET_ROWS_TABLE} "
+    f"({', '.join(columns)})"
+    for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
+)
+PROVIDER_DATASET_ROWS_MIGRATION_STATEMENTS: tuple[str, ...] = (
+    PROVIDER_DATASET_ROWS_CREATE_SQL,
+    *PROVIDER_DATASET_ROWS_INDEX_SQL,
+)
+PROVIDER_DATASET_ROWS_DDL = (
+    ";\n".join(PROVIDER_DATASET_ROWS_MIGRATION_STATEMENTS) + ";\n"
+)
+
+
 TABLES: tuple[Table, ...] = (
     Table(
         name="market_assets",
@@ -550,8 +630,17 @@ def render_indexes(table: Table, dialect: str = "sqlite") -> str:
     return "\n".join(statements)
 
 
-def render_schema(dialect: str) -> str:
-    """Return full schema DDL for sqlite or duckdb."""
+def render_schema(
+    dialect: str,
+    *,
+    include_provider_dataset_rows: bool = True,
+) -> str:
+    """Return full schema DDL for sqlite or duckdb.
+
+    ``provider_dataset_rows`` is part of the canonical fresh SQLite schema.
+    Existing databases must add it through the dedicated atomic migration, so
+    the legacy generic migrator explicitly renders with this flag disabled.
+    """
     if dialect not in TYPE_MAP:
         raise ValueError(f"unsupported dialect: {dialect}")
 
@@ -561,6 +650,8 @@ def render_schema(dialect: str) -> str:
         index_sql = render_indexes(table, dialect)
         if index_sql:
             statements.append(index_sql)
+    if dialect == "sqlite" and include_provider_dataset_rows:
+        statements.append(PROVIDER_DATASET_ROWS_DDL.rstrip())
     return "\n\n".join(statements) + "\n"
 
 

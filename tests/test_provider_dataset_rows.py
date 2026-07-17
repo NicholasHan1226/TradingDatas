@@ -30,6 +30,11 @@ def _db(path: Path, *, generic_table: bool = True) -> None:
         conn.executescript(SCHEMA_SQL)
         if generic_table:
             conn.executescript(PROVIDER_DATASET_ROWS_DDL)
+        else:
+            # Fresh canonical databases include the generic table.  This test
+            # helper drops it only to prove runtime writers still fail closed
+            # and never perform schema migration themselves.
+            conn.execute("DROP TABLE provider_dataset_rows")
         conn.commit()
     finally:
         conn.close()

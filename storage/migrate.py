@@ -36,6 +36,10 @@ from storage.event_identity import (  # noqa: E402
 )
 
 DEFAULT_DB = marketdata_sqlite_path()
+PROVIDER_DATASET_ROWS_MIGRATION_HINT = (
+    "excluded_from_generic_migrate; run python3 -m "
+    "storage.provider_dataset_rows_migration --db <existing.sqlite> --apply"
+)
 
 
 def schema_hash(sql: str) -> str:
@@ -229,10 +233,18 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "message": f"database not found: {db_path}",
             "applied": 0,
             "drift": False,
+            "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
         }
 
+    # ``provider_dataset_rows`` has stricter all-or-nothing DDL and postflight
+    # requirements than this legacy migration runner can provide.  Existing
+    # databases must use ``storage/provider_dataset_rows_migration.py``;
+    # keeping it out of this statement loop prevents a swallowed
+    # OperationalError from being reported as a successful generic migration.
     schema_mod = importlib.import_module("storage.schema")
-    sql = schema_mod.SCHEMA_SQL
+    from storage.schema_contract import render_schema
+
+    sql = render_schema("sqlite", include_provider_dataset_rows=False)
 
     conn = sqlite3.connect(str(db_path), timeout=10)
     applied = 0
@@ -254,9 +266,10 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "SELECT schema_hash FROM _migrations ORDER BY id DESC LIMIT 1"
         ).fetchone()
         current_hash = schema_hash(sql)
+        canonical_hash = schema_hash(schema_mod.SCHEMA_SQL)
         last_hash = cur[0] if cur else None
 
-        if last_hash == current_hash:
+        if last_hash in {current_hash, canonical_hash}:
             if check_only:
                 conn.close()
                 return {
@@ -265,6 +278,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                     "applied": 0,
                     "drift": False,
                     "schema_hash": current_hash,
+                    "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
                 }
             added_columns = _add_missing_columns(conn)
             indexes_created = _create_missing_indexes(conn)
@@ -298,6 +312,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 "event_identity_backfilled": event_identity_backfilled,
                 "drift": False,
                 "schema_hash": current_hash,
+                "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
             }
 
         if check_only:
@@ -309,6 +324,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
                 "drift": True,
                 "schema_hash": current_hash,
                 "last_hash": last_hash,
+                "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
             }
 
         # Apply DDL statements
@@ -360,6 +376,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "table_count": table_count,
             "drift": False,
             "schema_hash": current_hash,
+            "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
         }
     except Exception as exc:
         result = {
@@ -367,6 +384,7 @@ def apply_migrations(db_path: Path, check_only: bool = False) -> dict:
             "message": str(exc),
             "applied": applied,
             "drift": False,
+            "provider_dataset_rows": PROVIDER_DATASET_ROWS_MIGRATION_HINT,
         }
     finally:
         conn.close()
@@ -383,6 +401,7 @@ def main():
     db_path = Path(args.db) if args.db else DEFAULT_DB
     result = apply_migrations(db_path, check_only=args.check)
     print(result["message"])
+    print(f"  provider_dataset_rows={result['provider_dataset_rows']}")
 
     if result["drift"]:
         print(

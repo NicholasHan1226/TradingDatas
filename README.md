@@ -90,6 +90,7 @@ HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代�
 - credential/provider-token 防泄漏优先于无损入库；命中既有敏感信息合同的响应按损坏安全 envelope fail closed，不能进入 facts、日志或 API。
 - reader/API 只读 SQLite，不现场调用 provider，不回退 CSV/NDJSON/Parquet/旧目录，也不创建缺失数据库。
 - 新普通 Tushare dataset 的完成定义是：只改 registry/config 即可发现、采集、事实与 receipt 原子入库、API 查询并返回真实 metadata；若必须新增 dataset-specific Python 或 route，架构验收直接失败。
+- 现有 SQLite 增加 generic fact table 必须使用 [provider-native 专用原子迁移](docs/provider_dataset_rows_migration.md)，不得走会吞 DDL 错误的 legacy 通用迁移路径。
 
 ## 防漂移开发方式
 

@@ -1,8 +1,8 @@
 """Lossless provider-native SQLite facts with atomic ingest receipts.
 
-The DDL in this module is a local migration candidate only.  Runtime writers
-open an existing SQLite database in read/write mode and fail closed when the
-generic table is absent; they never create or migrate production schema.
+The canonical SQLite DDL lives in :mod:`storage.schema_contract`.  Runtime
+writers still open an existing SQLite database in read/write mode and fail
+closed when the generic table is absent; they never create or migrate schema.
 """
 
 from __future__ import annotations
@@ -26,43 +26,15 @@ from storage.ingest_receipts import (
     make_receipt_id,
 )
 from storage.read_model_store import read_model_lock
+from storage.schema_contract import (
+    PROVIDER_DATASET_ROWS_DDL as _PROVIDER_DATASET_ROWS_DDL,
+    PROVIDER_DATASET_ROWS_TABLE,
+)
 
 
-PROVIDER_DATASET_ROWS_TABLE = "provider_dataset_rows"
-PROVIDER_DATASET_ROWS_DDL = """
-CREATE TABLE provider_dataset_rows (
-    dataset_id          TEXT NOT NULL,
-    provider            TEXT NOT NULL,
-    schema_major        INTEGER NOT NULL CHECK (schema_major >= 1),
-    ingested_schema_version TEXT NOT NULL,
-    row_key             TEXT NOT NULL,
-    observed_at         TEXT,
-    partition_value     TEXT,
-    payload_json        TEXT NOT NULL
-                        CHECK (json_valid(payload_json)
-                               AND json_type(payload_json) = 'object'),
-    payload_hash        TEXT NOT NULL,
-    quality_state       TEXT NOT NULL CHECK (quality_state IN ('valid', 'degraded')),
-    quality_issues_json TEXT NOT NULL DEFAULT '[]'
-                        CHECK (json_valid(quality_issues_json)
-                               AND json_type(quality_issues_json) = 'array'),
-    collected_at        TEXT NOT NULL,
-    receipt_id          TEXT NOT NULL,
-    revision            INTEGER NOT NULL CHECK (revision >= 1),
-    PRIMARY KEY (dataset_id, provider, schema_major, row_key)
-);
-CREATE INDEX provider_dataset_rows_partition_idx
-    ON provider_dataset_rows
-       (dataset_id, provider, schema_major, partition_value, row_key);
-CREATE INDEX provider_dataset_rows_observed_idx
-    ON provider_dataset_rows
-       (dataset_id, provider, schema_major, observed_at, row_key);
-CREATE INDEX provider_dataset_rows_quality_idx
-    ON provider_dataset_rows
-       (dataset_id, provider, schema_major, quality_state);
-CREATE INDEX provider_dataset_rows_receipt_idx
-    ON provider_dataset_rows (receipt_id);
-"""
+# Backwards-compatible import surface for existing tests and isolated callers.
+PROVIDER_DATASET_ROWS_DDL = _PROVIDER_DATASET_ROWS_DDL
+
 
 _REQUIRED_COLUMNS = frozenset(
     {
