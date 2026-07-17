@@ -8,6 +8,14 @@ SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为�
 
 它不是 TradingAgent 或 MarketGraph 的内部模块，也不是交易控制层。
 
+## 产品形态与 Tushare 复用
+
+SharedSignals 对外提供的是**类似 Tushare 的多源金融数据服务**：客户使用稳定的 catalog/query/SDK 获取数据，但不直接接触 Tushare 或其它上游。Tushare 是已购买的现成上游数据能力，SharedSignals 直接复用其统一 `api_name + params + fields -> fields/items` 协议，不重新生产或爬取 Tushare 已提供的数据。
+
+普通 Tushare 接口不得逐个开发 collector、业务表、查询器或公共路由。接口清单、参数模板、字段发现、频率、权限和资源预算由 registry/config 批量声明；同一个 generic Tushare adapter 负责调用，同一个 provider-row SQLite/receipt 管线负责持久化，同一个 `/v1/catalog`、`/v1/query` 数据面负责对外服务。未来自建的新闻、公告、舆情或其它来源只在 transport/auth/pagination 真正不同时增加 provider-level adapter，仍复用相同存储、元数据和公共 API。
+
+SharedSignals 不把上游事实加工成预测、策略、候选、资金决策、持仓、风险或交易建议；这些属于 TradingAgent、MarketGraph 或外部客户自己的系统。
+
 ## 产品边界
 
 SharedSignals 做：

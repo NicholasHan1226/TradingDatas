@@ -16,6 +16,10 @@ SharedSignals is an independent, externally consumable, multi-source financial d
 
 Tushare is the first major upstream and a compatibility benchmark. SharedSignals owns the external contract, dataset identifiers, provider-native schema versions, technical validation, quality controls, storage, service metadata, account isolation, and long-term provider expansion. Every provider-native key/value is preserved losslessly, including fields not yet declared in the registry; business interpretation and feature engineering belong to consumers. Future providers may add exchange data, announcements, news, research, policy, interaction, and factual sentiment or public-opinion data without creating new public API routes.
 
+Tushare is a paid, existing upstream data capability. SharedSignals calls its unified `api_name + params + fields -> fields/items` protocol and must not rebuild, scrape, or independently reproduce data already supplied by Tushare. An ordinary Tushare dataset is onboarded mechanically through registry/config and the one generic Tushare adapter; it never receives a per-interface collector, business table, query compiler, scheduler branch, or public route. The four-dataset pilot is only a zero-code path proof and must not become a template for 114 hand-written implementations.
+
+The customer-facing product is **Tushare-like but provider-neutral**: invited tenants discover and query SharedSignals datasets through one stable catalog/query/SDK contract, while upstream credentials and transport details remain private. Future self-operated or third-party sources may use new provider-level adapters when transport, authentication, or pagination genuinely differs, but they still enter the same provider-native facts, receipts, metadata, and public API. SharedSignals does not become a trading system when a trading consumer uses its data.
+
 The first release is an invite-only Beta for external accounts. It is designed as an external commercial service from day one, but it does not include public registration, automated billing, self-service privilege escalation, or an open marketplace.
 
 ## 2. Goals

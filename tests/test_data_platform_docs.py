@@ -14,6 +14,11 @@ def test_core_docs_freeze_sharedsignals_product_boundary() -> None:
     agents = _read("AGENTS.md")
     readme = _read("README.md")
     status = _read("STATUS.md")
+    collectors = _read("collectors/AGENTS.md")
+    design = _read(
+        "docs/superpowers/specs/"
+        "2026-07-15-sharedsignals-external-data-platform-beta-design.md"
+    )
 
     for document in (agents, readme, status):
         assert "独立外部多源金融数据平台" in document
@@ -23,6 +28,14 @@ def test_core_docs_freeze_sharedsignals_product_boundary() -> None:
 
     assert "不承载 opening gate" in agents
     assert "新增数据源不得新增公共 API 路由" in agents
+    for document in (agents, readme, status):
+        assert "类似 Tushare 的多源金融数据服务" in document
+        assert "api_name + params + fields" in document
+    assert "Tushare is a paid, existing upstream data capability" in design
+    assert "The four-dataset pilot is only a zero-code path proof" in design
+    assert "不得为每个 Tushare 接口编写独立 collector" in collectors
+    assert "新增普通 Tushare dataset" in collectors
+    assert "只改 registry/config" in collectors
     assert "本地候选" in status
     assert "生产未改变" in status
     assert "uv run --python 3.12" in readme

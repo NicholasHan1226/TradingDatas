@@ -8,6 +8,14 @@
 
 SharedSignals 是**独立外部多源金融数据平台**。Tushare 是首个主要上游和能力基准，不是 SharedSignals 的公共合同；未来可横向增加公告、新闻、研报、政策、互动和客观舆情等 provider。
 
+### 产品形态与上游复用（强制）
+
+- 对外产品形态是**类似 Tushare 的多源金融数据服务**，不是交易系统、研究系统或单一上游的内部镜像。外部账户只看到 SharedSignals 的 provider-neutral catalog/query/SDK 合同，不直连上游，也不获得上游 Token。
+- **Tushare 是已购买的现成上游数据能力。**普通 Tushare dataset 必须复用其统一 `api_name + params + fields -> fields/items` 协议；不得重新爬取 Tushare 已提供的数据、重建同类行情/新闻生产链，或为每个 Tushare 接口编写独立 collector、表、查询器和公共路由。
+- 新增普通 Tushare dataset 是 registry/config 与运行编排工作：声明 provider API、参数模板、频率、权限、预算和技术身份后，复用同一个 provider adapter、provider-row SQLite writer、receipt 和 query service。不得把逐接口手工 Python 开发当作 onboarding 流程。
+- 未来自建或新增的数据源只在**真实 transport/auth/pagination 协议不同**时新增 provider-level adapter；其事实数据仍进入同一 provider-native SQLite/receipt/metadata/API 管线。新增来源不得改变外部公共路由，也不得把上游差异泄漏成客户集成负担。
+- 数据内容由 Tushare或其它上游提供；SharedSignals 只负责调用、持久化、技术质量、可追溯性、调度和服务。TradingAgent、MarketGraph 或外部客户负责特征工程、预测、策略和交易闭环。
+
 SharedSignals 只负责：
 
 - provider-neutral dataset catalog、provider-level transport adapter 和 provider-native schema contract；

@@ -22,6 +22,13 @@
 - 当前隔离实现包含 provider-native registry、generic facts/receipt writer、Tushare provider-level ingest、catalog/query compiler、zero-code E2E、测试和同步核心文档。generic table 仍未进入 canonical schema，本轮没有 DB migration、真实 provider、cron、GitHub 或生产变更；本地提交、origin/GitHub 与生产状态必须继续分别验证。
 - 原 Phase 3 逐接口 typed-storage 审计/映射计划已停止，不再按 114 个接口逐个增加表映射、collector 分支或 API 路由。
 
+### 2026-07-17 产品形态与上游复用再冻结
+
+- Nicholas 再次确认：SharedSignals 对外提供的是**类似 Tushare 的多源金融数据服务**，不是交易系统。Tushare 是已购买的现成上游能力；SS 直接复用统一 `api_name + params + fields -> fields/items` 协议，不重新生产、抓取或解释 Tushare 已提供的数据。
+- 普通 Tushare dataset 不得逐接口开发 collector、业务表、query compiler、scheduler branch 或公共 route。首批四项 registry 候选只能证明 generic 路径，不得复制成 114 份手工实现；其余接口必须通过 registry/config 批量导入和统一 adapter 调用。
+- 未来自建新闻、公告、舆情等数据源可以新增 provider-level transport adapter，但仍必须进入同一 provider-native SQLite facts、transaction receipt、metadata 和固定 catalog/query API。外部账户不感知上游差异，TradingAgent/MarketGraph/客户自行做特征、预测和交易逻辑。
+- 当前生产仍是旧 checkout `ccff5c8`，本轮只读盘点时 `/v1/catalog` 返回 404；本地候选、GitHub、生产、external route 与真实 provider 数据仍未完成同层验收。该事实禁止用本地 `639a2f3` 或测试 PASS 替代。
+
 ## Phase 2 本地主线验收
 
 - Task 7 已形成精确提交 `bde3db2`（`docs: freeze the V1 consumer contract`）；exact9 候选
