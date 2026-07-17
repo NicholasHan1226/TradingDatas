@@ -27,7 +27,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-5ee3cf91b0f41e2f9ccd7bfab6ac998cf1f6c35f
+6c7ded40f354003f437ab19ec8a32873b5a4473f
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -54,7 +54,11 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
    当成 provider-native onboarding 或生产就绪证明；
 9. `6e98b52`：记录 canonical schema 的 symlink 路径阻塞和作废证据；
 10. `5ee3cf9`：加入 provider-native 通用事实表与专用原子迁移，fresh reviewer P0/P1=0，主仓
-    Python 3.12 全量 `2330 passed`，local/origin/GitHub readback 一致。
+    Python 3.12 全量 `2330 passed`，local/origin/GitHub readback 一致；
+11. `6c7ded4`：冻结 TradingAgent 的 V1 consumer handoff：catalog 暴露原生正整数
+    `schema_major`，same-as-of 由 verified SQLite snapshot 与 receipt watermark 共同定义，
+    三份合同统一声明当前停止线。fresh reviewer P0/P1=0、全量 `2331 passed`，
+    local/origin/GitHub readback 一致。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -101,26 +105,30 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 
 - TradingAgent 已明确只消费 `GET /v1/catalog` 与 `POST /v1/query`，不直读 SQLite、不使用
   `/tushare`、`/source_status`、provider 专用 route 或 localhost fallback；
-- 本地 contract 候选的 `schema_major`、same-as-of/receipt watermark 实证、fixture 与 2302 项全量
-  回归均绿，但 fresh review 仍以 **P1=1** 判定 FAIL：`docs/data_contract.md` 和
-  `docs/query_service.md` 仍把已进入 GitHub 的 V1 协议误写成仅隔离 worktree 候选，与
-  `API_CONTRACT.md` 和真实 Git 历史冲突；
-- 最小返工只统一三份文档的 truth layer 和停止线，不新增 TA 业务表、因子、交易语义或公共 route。
-  在 generic schema、target registry、真实 backfill、server canary、认证和真实 query readback
-  完成前，状态固定为 **TradingAgent 当前不可接入**。
+- exact8 r2 已由 fresh reviewer 判定 PASS（P0/P1=0）并在 `6c7ded4` 进入 GitHub；
+  `schema_major`、same-as-of/receipt watermark 实证、healthy/stale fixture 与 2331 项全量回归
+  均绿，三份文档的核心 truth statement 逐字一致；
+- 该提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。generic target registry、
+  真实 backfill、server canary、认证和真实 query readback 仍未完成，因此状态继续固定为
+  **TradingAgent 当前不可接入**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
-## 生产现状（只读证据）
+## 生产现状（2026-07-17 12:50 CST fresh 只读证据）
 
 - **生产未改变**；下列事实来自本轮只读盘点。
-- 生产 SharedSignals checkout 仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
+- 生产 SharedSignals checkout clean，仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
   或外部路由写入。
 - 服务仍在旧 runtime 上运行；`/health` 可读，但目标 `/v1/catalog`、`/v1/query` 仍返回 404。
-- 生产 SQLite 约 22 GB；`market_ingest_runs` 存在且仍有旧调度写入，canonical
+- 生产 SQLite 为 22,193,909,760 bytes；`market_ingest_runs` 存在且旧调度仍活跃，40 秒只读
+  对比确认 DB 大小/mtime 和 collector/watchdog 日志继续变化，canonical
   `provider_dataset_rows` 尚不存在。
-- 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；旧 writer/cron 仍活跃，因此
+- 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；现有 predata/backup 明显早于
+  live DB，旧 writer/cron 仍活跃，因此
   不能直接在该数据库上执行 migration 或切换 authority。
+- `127.0.0.1:18082` 空闲，服务器内存/磁盘/Python 3.12 与独立目录权限满足隔离 canary；但
+  当前 GitHub main 尚未包含 fresh PASS 的双注册表 target runtime，因此 isolated canary 仍
+  **PAUSE**。在该代码门禁完成前启动只会继续验证 legacy registry，结果无效。
 - 只读真实上游 smoke 已用现有 Tushare transport 调用 `trade_cal`：SSE、20260715 返回
   `success`、1 行。这证明已购买上游和统一调用协议可用；不证明 generic SQLite/API 纵向切片
   已发布。
@@ -172,8 +180,8 @@ generic replacement PASS
 
 ## 下一步
 
-1. canonical schema 已进入 GitHub；继续完成双注册表 runtime 与 TA consumer handoff 文档的
-   最小返工，分别 fresh review 至 P0/P1=0 后精确集成；
+1. canonical schema 与 TA consumer handoff 已进入 GitHub；继续完成双注册表 runtime，
+   fresh review 至 P0/P1=0 后精确集成；
 2. 在服务器创建与旧生产 DB、cron、端口隔离的 canary：用一个小 `trade_cal` 窗口完成
    `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
 3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
