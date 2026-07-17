@@ -27,7 +27,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-6c7ded40f354003f437ab19ec8a32873b5a4473f
+53e2b96b24f89185abe88d294f6528152b472cae
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -58,7 +58,10 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 11. `6c7ded4`：冻结 TradingAgent 的 V1 consumer handoff：catalog 暴露原生正整数
     `schema_major`，same-as-of 由 verified SQLite snapshot 与 receipt watermark 共同定义，
     三份合同统一声明当前停止线。fresh reviewer P0/P1=0、全量 `2331 passed`，
-    local/origin/GitHub readback 一致。
+    local/origin/GitHub readback 一致；
+12. `53e2b96`：加入独立 provider-native target registry，并把 V1/generic runner 与 legacy
+    registry/query 彻底分离。第三轮 fresh reviewer P0/P1=0、focused `493 passed`、全量
+    `2341 passed`；local/origin/GitHub readback 一致。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -95,11 +98,14 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
   `config/provider_native_dataset_registry.yaml` 作为 generic target。仅受信进程配置
   `SHAREDSIGNALS_DATASET_REGISTRY_PATH` 可选择 target；请求、tenant、dataset 参数与普通 CLI
   均不能切换；
-- 第一版双注册表 runtime 的默认环境与 2308 项全量回归虽绿，但 fresh review 以 **P1=1** 判定
-  FAIL：target env 同时让 `LegacyQueryCompat` 与 legacy `/tushare` 共用 target `QueryService`，
-  把旧 `daily` 从 `market_bars_daily` 错切到 `provider_dataset_rows`；该冻结和所有哈希作废；
-- 当前唯一修复只允许分离 default legacy registry/query 与 target V1 registry/query，并补真实
-  `/tushare`/stock-master dispatch 回归。它仍须全新 freeze 和 fresh PASS，尚未进入 main/GitHub。
+- exact12 第三轮 fresh review 已 PASS（P0/P1=0）并在 `53e2b96` 进入 GitHub。target env 下
+  V1 catalog/query 与 generic runner 读取 target；`/tushare`、canonical stock-master、
+  `reader.get_tushare` 与 `reader.get_reference` 始终读取 default legacy registry/query；
+- default registry SHA 保持 `d6f58ff...`；target 与 compiler 逐字节一致，114 个 dataset =
+  113 provider-native + 1 unresolved typed，当前全 paused、active entitlement 为 0，
+  native `requested_fields` 全为空；请求、tenant 与普通 CLI 均不能选择 registry；
+- 这只完成代码/GitHub 层。真实 entitlement、backfill、receipt、server runtime 与 consumer parity
+  尚未验证，默认 registry 切换继续受 backfill/parity/consumer/no-use/rollback 门禁约束。
 
 ### TradingAgent consumer handoff contract
 
@@ -126,9 +132,9 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 - 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；现有 predata/backup 明显早于
   live DB，旧 writer/cron 仍活跃，因此
   不能直接在该数据库上执行 migration 或切换 authority。
-- `127.0.0.1:18082` 空闲，服务器内存/磁盘/Python 3.12 与独立目录权限满足隔离 canary；但
-  当前 GitHub main 尚未包含 fresh PASS 的双注册表 target runtime，因此 isolated canary 仍
-  **PAUSE**。在该代码门禁完成前启动只会继续验证 legacy registry，结果无效。
+- `127.0.0.1:18082` 空闲，服务器内存/磁盘/Python 3.12 与独立目录权限满足隔离 canary。
+  双注册表代码门禁现已在 `53e2b96` 完成；正式创建 canary 前仍须针对该精确提交重新执行
+  safe-release preflight，并确认独立 checkout/new SQLite/两把协作锁/无 systemd-cron-nginx。
 - 只读真实上游 smoke 已用现有 Tushare transport 调用 `trade_cal`：SSE、20260715 返回
   `success`、1 行。这证明已购买上游和统一调用协议可用；不证明 generic SQLite/API 纵向切片
   已发布。
@@ -180,9 +186,9 @@ generic replacement PASS
 
 ## 下一步
 
-1. canonical schema 与 TA consumer handoff 已进入 GitHub；继续完成双注册表 runtime，
-   fresh review 至 P0/P1=0 后精确集成；
-2. 在服务器创建与旧生产 DB、cron、端口隔离的 canary：用一个小 `trade_cal` 窗口完成
+1. canonical schema、TA consumer handoff 与双注册表 runtime 已进入 GitHub；
+2. 对 `53e2b96` 做 fresh safe-release preflight 后，在服务器创建与旧生产 DB、cron、端口隔离
+   的 canary：用一个小 `trade_cal` 窗口完成
    `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
 3. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
    与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
