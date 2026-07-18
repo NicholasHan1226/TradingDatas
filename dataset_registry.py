@@ -122,11 +122,31 @@ _BINDING_KEYS = frozenset(
         "activation_state",
         "target_tables",
         "request_template",
+        "request_window_policy",
+        "response_completeness",
         "requested_fields",
         "max_rows_per_attempt",
         "max_payload_bytes_per_row",
         "max_batch_bytes",
         "max_nesting_depth",
+    }
+)
+_REQUEST_WINDOW_POLICY_KEYS = frozenset(
+    {
+        "required_keys",
+        "formats",
+        "range_start_key",
+        "range_end_key",
+        "max_span_days",
+    }
+)
+_RESPONSE_COMPLETENESS_KEYS = frozenset(
+    {
+        "strategy",
+        "date_field",
+        "request_start_key",
+        "request_end_key",
+        "fixed_field_matches",
     }
 )
 _BINDING_REQUIRED_KEYS = frozenset(
@@ -163,6 +183,8 @@ _EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
 _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
 _AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
+_REQUEST_WINDOW_FORMATS = frozenset({"yyyymmdd"})
+_RESPONSE_COMPLETENESS_STRATEGIES = frozenset({"one_row_per_calendar_date"})
 _ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
 _STORAGE_KINDS = frozenset({"typed_columns", "provider_native_rows"})
 _ROW_KEY_STRATEGIES = frozenset({"primary_key", "payload_hash"})
@@ -180,6 +202,9 @@ _GENERIC_BINDING_KEYS = frozenset(
         "max_batch_bytes",
         "max_nesting_depth",
     }
+)
+_OPTIONAL_GENERIC_BINDING_KEYS = frozenset(
+    {"request_window_policy", "response_completeness"}
 )
 
 
@@ -263,11 +288,35 @@ class ProviderBinding:
     request_template: Mapping[str, str] = dataclass_field(
         default_factory=lambda: MappingProxyType({})
     )
+    request_window_policy: RequestWindowPolicy | None = None
+    response_completeness: ResponseCompletenessPolicy | None = None
     requested_fields: tuple[str, ...] = ()
     max_rows_per_attempt: int | None = None
     max_payload_bytes_per_row: int | None = None
     max_batch_bytes: int | None = None
     max_nesting_depth: int | None = None
+
+
+@dataclass(frozen=True)
+class RequestWindowPolicy:
+    """Generic provider request-window validation owned by the registry."""
+
+    required_keys: tuple[str, ...]
+    formats: Mapping[str, str]
+    range_start_key: str
+    range_end_key: str
+    max_span_days: int
+
+
+@dataclass(frozen=True)
+class ResponseCompletenessPolicy:
+    """Generic provider response-shape assertion resolved from the registry."""
+
+    strategy: str
+    date_field: str
+    request_start_key: str
+    request_end_key: str
+    fixed_field_matches: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -581,6 +630,142 @@ def _request_template(raw: Any, path: str) -> Mapping[str, str]:
     return MappingProxyType(dict(sorted(normalized.items())))
 
 
+def _request_window_policy(
+    raw: Any,
+    *,
+    path: str,
+    request_template: Mapping[str, str],
+) -> RequestWindowPolicy | None:
+    if raw is None:
+        return None
+    value = _mapping(raw, path)
+    _reject_unknown_keys(
+        value,
+        _REQUEST_WINDOW_POLICY_KEYS,
+        path,
+        required=_REQUEST_WINDOW_POLICY_KEYS,
+    )
+    required_keys = _string_tuple(value["required_keys"], f"{path}.required_keys")
+    _reject_duplicate_strings(required_keys, f"{path}.required_keys")
+    formats_value = _mapping(value["formats"], f"{path}.formats")
+    formats: dict[str, str] = {}
+    for raw_key, raw_format in formats_value.items():
+        key = _provider_field_name(raw_key, f"{path}.formats key")
+        formats[key] = _choice(
+            raw_format,
+            _REQUEST_WINDOW_FORMATS,
+            f"{path}.formats.{key}",
+        )
+    if set(formats) != set(required_keys):
+        raise ValueError(f"{path}.formats keys must exactly equal required_keys")
+
+    placeholders = tuple(
+        match.group(1)
+        for template_value in request_template.values()
+        if (match := _WINDOW_PLACEHOLDER_PATTERN.fullmatch(template_value)) is not None
+    )
+    if len(placeholders) != len(set(placeholders)):
+        raise ValueError(f"{path} request_template placeholders must be unique")
+    if set(placeholders) != set(required_keys):
+        raise ValueError(
+            f"{path} request_template placeholders must exactly equal required_keys"
+        )
+
+    range_start_key = _provider_field_name(
+        value["range_start_key"], f"{path}.range_start_key"
+    )
+    range_end_key = _provider_field_name(
+        value["range_end_key"], f"{path}.range_end_key"
+    )
+    if range_start_key == range_end_key:
+        raise ValueError(f"{path} range start and end keys must differ")
+    if {range_start_key, range_end_key} - set(required_keys):
+        raise ValueError(f"{path} range keys must be declared in required_keys")
+    if formats[range_start_key] != formats[range_end_key]:
+        raise ValueError(f"{path} range start and end formats must match")
+
+    return RequestWindowPolicy(
+        required_keys=required_keys,
+        formats=MappingProxyType(dict(sorted(formats.items()))),
+        range_start_key=range_start_key,
+        range_end_key=range_end_key,
+        max_span_days=_positive_int(value["max_span_days"], f"{path}.max_span_days"),
+    )
+
+
+def _response_completeness_policy(
+    raw: Any,
+    *,
+    path: str,
+    request_template: Mapping[str, str],
+    request_window_policy: RequestWindowPolicy | None,
+) -> ResponseCompletenessPolicy | None:
+    if raw is None:
+        return None
+    value = _mapping(raw, path)
+    _reject_unknown_keys(
+        value,
+        _RESPONSE_COMPLETENESS_KEYS,
+        path,
+        required=_RESPONSE_COMPLETENESS_KEYS,
+    )
+    strategy = _choice(
+        value["strategy"],
+        _RESPONSE_COMPLETENESS_STRATEGIES,
+        f"{path}.strategy",
+    )
+    date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
+    request_start_key = _provider_field_name(
+        value["request_start_key"], f"{path}.request_start_key"
+    )
+    request_end_key = _provider_field_name(
+        value["request_end_key"], f"{path}.request_end_key"
+    )
+    if request_start_key == request_end_key:
+        raise ValueError(f"{path} request start and end keys must differ")
+    if request_window_policy is None:
+        raise ValueError(f"{path} requires request_window_policy")
+    if request_start_key != request_window_policy.range_start_key:
+        raise ValueError(f"{path}.request_start_key must equal the window range start")
+    if request_end_key != request_window_policy.range_end_key:
+        raise ValueError(f"{path}.request_end_key must equal the window range end")
+    required_window_keys = set(request_window_policy.required_keys)
+    referenced_window_keys = {
+        match.group(1)
+        for template_value in request_template.values()
+        if (match := _WINDOW_PLACEHOLDER_PATTERN.fullmatch(template_value)) is not None
+    }
+    if {request_start_key, request_end_key} - required_window_keys:
+        raise ValueError(f"{path} request range keys must exist in required_keys")
+    if {request_start_key, request_end_key} - referenced_window_keys:
+        raise ValueError(f"{path} request range keys must be template placeholders")
+
+    raw_matches = _mapping(
+        value["fixed_field_matches"], f"{path}.fixed_field_matches"
+    )
+    fixed_field_matches: dict[str, str] = {}
+    for raw_field, raw_param in raw_matches.items():
+        field_name = _provider_field_name(
+            raw_field, f"{path}.fixed_field_matches row field"
+        )
+        param_name = _provider_field_name(
+            raw_param, f"{path}.fixed_field_matches.{field_name}"
+        )
+        if param_name not in request_template:
+            raise ValueError(
+                f"{path}.fixed_field_matches target {param_name} is missing from "
+                "request_template"
+            )
+        fixed_field_matches[field_name] = param_name
+    return ResponseCompletenessPolicy(
+        strategy=strategy,
+        date_field=date_field,
+        request_start_key=request_start_key,
+        request_end_key=request_end_key,
+        fixed_field_matches=MappingProxyType(dict(sorted(fixed_field_matches.items()))),
+    )
+
+
 def _load_query_defaults(raw: Any) -> QueryDefaults:
     value = _mapping(raw, "registry.query_defaults")
     _reject_unknown_keys(value, _QUERY_DEFAULT_KEYS, "registry.query_defaults")
@@ -713,6 +898,17 @@ def _load_binding(
         value.get("request_template", {}),
         f"{path}.request_template",
     )
+    request_window_policy = _request_window_policy(
+        value.get("request_window_policy"),
+        path=f"{path}.request_window_policy",
+        request_template=request_template,
+    )
+    response_completeness = _response_completeness_policy(
+        value.get("response_completeness"),
+        path=f"{path}.response_completeness",
+        request_template=request_template,
+        request_window_policy=request_window_policy,
+    )
     requested_fields = _string_tuple(
         value.get("requested_fields", []),
         f"{path}.requested_fields",
@@ -738,6 +934,8 @@ def _load_binding(
         activation_state=activation_state,
         target_tables=target_tables,
         request_template=request_template,
+        request_window_policy=request_window_policy,
+        response_completeness=response_completeness,
         requested_fields=requested_fields,
         max_rows_per_attempt=_optional_positive_int(
             value.get("max_rows_per_attempt"),
@@ -1085,7 +1283,10 @@ def _load_dataset(
                 raw_binding,
                 f"dataset {dataset_id}.provider_bindings[{raw_binding_index}]",
             )
-            unexpected = sorted(_GENERIC_BINDING_KEYS & set(binding_value))
+            unexpected = sorted(
+                (_GENERIC_BINDING_KEYS | _OPTIONAL_GENERIC_BINDING_KEYS)
+                & set(binding_value)
+            )
             if unexpected:
                 raise ValueError(
                     f"dataset {dataset_id} typed_columns binding must not declare "
@@ -1155,6 +1356,88 @@ def _load_dataset(
                 raise ValueError(
                     f"{binding_path}.requested_fields reference undeclared field(s): "
                     f"{', '.join(undeclared_requested_fields)}"
+                )
+            completeness = binding.response_completeness
+            if completeness is None:
+                continue
+            if schema_contract.empty_data_policy != "forbidden":
+                raise ValueError(
+                    f"{binding_path}.response_completeness requires "
+                    "empty_data_policy=forbidden"
+                )
+            if completeness.date_field not in fields_by_name:
+                raise ValueError(
+                    f"{binding_path}.response_completeness.date_field is undeclared: "
+                    f"{completeness.date_field}"
+                )
+            if (
+                schema_contract.as_of_field != completeness.date_field
+                or schema_contract.as_of_format != "yyyymmdd"
+            ):
+                raise ValueError(
+                    f"{binding_path}.response_completeness.date_field must be the "
+                    "dataset yyyymmdd as_of_field"
+                )
+            if (
+                schema_contract.range_field != completeness.date_field
+                or schema_contract.partition_field != completeness.date_field
+            ):
+                raise ValueError(
+                    f"{binding_path}.response_completeness requires "
+                    "as_of/range/partition to equal date_field"
+                )
+            completeness_date = fields_by_name[completeness.date_field]
+            if completeness_date.logical_type != "text" or completeness_date.nullable:
+                raise ValueError(
+                    f"{binding_path}.response_completeness.date_field must be "
+                    "non-null text"
+                )
+            undeclared_fixed_fields = sorted(
+                set(completeness.fixed_field_matches) - set(fields_by_name)
+            )
+            if undeclared_fixed_fields:
+                raise ValueError(
+                    f"{binding_path}.response_completeness.fixed_field_matches "
+                    f"reference undeclared field(s): {', '.join(undeclared_fixed_fields)}"
+                )
+            for fixed_field in completeness.fixed_field_matches:
+                field_contract = fields_by_name[fixed_field]
+                if field_contract.logical_type != "text" or field_contract.nullable:
+                    raise ValueError(
+                        f"{binding_path}.response_completeness.fixed_field_matches "
+                        "fields must be non-null text"
+                    )
+            completeness_key_fields = {
+                completeness.date_field,
+                *completeness.fixed_field_matches,
+            }
+            if set(primary_key) != completeness_key_fields:
+                raise ValueError(
+                    f"{binding_path}.primary_key must exactly contain completeness "
+                    "date_field and fixed row fields"
+                )
+            if binding.requested_fields:
+                missing_completeness_fields = sorted(
+                    completeness_key_fields - set(binding.requested_fields)
+                )
+                if missing_completeness_fields:
+                    raise ValueError(
+                        f"{binding_path}.requested_fields must include completeness "
+                        f"field(s): {', '.join(missing_completeness_fields)}"
+                    )
+            window_policy = binding.request_window_policy
+            if window_policy is None:
+                raise ValueError(
+                    f"{binding_path}.response_completeness requires "
+                    "request_window_policy"
+                )
+            if (
+                binding.max_rows_per_attempt is None
+                or binding.max_rows_per_attempt < window_policy.max_span_days
+            ):
+                raise ValueError(
+                    f"{binding_path}.max_rows_per_attempt must be >= "
+                    "request_window_policy.max_span_days"
                 )
     missing_read_tables = [
         binding.provider

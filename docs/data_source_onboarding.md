@@ -53,6 +53,15 @@ Every dataset must declare in `config/dataset_registry.yaml`:
 
 The registry is authority. Do not recreate parallel allowlists in API routes, docs, cron tiers, or consumer repositories. Adding an ordinary Tushare dataset changes only registry/config; generic tests enumerate it automatically.
 
+For Tushare, a dataset becomes provider-native only through the reviewed,
+versioned upstream-contract bundle. The entry must pin the official API index
+commit and source-document hash, then separately declare the reviewed key,
+point-in-time, request-window, completeness, cadence and budget policy that the
+official field table does not guarantee. Missing or ambiguous contracts remain
+`unresolved + paused`; a legacy typed schema or one observed response must never
+be promoted automatically. Documentation/response drift produces a reviewable
+diff, not a live catalog mutation.
+
 ## Required provider adapter
 
 The adapter must:
@@ -64,6 +73,15 @@ The adapter must:
 5. enforce provider rate/concurrency limits and bounded retry;
 6. expose a version that is bound into every ingest receipt;
 7. contain no TradingAgent/MarketGraph import, callback, candidate, position, risk, or strategy logic.
+
+After a provider reports technical success and before any fact write, the generic
+ingest path must apply the dataset's registry-owned response-completeness policy.
+For example, a calendar-range contract can require exactly one row for every
+requested date and can bind returned row fields to resolved request parameters.
+Missing, duplicate, extra, malformed, out-of-window, or mismatched rows fail the
+whole attempt before facts are admitted. Add a new declarative strategy only
+when a later dataset truly has different cardinality; never add an API-name
+conditional to the adapter.
 
 Collection starts from `dataset_id + request_window`. The generic path resolves
 API name, provider fields, parameters, and budgets from registry/config; a
@@ -122,6 +140,9 @@ Cadence comes from the registry, not a growing set of handwritten tiers.
 
 Before an external tenant can discover/query a dataset, prove:
 
+- written upstream redistribution/API-service authorization covers that dataset
+  and access model; payment, points, token validity and entitlement are not
+  redistribution evidence;
 - isolated tenant credential and revocation;
 - dataset/field/lookback policy;
 - rate and concurrency limits;

@@ -84,11 +84,12 @@ API compatibility plan; production generic-table migration remains separately ga
 
 ## Offline provider-native compiler
 
-`tools/compile_provider_native_registry.py` mechanically combines the current
-dataset registry, Tushare capability plan and Tushare collector configuration.
-It does not call Tushare, change the default registry, migrate SQLite or activate
-any dataset. By default it writes a deterministic candidate/report bundle only
-to stdout:
+`tools/compile_provider_native_registry.py` combines the current provider-neutral
+identity registry with a versioned, reviewed Tushare upstream-contract bundle.
+The old capability plan and collector configuration are migration diagnostics;
+they are not provider-native schema authority. The compiler does not call
+Tushare, change the default registry, migrate SQLite or activate any dataset. By
+default it writes a deterministic candidate/report bundle only to stdout:
 
 ```bash
 python tools/compile_provider_native_registry.py
@@ -98,21 +99,42 @@ python tools/compile_provider_native_registry.py \
   --output /private/tmp/provider-native-registry.yaml
 ```
 
-The compiler preserves provider-neutral identity, schema, point-in-time and
-query policy, converts exact legacy `{window_key}` parameter placeholders to
-`${window.window_key}`, and keeps entitlement/activation unchanged for resolved
-entries. Every ordinary Tushare binding emits `requested_fields: []`, so the
-generic adapter omits `fields` and receives the complete upstream `fields/items`
-envelope. A legacy collector `fields` value is only a diagnostic hint; it never
-projects or blocks provider-native ingestion. Missing configuration, duplicate
-ownership, non-canonical placeholders or additional provider bindings remain
-paused and are listed in the unresolved/conflict report; the compiler never
-guesses parameters or adds dataset-specific branches. A generated candidate is
-only an input to the separate provider-native target registry and isolated
-canary. The legacy default registry remains unchanged during migration. A fresh
-compiler review cannot by itself authorize a default-registry or production
-switch; that switch requires all backfill, query-parity, consumer-migration,
-no-use-observation and rollback evidence listed in
+The upstream-contract bundle freezes official-document provenance, provider-native
+fields, approved logical query types, stable keys/time fields, request-window
+strategy, completeness policy, cadence and resource budgets. The compiler must
+replace an inherited legacy schema with this reviewed inline contract. It must
+never infer provider-native fields, keys or freshness from an old typed table or
+from one live response.
+
+Response completeness is a registry contract, not dataset-specific Python. A
+strategy such as `one_row_per_calendar_date` declares the response date field,
+the request start/end keys, and any row fields that must equal resolved request
+parameters. The loader and compiler must reject undeclared fields, missing
+request parameters, unsupported strategies, or incompatible date formats. The
+generic ingest path validates the entire returned set before the SQLite writer:
+missing, duplicate, out-of-window, malformed-date, or fixed-value-mismatch rows
+produce one failed validation receipt and zero facts/success receipts. Future
+cardinality strategies require a separately reviewed registry contract; they do
+not justify an `api_name` or `dataset_id` branch.
+
+Every ordinary Tushare binding emits `requested_fields: []`, so the generic
+adapter omits `fields` and receives the complete upstream `fields/items`
+envelope. That preserves unknown upstream keys for drift evidence; it does not
+promote those keys into the public query allowlist. A legacy collector `fields`
+value is only a diagnostic hint.
+
+Missing or incomplete contracts are listed as deterministic `unresolved + paused`
+records and are absent from the provider-native target candidate. Structurally
+invalid or duplicate bundle contracts fail strict bundle loading; ownership
+conflicts prevent candidate rendering. None of these cases can enter the target.
+They remain available only through the unchanged legacy compatibility registry
+until a reviewed native contract exists; V1 must not expose a legacy schema as if
+it were provider-native. The compiler never guesses parameters, keys, windows or
+pagination and never adds dataset-specific branches. A generated candidate is only
+an input to the separate provider-native target registry and isolated canary. A
+fresh compiler review cannot authorize a default-registry or production switch;
+that switch still requires all backfill, parity, consumer-migration, no-use and
+rollback evidence in
 [AGENTS.md](../AGENTS.md#注册表迁移门禁).
 
 ## Dual-registry runtime migration

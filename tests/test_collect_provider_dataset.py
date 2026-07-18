@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import sqlite3
@@ -8,19 +9,26 @@ from types import MappingProxyType
 import pytest
 
 from collectors.tushare.tushare_common import ProviderCallOutcome
+import collectors.tushare.provider_native_ingest as native_ingest
 from dataset_registry import (
     DatasetDefinition,
     DatasetField,
     DatasetRegistry,
     ProviderBinding,
     ReadModelAdapter,
+    RequestWindowPolicy,
+    ResponseCompletenessPolicy,
 )
 from storage.provider_dataset_rows import PROVIDER_DATASET_ROWS_DDL
 from storage.schema import SCHEMA_SQL
 import tools.collect_provider_dataset as runner
 
 
-def _registry(*, activation_state: str = "active") -> DatasetRegistry:
+def _registry(
+    *,
+    activation_state: str = "active",
+    empty_data_policy: str = "forbidden",
+) -> DatasetRegistry:
     fields = (
         DatasetField(
             name="ts_code",
@@ -57,13 +65,29 @@ def _registry(*, activation_state: str = "active") -> DatasetRegistry:
         target_tables=("provider_dataset_rows",),
         request_template=MappingProxyType(
             {
-                "end_date": "${window.end_date}",
-                "exchange": "SSE",
-                "start_date": "${window.start_date}",
+                "from_date": "${window.start_date}",
+                "symbol": "600000.SH",
+                "to_date": "${window.end_date}",
             }
         ),
-        requested_fields=("ts_code", "trade_date", "close"),
-        max_rows_per_attempt=100,
+        request_window_policy=RequestWindowPolicy(
+            required_keys=("start_date", "end_date"),
+            formats=MappingProxyType(
+                {"end_date": "yyyymmdd", "start_date": "yyyymmdd"}
+            ),
+            range_start_key="start_date",
+            range_end_key="end_date",
+            max_span_days=366,
+        ),
+        response_completeness=ResponseCompletenessPolicy(
+            strategy="one_row_per_calendar_date",
+            date_field="trade_date",
+            request_start_key="start_date",
+            request_end_key="end_date",
+            fixed_field_matches=MappingProxyType({"ts_code": "symbol"}),
+        ),
+        requested_fields=(),
+        max_rows_per_attempt=1000,
         max_payload_bytes_per_row=65_536,
         max_batch_bytes=4_194_304,
         max_nesting_depth=16,
@@ -90,7 +114,7 @@ def _registry(*, activation_state: str = "active") -> DatasetRegistry:
         max_lookback_days=3650,
         point_in_time="current_snapshot",
         backfill_policy="provider_limited",
-        empty_data_policy="allowed",
+        empty_data_policy=empty_data_policy,
         required_scope="market_data",
         quota_class="beta_standard",
         provider_bindings=(binding,),
@@ -142,6 +166,7 @@ def _run(
     *,
     outcome: ProviderCallOutcome,
     request_file: bool = False,
+    request_window: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, object], _FakeCollector, Path]:
     registry = _registry()
     fake = _FakeCollector(outcome)
@@ -149,7 +174,10 @@ def _run(
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
-    request_window = {"end_date": "20260717", "start_date": "20260701"}
+    request_window = request_window or {
+        "end_date": "20260717",
+        "start_date": "20260717",
+    }
     args = [
         "--db-path",
         str(db_path),
@@ -202,11 +230,11 @@ def test_default_plan_validates_registry_without_provider_or_database_write(
     assert output == {
         "dataset_id": "cn.synthetic.runner",
         "mode": "plan",
-        "parameter_keys": ["end_date", "exchange", "start_date"],
+        "parameter_keys": ["from_date", "symbol", "to_date"],
         "provider": "tushare",
         "provider_api": "synthetic_runner",
         "request_window_keys": ["end_date", "start_date"],
-        "requested_field_count": 3,
+        "requested_field_count": 0,
         "state": "planned",
         "will_call_provider": False,
         "will_write_database": False,
@@ -251,11 +279,11 @@ def test_execute_success_uses_only_registry_binding_and_writes_fact_and_receipt(
         (
             "synthetic_runner",
             {
-                "end_date": "20260717",
-                "exchange": "SSE",
-                "start_date": "20260701",
+                "from_date": "20260717",
+                "symbol": "600000.SH",
+                "to_date": "20260717",
             },
-            "ts_code,trade_date,close",
+            None,
         )
     ]
     with sqlite3.connect(db_path) as conn:
@@ -278,8 +306,8 @@ def test_execute_success_uses_only_registry_binding_and_writes_fact_and_receipt(
                 error_code=None,
                 error_message=None,
             ),
-            3,
-            "empty",
+            2,
+            "validation",
         ),
         (
             ProviderCallOutcome(
@@ -306,10 +334,248 @@ def test_execute_has_distinct_empty_and_failed_exit_codes(
 
     assert code == expected_code
     assert code == (
-        runner.EXIT_EMPTY if expected_state == "empty" else runner.EXIT_FAILED
+        runner.EXIT_VALIDATION
+        if expected_state == "validation"
+        else runner.EXIT_FAILED
     )
     assert output["state"] == expected_state
     assert len(fake.calls) == 1
+
+
+def test_forbidden_empty_window_writes_failed_terminal_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry = _registry(empty_data_policy="forbidden")
+    fake = _FakeCollector(
+        ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
+    monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    code = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.synthetic.runner",
+            "--request-window-json",
+            '{"start_date":"20260701","end_date":"20260717"}',
+            "--attempt-id",
+            "forbidden-empty-1",
+            "--started-at",
+            "2026-07-17T01:00:00+00:00",
+            "--execute",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchone() == (
+            "failed",
+        )
+
+
+def test_completeness_empty_cannot_be_accepted_by_inconsistent_manual_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry = _registry(empty_data_policy="allowed")
+    fake = _FakeCollector(
+        ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
+    monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    code = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.synthetic.runner",
+            "--request-window-json",
+            '{"start_date":"20260717","end_date":"20260717"}',
+            "--execute",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchall() == [
+            ("failed",)
+        ]
+
+
+def _calendar_row(date_value: object, *, symbol: str = "600000.SH") -> dict[str, object]:
+    return {
+        "ts_code": symbol,
+        "trade_date": date_value,
+        "close": 12.5,
+    }
+
+
+def test_response_completeness_accepts_exact_inclusive_window_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = (
+        _calendar_row("20260701"),
+        {**_calendar_row("20260702"), "provider_extra": "preserved"},
+        _calendar_row("20260703"),
+    )
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=rows,
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        outcome=outcome,
+        request_window={"start_date": "20260701", "end_date": "20260703"},
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    with sqlite3.connect(db_path) as conn:
+        stored_rows = conn.execute(
+            "SELECT payload_json, quality_state, quality_issues_json "
+            "FROM provider_dataset_rows ORDER BY row_key"
+        ).fetchall()
+        payloads = [json.loads(row[0]) for row in stored_rows]
+        assert len(payloads) == 3
+        assert any(payload.get("provider_extra") == "preserved" for payload in payloads)
+        extra_row = next(
+            row for row in stored_rows if "provider_extra" in json.loads(row[0])
+        )
+        assert extra_row[1] == "degraded"
+        assert "unknown_field:provider_extra" in json.loads(extra_row[2])
+        receipt_rows = conn.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+        assert [row[0] for row in receipt_rows] == ["success"]
+        assert json.loads(receipt_rows[0][1])["data_through"] == "20260703"
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        (_calendar_row("20260702"), _calendar_row("20260703")),
+        (_calendar_row("20260701"), _calendar_row("20260703")),
+        (_calendar_row("20260701"), _calendar_row("20260702")),
+        (
+            _calendar_row("20260701"),
+            _calendar_row("20260702"),
+            _calendar_row("20260702"),
+            _calendar_row("20260703"),
+        ),
+        (
+            _calendar_row("20260630"),
+            _calendar_row("20260701"),
+            _calendar_row("20260702"),
+            _calendar_row("20260703"),
+        ),
+        (
+            _calendar_row("20260701"),
+            _calendar_row("20260702", symbol="000001.SZ"),
+            _calendar_row("20260703"),
+        ),
+        (
+            _calendar_row("20260701"),
+            _calendar_row("2026070x"),
+            _calendar_row("20260703"),
+        ),
+    ],
+    ids=(
+        "missing-first",
+        "missing-middle",
+        "missing-last",
+        "duplicate",
+        "out-of-range",
+        "wrong-fixed-value",
+        "invalid-date",
+    ),
+)
+def test_response_completeness_failure_writes_only_failed_receipt(
+    rows: tuple[dict[str, object], ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=rows,
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        outcome=outcome,
+        request_window={"start_date": "20260701", "end_date": "20260703"},
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone() == (0,)
+        receipt_rows = conn.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+        assert [row[0] for row in receipt_rows] == ["failed"]
+        assert json.loads(receipt_rows[0][1])["data_through"] is None
+
+
+def test_response_completeness_contract_changes_the_ingest_config_hash() -> None:
+    registry = _registry()
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    assert binding.response_completeness is not None
+    changed_binding = replace(
+        binding,
+        response_completeness=replace(
+            binding.response_completeness,
+            fixed_field_matches=MappingProxyType({}),
+        ),
+    )
+
+    assert native_ingest._config_hash(  # noqa: SLF001
+        dataset, binding
+    ) != native_ingest._config_hash(dataset, changed_binding)  # noqa: SLF001
 
 
 def test_provider_admission_failure_uses_validation_exit_code(
@@ -402,6 +668,9 @@ def test_paused_dataset_is_rejected_before_provider_call(
         '{"start_date":"first","start_date":"second","end_date":"20260717"}',
         '["not", "an", "object"]',
         '{"start_date":1,"end_date":"20260717"}',
+        '{"start_date":"2026-07-01","end_date":"20260717"}',
+        '{"start_date":"20260718","end_date":"20260717"}',
+        '{"start_date":"20250101","end_date":"20260102"}',
     ],
 )
 def test_request_window_is_strict_and_fails_before_provider_or_database(

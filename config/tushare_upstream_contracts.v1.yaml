@@ -1,0 +1,88 @@
+version: 1
+bundle_id: tushare-upstream-contracts.v1
+provider: tushare
+provenance:
+  repository_url: https://github.com/waditu-tushare/skills.git
+  pinned_commit: 5e12b31d09123e262c5fb38564e80c26d05cb830
+  index_path: tushare/references/数据接口.md
+  index_sha256: 0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2
+contracts:
+  - dataset_id: cn.market.trade_calendar
+    provider: tushare
+    api_name: trade_cal
+    source_document_url: https://tushare.pro/wctapi/documents/26.md
+    source_document_sha256: bb615ca96bf9995d70c9ba90b0e3744e2d452553c116aa6ca94a9f487e77fb22
+    schema_version: 2.0.0
+    fields:
+      - name: exchange
+        declared_source_type: str
+        logical_type: text
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: cal_date
+        declared_source_type: str
+        logical_type: text
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: is_open
+        declared_source_type: str
+        logical_type: integer
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: pretrade_date
+        declared_source_type: str
+        logical_type: text
+        nullable: true
+        selectable: true
+        filterable: true
+        sortable: true
+    primary_key: [exchange, cal_date]
+    default_projection: [exchange, cal_date, is_open, pretrade_date]
+    as_of_field: cal_date
+    as_of_format: yyyymmdd
+    range_field: cal_date
+    partition_field: cal_date
+    cadence_class: daily_reference
+    point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: forbidden
+    required_scope: market_data
+    quota_class: beta_standard
+    request_template:
+      exchange: SSE
+      start_date: ${window.start_date}
+      end_date: ${window.end_date}
+    request_window_policy:
+      required_keys: [start_date, end_date]
+      formats:
+        start_date: yyyymmdd
+        end_date: yyyymmdd
+      range_start_key: start_date
+      range_end_key: end_date
+      max_span_days: 366
+    response_completeness:
+      strategy: one_row_per_calendar_date
+      date_field: cal_date
+      request_start_key: start_date
+      request_end_key: end_date
+      fixed_field_matches:
+        exchange: exchange
+    requested_fields: []
+    budgets:
+      max_rows_per_attempt: 1000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 4194304
+      max_nesting_depth: 16
+    reviewed_type_overrides:
+      - field: is_open
+        declared_source_type: str
+        observed_json_type: integer
+        logical_type: integer
+        reason: Bounded real Tushare transport returned JSON integers without coercion.
+        evidence: Isolated canary window 20260701 through 20260717 on 2026-07-17.

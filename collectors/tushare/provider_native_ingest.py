@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
@@ -68,6 +69,34 @@ def _resolved_request(
         raise ValueError(
             "request_window must contain exactly the registry template window keys"
         )
+    policy = binding.request_window_policy
+    if policy is not None:
+        if tuple(window) != tuple(sorted(window)):
+            window = dict(sorted(window.items()))
+        if set(window) != set(policy.required_keys):
+            raise ValueError(
+                "request_window keys must exactly match the registry window policy"
+            )
+        parsed_dates: dict[str, datetime] = {}
+        for key in policy.required_keys:
+            value = window[key]
+            if policy.formats[key] != "yyyymmdd":
+                raise ValueError("unsupported registry request_window format")
+            if re.fullmatch(r"[0-9]{8}", value) is None:
+                raise ValueError("request_window date must use exact YYYYMMDD format")
+            try:
+                parsed = datetime.strptime(value, "%Y%m%d")
+            except ValueError as exc:
+                raise ValueError("request_window date is invalid") from exc
+            if parsed.strftime("%Y%m%d") != value:
+                raise ValueError("request_window date must use exact YYYYMMDD format")
+            parsed_dates[key] = parsed
+        start = parsed_dates[policy.range_start_key]
+        end = parsed_dates[policy.range_end_key]
+        if start > end:
+            raise ValueError("request_window range start must not exceed range end")
+        if (end - start).days + 1 > policy.max_span_days:
+            raise ValueError("request_window range exceeds max_span_days")
     params = {
         key: (
             window[match.group(1)]
@@ -106,6 +135,32 @@ def _config_hash(dataset: DatasetDefinition, binding: ProviderBinding) -> str:
         "entitlement_state": binding.entitlement_state,
         "activation_state": binding.activation_state,
         "request_template": dict(binding.request_template),
+        "request_window_policy": (
+            None
+            if binding.request_window_policy is None
+            else {
+                "required_keys": list(binding.request_window_policy.required_keys),
+                "formats": dict(binding.request_window_policy.formats),
+                "range_start_key": binding.request_window_policy.range_start_key,
+                "range_end_key": binding.request_window_policy.range_end_key,
+                "max_span_days": binding.request_window_policy.max_span_days,
+            }
+        ),
+        "response_completeness": (
+            None
+            if binding.response_completeness is None
+            else {
+                "strategy": binding.response_completeness.strategy,
+                "date_field": binding.response_completeness.date_field,
+                "request_start_key": (
+                    binding.response_completeness.request_start_key
+                ),
+                "request_end_key": binding.response_completeness.request_end_key,
+                "fixed_field_matches": dict(
+                    binding.response_completeness.fixed_field_matches
+                ),
+            }
+        ),
         "requested_fields": list(binding.requested_fields),
         "budgets": {
             "max_batch_bytes": binding.max_batch_bytes,
@@ -173,6 +228,57 @@ def _data_through(
     if dataset.as_of_field is None and dataset.partition_field is None:
         return started_at
     return None
+
+
+def _strict_yyyymmdd(value: object) -> datetime:
+    if type(value) is not str or re.fullmatch(r"[0-9]{8}", value) is None:
+        raise ValueError("provider response date must use exact YYYYMMDD format")
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError("provider response date is invalid") from exc
+    if parsed.strftime("%Y%m%d") != value:
+        raise ValueError("provider response date must use exact YYYYMMDD format")
+    return parsed
+
+
+def _validate_response_completeness(
+    binding: ProviderBinding,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+    resolved_params: Mapping[str, str],
+) -> None:
+    policy = binding.response_completeness
+    if policy is None:
+        raise ValueError("provider response completeness contract is missing")
+    if policy.strategy != "one_row_per_calendar_date":
+        raise ValueError("provider response completeness strategy is unsupported")
+
+    start = _strict_yyyymmdd(request_window[policy.request_start_key])
+    end = _strict_yyyymmdd(request_window[policy.request_end_key])
+    expected_dates = {
+        (start + timedelta(days=offset)).strftime("%Y%m%d")
+        for offset in range((end - start).days + 1)
+    }
+    if len(rows) != len(expected_dates):
+        raise ValueError("provider response row count is incomplete")
+
+    observed_dates: set[str] = set()
+    for row in rows:
+        raw_date = row.get(policy.date_field)
+        parsed_date = _strict_yyyymmdd(raw_date)
+        normalized_date = parsed_date.strftime("%Y%m%d")
+        if normalized_date not in expected_dates:
+            raise ValueError("provider response date falls outside the request window")
+        if normalized_date in observed_dates:
+            raise ValueError("provider response contains a duplicate calendar date")
+        observed_dates.add(normalized_date)
+        for row_field, request_param in policy.fixed_field_matches.items():
+            if row.get(row_field) != resolved_params[request_param]:
+                raise ValueError("provider response fixed field does not match request")
+    if observed_dates != expected_dates:
+        raise ValueError("provider response is missing a requested calendar date")
 
 
 def _context(
@@ -246,6 +352,16 @@ def collect_provider_native_dataset(
     outcome.validate_invariants()
 
     if outcome.state == "empty":
+        if (
+            binding.response_completeness is not None
+            or dataset.empty_data_policy == "forbidden"
+        ):
+            return write_terminal_receipt(
+                db_path,
+                context=terminal_context,
+                status="failed",
+                errors=("validation_failed",),
+            )
         return write_terminal_receipt(
             db_path,
             context=terminal_context,
@@ -264,6 +380,22 @@ def collect_provider_native_dataset(
             status="failed",
             errors=(error_code,),
         )
+
+    if binding.response_completeness is not None:
+        try:
+            _validate_response_completeness(
+                binding,
+                outcome.rows,
+                request_window=normalized_window,
+                resolved_params=params,
+            )
+        except ValueError:
+            return write_terminal_receipt(
+                db_path,
+                context=terminal_context,
+                status="failed",
+                errors=("validation_failed",),
+            )
 
     success_context = _context(
         dataset=dataset,

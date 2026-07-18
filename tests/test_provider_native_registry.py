@@ -88,6 +88,16 @@ def generic_dataset(**overrides: object) -> dict[str, object]:
                     "end_date": "${window.end_date}",
                     "exchange": "SSE",
                 },
+                "request_window_policy": {
+                    "required_keys": ["start_date", "end_date"],
+                    "formats": {
+                        "start_date": "yyyymmdd",
+                        "end_date": "yyyymmdd",
+                    },
+                    "range_start_key": "start_date",
+                    "range_end_key": "end_date",
+                    "max_span_days": 366,
+                },
                 "requested_fields": [
                     "ts_code",
                     "trade_date",
@@ -112,6 +122,24 @@ def generic_dataset(**overrides: object) -> dict[str, object]:
     return dataset
 
 
+def generic_dataset_with_completeness(**overrides: object) -> dict[str, object]:
+    dataset = generic_dataset(**overrides)
+    dataset["empty_data_policy"] = "forbidden"
+    dataset["provider_bindings"][0]["request_template"] = {  # type: ignore[index]
+        "from_date": "${window.start_date}",
+        "to_date": "${window.end_date}",
+        "exchange": "SSE",
+    }
+    dataset["provider_bindings"][0]["response_completeness"] = {  # type: ignore[index]
+        "strategy": "one_row_per_calendar_date",
+        "date_field": "trade_date",
+        "request_start_key": "start_date",
+        "request_end_key": "end_date",
+        "fixed_field_matches": {"ts_code": "exchange"},
+    }
+    return dataset
+
+
 def write_registry(tmp_path: Path, dataset: dict[str, object]) -> Path:
     path = tmp_path / "dataset_registry.yaml"
     path.write_text(
@@ -131,7 +159,9 @@ def write_registry(tmp_path: Path, dataset: dict[str, object]) -> Path:
 def test_generic_registry_materializes_frozen_storage_and_request_contract(
     tmp_path: Path,
 ) -> None:
-    registry = load_dataset_registry(write_registry(tmp_path, generic_dataset()))
+    registry = load_dataset_registry(
+        write_registry(tmp_path, generic_dataset_with_completeness())
+    )
     dataset = registry.resolve("cn.synthetic.native")
     binding = registry.provider_binding(dataset.dataset_id, "tushare")
 
@@ -144,9 +174,27 @@ def test_generic_registry_materializes_frozen_storage_and_request_contract(
         row_key_strategy="primary_key",
     )
     assert dict(binding.request_template) == {
-        "end_date": "${window.end_date}",
         "exchange": "SSE",
-        "start_date": "${window.start_date}",
+        "from_date": "${window.start_date}",
+        "to_date": "${window.end_date}",
+    }
+    assert binding.request_window_policy is not None
+    assert binding.request_window_policy.required_keys == (
+        "start_date",
+        "end_date",
+    )
+    assert dict(binding.request_window_policy.formats) == {
+        "end_date": "yyyymmdd",
+        "start_date": "yyyymmdd",
+    }
+    assert binding.request_window_policy.range_start_key == "start_date"
+    assert binding.request_window_policy.range_end_key == "end_date"
+    assert binding.request_window_policy.max_span_days == 366
+    assert binding.response_completeness is not None
+    assert binding.response_completeness.strategy == "one_row_per_calendar_date"
+    assert binding.response_completeness.date_field == "trade_date"
+    assert dict(binding.response_completeness.fixed_field_matches) == {
+        "ts_code": "exchange"
     }
     assert binding.requested_fields == (
         "ts_code",
@@ -230,6 +278,80 @@ def test_existing_registry_remains_legacy_typed_by_default() -> None:
             "requested_fields",
         ),
         (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "request_window_policy"
+            ].update(required_keys=["start_date"]),
+            "required_keys",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "request_window_policy"
+            ].update(max_span_days=0),
+            "max_span_days",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "response_completeness"
+            ].update(strategy="unsupported"),
+            "strategy",
+        ),
+        (
+            lambda item: item.update(as_of_format="rfc3339"),
+            "yyyymmdd as_of_field",
+        ),
+        (
+            lambda item: item.update(empty_data_policy="allowed"),
+            "empty_data_policy.*forbidden",
+        ),
+        (
+            lambda item: item.update(primary_key=["trade_date"]),
+            "primary_key.*date_field.*fixed",
+        ),
+        (
+            lambda item: item.update(range_field=None),
+            "as_of/range/partition",
+        ),
+        (
+            lambda item: item["fields"][0].update(logical_type="float"),  # type: ignore[index]
+            "fixed_field_matches.*text",
+        ),
+        (
+            lambda item: item["provider_bindings"][0].update(  # type: ignore[index]
+                requested_fields=["trade_date", "close", "sequence"]
+            ),
+            "requested_fields.*completeness",
+        ),
+        (
+            lambda item: item["provider_bindings"][0].update(  # type: ignore[index]
+                max_rows_per_attempt=100
+            ),
+            "max_rows_per_attempt.*max_span_days",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "response_completeness"
+            ].update(date_field="undeclared"),
+            "date_field.*undeclared",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "response_completeness"
+            ].update(request_start_key="missing"),
+            "request_start_key",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "response_completeness"
+            ].update(fixed_field_matches={"ts_code": "missing"}),
+            "fixed_field_matches.*missing",
+        ),
+        (
+            lambda item: item["provider_bindings"][0][  # type: ignore[index]
+                "response_completeness"
+            ].update(extra=True),
+            "unknown key.*response_completeness",
+        ),
+        (
             lambda item: item.update(
                 fields=[
                     *item["fields"],  # type: ignore[index]
@@ -249,7 +371,7 @@ def test_generic_registry_rejects_invalid_contracts(
     mutator: object,
     message: str,
 ) -> None:
-    dataset = deepcopy(generic_dataset())
+    dataset = deepcopy(generic_dataset_with_completeness())
     mutator(dataset)  # type: ignore[operator]
 
     with pytest.raises(ValueError, match=message):
@@ -264,3 +386,13 @@ def test_append_only_requires_and_accepts_payload_identity(tmp_path: Path) -> No
 
     assert loaded.point_in_time == "append_only"
     assert loaded.read_model_adapter.row_key_strategy == "payload_hash"
+
+
+def test_existing_provider_native_contract_can_omit_response_completeness(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset)).datasets[0]
+
+    assert loaded.provider_bindings[0].response_completeness is None

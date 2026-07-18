@@ -16,11 +16,24 @@ SharedSignals is an independent, externally consumable, multi-source financial d
 
 Tushare is the first major upstream and a compatibility benchmark. SharedSignals owns the external contract, dataset identifiers, provider-native schema versions, technical validation, quality controls, storage, service metadata, account isolation, and long-term provider expansion. Every provider-native key/value is preserved losslessly, including fields not yet declared in the registry; business interpretation and feature engineering belong to consumers. Future providers may add exchange data, announcements, news, research, policy, interaction, and factual sentiment or public-opinion data without creating new public API routes.
 
-Tushare is a paid, existing upstream data capability. SharedSignals calls its unified `api_name + params + fields -> fields/items` protocol and must not rebuild, scrape, or independently reproduce data already supplied by Tushare. An ordinary Tushare dataset is onboarded mechanically through registry/config and the one generic Tushare adapter; it never receives a per-interface collector, business table, query compiler, scheduler branch, or public route. The four-dataset pilot is only a zero-code path proof and must not become a template for 114 hand-written implementations.
+Tushare is a paid, existing upstream data capability. SharedSignals calls its unified `api_name + params + fields -> fields/items` protocol and must not rebuild, scrape, or independently reproduce data already supplied by Tushare. An ordinary Tushare dataset is onboarded mechanically through registry/config and the one generic Tushare adapter; it never receives a per-interface collector, business table, query compiler, scheduler branch, or public route. Provider-native validation starts with one fully reviewed `trade_cal` vertical slice. The four-dataset pilot is only a zero-code path proof and remains a later TradingAgent handoff set; it expands through the same contract bundle and must not become a template for 114 hand-written implementations.
 
 The customer-facing product is **Tushare-like but provider-neutral**: invited tenants discover and query SharedSignals datasets through one stable catalog/query/SDK contract, while upstream credentials and transport details remain private. Future self-operated or third-party sources may use new provider-level adapters when transport, authentication, or pagination genuinely differs, but they still enter the same provider-native facts, receipts, metadata, and public API. SharedSignals does not become a trading system when a trading consumer uses its data.
 
 The first release is an invite-only Beta for external accounts. It is designed as an external commercial service from day one, but it does not include public registration, automated billing, self-service privilege escalation, or an open marketplace.
+
+Commercial product intent does not create upstream redistribution rights. The
+current public Tushare data-service agreement describes the paid license as
+personal, non-transferable, revocable, time-limited, and non-commercial, and
+prohibits opening the service for profit or transferring service qualification.
+SharedSignals may continue internal development, storage, and isolated canaries,
+but it must not expose Tushare-derived rows to invited external tenants until
+Nicholas has obtained written redistribution/API-service authorization from
+Tushare or has selected a separately licensed upstream. Points, a working token,
+payment, configured entitlement, and HTTP 200 are not evidence of redistribution
+rights. This is an external-launch gate, not a reason to add trading logic or to
+stop provider-neutral internal development. Source:
+<https://tushare.pro/document/1?doc_id=405>.
 
 ## 2. Goals
 
@@ -493,6 +506,9 @@ The public API envelope is versioned by URI major. Each dataset schema has an in
 
 ### Phase 4: invite-only Beta access
 
+- obtain and archive written redistribution/API-service authorization for every
+  upstream whose rows will be exposed to external tenants; without it, keep the
+  external route disabled while internal canaries continue;
 - implement tenant-scoped keys, authorization, rate and concurrency limits, quota reservation, revocation, and usage events;
 - create an operator-reviewed onboarding and offboarding runbook;
 - run external-route, tenant-isolation, abuse, pagination, load, and recovery tests.

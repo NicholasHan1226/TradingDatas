@@ -77,11 +77,11 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
         if dataset.read_model_adapter.storage_kind != "provider_native_rows"
     )
 
-    assert len(registry.datasets) == 114
-    assert len(provider_native) == 113
-    assert [dataset.dataset_id for dataset in unresolved] == [
-        "cn.future.intraday_5m"
+    assert [dataset.dataset_id for dataset in registry.datasets] == [
+        "cn.market.trade_calendar"
     ]
+    assert len(provider_native) == 1
+    assert unresolved == ()
     assert all(binding.activation_state == "paused" for binding in bindings)
     assert all(binding.entitlement_state != "active" for binding in bindings)
     assert all(
@@ -89,6 +89,10 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
         == ()
         for dataset in provider_native
     )
+    completeness = bindings[0].response_completeness
+    assert completeness is not None
+    assert completeness.strategy == "one_row_per_calendar_date"
+    assert completeness.date_field == "cal_date"
 
 
 def test_runtime_selector_accepts_only_the_checked_in_target(
@@ -99,7 +103,7 @@ def test_runtime_selector_accepts_only_the_checked_in_target(
     monkeypatch.setenv(dataset_registry.DATASET_REGISTRY_PATH_ENV, str(target))
 
     assert dataset_registry.runtime_dataset_registry_path() == target
-    assert len(dataset_registry.load_runtime_dataset_registry().datasets) == 114
+    assert len(dataset_registry.load_runtime_dataset_registry().datasets) == 1
 
     for rejected in (
         "config/provider_native_dataset_registry.yaml",
@@ -165,7 +169,7 @@ def test_data_plane_runtime_uses_process_selected_target(
     runtime_module._reset_data_plane_runtime_for_tests()
     try:
         runtime = runtime_module.build_data_plane_runtime()
-        assert len(runtime.registry.datasets) == 114
+        assert len(runtime.registry.datasets) == 1
         assert runtime.catalog._registry is runtime.registry  # noqa: SLF001
         assert runtime.query._registry is runtime.registry  # noqa: SLF001
         assert runtime.legacy_registry is not runtime.registry
@@ -173,7 +177,9 @@ def test_data_plane_runtime_uses_process_selected_target(
         assert runtime.legacy_query._registry is runtime.legacy_registry  # noqa: SLF001
         assert runtime.legacy_query is not runtime.query
         assert (
-            runtime.registry.resolve("tushare.daily").read_model_adapter.primary_table
+            runtime.registry.resolve(
+                "tushare.trade_cal"
+            ).read_model_adapter.primary_table
             == "provider_dataset_rows"
         )
         assert (

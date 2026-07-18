@@ -106,6 +106,11 @@ def _target_registry_legacy_runtime_recorder(monkeypatch: pytest.MonkeyPatch):
         str(dataset_registry.PROVIDER_NATIVE_DATASET_REGISTRY_PATH),
     )
     target_registry = dataset_registry.load_runtime_dataset_registry()
+    completeness = target_registry.provider_binding(
+        "cn.market.trade_calendar", "tushare"
+    ).response_completeness
+    assert completeness is not None
+    assert completeness.strategy == "one_row_per_calendar_date"
     legacy_registry = dataset_registry.load_dataset_registry()
     legacy_query = _LegacyQueryRecorder()
     runtime = SimpleNamespace(
@@ -183,10 +188,8 @@ def test_target_registry_environment_keeps_reader_compat_on_default_bound_query(
     assert [row["data"]["symbol"] for row in rows] == ["000001.SZ"]
     assert legacy_query.calls[-1]["request"].dataset_id == dataset_id
     assert runtime.query is not runtime.legacy_query
-    assert (
-        runtime.registry.resolve(dataset_id).read_model_adapter.primary_table
-        == "provider_dataset_rows"
-    )
+    with pytest.raises(KeyError, match="unknown dataset"):
+        runtime.registry.resolve(dataset_id)
     assert (
         runtime.legacy_registry.resolve(dataset_id).read_model_adapter.primary_table
         != "provider_dataset_rows"
