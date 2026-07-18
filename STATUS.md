@@ -5,7 +5,7 @@
 > [docs/status_history_2026-07.md](docs/status_history_2026-07.md) 与仓外 evidence 中，
 > 不再混入当前判断。
 
-最后更新：2026-07-17。
+最后更新：2026-07-18。
 
 ## 当前结论
 
@@ -27,7 +27,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-3b18eeee7bc736154860dff585afe7c0f46464c5
+fae8f7c01d8c41c088ea20e6d2e11dc0999ba1ad
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -62,7 +62,16 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 12. `53e2b96`：加入独立 provider-native target registry，并把 V1/generic runner 与 legacy
     registry/query 彻底分离。第三轮 fresh reviewer P0/P1=0、focused `493 passed`、全量
     `2341 passed`；local/origin/GitHub readback 一致。
-13. `3b18eee`：同步双注册表完成后的状态文档；local/origin/GitHub readback 一致。
+13. `3b18eee`：同步双注册表完成后的状态文档；local/origin/GitHub readback 一致；
+14. `58face6`：加入版本化 Tushare upstream contract bundle、严格离线 compiler 与通用
+    response completeness 合同。目标 registry 只接受已解析合同；未提供合同的 dataset
+    保持 typed `unresolved`，不会被伪装成可采可查；
+15. `fae8f7c`：固定 zero-code 端到端测试的 storage/receipt/API 同一时钟，消除
+    日期推进导致的基线误报；生产 freshness 判定未修改。
+
+`58face6` + `fae8f7c` 在最终主线字节上 fresh 全量为 `2384 passed`，Ruff、
+Python 3.12 compile、YAML、文档链接、确定性 compiler 和 `git diff --check` 全绿；
+local/origin/live GitHub 三方 readback 为 `fae8f7c01d8c41c088ea20e6d2e11dc0999ba1ad`。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -88,9 +97,10 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 
 ### 双注册表迁移
 
-- bulk compiler 已进入 GitHub；离线重复编译结果确定一致：114 个 dataset、113 个
-  provider-native、1 个 unresolved typed；普通 Tushare binding 的 `requested_fields=[]`，不会把旧
-  config `fields` 误当作采集投影；
+- bulk compiler 已进入 GitHub；新 contract bundle 完整定义了首个
+  `cn.market.trade_calendar / trade_cal` 合同。离线重复编译结果确定一致：legacy
+  catalog 共 114 个 dataset，当前仅 1 个 resolved，其余 113 个因
+  `missing_upstream_contract` 保持 typed `unresolved` 且不进入 target；
 - **直接把生成结果写入默认 `config/dataset_registry.yaml` 的候选已结构性 FAIL 并作废**：在隔离
   回归中为 `476 passed / 48 failed / 3 errors`。根因是 `paused` 只控制调度，旧 `sync_daily`、
   receipt projector、catalog/query fixtures 仍会读取默认合同并被污染；该候选未 commit、未 push、
@@ -102,11 +112,25 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 - exact12 第三轮 fresh review 已 PASS（P0/P1=0）并在 `53e2b96` 进入 GitHub。target env 下
   V1 catalog/query 与 generic runner 读取 target；`/tushare`、canonical stock-master、
   `reader.get_tushare` 与 `reader.get_reference` 始终读取 default legacy registry/query；
-- default registry SHA 保持 `d6f58ff...`；target 与 compiler 逐字节一致，114 个 dataset =
-  113 provider-native + 1 unresolved typed，当前全 paused、active entitlement 为 0，
-  native `requested_fields` 全为空；请求、tenant 与普通 CLI 均不能选择 registry；
-- 这只完成代码/GitHub 层。真实 entitlement、backfill、receipt、server runtime 与 consumer parity
+- default registry SHA 保持 `d6f58ff...`；当前 target registry SHA 为 `77db9af...`，与
+  compiler 逐字节一致，严格只包含已解析的 `trade_cal` 一项；该项当前
+  `paused`，entitlement 仍为 `unknown`，请求、tenant 与普通 CLI 均不能选择 registry；
+- 这只完成代码/GitHub 层。`trade_cal` 的真实 entitlement、backfill、receipt、server runtime
+  与 consumer parity
   尚未验证，默认 registry 切换继续受 backfill/parity/consumer/no-use/rollback 门禁约束。
+
+### Provider contract bundle 与 `trade_cal` 首个纵向切片
+
+- upstream contract bundle 是 provider-native 字段、时间窗口、完整性、资源预算和 provenance
+  的唯一编译输入；缺失、无效、重复或冲突均 fail closed；
+- `trade_cal` 申明的 provider-native 字段为
+  `exchange/cal_date/is_open/pretrade_date`，主键与 completeness 要求确保请求窗口内
+  每个日历日恰好一行；缺失、重复、越界、错误 exchange 或日期格式均在 SQLite
+  writer 前拒绝，只记 `validation_failed` receipt；
+- 生产 Python 不包含 `trade_cal` 或 dataset-id 特殊分支；新 dataset 仍通过同一
+  bundle/compiler/registry/generic ingest/query 管线接入；
+- 当前证据是 local/GitHub 代码层 PASS，不是真实上游、server canary、生产或外部
+  Beta 完成证明。
 
 ### TradingAgent consumer handoff contract
 
@@ -143,9 +167,9 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 - canary 已安全停止，`18082` 不再监听；生产 `8082` 继续运行，生产 checkout 仍为 clean
   `ccff5c8`，生产数据库仍没有 `provider_dataset_rows`，systemd/cron 中没有 canary 引用。
 
-结论：canary 正确阻止了错误 schema 进入生产。修复必须是通用、版本化的 provider field/window
-manifest 编译输入，不能为 `trade_cal` 或其它接口增加专用 collector、表、query branch 或 route；
-修复后须从新 candidate 重新执行 fresh review 与真实 canary，旧 PASS/hash/JUnit 不复用。
+结论：旧 canary 正确阻止了错误 schema 进入生产。通用、版本化的
+provider field/window manifest 与 compiler 修正已在 `58face6` 进入 GitHub；旧 canary
+证据不能复用，仍必须从该精确 GitHub 主线重建全新隔离 canary。
 
 ## 生产现状（2026-07-17 12:50 CST fresh 只读证据）
 
@@ -213,18 +237,18 @@ generic replacement PASS
 
 ## 下一步
 
-1. canonical schema、TA consumer handoff 与双注册表 runtime 已进入 GitHub；
-2. 冻结 provider-native field/window manifest 的唯一权威输入，并修正 bulk compiler、敏感扫描预算
-   与 `trade_cal` 窗口合同；要求 ordinary dataset 继续只改 registry/config，不新增专用 Python/route；
-3. 新 candidate fresh PASS 后重建隔离 canary，用受限 `trade_cal` 窗口完成
+1. canonical schema、TA consumer handoff、双注册表 runtime 与首个 upstream contract bundle 已进入
+   GitHub；当前 target 只有 `trade_cal` 一项，其余 113 项保持明确 unresolved；
+2. 从精确 GitHub 主线重建隔离 canary，用受限 `trade_cal` 窗口完成
    `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`，并证明 catalog 字段与真实
    provider payload 一致；
-4. canary 通过后批量编译 113 个境内 dataset，做 entitlement probe、cadence、限流、增量 backfill
-   与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
-5. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
-6. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
+3. canary 通过后，先按同一 contract bundle 机械增加 `stock_basic`、`daily` 和已批准的
+   行业宽度数据合同，再逐批对其余境内 dataset 做 entitlement probe、cadence、限流、
+   增量 backfill 与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
+4. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
+5. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
    code/runtime readback 和分批启用；
-7. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
+6. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
 
 ## 本地验证入口
 
