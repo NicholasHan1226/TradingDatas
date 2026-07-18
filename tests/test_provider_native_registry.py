@@ -396,3 +396,166 @@ def test_existing_provider_native_contract_can_omit_response_completeness(
     loaded = load_dataset_registry(write_registry(tmp_path, dataset)).datasets[0]
 
     assert loaded.provider_bindings[0].response_completeness is None
+
+
+def test_generic_registry_materializes_snapshot_and_single_partition_completeness(
+    tmp_path: Path,
+) -> None:
+    snapshot = generic_dataset()
+    snapshot["empty_data_policy"] = "forbidden"
+    snapshot_binding = snapshot["provider_bindings"][0]  # type: ignore[index]
+    snapshot_binding["request_template"] = {}  # type: ignore[index]
+    snapshot_binding.pop("request_window_policy")  # type: ignore[index]
+    snapshot_binding["response_completeness"] = {  # type: ignore[index]
+        "strategy": "unique_primary_key_snapshot",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+
+    partition = generic_dataset()
+    partition["empty_data_policy"] = "forbidden"
+    partition_binding = partition["provider_bindings"][0]  # type: ignore[index]
+    partition_binding["request_template"] = {  # type: ignore[index]
+        "trade_date": "${window.trade_date}",
+    }
+    partition_binding["request_window_policy"] = {  # type: ignore[index]
+        "required_keys": ["trade_date"],
+        "formats": {"trade_date": "yyyymmdd"},
+        "range_start_key": "trade_date",
+        "range_end_key": "trade_date",
+        "max_span_days": 1,
+    }
+    partition_binding["response_completeness"] = {  # type: ignore[index]
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+
+    snapshot_loaded = load_dataset_registry(write_registry(tmp_path, snapshot))
+    snapshot_policy = snapshot_loaded.datasets[0].provider_bindings[0]
+    partition_loaded = load_dataset_registry(write_registry(tmp_path, partition))
+    partition_policy = partition_loaded.datasets[0].provider_bindings[0]
+
+    assert snapshot_policy.request_window_policy is None
+    assert snapshot_policy.response_completeness is not None
+    assert snapshot_policy.response_completeness.strategy == "unique_primary_key_snapshot"
+    assert snapshot_policy.response_completeness.reject_at_row_limit is True
+    assert partition_policy.request_window_policy is not None
+    assert partition_policy.request_window_policy.range_start_key == "trade_date"
+    assert partition_policy.request_window_policy.range_end_key == "trade_date"
+    assert partition_policy.response_completeness is not None
+    assert partition_policy.response_completeness.partition_field == "trade_date"
+    assert partition_policy.response_completeness.request_partition_key == "trade_date"
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]
+                strategy="unsupported"
+            ),
+            "strategy",
+        ),
+        (
+            lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]
+                date_field="trade_date"
+            ),
+            "unknown key",
+        ),
+        (
+            lambda item: item["provider_bindings"][0]["response_completeness"].pop(  # type: ignore[index]
+                "reject_at_row_limit"
+            ),
+            "missing key",
+        ),
+        (
+            lambda item: item["provider_bindings"][0].update(  # type: ignore[index]
+                request_template={"trade_date": "${window.trade_date}"},
+                request_window_policy={
+                    "required_keys": ["trade_date"],
+                    "formats": {"trade_date": "yyyymmdd"},
+                    "range_start_key": "trade_date",
+                    "range_end_key": "trade_date",
+                    "max_span_days": 1,
+                }
+            ),
+            "unique_primary_key_snapshot",
+        ),
+        (
+            lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]
+                reject_at_row_limit="true"
+            ),
+            "boolean",
+        ),
+    ],
+)
+def test_snapshot_completeness_rejects_invalid_shapes(
+    tmp_path: Path,
+    mutator: object,
+    message: str,
+) -> None:
+    dataset = generic_dataset()
+    dataset["empty_data_policy"] = "forbidden"
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding["request_template"] = {}
+    binding.pop("request_window_policy")
+    binding["response_completeness"] = {
+        "strategy": "unique_primary_key_snapshot",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    mutator(dataset)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda item: item["provider_bindings"][0].pop("request_window_policy"),  # type: ignore[index]
+            "requires request_window_policy",
+        ),
+        (
+            lambda item: item.update(primary_key=["ts_code"]),
+            "partition_field.*primary_key",
+        ),
+        (
+            lambda item: item["provider_bindings"][0].update(  # type: ignore[index]
+                requested_fields=["ts_code"]
+            ),
+            "requested_fields.*completeness",
+        ),
+    ],
+)
+def test_partition_completeness_rejects_missing_identity_contract_fields(
+    tmp_path: Path,
+    mutator: object,
+    message: str,
+) -> None:
+    dataset = generic_dataset()
+    dataset["empty_data_policy"] = "forbidden"
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding["request_template"] = {"trade_date": "${window.trade_date}"}
+    binding["request_window_policy"] = {
+        "required_keys": ["trade_date"],
+        "formats": {"trade_date": "yyyymmdd"},
+        "range_start_key": "trade_date",
+        "range_end_key": "trade_date",
+        "max_span_days": 1,
+    }
+    binding["response_completeness"] = {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    mutator(dataset)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_dataset_registry(write_registry(tmp_path, dataset))

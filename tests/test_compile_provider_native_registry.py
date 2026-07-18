@@ -534,6 +534,69 @@ def test_completeness_window_keys_are_not_provider_parameter_names() -> None:
     assert set(binding["request_template"]) == {"exchange", "from_date", "to_date"}
 
 
+def test_compiler_accepts_snapshot_and_single_partition_contracts_and_reports_windows() -> None:
+    registry, plan, collector = _documents()
+    snapshot_bundle = _contract_bundle()
+    snapshot = snapshot_bundle["contracts"][0]  # type: ignore[index]
+    snapshot["request_template"] = {}
+    snapshot.pop("request_window_policy")
+    snapshot["response_completeness"] = {
+        "strategy": "unique_primary_key_snapshot",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    partition_bundle = _contract_bundle()
+    partition = partition_bundle["contracts"][0]  # type: ignore[index]
+    partition["request_template"] = {
+        "cal_date": "${window.cal_date}",
+        "exchange": "SSE",
+    }
+    partition["request_window_policy"] = {
+        "required_keys": ["cal_date"],
+        "formats": {"cal_date": "yyyymmdd"},
+        "range_start_key": "cal_date",
+        "range_end_key": "cal_date",
+        "max_span_days": 1,
+    }
+    partition["response_completeness"] = {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "cal_date",
+        "request_partition_key": "cal_date",
+        "fixed_field_matches": {"exchange": "exchange"},
+        "reject_at_row_limit": True,
+    }
+
+    _, calendar_report = compile_provider_native_registry(
+        registry, plan, collector, _contract_bundle()
+    )
+    snapshot_candidate, snapshot_report = compile_provider_native_registry(
+        registry, plan, collector, snapshot_bundle
+    )
+    partition_candidate, partition_report = compile_provider_native_registry(
+        registry, plan, collector, partition_bundle
+    )
+
+    snapshot_binding = snapshot_candidate["datasets"][0]["provider_bindings"][0]
+    partition_binding = partition_candidate["datasets"][0]["provider_bindings"][0]
+    assert snapshot_binding["request_window_policy"] is None
+    assert snapshot_binding["response_completeness"]["strategy"] == (
+        "unique_primary_key_snapshot"
+    )
+    assert snapshot_binding["response_completeness"]["reject_at_row_limit"] is True
+    assert partition_binding["request_window_policy"]["range_start_key"] == "cal_date"
+    assert partition_binding["request_window_policy"]["range_end_key"] == "cal_date"
+    assert partition_binding["response_completeness"]["partition_field"] == "cal_date"
+    assert partition_binding["response_completeness"]["request_partition_key"] == (
+        "cal_date"
+    )
+    assert calendar_report["resolved"][0]["request_window_fields"] == [
+        "start_date",
+        "end_date",
+    ]
+    assert snapshot_report["resolved"][0]["request_window_fields"] == []
+    assert partition_report["resolved"][0]["request_window_fields"] == ["cal_date"]
+
+
 def test_cli_uses_frozen_bundle_and_never_changes_inputs(tmp_path: Path) -> None:
     before = {
         path: _sha256(path)

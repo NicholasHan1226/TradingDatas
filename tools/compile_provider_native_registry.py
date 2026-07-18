@@ -89,6 +89,7 @@ _CONTRACT_KEYS = frozenset(
         "reviewed_type_overrides",
     }
 )
+_CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {"request_window_policy"}
 _CONTRACT_FIELD_KEYS = frozenset(
     {
         "name",
@@ -115,10 +116,19 @@ _RESPONSE_COMPLETENESS_KEYS = frozenset(
         "date_field",
         "request_start_key",
         "request_end_key",
+        "partition_field",
+        "request_partition_key",
         "fixed_field_matches",
+        "reject_at_row_limit",
     }
 )
-_RESPONSE_COMPLETENESS_STRATEGIES = frozenset({"one_row_per_calendar_date"})
+_RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
+    {
+        "one_row_per_calendar_date",
+        "unique_primary_key_snapshot",
+        "single_partition_unique_primary_key",
+    }
+)
 _BUDGET_KEYS = frozenset(
     {
         "max_rows_per_attempt",
@@ -380,7 +390,9 @@ def _window_policy_contract(
     *,
     request_template: Mapping[str, str],
     label: str,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    if raw is None:
+        return None
     value = _mapping(raw, label)
     _reject_contract_keys(value, _WINDOW_POLICY_KEYS, label)
     required_keys = _required_string_list(value["required_keys"], f"{label}.required_keys")
@@ -408,16 +420,24 @@ def _window_policy_contract(
         )
     start_key = _required_text(value["range_start_key"], f"{label}.range_start_key")
     end_key = _required_text(value["range_end_key"], f"{label}.range_end_key")
-    if start_key == end_key or {start_key, end_key} - set(required_keys):
-        raise ValueError(f"{label} range keys must be distinct declared required_keys")
+    max_span_days = _required_positive_int(
+        value["max_span_days"], f"{label}.max_span_days"
+    )
+    if start_key == end_key and not (
+        required_keys == [start_key] and max_span_days == 1
+    ):
+        raise ValueError(
+            f"{label} range keys must be distinct declared required_keys unless one "
+            "key has max_span_days=1"
+        )
+    if {start_key, end_key} - set(required_keys):
+        raise ValueError(f"{label} range keys must be declared required_keys")
     return {
         "required_keys": required_keys,
         "formats": dict(sorted(formats.items())),
         "range_start_key": start_key,
         "range_end_key": end_key,
-        "max_span_days": _required_positive_int(
-            value["max_span_days"], f"{label}.max_span_days"
-        ),
+        "max_span_days": max_span_days,
     }
 
 
@@ -426,52 +446,85 @@ def _response_completeness_contract(
     *,
     fields_by_name: Mapping[str, Mapping[str, Any]],
     request_template: Mapping[str, str],
-    window_policy: Mapping[str, Any],
+    window_policy: Mapping[str, Any] | None,
     as_of_field: str | None,
     as_of_format: str | None,
     label: str,
 ) -> dict[str, Any]:
     value = _mapping(raw, label)
-    _reject_contract_keys(value, _RESPONSE_COMPLETENESS_KEYS, label)
     strategy = _required_text(value["strategy"], f"{label}.strategy")
     if strategy not in _RESPONSE_COMPLETENESS_STRATEGIES:
         raise ValueError(f"{label}.strategy is unsupported")
-    date_field = _required_text(value["date_field"], f"{label}.date_field")
-    if _SAFE_IDENTIFIER.fullmatch(date_field) is None:
-        raise ValueError(f"{label}.date_field must use the provider field grammar")
-    if date_field not in fields_by_name:
-        raise ValueError(f"{label}.date_field is undeclared: {date_field}")
-    if as_of_field != date_field or as_of_format != "yyyymmdd":
-        raise ValueError(
-            f"{label}.date_field must be the contract yyyymmdd as_of_field"
-        )
+    required_keys = {
+        "one_row_per_calendar_date": {
+            "strategy",
+            "date_field",
+            "request_start_key",
+            "request_end_key",
+            "fixed_field_matches",
+        },
+        "unique_primary_key_snapshot": {
+            "strategy",
+            "fixed_field_matches",
+            "reject_at_row_limit",
+        },
+        "single_partition_unique_primary_key": {
+            "strategy",
+            "partition_field",
+            "request_partition_key",
+            "fixed_field_matches",
+            "reject_at_row_limit",
+        },
+    }[strategy]
+    allowed_keys = set(required_keys)
+    if strategy == "one_row_per_calendar_date":
+        allowed_keys.add("reject_at_row_limit")
+    _reject_contract_keys(value, frozenset(allowed_keys), label, required=frozenset(required_keys))
+    reject_at_row_limit = _required_bool(
+        value.get("reject_at_row_limit", False), f"{label}.reject_at_row_limit"
+    )
 
-    request_start_key = _required_text(
-        value["request_start_key"], f"{label}.request_start_key"
-    )
-    request_end_key = _required_text(
-        value["request_end_key"], f"{label}.request_end_key"
-    )
-    required_window_keys = set(window_policy["required_keys"])
-    referenced_window_keys = {
-        match.group(1)
-        for template_value in request_template.values()
-        if (match := _WINDOW_PLACEHOLDER.fullmatch(template_value)) is not None
-    }
-    for key_name, key_value in (
-        ("request_start_key", request_start_key),
-        ("request_end_key", request_end_key),
-    ):
-        if _SAFE_IDENTIFIER.fullmatch(key_value) is None:
-            raise ValueError(f"{label}.{key_name} must use the provider field grammar")
-        if key_value not in required_window_keys:
-            raise ValueError(f"{label}.{key_name} is missing from required_keys")
-        if key_value not in referenced_window_keys:
-            raise ValueError(f"{label}.{key_name} is missing from request placeholders")
-    if request_start_key != window_policy["range_start_key"]:
-        raise ValueError(f"{label}.request_start_key must equal the window range start")
-    if request_end_key != window_policy["range_end_key"]:
-        raise ValueError(f"{label}.request_end_key must equal the window range end")
+    date_field: str | None = None
+    request_start_key: str | None = None
+    request_end_key: str | None = None
+    partition_field: str | None = None
+    request_partition_key: str | None = None
+    if strategy == "one_row_per_calendar_date":
+        date_field = _required_text(value["date_field"], f"{label}.date_field")
+        request_start_key = _required_text(
+            value["request_start_key"], f"{label}.request_start_key"
+        )
+        request_end_key = _required_text(
+            value["request_end_key"], f"{label}.request_end_key"
+        )
+        if window_policy is None:
+            raise ValueError(f"{label} requires request_window_policy")
+        if request_start_key != window_policy["range_start_key"]:
+            raise ValueError(f"{label}.request_start_key must equal the window range start")
+        if request_end_key != window_policy["range_end_key"]:
+            raise ValueError(f"{label}.request_end_key must equal the window range end")
+    elif strategy == "unique_primary_key_snapshot":
+        if window_policy is not None:
+            raise ValueError(f"{label}.unique_primary_key_snapshot must not use request_window_policy")
+    else:
+        partition_field = _required_text(
+            value["partition_field"], f"{label}.partition_field"
+        )
+        request_partition_key = _required_text(
+            value["request_partition_key"], f"{label}.request_partition_key"
+        )
+        if window_policy is None:
+            raise ValueError(f"{label} requires request_window_policy")
+        if (
+            window_policy["required_keys"] != [request_partition_key]
+            or window_policy["range_start_key"] != request_partition_key
+            or window_policy["range_end_key"] != request_partition_key
+            or window_policy["max_span_days"] != 1
+        ):
+            raise ValueError(
+                f"{label}.single_partition_unique_primary_key requires one "
+                "max_span_days=1 request window key"
+            )
 
     raw_matches = _mapping(
         value["fixed_field_matches"], f"{label}.fixed_field_matches"
@@ -502,19 +555,33 @@ def _response_completeness_contract(
                 f"{param_name}"
             )
         fixed_field_matches[field_name] = param_name
-    return {
+    normalized = {
         "strategy": strategy,
-        "date_field": date_field,
-        "request_start_key": request_start_key,
-        "request_end_key": request_end_key,
         "fixed_field_matches": dict(sorted(fixed_field_matches.items())),
+        "reject_at_row_limit": reject_at_row_limit,
     }
+    if strategy == "one_row_per_calendar_date":
+        normalized.update(
+            {
+                "date_field": date_field,
+                "request_start_key": request_start_key,
+                "request_end_key": request_end_key,
+            }
+        )
+    elif strategy == "single_partition_unique_primary_key":
+        normalized.update(
+            {
+                "partition_field": partition_field,
+                "request_partition_key": request_partition_key,
+            }
+        )
+    return normalized
 
 
 def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str, Any]:
     label = f"upstream contracts[{index}]"
     value = _mapping(raw, label)
-    _reject_contract_keys(value, _CONTRACT_KEYS, label)
+    _reject_contract_keys(value, _CONTRACT_KEYS, label, required=_CONTRACT_REQUIRED_KEYS)
     dataset_id = _required_text(value["dataset_id"], f"{label}.dataset_id")
     contract_provider = _required_text(value["provider"], f"{label}.provider")
     if contract_provider != provider:
@@ -579,7 +646,7 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         value["request_template"], f"{label}.request_template"
     )
     window_policy = _window_policy_contract(
-        value["request_window_policy"],
+        value.get("request_window_policy"),
         request_template=request_template,
         label=f"{label}.request_window_policy",
     )
@@ -609,36 +676,9 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     )
     if empty_data_policy != "forbidden":
         raise ValueError(
-            f"{label}.empty_data_policy must be forbidden for "
-            "one_row_per_calendar_date"
+            f"{label}.empty_data_policy must be forbidden for response completeness"
         )
 
-    completeness_key_fields = {
-        response_completeness["date_field"],
-        *response_completeness["fixed_field_matches"],
-    }
-    if set(primary_key) != completeness_key_fields:
-        raise ValueError(
-            f"{label}.primary_key must exactly contain completeness date_field and "
-            "fixed row fields"
-        )
-    completeness_date_field = fields_by_name[response_completeness["date_field"]]
-    if (
-        completeness_date_field["logical_type"] != "text"
-        or completeness_date_field["nullable"]
-    ):
-        raise ValueError(
-            f"{label}.response_completeness.date_field must be non-null text"
-        )
-    if {
-        optional_fields["as_of_field"],
-        optional_fields["range_field"],
-        optional_fields["partition_field"],
-    } != {response_completeness["date_field"]}:
-        raise ValueError(
-            f"{label}.response_completeness requires as_of/range/partition to "
-            "equal date_field"
-        )
     for fixed_field in response_completeness["fixed_field_matches"]:
         field_contract = fields_by_name[fixed_field]
         if field_contract["logical_type"] != "text" or field_contract["nullable"]:
@@ -646,6 +686,76 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
                 f"{label}.response_completeness.fixed_field_matches fields must be "
                 "non-null text"
             )
+    completeness_key_fields = set(primary_key) | set(
+        response_completeness["fixed_field_matches"]
+    )
+    if response_completeness["strategy"] == "one_row_per_calendar_date":
+        date_field = response_completeness["date_field"]
+        if date_field not in fields_by_name:
+            raise ValueError(
+                f"{label}.response_completeness.date_field is undeclared: {date_field}"
+            )
+        if optional_fields["as_of_field"] != date_field or as_of_format != "yyyymmdd":
+            raise ValueError(
+                f"{label}.response_completeness.date_field must be the contract "
+                "yyyymmdd as_of_field"
+            )
+        if {
+            optional_fields["range_field"],
+            optional_fields["partition_field"],
+        } != {date_field}:
+            raise ValueError(
+                f"{label}.response_completeness requires as_of/range/partition to "
+                "equal date_field"
+            )
+        completeness_date_field = fields_by_name[date_field]
+        if (
+            completeness_date_field["logical_type"] != "text"
+            or completeness_date_field["nullable"]
+        ):
+            raise ValueError(
+                f"{label}.response_completeness.date_field must be non-null text"
+            )
+        calendar_key_fields = {
+            date_field,
+            *response_completeness["fixed_field_matches"],
+        }
+        if set(primary_key) != calendar_key_fields:
+            raise ValueError(
+                f"{label}.primary_key must exactly contain completeness date_field "
+                "and fixed row fields"
+            )
+    elif response_completeness["strategy"] == "single_partition_unique_primary_key":
+        partition_field = response_completeness["partition_field"]
+        if partition_field not in fields_by_name:
+            raise ValueError(
+                f"{label}.response_completeness.partition_field is undeclared: "
+                f"{partition_field}"
+            )
+        if (
+            optional_fields["as_of_field"] != partition_field
+            or optional_fields["range_field"] != partition_field
+            or optional_fields["partition_field"] != partition_field
+            or as_of_format != "yyyymmdd"
+        ):
+            raise ValueError(
+                f"{label}.response_completeness.partition_field must be the "
+                "contract yyyymmdd as_of/range/partition field"
+            )
+        partition_contract = fields_by_name[partition_field]
+        if (
+            partition_contract["logical_type"] != "text"
+            or partition_contract["nullable"]
+        ):
+            raise ValueError(
+                f"{label}.response_completeness.partition_field must be non-null text"
+            )
+        if partition_field not in primary_key:
+            raise ValueError(
+                f"{label}.response_completeness.partition_field must be in "
+                "primary_key"
+            )
+        completeness_key_fields.add(partition_field)
     if requested_fields:
         missing_completeness_fields = sorted(
             completeness_key_fields - set(requested_fields)
@@ -662,7 +772,10 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         key: _required_positive_int(budgets_value[key], f"{label}.budgets.{key}")
         for key in sorted(_BUDGET_KEYS)
     }
-    if budgets["max_rows_per_attempt"] < window_policy["max_span_days"]:
+    if (
+        window_policy is not None
+        and budgets["max_rows_per_attempt"] < window_policy["max_span_days"]
+    ):
         raise ValueError(
             f"{label}.budgets.max_rows_per_attempt must be >= "
             "request_window_policy.max_span_days"
@@ -1012,9 +1125,9 @@ def compile_provider_native_registry(
                     override["field"]
                     for override in contract["reviewed_type_overrides"]
                 ),
-                "request_window_fields": list(
-                    contract["request_window_policy"]["required_keys"]
-                ),
+                "request_window_fields": []
+                if contract["request_window_policy"] is None
+                else list(contract["request_window_policy"]["required_keys"]),
                 "response_completeness_strategy": contract[
                     "response_completeness"
                 ]["strategy"],
