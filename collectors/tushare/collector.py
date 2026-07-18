@@ -22,6 +22,7 @@ from typing import Any
 from ..base import BaseCollector  # noqa: E402
 from .tushare_common import (
     ProviderCallOutcome,
+    SensitiveScanBudget,
     provider_outcome_log_fields,
     safe_provider_exception_message,
 )
@@ -51,6 +52,8 @@ def _call_tushare(
     api_name: str,
     params: dict[str, Any],
     fields: str | None = None,
+    *,
+    scan_budget: SensitiveScanBudget | None = None,
 ) -> ProviderCallOutcome:
     """Load env and the strict Tushare outcome call lazily."""
     global _TUSHARE_CALL
@@ -66,16 +69,20 @@ def _call_tushare(
                     call_api_name: str,
                     call_params: dict[str, Any],
                     call_fields: str | None,
+                    call_scan_budget: SensitiveScanBudget | None = None,
                 ) -> ProviderCallOutcome:
                     return tushare_rows_outcome(
                         call_api_name,
                         get_token(),
                         params=call_params,
                         fields=call_fields,
+                        scan_budget=call_scan_budget,
                     )
 
                 _TUSHARE_CALL = _strict_call
-    return _TUSHARE_CALL(api_name, params, fields)
+    if scan_budget is None:
+        return _TUSHARE_CALL(api_name, params, fields)
+    return _TUSHARE_CALL(api_name, params, fields, scan_budget)
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +311,8 @@ class TushareCollector(BaseCollector):
         api_name: str,
         params: dict[str, Any],
         fields: str | None = None,
+        *,
+        scan_budget: SensitiveScanBudget | None = None,
     ) -> ProviderCallOutcome:
         """Call the strict provider path and retain its typed outcome."""
 
@@ -318,7 +327,12 @@ class TushareCollector(BaseCollector):
         )
         candidate: Any = None
         try:
-            candidate = _call_tushare(api_name, params, fields)
+            candidate = _call_tushare(
+                api_name,
+                params,
+                fields,
+                scan_budget=scan_budget,
+            )
             if not isinstance(candidate, ProviderCallOutcome):
                 raise TypeError("collector returned an invalid provider outcome type")
             candidate.validate_invariants()
@@ -333,6 +347,7 @@ class TushareCollector(BaseCollector):
                     exc,
                     invalid_outcome=candidate is not None,
                 ),
+                scan_budget=scan_budget,
             )
 
         self.last_collect_outcome = outcome

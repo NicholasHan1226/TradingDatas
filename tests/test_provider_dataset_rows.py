@@ -620,7 +620,10 @@ class _RawEnvelopeCollector:
         api_name: str,
         params: dict[str, str],
         fields: str | None = None,
+        *,
+        scan_budget: tushare_common.SensitiveScanBudget | None = None,
     ) -> tushare_common.ProviderCallOutcome:
+        assert scan_budget is not None
         self.calls.append((api_name, params, fields))
         response = _FixtureResponse(
             json.dumps(self.envelope, ensure_ascii=False).encode("utf-8")
@@ -642,6 +645,7 @@ class _RawEnvelopeCollector:
                 "fixture-token",
                 params=params,
                 fields=fields or "",
+                scan_budget=scan_budget,
             )
 
 

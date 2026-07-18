@@ -675,6 +675,7 @@ def test_cli_uses_frozen_bundle_and_never_changes_inputs(tmp_path: Path) -> None
 
 def test_task_three_changed_paths_stay_within_the_frozen_write_domain() -> None:
     task_two_freeze = "1b1edae6a37e9ee488b3a41d400e77cf80302d66"
+    task_three_freeze = "630211eaa1dc8b9ee16f7377ead5a5716a32eb01"
     approved_paths = {
         "collectors/tushare/collector.py",
         "collectors/tushare/tushare_common.py",
@@ -691,7 +692,7 @@ def test_task_three_changed_paths_stay_within_the_frozen_write_domain() -> None:
         "docs/dataset_registry.md",
     }
     completed = subprocess.run(
-        ["git", "diff", "--name-only", task_two_freeze],
+        ["git", "diff", "--name-only", task_two_freeze, task_three_freeze],
         cwd=ROOT,
         check=True,
         capture_output=True,

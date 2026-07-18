@@ -10,7 +10,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from collectors.tushare.tushare_common import ProviderCallOutcome
+from collectors.tushare.tushare_common import (
+    ProviderCallOutcome,
+    SensitiveScanBudget,
+)
 from dataset_registry import DatasetDefinition, DatasetRegistry, ProviderBinding
 from storage.ingest_receipts import IngestContext, IngestResult, write_terminal_receipt
 from storage.provider_dataset_rows import (
@@ -23,6 +26,12 @@ from storage.provider_dataset_rows import (
 
 _WINDOW_PLACEHOLDER = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _MAX_WINDOW_VALUE_BYTES = 1024
+_PROVIDER_SCAN_FIELD_HEADROOM = 16
+_PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
+_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 256
+_PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
+_PROVIDER_SCAN_ENVELOPE_DEPTH = 4
+_PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64
 _PROVIDER_ERROR_CODES = frozenset(
     {"permission_denied", "provider_error", "rate_limited"}
 )
@@ -34,7 +43,38 @@ class _Collector(Protocol):
         api_name: str,
         params: dict[str, str],
         fields: str | None = None,
+        *,
+        scan_budget: SensitiveScanBudget | None = None,
     ) -> ProviderCallOutcome: ...
+
+
+def _provider_scan_budget(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+) -> SensitiveScanBudget:
+    """Derive one bounded transport scan budget from the trusted registry."""
+
+    row_limit = binding.max_rows_per_attempt
+    nesting_limit = binding.max_nesting_depth
+    if row_limit is None or nesting_limit is None:
+        raise ValueError("provider scan budget requires registry resource limits")
+
+    declared_fields = max(len(dataset.fields), len(binding.requested_fields))
+    field_budget = declared_fields + _PROVIDER_SCAN_FIELD_HEADROOM
+    if field_budget > _PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS:
+        raise ValueError("provider scan field budget exceeds the absolute limit")
+
+    max_nodes = (
+        _PROVIDER_SCAN_FIXED_NODE_HEADROOM
+        + 1
+        + row_limit * (1 + 2 * field_budget)
+    )
+    max_depth = nesting_limit + _PROVIDER_SCAN_ENVELOPE_DEPTH
+    if max_nodes > _PROVIDER_SCAN_ABSOLUTE_MAX_NODES:
+        raise ValueError("provider scan node budget exceeds the absolute limit")
+    if max_depth > _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH:
+        raise ValueError("provider scan depth budget exceeds the absolute limit")
+    return SensitiveScanBudget(max_depth=max_depth, max_nodes=max_nodes)
 
 
 def _resolved_request(
@@ -434,6 +474,7 @@ def collect_provider_native_dataset(
         raise ValueError("dataset is not configured for provider-native collection")
     if binding.entitlement_state != "active" or binding.activation_state != "active":
         raise ValueError("dataset binding is not entitled and active")
+    scan_budget = _provider_scan_budget(dataset, binding)
     normalized_window, params = _resolved_request(binding, request_window)
 
     # Validate caller-owned attempt identity and start time before any provider call.
@@ -451,7 +492,12 @@ def collect_provider_native_dataset(
     requested_fields = (
         ",".join(binding.requested_fields) if binding.requested_fields else None
     )
-    outcome = collector.collect_outcome(binding.api_name, params, requested_fields)
+    outcome = collector.collect_outcome(
+        binding.api_name,
+        params,
+        requested_fields,
+        scan_budget=scan_budget,
+    )
     if not isinstance(outcome, ProviderCallOutcome):
         raise TypeError("collector returned an invalid provider outcome")
     outcome.validate_invariants()

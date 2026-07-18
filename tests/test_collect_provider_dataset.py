@@ -208,7 +208,10 @@ class _FakeCollector:
         api_name: str,
         params: dict[str, str],
         fields: str | None = None,
+        *,
+        scan_budget: object | None = None,
     ) -> ProviderCallOutcome:
+        assert scan_budget is not None
         self.calls.append((api_name, params, fields))
         if self.error is not None:
             raise self.error

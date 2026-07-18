@@ -175,6 +175,33 @@ def _active_target_registry(dataset_id: str) -> DatasetRegistry:
     )
 
 
+def _active_stock_basic_scan_registry() -> DatasetRegistry:
+    """Activate the real 17-field contract without truncation semantics.
+
+    This fixture isolates the transport scan capacity from the production
+    snapshot completeness rule that intentionally rejects an exact provider
+    page limit as potentially truncated.
+    """
+
+    source = load_dataset_registry(TARGET_REGISTRY_PATH)
+    dataset = source.resolve("cn.equity.security_master")
+    binding = dataset.provider_bindings[0]
+    assert binding.response_completeness is not None
+    binding = replace(
+        binding,
+        entitlement_state="active",
+        activation_state="active",
+        response_completeness=replace(
+            binding.response_completeness,
+            reject_at_row_limit=False,
+        ),
+    )
+    return DatasetRegistry(
+        (replace(dataset, provider_bindings=(binding,)),),
+        query_defaults=source.query_defaults,
+    )
+
+
 def _create_database(path: Path) -> None:
     conn = sqlite3.connect(path)
     try:
@@ -196,6 +223,333 @@ class _Response:
 
     def read(self) -> bytes:
         return self._payload
+
+
+def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_stock_basic_scan_registry()
+    dataset = registry.resolve("cn.equity.security_master")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    fields = [field.name for field in dataset.fields]
+    assert len(fields) == 17
+    assert binding.requested_fields == ()
+    assert binding.max_rows_per_attempt == 6000
+    items = [
+        [
+            f"{index:06d}.SZ",
+            f"{index:06d}",
+            f"name-{index}",
+            "Shenzhen",
+            "industry",
+            f"full-name-{index}",
+            f"english-name-{index}",
+            f"spell-{index}",
+            "主板",
+            "SZSE",
+            "CNY",
+            "L",
+            "20200101",
+            None,
+            "N",
+            "controller",
+            "company",
+        ]
+        for index in range(binding.max_rows_per_attempt)
+    ]
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+    observed_scan_budgets: list[tushare_common.SensitiveScanBudget | None] = []
+
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda _request, timeout: (
+            _Response(
+                {
+                    "code": 0,
+                    "msg": None,
+                    "data": {"fields": fields, "items": items},
+                }
+            )
+            if timeout == 30
+            else pytest.fail("unexpected provider timeout")
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+
+    def provider_call(
+        api_name: str,
+        params: dict[str, object],
+        requested_fields: str | None,
+        scan_budget: tushare_common.SensitiveScanBudget | None = None,
+    ) -> tushare_common.ProviderCallOutcome:
+        observed_scan_budgets.append(scan_budget)
+        return tushare_common.tushare_rows_outcome(
+            api_name,
+            "synthetic-provider-token",
+            params=params,
+            fields=requested_fields,
+            scan_budget=scan_budget,
+        )
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
+    TushareCollector._rate_calls.clear()
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id="stock-basic-approved-scan-budget",
+        started_at="2026-07-18T01:00:00+00:00",
+    )
+
+    assert result.status == "success"
+    assert result.counts.committed == binding.max_rows_per_attempt
+    assert len(observed_scan_budgets) == 1
+    assert isinstance(
+        observed_scan_budgets[0],
+        tushare_common.SensitiveScanBudget,
+    )
+    assert observed_scan_budgets[0].max_nodes > 210_001
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone() == (binding.max_rows_per_attempt,)
+        assert connection.execute(
+            "SELECT status, rows_written FROM market_ingest_runs"
+        ).fetchone() == ("success", binding.max_rows_per_attempt)
+
+
+def test_registry_scan_budget_hard_cap_fails_before_provider_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _active_stock_basic_scan_registry()
+    dataset = source.resolve("cn.equity.security_master")
+    binding = replace(
+        source.provider_binding(dataset.dataset_id, "tushare"),
+        max_rows_per_attempt=50_000,
+    )
+    registry = DatasetRegistry(
+        (replace(dataset, provider_bindings=(binding,)),),
+        query_defaults=source.query_defaults,
+    )
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+    provider_called = False
+
+    def provider_call(*_args: object, **_kwargs: object) -> None:
+        nonlocal provider_called
+        provider_called = True
+        pytest.fail("provider must not be called for an excessive scan budget")
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
+    TushareCollector._rate_calls.clear()
+
+    with pytest.raises(ValueError, match="scan node budget exceeds"):
+        collect_provider_native_dataset(
+            database,
+            registry=registry,
+            collector=TushareCollector(),
+            dataset_id=dataset.dataset_id,
+            request_window={},
+            attempt_id="stock-basic-excessive-scan-budget",
+            started_at="2026-07-18T01:00:00+00:00",
+        )
+
+    assert provider_called is False
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone() == (0,)
+
+
+def test_legacy_collect_outcome_keeps_three_argument_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, dict[str, object], str | None]] = []
+
+    def legacy_call(
+        api_name: str,
+        params: dict[str, object],
+        fields: str | None,
+    ) -> tushare_common.ProviderCallOutcome:
+        observed.append((api_name, params, fields))
+        return tushare_common.ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", legacy_call)
+    TushareCollector._rate_calls.clear()
+
+    outcome = TushareCollector().collect_outcome("daily", {}, None)
+
+    assert outcome.state == "empty"
+    assert observed == [("daily", {}, None)]
+
+
+@pytest.mark.parametrize("secret_row_index", [0, 1, 2], ids=["first", "middle", "last"])
+def test_registry_scan_budget_rejects_provider_token_at_any_row_position(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    secret_row_index: int,
+) -> None:
+    registry = _create_registry(tmp_path)
+    dataset = registry.resolve("cn.synthetic.zero_code")
+    fields = [field.name for field in dataset.fields]
+    provider_token = "provider-secret-must-not-cross-boundary"
+    items: list[list[object]] = [
+        [f"{index:06d}.SZ", "20260717", index, f"safe-{index}"]
+        for index in range(3)
+    ]
+    items[secret_row_index][-1] = provider_token
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda _request, timeout: (
+            _Response(
+                {
+                    "code": 0,
+                    "msg": None,
+                    "data": {"fields": fields, "items": items},
+                }
+            )
+            if timeout == 30
+            else pytest.fail("unexpected provider timeout")
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+
+    def provider_call(
+        api_name: str,
+        params: dict[str, object],
+        requested_fields: str | None,
+        scan_budget: tushare_common.SensitiveScanBudget | None = None,
+    ) -> tushare_common.ProviderCallOutcome:
+        return tushare_common.tushare_rows_outcome(
+            api_name,
+            provider_token,
+            params=params,
+            fields=requested_fields,
+            scan_budget=scan_budget,
+        )
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
+    TushareCollector._rate_calls.clear()
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={"end_date": "20260717", "start_date": "20260717"},
+        attempt_id=f"provider-token-{secret_row_index}",
+        started_at="2026-07-18T01:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("provider_error",)
+    assert provider_token not in repr(result)
+    assert provider_token not in caplog.text
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone() == (0,)
+        receipts = connection.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+    assert len(receipts) == 1
+    assert receipts[0][0] == "failed"
+    assert provider_token not in receipts[0][1]
+
+
+def test_provider_native_row_overflow_writes_failed_receipt_without_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _create_registry(tmp_path)
+    dataset = registry.resolve("cn.synthetic.zero_code")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    assert binding.max_rows_per_attempt == 100
+    fields = [field.name for field in dataset.fields]
+    items = [
+        [f"{index:06d}.SZ", "20260717", index, None]
+        for index in range(binding.max_rows_per_attempt + 1)
+    ]
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda _request, timeout: (
+            _Response(
+                {
+                    "code": 0,
+                    "msg": None,
+                    "data": {"fields": fields, "items": items},
+                }
+            )
+            if timeout == 30
+            else pytest.fail("unexpected provider timeout")
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+
+    def provider_call(
+        api_name: str,
+        params: dict[str, object],
+        requested_fields: str | None,
+        scan_budget: tushare_common.SensitiveScanBudget | None = None,
+    ) -> tushare_common.ProviderCallOutcome:
+        return tushare_common.tushare_rows_outcome(
+            api_name,
+            "synthetic-provider-token",
+            params=params,
+            fields=requested_fields,
+            scan_budget=scan_budget,
+        )
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
+    TushareCollector._rate_calls.clear()
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={"end_date": "20260717", "start_date": "20260717"},
+        attempt_id="provider-row-overflow",
+        started_at="2026-07-18T01:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("resource_budget",)
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone() == (0,)
+        receipts = connection.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+    assert len(receipts) == 1
+    assert receipts[0][0] == "failed"
+    assert json.loads(receipts[0][1])["errors"] == ["resource_budget"]
 
 
 def _token_hash(token: str) -> str:
@@ -287,11 +641,12 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, fields: tushare_common.tushare_rows_outcome(
+        lambda api_name, params, fields, scan_budget=None: tushare_common.tushare_rows_outcome(
             api_name,
             "synthetic-provider-token",
             params=params,
             fields=fields,
+            scan_budget=scan_budget,
         ),
     )
     TushareCollector._rate_calls.clear()
@@ -478,11 +833,12 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, requested_fields: tushare_common.tushare_rows_outcome(
+        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
             api_name,
             "synthetic-provider-token",
             params=params,
             fields=requested_fields,
+            scan_budget=scan_budget,
         ),
     )
     TushareCollector._rate_calls.clear()
@@ -629,11 +985,12 @@ def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, requested_fields: tushare_common.tushare_rows_outcome(
+        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
             api_name,
             "synthetic-provider-token",
             params=params,
             fields=requested_fields,
+            scan_budget=scan_budget,
         ),
     )
     TushareCollector._rate_calls.clear()
