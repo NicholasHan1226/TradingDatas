@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 import http.client
 import json
@@ -20,7 +21,7 @@ import storage.ingest_receipts as receipt_module
 from catalog_service import CatalogService
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
-from dataset_registry import load_dataset_registry
+from dataset_registry import DatasetRegistry, load_dataset_registry
 from query_cursor import SignedCursorCodec
 from query_service import QueryService
 from storage.provider_dataset_rows import PROVIDER_DATASET_ROWS_DDL
@@ -29,6 +30,9 @@ from storage.schema import SCHEMA_SQL
 
 SIGNING_KEY = b"provider-native-zero-code-signing-key"
 TOKEN = "provider-native-zero-code-token"
+TARGET_REGISTRY_PATH = (
+    Path(__file__).resolve().parents[1] / "config" / "provider_native_dataset_registry.yaml"
+)
 
 
 def _registry_document() -> dict[str, object]:
@@ -155,6 +159,20 @@ def _create_registry(tmp_path: Path):
         yaml.safe_dump(_registry_document(), sort_keys=False), encoding="utf-8"
     )
     return load_dataset_registry(path)
+
+
+def _active_target_registry(dataset_id: str) -> DatasetRegistry:
+    source = load_dataset_registry(TARGET_REGISTRY_PATH)
+    dataset = source.resolve(dataset_id)
+    binding = replace(
+        dataset.provider_bindings[0],
+        entitlement_state="active",
+        activation_state="active",
+    )
+    return DatasetRegistry(
+        (replace(dataset, provider_bindings=(binding,)),),
+        query_defaults=source.query_defaults,
+    )
 
 
 def _create_database(path: Path) -> None:
@@ -398,3 +416,244 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     assert response["metadata"]["degraded"] is True
     assert "payload_json" not in response["data"][0]
     assert "receipt_id" not in response["data"][0]
+
+
+@pytest.mark.parametrize(
+    ("dataset_id", "request_window", "fields", "items", "expected_params"),
+    [
+        pytest.param(
+            "cn.equity.security_master",
+            {},
+            ["ts_code", "symbol", "name", "provider_added_without_registry_change"],
+            [["600000.SH", "600000", "浦发银行", {"nested": [1, "原样保留"]}]],
+            {"list_status": "L"},
+            id="snapshot",
+        ),
+        pytest.param(
+            "cn.equity.daily",
+            {"trade_date": "20260717"},
+            ["ts_code", "trade_date", "close", "provider_added_without_registry_change"],
+            [["600000.SH", "20260717", 10.5, {"nested": [1, "原样保留"]}]],
+            {"trade_date": "20260717"},
+            id="single-partition",
+        ),
+    ],
+)
+def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dataset_id: str,
+    request_window: dict[str, str],
+    fields: list[str],
+    items: list[list[object]],
+    expected_params: dict[str, str],
+) -> None:
+    registry = _active_target_registry(dataset_id)
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+    captured_request: dict[str, object] = {}
+    frozen_now = datetime(2026, 7, 17, 4, tzinfo=timezone.utc)
+
+    class FrozenApiClock:
+        @classmethod
+        def now(cls, requested_timezone: object = None) -> datetime:
+            assert requested_timezone is timezone.utc
+            return frozen_now
+
+    def urlopen(request: object, timeout: float) -> _Response:
+        assert timeout == 30
+        raw_data = getattr(request, "data")
+        assert isinstance(raw_data, bytes)
+        captured_request.update(json.loads(raw_data.decode("utf-8")))
+        return _Response(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": fields, "items": items},
+            }
+        )
+
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda api_name, params, requested_fields: tushare_common.tushare_rows_outcome(
+            api_name,
+            "synthetic-provider-token",
+            params=params,
+            fields=requested_fields,
+        ),
+    )
+    TushareCollector._rate_calls.clear()
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: frozen_now.isoformat())
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset_id,
+        request_window=request_window,
+        attempt_id=f"{dataset_id}-success",
+        started_at=frozen_now.isoformat(),
+    )
+
+    assert result.status == "success"
+    assert captured_request["params"] == expected_params
+    assert "fields" not in captured_request
+    conn = sqlite3.connect(database)
+    try:
+        stored = conn.execute(
+            "SELECT payload_json, quality_state FROM provider_dataset_rows"
+        ).fetchone()
+        receipt = conn.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert stored is not None
+    assert json.loads(stored[0])["provider_added_without_registry_change"] == {
+        "nested": [1, "原样保留"]
+    }
+    assert stored[1] == "degraded"
+    assert receipt is not None and receipt[0] == "success"
+    assert json.loads(receipt[1])["request_window"] == request_window
+
+    maintenance_lock = tmp_path / "read_model_maintenance.lock"
+    maintenance_lock.touch()
+    (tmp_path / f".{database.name}.read_model_store.lock").touch()
+    monkeypatch.setenv("SHAREDSIGNALS_MAINTENANCE_LOCK_FILE", str(maintenance_lock))
+    query = QueryService(
+        db_path=database,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    catalog = CatalogService(
+        db_path=database,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("V1 query must not call the provider"),
+    )
+    monkeypatch.setattr(
+        auth,
+        "_TOKEN_HASHES",
+        {
+            _token_hash(TOKEN): {
+                "tenant_id": "zero-code-tenant",
+                "tier": "internal",
+                "scopes": ["market_data"],
+                "auth_method": "token_hash",
+            }
+        },
+    )
+    monkeypatch.setattr(auth, "LOCALHOST_BYPASS", False)
+    monkeypatch.setattr(auth, "RATE_LIMITS", {**auth.RATE_LIMITS, "internal": None})
+    monkeypatch.setattr(
+        auth,
+        "CONCURRENCY_LIMITS",
+        {**auth.CONCURRENCY_LIMITS, "internal": None},
+    )
+    monkeypatch.setattr(auth, "_REQUEST_LOG", auth.OrderedDict())
+    monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
+    monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
+    monkeypatch.setattr(api_server, "auth", auth)
+    monkeypatch.setattr(api_server, "datetime", FrozenApiClock)
+    monkeypatch.setattr(api_server, "reader", SimpleNamespace())
+    monkeypatch.setattr(api_server, "_build_v1_services", lambda: (catalog, query))
+
+    server = api_server.SharedSignalsHTTPServer(
+        ("127.0.0.1", 0), api_server.Handler, request_timeout=5, max_threads=4
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, response = _http_query(
+            int(server.server_address[1]),
+            {"dataset_id": dataset_id, "schema_major": 2},
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert status == 200, response
+    assert response["metadata"]["runtime_state"] == "success"
+    assert response["metadata"]["degraded"] is True
+    assert response["data"][0]["provider_added_without_registry_change"] == {
+        "nested": [1, "原样保留"]
+    }
+
+
+@pytest.mark.parametrize(
+    ("response", "expected_status", "expected_receipt"),
+    [
+        pytest.param(
+            {"code": 0, "msg": None, "data": {"fields": ["ts_code"], "items": []}},
+            "empty",
+            "empty",
+            id="allowed-empty",
+        ),
+        pytest.param(
+            {"code": -2001, "msg": "permission denied", "data": None},
+            "failed",
+            "failed",
+            id="provider-failed",
+        ),
+    ],
+)
+def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    response: dict[str, object],
+    expected_status: str,
+    expected_receipt: str,
+) -> None:
+    registry = _active_target_registry("cn.equity.daily")
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+    captured_request: dict[str, object] = {}
+
+    def urlopen(request: object, timeout: float) -> _Response:
+        assert timeout == 30
+        raw_data = getattr(request, "data")
+        assert isinstance(raw_data, bytes)
+        captured_request.update(json.loads(raw_data.decode("utf-8")))
+        return _Response(response)
+
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda api_name, params, requested_fields: tushare_common.tushare_rows_outcome(
+            api_name,
+            "synthetic-provider-token",
+            params=params,
+            fields=requested_fields,
+        ),
+    )
+    TushareCollector._rate_calls.clear()
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id="cn.equity.daily",
+        request_window={"trade_date": "20260717"},
+        attempt_id=f"daily-{expected_status}",
+        started_at="2026-07-17T04:00:00+00:00",
+    )
+
+    assert result.status == expected_status
+    assert captured_request["params"] == {"trade_date": "20260717"}
+    assert "fields" not in captured_request
+    conn = sqlite3.connect(database)
+    try:
+        receipt = conn.execute("SELECT status FROM market_ingest_runs").fetchone()
+    finally:
+        conn.close()
+    assert receipt == (expected_receipt,)

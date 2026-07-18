@@ -78,9 +78,11 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
     )
 
     assert [dataset.dataset_id for dataset in registry.datasets] == [
-        "cn.market.trade_calendar"
+        "cn.equity.daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
     ]
-    assert len(provider_native) == 1
+    assert len(provider_native) == 3
     assert unresolved == ()
     assert all(binding.activation_state == "paused" for binding in bindings)
     assert all(binding.entitlement_state != "active" for binding in bindings)
@@ -89,10 +91,25 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
         == ()
         for dataset in provider_native
     )
-    completeness = bindings[0].response_completeness
-    assert completeness is not None
-    assert completeness.strategy == "one_row_per_calendar_date"
-    assert completeness.date_field == "cal_date"
+    completeness = {
+        dataset.dataset_id: registry.provider_binding(
+            dataset.dataset_id, "tushare"
+        ).response_completeness
+        for dataset in registry.datasets
+    }
+    assert completeness["cn.market.trade_calendar"] is not None
+    assert completeness["cn.market.trade_calendar"].strategy == (
+        "one_row_per_calendar_date"
+    )
+    assert completeness["cn.market.trade_calendar"].date_field == "cal_date"
+    assert completeness["cn.equity.security_master"] is not None
+    assert completeness["cn.equity.security_master"].strategy == (
+        "unique_primary_key_snapshot"
+    )
+    assert completeness["cn.equity.daily"] is not None
+    assert completeness["cn.equity.daily"].strategy == (
+        "single_partition_unique_primary_key"
+    )
 
 
 def test_runtime_selector_accepts_only_the_checked_in_target(
@@ -103,7 +120,7 @@ def test_runtime_selector_accepts_only_the_checked_in_target(
     monkeypatch.setenv(dataset_registry.DATASET_REGISTRY_PATH_ENV, str(target))
 
     assert dataset_registry.runtime_dataset_registry_path() == target
-    assert len(dataset_registry.load_runtime_dataset_registry().datasets) == 1
+    assert len(dataset_registry.load_runtime_dataset_registry().datasets) == 3
 
     for rejected in (
         "config/provider_native_dataset_registry.yaml",
@@ -169,7 +186,7 @@ def test_data_plane_runtime_uses_process_selected_target(
     runtime_module._reset_data_plane_runtime_for_tests()
     try:
         runtime = runtime_module.build_data_plane_runtime()
-        assert len(runtime.registry.datasets) == 1
+        assert len(runtime.registry.datasets) == 3
         assert runtime.catalog._registry is runtime.registry  # noqa: SLF001
         assert runtime.query._registry is runtime.registry  # noqa: SLF001
         assert runtime.legacy_registry is not runtime.registry
@@ -179,6 +196,18 @@ def test_data_plane_runtime_uses_process_selected_target(
         assert (
             runtime.registry.resolve(
                 "tushare.trade_cal"
+            ).read_model_adapter.primary_table
+            == "provider_dataset_rows"
+        )
+        assert (
+            runtime.registry.resolve(
+                "tushare.daily"
+            ).read_model_adapter.primary_table
+            == "provider_dataset_rows"
+        )
+        assert (
+            runtime.registry.resolve(
+                "tushare.stock_basic"
             ).read_model_adapter.primary_table
             == "provider_dataset_rows"
         )

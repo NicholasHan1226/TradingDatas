@@ -12,6 +12,319 @@ query_defaults:
   cursor_ttl_seconds: 900
   sqlite_progress_steps: 1000000
 datasets:
+- dataset_id: cn.equity.daily
+  aliases:
+  - tushare.daily
+  domain: market_data
+  market: CN
+  entity_type: daily
+  data_classification: objective_factual
+  schema_version: 2.0.0
+  cadence_class: postclose_daily
+  timezone: Asia/Shanghai
+  freshness_sla_seconds: 259200
+  provider_bindings:
+  - provider: tushare
+    api_name: daily
+    adapter_version: tushare-provider-native.v1
+    read_discriminator_value: tushare_daily
+    entitlement_state: unknown
+    activation_state: paused
+    target_tables:
+    - provider_dataset_rows
+    request_template:
+      trade_date: ${window.trade_date}
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields: []
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 6000
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: ts_code
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: trade_date
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: high
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: low
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: pre_close
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: change
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: pct_chg
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: vol
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: amount
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: ah_vol
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: ah_amount
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  primary_key:
+  - ts_code
+  - trade_date
+  default_projection:
+  - ts_code
+  - trade_date
+  - open
+  - high
+  - low
+  - close
+  - pre_close
+  - change
+  - pct_chg
+  - vol
+  - amount
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
+  point_in_time: current_snapshot
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: cn.equity.security_master
+  aliases:
+  - tushare.stock_basic
+  domain: reference
+  market: CN
+  entity_type: security_master
+  data_classification: objective_factual
+  schema_version: 2.0.0
+  cadence_class: daily_reference
+  timezone: Asia/Shanghai
+  freshness_sla_seconds: 604800
+  provider_bindings:
+  - provider: tushare
+    api_name: stock_basic
+    adapter_version: tushare-provider-native.v1
+    read_discriminator_value: tushare_stock_basic
+    entitlement_state: unknown
+    activation_state: paused
+    target_tables:
+    - provider_dataset_rows
+    request_template:
+      list_status: L
+    request_window_policy: null
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 6000
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: ts_code
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: symbol
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: name
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: area
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: industry
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: fullname
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: enname
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: cnspell
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: market
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: exchange
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: curr_type
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: list_status
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: list_date
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: delist_date
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: is_hs
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: act_name
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: act_ent_type
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  primary_key:
+  - ts_code
+  default_projection:
+  - ts_code
+  - symbol
+  - name
+  - area
+  - industry
+  - cnspell
+  - market
+  - list_date
+  - act_name
+  - act_ent_type
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
 - dataset_id: cn.market.trade_calendar
   aliases:
   - tushare.trade_cal
@@ -48,11 +361,12 @@ datasets:
       max_span_days: 366
     response_completeness:
       strategy: one_row_per_calendar_date
+      fixed_field_matches:
+        exchange: exchange
+      reject_at_row_limit: false
       date_field: cal_date
       request_start_key: start_date
       request_end_key: end_date
-      fixed_field_matches:
-        exchange: exchange
     requested_fields: []
     max_batch_bytes: 4194304
     max_nesting_depth: 16

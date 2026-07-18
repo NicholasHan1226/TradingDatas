@@ -1457,7 +1457,7 @@ def tushare_rows_outcome(
     token: str,
     *,
     params: Mapping[str, Any] | None = None,
-    fields: str = "",
+    fields: str | None = None,
     scan_budget: SensitiveScanBudget | None = None,
 ) -> ProviderCallOutcome:
     """Call Tushare once and preserve success, empty, and failure truth."""
@@ -1465,14 +1465,14 @@ def tushare_rows_outcome(
     provider_code: int | str | None = None
     sensitive_values = (token,)
     try:
-        payload = json.dumps(
-            {
-                "api_name": api_name,
-                "token": token,
-                "params": dict(params or {}),
-                "fields": fields,
-            }
-        ).encode("utf-8")
+        request_payload = {
+            "api_name": api_name,
+            "token": token,
+            "params": dict(params or {}),
+        }
+        if fields:
+            request_payload["fields"] = fields
+        payload = json.dumps(request_payload).encode("utf-8")
         request = urllib.request.Request(
             get_api_url(),
             data=payload,

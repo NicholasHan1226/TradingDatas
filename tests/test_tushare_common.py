@@ -104,6 +104,39 @@ def test_tushare_rows_outcome_preserves_success_rows_and_is_frozen(monkeypatch):
         outcome.state = "empty"
 
 
+@pytest.mark.parametrize(
+    ("fields", "expected_fields"),
+    [
+        pytest.param(None, None, id="none-omits-wire-field"),
+        pytest.param("", None, id="empty-omits-wire-field"),
+        pytest.param("ts_code,close", "ts_code,close", id="projection-is-exact"),
+    ],
+)
+def test_tushare_rows_outcome_omits_empty_fields_from_wire_request(
+    monkeypatch,
+    fields: str | None,
+    expected_fields: str | None,
+) -> None:
+    requests = _stub_outcome_response(
+        monkeypatch,
+        {"code": 0, "msg": None, "data": {"fields": ["ts_code"], "items": []}},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        params={"trade_date": "20260717"},
+        fields=fields,
+    )
+
+    assert outcome.state == "empty"
+    payload = requests[0]["payload"]
+    if expected_fields is None:
+        assert "fields" not in payload
+    else:
+        assert payload["fields"] == expected_fields
+
+
 def test_tushare_rows_outcome_marks_valid_zero_rows_empty(monkeypatch):
     _stub_outcome_response(
         monkeypatch,

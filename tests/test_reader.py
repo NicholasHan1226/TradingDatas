@@ -188,8 +188,10 @@ def test_target_registry_environment_keeps_reader_compat_on_default_bound_query(
     assert [row["data"]["symbol"] for row in rows] == ["000001.SZ"]
     assert legacy_query.calls[-1]["request"].dataset_id == dataset_id
     assert runtime.query is not runtime.legacy_query
-    with pytest.raises(KeyError, match="unknown dataset"):
-        runtime.registry.resolve(dataset_id)
+    assert (
+        runtime.registry.resolve(dataset_id).read_model_adapter.storage_kind
+        == "provider_native_rows"
+    )
     assert (
         runtime.legacy_registry.resolve(dataset_id).read_model_adapter.primary_table
         != "provider_dataset_rows"

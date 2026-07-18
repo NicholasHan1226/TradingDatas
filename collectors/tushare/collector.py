@@ -50,7 +50,7 @@ def _parameter_log_summary(params: dict[str, Any]) -> dict[str, Any]:
 def _call_tushare(
     api_name: str,
     params: dict[str, Any],
-    fields: str = "",
+    fields: str | None = None,
 ) -> ProviderCallOutcome:
     """Load env and the strict Tushare outcome call lazily."""
     global _TUSHARE_CALL
@@ -65,7 +65,7 @@ def _call_tushare(
                 def _strict_call(
                     call_api_name: str,
                     call_params: dict[str, Any],
-                    call_fields: str,
+                    call_fields: str | None,
                 ) -> ProviderCallOutcome:
                     return tushare_rows_outcome(
                         call_api_name,
@@ -207,7 +207,8 @@ class TushareCollector(BaseCollector):
                 if float(row.get("high", 0)) < float(row.get("low", 0)):
                     quality["issues"].append("high_less_than_low")
                     quality["score"] = 0.0
-            except (ValueError, TypeError): pass
+            except (ValueError, TypeError):
+                pass
         # Missing key fields
         for f in ("ts_code", "trade_date"):
             if api_name in ("daily", "moneyflow", "stk_factor"):
@@ -317,7 +318,7 @@ class TushareCollector(BaseCollector):
         )
         candidate: Any = None
         try:
-            candidate = _call_tushare(api_name, params, fields or "")
+            candidate = _call_tushare(api_name, params, fields)
             if not isinstance(candidate, ProviderCallOutcome):
                 raise TypeError("collector returned an invalid provider outcome type")
             candidate.validate_invariants()

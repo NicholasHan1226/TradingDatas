@@ -117,11 +117,33 @@ produce one failed validation receipt and zero facts/success receipts. Future
 cardinality strategies require a separately reviewed registry contract; they do
 not justify an `api_name` or `dataset_id` branch.
 
+The current reviewed generic strategies additionally include
+`unique_primary_key_snapshot` for a current reference snapshot and
+`single_partition_unique_primary_key` for one requested `yyyymmdd` partition.
+They verify usable provider-native primary-key uniqueness, requested partition
+agreement where applicable, and reject a response that reaches a contract's
+declared row cap when `reject_at_row_limit` is enabled. This is structural
+completeness evidence only: it does not independently prove that a response
+below the cap contains every security in the market. A missing, blank,
+non-scalar, or type-drifted native identity key continues through the generic
+payload-hash fallback and is recorded as degraded rather than silently dropping
+the provider payload. Legitimate empties still follow `empty_data_policy` and
+produce an explicit `empty` receipt; provider and validation failures remain
+`failed` receipts.
+
 Every ordinary Tushare binding emits `requested_fields: []`, so the generic
 adapter omits `fields` and receives the complete upstream `fields/items`
 envelope. That preserves unknown upstream keys for drift evidence; it does not
 promote those keys into the public query allowlist. A legacy collector `fields`
 value is only a diagnostic hint.
+
+`stock_basic` and `daily` are ordinary config-only Tushare extensions under
+this rule. Their onboarding adds neither a public route, a table, nor a
+dataset-specific collector/query branch: the fixed data surface remains
+`GET /v1/catalog` and `POST /v1/query`, backed by the generic provider-native
+fact and receipt path. Industry fan-out/membership work and any production
+activation remain separate reviewed work; the committed target bindings stay
+paused and are not evidence of live collection.
 
 Missing or incomplete contracts are listed as deterministic `unresolved + paused`
 records and are absent from the provider-native target candidate. Structurally

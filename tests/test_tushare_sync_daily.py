@@ -1398,6 +1398,30 @@ def test_collector_collect_compatibility_returns_rows_from_typed_outcome(
     assert collector.collect_failure_count == 0
 
 
+def test_collector_collect_outcome_preserves_none_fields_for_generic_transport(
+    monkeypatch,
+) -> None:
+    outcome = tushare_common.ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    received: list[str | None] = []
+
+    def strict_call(_api_name, _params, fields):
+        received.append(fields)
+        return outcome
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", strict_call)
+    collector = TushareCollector()
+    monkeypatch.setattr(collector, "_rate_limit", lambda _api_name: None)
+
+    assert collector.collect_outcome("stock_basic", {"list_status": "L"}).state == "empty"
+    assert received == [None]
+
+
 def test_collector_logs_only_a_structured_parameter_summary(
     monkeypatch,
     caplog,

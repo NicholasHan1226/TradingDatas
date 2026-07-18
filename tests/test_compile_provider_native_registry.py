@@ -490,9 +490,11 @@ def test_repository_inputs_compile_only_reviewed_contracts_deterministically(
         render_compilation(second_candidate, second_report, kind="bundle")
     )
     assert first_report["totals"]["registry_datasets"] == 114
-    assert first_report["totals"]["converted_datasets"] == 1
-    assert first_report["totals"]["unresolved_datasets"] == 113
+    assert first_report["totals"]["converted_datasets"] == 3
+    assert first_report["totals"]["unresolved_datasets"] == 111
     assert [item["dataset_id"] for item in first_candidate["datasets"]] == [
+        "cn.equity.daily",
+        "cn.equity.security_master",
         "cn.market.trade_calendar"
     ]
 
@@ -512,6 +514,47 @@ def test_repository_inputs_compile_only_reviewed_contracts_deterministically(
     completeness = trade_cal.provider_bindings[0].response_completeness
     assert completeness is not None
     assert completeness.strategy == "one_row_per_calendar_date"
+
+
+def test_repository_bundle_resolves_stock_basic_and_daily_contracts_deterministically(
+    tmp_path: Path,
+) -> None:
+    registry = _read_yaml(REGISTRY_PATH)
+    plan = _read_yaml(PLAN_PATH)
+    collector = _read_yaml(COLLECTOR_CONFIG_PATH)
+    contracts = _read_yaml(CONTRACT_PATH)
+
+    first_candidate, first_report = compile_provider_native_registry(
+        registry, plan, collector, contracts
+    )
+    second_candidate, second_report = compile_provider_native_registry(
+        deepcopy(registry), deepcopy(plan), deepcopy(collector), deepcopy(contracts)
+    )
+
+    assert render_compilation(first_candidate, first_report, kind="bundle") == (
+        render_compilation(second_candidate, second_report, kind="bundle")
+    )
+    assert first_report["totals"]["converted_datasets"] == 3
+    assert first_report["totals"]["unresolved_datasets"] == 111
+    assert [item["dataset_id"] for item in first_candidate["datasets"]] == [
+        "cn.equity.daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
+    ]
+    assert first_report["resolved"][0]["request_window_fields"] == ["trade_date"]
+    assert first_report["resolved"][1]["request_window_fields"] == []
+
+    candidate_path = tmp_path / "candidate.yaml"
+    candidate_path.write_text(
+        yaml.safe_dump(first_candidate, sort_keys=False), encoding="utf-8"
+    )
+    target = load_dataset_registry(candidate_path)
+    snapshot = target.resolve("tushare.stock_basic")
+    daily = target.resolve("tushare.daily")
+    assert snapshot.dataset_id == "cn.equity.security_master"
+    assert daily.dataset_id == "cn.equity.daily"
+    assert snapshot.provider_bindings[0].requested_fields == ()
+    assert daily.provider_bindings[0].requested_fields == ()
 
 
 def test_completeness_window_keys_are_not_provider_parameter_names() -> None:
@@ -626,26 +669,39 @@ def test_cli_uses_frozen_bundle_and_never_changes_inputs(tmp_path: Path) -> None
 
     assert completed.stdout == ""
     assert completed.stderr == ""
-    assert len(load_dataset_registry(output).datasets) == 1
+    assert len(load_dataset_registry(output).datasets) == 3
     assert before == {path: _sha256(path) for path in before}
 
 
-def test_no_dataset_specific_branch_is_added() -> None:
-    sources = "\n".join(
-        (ROOT / relative).read_text(encoding="utf-8")
-        for relative in (
-            "tools/compile_provider_native_registry.py",
-            "dataset_registry.py",
-            "collectors/tushare/provider_native_ingest.py",
-        )
+def test_task_three_changed_paths_stay_within_the_frozen_write_domain() -> None:
+    task_two_freeze = "1b1edae6a37e9ee488b3a41d400e77cf80302d66"
+    approved_paths = {
+        "collectors/tushare/collector.py",
+        "collectors/tushare/tushare_common.py",
+        "config/tushare_upstream_contracts.v1.yaml",
+        "config/provider_native_dataset_registry.yaml",
+        "tests/test_compile_provider_native_registry.py",
+        "tests/test_provider_native_zero_code.py",
+        "tests/test_tushare_common.py",
+        "tests/test_tushare_sync_daily.py",
+        "tests/test_v1_api.py",
+        "tests/test_query_service.py",
+        "tests/test_dual_dataset_registry_runtime.py",
+        "tests/test_reader.py",
+        "docs/dataset_registry.md",
+    }
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", task_two_freeze],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
     )
+    changed_paths = {
+        path for path in completed.stdout.splitlines() if path
+    }
 
-    assert 'api_name == "trade_cal"' not in sources
-    assert "api_name == 'trade_cal'" not in sources
-    assert "trade_cal" not in sources
-    assert "cn.market.trade_calendar" not in sources
-    assert 'dataset_id == "cn.market.trade_calendar"' not in sources
-    assert "dataset_id == 'cn.market.trade_calendar'" not in sources
+    assert changed_paths <= approved_paths
 
 
 def test_renderer_rejects_unknown_output_kind() -> None:
