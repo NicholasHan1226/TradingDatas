@@ -115,9 +115,10 @@ local/origin/live GitHub 三方 readback 为 `fae8f7c01d8c41c088ea20e6d2e11dc099
 - default registry SHA 保持 `d6f58ff...`；当前 target registry SHA 为 `77db9af...`，与
   compiler 逐字节一致，严格只包含已解析的 `trade_cal` 一项；该项当前
   `paused`，entitlement 仍为 `unknown`，请求、tenant 与普通 CLI 均不能选择 registry；
-- 这只完成代码/GitHub 层。`trade_cal` 的真实 entitlement、backfill、receipt、server runtime
-  与 consumer parity
-  尚未验证，默认 registry 切换继续受 backfill/parity/consumer/no-use/rollback 门禁约束。
+- `trade_cal` 已在 2026-07-18 的全新隔离 server canary 中完成一次真实 entitlement、受限
+  backfill、SQLite fact/receipt 与统一 API readback；该证据只绑定 exact `4088a2d` 和独立
+  canary 数据库。生产 runtime、完整首批 consumer 数据包与 consumer parity 仍未验证，默认
+  registry 切换继续受 backfill/parity/consumer/no-use/rollback 门禁约束。
 
 ### Provider contract bundle 与 `trade_cal` 首个纵向切片
 
@@ -129,8 +130,9 @@ local/origin/live GitHub 三方 readback 为 `fae8f7c01d8c41c088ea20e6d2e11dc099
   writer 前拒绝，只记 `validation_failed` receipt；
 - 生产 Python 不包含 `trade_cal` 或 dataset-id 特殊分支；新 dataset 仍通过同一
   bundle/compiler/registry/generic ingest/query 管线接入；
-- 当前证据是 local/GitHub 代码层 PASS，不是真实上游、server canary、生产或外部
-  Beta 完成证明。
+- 当前证据包含 local/GitHub 代码层 PASS，以及一个受限 `trade_cal` 窗口的真实隔离
+  server canary PASS；它不证明生产、完整 Tushare dataset 覆盖、受邀账户网关或外部 Beta
+  已完成。
 
 ### TradingAgent consumer handoff contract
 
@@ -139,9 +141,10 @@ local/origin/live GitHub 三方 readback 为 `fae8f7c01d8c41c088ea20e6d2e11dc099
 - exact8 r2 已由 fresh reviewer 判定 PASS（P0/P1=0）并在 `6c7ded4` 进入 GitHub；
   `schema_major`、same-as-of/receipt watermark 实证、healthy/stale fixture 与 2331 项全量回归
   均绿，三份文档的核心 truth statement 逐字一致；
-- 该提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。generic target registry、
-  真实 backfill、server canary、认证和真实 query readback 仍未完成，因此状态继续固定为
-  **TradingAgent 当前不可接入**。
+- 该提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。虽然
+  `trade_cal` 的真实 generic backfill/server canary/query readback 已完成，TA 首批要求的
+  `stock_basic`、`daily`、行业宽度 dataset、冻结 catalog、只读 base URL 与认证接入仍未完成，
+  因此状态继续固定为 **TradingAgent 当前不可接入**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
@@ -169,26 +172,57 @@ local/origin/live GitHub 三方 readback 为 `fae8f7c01d8c41c088ea20e6d2e11dc099
 
 结论：旧 canary 正确阻止了错误 schema 进入生产。通用、版本化的
 provider field/window manifest 与 compiler 修正已在 `58face6` 进入 GitHub；旧 canary
-证据不能复用，仍必须从该精确 GitHub 主线重建全新隔离 canary。
+证据没有被复用；下列 2026-07-18 canary 已从后续精确 GitHub 主线独立重建。
 
-## 生产现状（2026-07-17 12:50 CST fresh 只读证据）
+### 隔离服务器 canary（2026-07-18 12:30–12:47 CST）
+
+- canary 位于 `/opt/investment/canaries/sharedsignals/20260718T123044-4088a2d`，detached
+  checkout 精确为 GitHub `4088a2de49ecfd45aff7c910d00d58cd20a238c5`；唯一 tracked overlay
+  是 target registry 的 `entitlement_state: unknown -> active` 与
+  `activation_state: paused -> active` 两行。原 registry SHA 为 `77db9af...`，canary registry
+  SHA 为 `86b88d4...`；没有 dataset 专用 Python、route 或生产配置改动；
+- 使用全新独立 SQLite、独立两把锁与 `127.0.0.1:18082`。base/provider migration 成功；
+  no-write plan 明确 `will_call_provider=false`、`will_write_database=false`，且计划前后数据库
+  inode/size/mtime 不变；
+- 真实采集前，`GET /v1/catalog` 可发现唯一 dataset，`POST /v1/query` 返回 0 行及
+  `unobserved/degraded`，`receipt_id/data_through/observed_at` 均为 null，证明没有从生产
+  SQLite、legacy 表、文件或 provider live fallback 借数据；
+- 随后只执行一次 2026-07-13 至 2026-07-18 的真实 Tushare `trade_cal` 调用。结果为 6 行
+  provider-native facts 与 1 条同事务 `success` receipt，`returned/validated/inserted/committed`
+  均为 6，stderr 为空；receipt 为
+  `receipt:4c79cdfb2caf83cc16154487a691f01679307360455f1f07c429337e88b9810b`；
+- 采集后 catalog/query 返回 6 行真实字段
+  `exchange/cal_date/is_open/pretrade_date`，runtime/API 状态为
+  `success/ready/fresh/valid/complete`，lineage authority 为 `sqlite_ingest_receipts`，未暴露
+  `payload_json/row_key/receipt_id` 等技术列；两次相同 `as_of` 查询除 `request_id` 外一致；
+- 两路 fresh 独立只读验收均为 PASS，`P0/P1/P2=0/0/0`。24 份 evidence 保留在 canary
+  目录，manifest SHA 为
+  `4ccba06186a03c63774f5360443046c8d74024e96c29b4077ffc79278f5a6482`，23 个受管文件全部
+  通过 SHA-256 校验，敏感值/private-key 扫描为 0；
+- canary 已停止：PID/18082/open files/systemd/cron/nginx 引用均为 0。生产 checkout 仍是 clean
+  `ccff5c8`，生产 API 仍只监听 `127.0.0.1:8082`；生产与 canary SQLite 位于不同设备和
+  inode，生产数据库 inode/owner/mode 未改变。
+
+结论：首个 `trade_cal` provider-to-API 纵向切片已在隔离 canary 中真实通过。它只证明该
+dataset 和该受限窗口，不等于生产发布、TA 可接入、其余 113 个 dataset 可用或外部 Beta 开放。
+
+## 生产现状（2026-07-18 12:47 CST fresh 只读证据）
 
 - **生产未改变**；下列事实来自本轮只读盘点。
 - 生产 SharedSignals checkout clean，仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
   或外部路由写入。
-- 服务仍在旧 runtime 上运行；`/health` 可读，但目标 `/v1/catalog`、`/v1/query` 仍返回 404。
-- 生产 SQLite 为 22,193,909,760 bytes；`market_ingest_runs` 存在且旧调度仍活跃，40 秒只读
-  对比确认 DB 大小/mtime 和 collector/watchdog 日志继续变化，canonical
-  `provider_dataset_rows` 尚不存在。
+- 服务仍在旧 runtime 上运行；`/health` 返回 200，但目标 `/v1/catalog`、`/v1/query` fresh
+  readback 仍为 404。
+- 生产 SQLite 当前为 23,048,323,072 bytes，inode `1048617`、mode `0644`、uid/gid
+  `1000/1000`；审计窗口内旧 writer 仍使 size/mtime 正常变化。canary 使用另一设备上的
+  inode `1329393` 独立 SQLite，没有替换或链接生产数据库；生产 canonical
+  `provider_dataset_rows` 仍未被本轮创建或迁移。
 - 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；现有 predata/backup 明显早于
   live DB，旧 writer/cron 仍活跃，因此
   不能直接在该数据库上执行 migration 或切换 authority。
-- `127.0.0.1:18082` 空闲，服务器内存/磁盘/Python 3.12 与独立目录权限满足隔离 canary。
-  双注册表代码门禁现已在 `53e2b96` 完成；正式创建 canary 前仍须针对该精确提交重新执行
-  safe-release preflight，并确认独立 checkout/new SQLite/两把协作锁/无 systemd-cron-nginx。
-- 只读真实上游 smoke 已用现有 Tushare transport 调用 `trade_cal`：SSE、20260715 返回
-  `success`、1 行。这证明已购买上游和统一调用协议可用；不证明 generic SQLite/API 纵向切片
-  已发布。
+- `127.0.0.1:18082` 已在 canary 停止后恢复为空闲；没有 canary systemd、cron 或 nginx
+  引用。隔离 canary 证明已购买上游和统一调用协议可用，并证明 `trade_cal` generic
+  SQLite/API 纵向切片可运行；生产代码和 runtime 仍未发布。
 - 生产仍是 NO-GO。HTTP 200、配置存在、旧表有数据或“114/114”都不能代替逐 dataset 的
   receipt、freshness、quality、lineage 和真实 query 证据。
 
@@ -239,10 +273,10 @@ generic replacement PASS
 
 1. canonical schema、TA consumer handoff、双注册表 runtime 与首个 upstream contract bundle 已进入
    GitHub；当前 target 只有 `trade_cal` 一项，其余 113 项保持明确 unresolved；
-2. 从精确 GitHub 主线重建隔离 canary，用受限 `trade_cal` 窗口完成
-   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`，并证明 catalog 字段与真实
-   provider payload 一致；
-3. canary 通过后，先按同一 contract bundle 机械增加 `stock_basic`、`daily` 和已批准的
+2. 2026-07-18 隔离 canary 已用受限 `trade_cal` 窗口完成
+   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`，并经两路 fresh reviewer
+   证明 catalog 字段与真实 provider payload 一致；
+3. 现在按同一 contract bundle 增加 `stock_basic`、`daily` 和经批准的
    行业宽度数据合同，再逐批对其余境内 dataset 做 entitlement probe、cadence、限流、
    增量 backfill 与 `success/empty/unobserved/paused/failed/stale` 运行矩阵；
 4. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
