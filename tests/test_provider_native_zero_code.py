@@ -16,6 +16,7 @@ import api_server
 import auth
 import collectors.tushare.collector as collector_module
 import collectors.tushare.tushare_common as tushare_common
+import storage.ingest_receipts as receipt_module
 from catalog_service import CatalogService
 from collectors.tushare.collector import TushareCollector
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
@@ -224,6 +225,14 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     _create_database(database)
     captured_request: dict[str, object] = {}
     large_integer = 2**70
+    # 04:00 UTC is 12:00 Asia/Shanghai on 2026-07-17, within the 24-hour SLA.
+    frozen_now = datetime(2026, 7, 17, 4, tzinfo=timezone.utc)
+
+    class FrozenApiClock:
+        @classmethod
+        def now(cls, requested_timezone: object = None) -> datetime:
+            assert requested_timezone is timezone.utc
+            return frozen_now
 
     def urlopen(request: object, timeout: float) -> _Response:
         assert timeout == 30
@@ -269,7 +278,8 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     )
     TushareCollector._rate_calls.clear()
 
-    started_at = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: frozen_now.isoformat())
+    started_at = frozen_now.isoformat()
     result = collect_provider_native_dataset(
         database,
         registry=registry,
@@ -350,6 +360,7 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
     monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
+    monkeypatch.setattr(api_server, "datetime", FrozenApiClock)
     monkeypatch.setattr(api_server, "reader", SimpleNamespace())
     monkeypatch.setattr(
         api_server, "_build_v1_services", lambda: (catalog, query), raising=False
