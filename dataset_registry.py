@@ -323,7 +323,7 @@ class ResponseCompletenessPolicy:
 
     strategy: str
     fixed_field_matches: Mapping[str, str]
-    reject_at_row_limit: bool
+    reject_at_row_limit: bool = False
     date_field: str | None = None
     request_start_key: str | None = None
     request_end_key: str | None = None
@@ -1353,6 +1353,14 @@ def _load_dataset(
                     f"generic request contract keys: {', '.join(unexpected)}"
                 )
     else:
+        nullable_primary_fields = [
+            field_name for field_name in primary_key if fields_by_name[field_name].nullable
+        ]
+        if nullable_primary_fields:
+            raise ValueError(
+                f"dataset {dataset_id}.primary_key fields must not be nullable: "
+                f"{', '.join(nullable_primary_fields)}"
+            )
         if read_model_adapter.primary_table != "provider_dataset_rows":
             raise ValueError(
                 f"dataset {dataset_id} provider_native_rows primary_table must be "
@@ -1420,7 +1428,10 @@ def _load_dataset(
             completeness = binding.response_completeness
             if completeness is None:
                 continue
-            if schema_contract.empty_data_policy != "forbidden":
+            if (
+                completeness.strategy == "one_row_per_calendar_date"
+                and schema_contract.empty_data_policy != "forbidden"
+            ):
                 raise ValueError(
                     f"{binding_path}.response_completeness requires "
                     "empty_data_policy=forbidden"

@@ -538,6 +538,7 @@ def test_compiler_accepts_snapshot_and_single_partition_contracts_and_reports_wi
     registry, plan, collector = _documents()
     snapshot_bundle = _contract_bundle()
     snapshot = snapshot_bundle["contracts"][0]  # type: ignore[index]
+    snapshot["empty_data_policy"] = "allowed"
     snapshot["request_template"] = {}
     snapshot.pop("request_window_policy")
     snapshot["response_completeness"] = {
@@ -547,6 +548,7 @@ def test_compiler_accepts_snapshot_and_single_partition_contracts_and_reports_wi
     }
     partition_bundle = _contract_bundle()
     partition = partition_bundle["contracts"][0]  # type: ignore[index]
+    partition["empty_data_policy"] = "allowed"
     partition["request_template"] = {
         "cal_date": "${window.cal_date}",
         "exchange": "SSE",
@@ -579,11 +581,13 @@ def test_compiler_accepts_snapshot_and_single_partition_contracts_and_reports_wi
     snapshot_binding = snapshot_candidate["datasets"][0]["provider_bindings"][0]
     partition_binding = partition_candidate["datasets"][0]["provider_bindings"][0]
     assert snapshot_binding["request_window_policy"] is None
+    assert snapshot_candidate["datasets"][0]["empty_data_policy"] == "allowed"
     assert snapshot_binding["response_completeness"]["strategy"] == (
         "unique_primary_key_snapshot"
     )
     assert snapshot_binding["response_completeness"]["reject_at_row_limit"] is True
     assert partition_binding["request_window_policy"]["range_start_key"] == "cal_date"
+    assert partition_candidate["datasets"][0]["empty_data_policy"] == "allowed"
     assert partition_binding["request_window_policy"]["range_end_key"] == "cal_date"
     assert partition_binding["response_completeness"]["partition_field"] == "cal_date"
     assert partition_binding["response_completeness"]["request_partition_key"] == (

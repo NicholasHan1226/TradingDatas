@@ -674,9 +674,13 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     empty_data_policy = _required_text(
         value["empty_data_policy"], f"{label}.empty_data_policy"
     )
-    if empty_data_policy != "forbidden":
+    if (
+        response_completeness["strategy"] == "one_row_per_calendar_date"
+        and empty_data_policy != "forbidden"
+    ):
         raise ValueError(
-            f"{label}.empty_data_policy must be forbidden for response completeness"
+            f"{label}.empty_data_policy must be forbidden for "
+            "one_row_per_calendar_date"
         )
 
     for fixed_field in response_completeness["fixed_field_matches"]:

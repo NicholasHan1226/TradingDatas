@@ -364,6 +364,10 @@ def test_existing_registry_remains_legacy_typed_by_default() -> None:
             lambda item: item.update(schema_version="2"),
             "schema_version",
         ),
+        (
+            lambda item: item["fields"][0].update(nullable=True),  # type: ignore[index]
+            "primary_key fields must not be nullable",
+        ),
     ],
 )
 def test_generic_registry_rejects_invalid_contracts(
@@ -398,11 +402,23 @@ def test_existing_provider_native_contract_can_omit_response_completeness(
     assert loaded.provider_bindings[0].response_completeness is None
 
 
+def test_response_completeness_policy_keeps_reject_at_row_limit_default() -> None:
+    policy = registry_module.ResponseCompletenessPolicy(
+        strategy="one_row_per_calendar_date",
+        date_field="trade_date",
+        request_start_key="start_date",
+        request_end_key="end_date",
+        fixed_field_matches={"ts_code": "exchange"},
+    )
+
+    assert policy.reject_at_row_limit is False
+
+
 def test_generic_registry_materializes_snapshot_and_single_partition_completeness(
     tmp_path: Path,
 ) -> None:
     snapshot = generic_dataset()
-    snapshot["empty_data_policy"] = "forbidden"
+    snapshot["empty_data_policy"] = "allowed"
     snapshot_binding = snapshot["provider_bindings"][0]  # type: ignore[index]
     snapshot_binding["request_template"] = {}  # type: ignore[index]
     snapshot_binding.pop("request_window_policy")  # type: ignore[index]
@@ -413,7 +429,7 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
     }
 
     partition = generic_dataset()
-    partition["empty_data_policy"] = "forbidden"
+    partition["empty_data_policy"] = "allowed"
     partition_binding = partition["provider_bindings"][0]  # type: ignore[index]
     partition_binding["request_template"] = {  # type: ignore[index]
         "trade_date": "${window.trade_date}",
@@ -439,10 +455,12 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
     partition_policy = partition_loaded.datasets[0].provider_bindings[0]
 
     assert snapshot_policy.request_window_policy is None
+    assert snapshot_loaded.datasets[0].empty_data_policy == "allowed"
     assert snapshot_policy.response_completeness is not None
     assert snapshot_policy.response_completeness.strategy == "unique_primary_key_snapshot"
     assert snapshot_policy.response_completeness.reject_at_row_limit is True
     assert partition_policy.request_window_policy is not None
+    assert partition_loaded.datasets[0].empty_data_policy == "allowed"
     assert partition_policy.request_window_policy.range_start_key == "trade_date"
     assert partition_policy.request_window_policy.range_end_key == "trade_date"
     assert partition_policy.response_completeness is not None
