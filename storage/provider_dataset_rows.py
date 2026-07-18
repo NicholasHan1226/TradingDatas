@@ -268,13 +268,13 @@ def _snapshot_key(
         if value is None:
             issues.append(f"snapshot_key_fallback:null:{field_name}")
             return f"payload:{payload_hash}"
-        if value == "":
-            issues.append(f"snapshot_key_fallback:blank:{field_name}")
-            return f"payload:{payload_hash}"
         if isinstance(value, (dict, list, tuple)):
             issues.append(f"snapshot_key_fallback:non_scalar:{field_name}")
             return f"payload:{payload_hash}"
         field = fields[field_name]
+        if field.logical_type == "text" and value == "":
+            issues.append(f"snapshot_key_fallback:blank:{field_name}")
+            return f"payload:{payload_hash}"
         if not _matches_logical_type(value, field.logical_type):
             issues.append(f"snapshot_key_fallback:type_mismatch:{field_name}")
             return f"payload:{payload_hash}"
