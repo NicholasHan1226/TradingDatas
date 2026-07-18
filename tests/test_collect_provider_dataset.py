@@ -129,6 +129,63 @@ def _registry(
     return DatasetRegistry((dataset,))
 
 
+def _strategy_registry(
+    strategy: str,
+    *,
+    empty_data_policy: str = "forbidden",
+    max_rows_per_attempt: int = 3,
+) -> DatasetRegistry:
+    base = _registry(empty_data_policy=empty_data_policy)
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = base.provider_binding(dataset.dataset_id, "tushare")
+    if strategy == "unique_primary_key_snapshot":
+        response = ResponseCompletenessPolicy(
+            strategy=strategy,
+            fixed_field_matches=MappingProxyType({}),
+            reject_at_row_limit=True,
+        )
+        replacement = replace(
+            binding,
+            request_template=MappingProxyType({"list_status": "L"}),
+            request_window_policy=None,
+            response_completeness=response,
+            max_rows_per_attempt=max_rows_per_attempt,
+        )
+        dataset = replace(
+            dataset,
+            primary_key=("ts_code",),
+            partition_field=None,
+            provider_bindings=(replacement,),
+        )
+    elif strategy == "single_partition_unique_primary_key":
+        response = ResponseCompletenessPolicy(
+            strategy=strategy,
+            partition_field="trade_date",
+            request_partition_key="trade_date",
+            fixed_field_matches=MappingProxyType({}),
+            reject_at_row_limit=True,
+        )
+        replacement = replace(
+            binding,
+            request_template=MappingProxyType(
+                {"trade_date": "${window.trade_date}"}
+            ),
+            request_window_policy=RequestWindowPolicy(
+                required_keys=("trade_date",),
+                formats=MappingProxyType({"trade_date": "yyyymmdd"}),
+                range_start_key="trade_date",
+                range_end_key="trade_date",
+                max_span_days=1,
+            ),
+            response_completeness=response,
+            max_rows_per_attempt=max_rows_per_attempt,
+        )
+        dataset = replace(dataset, provider_bindings=(replacement,))
+    else:
+        raise ValueError("unsupported test response strategy")
+    return DatasetRegistry((dataset,))
+
+
 def _database(path: Path) -> None:
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
@@ -165,19 +222,19 @@ def _run(
     tmp_path: Path,
     *,
     outcome: ProviderCallOutcome,
+    registry: DatasetRegistry | None = None,
     request_file: bool = False,
     request_window: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, object], _FakeCollector, Path]:
-    registry = _registry()
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    registry = registry or _registry()
     fake = _FakeCollector(outcome)
     monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
     monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
-    request_window = request_window or {
-        "end_date": "20260717",
-        "start_date": "20260717",
-    }
+    if request_window is None:
+        request_window = {"end_date": "20260717", "start_date": "20260717"}
     args = [
         "--db-path",
         str(db_path),
@@ -199,6 +256,20 @@ def _run(
     code = runner.main(args)
     output = json.loads(capsys.readouterr().out)
     return code, output, fake, db_path
+
+
+def provider_fact_count(db_path: Path) -> int:
+    with sqlite3.connect(db_path) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()[0])
+
+
+def success_receipt_count(db_path: Path) -> int:
+    with sqlite3.connect(db_path) as conn:
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
+            ).fetchone()[0]
+        )
 
 
 def test_default_plan_validates_registry_without_provider_or_database_write(
@@ -388,7 +459,7 @@ def test_forbidden_empty_window_writes_failed_terminal_receipt(
         )
 
 
-def test_completeness_empty_cannot_be_accepted_by_inconsistent_manual_policy(
+def test_completeness_empty_uses_the_dataset_empty_data_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -421,11 +492,11 @@ def test_completeness_empty_cannot_be_accepted_by_inconsistent_manual_policy(
     )
 
     output = json.loads(capsys.readouterr().out)
-    assert code == runner.EXIT_VALIDATION
-    assert output["state"] == "validation"
+    assert code == runner.EXIT_EMPTY
+    assert output["state"] == "empty"
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT status FROM market_ingest_runs").fetchall() == [
-            ("failed",)
+            ("empty",)
         ]
 
 
@@ -560,6 +631,362 @@ def test_response_completeness_failure_writes_only_failed_receipt(
         assert json.loads(receipt_rows[0][1])["data_through"] is None
 
 
+def test_snapshot_accepts_unique_primary_keys_below_provider_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("unique_primary_key_snapshot"),
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717"), _calendar_row("20260718", symbol="000001.SZ")),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    assert provider_fact_count(db_path) == 2
+
+
+def test_snapshot_rejects_duplicate_primary_key_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("unique_primary_key_snapshot"),
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717"), _calendar_row("20260718")),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
+def test_snapshot_preserves_unusable_key_degraded_payload_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    payload = _calendar_row("20260717", symbol="")
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("unique_primary_key_snapshot"),
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(payload,),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    with sqlite3.connect(db_path) as conn:
+        row_key, quality_state, issues_json, payload_json = conn.execute(
+            "SELECT row_key, quality_state, quality_issues_json, payload_json "
+            "FROM provider_dataset_rows"
+        ).fetchone()
+    assert row_key.startswith("payload:")
+    assert quality_state == "degraded"
+    assert "snapshot_key_fallback:blank:ts_code" in json.loads(issues_json)
+    assert json.loads(payload_json) == payload
+
+
+def test_snapshot_rejects_exact_provider_row_cap_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("unique_primary_key_snapshot", max_rows_per_attempt=2),
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(
+                _calendar_row("20260717"),
+                _calendar_row("20260718", symbol="000001.SZ"),
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
+def test_partition_accepts_unique_rows_matching_requested_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("single_partition_unique_primary_key"),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717"), _calendar_row("20260717", symbol="000001.SZ")),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    assert provider_fact_count(db_path) == 2
+
+
+@pytest.mark.parametrize("trade_date", ("20260718", "2026071x"))
+def test_partition_rejects_wrong_or_invalid_trade_date_before_storage(
+    trade_date: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("single_partition_unique_primary_key"),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row(trade_date),),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
+def test_partition_rejects_duplicate_primary_key_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("single_partition_unique_primary_key"),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717"), _calendar_row("20260717")),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
+def test_partition_preserves_unusable_nonpartition_key_degraded_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry("single_partition_unique_primary_key"),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717", symbol=""),),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    with sqlite3.connect(db_path) as conn:
+        row_key, issues_json = conn.execute(
+            "SELECT row_key, quality_issues_json FROM provider_dataset_rows"
+        ).fetchone()
+    assert row_key.startswith("payload:")
+    assert "snapshot_key_fallback:blank:ts_code" in json.loads(issues_json)
+
+
+def test_partition_rejects_exact_provider_row_cap_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry(
+            "single_partition_unique_primary_key", max_rows_per_attempt=2
+        ),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(
+                _calendar_row("20260717"),
+                _calendar_row("20260717", symbol="000001.SZ"),
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert output["error_codes"] == ["validation_failed"]
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
+def test_partition_empty_is_recorded_empty_when_policy_allows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=_strategy_registry(
+            "single_partition_unique_primary_key", empty_data_policy="allowed"
+        ),
+        request_window={"trade_date": "20260717"},
+        outcome=ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_EMPTY
+    assert output["state"] == "empty"
+    assert provider_fact_count(db_path) == 0
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchone() == (
+            "empty",
+        )
+
+
+def test_success_empty_and_failed_receipts_keep_config_hash_and_honest_data_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry = _strategy_registry("unique_primary_key_snapshot", empty_data_policy="allowed")
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    expected_hash = native_ingest._config_hash(dataset, binding)  # noqa: SLF001
+
+    _, _, _, success_db = _run(
+        monkeypatch,
+        capsys,
+        tmp_path / "success",
+        registry=registry,
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260718"),),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+    _, _, _, empty_db = _run(
+        monkeypatch,
+        capsys,
+        tmp_path / "empty",
+        registry=registry,
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+    _, _, _, failed_db = _run(
+        monkeypatch,
+        capsys,
+        tmp_path / "failed",
+        registry=registry,
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(_calendar_row("20260717"), _calendar_row("20260718")),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    for db_path, expected_data_through in (
+        (success_db, "20260718"),
+        (empty_db, None),
+        (failed_db, None),
+    ):
+        with sqlite3.connect(db_path) as conn:
+            notes = json.loads(
+                conn.execute("SELECT notes FROM market_ingest_runs").fetchone()[0]
+            )
+        assert notes["config_hash"] == expected_hash
+        assert notes["data_through"] == expected_data_through
+
+
 def test_response_completeness_contract_changes_the_ingest_config_hash() -> None:
     registry = _registry()
     dataset = registry.resolve("cn.synthetic.runner")
@@ -570,6 +997,45 @@ def test_response_completeness_contract_changes_the_ingest_config_hash() -> None
         response_completeness=replace(
             binding.response_completeness,
             fixed_field_matches=MappingProxyType({}),
+        ),
+    )
+
+    assert native_ingest._config_hash(  # noqa: SLF001
+        dataset, binding
+    ) != native_ingest._config_hash(dataset, changed_binding)  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    (
+        ("strategy", "single_partition_unique_primary_key"),
+        ("date_field", "trade_date"),
+        ("request_start_key", "start_date"),
+        ("request_end_key", "end_date"),
+        ("partition_field", "trade_date"),
+        ("request_partition_key", "trade_date"),
+        ("fixed_field_matches", MappingProxyType({"ts_code": "symbol"})),
+        ("reject_at_row_limit", True),
+    ),
+)
+def test_response_completeness_every_behavioral_field_changes_config_hash(
+    field_name: str,
+    changed_value: object,
+) -> None:
+    registry = _strategy_registry("unique_primary_key_snapshot")
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    assert binding.response_completeness is not None
+    binding = replace(
+        binding,
+        response_completeness=replace(
+            binding.response_completeness, reject_at_row_limit=False
+        ),
+    )
+    changed_binding = replace(
+        binding,
+        response_completeness=replace(
+            binding.response_completeness, **{field_name: changed_value}
         ),
     )
 

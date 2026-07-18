@@ -268,6 +268,9 @@ def _snapshot_key(
         if value is None:
             issues.append(f"snapshot_key_fallback:null:{field_name}")
             return f"payload:{payload_hash}"
+        if value == "":
+            issues.append(f"snapshot_key_fallback:blank:{field_name}")
+            return f"payload:{payload_hash}"
         if isinstance(value, (dict, list, tuple)):
             issues.append(f"snapshot_key_fallback:non_scalar:{field_name}")
             return f"payload:{payload_hash}"

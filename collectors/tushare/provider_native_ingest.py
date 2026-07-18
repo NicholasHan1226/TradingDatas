@@ -156,8 +156,15 @@ def _config_hash(dataset: DatasetDefinition, binding: ProviderBinding) -> str:
                     binding.response_completeness.request_start_key
                 ),
                 "request_end_key": binding.response_completeness.request_end_key,
+                "partition_field": binding.response_completeness.partition_field,
+                "request_partition_key": (
+                    binding.response_completeness.request_partition_key
+                ),
                 "fixed_field_matches": dict(
                     binding.response_completeness.fixed_field_matches
+                ),
+                "reject_at_row_limit": (
+                    binding.response_completeness.reject_at_row_limit
                 ),
             }
         ),
@@ -243,6 +250,7 @@ def _strict_yyyymmdd(value: object) -> datetime:
 
 
 def _validate_response_completeness(
+    dataset: DatasetDefinition,
     binding: ProviderBinding,
     rows: tuple[Mapping[str, Any], ...],
     *,
@@ -252,8 +260,47 @@ def _validate_response_completeness(
     policy = binding.response_completeness
     if policy is None:
         raise ValueError("provider response completeness contract is missing")
-    if policy.strategy != "one_row_per_calendar_date":
+
+    for row in rows:
+        for row_field, request_param in policy.fixed_field_matches.items():
+            if row.get(row_field) != resolved_params[request_param]:
+                raise ValueError("provider response fixed field does not match request")
+    if (
+        policy.reject_at_row_limit
+        and binding.max_rows_per_attempt is not None
+        and len(rows) >= binding.max_rows_per_attempt
+    ):
+        raise ValueError("provider response reached the declared row limit")
+
+    if policy.strategy == "one_row_per_calendar_date":
+        _validate_calendar_dates(
+            policy,
+            rows,
+            request_window=request_window,
+        )
+    elif policy.strategy == "unique_primary_key_snapshot":
+        _validate_unique_primary_keys(dataset, rows)
+    elif policy.strategy == "single_partition_unique_primary_key":
+        _validate_single_partition(
+            dataset,
+            policy,
+            rows,
+            resolved_params=resolved_params,
+        )
+    else:
         raise ValueError("provider response completeness strategy is unsupported")
+
+
+def _validate_calendar_dates(
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+) -> None:
+    if policy.date_field is None:
+        raise ValueError("provider response calendar date field is missing")
+    if policy.request_start_key is None or policy.request_end_key is None:
+        raise ValueError("provider response calendar request keys are missing")
 
     start = _strict_yyyymmdd(request_window[policy.request_start_key])
     end = _strict_yyyymmdd(request_window[policy.request_end_key])
@@ -274,11 +321,69 @@ def _validate_response_completeness(
         if normalized_date in observed_dates:
             raise ValueError("provider response contains a duplicate calendar date")
         observed_dates.add(normalized_date)
-        for row_field, request_param in policy.fixed_field_matches.items():
-            if row.get(row_field) != resolved_params[request_param]:
-                raise ValueError("provider response fixed field does not match request")
     if observed_dates != expected_dates:
         raise ValueError("provider response is missing a requested calendar date")
+
+
+def _usable_primary_key(
+    dataset: DatasetDefinition,
+    row: Mapping[str, Any],
+) -> tuple[tuple[str, str | int | float], ...] | None:
+    fields = {field.name: field for field in dataset.fields}
+    key: list[tuple[str, str | int | float]] = []
+    for field_name in dataset.primary_key:
+        if field_name not in row:
+            return None
+        value = row[field_name]
+        if value is None or value == "" or isinstance(value, (dict, list, tuple)):
+            return None
+        field = fields[field_name]
+        if field.logical_type == "text":
+            usable = isinstance(value, str)
+        elif field.logical_type == "integer":
+            usable = isinstance(value, int) and not isinstance(value, bool)
+        else:
+            usable = (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and (not isinstance(value, float) or math.isfinite(value))
+            )
+        if not usable:
+            return None
+        key.append((field_name, value))
+    return tuple(key)
+
+
+def _validate_unique_primary_keys(
+    dataset: DatasetDefinition,
+    rows: tuple[Mapping[str, Any], ...],
+) -> None:
+    observed: set[tuple[tuple[str, str | int | float], ...]] = set()
+    for row in rows:
+        identity = _usable_primary_key(dataset, row)
+        if identity is None:
+            continue
+        if identity in observed:
+            raise ValueError("provider response contains duplicate primary key")
+        observed.add(identity)
+
+
+def _validate_single_partition(
+    dataset: DatasetDefinition,
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    resolved_params: Mapping[str, str],
+) -> None:
+    if policy.partition_field is None or policy.request_partition_key is None:
+        raise ValueError("provider response partition contract is incomplete")
+    expected = _strict_yyyymmdd(resolved_params[policy.request_partition_key])
+    expected_value = expected.strftime("%Y%m%d")
+    for row in rows:
+        actual = _strict_yyyymmdd(row.get(policy.partition_field))
+        if actual.strftime("%Y%m%d") != expected_value:
+            raise ValueError("provider response partition does not match request")
+    _validate_unique_primary_keys(dataset, rows)
 
 
 def _context(
@@ -352,10 +457,7 @@ def collect_provider_native_dataset(
     outcome.validate_invariants()
 
     if outcome.state == "empty":
-        if (
-            binding.response_completeness is not None
-            or dataset.empty_data_policy == "forbidden"
-        ):
+        if dataset.empty_data_policy == "forbidden":
             return write_terminal_receipt(
                 db_path,
                 context=terminal_context,
@@ -384,6 +486,7 @@ def collect_provider_native_dataset(
     if binding.response_completeness is not None:
         try:
             _validate_response_completeness(
+                dataset,
                 binding,
                 outcome.rows,
                 request_window=normalized_window,

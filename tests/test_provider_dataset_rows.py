@@ -278,6 +278,30 @@ def test_snapshot_missing_key_uses_tagged_payload_fallback(tmp_path: Path) -> No
     )
 
 
+def test_snapshot_blank_text_key_uses_tagged_payload_fallback_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    payload = _row(ts_code="")
+
+    ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[payload],
+        context=_context(dataset, binding),
+    )
+    fact = _fact(db_path)
+
+    assert fact["row_key"].startswith("payload:")
+    assert json.loads(fact["payload_json"]) == payload
+    assert "snapshot_key_fallback:blank:ts_code" in json.loads(
+        fact["quality_issues_json"]
+    )
+
+
 def test_same_attempt_conflicting_snapshot_key_rejects_everything(
     tmp_path: Path,
 ) -> None:
