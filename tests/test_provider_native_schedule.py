@@ -480,6 +480,81 @@ def test_collector_credentials_are_environment_only_with_protected_home(
     scheduler._validated_collector_credentials()
 
 
+def test_scheduler_pins_the_reviewed_current_pointer_to_its_immutable_release(
+    tmp_path: Path,
+) -> None:
+    release = tmp_path / "releases" / ("a" * 40)
+    registry = release / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+    registry.parent.mkdir(parents=True)
+    registry.write_text("version: 1\n", encoding="utf-8")
+    current = tmp_path / "current"
+    current.symlink_to(release, target_is_directory=True)
+    environment = {
+        scheduler.DATASET_REGISTRY_PATH_ENV: str(
+            current / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+        )
+    }
+
+    pinned = scheduler._pin_runtime_registry_to_release(
+        environment=environment,
+        current_root=current,
+        release_root=release,
+    )
+
+    assert pinned == registry
+    assert environment[scheduler.DATASET_REGISTRY_PATH_ENV] == str(registry)
+
+
+def test_scheduler_rejects_a_current_pointer_to_another_release(
+    tmp_path: Path,
+) -> None:
+    expected_release = tmp_path / "releases" / ("a" * 40)
+    expected_registry = (
+        expected_release / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+    )
+    expected_registry.parent.mkdir(parents=True)
+    expected_registry.write_text("version: 1\n", encoding="utf-8")
+    other_release = tmp_path / "releases" / ("b" * 40)
+    other_release.mkdir(parents=True)
+    current = tmp_path / "current"
+    current.symlink_to(other_release, target_is_directory=True)
+    environment = {
+        scheduler.DATASET_REGISTRY_PATH_ENV: str(
+            current / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+        )
+    }
+
+    with pytest.raises(ValueError, match="another release"):
+        scheduler._pin_runtime_registry_to_release(
+            environment=environment,
+            current_root=current,
+            release_root=expected_release,
+        )
+
+
+def test_scheduler_rejects_an_old_immutable_registry_after_current_moves(
+    tmp_path: Path,
+) -> None:
+    old_release = tmp_path / "releases" / ("a" * 40)
+    old_registry = old_release / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+    old_registry.parent.mkdir(parents=True)
+    old_registry.write_text("version: 1\n", encoding="utf-8")
+    active_release = tmp_path / "releases" / ("b" * 40)
+    active_registry = active_release / scheduler.PROVIDER_NATIVE_REGISTRY_RELATIVE
+    active_registry.parent.mkdir(parents=True)
+    active_registry.write_text("version: 1\n", encoding="utf-8")
+    current = tmp_path / "current"
+    current.symlink_to(active_release, target_is_directory=True)
+    environment = {scheduler.DATASET_REGISTRY_PATH_ENV: str(old_registry)}
+
+    with pytest.raises(ValueError, match="another release"):
+        scheduler._pin_runtime_registry_to_release(
+            environment=environment,
+            current_root=current,
+            release_root=old_release,
+        )
+
+
 @pytest.mark.parametrize(
     "environment",
     [

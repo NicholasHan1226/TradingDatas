@@ -20,7 +20,7 @@ from pathlib import Path
 import subprocess
 import sys
 from types import MappingProxyType
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, MutableMapping
 from urllib.parse import urlsplit
 import uuid
 from zoneinfo import ZoneInfo
@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from dataset_registry import (  # noqa: E402
+    DATASET_REGISTRY_PATH_ENV,
     DatasetRegistry,
     ProviderBinding,
     load_runtime_dataset_registry,
@@ -46,6 +47,10 @@ from storage.receipt_projection import (  # noqa: E402
 
 DEFAULT_SCHEDULE_CONFIG = ROOT / "config" / "provider_native_schedule.yaml"
 DEFAULT_LOCK_PATH = Path("/run/sharedsignals/provider-native-collect.lock")
+INTERNAL_CURRENT_ROOT = Path("/opt/investment/releases/sharedsignals-v1/current")
+PROVIDER_NATIVE_REGISTRY_RELATIVE = Path(
+    "config/provider_native_dataset_registry.yaml"
+)
 _ROOT_KEYS = frozenset({"version", "dataset_timeout_seconds", "cadences"})
 _CADENCE_KEYS = frozenset(
     {
@@ -254,6 +259,39 @@ def _validated_collector_credentials() -> None:
         or parsed.fragment
     ):
         raise ValueError("collector API URL is invalid")
+
+
+def _pin_runtime_registry_to_release(
+    *,
+    environment: MutableMapping[str, str] = os.environ,
+    current_root: Path = INTERNAL_CURRENT_ROOT,
+    release_root: Path = ROOT,
+) -> Path:
+    """Bind the stable systemd pointer to this immutable release.
+
+    The public profile is Git-owned and therefore names ``current``.  Before
+    loading the registry or spawning collectors, the scheduler proves that
+    pointer resolves to the release containing this executable, then replaces
+    only its process-local environment value with the immutable target.
+    """
+
+    stable_path = current_root / PROVIDER_NATIVE_REGISTRY_RELATIVE
+    immutable_path = release_root / PROVIDER_NATIVE_REGISTRY_RELATIVE
+    configured = environment.get(DATASET_REGISTRY_PATH_ENV)
+    if configured not in {str(stable_path), str(immutable_path)}:
+        raise ValueError("runtime dataset registry pointer is invalid")
+    if release_root.resolve(strict=True) != release_root:
+        raise ValueError("scheduler release root is not canonical")
+    if not immutable_path.is_file() or immutable_path.is_symlink():
+        raise ValueError("immutable runtime dataset registry is invalid")
+    if immutable_path.resolve(strict=True) != immutable_path:
+        raise ValueError("immutable runtime dataset registry is not canonical")
+    if current_root.resolve(strict=True) != release_root:
+        raise ValueError("runtime current pointer targets another release")
+    if stable_path.resolve(strict=True) != immutable_path:
+        raise ValueError("runtime registry pointer targets another artifact")
+    environment[DATASET_REGISTRY_PATH_ENV] = str(immutable_path)
+    return immutable_path
 
 
 def _clock(value: object, label: str) -> time:
@@ -677,6 +715,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.execute:
             _validated_collector_credentials()
+            _pin_runtime_registry_to_release()
         with exclusive_schedule_lock(args.lock_path):
             result = run_schedule(
                 registry=load_runtime_dataset_registry(),
