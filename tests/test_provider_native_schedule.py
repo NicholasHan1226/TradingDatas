@@ -480,6 +480,28 @@ def test_collector_credentials_are_environment_only_with_protected_home(
     scheduler._validated_collector_credentials()
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://api.quicksync.cn",
+        "https://example.invalid",
+        "https://api.quicksync.cn:444",
+        "https://api.quicksync.cn/provider",
+    ],
+)
+def test_collector_credentials_reject_unapproved_provider_routes(
+    url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUICKSYNC_API_URL", url)
+    monkeypatch.setenv("QUICKSYNC_TOKEN", "collector-secret")
+    for name in scheduler._FORBIDDEN_COLLECTOR_CREDENTIALS:
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(ValueError, match="collector API URL is invalid"):
+        scheduler._validated_collector_credentials()
+
+
 def test_scheduler_pins_the_reviewed_current_pointer_to_its_immutable_release(
     tmp_path: Path,
 ) -> None:

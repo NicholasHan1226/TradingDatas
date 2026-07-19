@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import ssl
 import urllib.error
 import urllib.parse
 from dataclasses import FrozenInstanceError
@@ -60,6 +61,108 @@ def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
     monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
     return requests
+
+
+def test_quicksync_transport_requires_verified_tls13(monkeypatch):
+    observed: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout, *, context):
+        observed.update(
+            {
+                "context": context,
+                "timeout": timeout,
+                "url": request.full_url,
+            }
+        )
+        return _Response(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["value"], "items": [[1]]},
+            }
+        )
+
+    monkeypatch.setattr(
+        tushare_common,
+        "get_api_url",
+        lambda: tushare_common.QUICKSYNC_API_URL,
+    )
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+
+    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
+
+    context = observed["context"]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.check_hostname is True
+    assert context.verify_mode is ssl.CERT_REQUIRED
+    assert context.minimum_version is ssl.TLSVersion.TLSv1_3
+    assert context.maximum_version is ssl.TLSVersion.TLSv1_3
+    assert observed["timeout"] == 30
+    assert observed["url"] == tushare_common.QUICKSYNC_API_URL
+    assert outcome.state == "success"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://api.quicksync.cn",
+        "https://api.quicksync.cn:444",
+        "https://api.quicksync.cn/provider",
+    ],
+)
+def test_quicksync_transport_rejects_unverified_routes_before_token_send(
+    monkeypatch,
+    url,
+):
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: url)
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unverified QuickSync route must fail before network access"
+        ),
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.error_code == "provider_error"
+
+
+def test_non_quicksync_transport_keeps_default_verified_urlopen(monkeypatch):
+    observed: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout, **kwargs):
+        observed.update(
+            {
+                "kwargs": kwargs,
+                "timeout": timeout,
+                "url": request.full_url,
+            }
+        )
+        return _Response(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": ["value"], "items": [[1]]},
+            }
+        )
+
+    monkeypatch.setattr(
+        tushare_common,
+        "get_api_url",
+        lambda: "https://api.tushare.pro",
+    )
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+
+    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
+
+    assert observed == {
+        "kwargs": {},
+        "timeout": 30,
+        "url": "https://api.tushare.pro",
+    }
+    assert outcome.state == "success"
 
 
 def test_tushare_rows_outcome_preserves_success_rows_and_is_frozen(monkeypatch):

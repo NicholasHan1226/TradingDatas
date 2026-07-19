@@ -38,6 +38,7 @@ from dataset_registry import (  # noqa: E402
     ProviderBinding,
     load_runtime_dataset_registry,
 )
+from collectors.tushare.tushare_common import QUICKSYNC_API_URL  # noqa: E402
 from runtime_paths import marketdata_sqlite_path  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
     RuntimeProjectionError,
@@ -249,11 +250,17 @@ def _validated_collector_credentials() -> None:
     ):
         raise ValueError("collector credentials are unavailable")
     parsed = urlsplit(api_url)
+    approved_host = urlsplit(QUICKSYNC_API_URL).hostname
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("collector API URL is invalid") from None
     if (
         parsed.scheme != "https"
-        or parsed.hostname is None
+        or parsed.hostname != approved_host
         or parsed.username is not None
         or parsed.password is not None
+        or port not in {None, 443}
         or parsed.path not in {"", "/"}
         or parsed.query
         or parsed.fragment

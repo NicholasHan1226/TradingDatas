@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import ssl
 import time
 import unicodedata
 import urllib.error
@@ -1409,6 +1410,37 @@ def get_api_url() -> str:
     return get_tushare_config()["api_url"]
 
 
+def _provider_urlopen(
+    request: urllib.request.Request,
+    *,
+    timeout: float,
+) -> Any:
+    """Open one provider request with the provider's verified TLS contract."""
+
+    parsed = urllib.parse.urlsplit(request.full_url)
+    quicksync_host = urllib.parse.urlsplit(QUICKSYNC_API_URL).hostname
+    if parsed.hostname == quicksync_host:
+        try:
+            port = parsed.port
+        except ValueError:
+            raise RuntimeError("QuickSync provider URL is invalid") from None
+        if (
+            parsed.scheme != "https"
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 443}
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise RuntimeError("QuickSync provider requires verified HTTPS")
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        context.maximum_version = ssl.TLSVersion.TLSv1_3
+        return urllib.request.urlopen(request, timeout=timeout, context=context)
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
 def tushare_data(
     api_name: str,
     params: dict[str, Any] | None = None,
@@ -1431,7 +1463,7 @@ def tushare_data(
         )
         try:
             body = _loads_provider_json(
-                urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8")
+                _provider_urlopen(req, timeout=timeout).read().decode("utf-8")
             )
             if body.get("code") != 0:
                 if not strict:
@@ -1479,7 +1511,7 @@ def tushare_rows_outcome(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        response_payload = urllib.request.urlopen(request, timeout=30).read()
+        response_payload = _provider_urlopen(request, timeout=30).read()
     except Exception as exc:
         return ProviderCallOutcome(
             state="failed",
