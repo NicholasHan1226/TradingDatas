@@ -59,7 +59,7 @@ def test_compiler_deterministically_rebuilds_checked_in_target_registry() -> Non
     )
 
 
-def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -> None:
+def test_target_registry_uses_git_owned_activation_and_is_provider_native() -> None:
     registry = dataset_registry.load_dataset_registry(
         dataset_registry.PROVIDER_NATIVE_DATASET_REGISTRY_PATH
     )
@@ -85,8 +85,27 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
     ]
     assert len(provider_native) == 3
     assert unresolved == ()
-    assert all(binding.activation_state == "paused" for binding in bindings)
-    assert all(binding.entitlement_state != "active" for binding in bindings)
+    activation_document = yaml.safe_load(
+        (ROOT / "config" / "provider_native_activation.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    activation_by_key = {
+        (item["dataset_id"], item["provider"]): item
+        for item in activation_document["activations"]
+    }
+    assert {
+        (dataset.dataset_id, binding.provider): (
+            binding.entitlement_state,
+            binding.activation_state,
+        )
+        for dataset, binding in zip(registry.datasets, bindings, strict=True)
+    } == {
+        key: (item["entitlement_state"], item["activation_state"])
+        for key, item in activation_by_key.items()
+    }
+    assert all(binding.activation_state == "active" for binding in bindings)
+    assert all(binding.entitlement_state == "active" for binding in bindings)
     contract_bundle = yaml.safe_load(
         (ROOT / "config" / "tushare_upstream_contracts.v1.yaml").read_text(
             encoding="utf-8"

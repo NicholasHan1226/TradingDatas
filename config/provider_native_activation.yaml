@@ -1,0 +1,17 @@
+version: 1
+activations:
+- dataset_id: cn.equity.daily
+  provider: tushare
+  entitlement_state: active
+  activation_state: active
+  evidence_ref: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+- dataset_id: cn.equity.security_master
+  provider: tushare
+  entitlement_state: active
+  activation_state: active
+  evidence_ref: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+- dataset_id: cn.market.trade_calendar
+  provider: tushare
+  entitlement_state: active
+  activation_state: active
+  evidence_ref: server-evidence/20260718T123044-4088a2d

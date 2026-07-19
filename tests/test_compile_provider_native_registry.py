@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from dataset_registry import load_dataset_registry
+import tools.compile_provider_native_registry as compiler_module
 from tools.compile_provider_native_registry import (
     compile_provider_native_registry,
     load_upstream_contract_bundle,
@@ -23,6 +24,7 @@ PLAN_PATH = ROOT / "config" / "tushare_capability_plan.yaml"
 COLLECTOR_CONFIG_PATH = ROOT / "collectors" / "tushare" / "config.yaml"
 CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 TARGET_REGISTRY_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
+ACTIVATION_PATH = ROOT / "config" / "provider_native_activation.yaml"
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
@@ -145,6 +147,28 @@ def _documents() -> tuple[dict[str, object], dict[str, object], dict[str, object
         }
     }
     return registry, plan, collector
+
+
+def _activation_document(
+    *,
+    dataset_id: str = "cn.synthetic.compiler",
+    provider: str = "tushare",
+    entitlement_state: str = "active",
+    activation_state: str = "active",
+    evidence_ref: object = "server-evidence/synthetic-reviewed-canary",
+) -> dict[str, object]:
+    return {
+        "version": 1,
+        "activations": [
+            {
+                "dataset_id": dataset_id,
+                "provider": provider,
+                "entitlement_state": entitlement_state,
+                "activation_state": activation_state,
+                "evidence_ref": evidence_ref,
+            }
+        ],
+    }
 
 
 def _contract_bundle(*, contracts: list[dict[str, object]] | None = None) -> dict[str, object]:
@@ -308,6 +332,163 @@ def test_compiler_replaces_legacy_schema_with_reviewed_provider_contract(tmp_pat
     }
     assert report["resolved"][0]["source_document_sha256"] == "b" * 64
     assert report["resolved"][0]["reviewed_type_overrides"] == ["is_open"]
+
+
+def test_activation_manifest_is_the_only_state_authority_and_missing_defaults_paused() -> (
+    None
+):
+    registry, plan, collector = _documents()
+    source = deepcopy(registry)
+
+    dormant, dormant_report = compile_provider_native_registry(
+        registry,
+        plan,
+        collector,
+        _contract_bundle(),
+    )
+    active, active_report = compile_provider_native_registry(
+        registry,
+        plan,
+        collector,
+        _contract_bundle(),
+        activation_document=_activation_document(),
+    )
+
+    dormant_binding = dormant["datasets"][0]["provider_bindings"][0]
+    active_binding = active["datasets"][0]["provider_bindings"][0]
+    assert registry == source
+    assert dormant_binding["entitlement_state"] == "unknown"
+    assert dormant_binding["activation_state"] == "paused"
+    assert dormant_report["resolved"][0]["activation_evidence_ref"] is None
+    assert active_binding["entitlement_state"] == "active"
+    assert active_binding["activation_state"] == "active"
+    assert active_report["resolved"][0]["activation_evidence_ref"] == (
+        "server-evidence/synthetic-reviewed-canary"
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda document: document.update(version=2),
+            "activation manifest.version",
+        ),
+        (
+            lambda document: document.update(version=1.0),
+            "activation manifest.version",
+        ),
+        (
+            lambda document: document.update(extra=True),
+            "activation manifest.*unknown key",
+        ),
+        (
+            lambda document: document["activations"].append(  # type: ignore[union-attr]
+                deepcopy(document["activations"][0])  # type: ignore[index]
+            ),
+            "duplicate activation",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                dataset_id="cn.synthetic.unknown"
+            ),
+            "unknown activation target",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                provider="other"
+            ),
+            "unknown activation target",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                entitlement_state="maybe"
+            ),
+            "entitlement_state",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                activation_state="scheduled"
+            ),
+            "activation_state",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                entitlement_state="locked"
+            ),
+            "activation_state=active requires entitlement_state=active",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                evidence_ref=None
+            ),
+            "active activation requires evidence_ref",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                evidence_ref="/private/tmp/secret"
+            ),
+            "evidence_ref",
+        ),
+        (
+            lambda document: document["activations"][0].update(  # type: ignore[index]
+                evidence_ref="server-evidence/../secret"
+            ),
+            "evidence_ref",
+        ),
+    ],
+)
+def test_activation_manifest_rejects_invalid_duplicate_and_unknown_entries(
+    mutator: object,
+    message: str,
+) -> None:
+    registry, plan, collector = _documents()
+    activation = _activation_document()
+    mutator(activation)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        compile_provider_native_registry(
+            registry,
+            plan,
+            collector,
+            _contract_bundle(),
+            activation_document=activation,
+        )
+
+
+def test_cli_rejects_duplicate_keys_anywhere_in_activation_yaml(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activation_path = tmp_path / "activation.yaml"
+    activation_path.write_text(
+        """\
+version: 1
+activations:
+- dataset_id: cn.equity.daily
+  provider: tushare
+  provider: tushare
+  entitlement_state: active
+  activation_state: active
+  evidence_ref: server-evidence/duplicate-key-repro
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        compiler_module,
+        "DEFAULT_ACTIVATION_PATH",
+        activation_path,
+    )
+
+    with pytest.raises(ValueError, match="duplicate YAML mapping key.*provider"):
+        compiler_module.main(
+            [
+                "--kind",
+                "report",
+                "--output",
+                str(tmp_path / "report.yaml"),
+            ]
+        )
 
 
 def test_missing_contract_is_absent_and_deterministically_unresolved() -> None:
@@ -524,12 +705,17 @@ def test_repository_bundle_resolves_stock_basic_and_daily_contracts_deterministi
     plan = _read_yaml(PLAN_PATH)
     collector = _read_yaml(COLLECTOR_CONFIG_PATH)
     contracts = _read_yaml(CONTRACT_PATH)
+    activation = _read_yaml(ACTIVATION_PATH)
 
     first_candidate, first_report = compile_provider_native_registry(
-        registry, plan, collector, contracts
+        registry, plan, collector, contracts, activation_document=activation
     )
     second_candidate, second_report = compile_provider_native_registry(
-        deepcopy(registry), deepcopy(plan), deepcopy(collector), deepcopy(contracts)
+        deepcopy(registry),
+        deepcopy(plan),
+        deepcopy(collector),
+        deepcopy(contracts),
+        activation_document=deepcopy(activation),
     )
 
     assert render_compilation(first_candidate, first_report, kind="bundle") == (
@@ -668,7 +854,13 @@ def test_compiler_accepts_snapshot_and_single_partition_contracts_and_reports_wi
 def test_cli_uses_frozen_bundle_and_never_changes_inputs(tmp_path: Path) -> None:
     before = {
         path: _sha256(path)
-        for path in (REGISTRY_PATH, PLAN_PATH, COLLECTOR_CONFIG_PATH, CONTRACT_PATH)
+        for path in (
+            REGISTRY_PATH,
+            PLAN_PATH,
+            COLLECTOR_CONFIG_PATH,
+            CONTRACT_PATH,
+            ACTIVATION_PATH,
+        )
     }
     output = tmp_path / "compiled.yaml"
     command = [

@@ -23,6 +23,7 @@ from copy import deepcopy
 import hashlib
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
 import tempfile
 from typing import Any, Mapping, Sequence
@@ -41,6 +42,7 @@ DEFAULT_COLLECTOR_CONFIG_PATH = (
 DEFAULT_UPSTREAM_CONTRACTS_PATH = (
     REPOSITORY_ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 )
+DEFAULT_ACTIVATION_PATH = REPOSITORY_ROOT / "config" / "provider_native_activation.yaml"
 
 PROVIDER = "tushare"
 PROVIDER_ADAPTER_VERSION = "tushare-provider-native.v1"
@@ -146,6 +148,23 @@ _TYPE_OVERRIDE_KEYS = frozenset(
         "reason",
         "evidence",
     }
+)
+_ACTIVATION_ROOT_KEYS = frozenset({"version", "activations"})
+_ACTIVATION_ENTRY_KEYS = frozenset(
+    {
+        "dataset_id",
+        "provider",
+        "entitlement_state",
+        "activation_state",
+        "evidence_ref",
+    }
+)
+_ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
+_ACTIVATION_STATES = frozenset({"active", "paused"})
+_EVIDENCE_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}")
+_SENSITIVE_EVIDENCE_PATTERN = re.compile(
+    r"(?:secret|token|password|authorization|bearer|credential|api[_-]?key)",
+    re.IGNORECASE,
 )
 
 
@@ -316,6 +335,70 @@ def _required_bool(value: object, label: str) -> bool:
     if type(value) is not bool:
         raise ValueError(f"{label} must be a boolean")
     return value
+
+
+def _activation_index(
+    document: Mapping[str, Any] | None,
+) -> dict[tuple[str, str], dict[str, str | None]]:
+    if document is None:
+        return {}
+    root = _mapping(deepcopy(document), "activation manifest")
+    _reject_contract_keys(root, _ACTIVATION_ROOT_KEYS, "activation manifest")
+    if type(root["version"]) is not int or root["version"] != 1:
+        raise ValueError("activation manifest.version must be integer 1")
+    index: dict[tuple[str, str], dict[str, str | None]] = {}
+    for entry_index, raw_entry in enumerate(
+        _sequence(root["activations"], "activation manifest.activations")
+    ):
+        label = f"activation manifest.activations[{entry_index}]"
+        entry = _mapping(raw_entry, label)
+        _reject_contract_keys(entry, _ACTIVATION_ENTRY_KEYS, label)
+        dataset_id = _required_text(entry["dataset_id"], f"{label}.dataset_id")
+        provider = _required_text(entry["provider"], f"{label}.provider")
+        entitlement_state = _required_text(
+            entry["entitlement_state"], f"{label}.entitlement_state"
+        )
+        activation_state = _required_text(
+            entry["activation_state"], f"{label}.activation_state"
+        )
+        if entitlement_state not in _ENTITLEMENT_STATES:
+            raise ValueError(f"{label}.entitlement_state is unsupported")
+        if activation_state not in _ACTIVATION_STATES:
+            raise ValueError(f"{label}.activation_state is unsupported")
+        raw_evidence_ref = entry["evidence_ref"]
+        if raw_evidence_ref is None:
+            evidence_ref = None
+        else:
+            evidence_ref = _required_text(raw_evidence_ref, f"{label}.evidence_ref")
+            path = PurePosixPath(evidence_ref)
+            if (
+                evidence_ref != str(path)
+                or path.is_absolute()
+                or ".." in path.parts
+                or _EVIDENCE_REF_PATTERN.fullmatch(evidence_ref) is None
+                or _SENSITIVE_EVIDENCE_PATTERN.search(evidence_ref) is not None
+            ):
+                raise ValueError(
+                    f"{label}.evidence_ref must be a non-sensitive relative reference"
+                )
+        if activation_state == "active":
+            if entitlement_state != "active":
+                raise ValueError(
+                    f"{label} activation_state=active requires entitlement_state=active"
+                )
+            if evidence_ref is None:
+                raise ValueError(f"{label} active activation requires evidence_ref")
+        key = (dataset_id, provider)
+        if key in index:
+            raise ValueError(
+                f"duplicate activation for dataset/provider: {dataset_id}/{provider}"
+            )
+        index[key] = {
+            "entitlement_state": entitlement_state,
+            "activation_state": activation_state,
+            "evidence_ref": evidence_ref,
+        }
+    return index
 
 
 def _required_positive_int(value: object, label: str) -> int:
@@ -919,6 +1002,7 @@ def compile_provider_native_registry(
     collector_config: Mapping[str, Any],
     upstream_contracts: Mapping[str, Any],
     *,
+    activation_document: Mapping[str, Any] | None = None,
     source_sha256: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return a deterministic candidate registry and fail-closed report."""
@@ -926,6 +1010,7 @@ def compile_provider_native_registry(
     source_registry = _mapping(deepcopy(registry_document), "registry")
     datasets = _sequence(source_registry.get("datasets"), "registry.datasets")
     normalized_bundle = load_upstream_contract_bundle(upstream_contracts)
+    activation_index = _activation_index(activation_document)
     contract_index = {
         contract["dataset_id"]: contract for contract in normalized_bundle["contracts"]
     }
@@ -1091,6 +1176,13 @@ def compile_provider_native_registry(
             }
         )
         binding = deepcopy(tushare_bindings[0])
+        activation = activation_index.get((dataset_id, PROVIDER))
+        binding["entitlement_state"] = (
+            "unknown" if activation is None else activation["entitlement_state"]
+        )
+        binding["activation_state"] = (
+            "paused" if activation is None else activation["activation_state"]
+        )
         binding["adapter_version"] = PROVIDER_ADAPTER_VERSION
         binding["target_tables"] = [PROVIDER_NATIVE_TABLE]
         binding["request_template"] = contract["request_template"]
@@ -1135,8 +1227,24 @@ def compile_provider_native_registry(
                 "response_completeness_strategy": contract[
                     "response_completeness"
                 ]["strategy"],
+                "activation_evidence_ref": None
+                if activation is None
+                else activation["evidence_ref"],
             }
         )
+
+    compiled_activation_keys = {
+        (dataset["dataset_id"], binding["provider"])
+        for dataset in candidate["datasets"]
+        for binding in dataset["provider_bindings"]
+    }
+    unknown_activation_keys = sorted(set(activation_index) - compiled_activation_keys)
+    if unknown_activation_keys:
+        targets = ", ".join(
+            f"{dataset_id}/{provider}"
+            for dataset_id, provider in unknown_activation_keys
+        )
+        raise ValueError(f"unknown activation target(s): {targets}")
 
     for api_name in sorted(set(plan_index) - registry_api_names):
         conflicts.append(
@@ -1176,8 +1284,8 @@ def compile_provider_native_registry(
         )
     )
     report: dict[str, Any] = {
-        "report_version": 2,
-        "compiler_contract": "provider-native-registry-compiler.v2",
+        "report_version": 3,
+        "compiler_contract": "provider-native-registry-compiler.v3",
         "sources": dict(sorted((source_sha256 or {}).items())),
         "upstream_contract_bundle": {
             "bundle_id": normalized_bundle["bundle_id"],
@@ -1229,6 +1337,43 @@ def render_compilation(
 def _load_yaml(path: Path, label: str) -> dict[str, Any]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     return _mapping(raw, label)
+
+
+class _DuplicateKeySafeLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_unique_mapping(
+    loader: yaml.SafeLoader,
+    node: yaml.MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as exc:
+            raise ValueError("activation YAML mapping key must be hashable") from exc
+        if duplicate:
+            raise ValueError(f"duplicate YAML mapping key in activation manifest: {key}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_DuplicateKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def _load_activation_yaml(path: Path) -> dict[str, Any]:
+    raw = yaml.load(
+        path.read_text(encoding="utf-8"),
+        Loader=_DuplicateKeySafeLoader,
+    )
+    return _mapping(raw, "activation manifest")
 
 
 def _sha256(path: Path) -> str:
@@ -1286,6 +1431,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.capability_plan,
         args.collector_config,
         args.upstream_contracts,
+        DEFAULT_ACTIVATION_PATH,
     )
     for path in input_paths:
         if not path.is_file():
@@ -1302,12 +1448,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "config/tushare_upstream_contracts.v1.yaml": _sha256(
             args.upstream_contracts
         ),
+        "config/provider_native_activation.yaml": _sha256(DEFAULT_ACTIVATION_PATH),
     }
     candidate, report = compile_provider_native_registry(
         _load_yaml(args.registry, "registry"),
         _load_yaml(args.capability_plan, "capability plan"),
         _load_yaml(args.collector_config, "collector config"),
         _load_yaml(args.upstream_contracts, "upstream contracts"),
+        activation_document=_load_activation_yaml(DEFAULT_ACTIVATION_PATH),
         source_sha256=source_hashes,
     )
     if args.kind in {"candidate", "bundle"}:
