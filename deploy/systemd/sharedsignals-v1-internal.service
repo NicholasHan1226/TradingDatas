@@ -1,0 +1,36 @@
+[Unit]
+Description=SharedSignals provider-native V1 internal API
+After=network.target
+ConditionPathIsRegular=/etc/sharedsignals/provider-native-internal.secrets
+ConditionPathIsRegular=/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite
+
+[Service]
+Type=simple
+User=marketgraph
+Group=marketgraph
+WorkingDirectory=/opt/investment/releases/sharedsignals-v1/current
+EnvironmentFile=/opt/investment/releases/sharedsignals-v1/current/deploy/provider_native_internal.env
+EnvironmentFile=/etc/sharedsignals/provider-native-internal.secrets
+Environment="SHAREDSIGNALS_LOCALHOST_BYPASS=0"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/investment/releases/sharedsignals-v1/current/deploy/provider_native_internal_release.sh serve
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/opt/investment-data/sharedsignals-v1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
