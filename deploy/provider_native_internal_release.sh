@@ -15,6 +15,7 @@ RELEASE_LOCK="/run/lock/sharedsignals-v1-internal-release.lock"
 DATABASE="/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite"
 DATABASE_LOCK="/opt/investment-data/sharedsignals-v1/read_model/.provider_native.sqlite.read_model_store.lock"
 MAINTENANCE_LOCK="/opt/investment-data/sharedsignals-v1/locks/read_model_maintenance.lock"
+RUNTIME_ROOT="/opt/investment-data/sharedsignals-v1"
 LEGACY_DATABASE="/opt/investment-data/SharedSignals/runtime/read_model/marketdata.sqlite"
 SECRET_ENV="/etc/sharedsignals/provider-native-internal.secrets"
 COLLECTOR_SECRET_ENV="/etc/sharedsignals/provider-native-collector.secrets"
@@ -636,15 +637,22 @@ validate_current_pointer_optional() {
 
 runtime_store_presence() {
   local count=0 path
+  if [ ! -e "$RUNTIME_ROOT" ] && [ ! -L "$RUNTIME_ROOT" ]; then
+    printf '%s' absent
+    return 0
+  fi
+  [ -d "$RUNTIME_ROOT" ] && [ ! -L "$RUNTIME_ROOT" ] || {
+    printf '%s' partial
+    return 0
+  }
   for path in "$DATABASE" "$DATABASE_LOCK" "$MAINTENANCE_LOCK"; do
     if [ -e "$path" ] || [ -L "$path" ]; then
       count=$((count + 1))
     fi
   done
   case "$count" in
-    0) printf '%s' absent ;;
     3) printf '%s' complete ;;
-    *) die "provider-native runtime store is partially initialized" ;;
+    *) printf '%s' partial ;;
   esac
 }
 
@@ -657,16 +665,30 @@ require_runtime_store_complete() {
 
 
 validate_runtime_store() {
-  local service_uid path mode owner database_identity legacy_identity
+  local service_uid service_gid path mode owner group links database_identity legacy_identity
   service_uid="$(id -u marketgraph 2>/dev/null)" \
     || die "marketgraph service account is unavailable"
+  service_gid="$(id -g marketgraph 2>/dev/null)" \
+    || die "marketgraph service group is unavailable"
+  for path in "$RUNTIME_ROOT" "$(dirname "$DATABASE")" "$(dirname "$MAINTENANCE_LOCK")"; do
+    [ -d "$path" ] && [ ! -L "$path" ] \
+      && [ "$(canonical_existing_path "$path")" = "$path" ] \
+      && [ "$(stat_uid "$path")" = "$service_uid" ] \
+      && [ "$(stat_gid "$path")" = "$service_gid" ] \
+      && [ "$(stat_mode "$path")" = "700" ] \
+      || die "provider-native runtime directory is unsafe"
+  done
   for path in "$DATABASE" "$DATABASE_LOCK" "$MAINTENANCE_LOCK"; do
     require_regular_no_link "$path" "provider-native runtime artifact"
     mode="$(stat_mode "$path")"
     owner="$(stat_uid "$path")"
+    group="$(stat_gid "$path")"
+    links="$(stat_nlink "$path")"
     [ "$mode" = "600" ] || die "provider-native runtime artifacts must use mode 0600"
     [ "$owner" = "$service_uid" ] \
       || die "provider-native runtime artifacts must belong to the service account"
+    [ "$group" = "$service_gid" ] && [ "$links" = "1" ] \
+      || die "provider-native runtime artifact binding is invalid"
   done
   require_regular_no_link "$LEGACY_DATABASE" "legacy database"
   database_identity="$(stat_identity "$DATABASE")"
@@ -707,6 +729,19 @@ try:
         raise SystemExit(78)
 finally:
     conn.close()
+PY
+  PYTHONPATH="$SOURCE_ROOT" "$VENV_PYTHON" - \
+    "$DATABASE" "$LEGACY_DATABASE" "$MAINTENANCE_LOCK" <<'PY'
+import sys
+from pathlib import Path
+
+from tools.init_provider_native_store import initialize_provider_native_store
+
+initialize_provider_native_store(
+    Path(sys.argv[1]),
+    legacy_db_path=Path(sys.argv[2]),
+    maintenance_lock_path=Path(sys.argv[3]),
+)
 PY
 }
 
@@ -957,6 +992,8 @@ preflight() {
   store_state="$(runtime_store_presence)"
   if [ "$store_state" = "complete" ]; then
     validate_runtime_store
+  elif [ "$store_state" = "partial" ]; then
+    die "provider-native runtime root is partially initialized"
   fi
   require_regular_no_link "$LEGACY_DATABASE" "legacy database"
   validate_current_pointer_optional
@@ -1285,31 +1322,15 @@ prepare_release_directories() {
 }
 
 
-prepare_runtime_directory() {
-  local path="$1" service_uid service_gid
-  service_uid="$(id -u marketgraph 2>/dev/null)" \
-    || die "marketgraph service account is unavailable"
-  service_gid="$(id -g marketgraph 2>/dev/null)" \
-    || die "marketgraph service group is unavailable"
-  if [ ! -e "$path" ] && [ ! -L "$path" ]; then
-    install -d -o "$service_uid" -g "$service_gid" -m 0700 "$path"
-  fi
-  [ -d "$path" ] && [ ! -L "$path" ] \
-    || die "runtime directory is unsafe"
-  [ "$(canonical_existing_path "$path")" = "$path" ] \
-    || die "runtime directory is not canonical"
-  [ "$(stat_uid "$path")" = "$service_uid" ] \
-    && [ "$(stat_mode "$path")" = "700" ] \
-    || die "runtime directory ownership or mode is invalid"
-}
-
-
-prepare_runtime_directories() {
-  local root
-  root="$(dirname "$(dirname "$DATABASE")")"
-  prepare_runtime_directory "$root"
-  prepare_runtime_directory "$(dirname "$DATABASE")"
-  prepare_runtime_directory "$(dirname "$MAINTENANCE_LOCK")"
+validate_runtime_parent() {
+  local parent mode
+  parent="$(dirname "$RUNTIME_ROOT")"
+  [ -d "$parent" ] && [ ! -L "$parent" ] \
+    && [ "$(canonical_existing_path "$parent")" = "$parent" ] \
+    && [ "$(stat_uid "$parent")" = "0" ] \
+    || die "runtime parent is unsafe"
+  mode="$(stat_mode "$parent")"
+  (( (8#$mode & 0022) == 0 )) || die "runtime parent mode is unsafe"
 }
 
 
@@ -1334,8 +1355,6 @@ init_store_release() {
   exec 9>"$RELEASE_LOCK"
   flock -n 9 || die "another internal release operation is active"
   preflight "$expected_commit"
-  [ "$(runtime_store_presence)" = "absent" ] \
-    || die "init-store requires an entirely absent provider-native store"
   prepare_release_directories
   release_path="$(build_release "$expected_commit")"
   validate_release "$release_path" "$expected_commit"
@@ -1346,7 +1365,7 @@ init_store_release() {
     "$release_path" \
     "$("$SHA256SUM" "$release_path/$INIT_RELATIVE" | awk '{print $1}')" >>"$state"
   chmod 0600 "$state"
-  prepare_runtime_directories
+  validate_runtime_parent
   output="$(PYTHONPATH="$release_path" "$VENV_PYTHON" "$release_path/tools/init_provider_native_store.py")" \
     || die "provider-native store initialization failed"
   unset output

@@ -39,6 +39,47 @@ def _bash(script: str, *, cwd: Path | None = None) -> subprocess.CompletedProces
     )
 
 
+def _crash_atomic_store_initializer(
+    boundary: str,
+    database_path: Path,
+    legacy_path: Path,
+    maintenance_lock_path: Path,
+) -> subprocess.CompletedProcess[str]:
+    script = """
+import os
+import sys
+from pathlib import Path
+
+import tools.init_provider_native_store as init_store
+
+target = sys.argv[1]
+def crash_boundary(boundary):
+    if boundary == target:
+        os._exit(88)
+
+init_store._initialization_boundary = crash_boundary
+init_store.initialize_provider_native_store(
+    Path(sys.argv[2]),
+    legacy_db_path=Path(sys.argv[3]),
+    maintenance_lock_path=Path(sys.argv[4]),
+)
+"""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            boundary,
+            str(database_path),
+            str(legacy_path),
+            str(maintenance_lock_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_git_owned_internal_profile_is_fixed_loopback_and_contains_no_secrets() -> None:
     lines = [
         line
@@ -160,8 +201,6 @@ def test_init_creates_one_new_store_and_required_coordination_locks(
     runtime = tmp_path / "runtime"
     read_model = runtime / "read_model"
     locks = runtime / "locks"
-    read_model.mkdir(parents=True, mode=0o700)
-    locks.mkdir(mode=0o700)
     db_path = read_model / "provider_native.sqlite"
     maintenance_lock = locks / "read_model_maintenance.lock"
 
@@ -221,7 +260,7 @@ def test_init_refuses_existing_or_linked_database(
         db_path.symlink_to(target)
     before = db_path.read_bytes()
 
-    with pytest.raises(StoreInitializationError, match="already exists"):
+    with pytest.raises(StoreInitializationError, match="partial or unsafe"):
         initialize_provider_native_store(
             db_path,
             legacy_db_path=tmp_path / "legacy.sqlite",
@@ -249,7 +288,7 @@ def test_init_refuses_legacy_path_and_unsafe_coordination_artifacts(
     unsafe_target.touch()
     database_lock.symlink_to(unsafe_target)
 
-    with pytest.raises(StoreInitializationError, match="coordination artifact"):
+    with pytest.raises(StoreInitializationError, match="partial or unsafe"):
         initialize_provider_native_store(
             db_path,
             legacy_db_path=tmp_path / "legacy.sqlite",
@@ -257,13 +296,13 @@ def test_init_refuses_legacy_path_and_unsafe_coordination_artifacts(
         )
     assert not db_path.exists()
 
-    database_lock.unlink()
-    legacy = tmp_path / "legacy.sqlite"
+    runtime = tmp_path / "fresh-runtime"
+    legacy = runtime / "read_model" / "provider_native.sqlite"
     with pytest.raises(StoreInitializationError, match="legacy database"):
         initialize_provider_native_store(
             legacy,
             legacy_db_path=legacy,
-            maintenance_lock_path=locks / "read_model_maintenance.lock",
+            maintenance_lock_path=runtime / "locks" / "read_model_maintenance.lock",
         )
     assert not legacy.exists()
 
@@ -277,8 +316,6 @@ def test_init_compensates_all_new_artifacts_when_schema_creation_fails(
     runtime = tmp_path / "runtime"
     read_model = runtime / "read_model"
     locks = runtime / "locks"
-    read_model.mkdir(parents=True)
-    locks.mkdir()
     db_path = read_model / "provider_native.sqlite"
     maintenance_lock = locks / "read_model_maintenance.lock"
     monkeypatch.setattr(init_store, "SCHEMA_SQL", "CREATE TABLE broken (")
@@ -292,13 +329,11 @@ def test_init_compensates_all_new_artifacts_when_schema_creation_fails(
             maintenance_lock_path=maintenance_lock,
         )
 
-    assert not db_path.exists()
-    assert not maintenance_lock.exists()
-    assert not (read_model / ".provider_native.sqlite.read_model_store.lock").exists()
-    assert not list(read_model.glob(".provider_native.sqlite.init-*"))
+    assert not runtime.exists()
+    assert len(list(tmp_path.glob(".runtime.init-*"))) == 1
 
 
-def test_init_compensates_published_store_when_directory_fsync_fails(
+def test_init_leaves_unpublished_staging_when_exclusive_publish_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -307,26 +342,12 @@ def test_init_compensates_published_store_when_directory_fsync_fails(
     runtime = tmp_path / "runtime"
     read_model = runtime / "read_model"
     locks = runtime / "locks"
-    read_model.mkdir(parents=True)
-    locks.mkdir()
     db_path = read_model / "provider_native.sqlite"
     maintenance_lock = locks / "read_model_maintenance.lock"
-    real_fsync_directory = init_store._fsync_directory_fd
-    calls = 0
-
-    def fail_first_directory_fsync(
-        binding: init_store._DirectoryBinding,
-    ) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise OSError("simulated directory fsync failure")
-        real_fsync_directory(binding)
-
     monkeypatch.setattr(
         init_store,
-        "_fsync_directory_fd",
-        fail_first_directory_fsync,
+        "_publish_directory_noreplace",
+        lambda *_args: (_ for _ in ()).throw(OSError("simulated publish failure")),
     )
     with pytest.raises(
         init_store.StoreInitializationError, match="initialization failed"
@@ -337,116 +358,148 @@ def test_init_compensates_published_store_when_directory_fsync_fails(
             maintenance_lock_path=maintenance_lock,
         )
 
-    assert not db_path.exists()
-    assert not maintenance_lock.exists()
-    assert not (read_model / ".provider_native.sqlite.read_model_store.lock").exists()
-    assert not list(read_model.glob(".provider_native.sqlite.init-*"))
+    assert not runtime.exists()
+    assert len(list(tmp_path.glob(".runtime.init-*"))) == 1
 
 
 @pytest.mark.parametrize(
-    "swap_boundary",
+    "crash_boundary",
     (
-        "after_database_lock",
-        "after_maintenance_lock",
-        "after_temp_create",
+        "after_staging_root",
+        "after_staging_directories",
+        "after_coordination_files",
         "after_sqlite_build",
-        "after_database_link",
-        "after_directory_fsync",
-        "before_return",
+        "before_publish",
+        "after_publish",
+        "after_parent_fsync",
     ),
 )
-def test_init_fails_cleanly_when_validated_parent_is_replaced(
+def test_atomic_root_init_recovers_after_process_crash(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    swap_boundary: str,
+    crash_boundary: str,
 ) -> None:
-    import tools.init_provider_native_store as init_store
+    from tools.init_provider_native_store import initialize_provider_native_store
 
     runtime = tmp_path / "runtime"
-    read_model = runtime / "read_model"
-    renamed_read_model = runtime / "read_model-old"
-    locks = runtime / "locks"
-    read_model.mkdir(parents=True, mode=0o700)
-    locks.mkdir(mode=0o700)
-    db_path = read_model / "provider_native.sqlite"
-    maintenance_lock = locks / "read_model_maintenance.lock"
+    db_path = runtime / "read_model" / "provider_native.sqlite"
+    maintenance_lock = runtime / "locks" / "read_model_maintenance.lock"
     legacy = tmp_path / "legacy.sqlite"
     legacy.write_bytes(b"legacy-must-not-change")
-    legacy_before = (legacy.stat().st_dev, legacy.stat().st_ino, legacy.read_bytes())
-    swapped = False
-
-    def swap_parent(boundary: str) -> None:
-        nonlocal swapped
-        if boundary != swap_boundary or swapped:
-            return
-        read_model.rename(renamed_read_model)
-        read_model.mkdir(mode=0o700)
-        swapped = True
-
-    monkeypatch.setattr(
-        init_store,
-        "_initialization_boundary",
-        swap_parent,
-        raising=False,
+    legacy_before = (
+        legacy.stat().st_dev,
+        legacy.stat().st_ino,
+        legacy.read_bytes(),
     )
 
-    with pytest.raises(init_store.StoreInitializationError, match="binding"):
-        init_store.initialize_provider_native_store(
-            db_path,
-            legacy_db_path=legacy,
-            maintenance_lock_path=maintenance_lock,
-        )
+    crashed = _crash_atomic_store_initializer(
+        crash_boundary,
+        db_path,
+        legacy,
+        maintenance_lock,
+    )
+    assert crashed.returncode == 88, crashed.stdout + crashed.stderr
+    published_identity = None
+    if runtime.exists():
+        published_identity = (runtime.stat().st_dev, runtime.stat().st_ino)
 
-    assert swapped
-    assert list(read_model.iterdir()) == []
-    assert list(renamed_read_model.iterdir()) == []
-    assert list(locks.iterdir()) == []
+    result = initialize_provider_native_store(
+        db_path,
+        legacy_db_path=legacy,
+        maintenance_lock_path=maintenance_lock,
+    )
+
+    assert result.database_path == db_path
+    assert db_path.is_file()
+    assert maintenance_lock.is_file()
+    if published_identity is not None:
+        assert (runtime.stat().st_dev, runtime.stat().st_ino) == published_identity
     assert (legacy.stat().st_dev, legacy.stat().st_ino, legacy.read_bytes()) == (
         legacy_before
     )
 
 
-def test_init_compensation_never_removes_replacement_directory_artifacts(
+def test_atomic_root_init_is_idempotent_and_preserves_later_valid_data(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import tools.init_provider_native_store as init_store
+    from tools.init_provider_native_store import initialize_provider_native_store
 
     runtime = tmp_path / "runtime"
-    read_model = runtime / "read_model"
-    renamed_read_model = runtime / "read_model-old"
-    locks = runtime / "locks"
-    read_model.mkdir(parents=True, mode=0o700)
-    locks.mkdir(mode=0o700)
-    db_path = read_model / "provider_native.sqlite"
-    database_lock = read_model / ".provider_native.sqlite.read_model_store.lock"
-    maintenance_lock = locks / "read_model_maintenance.lock"
-    unrelated_bytes = b"replacement-owner-artifact"
+    db_path = runtime / "read_model" / "provider_native.sqlite"
+    database_lock = (
+        runtime / "read_model" / (".provider_native.sqlite.read_model_store.lock")
+    )
+    maintenance_lock = runtime / "locks" / "read_model_maintenance.lock"
+    legacy = tmp_path / "legacy.sqlite"
+    legacy.write_bytes(b"legacy")
+    first = initialize_provider_native_store(
+        db_path,
+        legacy_db_path=legacy,
+        maintenance_lock_path=maintenance_lock,
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO market_ingest_runs "
+            "(run_id, started_at, finished_at, status, source, rows_read, "
+            "rows_written, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("later", "2026-07-19T00:00:00Z", None, "running", "test", 0, 0, None),
+        )
+    before = {
+        path: (path.stat().st_dev, path.stat().st_ino, path.read_bytes())
+        for path in (db_path, database_lock, maintenance_lock)
+    }
 
-    def swap_parent(boundary: str) -> None:
-        if boundary != "after_database_lock" or renamed_read_model.exists():
-            return
-        read_model.rename(renamed_read_model)
-        read_model.mkdir(mode=0o700)
-        database_lock.write_bytes(unrelated_bytes)
-
-    monkeypatch.setattr(
-        init_store,
-        "_initialization_boundary",
-        swap_parent,
-        raising=False,
+    second = initialize_provider_native_store(
+        db_path,
+        legacy_db_path=legacy,
+        maintenance_lock_path=maintenance_lock,
     )
 
-    with pytest.raises(init_store.StoreInitializationError, match="binding"):
-        init_store.initialize_provider_native_store(
-            db_path,
+    assert second == first
+    assert {
+        path: (path.stat().st_dev, path.stat().st_ino, path.read_bytes())
+        for path in before
+    } == before
+
+
+def test_atomic_root_init_ignores_but_never_deletes_stale_staging(
+    tmp_path: Path,
+) -> None:
+    from tools.init_provider_native_store import initialize_provider_native_store
+
+    stale = tmp_path / ".runtime.init-untrusted"
+    stale.mkdir()
+    marker = stale / "must-remain"
+    marker.write_bytes(b"foreign")
+    runtime = tmp_path / "runtime"
+
+    initialize_provider_native_store(
+        runtime / "read_model" / "provider_native.sqlite",
+        legacy_db_path=tmp_path / "legacy.sqlite",
+        maintenance_lock_path=runtime / "locks" / "read_model_maintenance.lock",
+    )
+
+    assert marker.read_bytes() == b"foreign"
+
+
+def test_atomic_root_init_refuses_partial_final_root_without_mutation(
+    tmp_path: Path,
+) -> None:
+    from tools.init_provider_native_store import StoreInitializationError
+    from tools.init_provider_native_store import initialize_provider_native_store
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    marker = runtime / "must-remain"
+    marker.write_bytes(b"foreign")
+
+    with pytest.raises(StoreInitializationError, match="partial"):
+        initialize_provider_native_store(
+            runtime / "read_model" / "provider_native.sqlite",
             legacy_db_path=tmp_path / "legacy.sqlite",
-            maintenance_lock_path=maintenance_lock,
+            maintenance_lock_path=runtime / "locks" / "read_model_maintenance.lock",
         )
 
-    assert database_lock.read_bytes() == unrelated_bytes
-    assert list(renamed_read_model.iterdir()) == []
-    assert list(locks.iterdir()) == []
+    assert marker.read_bytes() == b"foreign"
 
 
 def test_init_cli_has_no_database_path_selector() -> None:
@@ -474,6 +527,7 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
     assert 'SERVICE="sharedsignals-v1-internal.service"' in source
     assert 'LEGACY_SERVICE="sharedsignals-api.service"' in source
     assert 'CURRENT_LINK="/opt/investment/releases/sharedsignals-v1/current"' in source
+    assert 'RUNTIME_ROOT="/opt/investment-data/sharedsignals-v1"' in source
     assert f'DATABASE="{NEW_DB}"' in source
     assert f'LEGACY_DATABASE="{OLD_DB}"' in source
     assert 'SECRET_ENV="/etc/sharedsignals/provider-native-internal.secrets"' in source
@@ -491,6 +545,10 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
     assert "flock -n" in source
     assert '"$SHA256SUM" -c' in source
     assert "PRAGMA quick_check" in source
+    assert (
+        "from tools.init_provider_native_store import initialize_provider_native_store"
+        in source
+    )
     assert "provider_dataset_rows" in source
     assert "market_ingest_runs" in source
     assert "ln -s" in source and "mv -Tf" in source
@@ -506,6 +564,12 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
     assert "trap 'handle_apply_error \"$state\"' ERR" in source
     assert "automatic rollback failed" in source
     assert '"$release_path/tools/init_provider_native_store.py"' in source
+    assert "validate_runtime_parent" in source
+    assert "prepare_runtime_directories" not in source
+    init_store_source = source.split("init_store_release() {", 1)[1].split(
+        "assert_ops_disabled_after_apply() {", 1
+    )[0]
+    assert "install -d" not in init_store_source
 
     serve_source = source.split("serve() {", 1)[1].split("usage() {", 1)[0]
     assert "validate_secret_env" not in serve_source
@@ -752,11 +816,15 @@ assert_legacy_identity {shlex.quote(str(state))}
 def test_runtime_store_presence_distinguishes_absent_complete_and_partial(
     tmp_path: Path,
 ) -> None:
-    db = tmp_path / "provider_native.sqlite"
-    db_lock = tmp_path / ".provider_native.sqlite.read_model_store.lock"
-    maintenance = tmp_path / "read_model_maintenance.lock"
+    runtime_root = tmp_path / "runtime"
+    db = runtime_root / "read_model" / "provider_native.sqlite"
+    db_lock = (
+        runtime_root / "read_model" / ".provider_native.sqlite.read_model_store.lock"
+    )
+    maintenance = runtime_root / "locks" / "read_model_maintenance.lock"
     prefix = (
         f"source {shlex.quote(str(RELEASE))}; "
+        f"RUNTIME_ROOT={shlex.quote(str(runtime_root))}; "
         f"DATABASE={shlex.quote(str(db))}; "
         f"DATABASE_LOCK={shlex.quote(str(db_lock))}; "
         f"MAINTENANCE_LOCK={shlex.quote(str(maintenance))}; "
@@ -765,10 +833,19 @@ def test_runtime_store_presence_distinguishes_absent_complete_and_partial(
     assert absent.returncode == 0, absent.stdout + absent.stderr
     assert absent.stdout == "absent"
 
-    db.touch()
+    runtime_root.mkdir()
     partial = _bash(prefix + "runtime_store_presence")
-    assert partial.returncode != 0
-    assert "partially initialized" in partial.stderr
+    assert partial.returncode == 0, partial.stdout + partial.stderr
+    assert partial.stdout == "partial"
+
+    db.parent.mkdir()
+    maintenance.parent.mkdir()
+    db.touch()
+    db_lock.touch()
+    maintenance.touch()
+    complete = _bash(prefix + "runtime_store_presence")
+    assert complete.returncode == 0, complete.stdout + complete.stderr
+    assert complete.stdout == "complete"
 
 
 def test_enable_ops_requires_latest_success_receipt_and_fact_conservation(

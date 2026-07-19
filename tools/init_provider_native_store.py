@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Create the isolated provider-native SQLite authority exactly once.
+"""Create the isolated provider-native SQLite runtime root exactly once.
 
-This bootstrap intentionally has no database-path CLI selector.  Production
-paths are fixed below; tests call :func:`initialize_provider_native_store`
-directly with isolated paths.  Existing databases are never migrated or
-modified.
+The complete runtime tree is built in a random sibling directory and published
+with an operating-system no-replace rename.  A crash therefore leaves the
+fixed runtime root either absent or complete; abandoned sibling staging trees
+are reported but are never guessed at or automatically deleted.
 """
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
+import errno
 import fcntl
 import json
 import os
@@ -18,6 +20,7 @@ import pwd
 import secrets
 import sqlite3
 import stat
+import sys
 
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import (
@@ -46,6 +49,7 @@ class StoreInitializationResult:
     database_path: Path
     database_lock_path: Path
     maintenance_lock_path: Path
+    stale_staging_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -55,15 +59,9 @@ class _DirectoryBinding:
     descriptor: int
     device: int
     inode: int
-
-
-@dataclass(frozen=True)
-class _OwnedArtifact:
-    binding: _DirectoryBinding
-    name: str
-    canonical_path: Path
-    device: int
-    inode: int
+    owner_uid: int
+    owner_gid: int
+    mode: int
 
 
 def _runtime_owner_ids() -> tuple[int, int]:
@@ -83,6 +81,10 @@ def _trusted_owner_ids() -> set[int]:
     return {0, os.geteuid(), runtime_uid}
 
 
+def _identity(metadata: os.stat_result) -> tuple[int, int]:
+    return metadata.st_dev, metadata.st_ino
+
+
 def _require_canonical_absolute(path: Path, label: str) -> Path:
     raw = os.fspath(path)
     if not path.is_absolute() or os.path.normpath(raw) != raw:
@@ -90,65 +92,49 @@ def _require_canonical_absolute(path: Path, label: str) -> Path:
     return path
 
 
-def _require_safe_existing_directory(path: Path, label: str) -> Path:
-    path = _require_canonical_absolute(path, label)
+def _open_runtime_parent(path: Path) -> _DirectoryBinding:
+    path = _require_canonical_absolute(path, "runtime parent")
     try:
         metadata = path.lstat()
+        canonical = path.resolve(strict=True)
     except OSError as exc:
-        raise StoreInitializationError(f"{label} directory is unavailable") from exc
+        raise StoreInitializationError("runtime parent is unavailable") from exc
     if (
-        not stat.S_ISDIR(metadata.st_mode)
+        canonical != path
+        or not stat.S_ISDIR(metadata.st_mode)
         or stat.S_ISLNK(metadata.st_mode)
         or metadata.st_uid not in _trusted_owner_ids()
         or bool(metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
     ):
-        raise StoreInitializationError(f"{label} directory is unsafe")
+        raise StoreInitializationError("runtime parent is unsafe")
     try:
-        canonical = path.resolve(strict=True)
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
     except OSError as exc:
-        raise StoreInitializationError(f"{label} directory is unavailable") from exc
-    if canonical != path:
-        raise StoreInitializationError(f"{label} directory is not canonical")
-    return canonical
-
-
-def _identity(metadata: os.stat_result) -> tuple[int, int]:
-    return metadata.st_dev, metadata.st_ino
-
-
-def _open_directory_binding(path: Path, label: str) -> _DirectoryBinding:
-    canonical = _require_safe_existing_directory(path, label)
-    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
+        raise StoreInitializationError("runtime parent binding is unavailable") from exc
     try:
-        descriptor = os.open(canonical, flags)
-    except OSError as exc:
-        raise StoreInitializationError(
-            f"{label} directory binding is unavailable"
-        ) from exc
-    try:
-        metadata = os.fstat(descriptor)
-        path_metadata = canonical.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or _identity(metadata) != _identity(path_metadata)
-            or metadata.st_uid not in _trusted_owner_ids()
-            or bool(metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
-        ):
-            raise StoreInitializationError(f"{label} directory binding is unsafe")
-        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        observed = os.fstat(descriptor)
+        if _identity(observed) != _identity(metadata):
+            raise StoreInitializationError("runtime parent binding changed")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
         return _DirectoryBinding(
-            path=canonical,
-            label=label,
+            path=path,
+            label="runtime parent",
             descriptor=descriptor,
-            device=metadata.st_dev,
-            inode=metadata.st_ino,
+            device=observed.st_dev,
+            inode=observed.st_ino,
+            owner_uid=observed.st_uid,
+            owner_gid=observed.st_gid,
+            mode=stat.S_IMODE(observed.st_mode),
         )
     except BaseException:
         os.close(descriptor)
         raise
 
 
-def _close_directory_binding(binding: _DirectoryBinding) -> None:
+def _close_binding(binding: _DirectoryBinding) -> None:
     try:
         fcntl.flock(binding.descriptor, fcntl.LOCK_UN)
     except OSError:
@@ -156,12 +142,10 @@ def _close_directory_binding(binding: _DirectoryBinding) -> None:
     try:
         os.close(binding.descriptor)
     except OSError:
-        # The initializer is a bounded process; process exit releases a file
-        # description whose close status is indeterminate after an OS error.
         pass
 
 
-def _require_directory_binding(binding: _DirectoryBinding) -> None:
+def _require_binding(binding: _DirectoryBinding) -> None:
     try:
         descriptor_metadata = os.fstat(binding.descriptor)
         path_metadata = binding.path.lstat()
@@ -177,172 +161,173 @@ def _require_directory_binding(binding: _DirectoryBinding) -> None:
         or _identity(path_metadata) != expected
         or not stat.S_ISDIR(path_metadata.st_mode)
         or stat.S_ISLNK(path_metadata.st_mode)
-        or path_metadata.st_uid not in _trusted_owner_ids()
-        or bool(path_metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+        or descriptor_metadata.st_uid != binding.owner_uid
+        or descriptor_metadata.st_gid != binding.owner_gid
+        or stat.S_IMODE(descriptor_metadata.st_mode) != binding.mode
+        or path_metadata.st_uid != binding.owner_uid
+        or path_metadata.st_gid != binding.owner_gid
+        or stat.S_IMODE(path_metadata.st_mode) != binding.mode
     ):
         raise StoreInitializationError(f"{binding.label} directory binding changed")
 
 
 def _initialization_boundary(_boundary: str) -> None:
-    """Deterministic test seam before every parent-identity revalidation."""
+    """Deterministic crash/race seam used by the isolated test suite."""
 
 
 def _checkpoint(boundary: str, *bindings: _DirectoryBinding) -> None:
     _initialization_boundary(boundary)
     for binding in bindings:
-        _require_directory_binding(binding)
+        _require_binding(binding)
 
 
-def _stat_at(binding: _DirectoryBinding, name: str) -> os.stat_result:
-    return os.stat(
-        name,
-        dir_fd=binding.descriptor,
-        follow_symlinks=False,
-    )
-
-
-def _require_absent_at(
-    binding: _DirectoryBinding,
+def _open_directory_at(
+    parent: _DirectoryBinding,
     name: str,
+    path: Path,
     label: str,
-) -> None:
-    try:
-        _stat_at(binding, name)
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        raise StoreInitializationError(f"{label} is unavailable") from exc
-    raise StoreInitializationError(f"{label} already exists")
-
-
-def _artifact_from_descriptor(
-    binding: _DirectoryBinding,
-    name: str,
-    canonical_path: Path,
-    descriptor: int,
-) -> _OwnedArtifact:
-    metadata = os.fstat(descriptor)
-    if not stat.S_ISREG(metadata.st_mode):
-        raise StoreInitializationError("created runtime artifact is not a regular file")
-    return _OwnedArtifact(
-        binding=binding,
-        name=name,
-        canonical_path=canonical_path,
-        device=metadata.st_dev,
-        inode=metadata.st_ino,
-    )
-
-
-def _artifact_at(
-    binding: _DirectoryBinding,
-    name: str,
-    canonical_path: Path,
-) -> _OwnedArtifact:
-    metadata = _stat_at(binding, name)
-    if not stat.S_ISREG(metadata.st_mode):
-        raise StoreInitializationError(
-            "published runtime artifact is not a regular file"
-        )
-    return _OwnedArtifact(
-        binding=binding,
-        name=name,
-        canonical_path=canonical_path,
-        device=metadata.st_dev,
-        inode=metadata.st_ino,
-    )
-
-
-def _same_artifact(metadata: os.stat_result, artifact: _OwnedArtifact) -> bool:
-    return _identity(metadata) == (artifact.device, artifact.inode)
-
-
-def _unlink_owned_at(artifact: _OwnedArtifact) -> None:
-    try:
-        metadata = _stat_at(artifact.binding, artifact.name)
-    except FileNotFoundError:
-        return
-    if not _same_artifact(metadata, artifact):
-        return
-    os.unlink(artifact.name, dir_fd=artifact.binding.descriptor)
-
-
-def _unlink_owned_canonical(artifact: _OwnedArtifact) -> None:
-    try:
-        metadata = artifact.canonical_path.lstat()
-    except FileNotFoundError:
-        return
-    if not _same_artifact(metadata, artifact):
-        return
-    artifact.canonical_path.unlink()
-
-
-def _cleanup_owned_artifact(artifact: _OwnedArtifact) -> None:
-    errors: list[OSError] = []
-    try:
-        _unlink_owned_at(artifact)
-    except OSError as exc:
-        errors.append(exc)
-    try:
-        _unlink_owned_canonical(artifact)
-    except OSError as exc:
-        errors.append(exc)
-    try:
-        remaining = _stat_at(artifact.binding, artifact.name)
-    except FileNotFoundError:
-        remaining = None
-    except OSError as exc:
-        errors.append(exc)
-        remaining = None
-    if remaining is not None and _same_artifact(remaining, artifact):
-        errors.append(OSError("owned artifact remains in bound directory"))
-    try:
-        remaining = artifact.canonical_path.lstat()
-    except FileNotFoundError:
-        remaining = None
-    except OSError as exc:
-        errors.append(exc)
-        remaining = None
-    if remaining is not None and _same_artifact(remaining, artifact):
-        errors.append(OSError("owned artifact remains at canonical path"))
-    if errors:
-        raise errors[0]
-
-
-def _create_coordination_file_at(
-    binding: _DirectoryBinding,
-    name: str,
-    canonical_path: Path,
     *,
     owner_uid: int,
     owner_gid: int,
-) -> _OwnedArtifact:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW
-    descriptor = os.open(name, flags, 0o600, dir_fd=binding.descriptor)
-    artifact = _artifact_from_descriptor(binding, name, canonical_path, descriptor)
+    mode: int = 0o700,
+) -> _DirectoryBinding:
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=parent.descriptor,
+        )
+    except OSError as exc:
+        raise StoreInitializationError(f"{label} directory is unavailable") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        path_metadata = path.lstat()
+        if (
+            _identity(metadata) != _identity(path_metadata)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(path_metadata.st_mode)
+            or metadata.st_uid != owner_uid
+            or metadata.st_gid != owner_gid
+            or stat.S_IMODE(metadata.st_mode) != mode
+        ):
+            raise StoreInitializationError(f"{label} directory is unsafe")
+        return _DirectoryBinding(
+            path=path,
+            label=label,
+            descriptor=descriptor,
+            device=metadata.st_dev,
+            inode=metadata.st_ino,
+            owner_uid=metadata.st_uid,
+            owner_gid=metadata.st_gid,
+            mode=stat.S_IMODE(metadata.st_mode),
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _create_directory_at(
+    parent: _DirectoryBinding,
+    name: str,
+    path: Path,
+    label: str,
+    *,
+    owner_uid: int,
+    owner_gid: int,
+) -> _DirectoryBinding:
+    os.mkdir(name, 0o700, dir_fd=parent.descriptor)
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=parent.descriptor,
+    )
+    try:
+        os.fchmod(descriptor, 0o700)
+        os.fchown(descriptor, owner_uid, owner_gid)
+    finally:
+        os.close(descriptor)
+    return _open_directory_at(
+        parent,
+        name,
+        path,
+        label,
+        owner_uid=owner_uid,
+        owner_gid=owner_gid,
+    )
+
+
+def _write_all(descriptor: int, payload: bytes) -> None:
+    remaining = memoryview(payload)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written <= 0:
+            raise StoreInitializationError("runtime artifact write failed")
+        remaining = remaining[written:]
+
+
+def _create_file_at(
+    parent: _DirectoryBinding,
+    name: str,
+    *,
+    owner_uid: int,
+    owner_gid: int,
+    payload: bytes,
+) -> None:
+    descriptor = os.open(
+        name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+        0o600,
+        dir_fd=parent.descriptor,
+    )
     try:
         os.fchmod(descriptor, 0o600)
         os.fchown(descriptor, owner_uid, owner_gid)
+        _write_all(descriptor, payload)
         os.fsync(descriptor)
-    except BaseException:
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
-        _cleanup_owned_artifact(artifact)
-        raise
-    try:
+    finally:
         os.close(descriptor)
-    except BaseException:
-        _cleanup_owned_artifact(artifact)
-        raise
-    return artifact
+
+
+def _stat_regular_at(
+    parent: _DirectoryBinding,
+    name: str,
+    *,
+    owner_uid: int,
+    owner_gid: int,
+) -> os.stat_result:
+    metadata = os.stat(name, dir_fd=parent.descriptor, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_uid != owner_uid
+        or metadata.st_gid != owner_gid
+    ):
+        raise StoreInitializationError("provider-native runtime artifact is unsafe")
+    return metadata
+
+
+def _require_empty_regular_at(
+    parent: _DirectoryBinding,
+    name: str,
+    *,
+    owner_uid: int,
+    owner_gid: int,
+) -> None:
+    metadata = _stat_regular_at(
+        parent,
+        name,
+        owner_uid=owner_uid,
+        owner_gid=owner_gid,
+    )
+    if metadata.st_size != 0:
+        raise StoreInitializationError("coordination artifact is invalid")
 
 
 def _require_canonical_schema(conn: sqlite3.Connection) -> None:
-    quick_check = conn.execute("PRAGMA quick_check").fetchone()
-    if quick_check != ("ok",):
+    if conn.execute("PRAGMA quick_check").fetchone() != ("ok",):
         raise StoreInitializationError("SQLite quick_check failed")
-
     provider_columns = conn.execute(
         "PRAGMA table_xinfo(provider_dataset_rows)"
     ).fetchall()
@@ -384,100 +369,168 @@ def _build_database_payload() -> bytes:
         conn.executescript(SCHEMA_SQL)
         _require_canonical_schema(conn)
         payload = conn.serialize()
-    _validate_database_payload(payload)
+    if not payload:
+        raise StoreInitializationError("serialized SQLite payload is empty")
     return payload
 
 
-def _validate_database_payload(payload: bytes) -> None:
-    if not hasattr(sqlite3.Connection, "deserialize"):
-        raise StoreInitializationError("SQLite deserialization is unavailable")
-    if not payload or len(payload) > 64 * 1024 * 1024:
-        raise StoreInitializationError("serialized SQLite payload size is invalid")
-    with sqlite3.connect(":memory:", isolation_level=None) as conn:
-        conn.deserialize(payload)
+def _validate_database_file(path: Path, expected: tuple[int, int]) -> None:
+    before = path.lstat()
+    if _identity(before) != expected:
+        raise StoreInitializationError("provider-native database identity changed")
+    with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as conn:
         _require_canonical_schema(conn)
+    after = path.lstat()
+    if _identity(after) != expected:
+        raise StoreInitializationError("provider-native database identity changed")
 
 
-def _create_empty_artifact_at(
-    binding: _DirectoryBinding,
-    name: str,
-    canonical_path: Path,
-    *,
-    owner_uid: int,
-    owner_gid: int,
-) -> tuple[_OwnedArtifact, int]:
-    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW
-    descriptor = os.open(name, flags, 0o600, dir_fd=binding.descriptor)
-    artifact = _artifact_from_descriptor(binding, name, canonical_path, descriptor)
+def _legacy_snapshot(path: Path) -> tuple[int, int, int, int] | None:
     try:
-        os.fchmod(descriptor, 0o600)
-        os.fchown(descriptor, owner_uid, owner_gid)
-    except BaseException:
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
-        _cleanup_owned_artifact(artifact)
-        raise
-    return artifact, descriptor
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise StoreInitializationError("legacy database is unavailable") from exc
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise StoreInitializationError("legacy database is unsafe")
+    return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns
 
 
-def _write_payload(descriptor: int, payload: bytes) -> None:
-    os.ftruncate(descriptor, 0)
-    os.lseek(descriptor, 0, os.SEEK_SET)
-    remaining = memoryview(payload)
-    while remaining:
-        written = os.write(descriptor, remaining)
-        if written <= 0:
-            raise StoreInitializationError("serialized SQLite payload write failed")
-        remaining = remaining[written:]
-    os.fsync(descriptor)
-
-
-def _read_artifact_payload(artifact: _OwnedArtifact) -> bytes:
-    descriptor = os.open(
-        artifact.name,
-        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
-        dir_fd=artifact.binding.descriptor,
+def _stale_staging_names(parent: _DirectoryBinding, root_name: str) -> tuple[str, ...]:
+    prefix = f".{root_name}.init-"
+    return tuple(
+        sorted(
+            name for name in os.listdir(parent.descriptor) if name.startswith(prefix)
+        )
     )
-    try:
-        metadata = os.fstat(descriptor)
-        if not _same_artifact(metadata, artifact):
-            raise StoreInitializationError("published database identity changed")
-        if metadata.st_size <= 0 or metadata.st_size > 64 * 1024 * 1024:
-            raise StoreInitializationError("published database size is invalid")
-        chunks: list[bytes] = []
-        remaining = metadata.st_size
-        while remaining:
-            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
-            if not chunk:
-                raise StoreInitializationError("published database read was truncated")
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
-    finally:
-        os.close(descriptor)
 
 
-def _fsync_directory_fd(binding: _DirectoryBinding) -> None:
-    os.fsync(binding.descriptor)
-
-
-def _require_artifact_contract(
-    artifact: _OwnedArtifact,
-    *,
-    owner_uid: int,
-    expected_nlink: int = 1,
+def _publish_directory_noreplace(
+    parent_descriptor: int,
+    staging_name: str,
+    final_name: str,
 ) -> None:
-    metadata = _stat_at(artifact.binding, artifact.name)
-    if (
-        not _same_artifact(metadata, artifact)
-        or not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_nlink != expected_nlink
-        or stat.S_IMODE(metadata.st_mode) != 0o600
-        or metadata.st_uid != owner_uid
-    ):
-        raise StoreInitializationError("published runtime artifact is unsafe")
+    libc = ctypes.CDLL(None, use_errno=True)
+    source = os.fsencode(staging_name)
+    target = os.fsencode(final_name)
+    if sys.platform.startswith("linux"):
+        function = getattr(libc, "renameat2", None)
+        if function is None:
+            raise StoreInitializationError("renameat2 no-replace is unavailable")
+        function.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        result = function(parent_descriptor, source, parent_descriptor, target, 1)
+    elif sys.platform == "darwin":
+        function = getattr(libc, "renameatx_np", None)
+        if function is None:
+            raise StoreInitializationError("renameatx_np exclusive is unavailable")
+        function.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        result = function(parent_descriptor, source, parent_descriptor, target, 4)
+    else:
+        raise StoreInitializationError("exclusive directory publish is unavailable")
+    if result != 0:
+        error = ctypes.get_errno()
+        if error == errno.EEXIST:
+            raise FileExistsError(error, os.strerror(error), final_name)
+        raise OSError(error, os.strerror(error), final_name)
+
+
+def _validate_complete_store(
+    parent: _DirectoryBinding,
+    root_path: Path,
+    database_path: Path,
+    database_lock_path: Path,
+    maintenance_lock_path: Path,
+    legacy_snapshot: tuple[int, int, int, int] | None,
+    *,
+    runtime_uid: int,
+    runtime_gid: int,
+) -> StoreInitializationResult:
+    root = _open_directory_at(
+        parent,
+        root_path.name,
+        root_path,
+        "runtime root",
+        owner_uid=runtime_uid,
+        owner_gid=runtime_gid,
+    )
+    read_model: _DirectoryBinding | None = None
+    locks: _DirectoryBinding | None = None
+    try:
+        if set(os.listdir(root.descriptor)) != {"read_model", "locks"}:
+            raise StoreInitializationError("runtime root contents are invalid")
+        read_model = _open_directory_at(
+            root,
+            "read_model",
+            root_path / "read_model",
+            "read model",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        locks = _open_directory_at(
+            root,
+            "locks",
+            root_path / "locks",
+            "maintenance locks",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        if set(os.listdir(read_model.descriptor)) != {
+            database_path.name,
+            database_lock_path.name,
+        } or set(os.listdir(locks.descriptor)) != {maintenance_lock_path.name}:
+            raise StoreInitializationError("runtime root artifacts are invalid")
+        database_metadata = _stat_regular_at(
+            read_model,
+            database_path.name,
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        _require_empty_regular_at(
+            read_model,
+            database_lock_path.name,
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        _require_empty_regular_at(
+            locks,
+            maintenance_lock_path.name,
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        if (
+            legacy_snapshot is not None
+            and _identity(database_metadata) == legacy_snapshot[:2]
+        ):
+            raise StoreInitializationError(
+                "provider-native database aliases legacy data"
+            )
+        _validate_database_file(database_path, _identity(database_metadata))
+        _checkpoint("complete_store_validated", parent, root, read_model, locks)
+        return StoreInitializationResult(
+            database_path=database_path,
+            database_lock_path=database_lock_path,
+            maintenance_lock_path=maintenance_lock_path,
+            stale_staging_count=len(_stale_staging_names(parent, root_path.name)),
+        )
+    finally:
+        if locks is not None:
+            _close_binding(locks)
+        if read_model is not None:
+            _close_binding(read_model)
+        _close_binding(root)
 
 
 def initialize_provider_native_store(
@@ -486,7 +539,7 @@ def initialize_provider_native_store(
     legacy_db_path: Path,
     maintenance_lock_path: Path,
 ) -> StoreInitializationResult:
-    """Atomically create one fresh SQLite authority and its two lock files."""
+    """Publish a fresh runtime root or validate an existing complete one."""
 
     database_path = _require_canonical_absolute(Path(database_path), "database")
     legacy_db_path = _require_canonical_absolute(
@@ -495,181 +548,162 @@ def initialize_provider_native_store(
     maintenance_lock_path = _require_canonical_absolute(
         Path(maintenance_lock_path), "maintenance lock"
     )
-    if database_path.resolve(strict=False) == legacy_db_path.resolve(strict=False):
+    root_path = database_path.parent.parent
+    if (
+        database_path.parent != root_path / "read_model"
+        or database_path.name != "provider_native.sqlite"
+        or maintenance_lock_path.parent != root_path / "locks"
+        or maintenance_lock_path.name != "read_model_maintenance.lock"
+    ):
+        raise StoreInitializationError("provider-native runtime layout is invalid")
+    if database_path == legacy_db_path:
         raise StoreInitializationError(
             "refusing to initialize the legacy database path"
         )
-    database_parent = _require_safe_existing_directory(
-        database_path.parent, "database parent"
-    )
-    maintenance_parent = _require_safe_existing_directory(
-        maintenance_lock_path.parent, "maintenance lock parent"
-    )
-    if database_parent.parent != maintenance_parent.parent:
-        raise StoreInitializationError(
-            "coordination artifacts must share one runtime root"
-        )
-    runtime_uid, runtime_gid = _runtime_owner_ids()
     database_lock_path = (
-        database_parent / f".{database_path.name}.read_model_store.lock"
+        database_path.parent / f".{database_path.name}.read_model_store.lock"
     )
-    database_binding: _DirectoryBinding | None = None
-    maintenance_binding: _DirectoryBinding | None = None
-    database_lock: _OwnedArtifact | None = None
-    maintenance_lock: _OwnedArtifact | None = None
-    temporary: _OwnedArtifact | None = None
-    published_database: _OwnedArtifact | None = None
-    temporary_descriptor: int | None = None
-    result: StoreInitializationResult | None = None
+    runtime_uid, runtime_gid = _runtime_owner_ids()
+    legacy_before = _legacy_snapshot(legacy_db_path)
+    parent = _open_runtime_parent(root_path.parent)
+    staging: _DirectoryBinding | None = None
+    read_model: _DirectoryBinding | None = None
+    locks: _DirectoryBinding | None = None
     try:
-        database_binding = _open_directory_binding(
-            database_parent,
-            "database parent",
-        )
-        maintenance_binding = _open_directory_binding(
-            maintenance_parent,
-            "maintenance lock parent",
-        )
-        bindings = database_binding, maintenance_binding
-        _checkpoint("parents_locked", *bindings)
+        _checkpoint("parent_locked", parent)
+        try:
+            os.stat(root_path.name, dir_fd=parent.descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise StoreInitializationError("runtime root is unavailable") from exc
+        else:
+            try:
+                return _validate_complete_store(
+                    parent,
+                    root_path,
+                    database_path,
+                    database_lock_path,
+                    maintenance_lock_path,
+                    legacy_before,
+                    runtime_uid=runtime_uid,
+                    runtime_gid=runtime_gid,
+                )
+            except StoreInitializationError as exc:
+                raise StoreInitializationError(
+                    "provider-native runtime root is partial or unsafe"
+                ) from exc
 
-        _require_absent_at(database_binding, database_path.name, "database")
-        _require_absent_at(
-            database_binding,
+        staging_name = f".{root_path.name}.init-{secrets.token_hex(16)}"
+        staging_path = root_path.parent / staging_name
+        staging = _create_directory_at(
+            parent,
+            staging_name,
+            staging_path,
+            "staging runtime root",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        os.fsync(parent.descriptor)
+        _checkpoint("after_staging_root", parent, staging)
+        read_model = _create_directory_at(
+            staging,
+            "read_model",
+            staging_path / "read_model",
+            "staging read model",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        locks = _create_directory_at(
+            staging,
+            "locks",
+            staging_path / "locks",
+            "staging maintenance locks",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+        )
+        os.fsync(staging.descriptor)
+        _checkpoint("after_staging_directories", parent, staging, read_model, locks)
+        _create_file_at(
+            read_model,
             database_lock_path.name,
-            "coordination artifact",
+            owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+            payload=b"",
         )
-        _require_absent_at(
-            maintenance_binding,
+        _create_file_at(
+            locks,
             maintenance_lock_path.name,
-            "coordination artifact",
-        )
-
-        database_lock = _create_coordination_file_at(
-            database_binding,
-            database_lock_path.name,
-            database_lock_path,
             owner_uid=runtime_uid,
             owner_gid=runtime_gid,
+            payload=b"",
         )
-        _checkpoint("after_database_lock", *bindings)
-
-        maintenance_lock = _create_coordination_file_at(
-            maintenance_binding,
-            maintenance_lock_path.name,
-            maintenance_lock_path,
-            owner_uid=runtime_uid,
-            owner_gid=runtime_gid,
-        )
-        _checkpoint("after_maintenance_lock", *bindings)
-
-        temporary_name = (
-            f".{database_path.name}.init-{os.getpid()}-{secrets.token_hex(12)}"
-        )
-        temporary_path = database_parent / temporary_name
-        temporary, temporary_descriptor = _create_empty_artifact_at(
-            database_binding,
-            temporary_name,
-            temporary_path,
-            owner_uid=runtime_uid,
-            owner_gid=runtime_gid,
-        )
-        _checkpoint("after_temp_create", *bindings)
-
+        os.fsync(read_model.descriptor)
+        os.fsync(locks.descriptor)
+        _checkpoint("after_coordination_files", parent, staging, read_model, locks)
         payload = _build_database_payload()
-        _write_payload(temporary_descriptor, payload)
-        descriptor_to_close = temporary_descriptor
-        temporary_descriptor = None
-        os.close(descriptor_to_close)
-        _checkpoint("after_sqlite_build", *bindings)
-
-        _require_absent_at(database_binding, database_path.name, "database")
-        os.link(
-            temporary.name,
+        _create_file_at(
+            read_model,
             database_path.name,
-            src_dir_fd=database_binding.descriptor,
-            dst_dir_fd=database_binding.descriptor,
-            follow_symlinks=False,
-        )
-        published_database = _artifact_at(
-            database_binding,
-            database_path.name,
-            database_path,
-        )
-        if (published_database.device, published_database.inode) != (
-            temporary.device,
-            temporary.inode,
-        ):
-            raise StoreInitializationError("published database identity is invalid")
-        _checkpoint("after_database_link", *bindings)
-
-        _unlink_owned_at(temporary)
-        temporary = None
-        _fsync_directory_fd(database_binding)
-        _fsync_directory_fd(maintenance_binding)
-        _checkpoint("after_directory_fsync", *bindings)
-
-        _require_artifact_contract(
-            published_database,
             owner_uid=runtime_uid,
+            owner_gid=runtime_gid,
+            payload=payload,
         )
-        _require_artifact_contract(database_lock, owner_uid=runtime_uid)
-        _require_artifact_contract(maintenance_lock, owner_uid=runtime_uid)
-        observed_payload = _read_artifact_payload(published_database)
-        if observed_payload != payload:
-            raise StoreInitializationError("published database bytes changed")
-        _validate_database_payload(observed_payload)
-        _checkpoint("before_return", *bindings)
-        result = StoreInitializationResult(
-            database_path=database_path,
-            database_lock_path=database_lock_path,
-            maintenance_lock_path=maintenance_lock_path,
+        _checkpoint("after_sqlite_build", parent, staging, read_model, locks)
+        os.fsync(read_model.descriptor)
+        os.fsync(locks.descriptor)
+        os.fsync(staging.descriptor)
+        _checkpoint("before_publish", parent, staging, read_model, locks)
+        try:
+            _publish_directory_noreplace(
+                parent.descriptor,
+                staging_name,
+                root_path.name,
+            )
+        except FileExistsError:
+            return _validate_complete_store(
+                parent,
+                root_path,
+                database_path,
+                database_lock_path,
+                maintenance_lock_path,
+                legacy_before,
+                runtime_uid=runtime_uid,
+                runtime_gid=runtime_gid,
+            )
+        _initialization_boundary("after_publish")
+        _require_binding(parent)
+        os.fsync(parent.descriptor)
+        _checkpoint("after_parent_fsync", parent)
+        result = _validate_complete_store(
+            parent,
+            root_path,
+            database_path,
+            database_lock_path,
+            maintenance_lock_path,
+            legacy_before,
+            runtime_uid=runtime_uid,
+            runtime_gid=runtime_gid,
         )
-    except BaseException as exc:
-        cleanup_errors: list[BaseException] = []
-        if temporary_descriptor is not None:
-            try:
-                os.close(temporary_descriptor)
-            except OSError as close_exc:
-                cleanup_errors.append(close_exc)
-            temporary_descriptor = None
-        for artifact in (
-            published_database,
-            temporary,
-            maintenance_lock,
-            database_lock,
-        ):
-            if artifact is None:
-                continue
-            try:
-                _cleanup_owned_artifact(artifact)
-            except OSError as cleanup_exc:
-                cleanup_errors.append(cleanup_exc)
-        for binding in (database_binding, maintenance_binding):
-            if binding is None:
-                continue
-            try:
-                _fsync_directory_fd(binding)
-            except OSError as fsync_exc:
-                cleanup_errors.append(fsync_exc)
-        if cleanup_errors:
+        if _legacy_snapshot(legacy_db_path) != legacy_before:
             raise StoreInitializationError(
-                "provider-native store initialization compensation failed"
-            ) from exc
-        if isinstance(exc, StoreInitializationError):
-            raise
+                "legacy database changed during initialization"
+            )
+        return result
+    except StoreInitializationError:
+        raise
+    except BaseException as exc:
         raise StoreInitializationError(
             f"provider-native store initialization failed: {type(exc).__name__}"
         ) from exc
     finally:
-        for binding in (maintenance_binding, database_binding):
-            if binding is None:
-                continue
-            _close_directory_binding(binding)
-
-    if result is None:
-        raise StoreInitializationError("provider-native store initialization failed")
-    return result
+        if locks is not None:
+            _close_binding(locks)
+        if read_model is not None:
+            _close_binding(read_model)
+        if staging is not None:
+            _close_binding(staging)
+        _close_binding(parent)
 
 
 def main() -> int:
@@ -685,6 +719,7 @@ def main() -> int:
                 "database_lock": str(result.database_lock_path),
                 "maintenance_lock": str(result.maintenance_lock_path),
                 "quick_check": "ok",
+                "stale_staging_count": result.stale_staging_count,
             },
             sort_keys=True,
         )
