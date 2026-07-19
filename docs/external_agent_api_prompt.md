@@ -121,4 +121,4 @@ Decision rule for trading workflows:
 - New source onboarding: `docs/data_source_onboarding.md`
 - API/module planning catalog: `config/api_module_catalog.yaml`
 - Source expansion priority plan: `config/source_expansion_priority.yaml`
-- Tushare activation backlog: `docs/tushare_activation_backlog.md`
+- Target Tushare capability/cadence/retirement decision: `docs/adr/ADR-0009-tushare-capability-cadence-retirement.md`

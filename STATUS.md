@@ -359,8 +359,10 @@ generic replacement PASS
 4. 向 TA/MG 交付冻结 catalog version、schema major 2、三个 dataset ID、loopback base URL、认证
    接入方式与 healthy/impaired envelope；消费者只通过 catalog/query，不直读 SQLite 或 legacy
    route；
-5. 内部持续采集稳定后再逐批扩境内 dataset。其余 111 项必须先补 reviewed upstream contract，
-   普通 dataset 继续只扩 registry/config，不新增 collector/table/scheduler/query/public route；
+5. 内部持续采集稳定后再逐批扩境内 dataset。当前 legacy 114 名单中还有 111 项缺 reviewed
+   upstream contract；这不是完整 Tushare 缺口。固定官方 239-API 快照还包含 130 个 legacy
+   未列接口，另有 5 个 legacy 旧名需做 successor/deprecation 裁决。所有普通 dataset 继续只扩
+   registry/config，不新增 collector/table/scheduler/query/public route；
 6. 受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger、网关和外部
    ingress 全部后置到 external Beta；替代链稳定并完成 no-use 观察后，才退役旧代码、文档、
    cron 和 worktree。

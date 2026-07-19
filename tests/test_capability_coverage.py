@@ -561,6 +561,32 @@ def test_external_agent_config_matches_current_capability_counts() -> None:
     assert config["tushare_status"]["configured_in_production_tiers"] == len(configured)
     assert config["tushare_status"]["planned_activation_backlog"] == len(planned)
     assert config["tushare_status"]["scheduled_or_independent_or_event_lane"] == len(active)
+    assert config["tushare_status"]["status_scope"] == "legacy_migration_inventory_only"
+    assert config["tushare_status"]["official_capability_snapshot"] == {
+        "unique_api_names": 239,
+        "pinned_commit": "5e12b31d09123e262c5fb38564e80c26d05cb830",
+        "full_provider_native_coverage": False,
+    }
+    assert config["tushare_status"]["provider_native_v1"] == {
+        "active_dataset_count": 3,
+        "collection_timer_observed": False,
+        "runtime_authority": (
+            "GET /v1/catalog plus SQLite transaction receipts and read clock"
+        ),
+    }
+    target_onboarding = config["data_source_onboarding"]["provider_native_target"]
+    assert target_onboarding["target_routes"] == [
+        "GET /v1/catalog",
+        "POST /v1/query",
+    ]
+    assert "collector config" not in target_onboarding["mandatory_artifacts"]
+    assert "read-model table mapping" not in target_onboarding["mandatory_artifacts"]
+    assert config["tushare_status"]["planning_doc"] == (
+        "docs/tushare_activation_backlog.md"
+    )
+    assert config["tushare_status"]["target_decision_doc"] == (
+        "docs/adr/ADR-0009-tushare-capability-cadence-retirement.md"
+    )
     assert config["data_source_onboarding"]["source_expansion_priority_plan"] == "config/source_expansion_priority.yaml"
     assert config["data_source_onboarding"]["api_module_catalog"] == "config/api_module_catalog.yaml"
     assert config["data_source_onboarding"]["horizontal_expansion_status"].startswith("planned_only")

@@ -26,10 +26,10 @@ entitlement, cadence, SLA and query policy—not by provider name or a handwritt
 endpoint/tier list. The following bullets describe legacy inputs that are being
 replaced or adapted:
 
-- `collectors/tushare/config.yaml` is the active Tushare collection plan: 113 configured interfaces.
-- `api_server.py` `ALLOWED_TUSHARE_APIS` is the read allowlist: 114 names.
-- `config/tushare_capability_plan.yaml` is the market/module management plan for all 114 allowlisted names.
-- `docs/tushare_activation_backlog.md` is the activation ledger; 0 planned interfaces remain after B5 activation.
+- `collectors/tushare/config.yaml` records 113 legacy tier entries; it is not the provider-native collection plan.
+- `api_server.py` `ALLOWED_TUSHARE_APIS` is a 114-name legacy read allowlist, not a complete Tushare capability catalog.
+- `config/tushare_capability_plan.yaml` is legacy market/module migration evidence, not target activation authority.
+- `docs/tushare_activation_backlog.md` is a retired temporary tombstone; ADR-0009 owns capability, cadence and retirement decisions.
 - `/agent_config` and `config/external_agent_api_config.json` expose the external-agent integration contract and frequency labels.
 - HTTP API is the consumer surface: external agents, MarketGraph, and TradingAgent must read SharedSignals API outputs, not provider APIs, local files, SQLite files, or sibling repo internals.
 - Only `stock_master` is migrated under `/reference`: use `/reference?table=stock_master&limit=500` and exhaust the signed `cursor` chain through the shared QueryService. It resolves to `cn.equity.security_master` with the registry fixed filter `provider=tushare_stock_basic`; `tushare_stock_company` is isolated in a separate company-profile dataset. The default and maximum page size are 500, and one page is not a complete universe. Each page retains runtime/freshness/quality/receipt lineage; no adapter may add SQL, provider/CSV/file fallback, or independent metadata aggregation. Other legacy reference tables keep their previous degraded behavior. This local candidate is not proof that production is deployed or populated.
@@ -191,7 +191,7 @@ Operational handoff:
 
 - Copy-paste prompt: `docs/external_agent_api_prompt.md`
 - Machine-readable config: `GET /agent_config`
-- Remaining Tushare activation plan: `docs/tushare_activation_backlog.md`
+- Target Tushare capability/cadence/retirement decision: `docs/adr/ADR-0009-tushare-capability-cadence-retirement.md`
 - Event lane guide: `docs/event_lane.md`
 - New source onboarding checklist: `docs/data_source_onboarding.md`
 

@@ -48,6 +48,41 @@ def test_core_docs_freeze_sharedsignals_product_boundary() -> None:
     assert repo_wide_ruff not in status
 
 
+def test_core_docs_freeze_tushare_capability_cadence_and_retirement() -> None:
+    readme = _read("README.md")
+    roadmap = _read("ROADMAP.md")
+    docs_agents = _read("docs/AGENTS.md")
+    adr = _read("docs/adr/ADR-0009-tushare-capability-cadence-retirement.md")
+
+    for document in (readme, roadmap, adr):
+        assert "239" in document
+        assert "114" in document
+
+    assert "legacy 114-name inventory" in roadmap
+    assert "not the full Tushare capability baseline" in roadmap
+    assert "snapshot_or_date_range" in adr
+    assert "entity_fanout" in adr
+    assert "dimension_fanout" in adr
+    assert "event_or_intraday_window" in adr
+    for cadence in (
+        "session_minute",
+        "postclose_daily",
+        "daily_reference",
+        "weekly",
+        "monthly",
+        "quarterly_reporting",
+        "event",
+        "on_demand",
+    ):
+        assert f"`{cadence}`" in adr
+    assert "derives missing partitions" in adr
+    assert "provider-native replacement PASS" in adr
+    assert "migrate every known consumer" in adr
+    assert "observe no-use" in adr
+    assert "data deletion" in adr
+    assert "ADR-0009" in docs_agents
+
+
 def test_design_and_plan_freeze_authority_sequence_and_review_stop_line() -> None:
     design = _read(
         "docs/superpowers/specs/"
@@ -105,6 +140,7 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     repo_structure = _read("docs/repo_structure.md")
     generated_contract = _read("docs/API_CONTRACT.md")
     infrastructure = _read("docs/INFRASTRUCTURE.md")
+    retired_backlog = _read("docs/tushare_activation_backlog.md")
 
     for document in (docs_agents, onboarding, capability, registry):
         assert "GET /v1/catalog" in document
@@ -131,6 +167,15 @@ def test_supporting_docs_cannot_restore_old_authority_or_route_growth() -> None:
     assert "Historical generated capability snapshot only" in generated_contract
     assert "not the target API contract" in generated_contract
     assert "不是当前生产就绪证明" in infrastructure
+    assert "Retired migration inventory" in retired_backlog
+    assert "not executable" in retired_backlog
+    assert "former hand-maintained" in retired_backlog
+    assert "instructions were removed" in retired_backlog
+    assert "Do not use this file to activate" in retired_backlog
+    assert "239 unique" in retired_backlog
+    assert "provider-native contract set is the authority" in registry
+    assert "legacy compatibility input only" in registry
+    assert "default `config/dataset_registry.yaml` remains legacy" in onboarding
 
 
 def test_consumer_contract_docs_freeze_v1_handoff_and_truth_layers() -> None:

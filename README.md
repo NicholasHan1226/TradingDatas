@@ -1,7 +1,9 @@
 # SharedSignals
 
 > 阅读顺序：[AGENTS.md](AGENTS.md) → [ROADMAP.md](ROADMAP.md) →
-> [内部优先 ADR](docs/adr/ADR-0008-development-priority.md) → [STATUS.md](STATUS.md) →
+> [内部优先 ADR](docs/adr/ADR-0008-development-priority.md) →
+> [Tushare 能力/频率/退役 ADR](docs/adr/ADR-0009-tushare-capability-cadence-retirement.md) →
+> [STATUS.md](STATUS.md) →
 > [内部 V1 服务计划](docs/superpowers/plans/2026-07-19-sharedsignals-internal-v1-service.md)。
 > 外部 Beta 规格是内部服务稳定后的后续阶段，不是当前发布入口。
 
@@ -53,6 +55,11 @@ Tushare / future providers
 4. JSON、日志、监控摘要和旧 endpoint 只作缓存或兼容材料。
 
 HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代逐 dataset 的运行事实。API 必须区分 `success`、`empty`、`unobserved`、`paused`、`failed`、`stale`。
+
+当前官方能力基线以固定 commit 的 Tushare Skills 接口索引为版本化来源；本次固定快照包含
+239 个唯一 API 名称。它们必须先被分类为境内只读可接入、locked、unknown、excluded、retired
+或 non-data operation。旧 114 名称不是全量基准，239 也不是要求盲目调度所有接口。详细决策见
+[ADR-0009](docs/adr/ADR-0009-tushare-capability-cadence-retirement.md)。
 
 ## 固定 API 方向
 

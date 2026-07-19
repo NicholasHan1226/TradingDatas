@@ -728,7 +728,7 @@ rows = get_tushare("income", ts_code="600519.SH", period="20251231")
 
 隔离外部账号建议使用 `external_read` scope。它覆盖完整数据读取面，包括 `/health`、`/agent_config`、`/source_status`、`/opening_gate`、业务端点和 `/tushare` 数据库输出；不覆盖 `/cache/invalidate`、生产写入、provider key、数据库文件或运维权限。
 
-复制给外部 agent 的一键接入 prompt 维护在 `docs/external_agent_api_prompt.md`；机器可读配置维护在 `config/external_agent_api_config.json`，并通过 `GET /agent_config` 输出。完整 HTTP 路径以本文档“HTTP API 端点概览”为准，外部 agent 配置同步列出 23 个可发现路径，并用 `cadence_class` 区分交易、研究、session readiness、delegated projection、source governance 和 operator health/control。新增数据源接入规则维护在 `docs/data_source_onboarding.md`；事件 lane 独立说明维护在 `docs/event_lane.md`。Tushare 接口激活台账维护在 `docs/tushare_activation_backlog.md`；当前 114 个 allowlisted 接口中 113 个进入生产配置层，`rt_fut_min` 保持独立 5 分钟期货入口，0 个 planned 待启用。
+复制给外部 agent 的一键接入 prompt 与 `GET /agent_config` 都属于 legacy compatibility surface；其中 114 个 allowlisted 名称、113 个旧 tier 和旧频率只记录迁移现场，不能表示 Tushare 全量、provider-native 覆盖或运行健康。目标消费者只使用 `GET /v1/catalog` 与 `POST /v1/query`。当前 provider-native 生产数据面只有 3 个已验证 dataset，固定官方能力快照包含 239 个唯一 API 名称，其范围分类、通用 request shape、cadence/backfill 和退役门禁以 `docs/adr/ADR-0009-tushare-capability-cadence-retirement.md` 为准。
 
 ### 数据维度来源标注
 

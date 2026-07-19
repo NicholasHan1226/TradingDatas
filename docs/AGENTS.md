@@ -13,6 +13,7 @@
 | [Beta 设计规格](superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md) | 外部数据平台目标合同、首期范围、固定 API、Beta access |
 | [Phase 1 计划](superpowers/plans/2026-07-15-sharedsignals-phase1-registry-receipts-retirement.md) | registry/receipt/退役基础实施与验收 |
 | [../API_CONTRACT.md](../API_CONTRACT.md) | 目标 `/v1` 合同与 legacy compatibility surface；不能把 legacy 路径当成未来扩源模式 |
+| [ADR-0009](adr/ADR-0009-tushare-capability-cadence-retirement.md) | 官方能力基线、通用请求形状、采集频率/回补和旧系统安全退役门禁 |
 | [query_service.md](query_service.md) | Phase 2 provider-neutral catalog/query 请求、分页、状态、错误与访问限制合同 |
 | [dataset_registry.md](dataset_registry.md) | registry authority、字段、provider onboarding 和兼容 alias |
 | [ingest_receipts.md](ingest_receipts.md) | SQLite fact/receipt 原子性、terminal receipt、runtime projection |
@@ -24,7 +25,7 @@
 - `market_capability_matrix.md`：迁移期能力盘点；configured/allowlisted 不等于 entitled、observed、fresh 或 queryable。
 - `status_history_2026-07.md`：历史生产/事故事实，只作追溯。
 - `external_agent_api_prompt.md` 与机器配置：当前 legacy 接入材料；Phase 2/4 完成前不能称为最终 Beta 合同。
-- `tushare_activation_backlog.md` 与 `event_lane.md`：旧调度/专用 endpoint 迁移盘点；不能作为 registry、运行状态或扩路由依据。
+- `tushare_activation_backlog.md` 与 `event_lane.md`：旧调度/专用 endpoint 迁移盘点；不能作为 registry、运行状态或扩路由依据，并在 ADR-0009 的替代/迁移/no-use/rollback 门禁通过后删除。
 - DuckDB、旧 endpoint、旧 cron、opening/readiness、研究关系和交易式治理文档只可作为迁移/退役证据，不是新开发入口。
 
 ## 文档防漂移规则

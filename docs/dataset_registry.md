@@ -2,13 +2,20 @@
 
 ## Purpose
 
-`config/dataset_registry.yaml` is the **provider-neutral dataset registry** and authority for dataset
-identity, schema, provider binding, entitlement, cadence, freshness and query
-policy. It lets SharedSignals add providers and datasets without adding public
-routes or duplicating policy across collectors, readers, auth and documentation.
+The provider-native contract set is the authority for target dataset identity,
+schema, provider binding, cadence, freshness and query policy. The
+provider-neutral dataset registry is materialized from that contract set. During migration
+that authority is assembled from the reviewed upstream-contract bundle,
+`config/provider_native_activation.yaml`, and the deterministically generated
+`config/provider_native_dataset_registry.yaml`. The default
+`config/dataset_registry.yaml` is legacy compatibility input only; it cannot
+activate or define a target provider-native dataset. This split lets
+SharedSignals add providers and datasets without adding public routes or
+duplicating policy across collectors, readers, auth and documentation.
 
-The registry is not proof of runtime success. Runtime state comes from current
-registry policy plus authoritative SQLite ingest receipts and the read clock.
+Neither registry is proof of runtime success. Target runtime state comes from
+the process-selected provider-native registry policy plus authoritative SQLite
+ingest receipts and the read clock.
 
 ## Identity and compatibility
 

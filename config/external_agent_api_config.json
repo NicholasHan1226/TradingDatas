@@ -281,15 +281,61 @@
       "market capability matrix update",
       "external agent config update when externally consumable"
     ],
-    "rule": "A new data source is not production-ready until it can collect, write SQLite read-model rows, expose DB-first API/reader output or explicit degraded semantics, and pass coverage tests without CSV/NDJSON/provider fallback."
+    "rule": "A new data source is not production-ready until it can collect, write SQLite read-model rows, expose DB-first API/reader output or explicit degraded semantics, and pass coverage tests without CSV/NDJSON/provider fallback.",
+    "provider_native_target": {
+      "contract_scope": "provider-native target; legacy endpoints remain compatibility-only",
+      "target_routes": ["GET /v1/catalog", "POST /v1/query"],
+      "mandatory_fields": [
+        "dataset_id",
+        "provider",
+        "market",
+        "domain",
+        "provider_api",
+        "request_shape",
+        "request_template",
+        "provider_native_fields",
+        "technical_identity_and_time_fields",
+        "cadence_class",
+        "availability_after_local",
+        "freshness_sla",
+        "backfill_and_overlap_policy",
+        "rate_budget_class",
+        "degraded_behavior",
+        "entitlement_state",
+        "resource_budgets"
+      ],
+      "mandatory_artifacts": [
+        "reviewed upstream contract",
+        "provider-native activation record",
+        "deterministically generated target registry",
+        "SQLite fact and transaction-scoped receipt",
+        "GET /v1/catalog readback",
+        "POST /v1/query readback",
+        "generic zero-code onboarding tests",
+        "observed cadence evidence when scheduled"
+      ],
+      "rule": "An ordinary dataset is not production-ready until registry/config alone can collect through a provider-level adapter, atomically write provider-native SQLite facts and receipts, and expose truthful catalog/query metadata without dataset-specific collectors, tables, routes, scheduler branches, or file/provider fallback."
+    }
   },
   "tushare_status": {
+    "status_scope": "legacy_migration_inventory_only",
     "allowlisted_api_names": 114,
     "scheduled_or_independent_or_event_lane": 114,
     "configured_in_production_tiers": 113,
     "planned_activation_backlog": 0,
     "planning_doc": "docs/tushare_activation_backlog.md",
-    "capability_plan": "config/tushare_capability_plan.yaml"
+    "capability_plan": "config/tushare_capability_plan.yaml",
+    "target_decision_doc": "docs/adr/ADR-0009-tushare-capability-cadence-retirement.md",
+    "official_capability_snapshot": {
+      "unique_api_names": 239,
+      "pinned_commit": "5e12b31d09123e262c5fb38564e80c26d05cb830",
+      "full_provider_native_coverage": false
+    },
+    "provider_native_v1": {
+      "active_dataset_count": 3,
+      "collection_timer_observed": false,
+      "runtime_authority": "GET /v1/catalog plus SQLite transaction receipts and read clock"
+    }
   },
   "minimal_examples": [
     "GET /health",

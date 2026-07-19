@@ -36,7 +36,10 @@ file fallback.
 
 ## Required registry declaration
 
-Every dataset must declare in `config/dataset_registry.yaml`:
+Every target dataset must be declared through the reviewed provider-native
+upstream contract plus activation config and appear in the deterministic
+`config/provider_native_dataset_registry.yaml` output. The default `config/dataset_registry.yaml` remains legacy compatibility input during
+migration and is not the onboarding authority:
 
 | Field | Requirement |
 | --- | --- |
