@@ -1,10 +1,11 @@
 # SharedSignals
 
-> 阅读顺序：[AGENTS.md](AGENTS.md) → [STATUS.md](STATUS.md) →
-> [外部 Beta 设计规格](docs/superpowers/specs/2026-07-15-sharedsignals-external-data-platform-beta-design.md) →
-> [Provider-native generic slice 计划](docs/superpowers/plans/2026-07-17-sharedsignals-provider-native-generic-slice.md)。
+> 阅读顺序：[AGENTS.md](AGENTS.md) → [ROADMAP.md](ROADMAP.md) →
+> [内部优先 ADR](docs/adr/ADR-0008-development-priority.md) → [STATUS.md](STATUS.md) →
+> [内部 V1 服务计划](docs/superpowers/plans/2026-07-19-sharedsignals-internal-v1-service.md)。
+> 外部 Beta 规格是内部服务稳定后的后续阶段，不是当前发布入口。
 
-SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为首个主要上游和能力基准，把行情、基本面、资金事实、参考数据、公告、新闻、研报、政策和未来客观舆情等数据统一采集、技术校验、质检、入库，并通过稳定 API 提供给受邀外部账户和内部消费者。
+SharedSignals 是**独立外部多源金融数据平台**。它以 Tushare 为首个主要上游和能力基准，把行情、基本面、资金事实、参考数据、公告、新闻、研报、政策和未来客观舆情等数据统一采集、技术校验、质检、入库；开发与发布顺序先通过稳定 API 服务内部消费者，内部运行稳定后再开放受邀外部账户 Beta。
 
 它不是 TradingAgent 或 MarketGraph 的内部模块，也不是交易控制层。
 
@@ -40,7 +41,8 @@ Tushare / future providers
   → provider-neutral dataset registry + metadata projection
   → fixed query service
   → GET /v1/catalog + POST /v1/query
-  → invited external tenants / internal consumers
+  → internal consumers
+  → invited external tenants (after the internal stop line)
 ```
 
 权威顺序：
@@ -59,7 +61,13 @@ HTTP 200、allowlist、配置存在、旧数据行或“114/114”不能替代�
 - `/tushare` 与现有专用端点是 legacy compatibility surface；迁移后必须调用同一个 QueryService。
 - **新增数据源不得新增公共 API 路由**。普通 Tushare dataset 只改 registry/config，复用同一 generic ingest、receipt 和 query 管线；只有 transport 协议变化才增加 provider-level adapter。
 
-以上 `/v1` 接口当前仍是已批准目标合同，不是已部署能力；以 [STATUS.md](STATUS.md) 的当前证据为准。
+内部 provider-native 运行面固定为 `127.0.0.1:18082`、独立 SQLite 和五个独立 systemd
+units（API、采集 service/timer、probe service/timer）；新库固定为
+`/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite`。API、collector、probe
+分别只读取各自的 credential `EnvironmentFile`，不得互相加载。旧 `127.0.0.1:8082` 与旧数据库
+属于受保护 legacy 运行面，且 `REAL_TRADING_ENABLED=false` 必须保持不变。以上是内部 V1 候选合同；
+是否已部署、已采集和可供内部消费者接入，只认 [STATUS.md](STATUS.md) 的 fresh 生产证据，不能从
+本段设计文字推断。
 
 ## Consumer contract handoff
 

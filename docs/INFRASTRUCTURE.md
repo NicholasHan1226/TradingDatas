@@ -5,6 +5,35 @@
 > 只认 [STATUS.md](../STATUS.md)。目标 SharedSignals 产品合同以
 > [AGENTS.md](../AGENTS.md) 与根 [API_CONTRACT.md](../API_CONTRACT.md) 为准。
 
+## Provider-native 内部目标运行面
+
+当前内部优先目标与 legacy 运行面严格隔离：
+
+| 项目 | Provider-native internal V1 | 受保护 legacy |
+|---|---|---|
+| 监听 | `127.0.0.1:18082` | `127.0.0.1:8082` |
+| API | 仅 `GET /v1/catalog`、`POST /v1/query` | 历史兼容端点 |
+| SQLite | `/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite` | `/opt/investment-data/SharedSignals/runtime/read_model/marketdata.sqlite` |
+| service | `sharedsignals-v1-internal.service` | `sharedsignals-api.service` |
+| ingress | 无公网、无 tunnel、仅 loopback | 保留现状，不由内部 V1 发布修改 |
+
+内部 V1 使用独立 release root、运行目录、锁、凭据文件、采集 timer 和 HTTP probe timer。
+发布、回滚和日常采集不得迁移、复制、覆盖或删除 legacy SQLite，也不得重启、改写或重新路由
+legacy `8082`。上表是目标合同；是否已运行只认 [STATUS.md](../STATUS.md) 的 fresh 生产证据。
+
+内部 V1 候选定义五个新 unit：`sharedsignals-v1-internal.service`、
+`sharedsignals-provider-native-collect.service`、`sharedsignals-provider-native-collect.timer`、
+`sharedsignals-v1-probe.service`、`sharedsignals-v1-probe.timer`。它们分别使用 API、collector、probe
+三份独立的 root-owned `0600` secret file；每个 unit 只能读取自己的文件，值不进入 Git、日志或
+证据。Git-owned profile 继续固定 `REAL_TRADING_ENABLED=false`，localhost 也必须鉴权。
+
+新 SQLite store 只能初始化一次：初始化器在 `/opt/investment-data` 下建立随机 sibling staging
+root，完成 SQLite、locks、ownership/mode、schema/index 和 `quick_check` 后，才以 Linux
+`renameat2(RENAME_NOREPLACE)` 原子发布为 `sharedsignals-v1`。final root 已存在时只接受完整且身份
+一致的 store；partial、symlink、unsafe parent 或 schema drift 都 fail closed。因崩溃遗留的同级
+staging root 只计数/报告并保留，绝不猜测内容或自动删除。该条是候选的发布合同，不是服务器已
+初始化的声明。
+
 ## 服务器
 | 角色 | IP | 规格 | 职责 |
 |------|-----|------|------|

@@ -5,12 +5,15 @@
 > [docs/status_history_2026-07.md](docs/status_history_2026-07.md) 与仓外 evidence 中，
 > 不再混入当前判断。
 
-最后更新：2026-07-18。
+最后更新：2026-07-19。
 
 ## 当前结论
 
 - SharedSignals 的唯一批准定位是：面向受邀外部账户和内部消费者的**独立外部多源金融数据平台**，
   产品形态是**类似 Tushare 的多源金融数据服务**，内部合同保持 provider-neutral。
+- 当前开发和发布顺序是 **provider-native → 内部服务 → 内部生产稳定 → 受邀外部 Beta**。
+  外部网关、租户治理和更多 dataset 不能延误内部 `GET /v1/catalog`、`POST /v1/query`
+  的真实服务停止线。
 - Tushare 是已购买的现成上游。普通 Tushare dataset 只通过统一
   `api_name + params + fields -> fields/items` transport、registry/config、generic SQLite writer、
   receipt 和固定 query service 接入；禁止重新采集 Tushare 已提供的数据，也禁止按接口新增
@@ -27,7 +30,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-630211eaa1dc8b9ee16f7377ead5a5716a32eb01
+0be6f83247eddd489489cdf64c310e785b9cd14e
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -74,12 +77,34 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 17. `5964cc9` 至 `630211e`：把 provider response completeness、通用 ingest/storage、
     Tushare transport 字段省略语义，以及 `stock_basic`、`daily` 的 provider-native 合同接入同一
     bundle/compiler/registry/generic pipeline；没有新增 dataset 专用 collector、表或公共 route。
+18. `a8f9258`：记录 `stock_basic`、`daily` provider 合同和受限服务器证据；
+19. `0d0f1ad`：按受信 registry binding 的行数/字段/字节合同计算敏感扫描预算，真实
+    `stock_basic`、`daily` 批量响应不再误触统一默认节点上限；
+20. `50ac13f` + `98a9ea3`：把 internal-first 路线写入 ROADMAP 与 ADR，外部 Beta 后置；
+21. `0be6f83`：普通 Tushare binding 按 reviewed upstream contract 发送字段清单；
+    local/origin/GitHub 三方 readback 一致。
 
-`630211e` 的最终主线字节经主验收与独立 clean-overlay reviewer 分别完成全量
-`2428 passed`；另有 completeness/config/payload、zero-code/runtime、legacy compatibility、
-Ruff、Python 3.12 compile、YAML、确定性 compiler、禁区扫描和 `git diff --check` 全绿，
-fresh reviewer 结论为 PASS（P0/P1/P2=0）。local/origin/live GitHub 三方 readback 为
-`630211eaa1dc8b9ee16f7377ead5a5716a32eb01`。
+`0be6f83` 是当前 local/origin/live GitHub 三方 readback 一致的代码 checkpoint。它已经包含
+三个首批 dataset 的通用 transport、provider-native facts/receipts、固定 catalog/query 数据面、
+受信 registry 资源预算和 reviewed upstream fields；它不包含生产 activation、systemd 或旧
+runtime 切换。发布候选、生产 runtime 和内部消费者接入继续分别验收，不能从 GitHub checkpoint
+推断为已上线。
+
+### 内部 V1 最终本地集成候选（尚未合入、推送或发布）
+
+以 `0be6f83` 为 base 的线性本地候选为
+`7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`：依次加入三个 dataset 的独立 activation
+authority、registry-driven scheduler/strict HTTP probe、loopback-only runtime/release control，以及
+runtime store 的原子初始化修正。候选固定 `127.0.0.1:18082`、
+`/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite`、
+`GET /v1/catalog` 与 `POST /v1/query`；首批仅
+`cn.market.trade_calendar`、`cn.equity.security_master`、`cn.equity.daily` 三个 dataset，五个
+新 units 仅属于该独立 lane。
+
+该候选不是 `main`、`origin/main` 或 GitHub 已验证状态，也没有部署到服务器：不得把其代码存在、
+active registry binding、unit 文件或本文件改动写成服务已运行、数据已采集、内部消费者可接入或
+已发布。它不得改动 legacy `127.0.0.1:8082`、legacy SQLite、外部 ingress 或
+`REAL_TRADING_ENABLED=false`。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -100,8 +125,8 @@ fresh reviewer 结论为 PASS（P0/P1/P2=0）。local/origin/live GitHub 三方 
 - 最终 exact8 fresh review 覆盖 leaf/ancestor symlink、non-regular file、connect/BEGIN/COMMIT
   前后路径身份漂移、rollback、0-byte existing SQLite 与 no-follow；定向 `82 passed`、独立 race
   `7 passed`、全量 `2330 passed`，Ruff/compile/diff-check 全绿；
-- 这只完成代码与 GitHub 层。生产约 22 GB 数据库尚未迁移，仍需隔离 canary、备份/回退和
-  fresh production preflight；不得把 `5ee3cf9` 写成生产 schema 已存在。
+- 内部 V1 不迁移、复制或改写 legacy 约 22 GB SQLite；它在独立新路径从 canonical schema
+  bootstrap 一个 fresh store。legacy 数据库继续受 dev/inode/bytes/owner/mode 守恒保护。
 
 ### 双注册表迁移
 
@@ -121,9 +146,11 @@ fresh reviewer 结论为 PASS（P0/P1/P2=0）。local/origin/live GitHub 三方 
 - exact12 第三轮 fresh review 已 PASS（P0/P1=0）并在 `53e2b96` 进入 GitHub。target env 下
   V1 catalog/query 与 generic runner 读取 target；`/tushare`、canonical stock-master、
   `reader.get_tushare` 与 `reader.get_reference` 始终读取 default legacy registry/query；
-- default registry SHA 保持 `d6f58ff...`；当前 target registry SHA 为 `a7667195...`，与
-  compiler 逐字节一致，严格只包含上述三个已解析 dataset；三项当前均保持 `paused`，
-  entitlement 为 `unknown`，请求、tenant 与普通 CLI 均不能选择 registry；
+- default registry SHA 保持不变；provider-native target 严格只包含上述三个已解析 dataset。
+  内部 V1 发布候选用独立 activation manifest 决定 active+entitled 集合，并由 compiler 逐字节
+  生成 target registry；请求、tenant 与普通 CLI 均不能选择 registry 或修改 activation。
+  checked-in active 状态只授权隔离 scheduler 读取合同，不等于 provider 已调用、SQLite 已写入
+  或 API 已 ready；
 - `trade_cal` 已在 2026-07-18 的全新隔离 server canary 中完成一次真实 entitlement、受限
   backfill、SQLite fact/receipt 与统一 API readback；该证据只绑定 exact `4088a2d` 和独立
   canary 数据库。生产 runtime、完整首批 consumer 数据包与 consumer parity 仍未验证，默认
@@ -139,13 +166,13 @@ fresh reviewer 结论为 PASS（P0/P1/P2=0）。local/origin/live GitHub 三方 
   writer 前拒绝，只记 `validation_failed` receipt；
 - 生产 Python 不包含 `trade_cal` 或 dataset-id 特殊分支；新 dataset 仍通过同一
   bundle/compiler/registry/generic ingest/query 管线接入；
-- `stock_basic` 与 `daily` 已在 `630211e` 以同一机制进入 GitHub：`stock_basic` 合同定义 17 个
+- `stock_basic` 与 `daily` 已以同一机制进入 GitHub：`stock_basic` 合同定义 17 个
   provider 字段，`daily` 定义 13 个 provider 字段；transport 在字段清单为空时省略上游
   `fields` 参数，在非空时逐字传递。离线 zero-code 证据已证明原始 `fields/items` 可经通用
-  collector 写入 SQLite fact+receipt 并由 `POST /v1/query` 读回；这不是服务器真实采集证据；
-- 当前证据包含 local/GitHub 代码层 PASS，以及一个受限 `trade_cal` 窗口的真实隔离
-  server canary PASS；它不证明生产、完整 Tushare dataset 覆盖、受邀账户网关或外部 Beta
-  已完成。
+  collector 写入 SQLite fact+receipt 并由 `POST /v1/query` 读回；2026-07-19 又从精确
+  `0be6f83` 在全新隔离 server canary 中完成真实 `stock_basic`、`daily` 采集与 query readback；
+- 当前证据包含 local/GitHub 代码层 PASS，以及三个首批 dataset 的受限真实隔离 canary PASS。
+  它仍不证明内部生产服务、完整 Tushare dataset 覆盖、受邀账户网关或外部 Beta 已完成。
 
 ### TradingAgent consumer handoff contract
 
@@ -154,10 +181,9 @@ fresh reviewer 结论为 PASS（P0/P1/P2=0）。local/origin/live GitHub 三方 
 - exact8 r2 已由 fresh reviewer 判定 PASS（P0/P1=0）并在 `6c7ded4` 进入 GitHub；
   `schema_major`、same-as-of/receipt watermark 实证、healthy/stale fixture 与 2331 项全量回归
   均绿，三份文档的核心 truth statement 逐字一致；
-- 相关提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。`trade_cal` 已有
-  真实 generic backfill/server canary/query readback；`stock_basic` 与 `daily` 目前只完成
-  local/GitHub 合同、通用管线与离线 zero-code 验证，尚无真实服务器 readback。行业宽度
-  dataset、冻结 catalog snapshot、只读 base URL 与认证接入也未完成，因此状态继续固定为
+- 相关提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。三个首批 dataset
+  均已有真实 generic backfill/server canary/query readback，但冻结 catalog snapshot、稳定内部
+  base URL、认证接入与生产 impaired-state 证据仍未完成。因此在内部 V1 生产停止线通过前，
   **TradingAgent 当前不可接入**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
@@ -220,23 +246,40 @@ provider field/window manifest 与 compiler 修正已在 `58face6` 进入 GitHub
 结论：首个 `trade_cal` provider-to-API 纵向切片已在隔离 canary 中真实通过。它只证明该
 dataset 和该受限窗口，不等于生产发布、TA 可接入、其它 dataset 可用或外部 Beta 开放。
 
-## 生产现状（2026-07-18 12:47 CST fresh 只读证据）
+### 隔离服务器 canary（2026-07-19 04:15 CST）
+
+- canary 位于
+  `/opt/investment/canaries/sharedsignals/20260719T0415Z-0be6f83-stock-daily-v3`，代码精确绑定
+  `0be6f83247eddd489489cdf64c310e785b9cd14e`，使用独立 checkout、SQLite、锁和临时服务；
+- `cn.equity.security_master` 通过一次真实 Tushare `stock_basic` 调用写入 5,607 行
+  provider-native facts 与匹配 success receipt；`cn.equity.daily` 通过一次真实 `daily` 调用写入
+  5,522 行 facts 与匹配 success receipt；
+- 两个 dataset 都完成 authenticated catalog/query、pagination、same-as-of 可复现和
+  facts/latest-success-receipt 守恒检查；没有 dataset 专用 collector、表、route 或字段加工；
+- 证据只证明这两个受限真实切片及当时精确字节。它没有启用 systemd/timer、没有替换生产
+  checkout 或数据库，也不等于内部 V1 已稳定运行。
+
+至此三个首批 dataset 都已有独立真实 provider-to-API canary 证据；下一停止线是把同一通用
+管线发布到独立 `18082`/新 SQLite 运行面并通过持续 probe，而不是继续逐接口重写采集器。
+
+## 生产现状（2026-07-19 15:02 CST fresh 只读证据）
 
 - **生产未改变**；下列事实来自本轮只读盘点。
 - 生产 SharedSignals checkout clean，仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
   或外部路由写入。
-- 服务仍在旧 runtime 上运行；`/health` 返回 200，但目标 `/v1/catalog`、`/v1/query` fresh
-  readback 仍为 404。
-- 生产 SQLite 当前为 23,048,323,072 bytes，inode `1048617`、mode `0644`、uid/gid
-  `1000/1000`；审计窗口内旧 writer 仍使 size/mtime 正常变化。canary 使用另一设备上的
-  inode `1329393` 独立 SQLite，没有替换或链接生产数据库；生产 canonical
-  `provider_dataset_rows` 仍未被本轮创建或迁移。
-- 当前没有与生产数据库同一时点的新鲜完整 rollback snapshot；现有 predata/backup 明显早于
-  live DB，旧 writer/cron 仍活跃，因此
-  不能直接在该数据库上执行 migration 或切换 authority。
-- `127.0.0.1:18082` 已在 canary 停止后恢复为空闲；没有 canary systemd、cron 或 nginx
-  引用。隔离 canary 证明已购买上游和统一调用协议可用，并证明 `trade_cal` generic
-  SQLite/API 纵向切片可运行；生产代码和 runtime 仍未发布。
+- 旧 `sharedsignals-api.service` active/enabled，MainPID `147834`，同一 PID 唯一监听
+  `127.0.0.1:8082`；provider-native `18082` 为空闲。
+- 旧生产 SQLite fresh fingerprint 为 dev `66308`、inode `1048617`、size
+  `23,203,987,456`、mode `0644`、uid/gid `1000/1000`；检查前后身份一致。只读
+  `PRAGMA quick_check` 在 600 秒内未完成且进程已退出，没有得到 corruption 结论；本内部新库
+  lane 不打开、迁移、复制或依赖旧库，因此该超时记录为未验证的旧库健康项，不扩大成本次
+  隔离发布门禁。
+- 新 `/opt/investment-data/sharedsignals-v1`、`/opt/investment/releases/sharedsignals-v1`、
+  `/etc/sharedsignals` 和 5 个 systemd units 均尚不存在；这证明本轮仍未部署。发布前需创建
+  root-owned `/opt/investment/releases` 安全父目录，以及三份最小权限凭据文件；这三份文件分别
+  供 API、collector、probe 使用，均为 root-owned `0600`，任何 unit 都不得加载其它 lane 的文件。
+- 服务器 Python 3.12.3、SQLite 3.45.1，`serialize`/`deserialize` round-trip、磁盘、内存和
+  systemd/tooling 均满足独立新 SQLite lane 的运行前提。
 - 生产仍是 NO-GO。HTTP 200、配置存在、旧表有数据或“114/114”都不能代替逐 dataset 的
   receipt、freshness、quality、lineage 和真实 query 证据。
 
@@ -250,7 +293,8 @@ provider-neutral registry
 -> provider-native SQLite rows + transaction-scoped SQLite ingest receipt
 -> read-clock freshness/quality/lineage/degraded projection
 -> GET /v1/catalog + POST /v1/query
--> invited tenant
+-> internal consumer
+-> invited tenant (only after the internal stop line)
 ```
 
 每次汇报必须分开：
@@ -260,8 +304,9 @@ provider-neutral registry
 3. origin/GitHub；
 4. production checkout；
 5. production runtime；
-6. external route；
-7. real dataset evidence（provider receipt 与 API response）。
+6. internal authenticated route；
+7. real dataset evidence（provider receipt 与 API response）；
+8. external route（仅外部 Beta 阶段）。
 
 任一层通过都不能替代后续层。
 
@@ -288,16 +333,16 @@ generic replacement PASS
 1. canonical schema、TA consumer handoff、双注册表 runtime，以及 `trade_cal`、`stock_basic`、
    `daily` 三个 upstream contract 已进入 GitHub；当前 target 有 3 项，其余 111 项保持明确
    unresolved；
-2. 2026-07-18 隔离 canary 已用受限 `trade_cal` 窗口完成
-   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`，并经两路 fresh reviewer
-   证明 catalog 字段与真实 provider payload 一致；
-3. 下一步先在全新隔离 server canary 中对 `stock_basic`、`daily` 做受限真实采集、SQLite
-   fact+receipt、catalog/query readback 和 impaired-state 负例；通过后再增加经批准的行业宽度
-   数据合同，并逐批对其余境内 dataset 做 entitlement probe、cadence、限流、增量 backfill 与
-   `success/empty/unobserved/paused/failed/stale` 运行矩阵；
-4. 再完成受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger 与网关；
-5. 最后做 fresh production preflight、完整 rollback、旧 writer quiesce、additive migration、
-   code/runtime readback 和分批启用；
+2. 三个首批 dataset 均已在独立 server canary 中完成真实
+   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
+3. 当前只推进独立内部 V1 运行面：fresh production preflight、精确 Git release、全新 SQLite
+   bootstrap、仅 loopback API、三 dataset 手动通用采集、facts/receipt 守恒、strict probe，
+   通过后再启用采集与 probe timers；store bootstrap 必须在 runtime parent 下的随机 sibling
+   staging root 中完成并以 `renameat2(RENAME_NOREPLACE)` 发布，partial final 必须 fail closed，
+   stale staging 只报告保留、不得自动清理；旧 `8082` 和旧数据库保持不变；
+4. 内部服务稳定并向 TA/MG 交付冻结 catalog/base URL/auth 合同后，再逐批扩境内 dataset；
+5. 受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger、网关和外部
+   ingress 全部后置到 external Beta；
 6. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
 
 ## 本地验证入口

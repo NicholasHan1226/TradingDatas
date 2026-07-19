@@ -146,9 +146,12 @@ public route. A legacy collector `fields` value is only a diagnostic hint.
 this rule. Their onboarding adds neither a public route, a table, nor a
 dataset-specific collector/query branch: the fixed data surface remains
 `GET /v1/catalog` and `POST /v1/query`, backed by the generic provider-native
-fact and receipt path. Industry fan-out/membership work and any production
-activation remain separate reviewed work; the committed target bindings stay
-paused and are not evidence of live collection.
+fact and receipt path. Industry fan-out/membership work remains separate.
+Activation is controlled only by `config/provider_native_activation.yaml` and
+the deterministic generated target registry. An active checked-in binding is
+still not evidence of deployment, a provider call, SQLite facts, a success
+receipt, API freshness, or consumer readiness; each layer requires fresh
+runtime evidence.
 
 Missing or incomplete contracts are listed as deterministic `unresolved + paused`
 records and are absent from the provider-native target candidate. Structurally
@@ -186,10 +189,15 @@ bound to that same default registry. They never reuse the V1 target
 QueryService, even when the trusted process selector activates the target
 registry for V1 catalog/query and the generic runner.
 
-The target artifact keeps all bindings paused and not entitled. A deployment or
-canary must explicitly create a reviewed checkout state before enabling an
-entitled dataset; the committed artifact cannot cause collection by itself.
+The target artifact is generated from the separately reviewed activation
+manifest. A binding may be checked in as active only with an exact entitlement
+and evidence reference, but repository state alone cannot call the provider or
+write SQLite. Only the trusted scheduler in the isolated provider-native runtime
+may act on that state. The internal V1 candidate activates exactly three resolved
+bindings (`cn.market.trade_calendar`, `cn.equity.security_master`, and
+`cn.equity.daily`) through this manifest; that is not evidence of a live
+provider call, SQLite fact, receipt, API readiness, merge, or deployment.
 `paused` is only a scheduling state and is never evidence that legacy readers
-ignore a contract. Replacing the default registry therefore remains blocked
-until generic schema/receipts, backfill, query parity, consumer migration,
-no-use observation, and rollback evidence are independently complete.
+ignore a contract. Replacing the default registry therefore remains blocked until
+generic schema/receipts, backfill, query parity, consumer migration, no-use
+observation, and rollback evidence are independently complete.
