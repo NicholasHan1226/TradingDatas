@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +30,13 @@ DEFAULT_TIMEOUT_SECONDS = 12.0
 MAX_RESPONSE_BYTES = 4_194_304
 MAX_CATALOG_PAGES = 100
 _DATASET_ID = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
+_COMPACT_DATE = re.compile(r"[0-9]{8}\Z")
+_EVIDENCE_ISO_TIMESTAMP = re.compile(
+    r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+    r"T(?P<hour>[01][0-9]|2[0-3]):(?P<minute>[0-5][0-9]):"
+    r"(?P<second>[0-5][0-9])(?:\.(?P<fraction>[0-9]{1,6}))?"
+    r"(?P<zone>Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?\Z"
+)
 _STARTUP_STATES = frozenset({"paused", "unobserved"})
 _STARTUP_POLICIES = frozenset({"strict", "bootstrap"})
 _FORBIDDEN_PROBE_CREDENTIALS = frozenset(
@@ -156,6 +165,111 @@ def _required_list(payload: Mapping[str, Any], key: str) -> list[Any]:
     return value
 
 
+def _dataset_timezone(value: object) -> ZoneInfo:
+    if type(value) is not str or not value:
+        raise ValueError("catalog dataset timezone is invalid")
+    try:
+        return ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError("catalog dataset timezone is invalid") from None
+
+
+def _parse_evidence_timestamp(value: object) -> tuple[datetime, bool]:
+    if type(value) is not str or not value or value != value.strip():
+        raise ValueError("runtime evidence timestamp is invalid")
+    match = _EVIDENCE_ISO_TIMESTAMP.fullmatch(value)
+    if match is None:
+        raise ValueError("runtime evidence timestamp is invalid")
+    candidate = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(candidate)
+        aware = match.group("zone") is not None
+        if aware and (parsed.tzinfo is None or parsed.utcoffset() is None):
+            raise ValueError
+        if not aware and parsed.tzinfo is not None:
+            raise ValueError
+    except (OverflowError, ValueError):
+        raise ValueError("runtime evidence timestamp is invalid") from None
+    return parsed, aware
+
+
+def _localize_unambiguous_timestamp(
+    parsed: datetime,
+    dataset_timezone: ZoneInfo,
+) -> datetime:
+    candidates: list[datetime] = []
+    try:
+        for fold in (0, 1):
+            candidate = parsed.replace(tzinfo=dataset_timezone, fold=fold)
+            round_trip = candidate.astimezone(timezone.utc).astimezone(dataset_timezone)
+            if round_trip.replace(tzinfo=None) == parsed:
+                candidates.append(candidate)
+        offsets = {candidate.utcoffset() for candidate in candidates}
+    except (OverflowError, ValueError):
+        raise ValueError("runtime evidence timestamp is invalid") from None
+    if not candidates or len(offsets) != 1 or None in offsets:
+        raise ValueError("runtime evidence timestamp is invalid")
+    return candidates[0].replace(fold=0)
+
+
+def _catalog_data_through_instant(
+    value: object,
+    *,
+    dataset_timezone: object,
+) -> datetime:
+    local_timezone = _dataset_timezone(dataset_timezone)
+    if type(value) is str and _COMPACT_DATE.fullmatch(value) is not None:
+        try:
+            parsed = datetime.strptime(value, "%Y%m%d").replace(tzinfo=local_timezone)
+        except ValueError:
+            raise ValueError("runtime evidence timestamp is invalid") from None
+        return parsed.astimezone(timezone.utc)
+    parsed, aware = _parse_evidence_timestamp(value)
+    if not aware:
+        parsed = _localize_unambiguous_timestamp(parsed, local_timezone)
+    return parsed.astimezone(timezone.utc)
+
+
+def _catalog_observed_at_instant(value: object) -> datetime:
+    parsed, aware = _parse_evidence_timestamp(value)
+    if not aware:
+        raise ValueError("runtime evidence timestamp is invalid")
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_query_instant(value: object) -> datetime:
+    parsed, aware = _parse_evidence_timestamp(value)
+    if not aware or type(value) is not str:
+        raise ValueError("runtime evidence timestamp is invalid")
+    canonical = parsed.isoformat(
+        timespec="microseconds" if parsed.microsecond else "seconds"
+    )
+    if value != canonical:
+        raise ValueError("runtime evidence timestamp is not canonical")
+    return parsed.astimezone(timezone.utc)
+
+
+def _same_data_through_evidence(
+    catalog_value: object,
+    query_value: object,
+    *,
+    dataset_timezone: object,
+) -> bool:
+    return _catalog_data_through_instant(
+        catalog_value,
+        dataset_timezone=dataset_timezone,
+    ) == _canonical_query_instant(query_value)
+
+
+def _same_observed_at_evidence(
+    catalog_value: object,
+    query_value: object,
+) -> bool:
+    return _catalog_observed_at_instant(catalog_value) == _canonical_query_instant(
+        query_value
+    )
+
+
 def _validate_common(payload: Mapping[str, Any]) -> str:
     if payload.get("api_version") != "v1":
         raise ValueError("V1 api_version is invalid")
@@ -259,6 +373,7 @@ def _query_state(
     dataset_id: str,
     catalog_version: str,
     catalog_runtime: Mapping[str, Any],
+    dataset_timezone: object,
     startup_policy: str,
 ) -> dict[str, str]:
     if _validate_common(payload) != catalog_version:
@@ -376,9 +491,15 @@ def _query_state(
         )
         and type(metadata.get("reasons")) is list
         and not metadata["reasons"]
-        and all(
-            catalog_runtime.get(key) == metadata.get(key)
-            for key in ("receipt_id", "data_through", "observed_at")
+        and catalog_runtime.get("receipt_id") == metadata.get("receipt_id")
+        and _same_data_through_evidence(
+            catalog_runtime.get("data_through"),
+            metadata.get("data_through"),
+            dataset_timezone=dataset_timezone,
+        )
+        and _same_observed_at_evidence(
+            catalog_runtime.get("observed_at"),
+            metadata.get("observed_at"),
         )
     )
     return {
@@ -473,6 +594,7 @@ def probe_internal_v1(
                     dataset_id=dataset_id,
                     catalog_version=catalog_version,
                     catalog_runtime=_required_object(row, "runtime"),
+                    dataset_timezone=row.get("timezone"),
                     startup_policy=startup_policy,
                 )
             )

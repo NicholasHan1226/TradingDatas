@@ -37,6 +37,7 @@ def _catalog_row(dataset_id: str, *, runtime_state: str = "success") -> dict[str
     return {
         "dataset_id": dataset_id,
         "schema_major": 2,
+        "timezone": "Asia/Shanghai",
         "runtime": {
             "state": runtime_state,
             "degraded": degraded,
@@ -93,8 +94,8 @@ def _query(dataset_id: str, *, runtime_state: str = "success") -> dict[str, Any]
                 "receipt_watermark": "receipt-query" if healthy else None,
             },
             "receipt_id": "receipt-shared" if healthy else None,
-            "data_through": "20260718" if healthy else None,
-            "observed_at": "2026-07-18T09:00:00Z" if healthy else None,
+            "data_through": ("2026-07-18T00:00:00+08:00" if healthy else None),
+            "observed_at": ("2026-07-18T09:00:00+00:00" if healthy else None),
             "requested_as_of": None,
             "resolved_as_of": None,
             "reasons": [] if healthy else [runtime_state],
@@ -269,6 +270,222 @@ def test_catalog_success_evidence_is_complete_and_matches_query(
     dataset_id = "cn.synthetic.internal"
     catalog_row = _catalog_row(dataset_id)
     catalog_row["runtime"]["receipt_id"] = catalog_receipt
+    transport = _FakeTransport([_catalog([catalog_row]), _query(dataset_id)])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize(
+    ("catalog_data_through", "query_data_through"),
+    [
+        ("20260718", "2026-07-18T00:00:00+08:00"),
+        ("2026-07-18T01:00:00Z", "2026-07-18T09:00:00+08:00"),
+    ],
+)
+def test_catalog_and_query_accept_semantically_equal_runtime_timestamps(
+    catalog_data_through: str,
+    query_data_through: str,
+) -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["runtime"]["data_through"] = catalog_data_through
+    catalog_row["runtime"]["observed_at"] = "2026-07-18T09:00:00Z"
+    response = _query(dataset_id)
+    response["metadata"]["data_through"] = query_data_through
+    response["metadata"]["observed_at"] = "2026-07-18T17:00:00+08:00"
+    transport = _FakeTransport([_catalog([catalog_row]), response])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 0
+
+
+def test_frozen_contract_catalog_and_query_runtime_evidence_is_healthy() -> None:
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sharedsignals_v1_query_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = fixture["catalog_response"]
+    query = fixture["healthy_query"]["response"]
+    dataset_id = query["dataset_id"]
+    transport = _FakeTransport([catalog, query])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 0
+
+
+def test_catalog_unambiguous_local_data_through_matches_canonical_query() -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["runtime"]["data_through"] = "2026-07-18T09:00:00"
+    response = _query(dataset_id)
+    response["metadata"]["data_through"] = "2026-07-18T09:00:00+08:00"
+    transport = _FakeTransport([_catalog([catalog_row]), response])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "catalog_value", "query_value"),
+    [
+        ("data_through", "20260718", "2026-07-18T00:00:00Z"),
+        (
+            "observed_at",
+            "2026-07-18T09:00:00Z",
+            "2026-07-18T09:00:01Z",
+        ),
+    ],
+)
+def test_catalog_and_query_reject_different_runtime_evidence_instants(
+    field: str,
+    catalog_value: str,
+    query_value: str,
+) -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["runtime"][field] = catalog_value
+    response = _query(dataset_id)
+    response["metadata"][field] = query_value
+    transport = _FakeTransport([_catalog([catalog_row]), response])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize(
+    ("timezone_name", "catalog_value", "query_value"),
+    [
+        (
+            "America/New_York",
+            "2026-11-01T01:30:00",
+            "2026-11-01T05:30:00+00:00",
+        ),
+        (
+            "America/New_York",
+            "2026-03-08T02:30:00",
+            "2026-03-08T07:30:00+00:00",
+        ),
+        (
+            "Asia/Shanghai",
+            "20260230",
+            "2026-03-02T00:00:00+08:00",
+        ),
+    ],
+)
+def test_catalog_rejects_ambiguous_nonexistent_or_invalid_data_through(
+    timezone_name: str,
+    catalog_value: str,
+    query_value: str,
+) -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["timezone"] = timezone_name
+    catalog_row["runtime"]["data_through"] = catalog_value
+    response = _query(dataset_id)
+    response["metadata"]["data_through"] = query_value
+    transport = _FakeTransport([_catalog([catalog_row]), response])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "query_value"),
+    [
+        ("data_through", "20260718"),
+        ("data_through", "2026-07-18T00:00:00+08:00 "),
+        ("observed_at", "2026-07-18T09:00:00Z"),
+        ("observed_at", "2026-07-18T09:00:00.000000+00:00"),
+    ],
+)
+def test_query_runtime_evidence_must_be_canonical_rfc3339(
+    field: str,
+    query_value: str,
+) -> None:
+    dataset_id = "cn.synthetic.internal"
+    response = _query(dataset_id)
+    response["metadata"][field] = query_value
+    transport = _FakeTransport([_catalog([_catalog_row(dataset_id)]), response])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 1
+
+
+def test_catalog_observed_at_must_be_aware() -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["runtime"]["observed_at"] = "2026-07-18T09:00:00"
+    transport = _FakeTransport([_catalog([catalog_row]), _query(dataset_id)])
+
+    result = probe.probe_internal_v1(
+        base_url="http://127.0.0.1:18082",
+        token="secret",
+        expected_dataset_ids=(dataset_id,),
+        startup_policy="strict",
+        transport=transport,
+    )
+
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize("timezone_name", [None, "", "Mars/Olympus_Mons"])
+def test_catalog_runtime_requires_a_valid_dataset_timezone(
+    timezone_name: object,
+) -> None:
+    dataset_id = "cn.synthetic.internal"
+    catalog_row = _catalog_row(dataset_id)
+    catalog_row["timezone"] = timezone_name
     transport = _FakeTransport([_catalog([catalog_row]), _query(dataset_id)])
 
     result = probe.probe_internal_v1(
