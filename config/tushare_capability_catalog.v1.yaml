@@ -1,0 +1,4117 @@
+version: 1
+catalog_id: tushare-official-capabilities.v1
+provider: tushare
+provenance:
+  repository_url: https://github.com/waditu-tushare/skills.git
+  pinned_commit: 5e12b31d09123e262c5fb38564e80c26d05cb830
+  index_path: tushare/references/数据接口.md
+  index_sha256: 0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2
+scope:
+  scope_id: tushare-capability-scope.v1
+  scope_sha256: b73e9efa32b4e80483ae5939c9e32ca7f70caae16ea534689b93de498e14db3f
+counts:
+  official_source_rows: 240
+  official_unique_api_names: 239
+scope_counts:
+  in_scope: 190
+  locked: 0
+  unknown: 4
+  excluded: 36
+  retired: 5
+  non_data_operation: 4
+legacy_coverage:
+  authority: migration_input_only
+  inventory_path: config/tushare_capability_plan.yaml
+  inventory_sha256: eea516832489f7341f61e0ae5bf8e86a89606c5bb800c198a87a43c7340d4200
+  counts:
+    legacy_api_names: 114
+    official_legacy_overlap: 109
+    official_only: 130
+    legacy_only: 5
+  legacy_only_reviews:
+  - api_name: concept
+    review_state: migration_review_required
+    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
+  - api_name: concept_detail
+    review_state: migration_review_required
+    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
+  - api_name: hs_const
+    review_state: migration_review_required
+    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
+  - api_name: index_member
+    review_state: migration_review_required
+    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
+  - api_name: limit_list
+    review_state: migration_review_required
+    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
+capabilities:
+- api_name: adj_factor
+  doc_url: https://tushare.pro/wctapi/documents/28.md
+  title: 复权因子
+  category: 股票数据,行情数据
+  description: 本接口由Tushare自行生产，获取股票复权因子，可提取单只股票全部历史复权因子，也可以提取单日全部股票的复权因子。
+  source_rows:
+  - line_number: 221
+    row_sha256: 63d2d221184535138889096140abacac8e5e0a29bb25032a5b2e14636b3916ee
+    api_name: adj_factor
+    doc_url: https://tushare.pro/wctapi/documents/28.md
+    title: 复权因子
+    category: 股票数据,行情数据
+    description: 本接口由Tushare自行生产，获取股票复权因子，可提取单只股票全部历史复权因子，也可以提取单日全部股票的复权因子。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: anns_d
+  doc_url: https://tushare.pro/wctapi/documents/176.md
+  title: 上市公司公告
+  category: 大模型语料
+  description: 获取全量公告数据，提供pdf下载URL
+  source_rows:
+  - line_number: 57
+    row_sha256: 5af9b2eeb6a136e03096e9ff5ba4d60660ed8794136ee7f2f11fb120bd7f7872
+    api_name: anns_d
+    doc_url: https://tushare.pro/wctapi/documents/176.md
+    title: 上市公司公告
+    category: 大模型语料
+    description: 获取全量公告数据，提供pdf下载URL
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: bak_basic
+  doc_url: https://tushare.pro/wctapi/documents/262.md
+  title: 股票历史列表
+  category: 股票数据,基础数据
+  description: 获取备用基础列表，数据从2016年开始
+  source_rows:
+  - line_number: 158
+    row_sha256: 420302733ce278b29c66897f43416dd81b35fec75d299584d0ea794b49fbd85e
+    api_name: bak_basic
+    doc_url: https://tushare.pro/wctapi/documents/262.md
+    title: 股票历史列表
+    category: 股票数据,基础数据
+    description: 获取备用基础列表，数据从2016年开始
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: bak_daily
+  doc_url: https://tushare.pro/wctapi/documents/255.md
+  title: 备用行情
+  category: 股票数据,行情数据
+  description: 获取备用行情，包括特定的行情指标(数据从2017年中左右开始，早期有几天数据缺失，近期正常)
+  source_rows:
+  - line_number: 211
+    row_sha256: a852ff15efdcebf559bee30a9c1979c5c4c4704e8bd4f05101536dc77c087aa4
+    api_name: bak_daily
+    doc_url: https://tushare.pro/wctapi/documents/255.md
+    title: 备用行情
+    category: 股票数据,行情数据
+    description: 获取备用行情，包括特定的行情指标(数据从2017年中左右开始，早期有几天数据缺失，近期正常)
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: balancesheet
+  doc_url: https://tushare.pro/wctapi/documents/36.md
+  title: 资产负债表
+  category: 股票数据,财务数据
+  description: 获取上市公司资产负债表
+  source_rows:
+  - line_number: 230
+    row_sha256: 14ff0d366c962795040e63937c5ab82111bd6433423784e9d06d10a7d94487de
+    api_name: balancesheet
+    doc_url: https://tushare.pro/wctapi/documents/36.md
+    title: 资产负债表
+    category: 股票数据,财务数据
+    description: 获取上市公司资产负债表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: bc_bestotcqt
+  doc_url: https://tushare.pro/wctapi/documents/323.md
+  title: 柜台流通式债券最优报价
+  category: 债券专题
+  description: 柜台流通式债券最优报价
+  source_rows:
+  - line_number: 30
+    row_sha256: c3a20e521fadfb862bba09a34a5a3f89729b935cb5bf9e2d8625c30992df291b
+    api_name: bc_bestotcqt
+    doc_url: https://tushare.pro/wctapi/documents/323.md
+    title: 柜台流通式债券最优报价
+    category: 债券专题
+    description: 柜台流通式债券最优报价
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: bc_otcqt
+  doc_url: https://tushare.pro/wctapi/documents/322.md
+  title: 柜台流通式债券报价
+  category: 债券专题
+  description: 柜台流通式债券报价
+  source_rows:
+  - line_number: 38
+    row_sha256: a63d65c3bd6c0c511034731ef285657b2721eeaa44a963240d32922619c85d69
+    api_name: bc_otcqt
+    doc_url: https://tushare.pro/wctapi/documents/322.md
+    title: 柜台流通式债券报价
+    category: 债券专题
+    description: 柜台流通式债券报价
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: block_trade
+  doc_url: https://tushare.pro/wctapi/documents/161.md
+  title: 大宗交易
+  category: 股票数据,参考数据
+  description: 大宗交易
+  source_rows:
+  - line_number: 148
+    row_sha256: 0e177c61a260c64708a5da2de439e5371847a0d5a6cfcd8a8577f0cc4a044900
+    api_name: block_trade
+    doc_url: https://tushare.pro/wctapi/documents/161.md
+    title: 大宗交易
+    category: 股票数据,参考数据
+    description: 大宗交易
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: bond_blk
+  doc_url: https://tushare.pro/wctapi/documents/271.md
+  title: 大宗交易
+  category: 债券专题
+  description: 获取沪深交易所债券大宗交易数据
+  source_rows:
+  - line_number: 34
+    row_sha256: 5034e583403ad2813530d3b9693b9d98392c85fc327aa70668ac5ac049ee7e9c
+    api_name: bond_blk
+    doc_url: https://tushare.pro/wctapi/documents/271.md
+    title: 大宗交易
+    category: 债券专题
+    description: 获取沪深交易所债券大宗交易数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: bond_blk_detail
+  doc_url: https://tushare.pro/wctapi/documents/272.md
+  title: 大宗交易明细
+  category: 债券专题
+  description: 获取沪深交易所债券大宗交易数据
+  source_rows:
+  - line_number: 35
+    row_sha256: 4a318c456b61801757afd7e33720664ed747ae7f7027a1d607a169d9c3a82508
+    api_name: bond_blk_detail
+    doc_url: https://tushare.pro/wctapi/documents/272.md
+    title: 大宗交易明细
+    category: 债券专题
+    description: 获取沪深交易所债券大宗交易数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: broker_recommend
+  doc_url: https://tushare.pro/wctapi/documents/267.md
+  title: 券商月度金股
+  category: 股票数据,特色数据
+  description: 获取券商月度金股，一般1日~3日内更新当月数据
+  source_rows:
+  - line_number: 194
+    row_sha256: 0284747bb86c8174d000233ba8a9eea2f32cd7d62a4f8f664f9d947fc027d72f
+    api_name: broker_recommend
+    doc_url: https://tushare.pro/wctapi/documents/267.md
+    title: 券商月度金股
+    category: 股票数据,特色数据
+    description: 获取券商月度金股，一般1日~3日内更新当月数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: bse_mapping
+  doc_url: https://tushare.pro/wctapi/documents/375.md
+  title: 北交所新旧代码对照
+  category: 股票数据,基础数据
+  description: 获取北交所股票代码变更后新旧代码映射表数据
+  source_rows:
+  - line_number: 160
+    row_sha256: e4180fdfa61f8607196b3737a632e3892284e040db19b49f910de92c45881cea
+    api_name: bse_mapping
+    doc_url: https://tushare.pro/wctapi/documents/375.md
+    title: 北交所新旧代码对照
+    category: 股票数据,基础数据
+    description: 获取北交所股票代码变更后新旧代码映射表数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cashflow
+  doc_url: https://tushare.pro/wctapi/documents/44.md
+  title: 现金流量表
+  category: 股票数据,财务数据
+  description: 获取上市公司现金流量表
+  source_rows:
+  - line_number: 231
+    row_sha256: 723453283456a5d27e217742533295df255026e43d93620454ea7bfe7cba1ece
+    api_name: cashflow
+    doc_url: https://tushare.pro/wctapi/documents/44.md
+    title: 现金流量表
+    category: 股票数据,财务数据
+    description: 获取上市公司现金流量表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cb_basic
+  doc_url: https://tushare.pro/wctapi/documents/185.md
+  title: 可转债基础信息
+  category: 债券专题
+  description: 获取可转债基本信息
+  source_rows:
+  - line_number: 24
+    row_sha256: 9e693b2a02f8a7b9aac033b8cbcd47f99c61312d92265d10d0a4f70e3327d308
+    api_name: cb_basic
+    doc_url: https://tushare.pro/wctapi/documents/185.md
+    title: 可转债基础信息
+    category: 债券专题
+    description: 获取可转债基本信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cb_call
+  doc_url: https://tushare.pro/wctapi/documents/269.md
+  title: 可转债赎回信息
+  category: 债券专题
+  description: 获取可转债到期赎回、强制赎回等信息。数据来源于公开披露渠道，供个人和机构研究使用，请不要用于数据商业目的。
+  source_rows:
+  - line_number: 33
+    row_sha256: 634e2c0e68acc9fb9df8a9d4fc5bb13202e37fe7d4cdc23b773c93e701b69dc9
+    api_name: cb_call
+    doc_url: https://tushare.pro/wctapi/documents/269.md
+    title: 可转债赎回信息
+    category: 债券专题
+    description: 获取可转债到期赎回、强制赎回等信息。数据来源于公开披露渠道，供个人和机构研究使用，请不要用于数据商业目的。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cb_daily
+  doc_url: https://tushare.pro/wctapi/documents/187.md
+  title: 可转债行情
+  category: 债券专题
+  description: 获取可转债行情
+  source_rows:
+  - line_number: 22
+    row_sha256: 7fb7bd0e27785138ee57c063553d32e63b97a904da76d50f0e650170470feece
+    api_name: cb_daily
+    doc_url: https://tushare.pro/wctapi/documents/187.md
+    title: 可转债行情
+    category: 债券专题
+    description: 获取可转债行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cb_factor_pro
+  doc_url: https://tushare.pro/wctapi/documents/392.md
+  title: 可转债技术面因子(专业版)
+  category: 债券专题
+  description: 获取可转债每日技术面因子数据，用于跟踪可转债当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，_qfq表示前复权 _hfq表示后复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_rows:
+  - line_number: 25
+    row_sha256: 25af0b388346e361ae2198e7a4641500ac27a91d91099adcd23df82b946785fb
+    api_name: cb_factor_pro
+    doc_url: https://tushare.pro/wctapi/documents/392.md
+    title: 可转债技术面因子(专业版)
+    category: 债券专题
+    description: 获取可转债每日技术面因子数据，用于跟踪可转债当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，_qfq表示前复权 _hfq表示后复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cb_issue
+  doc_url: https://tushare.pro/wctapi/documents/186.md
+  title: 可转债发行
+  category: 债券专题
+  description: 获取可转债发行数据
+  source_rows:
+  - line_number: 23
+    row_sha256: f5855b78cef62393c6c8df10517f0c0f1d9bbdec76590e51879deb05193e6471
+    api_name: cb_issue
+    doc_url: https://tushare.pro/wctapi/documents/186.md
+    title: 可转债发行
+    category: 债券专题
+    description: 获取可转债发行数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cb_price_chg
+  doc_url: https://tushare.pro/wctapi/documents/246.md
+  title: 可转债转股价变动
+  category: 债券专题
+  description: 获取可转债转股价变动
+  source_rows:
+  - line_number: 36
+    row_sha256: e4697dd5bbcba1242eaa95db820e496dfc98552146a674cd3727edf9a00dee66
+    api_name: cb_price_chg
+    doc_url: https://tushare.pro/wctapi/documents/246.md
+    title: 可转债转股价变动
+    category: 债券专题
+    description: 获取可转债转股价变动
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cb_rate
+  doc_url: https://tushare.pro/wctapi/documents/305.md
+  title: 可转债票面利率
+  category: 债券专题
+  description: 获取可转债票面利率
+  source_rows:
+  - line_number: 37
+    row_sha256: 9d6a3ece7f517e2237a8f9ec1fdca74db70d9d7811177416cad32f7797b2f0ac
+    api_name: cb_rate
+    doc_url: https://tushare.pro/wctapi/documents/305.md
+    title: 可转债票面利率
+    category: 债券专题
+    description: 获取可转债票面利率
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cb_rating
+  doc_url: https://tushare.pro/wctapi/documents/458.md
+  title: 可转债债券评级
+  category: 债券专题
+  description: 获取可转债评级历史记录
+  source_rows:
+  - line_number: 28
+    row_sha256: 4346b4ca2f64732dab8a6d987919dac26403fa7a37928af13b7f4be161a83ae6
+    api_name: cb_rating
+    doc_url: https://tushare.pro/wctapi/documents/458.md
+    title: 可转债债券评级
+    category: 债券专题
+    description: 获取可转债评级历史记录
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cb_share
+  doc_url: https://tushare.pro/wctapi/documents/247.md
+  title: 可转债转股结果
+  category: 债券专题
+  description: 获取可转债转股结果
+  source_rows:
+  - line_number: 31
+    row_sha256: 8a7007197390945f7675e894575cb0a7e9f8453fa68783242db692340a39c0f1
+    api_name: cb_share
+    doc_url: https://tushare.pro/wctapi/documents/247.md
+    title: 可转债转股结果
+    category: 债券专题
+    description: 获取可转债转股结果
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: ccass_hold
+  doc_url: https://tushare.pro/wctapi/documents/295.md
+  title: 中央结算系统持股统计
+  category: 股票数据,特色数据
+  description: 获取中央结算系统持股汇总数据，覆盖全部历史数据，根据交易所披露时间，当日数据在下一交易日早上9点前完成入库
+  source_rows:
+  - line_number: 206
+    row_sha256: 56f4d1bf2c388bb8abd80ca52125d538660fb8fa122ca8aecfdc842a0ace317c
+    api_name: ccass_hold
+    doc_url: https://tushare.pro/wctapi/documents/295.md
+    title: 中央结算系统持股统计
+    category: 股票数据,特色数据
+    description: 获取中央结算系统持股汇总数据，覆盖全部历史数据，根据交易所披露时间，当日数据在下一交易日早上9点前完成入库
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: ccass_hold_detail
+  doc_url: https://tushare.pro/wctapi/documents/274.md
+  title: 中央结算系统持股明细
+  category: 股票数据,特色数据
+  description: 获取中央结算系统机构席位持股明细，数据覆盖**全历史**，根据交易所披露时间，当日数据在下一交易日早上9点前完成
+  source_rows:
+  - line_number: 195
+    row_sha256: 93939db2ea4314839b0a3e6af2563af322dea4a1e75ae40cdbeb44fc9a760fa3
+    api_name: ccass_hold_detail
+    doc_url: https://tushare.pro/wctapi/documents/274.md
+    title: 中央结算系统持股明细
+    category: 股票数据,特色数据
+    description: 获取中央结算系统机构席位持股明细，数据覆盖**全历史**，根据交易所披露时间，当日数据在下一交易日早上9点前完成
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: cctv_news
+  doc_url: https://tushare.pro/wctapi/documents/154.md
+  title: 新闻联播文字稿
+  category: 大模型语料
+  description: 获取新闻联播文字稿数据，数据开始于2017年。
+  source_rows:
+  - line_number: 51
+    row_sha256: a9639d93c95542fcdab65e48afd7173a79d23f6624eeba531b7d947bc90f721b
+    api_name: cctv_news
+    doc_url: https://tushare.pro/wctapi/documents/154.md
+    title: 新闻联播文字稿
+    category: 大模型语料
+    description: 获取新闻联播文字稿数据，数据开始于2017年。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: ci_daily
+  doc_url: https://tushare.pro/wctapi/documents/308.md
+  title: 中信行业指数日行情
+  category: 指数专题
+  description: 获取中信行业指数日线行情
+  source_rows:
+  - line_number: 78
+    row_sha256: e88068a0c78fce53d284f5864a314721d001a2501fa93dfbc15b89912a8089b8
+    api_name: ci_daily
+    doc_url: https://tushare.pro/wctapi/documents/308.md
+    title: 中信行业指数日行情
+    category: 指数专题
+    description: 获取中信行业指数日线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: ci_index_member
+  doc_url: https://tushare.pro/wctapi/documents/373.md
+  title: 中信行业成分
+  category: 指数专题
+  description: 按三级分类提取中信行业成分，可提供某个分类的所有成分，也可按股票代码提取所属分类，参数灵活
+  source_rows:
+  - line_number: 84
+    row_sha256: e4b6ec828980e014bf1b5baf2da560d1f85bff7821ae903eda12ea4fb05e75ea
+    api_name: ci_index_member
+    doc_url: https://tushare.pro/wctapi/documents/373.md
+    title: 中信行业成分
+    category: 指数专题
+    description: 按三级分类提取中信行业成分，可提供某个分类的所有成分，也可按股票代码提取所属分类，参数灵活
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cn_cpi
+  doc_url: https://tushare.pro/wctapi/documents/228.md
+  title: 居民消费价格指数(CPI)
+  category: 宏观经济,国内宏观,价格指数
+  description: 获取CPI居民消费价格数据，包括全国、城市和农村的数据
+  source_rows:
+  - line_number: 61
+    row_sha256: e9eeab0edb1e116fdaceedab8453f99aab5ee18a9d8c2cced2382dd2f9c72a49
+    api_name: cn_cpi
+    doc_url: https://tushare.pro/wctapi/documents/228.md
+    title: 居民消费价格指数(CPI)
+    category: 宏观经济,国内宏观,价格指数
+    description: 获取CPI居民消费价格数据，包括全国、城市和农村的数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cn_gdp
+  doc_url: https://tushare.pro/wctapi/documents/227.md
+  title: 国内生产总值(GDP)
+  category: 宏观经济,国内宏观,国民经济
+  description: 获取国民经济之GDP数据
+  source_rows:
+  - line_number: 69
+    row_sha256: c90f3674ee83c6780a1fa8377e713f7fbe005b3fddaf0109fddfcd1687b7e585
+    api_name: cn_gdp
+    doc_url: https://tushare.pro/wctapi/documents/227.md
+    title: 国内生产总值(GDP)
+    category: 宏观经济,国内宏观,国民经济
+    description: 获取国民经济之GDP数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cn_m
+  doc_url: https://tushare.pro/wctapi/documents/242.md
+  title: 货币供应量(月)
+  category: 宏观经济,国内宏观,金融,货币供应量
+  description: 获取货币供应量之月度数据
+  source_rows:
+  - line_number: 72
+    row_sha256: 62185005697d211fc6d1f7e18f5ff3c92aa92c5377477f0723acd48a1d23fd41
+    api_name: cn_m
+    doc_url: https://tushare.pro/wctapi/documents/242.md
+    title: 货币供应量(月)
+    category: 宏观经济,国内宏观,金融,货币供应量
+    description: 获取货币供应量之月度数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cn_pmi
+  doc_url: https://tushare.pro/wctapi/documents/325.md
+  title: 采购经理指数(PMI)
+  category: 宏观经济,国内宏观,景气度
+  description: 采购经理人指数
+  source_rows:
+  - line_number: 70
+    row_sha256: f7ec47e8f3527ee793891adcfe3933b064029dd3b67f162f689de5cb9c0e1271
+    api_name: cn_pmi
+    doc_url: https://tushare.pro/wctapi/documents/325.md
+    title: 采购经理指数(PMI)
+    category: 宏观经济,国内宏观,景气度
+    description: 采购经理人指数
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cn_ppi
+  doc_url: https://tushare.pro/wctapi/documents/245.md
+  title: 工业生产者出厂价格指数(PPI)
+  category: 宏观经济,国内宏观,价格指数
+  description: 获取PPI工业生产者出厂价格指数数据
+  source_rows:
+  - line_number: 60
+    row_sha256: efefddbb1b594e612e26e1c43cdc0f26f3502758e867250a30fb6a6e2de10f7f
+    api_name: cn_ppi
+    doc_url: https://tushare.pro/wctapi/documents/245.md
+    title: 工业生产者出厂价格指数(PPI)
+    category: 宏观经济,国内宏观,价格指数
+    description: 获取PPI工业生产者出厂价格指数数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cn_schedule
+  doc_url: https://tushare.pro/wctapi/documents/461.md
+  title: 中国经济数据发布日程
+  category: 宏观经济,国内宏观
+  description: 获取国家统计局、中国人民银行等经济数据发布日程及对应tushare接口，持续更新中
+  source_rows:
+  - line_number: 59
+    row_sha256: 0d02237bacace34781d328a9509319a5a1a5d3e7cc3bc649fac2b46f77860acf
+    api_name: cn_schedule
+    doc_url: https://tushare.pro/wctapi/documents/461.md
+    title: 中国经济数据发布日程
+    category: 宏观经济,国内宏观
+    description: 获取国家统计局、中国人民银行等经济数据发布日程及对应tushare接口，持续更新中
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: cyq_chips
+  doc_url: https://tushare.pro/wctapi/documents/294.md
+  title: 每日筹码分布
+  category: 股票数据,特色数据
+  description: 获取A股每日的筹码分布情况，提供各价位占比，数据从2018年开始，每天18~19点之间更新当日数据
+  source_rows:
+  - line_number: 199
+    row_sha256: c25733471dda042cc2b4a871b3de1afefa301e0c2159b0ff5477b8accdbb6947
+    api_name: cyq_chips
+    doc_url: https://tushare.pro/wctapi/documents/294.md
+    title: 每日筹码分布
+    category: 股票数据,特色数据
+    description: 获取A股每日的筹码分布情况，提供各价位占比，数据从2018年开始，每天18~19点之间更新当日数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: cyq_perf
+  doc_url: https://tushare.pro/wctapi/documents/293.md
+  title: 每日筹码及胜率
+  category: 股票数据,特色数据
+  description: 获取A股每日筹码平均成本和胜率情况，每天18~19点左右更新，数据从2018年开始
+  source_rows:
+  - line_number: 198
+    row_sha256: 3e3894470ff3bfdff645f9e4f0710790b944c0a073965e64600eeb344de6171c
+    api_name: cyq_perf
+    doc_url: https://tushare.pro/wctapi/documents/293.md
+    title: 每日筹码及胜率
+    category: 股票数据,特色数据
+    description: 获取A股每日筹码平均成本和胜率情况，每天18~19点左右更新，数据从2018年开始
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: daily
+  doc_url: https://tushare.pro/wctapi/documents/27.md
+  title: 历史日线
+  category: 股票数据,行情数据
+  description: 获取股票行情数据，或通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据，包含了前后复权数据
+  source_rows:
+  - line_number: 208
+    row_sha256: 77f5b0d162fe7afc5edf0d61a71b8ad46a50fe39d4d70a069a9382fe37242aa2
+    api_name: daily
+    doc_url: https://tushare.pro/wctapi/documents/27.md
+    title: 历史日线
+    category: 股票数据,行情数据
+    description: 获取股票行情数据，或通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据，包含了前后复权数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: daily_basic
+  doc_url: https://tushare.pro/wctapi/documents/32.md
+  title: 每日指标
+  category: 股票数据,行情数据
+  description: 获取全部股票每日重要的基本面指标，可用于选股分析、报表展示等。单次请求最大返回6000条数据，可按日线循环提取全部历史。
+  source_rows:
+  - line_number: 222
+    row_sha256: 688f8f82a3459f3a9965515d56ed85276b858e346c8a26ad2032a2c3651d3bcc
+    api_name: daily_basic
+    doc_url: https://tushare.pro/wctapi/documents/32.md
+    title: 每日指标
+    category: 股票数据,行情数据
+    description: 获取全部股票每日重要的基本面指标，可用于选股分析、报表展示等。单次请求最大返回6000条数据，可按日线循环提取全部历史。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: daily_info
+  doc_url: https://tushare.pro/wctapi/documents/215.md
+  title: 沪深市场每日交易统计
+  category: 指数专题
+  description: 获取交易所股票交易统计，包括各板块明细
+  source_rows:
+  - line_number: 96
+    row_sha256: 2cb0740639b7d2ba80629141294a129fd1a182a5635ec49ce1fab90080fae382
+    api_name: daily_info
+    doc_url: https://tushare.pro/wctapi/documents/215.md
+    title: 沪深市场每日交易统计
+    category: 指数专题
+    description: 获取交易所股票交易统计，包括各板块明细
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: dc_concept
+  doc_url: https://tushare.pro/wctapi/documents/421.md
+  title: 题材数据(DC)
+  category: 股票数据,打板专题数据
+  description: 获取概念题材列表，每天盘后更新
+  source_rows:
+  - line_number: 193
+    row_sha256: df83a04409c73ce6a3f0848db7d7029b1736109d493d4ec123b95d5efbb432b5
+    api_name: dc_concept
+    doc_url: https://tushare.pro/wctapi/documents/421.md
+    title: 题材数据(DC)
+    category: 股票数据,打板专题数据
+    description: 获取概念题材列表，每天盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: dc_concept_cons
+  doc_url: https://tushare.pro/wctapi/documents/422.md
+  title: 题材成分(DC)
+  category: 股票数据,打板专题数据
+  description: 获取概念题材的成分股，每天盘后更新
+  source_rows:
+  - line_number: 190
+    row_sha256: 6cbba26b79984b51a5bb2d3ec2a1bc56bb9d29f566ca678f420875a3cc17fc9e
+    api_name: dc_concept_cons
+    doc_url: https://tushare.pro/wctapi/documents/422.md
+    title: 题材成分(DC)
+    category: 股票数据,打板专题数据
+    description: 获取概念题材的成分股，每天盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: dc_daily
+  doc_url: https://tushare.pro/wctapi/documents/382.md
+  title: DC概念板块行情
+  category: 股票数据,打板专题数据
+  description: 获取概念板块、行业指数板块、地域板块行情数据，历史数据开始于2020年
+  source_rows:
+  - line_number: 188
+    row_sha256: c21f32b843fe92725ffc87d0758da424e63670101e4aca92f241c59e0200ec92
+    api_name: dc_daily
+    doc_url: https://tushare.pro/wctapi/documents/382.md
+    title: DC概念板块行情
+    category: 股票数据,打板专题数据
+    description: 获取概念板块、行业指数板块、地域板块行情数据，历史数据开始于2020年
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: dc_hot
+  doc_url: https://tushare.pro/wctapi/documents/321.md
+  title: DC热榜
+  category: 股票数据,打板专题数据
+  description: 获取热榜数据，包括A股市场、ETF基金、港股市场、美股市场等等，每日盘中提取4次，收盘后4次，最晚22点提取一次。
+  source_rows:
+  - line_number: 181
+    row_sha256: dcb4624a7c49f18a67419b47d96e2e236d0dede9304eba514f4150ccebbf9abd
+    api_name: dc_hot
+    doc_url: https://tushare.pro/wctapi/documents/321.md
+    title: DC热榜
+    category: 股票数据,打板专题数据
+    description: 获取热榜数据，包括A股市场、ETF基金、港股市场、美股市场等等，每日盘中提取4次，收盘后4次，最晚22点提取一次。
+  source_resolution: single_official_index_row
+  scope_state: unknown
+  scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
+  in_legacy_inventory: false
+- api_name: dc_index
+  doc_url: https://tushare.pro/wctapi/documents/362.md
+  title: DC概念板块分类
+  category: 股票数据,打板专题数据
+  description: 获取每个交易日的概念板块数据，支持按日期查询
+  source_rows:
+  - line_number: 175
+    row_sha256: bd1a0aa759a852995a1ef50851f6f7f2c13f7a4a094a0134e0bae4db137780f6
+    api_name: dc_index
+    doc_url: https://tushare.pro/wctapi/documents/362.md
+    title: DC概念板块分类
+    category: 股票数据,打板专题数据
+    description: 获取每个交易日的概念板块数据，支持按日期查询
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: dc_member
+  doc_url: https://tushare.pro/wctapi/documents/363.md
+  title: DC概念板块成分
+  category: 股票数据,打板专题数据
+  description: 获取板块每日成分数据，可以根据概念板块代码和交易日期，获取历史成分
+  source_rows:
+  - line_number: 174
+    row_sha256: a8fce640ac99cdf61b159ce944d1bc47a0d16d761980f5db7bc5af9fbd289122
+    api_name: dc_member
+    doc_url: https://tushare.pro/wctapi/documents/363.md
+    title: DC概念板块成分
+    category: 股票数据,打板专题数据
+    description: 获取板块每日成分数据，可以根据概念板块代码和交易日期，获取历史成分
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: disclosure_date
+  doc_url: https://tushare.pro/wctapi/documents/162.md
+  title: 财报披露日期表
+  category: 股票数据,财务数据
+  description: 获取财报披露计划日期
+  source_rows:
+  - line_number: 235
+    row_sha256: fc82a220a52526256d34a0d971c254af2b84a43f9f430365f86416799a2500be
+    api_name: disclosure_date
+    doc_url: https://tushare.pro/wctapi/documents/162.md
+    title: 财报披露日期表
+    category: 股票数据,财务数据
+    description: 获取财报披露计划日期
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: dividend
+  doc_url: https://tushare.pro/wctapi/documents/103.md
+  title: 分红送股数据
+  category: 股票数据,财务数据
+  description: 分红送股数据
+  source_rows:
+  - line_number: 233
+    row_sha256: 0d24354c25881ef52bdac4bf830ef42d0413525ae1af6fa6c962545899e0b05d
+    api_name: dividend
+    doc_url: https://tushare.pro/wctapi/documents/103.md
+    title: 分红送股数据
+    category: 股票数据,财务数据
+    description: 分红送股数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: eco_cal
+  doc_url: https://tushare.pro/wctapi/documents/233.md
+  title: 全球财经事件
+  category: 债券专题
+  description: 获取全球财经日历、包括经济事件数据更新
+  source_rows:
+  - line_number: 29
+    row_sha256: 791357f9c4833c3e39576ca8fb4535e88de832a306a97404e4bbdd6176fd94fa
+    api_name: eco_cal
+    doc_url: https://tushare.pro/wctapi/documents/233.md
+    title: 全球财经事件
+    category: 债券专题
+    description: 获取全球财经日历、包括经济事件数据更新
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: etf_basic
+  doc_url: https://tushare.pro/wctapi/documents/385.md
+  title: ETF基本信息
+  category: ETF专题
+  description: 获取国内ETF基础信息，包括了QDII。数据来源与沪深交易所公开披露信息。
+  source_rows:
+  - line_number: 19
+    row_sha256: 7f28c47ff7dba542c38df3dab853e337ca05d1a482b821b6cd07bf666a4e7f7c
+    api_name: etf_basic
+    doc_url: https://tushare.pro/wctapi/documents/385.md
+    title: ETF基本信息
+    category: ETF专题
+    description: 获取国内ETF基础信息，包括了QDII。数据来源与沪深交易所公开披露信息。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: etf_index
+  doc_url: https://tushare.pro/wctapi/documents/386.md
+  title: ETF跟踪指数
+  category: ETF专题
+  description: 获取ETF基准指数列表信息
+  source_rows:
+  - line_number: 9
+    row_sha256: 0ce852742defd513193c8ecf4ac9394c396d8aa4cfffb0c9cc87db1077110b1b
+    api_name: etf_index
+    doc_url: https://tushare.pro/wctapi/documents/386.md
+    title: ETF跟踪指数
+    category: ETF专题
+    description: 获取ETF基准指数列表信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: etf_mins
+  doc_url: https://tushare.pro/wctapi/documents/387.md
+  title: ETF历史分钟
+  category: ETF专题
+  description: 获取ETF分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_rows:
+  - line_number: 18
+    row_sha256: 40ad7a22c87e94cf8ae0f7dff0287009e3b156482c7cfa186271403bc2302c78
+    api_name: etf_mins
+    doc_url: https://tushare.pro/wctapi/documents/387.md
+    title: ETF历史分钟
+    category: ETF专题
+    description: 获取ETF分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: etf_sh_cons
+  doc_url: https://tushare.pro/wctapi/documents/471.md
+  title: 每日篮子组合(沪市PCF)
+  category: ETF专题
+  description: 获取上交所场内所有ETF每日盘前披露的的一篮子组合信息,包括成分股票数量、申赎现金折溢价比例等数据
+  source_rows:
+  - line_number: 11
+    row_sha256: 8a4d7a413371b93e885e21483236c5f41db86969b8937e328bb85235400ac3e3
+    api_name: etf_sh_cons
+    doc_url: https://tushare.pro/wctapi/documents/471.md
+    title: 每日篮子组合(沪市PCF)
+    category: ETF专题
+    description: 获取上交所场内所有ETF每日盘前披露的的一篮子组合信息,包括成分股票数量、申赎现金折溢价比例等数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: etf_share_size
+  doc_url: https://tushare.pro/wctapi/documents/408.md
+  title: ETF份额规模
+  category: ETF专题
+  description: 获取沪深ETF每日份额和规模数据，能体现规模份额的变化，掌握ETF资金动向，同时提供每日净值和收盘价；数据指标是分批入库，交易所于次日早8点30左右更新上一交易日的数据；另外，涉及海外的ETF数据更新会晚一些属于正常情况。
+  source_rows:
+  - line_number: 16
+    row_sha256: 1047474f1dd7307f21619adeb20a209466433d3843a3e1d80e97fcee3e8b0536
+    api_name: etf_share_size
+    doc_url: https://tushare.pro/wctapi/documents/408.md
+    title: ETF份额规模
+    category: ETF专题
+    description: 获取沪深ETF每日份额和规模数据，能体现规模份额的变化，掌握ETF资金动向，同时提供每日净值和收盘价；数据指标是分批入库，交易所于次日早8点30左右更新上一交易日的数据；另外，涉及海外的ETF数据更新会晚一些属于正常情况。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: etf_sz_cons
+  doc_url: https://tushare.pro/wctapi/documents/472.md
+  title: 每日篮子组合(深市PCF)
+  category: ETF专题
+  description: 获取深交所场内所有ETF每日盘前披露的一篮子组合信息,包括成分股票数量、申赎现金折溢价比例等数据
+  source_rows:
+  - line_number: 10
+    row_sha256: fa63ea5210b6c7d335750a3083a584b84258fd41d39887bb4e9aead88f185d97
+    api_name: etf_sz_cons
+    doc_url: https://tushare.pro/wctapi/documents/472.md
+    title: 每日篮子组合(深市PCF)
+    category: ETF专题
+    description: 获取深交所场内所有ETF每日盘前披露的一篮子组合信息,包括成分股票数量、申赎现金折溢价比例等数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: express
+  doc_url: https://tushare.pro/wctapi/documents/46.md
+  title: 业绩快报
+  category: 股票数据,财务数据
+  description: 获取上市公司业绩快报
+  source_rows:
+  - line_number: 236
+    row_sha256: 9f701bcf0b05a74a2c2371230df6b8f8366af90d646e47804a3bc4f757763417
+    api_name: express
+    doc_url: https://tushare.pro/wctapi/documents/46.md
+    title: 业绩快报
+    category: 股票数据,财务数据
+    description: 获取上市公司业绩快报
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fina_audit
+  doc_url: https://tushare.pro/wctapi/documents/80.md
+  title: 财务审计意见
+  category: 股票数据,财务数据
+  description: 获取上市公司定期财务审计意见数据
+  source_rows:
+  - line_number: 228
+    row_sha256: 1f3acce03254630011ec996a26137a725710248e90f025196b9286f1fd9a6838
+    api_name: fina_audit
+    doc_url: https://tushare.pro/wctapi/documents/80.md
+    title: 财务审计意见
+    category: 股票数据,财务数据
+    description: 获取上市公司定期财务审计意见数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fina_indicator
+  doc_url: https://tushare.pro/wctapi/documents/79.md
+  title: 财务指标数据
+  category: 股票数据,财务数据
+  description: 获取上市公司财务指标数据，为避免服务器压力，现阶段每次请求最多返回100条记录，可通过设置日期多次请求获取更多数据。
+  source_rows:
+  - line_number: 234
+    row_sha256: aff82e14febbc87d156c9b5d17f7959ce11eea5527578183cfc078623fa23805
+    api_name: fina_indicator
+    doc_url: https://tushare.pro/wctapi/documents/79.md
+    title: 财务指标数据
+    category: 股票数据,财务数据
+    description: 获取上市公司财务指标数据，为避免服务器压力，现阶段每次请求最多返回100条记录，可通过设置日期多次请求获取更多数据。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fina_mainbz
+  doc_url: https://tushare.pro/wctapi/documents/81.md
+  title: 主营业务构成
+  category: 股票数据,财务数据
+  description: 获得上市公司主营业务构成，分地区和产品两种方式
+  source_rows:
+  - line_number: 227
+    row_sha256: ca5f8d8eafc3104c1d6b6159a7210eaa218e313cce38594c185bc362caad123b
+    api_name: fina_mainbz
+    doc_url: https://tushare.pro/wctapi/documents/81.md
+    title: 主营业务构成
+    category: 股票数据,财务数据
+    description: 获得上市公司主营业务构成，分地区和产品两种方式
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: forecast
+  doc_url: https://tushare.pro/wctapi/documents/45.md
+  title: 业绩预告
+  category: 股票数据,财务数据
+  description: 获取业绩预告数据
+  source_rows:
+  - line_number: 232
+    row_sha256: 0f2d00507960215fba04cb741215b275a086c7ea8a77d0167bb99a8b10f2ecd7
+    api_name: forecast
+    doc_url: https://tushare.pro/wctapi/documents/45.md
+    title: 业绩预告
+    category: 股票数据,财务数据
+    description: 获取业绩预告数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: ft_limit
+  doc_url: https://tushare.pro/wctapi/documents/368.md
+  title: 期货合约涨跌停价格
+  category: 期货数据
+  description: 获取所有期货合约每天的涨跌停价格及最低保证金率，数据开始于2005年。
+  source_rows:
+  - line_number: 108
+    row_sha256: 59720f30dc4694f59caa6be129eef0633f7f9b62bc1e8bf326f306af49186843
+    api_name: ft_limit
+    doc_url: https://tushare.pro/wctapi/documents/368.md
+    title: 期货合约涨跌停价格
+    category: 期货数据
+    description: 获取所有期货合约每天的涨跌停价格及最低保证金率，数据开始于2005年。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: ft_mins
+  doc_url: https://tushare.pro/wctapi/documents/313.md
+  title: 历史分钟行情
+  category: 期货数据
+  description: 获取全市场期货合约分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式，如果需要主力合约分钟，请先通过主力[mapping](https://tushare.pro/document/2?doc_id=189)接口（需要有至少2000积分）获取对应的合约代码后提取分钟。
+  source_rows:
+  - line_number: 105
+    row_sha256: a4c4e5ee9843c96925d0adb9f4f259c8134d10ff1909d8478973b66da99d0a88
+    api_name: ft_mins
+    doc_url: https://tushare.pro/wctapi/documents/313.md
+    title: 历史分钟行情
+    category: 期货数据
+    description: 获取全市场期货合约分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式，如果需要主力合约分钟，请先通过主力[mapping](https://tushare.pro/document/2?doc_id=189)接口（需要有至少2000积分）获取对应的合约代码后提取分钟。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fund_adj
+  doc_url: https://tushare.pro/wctapi/documents/199.md
+  title: ETF复权因子
+  category: ETF专题
+  description: 获取基金复权因子，用于计算基金复权行情
+  source_rows:
+  - line_number: 20
+    row_sha256: 77e8203c0f0627afdea09289cb22eb1dc9bedae62549eb672a89887c97f86261
+    api_name: fund_adj
+    doc_url: https://tushare.pro/wctapi/documents/199.md
+    title: ETF复权因子
+    category: ETF专题
+    description: 获取基金复权因子，用于计算基金复权行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_basic
+  doc_url: https://tushare.pro/wctapi/documents/19.md
+  title: 基金列表
+  category: 公募基金
+  description: 获取公募基金数据列表，包括场内和场外基金
+  source_rows:
+  - line_number: 39
+    row_sha256: bac09b9180c1ffc79da6d1b2a3824832ce0c52bfd4654b79b2f58430b51d31d8
+    api_name: fund_basic
+    doc_url: https://tushare.pro/wctapi/documents/19.md
+    title: 基金列表
+    category: 公募基金
+    description: 获取公募基金数据列表，包括场内和场外基金
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_company
+  doc_url: https://tushare.pro/wctapi/documents/118.md
+  title: 基金管理人
+  category: 公募基金
+  description: 获取公募基金管理人列表
+  source_rows:
+  - line_number: 47
+    row_sha256: 27c4f1c6f61b76bbdef0fdaa4dbe856bdef17957e3de366f802a0d04eae397dd
+    api_name: fund_company
+    doc_url: https://tushare.pro/wctapi/documents/118.md
+    title: 基金管理人
+    category: 公募基金
+    description: 获取公募基金管理人列表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fund_daily
+  doc_url: https://tushare.pro/wctapi/documents/127.md
+  title: ETF日线行情
+  category: ETF专题
+  description: 获取ETF行情每日收盘后成交数据，历史超过10年
+  source_rows:
+  - line_number: 21
+    row_sha256: 76de255609e5006c664df461bdc4e62e2259b82064ac1671f35293a0287cc5ee
+    api_name: fund_daily
+    doc_url: https://tushare.pro/wctapi/documents/127.md
+    title: ETF日线行情
+    category: ETF专题
+    description: 获取ETF行情每日收盘后成交数据，历史超过10年
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_div
+  doc_url: https://tushare.pro/wctapi/documents/120.md
+  title: 基金分红
+  category: 公募基金
+  description: 获取公募基金分红数据
+  source_rows:
+  - line_number: 45
+    row_sha256: 16ed14e8200421b1c7087237344557632283f5a6ccbcd5258b3db4963dab4692
+    api_name: fund_div
+    doc_url: https://tushare.pro/wctapi/documents/120.md
+    title: 基金分红
+    category: 公募基金
+    description: 获取公募基金分红数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_factor_pro
+  doc_url: https://tushare.pro/wctapi/documents/359.md
+  title: 基金技术面因子(专业版)
+  category: 公募基金
+  description: 获取场内基金每日技术面因子数据，用于跟踪场内基金当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_rows:
+  - line_number: 41
+    row_sha256: 3968973aca886ec9dc09645d57d0a85a15c75d0c771f871072d8a56f2c7b8f37
+    api_name: fund_factor_pro
+    doc_url: https://tushare.pro/wctapi/documents/359.md
+    title: 基金技术面因子(专业版)
+    category: 公募基金
+    description: 获取场内基金每日技术面因子数据，用于跟踪场内基金当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fund_manager
+  doc_url: https://tushare.pro/wctapi/documents/208.md
+  title: 基金经理
+  category: 公募基金
+  description: 获取公募基金经理数据，包括基金经理简历等数据
+  source_rows:
+  - line_number: 42
+    row_sha256: 82eaad716f08b5b40b0ec7953d22c3a25cf9bd4983beea5b2e553fc6690c99a2
+    api_name: fund_manager
+    doc_url: https://tushare.pro/wctapi/documents/208.md
+    title: 基金经理
+    category: 公募基金
+    description: 获取公募基金经理数据，包括基金经理简历等数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fund_nav
+  doc_url: https://tushare.pro/wctapi/documents/119.md
+  title: 基金净值
+  category: 公募基金
+  description: 获取公募基金净值数据
+  source_rows:
+  - line_number: 46
+    row_sha256: c05dc467b4248ae44b62ce9aebfb7002e0a05bad58ad9493090b439a7aecdc30
+    api_name: fund_nav
+    doc_url: https://tushare.pro/wctapi/documents/119.md
+    title: 基金净值
+    category: 公募基金
+    description: 获取公募基金净值数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_portfolio
+  doc_url: https://tushare.pro/wctapi/documents/121.md
+  title: 基金持仓
+  category: 公募基金
+  description: 获取公募基金持仓数据，季度更新
+  source_rows:
+  - line_number: 44
+    row_sha256: a521cae0d2afb256d63e0e0eb72843b743f6a75b1553ca5d6fa5e8bbc71529d1
+    api_name: fund_portfolio
+    doc_url: https://tushare.pro/wctapi/documents/121.md
+    title: 基金持仓
+    category: 公募基金
+    description: 获取公募基金持仓数据，季度更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fund_share
+  doc_url: https://tushare.pro/wctapi/documents/207.md
+  title: 基金规模
+  category: 公募基金
+  description: 获取基金规模数据，包含上海和深圳ETF基金
+  source_rows:
+  - line_number: 43
+    row_sha256: 2f1a6aaadb1bdec0a1f18b74e4439dacb9c68bb607340a317c0a5bceee2ec816
+    api_name: fund_share
+    doc_url: https://tushare.pro/wctapi/documents/207.md
+    title: 基金规模
+    category: 公募基金
+    description: 获取基金规模数据，包含上海和深圳ETF基金
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fut_basic
+  doc_url: https://tushare.pro/wctapi/documents/135.md
+  title: 合约信息
+  category: 期货数据
+  description: 获取期货合约列表数据
+  source_rows:
+  - line_number: 113
+    row_sha256: 5a8ee38d77c1b0e08b2244e8bd01a8c14e3acbceb4d27dc0cc53809dac00850e
+    api_name: fut_basic
+    doc_url: https://tushare.pro/wctapi/documents/135.md
+    title: 合约信息
+    category: 期货数据
+    description: 获取期货合约列表数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fut_daily
+  doc_url: https://tushare.pro/wctapi/documents/138.md
+  title: 日线行情
+  category: 期货数据
+  description: 期货日线行情数据
+  source_rows:
+  - line_number: 111
+    row_sha256: 2532769c78fdcf42d7f88521e82b37bfaacd192d82d0af6f1638432653658b59
+    api_name: fut_daily
+    doc_url: https://tushare.pro/wctapi/documents/138.md
+    title: 日线行情
+    category: 期货数据
+    description: 期货日线行情数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fut_holding
+  doc_url: https://tushare.pro/wctapi/documents/139.md
+  title: 每日持仓排名
+  category: 期货数据
+  description: 获取每日成交持仓排名数据，注意"上期所"涵盖"上海国际能源交易中心"合约数据
+  source_rows:
+  - line_number: 101
+    row_sha256: a09f075b86e02f25796a13b11ac04c3c19feba44aa6f2b02365b42a619f0012d
+    api_name: fut_holding
+    doc_url: https://tushare.pro/wctapi/documents/139.md
+    title: 每日持仓排名
+    category: 期货数据
+    description: 获取每日成交持仓排名数据，注意"上期所"涵盖"上海国际能源交易中心"合约数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: fut_index_daily
+  doc_url: https://tushare.pro/wctapi/documents/468.md
+  title: 南华期货指数日线行情
+  category: 期货数据
+  description: 获取南华指数每日行情，指数行情也可以通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据．
+  source_rows:
+  - line_number: 110
+    row_sha256: eb6cf513053bd20665ef55a4b139abd1f5072f9a078c654bbcecd6dfb36602ce
+    api_name: fut_index_daily
+    doc_url: https://tushare.pro/wctapi/documents/468.md
+    title: 南华期货指数日线行情
+    category: 期货数据
+    description: 获取南华指数每日行情，指数行情也可以通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据．
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_mapping
+  doc_url: https://tushare.pro/wctapi/documents/189.md
+  title: 期货主力与连续合约
+  category: 期货数据
+  description: 获取期货主力（或连续）合约与月合约映射数据
+  source_rows:
+  - line_number: 112
+    row_sha256: fdaade6b9e9c379fa2ee8d834a6c6fac6e37daaf7a4f83d19d411e0cc68ced5a
+    api_name: fut_mapping
+    doc_url: https://tushare.pro/wctapi/documents/189.md
+    title: 期货主力与连续合约
+    category: 期货数据
+    description: 获取期货主力（或连续）合约与月合约映射数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_settle
+  doc_url: https://tushare.pro/wctapi/documents/141.md
+  title: 每日结算参数
+  category: 期货数据
+  description: 获取每日结算参数数据，包括交易和交割费率等
+  source_rows:
+  - line_number: 103
+    row_sha256: 87619e6a9415881c48b672fd98db14b2d8844839106abf791332457e909cfd31
+    api_name: fut_settle
+    doc_url: https://tushare.pro/wctapi/documents/141.md
+    title: 每日结算参数
+    category: 期货数据
+    description: 获取每日结算参数数据，包括交易和交割费率等
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_trade_cal
+  doc_url: https://tushare.pro/wctapi/documents/467.md
+  title: 期货交易日历
+  category: 期货数据
+  description: 获取各大期货交易所交易日历数据
+  source_rows:
+  - line_number: 109
+    row_sha256: de6538dc94f81415a0143c1b9a79467a0ad5070240bf0abe5e7ffaf709b29ecc
+    api_name: fut_trade_cal
+    doc_url: https://tushare.pro/wctapi/documents/467.md
+    title: 期货交易日历
+    category: 期货数据
+    description: 获取各大期货交易所交易日历数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_weekly_detail
+  doc_url: https://tushare.pro/wctapi/documents/216.md
+  title: 期货主要品种交易周报
+  category: 期货数据
+  description: 获取期货交易所主要品种每周交易统计信息，数据从2010年3月开始
+  source_rows:
+  - line_number: 104
+    row_sha256: 5050ae7d937785d69383b20bed4b0d17a8b3241854883d0b3e64a7307669b9ff
+    api_name: fut_weekly_detail
+    doc_url: https://tushare.pro/wctapi/documents/216.md
+    title: 期货主要品种交易周报
+    category: 期货数据
+    description: 获取期货交易所主要品种每周交易统计信息，数据从2010年3月开始
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_weekly_monthly
+  doc_url: https://tushare.pro/wctapi/documents/337.md
+  title: 期货周月线行情(每日更新)
+  category: 期货数据
+  description: 期货周/月线行情(每日更新)
+  source_rows:
+  - line_number: 106
+    row_sha256: 7ff20037af7f53c79e46d6f004a352944171b358e874d0eafd14ba579c04e2b9
+    api_name: fut_weekly_monthly
+    doc_url: https://tushare.pro/wctapi/documents/337.md
+    title: 期货周月线行情(每日更新)
+    category: 期货数据
+    description: 期货周/月线行情(每日更新)
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fut_wsr
+  doc_url: https://tushare.pro/wctapi/documents/140.md
+  title: 仓单日报
+  category: 期货数据
+  description: 获取仓单日报数据，了解各仓库/厂库的仓单变化
+  source_rows:
+  - line_number: 102
+    row_sha256: 6a281809a73edfc2178234aba69f9b5c59969fa0af07aeca8de9973379a8550c
+    api_name: fut_wsr
+    doc_url: https://tushare.pro/wctapi/documents/140.md
+    title: 仓单日报
+    category: 期货数据
+    description: 获取仓单日报数据，了解各仓库/厂库的仓单变化
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: fx_daily
+  doc_url: https://tushare.pro/wctapi/documents/179.md
+  title: 外汇日线行情
+  category: 外汇数据
+  description: 获取外汇日线行情
+  source_rows:
+  - line_number: 49
+    row_sha256: bdb3843642d22c72771bbdcee3aabb7fd4ffc8dacacf11fbdd769d75dfb2de5e
+    api_name: fx_daily
+    doc_url: https://tushare.pro/wctapi/documents/179.md
+    title: 外汇日线行情
+    category: 外汇数据
+    description: 获取外汇日线行情
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: fx_obasic
+  doc_url: https://tushare.pro/wctapi/documents/178.md
+  title: 外汇基础信息(海外)
+  category: 外汇数据
+  description: 获取海外外汇基础信息，目前只有FXCM交易商的数据
+  source_rows:
+  - line_number: 48
+    row_sha256: d8a916d39be909293b4cbf4aeb3cc3d0f8e22becde5703165bbac4cbc73ac542
+    api_name: fx_obasic
+    doc_url: https://tushare.pro/wctapi/documents/178.md
+    title: 外汇基础信息(海外)
+    category: 外汇数据
+    description: 获取海外外汇基础信息，目前只有FXCM交易商的数据
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: ggt_daily
+  doc_url: https://tushare.pro/wctapi/documents/196.md
+  title: 港股通每日成交统计
+  category: 股票数据,行情数据
+  description: 获取港股通每日成交信息，数据从2014年开始
+  source_rows:
+  - line_number: 218
+    row_sha256: 98275bf62f1d6647219c881b3f6cefa0db8d1e537d584da4aac16b6030873186
+    api_name: ggt_daily
+    doc_url: https://tushare.pro/wctapi/documents/196.md
+    title: 港股通每日成交统计
+    category: 股票数据,行情数据
+    description: 获取港股通每日成交信息，数据从2014年开始
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: ggt_top10
+  doc_url: https://tushare.pro/wctapi/documents/49.md
+  title: 港股通十大成交股
+  category: 股票数据,行情数据
+  description: 获取港股通每日成交数据，其中包括沪市、深市详细数据，每天18~20点之间完成当日更新
+  source_rows:
+  - line_number: 224
+    row_sha256: b92316ae33e748fe4aa1946067d288300a2b60547dbd5a0e6d4185c35d94e339
+    api_name: ggt_top10
+    doc_url: https://tushare.pro/wctapi/documents/49.md
+    title: 港股通十大成交股
+    category: 股票数据,行情数据
+    description: 获取港股通每日成交数据，其中包括沪市、深市详细数据，每天18~20点之间完成当日更新
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: gz_index
+  doc_url: https://tushare.pro/wctapi/documents/174.md
+  title: 广州民间借贷利率
+  category: 宏观经济,国内宏观,利率数据
+  description: 广州民间借贷利率
+  source_rows:
+  - line_number: 66
+    row_sha256: a184e8d8c3aae380881442984a8daee659df974b6c705f047d8f7abed4dff63c
+    api_name: gz_index
+    doc_url: https://tushare.pro/wctapi/documents/174.md
+    title: 广州民间借贷利率
+    category: 宏观经济,国内宏观,利率数据
+    description: 广州民间借贷利率
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: hibor
+  doc_url: https://tushare.pro/wctapi/documents/153.md
+  title: Hibor利率
+  category: 宏观经济,国内宏观,利率数据
+  description: Hibor利率
+  source_rows:
+  - line_number: 68
+    row_sha256: e5995205eefe1e147f6471e636e458ac436ac1313928e54eda77eb9fb89b94b8
+    api_name: hibor
+    doc_url: https://tushare.pro/wctapi/documents/153.md
+    title: Hibor利率
+    category: 宏观经济,国内宏观,利率数据
+    description: Hibor利率
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_adjfactor
+  doc_url: https://tushare.pro/wctapi/documents/401.md
+  title: 港股复权因子
+  category: 港股数据
+  description: 获取港股每日复权因子数据，每天滚动刷新
+  source_rows:
+  - line_number: 121
+    row_sha256: 9ac5a9f79b3bef699356a3d982acdaf810af1c85aaab072d16b6e7a6585a09b2
+    api_name: hk_adjfactor
+    doc_url: https://tushare.pro/wctapi/documents/401.md
+    title: 港股复权因子
+    category: 港股数据
+    description: 获取港股每日复权因子数据，每天滚动刷新
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: hk_balancesheet
+  doc_url: https://tushare.pro/wctapi/documents/390.md
+  title: 港股资产负债表
+  category: 港股数据
+  description: 获取港股上市公司资产负债表
+  source_rows:
+  - line_number: 116
+    row_sha256: 14c515787a771e448fbf74282bbd08bd779b86f8e08aeb34061d40579e9a7302
+    api_name: hk_balancesheet
+    doc_url: https://tushare.pro/wctapi/documents/390.md
+    title: 港股资产负债表
+    category: 港股数据
+    description: 获取港股上市公司资产负债表
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_basic
+  doc_url: https://tushare.pro/wctapi/documents/191.md
+  title: 港股基础信息
+  category: 港股数据
+  description: 获取港股列表信息
+  source_rows:
+  - line_number: 123
+    row_sha256: de3fef57354452d46d20dbec65e53e616d3ecbbf2871e75d47c3926fdf690612
+    api_name: hk_basic
+    doc_url: https://tushare.pro/wctapi/documents/191.md
+    title: 港股基础信息
+    category: 港股数据
+    description: 获取港股列表信息
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_cashflow
+  doc_url: https://tushare.pro/wctapi/documents/391.md
+  title: 港股现金流量表
+  category: 港股数据
+  description: 获取港股上市公司现金流量表数据
+  source_rows:
+  - line_number: 122
+    row_sha256: f74af071a7922c44025f5a2af3ec8bd102b0e4c24e4ff7ba8dfab7e51c56fcc6
+    api_name: hk_cashflow
+    doc_url: https://tushare.pro/wctapi/documents/391.md
+    title: 港股现金流量表
+    category: 港股数据
+    description: 获取港股上市公司现金流量表数据
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_daily
+  doc_url: https://tushare.pro/wctapi/documents/192.md
+  title: 港股日线行情
+  category: 港股数据
+  description: 获取港股每日增量和历史行情，每日18点左右更新当日数据
+  source_rows:
+  - line_number: 119
+    row_sha256: 64cb460611e41c8ce79335ce8f48030937a42407c3ff9d3c51f1f5be7738a39c
+    api_name: hk_daily
+    doc_url: https://tushare.pro/wctapi/documents/192.md
+    title: 港股日线行情
+    category: 港股数据
+    description: 获取港股每日增量和历史行情，每日18点左右更新当日数据
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_daily_adj
+  doc_url: https://tushare.pro/wctapi/documents/339.md
+  title: 港股复权行情
+  category: 港股数据
+  description: 获取港股复权行情，提供股票股本、市值和成交及换手多个数据指标
+  source_rows:
+  - line_number: 124
+    row_sha256: c2fdac568d54a460e2e49edcf685961d92444a20e3f21b1238757b42af79df1f
+    api_name: hk_daily_adj
+    doc_url: https://tushare.pro/wctapi/documents/339.md
+    title: 港股复权行情
+    category: 港股数据
+    description: 获取港股复权行情，提供股票股本、市值和成交及换手多个数据指标
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: hk_fina_indicator
+  doc_url: https://tushare.pro/wctapi/documents/388.md
+  title: 港股财务指标数据
+  category: 港股数据
+  description: 获取港股上市公司财务指标数据，为避免服务器压力，现阶段每次请求最多返回200条记录，可通过设置日期多次请求获取更多数据。
+  source_rows:
+  - line_number: 114
+    row_sha256: 14b6148bdd716a39c1351fb91cf5291aefc236e1da4e0d594cac8aae3556e2b3
+    api_name: hk_fina_indicator
+    doc_url: https://tushare.pro/wctapi/documents/388.md
+    title: 港股财务指标数据
+    category: 港股数据
+    description: 获取港股上市公司财务指标数据，为避免服务器压力，现阶段每次请求最多返回200条记录，可通过设置日期多次请求获取更多数据。
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: hk_hold
+  doc_url: https://tushare.pro/wctapi/documents/188.md
+  title: 沪深股通持股明细
+  category: 股票数据,特色数据
+  description: 获取沪深港股通持股明细，数据来源港交所。
+  source_rows:
+  - line_number: 200
+    row_sha256: cee2d3ce3a35e665efb83922727d689b01b66b2f8152e4f413bb16c0424825b9
+    api_name: hk_hold
+    doc_url: https://tushare.pro/wctapi/documents/188.md
+    title: 沪深股通持股明细
+    category: 股票数据,特色数据
+    description: 获取沪深港股通持股明细，数据来源港交所。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: hk_income
+  doc_url: https://tushare.pro/wctapi/documents/389.md
+  title: 港股利润表
+  category: 港股数据
+  description: 获取港股上市公司财务利润表数据
+  source_rows:
+  - line_number: 120
+    row_sha256: ec554329dfbf00a211cdbb8b92d38063b3eb4afae6ca5986c0fcb56d1c349804
+    api_name: hk_income
+    doc_url: https://tushare.pro/wctapi/documents/389.md
+    title: 港股利润表
+    category: 港股数据
+    description: 获取港股上市公司财务利润表数据
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: hk_mins
+  doc_url: https://tushare.pro/wctapi/documents/304.md
+  title: 港股分钟行情
+  category: 港股数据
+  description: 港股分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_rows:
+  - line_number: 117
+    row_sha256: 0c52cf5a614b581ff094e61553846749c81d65ce734c5a3b95794e8c90ef7edc
+    api_name: hk_mins
+    doc_url: https://tushare.pro/wctapi/documents/304.md
+    title: 港股分钟行情
+    category: 港股数据
+    description: 港股分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: hk_tradecal
+  doc_url: https://tushare.pro/wctapi/documents/250.md
+  title: 港股交易日历
+  category: 港股数据
+  description: 获取交易日历
+  source_rows:
+  - line_number: 118
+    row_sha256: 869393b83754747cf3a461e2b44c5fde01411cb15b491b7960a8421086813511
+    api_name: hk_tradecal
+    doc_url: https://tushare.pro/wctapi/documents/250.md
+    title: 港股交易日历
+    category: 港股数据
+    description: 获取交易日历
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: hm_detail
+  doc_url: https://tushare.pro/wctapi/documents/312.md
+  title: 游资交易每日明细
+  category: 股票数据,打板专题数据
+  description: 获取每日游资交易明细，数据开始于2022年8。游资分类名录，请点击<a href="https://tushare.pro/document/2?doc_id=311">游资名录</a>
+  source_rows:
+  - line_number: 183
+    row_sha256: 5aca0eb6be9f0c2b8ebef4afa0dbbc613ae45f1d63a27791ba15fa2d505c7db2
+    api_name: hm_detail
+    doc_url: https://tushare.pro/wctapi/documents/312.md
+    title: 游资交易每日明细
+    category: 股票数据,打板专题数据
+    description: 获取每日游资交易明细，数据开始于2022年8。游资分类名录，请点击<a href="https://tushare.pro/document/2?doc_id=311">游资名录</a>
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: hm_list
+  doc_url: https://tushare.pro/wctapi/documents/311.md
+  title: 市场游资最全名录
+  category: 股票数据,打板专题数据
+  description: 获取游资分类名录信息
+  source_rows:
+  - line_number: 184
+    row_sha256: b7e47678f56896b33cb9eb27455ab486e5ea1dd740302d17f834ea6e6363fa27
+    api_name: hm_list
+    doc_url: https://tushare.pro/wctapi/documents/311.md
+    title: 市场游资最全名录
+    category: 股票数据,打板专题数据
+    description: 获取游资分类名录信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: hsgt_top10
+  doc_url: https://tushare.pro/wctapi/documents/48.md
+  title: 沪深股通十大成交股
+  category: 股票数据,行情数据
+  description: 获取沪股通、深股通每日前十大成交详细数据，每天18~20点之间完成当日更新
+  source_rows:
+  - line_number: 223
+    row_sha256: ae51f93554724fcee6d9e9ee232bfd4b4846728db4a8e03d8dde84b992a2f892
+    api_name: hsgt_top10
+    doc_url: https://tushare.pro/wctapi/documents/48.md
+    title: 沪深股通十大成交股
+    category: 股票数据,行情数据
+    description: 获取沪股通、深股通每日前十大成交详细数据，每天18~20点之间完成当日更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: idx_anns
+  doc_url: https://tushare.pro/wctapi/documents/460.md
+  title: 指数公司公告
+  category: ETF专题
+  description: 获取指数公司披露的相关公告信息，包括中证指数、国证指数、恒生指数和华证指数的及时与历史公告信息，跟踪指数最新信息和发展方向。
+  source_rows:
+  - line_number: 13
+    row_sha256: f10e67df78a13befd2df1770ae16a1d9ba4092898b1a16a80c9251dcf6a6c6f9
+    api_name: idx_anns
+    doc_url: https://tushare.pro/wctapi/documents/460.md
+    title: 指数公司公告
+    category: ETF专题
+    description: 获取指数公司披露的相关公告信息，包括中证指数、国证指数、恒生指数和华证指数的及时与历史公告信息，跟踪指数最新信息和发展方向。
+  source_resolution: single_official_index_row
+  scope_state: unknown
+  scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
+  in_legacy_inventory: false
+- api_name: idx_factor_pro
+  doc_url: https://tushare.pro/wctapi/documents/358.md
+  title: 指数技术面因子(专业版)
+  category: 指数专题
+  description: 获取指数每日技术面因子数据，用于跟踪指数当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估，指数包括大盘指数 申万行业指数 中信指数
+  source_rows:
+  - line_number: 86
+    row_sha256: e4dda9106d58a41cafeb1877ba8a51a6df9a9c10f7eaa1cdd18d4e91c1a85ed8
+    api_name: idx_factor_pro
+    doc_url: https://tushare.pro/wctapi/documents/358.md
+    title: 指数技术面因子(专业版)
+    category: 指数专题
+    description: 获取指数每日技术面因子数据，用于跟踪指数当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估，指数包括大盘指数 申万行业指数 中信指数
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: idx_mins
+  doc_url: https://tushare.pro/wctapi/documents/419.md
+  title: 指数历史分钟
+  category: 指数专题
+  description: 获取交易所指数分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_rows:
+  - line_number: 81
+    row_sha256: 9630316ec96590c601bf4260faeaa2a7f57a83414e93af7e14da409fd0eca110
+    api_name: idx_mins
+    doc_url: https://tushare.pro/wctapi/documents/419.md
+    title: 指数历史分钟
+    category: 指数专题
+    description: 获取交易所指数分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: income
+  doc_url: https://tushare.pro/wctapi/documents/33.md
+  title: 利润表
+  category: 股票数据,财务数据
+  description: 获取上市公司财务利润表数据
+  source_rows:
+  - line_number: 229
+    row_sha256: 56e7767e6cf2b113c4953e0997f9756df56ba79b349dacae166616ee03f05a84
+    api_name: income
+    doc_url: https://tushare.pro/wctapi/documents/33.md
+    title: 利润表
+    category: 股票数据,财务数据
+    description: 获取上市公司财务利润表数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_basic
+  doc_url: https://tushare.pro/wctapi/documents/94.md
+  title: 指数基本信息
+  category: 指数专题
+  description: 获取指数基础信息。
+  source_rows:
+  - line_number: 85
+    row_sha256: 437bd51138cf224d2735b5f709376af1afd1280415329c92fd7f5489036878e6
+    api_name: index_basic
+    doc_url: https://tushare.pro/wctapi/documents/94.md
+    title: 指数基本信息
+    category: 指数专题
+    description: 获取指数基础信息。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_classify
+  doc_url: https://tushare.pro/wctapi/documents/181.md
+  title: 申万行业分类
+  category: 指数专题
+  description: 获取申万行业分类，可以获取申万2014年版本（28个一级分类，104个二级分类，227个三级分类）和2021年本版（31个一级分类，134个二级分类，346个三级分类）列表信息
+  source_rows:
+  - line_number: 91
+    row_sha256: 90bf9ca4b5458b2cbabc916afcbf8522d10da2b17985b6fec1789e50c2f9546c
+    api_name: index_classify
+    doc_url: https://tushare.pro/wctapi/documents/181.md
+    title: 申万行业分类
+    category: 指数专题
+    description: 获取申万行业分类，可以获取申万2014年版本（28个一级分类，104个二级分类，227个三级分类）和2021年本版（31个一级分类，134个二级分类，346个三级分类）列表信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_daily
+  doc_url: https://tushare.pro/wctapi/documents/95.md
+  title: 指数日线行情
+  category: 指数专题
+  description: 获取指数每日行情，还可以通过bar接口获取。由于服务器压力，目前规则是单次调取最多取8000行记录，可以设置start和end日期补全。指数行情也可以通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据。本接口不包含[申万行业指数行情数据](https://tushare.pro/document/2?doc_id=327)。
+  source_rows:
+  - line_number: 97
+    row_sha256: 794d3eb6bae81758bc9017c8e838fc71a42beb47d2a165d398009f76504f537a
+    api_name: index_daily
+    doc_url: https://tushare.pro/wctapi/documents/95.md
+    title: 指数日线行情
+    category: 指数专题
+    description: 获取指数每日行情，还可以通过bar接口获取。由于服务器压力，目前规则是单次调取最多取8000行记录，可以设置start和end日期补全。指数行情也可以通过[**通用行情接口**]( https://tushare.pro/document/2?doc_id=109)获取数据。本接口不包含[申万行业指数行情数据](https://tushare.pro/document/2?doc_id=327)。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_dailybasic
+  doc_url: https://tushare.pro/wctapi/documents/128.md
+  title: 大盘指数每日指标
+  category: 指数专题
+  description: 目前只提供上证综指，深证成指，上证50，中证500，中小板指，创业板指的每日指标数据
+  source_rows:
+  - line_number: 88
+    row_sha256: 0a9976666b11425c138c56f660a853ecce062f4a901361df7baf7d028d9f729d
+    api_name: index_dailybasic
+    doc_url: https://tushare.pro/wctapi/documents/128.md
+    title: 大盘指数每日指标
+    category: 指数专题
+    description: 目前只提供上证综指，深证成指，上证50，中证500，中小板指，创业板指的每日指标数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_global
+  doc_url: https://tushare.pro/wctapi/documents/211.md
+  title: 国际主要指数
+  category: 指数专题
+  description: 获取国际主要指数日线行情
+  source_rows:
+  - line_number: 92
+    row_sha256: 49c89310067314a472daf5e53980b5132bca34fce88c74c0d130a71f2dc0dd10
+    api_name: index_global
+    doc_url: https://tushare.pro/wctapi/documents/211.md
+    title: 国际主要指数
+    category: 指数专题
+    description: 获取国际主要指数日线行情
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: index_member_all
+  doc_url: https://tushare.pro/wctapi/documents/335.md
+  title: 申万行业成分(分级)
+  category: 指数专题
+  description: 按三级分类提取申万行业成分，可提供某个分类的所有成分，也可按股票代码提取所属分类，参数灵活
+  source_rows:
+  - line_number: 93
+    row_sha256: 3683fe1e7180a19aede318385edaf1ac1e443884a53b72b311db3b2b60b82288
+    api_name: index_member_all
+    doc_url: https://tushare.pro/wctapi/documents/335.md
+    title: 申万行业成分(分级)
+    category: 指数专题
+    description: 按三级分类提取申万行业成分，可提供某个分类的所有成分，也可按股票代码提取所属分类，参数灵活
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_monthly
+  doc_url: https://tushare.pro/wctapi/documents/172.md
+  title: 指数月线行情
+  category: 指数专题
+  description: 获取指数月线行情,每月更新一次
+  source_rows:
+  - line_number: 90
+    row_sha256: 20421ffdaadaf275c4a352543e7d2d6893209701b1b53555b9c554e50026e92d
+    api_name: index_monthly
+    doc_url: https://tushare.pro/wctapi/documents/172.md
+    title: 指数月线行情
+    category: 指数专题
+    description: 获取指数月线行情,每月更新一次
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_weekly
+  doc_url: https://tushare.pro/wctapi/documents/171.md
+  title: 指数周线行情
+  category: 指数专题
+  description: 获取指数周线行情
+  source_rows:
+  - line_number: 89
+    row_sha256: 20a93ed6fffce7a3d8dec8590fa598e32659d3b48a995f81ae88a98e68dbd197
+    api_name: index_weekly
+    doc_url: https://tushare.pro/wctapi/documents/171.md
+    title: 指数周线行情
+    category: 指数专题
+    description: 获取指数周线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: index_weight
+  doc_url: https://tushare.pro/wctapi/documents/96.md
+  title: 指数成分和权重
+  category: 指数专题
+  description: 获取各类指数成分和权重，**月度数据** ，建议输入参数里开始日期和结束日分别输入当月第一天和最后一天的日期。
+  source_rows:
+  - line_number: 87
+    row_sha256: 3a6467fd09ffdc788587ef68d62dcbae0e51203afe47b327b5c6e2e5ab899b8c
+    api_name: index_weight
+    doc_url: https://tushare.pro/wctapi/documents/96.md
+    title: 指数成分和权重
+    category: 指数专题
+    description: 获取各类指数成分和权重，**月度数据** ，建议输入参数里开始日期和结束日分别输入当月第一天和最后一天的日期。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: irm_qa_sh
+  doc_url: https://tushare.pro/wctapi/documents/366.md
+  title: 上证e互动问答
+  category: 大模型语料
+  description: 获取上交所e互动董秘问答文本数据。上证e互动是由上海证券交易所建立、上海证券市场所有参与主体无偿使用的沟通平台,旨在引导和促进上市公司、投资者等各市场参与主体之间的信息沟通,构建集中、便捷的互动渠道。本接口数据记录了以上沟通问答的文本数据。
+  source_rows:
+  - line_number: 53
+    row_sha256: b3c3c0daecb66364e455b5575eda049299a71184c2d678213c78d37aa4213d03
+    api_name: irm_qa_sh
+    doc_url: https://tushare.pro/wctapi/documents/366.md
+    title: 上证e互动问答
+    category: 大模型语料
+    description: 获取上交所e互动董秘问答文本数据。上证e互动是由上海证券交易所建立、上海证券市场所有参与主体无偿使用的沟通平台,旨在引导和促进上市公司、投资者等各市场参与主体之间的信息沟通,构建集中、便捷的互动渠道。本接口数据记录了以上沟通问答的文本数据。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: irm_qa_sz
+  doc_url: https://tushare.pro/wctapi/documents/367.md
+  title: 深证易互动问答
+  category: 大模型语料
+  description: 互动易是由深交所官方推出,供投资者与上市公司直接沟通的平台,一站式公司资讯汇集,提供第一手的互动问答、投资者关系信息、公司声音等内容。
+  source_rows:
+  - line_number: 54
+    row_sha256: e2831fa4d7b60a826b0cf872673cbc783d46e6bdb76c53337852c149d0f6cdcc
+    api_name: irm_qa_sz
+    doc_url: https://tushare.pro/wctapi/documents/367.md
+    title: 深证易互动问答
+    category: 大模型语料
+    description: 互动易是由深交所官方推出,供投资者与上市公司直接沟通的平台,一站式公司资讯汇集,提供第一手的互动问答、投资者关系信息、公司声音等内容。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: kpl_concept_cons
+  doc_url: https://tushare.pro/wctapi/documents/351.md
+  title: 题材成分(KP)
+  category: 股票数据,打板专题数据
+  description: 获取概念题材的成分股
+  source_rows:
+  - line_number: 186
+    row_sha256: bc91962265be022ca448cc6f5870452af4b24081a59bbb18a57c0c8bb4e10a48
+    api_name: kpl_concept_cons
+    doc_url: https://tushare.pro/wctapi/documents/351.md
+    title: 题材成分(KP)
+    category: 股票数据,打板专题数据
+    description: 获取概念题材的成分股
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: kpl_list
+  doc_url: https://tushare.pro/wctapi/documents/347.md
+  title: 榜单数据(KP)
+  category: 股票数据,打板专题数据
+  description: 获取涨停、跌停、炸板等榜单数据
+  source_rows:
+  - line_number: 180
+    row_sha256: 7687f3a61b9f844bff6933d13e802b82805fa9ac8d413a1747169a6bf8080506
+    api_name: kpl_list
+    doc_url: https://tushare.pro/wctapi/documents/347.md
+    title: 榜单数据(KP)
+    category: 股票数据,打板专题数据
+    description: 获取涨停、跌停、炸板等榜单数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: libor
+  doc_url: https://tushare.pro/wctapi/documents/152.md
+  title: Libor利率
+  category: 宏观经济,国内宏观,利率数据
+  description: Libor拆借利率
+  source_rows:
+  - line_number: 65
+    row_sha256: 924324d8ea5b8728bfab9f71e1cc49f7a90ce31b2e5ce0f7cf7706dab3f0df0e
+    api_name: libor
+    doc_url: https://tushare.pro/wctapi/documents/152.md
+    title: Libor利率
+    category: 宏观经济,国内宏观,利率数据
+    description: Libor拆借利率
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: limit_cpt_list
+  doc_url: https://tushare.pro/wctapi/documents/357.md
+  title: 涨停最强板块统计
+  category: 股票数据,打板专题数据
+  description: 获取每天涨停股票最多最强的概念板块，可以分析强势板块的轮动，判断资金动向
+  source_rows:
+  - line_number: 189
+    row_sha256: de9a30066134e95ef63efc6f03306f7e33069dd23d3422fc4246e8c3f5e0ecfd
+    api_name: limit_cpt_list
+    doc_url: https://tushare.pro/wctapi/documents/357.md
+    title: 涨停最强板块统计
+    category: 股票数据,打板专题数据
+    description: 获取每天涨停股票最多最强的概念板块，可以分析强势板块的轮动，判断资金动向
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: limit_list_d
+  doc_url: https://tushare.pro/wctapi/documents/298.md
+  title: 涨跌停和炸板数据
+  category: 股票数据,打板专题数据
+  description: 获取A股每日涨跌停、炸板数据情况，数据从2020年开始（不提供ST股票的统计）
+  source_rows:
+  - line_number: 185
+    row_sha256: 4cdf11f01d7f4b50f51ab771dfca5ac500f0db559955cd43ca05fcf165e6556a
+    api_name: limit_list_d
+    doc_url: https://tushare.pro/wctapi/documents/298.md
+    title: 涨跌停和炸板数据
+    category: 股票数据,打板专题数据
+    description: 获取A股每日涨跌停、炸板数据情况，数据从2020年开始（不提供ST股票的统计）
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: limit_list_ths
+  doc_url: https://tushare.pro/wctapi/documents/355.md
+  title: THS涨跌停榜单
+  category: 股票数据,打板专题数据
+  description: 获取同花顺每日涨跌停榜单数据，历史数据从20231101开始提供，增量每天16点左右更新，：分类（limit_type  涨停池、连扳池、冲刺涨停、炸板池、跌停池，默认：涨停池）不同，字段返回有值情况也不同，如仅有涨停池、连扳池  有最大封单 lu_limit_order返回值，其他分类为空
+  source_rows:
+  - line_number: 179
+    row_sha256: 11dd3aa704e0c5822fa597d81a804fc6819c364c9b1c4ae2abfdbcd1d0d1ad89
+    api_name: limit_list_ths
+    doc_url: https://tushare.pro/wctapi/documents/355.md
+    title: THS涨跌停榜单
+    category: 股票数据,打板专题数据
+    description: 获取同花顺每日涨跌停榜单数据，历史数据从20231101开始提供，增量每天16点左右更新，：分类（limit_type  涨停池、连扳池、冲刺涨停、炸板池、跌停池，默认：涨停池）不同，字段返回有值情况也不同，如仅有涨停池、连扳池  有最大封单 lu_limit_order返回值，其他分类为空
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: limit_step
+  doc_url: https://tushare.pro/wctapi/documents/356.md
+  title: 涨停股票连板天梯
+  category: 股票数据,打板专题数据
+  description: 获取每天连板个数晋级的股票，可以分析出每天连续涨停进阶个数，判断强势热度
+  source_rows:
+  - line_number: 177
+    row_sha256: a80a962948c5739d7460c0e5feff7b42820d5b0447a6deec0a319fb0bc7aeba5
+    api_name: limit_step
+    doc_url: https://tushare.pro/wctapi/documents/356.md
+    title: 涨停股票连板天梯
+    category: 股票数据,打板专题数据
+    description: 获取每天连板个数晋级的股票，可以分析出每天连续涨停进阶个数，判断强势热度
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: major_news
+  doc_url: https://tushare.pro/wctapi/documents/195.md
+  title: 新闻通讯(长篇)
+  category: 大模型语料
+  description: 获取长篇通讯信息，覆盖主要新闻资讯网站，提供超过8年历史新闻。
+  source_rows:
+  - line_number: 52
+    row_sha256: 3d360df48c7a581b31cc4e12a0f8a6b30f78bd89fd93d0aacb55156e9043f891
+    api_name: major_news
+    doc_url: https://tushare.pro/wctapi/documents/195.md
+    title: 新闻通讯(长篇)
+    category: 大模型语料
+    description: 获取长篇通讯信息，覆盖主要新闻资讯网站，提供超过8年历史新闻。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: margin
+  doc_url: https://tushare.pro/wctapi/documents/58.md
+  title: 融资融券交易汇总
+  category: 股票数据,两融及转融通
+  description: 获取融资融券每日交易汇总数据，交易所于每天8点30左右更新上一日数据
+  source_rows:
+  - line_number: 136
+    row_sha256: 91a401dca23ec7d60ada83da6c7dc5cfc2106bebf43c59bf167eee8a7db8acd7
+    api_name: margin
+    doc_url: https://tushare.pro/wctapi/documents/58.md
+    title: 融资融券交易汇总
+    category: 股票数据,两融及转融通
+    description: 获取融资融券每日交易汇总数据，交易所于每天8点30左右更新上一日数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: margin_detail
+  doc_url: https://tushare.pro/wctapi/documents/59.md
+  title: 融资融券交易明细
+  category: 股票数据,两融及转融通
+  description: 获取沪深两市每日融资融券明细，，交易所于每天8点30左右更新上一日数据
+  source_rows:
+  - line_number: 142
+    row_sha256: f96191ab301ef4eff9cdedc2791e75e3f78c9d615aef2e84a3d9318b6bf14e00
+    api_name: margin_detail
+    doc_url: https://tushare.pro/wctapi/documents/59.md
+    title: 融资融券交易明细
+    category: 股票数据,两融及转融通
+    description: 获取沪深两市每日融资融券明细，，交易所于每天8点30左右更新上一日数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: margin_secs
+  doc_url: https://tushare.pro/wctapi/documents/326.md
+  title: 融资融券标的(盘前)
+  category: 股票数据,两融及转融通
+  description: 获取沪深京三大交易所融资融券标的（包括ETF），每天盘前更新
+  source_rows:
+  - line_number: 141
+    row_sha256: 424c427687204212c950de9a93a260e3a6bb356c244cc8d20e8efdd36ea1f70d
+    api_name: margin_secs
+    doc_url: https://tushare.pro/wctapi/documents/326.md
+    title: 融资融券标的(盘前)
+    category: 股票数据,两融及转融通
+    description: 获取沪深京三大交易所融资融券标的（包括ETF），每天盘前更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: mkt_idx_bmk
+  doc_url: https://tushare.pro/wctapi/documents/462.md
+  title: 基金业绩基准
+  category: 公募基金
+  description: 获取官方发布的ETF业绩比较基准列表信息，分为一类库、二类库
+  source_rows:
+  - line_number: 40
+    row_sha256: 94ba866d9f1eaecd6e8a3905321350fe4e7f7f149b80bb74e8d9d939613abc17
+    api_name: mkt_idx_bmk
+    doc_url: https://tushare.pro/wctapi/documents/462.md
+    title: 基金业绩基准
+    category: 公募基金
+    description: 获取官方发布的ETF业绩比较基准列表信息，分为一类库、二类库
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: monetary_policy
+  doc_url: https://tushare.pro/wctapi/documents/465.md
+  title: 央行货币政策执行报告
+  category: 大模型语料
+  description: 获取央行季度更新的货币政策执行报告，历史数据开始于2001年每年四篇，提供原始PDF下载链接，可用于分析过去20多年央行货币政策的动向、宏观以及金融市场的情况。
+  source_rows:
+  - line_number: 58
+    row_sha256: 14765f0b4ba17aed3e6b83ec1cb2f9099fca889dc0e8b0165d740cdcf4c1e41b
+    api_name: monetary_policy
+    doc_url: https://tushare.pro/wctapi/documents/465.md
+    title: 央行货币政策执行报告
+    category: 大模型语料
+    description: 获取央行季度更新的货币政策执行报告，历史数据开始于2001年每年四篇，提供原始PDF下载链接，可用于分析过去20多年央行货币政策的动向、宏观以及金融市场的情况。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow
+  doc_url: https://tushare.pro/wctapi/documents/170.md
+  title: 个股资金流向
+  category: 股票数据,资金流向数据
+  description: 获取沪深A股票资金流向数据，分析大单小单成交情况，用于判别资金动向，数据开始于2010年。
+  source_rows:
+  - line_number: 239
+    row_sha256: a466a6e9338ecd9924284cb84b2f309db4e3c1a390ddd9f5a5c33e4211dc419c
+    api_name: moneyflow
+    doc_url: https://tushare.pro/wctapi/documents/170.md
+    title: 个股资金流向
+    category: 股票数据,资金流向数据
+    description: 获取沪深A股票资金流向数据，分析大单小单成交情况，用于判别资金动向，数据开始于2010年。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: moneyflow_cnt_ths
+  doc_url: https://tushare.pro/wctapi/documents/371.md
+  title: 板块资金流向(THS)
+  category: 股票数据,资金流向数据
+  description: 获取同花顺概念板块每日资金流向
+  source_rows:
+  - line_number: 237
+    row_sha256: c5387b262be8152888fd2df491bca55d9cf6add1868e2bd8430cd25038809cf8
+    api_name: moneyflow_cnt_ths
+    doc_url: https://tushare.pro/wctapi/documents/371.md
+    title: 板块资金流向(THS)
+    category: 股票数据,资金流向数据
+    description: 获取同花顺概念板块每日资金流向
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow_dc
+  doc_url: https://tushare.pro/wctapi/documents/349.md
+  title: 个股资金流向(DC)
+  category: 股票数据,资金流向数据
+  description: 获取东方财富个股资金流向数据，每日盘后更新，数据开始于20230911
+  source_rows:
+  - line_number: 244
+    row_sha256: 132bcd4b06d304467cdaac06e55e5ac0baed41d6dc833c8b5322eba1f5816b1e
+    api_name: moneyflow_dc
+    doc_url: https://tushare.pro/wctapi/documents/349.md
+    title: 个股资金流向(DC)
+    category: 股票数据,资金流向数据
+    description: 获取东方财富个股资金流向数据，每日盘后更新，数据开始于20230911
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow_hsgt
+  doc_url: https://tushare.pro/wctapi/documents/47.md
+  title: 沪深港通资金流向
+  category: 股票数据,资金流向数据
+  description: 获取沪股通、深股通、港股通每日资金流向数据，每次最多返回300条记录，总量不限制。
+  source_rows:
+  - line_number: 238
+    row_sha256: 2b7d84b5ac36e02d55be21fd2107367acbcd66273a7d044a107a42e2d2a91850
+    api_name: moneyflow_hsgt
+    doc_url: https://tushare.pro/wctapi/documents/47.md
+    title: 沪深港通资金流向
+    category: 股票数据,资金流向数据
+    description: 获取沪股通、深股通、港股通每日资金流向数据，每次最多返回300条记录，总量不限制。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: moneyflow_ind_dc
+  doc_url: https://tushare.pro/wctapi/documents/344.md
+  title: 板块资金流向(DC)
+  category: 股票数据,资金流向数据
+  description: 获取东方财富板块资金流向，每天盘后更新
+  source_rows:
+  - line_number: 241
+    row_sha256: ad005740b1b5df6d5edf81bd4f6a5c042fc2cde7415a13f6409cb15196d78934
+    api_name: moneyflow_ind_dc
+    doc_url: https://tushare.pro/wctapi/documents/344.md
+    title: 板块资金流向(DC)
+    category: 股票数据,资金流向数据
+    description: 获取东方财富板块资金流向，每天盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow_ind_ths
+  doc_url: https://tushare.pro/wctapi/documents/343.md
+  title: 行业资金流向(THS)
+  category: 股票数据,资金流向数据
+  description: 获取同花顺行业资金流向，每日盘后更新
+  source_rows:
+  - line_number: 240
+    row_sha256: 444fb0debbf2363ff78eae0bc0dbbbe9415c3c7add4888706b598cccb070a4a0
+    api_name: moneyflow_ind_ths
+    doc_url: https://tushare.pro/wctapi/documents/343.md
+    title: 行业资金流向(THS)
+    category: 股票数据,资金流向数据
+    description: 获取同花顺行业资金流向，每日盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow_mkt_dc
+  doc_url: https://tushare.pro/wctapi/documents/345.md
+  title: 大盘资金流向(DC)
+  category: 股票数据,资金流向数据
+  description: 获取东方财富大盘资金流向数据，每日盘后更新
+  source_rows:
+  - line_number: 242
+    row_sha256: beea45ea437d78c7050404ae66a7c4c5243a3c82312f2a31ac34cd836d736af4
+    api_name: moneyflow_mkt_dc
+    doc_url: https://tushare.pro/wctapi/documents/345.md
+    title: 大盘资金流向(DC)
+    category: 股票数据,资金流向数据
+    description: 获取东方财富大盘资金流向数据，每日盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: moneyflow_ths
+  doc_url: https://tushare.pro/wctapi/documents/348.md
+  title: 个股资金流向(THS)
+  category: 股票数据,资金流向数据
+  description: 获取同花顺个股资金流向数据，每日盘后更新
+  source_rows:
+  - line_number: 243
+    row_sha256: 229e5e220e88ff2fea8bd373cb1f6b7daad27bb005f242f0b04d95041100a137
+    api_name: moneyflow_ths
+    doc_url: https://tushare.pro/wctapi/documents/348.md
+    title: 个股资金流向(THS)
+    category: 股票数据,资金流向数据
+    description: 获取同花顺个股资金流向数据，每日盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: monthly
+  doc_url: https://tushare.pro/wctapi/documents/145.md
+  title: 月线行情
+  category: 股票数据,行情数据
+  description: 获取A股月线数据
+  source_rows:
+  - line_number: 220
+    row_sha256: 1da44d6283207aa99a7ad66bccb7624a604396e83c920e15ef71ade1b85532f2
+    api_name: monthly
+    doc_url: https://tushare.pro/wctapi/documents/145.md
+    title: 月线行情
+    category: 股票数据,行情数据
+    description: 获取A股月线数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: namechange
+  doc_url: https://tushare.pro/wctapi/documents/100.md
+  title: 股票曾用名
+  category: 股票数据,基础数据
+  description: 历史名称变更记录
+  source_rows:
+  - line_number: 165
+    row_sha256: e0c684b5432ab1f37489af2dde3dd90867d943476e6bcb1d7a8239f130f4979f
+    api_name: namechange
+    doc_url: https://tushare.pro/wctapi/documents/100.md
+    title: 股票曾用名
+    category: 股票数据,基础数据
+    description: 历史名称变更记录
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: new_share
+  doc_url: https://tushare.pro/wctapi/documents/123.md
+  title: IPO新股上市
+  category: 股票数据,基础数据
+  description: 获取新股上市列表数据
+  source_rows:
+  - line_number: 169
+    row_sha256: 3648992839efb0007c92deaf369ca004592e53d2b2261442a2c1225aa7518b2b
+    api_name: new_share
+    doc_url: https://tushare.pro/wctapi/documents/123.md
+    title: IPO新股上市
+    category: 股票数据,基础数据
+    description: 获取新股上市列表数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: news
+  doc_url: https://tushare.pro/wctapi/documents/143.md
+  title: 新闻快讯(短讯)
+  category: 大模型语料
+  description: 获取主流新闻网站的快讯新闻数据,提供超过6年以上历史新闻。
+  source_rows:
+  - line_number: 50
+    row_sha256: 093d41941c7c6ef74953ab82d7a15705812a293b05e6401972cb26b9d2136954
+    api_name: news
+    doc_url: https://tushare.pro/wctapi/documents/143.md
+    title: 新闻快讯(短讯)
+    category: 大模型语料
+    description: 获取主流新闻网站的快讯新闻数据,提供超过6年以上历史新闻。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: npr
+  doc_url: https://tushare.pro/wctapi/documents/406.md
+  title: 国家政策库
+  category: 大模型语料
+  description: 获取国家行政机关公开披露的各类法规、条例政策、批复、通知等文本数据。
+  source_rows:
+  - line_number: 55
+    row_sha256: f083d50d8107a57e93c25db3d9df984f4e5462f0d0229d1a844cd38cf85056fc
+    api_name: npr
+    doc_url: https://tushare.pro/wctapi/documents/406.md
+    title: 国家政策库
+    category: 大模型语料
+    description: 获取国家行政机关公开披露的各类法规、条例政策、批复、通知等文本数据。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: opt_basic
+  doc_url: https://tushare.pro/wctapi/documents/158.md
+  title: 期权合约信息
+  category: 期权数据
+  description: 获取期权合约信息
+  source_rows:
+  - line_number: 98
+    row_sha256: 7c4e746ac46988ff14d067f3f18beff4fa09624701f8658d51f2fe991fdcaefc
+    api_name: opt_basic
+    doc_url: https://tushare.pro/wctapi/documents/158.md
+    title: 期权合约信息
+    category: 期权数据
+    description: 获取期权合约信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: opt_daily
+  doc_url: https://tushare.pro/wctapi/documents/159.md
+  title: 期权日线行情
+  category: 期权数据
+  description: 获取期权日线行情
+  source_rows:
+  - line_number: 99
+    row_sha256: ec2c38f8389e9b96f0a0984fc8cbc8f87f9af3ef2f518ea4002a02063eeead01
+    api_name: opt_daily
+    doc_url: https://tushare.pro/wctapi/documents/159.md
+    title: 期权日线行情
+    category: 期权数据
+    description: 获取期权日线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: opt_mins
+  doc_url: https://tushare.pro/wctapi/documents/341.md
+  title: 期权分钟行情
+  category: 期权数据
+  description: 获取全市场期权合约分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式。
+  source_rows:
+  - line_number: 100
+    row_sha256: 9078974a78c99e7ccb6e395cf47f75eb94c649b2bf6637b4bc4f05e7f3976e19
+    api_name: opt_mins
+    doc_url: https://tushare.pro/wctapi/documents/341.md
+    title: 期权分钟行情
+    category: 期权数据
+    description: 获取全市场期权合约分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: p_delete
+  doc_url: https://tushare.pro/wctapi/documents/447.md
+  title: 组合删除
+  category: 自选组合
+  description: 删除自选股组合
+  source_rows:
+  - line_number: 247
+    row_sha256: a55783a2801b231ddb934cded108c1b4b2e3ca18074528f9fc447d7cf8708646
+    api_name: p_delete
+    doc_url: https://tushare.pro/wctapi/documents/447.md
+    title: 组合删除
+    category: 自选组合
+    description: 删除自选股组合
+  source_resolution: single_official_index_row
+  scope_state: non_data_operation
+  scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
+  in_legacy_inventory: false
+- api_name: p_get
+  doc_url: https://tushare.pro/wctapi/documents/449.md
+  title: 成分查询
+  category: 自选组合
+  description: 查询组合的成分列表
+  source_rows:
+  - line_number: 248
+    row_sha256: a1930dbe8196f1de0b1f77cae2496ad7e6e2cd23f1720ad11f72e801a4462d7e
+    api_name: p_get
+    doc_url: https://tushare.pro/wctapi/documents/449.md
+    title: 成分查询
+    category: 自选组合
+    description: 查询组合的成分列表
+  source_resolution: single_official_index_row
+  scope_state: non_data_operation
+  scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
+  in_legacy_inventory: false
+- api_name: p_list
+  doc_url: https://tushare.pro/wctapi/documents/446.md
+  title: 组合列表
+  category: 自选组合
+  description: 自选股组合查询，不加参数查询出所以自定义组合
+  source_rows:
+  - line_number: 246
+    row_sha256: 4057df78056d451ccbe6f807f0f871a9db97092ad998f2d04712ce6306bfd9e5
+    api_name: p_list
+    doc_url: https://tushare.pro/wctapi/documents/446.md
+    title: 组合列表
+    category: 自选组合
+    description: 自选股组合查询，不加参数查询出所以自定义组合
+  source_resolution: single_official_index_row
+  scope_state: non_data_operation
+  scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
+  in_legacy_inventory: false
+- api_name: p_save
+  doc_url: https://tushare.pro/wctapi/documents/445.md
+  title: 组合保存
+  category: 自选组合
+  description: 创建或修改自选股组合
+  source_rows:
+  - line_number: 245
+    row_sha256: 8bf6077525c71002b919bd25304a702e2a8b8c8f5a677a8577f68373d058168f
+    api_name: p_save
+    doc_url: https://tushare.pro/wctapi/documents/445.md
+    title: 组合保存
+    category: 自选组合
+    description: 创建或修改自选股组合
+  source_resolution: single_official_index_row
+  scope_state: non_data_operation
+  scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
+  in_legacy_inventory: false
+- api_name: pledge_detail
+  doc_url: https://tushare.pro/wctapi/documents/111.md
+  title: 股权质押明细数据
+  category: 股票数据,参考数据
+  description: 获取股票质押明细数据
+  source_rows:
+  - line_number: 147
+    row_sha256: 54b5481b2c28cd810e4a89f6420cdbf6e95a383d5fc363bcba6b1d58722b1fbb
+    api_name: pledge_detail
+    doc_url: https://tushare.pro/wctapi/documents/111.md
+    title: 股权质押明细数据
+    category: 股票数据,参考数据
+    description: 获取股票质押明细数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: pledge_stat
+  doc_url: https://tushare.pro/wctapi/documents/110.md
+  title: 股权质押统计数据
+  category: 股票数据,参考数据
+  description: 获取股票质押统计数据
+  source_rows:
+  - line_number: 145
+    row_sha256: 3e77eac6e3f3baad45d67b302d8b577622f5a0ba04e4a9ccd789ab0fb290ec27
+    api_name: pledge_stat
+    doc_url: https://tushare.pro/wctapi/documents/110.md
+    title: 股权质押统计数据
+    category: 股票数据,参考数据
+    description: 获取股票质押统计数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: pro_bar
+  doc_url: https://tushare.pro/wctapi/documents/109.md
+  title: 通用行情接口
+  category: 股票数据,行情数据
+  description: ''
+  source_rows:
+  - line_number: 216
+    row_sha256: 32c505d35744904a11434f0780be6303ce6dd4fbdc6b1a51eb14b20abf5c99a9
+    api_name: pro_bar
+    doc_url: https://tushare.pro/wctapi/documents/146.md
+    title: 复权行情
+    category: 股票数据,行情数据
+    description: ''
+  - line_number: 225
+    row_sha256: fdccb2548db0e587c566f77da2d44f5e1cf55786569cbe5cb8ecd4557dc0af5c
+    api_name: pro_bar
+    doc_url: https://tushare.pro/wctapi/documents/109.md
+    title: 通用行情接口
+    category: 股票数据,行情数据
+    description: ''
+  source_resolution: The pinned index has two pro_bar rows. The unified API document is the reviewed canonical catalog row; both official source rows remain preserved.
+  scope_state: unknown
+  scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
+  in_legacy_inventory: false
+- api_name: repo_daily
+  doc_url: https://tushare.pro/wctapi/documents/256.md
+  title: 债券回购日行情
+  category: 债券专题
+  description: 债券回购日行情
+  source_rows:
+  - line_number: 32
+    row_sha256: d16d391111a8586ce436951315045d7cbf8d62b21a75cc914191d665da64294a
+    api_name: repo_daily
+    doc_url: https://tushare.pro/wctapi/documents/256.md
+    title: 债券回购日行情
+    category: 债券专题
+    description: 债券回购日行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: report_rc
+  doc_url: https://tushare.pro/wctapi/documents/292.md
+  title: 券商盈利预测数据
+  category: 股票数据,特色数据
+  description: 获取券商（卖方）每天研报的盈利预测数据，数据从2010年开始，每晚19~22点更新当日数据
+  source_rows:
+  - line_number: 197
+    row_sha256: fe50a38358a6ad6fea9e8cb7e50aa4a4cefef4e0502f4e30813c10ba2ed13c41
+    api_name: report_rc
+    doc_url: https://tushare.pro/wctapi/documents/292.md
+    title: 券商盈利预测数据
+    category: 股票数据,特色数据
+    description: 获取券商（卖方）每天研报的盈利预测数据，数据从2010年开始，每晚19~22点更新当日数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: repurchase
+  doc_url: https://tushare.pro/wctapi/documents/124.md
+  title: 股票回购
+  category: 股票数据,参考数据
+  description: 获取上市公司回购股票数据
+  source_rows:
+  - line_number: 156
+    row_sha256: b540f099b6e1b65e913f2c2d9e3295d31a8d087ec310e2b184c1e34601174ce7
+    api_name: repurchase
+    doc_url: https://tushare.pro/wctapi/documents/124.md
+    title: 股票回购
+    category: 股票数据,参考数据
+    description: 获取上市公司回购股票数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: research_report
+  doc_url: https://tushare.pro/wctapi/documents/415.md
+  title: 券商研究报告
+  category: 大模型语料
+  description: 获取券商研究报告-个股、行业等，历史数据从20170101开始提供，增量每天两次更新
+  source_rows:
+  - line_number: 56
+    row_sha256: e0e977e268bfa9624c677625ffe648d16b89d1747777a7349f9de07c469e5f3e
+    api_name: research_report
+    doc_url: https://tushare.pro/wctapi/documents/415.md
+    title: 券商研究报告
+    category: 大模型语料
+    description: 获取券商研究报告-个股、行业等，历史数据从20170101开始提供，增量每天两次更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_etf_k
+  doc_url: https://tushare.pro/wctapi/documents/400.md
+  title: ETF实时日线
+  category: ETF专题
+  description: 获取ETF实时日k线行情，支持按ETF代码或代码通配符一次性提取全部ETF实时日k线行情
+  source_rows:
+  - line_number: 17
+    row_sha256: 7929b66a17dacb79d4d542386b17f3268998fe590673ac58d4adc2dc9cb4753c
+    api_name: rt_etf_k
+    doc_url: https://tushare.pro/wctapi/documents/400.md
+    title: ETF实时日线
+    category: ETF专题
+    description: 获取ETF实时日k线行情，支持按ETF代码或代码通配符一次性提取全部ETF实时日k线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_etf_min
+  doc_url: https://tushare.pro/wctapi/documents/416.md
+  title: ETF实时分钟
+  category: ETF专题
+  description: 获取ETF实时分钟数据，包括1~60min
+  source_rows:
+  - line_number: 15
+    row_sha256: 5ca9c3f50ce54fd5003c366a0a5564d259178fcfd577862b1c93813f9aad6a86
+    api_name: rt_etf_min
+    doc_url: https://tushare.pro/wctapi/documents/416.md
+    title: ETF实时分钟
+    category: ETF专题
+    description: 获取ETF实时分钟数据，包括1~60min
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_etf_min_daily
+  doc_url: https://tushare.pro/wctapi/documents/470.md
+  title: ETF实时分钟-日累计
+  category: ETF专题
+  description: 获取ETF实时分钟数据日累计，包括1~60min
+  source_rows:
+  - line_number: 12
+    row_sha256: d61f6029d7a05b4d5e8c3946b4de0c5111c14f708a9e46df25fcbf81cef87268
+    api_name: rt_etf_min_daily
+    doc_url: https://tushare.pro/wctapi/documents/470.md
+    title: ETF实时分钟-日累计
+    category: ETF专题
+    description: 获取ETF实时分钟数据日累计，包括1~60min
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_etf_sz_iopv
+  doc_url: https://tushare.pro/wctapi/documents/454.md
+  title: ETF实时参考
+  category: ETF专题
+  description: ETF实时净值和申购赎回数据参考，目前只提供深市
+  source_rows:
+  - line_number: 14
+    row_sha256: 097ca653385138badf17d68abf73c0084065ab05656995ed03f5892742d9b25a
+    api_name: rt_etf_sz_iopv
+    doc_url: https://tushare.pro/wctapi/documents/454.md
+    title: ETF实时参考
+    category: ETF专题
+    description: ETF实时净值和申购赎回数据参考，目前只提供深市
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_fut_min
+  doc_url: https://tushare.pro/wctapi/documents/340.md
+  title: 实时分钟行情
+  category: 期货数据
+  description: 获取全市场期货合约实时分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK、 http Restful API和websocket三种方式，如果需要主力合约分钟，请先通过主力[mapping](https://tushare.pro/document/2?doc_id=189)接口获取对应的合约代码后提取分钟。
+  source_rows:
+  - line_number: 107
+    row_sha256: 69f6780e6108e3f45cc940035176b206e20d67abb62d172235981775b4d45d85
+    api_name: rt_fut_min
+    doc_url: https://tushare.pro/wctapi/documents/340.md
+    title: 实时分钟行情
+    category: 期货数据
+    description: 获取全市场期货合约实时分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK、 http Restful API和websocket三种方式，如果需要主力合约分钟，请先通过主力[mapping](https://tushare.pro/document/2?doc_id=189)接口获取对应的合约代码后提取分钟。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: rt_hk_k
+  doc_url: https://tushare.pro/wctapi/documents/383.md
+  title: 港股实时日线
+  category: 港股数据
+  description: 获取港股实时日k线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日k线行情
+  source_rows:
+  - line_number: 115
+    row_sha256: 8e22f933127f30b5a9ffed0b521d6a409921e455164aa08865c3aa57ef46dcf3
+    api_name: rt_hk_k
+    doc_url: https://tushare.pro/wctapi/documents/383.md
+    title: 港股实时日线
+    category: 港股数据
+    description: 获取港股实时日k线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日k线行情
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: rt_idx_k
+  doc_url: https://tushare.pro/wctapi/documents/403.md
+  title: 指数实时日线
+  category: 指数专题
+  description: 获取交易所指数实时日线行情，支持按代码或代码通配符一次性提取全部交易所指数实时日k线行情
+  source_rows:
+  - line_number: 83
+    row_sha256: 559e73932a852b29ccdf6a7c2f16994691a71a03e32eb81fa2398a9c7bb110d9
+    api_name: rt_idx_k
+    doc_url: https://tushare.pro/wctapi/documents/403.md
+    title: 指数实时日线
+    category: 指数专题
+    description: 获取交易所指数实时日线行情，支持按代码或代码通配符一次性提取全部交易所指数实时日k线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_idx_min
+  doc_url: https://tushare.pro/wctapi/documents/420.md
+  title: 指数实时分钟
+  category: 指数专题
+  description: 获取交易所指数实时分钟数据，包括1~60min
+  source_rows:
+  - line_number: 80
+    row_sha256: 8119c15f8a46fea618468c791d07ea09bb79f53002b4e5222131d1b5d01b2a9a
+    api_name: rt_idx_min
+    doc_url: https://tushare.pro/wctapi/documents/420.md
+    title: 指数实时分钟
+    category: 指数专题
+    description: 获取交易所指数实时分钟数据，包括1~60min
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_k
+  doc_url: https://tushare.pro/wctapi/documents/372.md
+  title: 实时日线
+  category: 股票数据,行情数据
+  description: 获取实时日k线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日k线行情
+  source_rows:
+  - line_number: 215
+    row_sha256: 00e523ed3f4076a2993de74a8f0ee1209337662ba1d7e378b17258edf0fb5b96
+    api_name: rt_k
+    doc_url: https://tushare.pro/wctapi/documents/372.md
+    title: 实时日线
+    category: 股票数据,行情数据
+    description: 获取实时日k线行情，支持按股票代码及股票代码通配符一次性提取全部股票实时日k线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_min
+  doc_url: https://tushare.pro/wctapi/documents/374.md
+  title: 实时分钟
+  category: 股票数据,行情数据
+  description: 获取全A股票实时分钟数据，包括1~60min
+  source_rows:
+  - line_number: 209
+    row_sha256: 55f3ab9ffa2cbfa9446c09adb861eaa95cd0094f10db8992461163f19ebb7945
+    api_name: rt_min
+    doc_url: https://tushare.pro/wctapi/documents/374.md
+    title: 实时分钟
+    category: 股票数据,行情数据
+    description: 获取全A股票实时分钟数据，包括1~60min
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: rt_min_daily
+  doc_url: https://tushare.pro/wctapi/documents/457.md
+  title: A股实时分钟-日累计
+  category: 股票数据,行情数据
+  description: 获取A股当日盘中历史分钟数据，可以提取单只股票当日开盘以来的所有分钟数据
+  source_rows:
+  - line_number: 217
+    row_sha256: 69222a0ce64a30b94ceadfb22eac58d583a9eedf5633ac6b930982ef081877a5
+    api_name: rt_min_daily
+    doc_url: https://tushare.pro/wctapi/documents/457.md
+    title: A股实时分钟-日累计
+    category: 股票数据,行情数据
+    description: 获取A股当日盘中历史分钟数据，可以提取单只股票当日开盘以来的所有分钟数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: rt_sw_k
+  doc_url: https://tushare.pro/wctapi/documents/417.md
+  title: 申万实时行情
+  category: 指数专题
+  description: 获取申万行业指数的最新截面数据
+  source_rows:
+  - line_number: 82
+    row_sha256: f2370bed1b4546c91001ad8645014692349a582cc4fd2696e5d891b065d37369
+    api_name: rt_sw_k
+    doc_url: https://tushare.pro/wctapi/documents/417.md
+    title: 申万实时行情
+    category: 指数专题
+    description: 获取申万行业指数的最新截面数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: sf_month
+  doc_url: https://tushare.pro/wctapi/documents/310.md
+  title: 社融增量(月度)
+  category: 宏观经济,国内宏观,金融,社会融资
+  description: 获取月度社会融资数据
+  source_rows:
+  - line_number: 71
+    row_sha256: c6c3c10561708a1424bb3051b051d0a56f0903673ea43e6a6bd08cf49ca8089e
+    api_name: sf_month
+    doc_url: https://tushare.pro/wctapi/documents/310.md
+    title: 社融增量(月度)
+    category: 宏观经济,国内宏观,金融,社会融资
+    description: 获取月度社会融资数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: sge_basic
+  doc_url: https://tushare.pro/wctapi/documents/284.md
+  title: 上海黄金基础信息
+  category: 现货数据
+  description: 获取上海黄金交易所现货合约基础信息
+  source_rows:
+  - line_number: 125
+    row_sha256: d6091314c1a607f45936d241cd00ee3cc49ee8e75f9354261f0f0b1ce4f2c09c
+    api_name: sge_basic
+    doc_url: https://tushare.pro/wctapi/documents/284.md
+    title: 上海黄金基础信息
+    category: 现货数据
+    description: 获取上海黄金交易所现货合约基础信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: sge_daily
+  doc_url: https://tushare.pro/wctapi/documents/285.md
+  title: 上海黄金现货日行情
+  category: 现货数据
+  description: 获取上海黄金交易所现货合约日线行情
+  source_rows:
+  - line_number: 126
+    row_sha256: 7e669c8cf985b129f576c7802dad1ed58949376e5e9e17cdcf669d37f779c52a
+    api_name: sge_daily
+    doc_url: https://tushare.pro/wctapi/documents/285.md
+    title: 上海黄金现货日行情
+    category: 现货数据
+    description: 获取上海黄金交易所现货合约日线行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: share_float
+  doc_url: https://tushare.pro/wctapi/documents/160.md
+  title: 限售股解禁
+  category: 股票数据,参考数据
+  description: 获取限售股解禁
+  source_rows:
+  - line_number: 146
+    row_sha256: 4c974b517b8d4d444f08df1b6f6c63ec8bf08166164977b8fea42e654538c621
+    api_name: share_float
+    doc_url: https://tushare.pro/wctapi/documents/160.md
+    title: 限售股解禁
+    category: 股票数据,参考数据
+    description: 获取限售股解禁
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: shibor
+  doc_url: https://tushare.pro/wctapi/documents/149.md
+  title: Shibor利率
+  category: 宏观经济,国内宏观,利率数据
+  description: shibor利率
+  source_rows:
+  - line_number: 62
+    row_sha256: 7ee09ccf941f966102e4c7a0d85a29277c4a6ab89fa3dc87b24bb9887a844a7f
+    api_name: shibor
+    doc_url: https://tushare.pro/wctapi/documents/149.md
+    title: Shibor利率
+    category: 宏观经济,国内宏观,利率数据
+    description: shibor利率
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: shibor_lpr
+  doc_url: https://tushare.pro/wctapi/documents/151.md
+  title: LPR贷款基础利率
+  category: 宏观经济,国内宏观,利率数据
+  description: LPR贷款基础利率
+  source_rows:
+  - line_number: 64
+    row_sha256: 00a17adfc787e10a0a0f29228103afa0c6799dd1e048983658d0f725c5379351
+    api_name: shibor_lpr
+    doc_url: https://tushare.pro/wctapi/documents/151.md
+    title: LPR贷款基础利率
+    category: 宏观经济,国内宏观,利率数据
+    description: LPR贷款基础利率
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: shibor_quote
+  doc_url: https://tushare.pro/wctapi/documents/150.md
+  title: Shibor报价数据
+  category: 宏观经济,国内宏观,利率数据
+  description: Shibor报价数据
+  source_rows:
+  - line_number: 63
+    row_sha256: beba94d917fae91f7fa378d4304b585b93650c37ccba0fce79380afcb1b561f0
+    api_name: shibor_quote
+    doc_url: https://tushare.pro/wctapi/documents/150.md
+    title: Shibor报价数据
+    category: 宏观经济,国内宏观,利率数据
+    description: Shibor报价数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: slb_len
+  doc_url: https://tushare.pro/wctapi/documents/331.md
+  title: 转融资交易汇总
+  category: 股票数据,两融及转融通
+  description: 转融通融资汇总
+  source_rows:
+  - line_number: 137
+    row_sha256: ae7632c9d08854be1f2158e07a1bf38e2c908306cc0a2aca812097e1155a7e59
+    api_name: slb_len
+    doc_url: https://tushare.pro/wctapi/documents/331.md
+    title: 转融资交易汇总
+    category: 股票数据,两融及转融通
+    description: 转融通融资汇总
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: slb_len_mm
+  doc_url: https://tushare.pro/wctapi/documents/334.md
+  title: 做市借券交易汇总(停)
+  category: 股票数据,两融及转融通
+  description: 做市借券交易汇总
+  source_rows:
+  - line_number: 138
+    row_sha256: f79823dc828a513d4574e8c49ad3d9650b6f8b77c58ba9a06d6c5655d3fc3c17
+    api_name: slb_len_mm
+    doc_url: https://tushare.pro/wctapi/documents/334.md
+    title: 做市借券交易汇总(停)
+    category: 股票数据,两融及转融通
+    description: 做市借券交易汇总
+  source_resolution: single_official_index_row
+  scope_state: retired
+  scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
+  in_legacy_inventory: false
+- api_name: slb_sec
+  doc_url: https://tushare.pro/wctapi/documents/332.md
+  title: 转融券交易汇总(停)
+  category: 股票数据,两融及转融通
+  description: 转融通转融券交易汇总
+  source_rows:
+  - line_number: 140
+    row_sha256: 55ec5396eec1e75225219c69b1aeae938c5b0e203a901fc3eb718af3d350d5db
+    api_name: slb_sec
+    doc_url: https://tushare.pro/wctapi/documents/332.md
+    title: 转融券交易汇总(停)
+    category: 股票数据,两融及转融通
+    description: 转融通转融券交易汇总
+  source_resolution: single_official_index_row
+  scope_state: retired
+  scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
+  in_legacy_inventory: false
+- api_name: slb_sec_detail
+  doc_url: https://tushare.pro/wctapi/documents/333.md
+  title: 转融券交易明细(停)
+  category: 股票数据,两融及转融通
+  description: 转融券交易明细
+  source_rows:
+  - line_number: 139
+    row_sha256: fd6a15f09c8be41fffae7a827f7a69ac943fe48facaf6233169e2054771e763a
+    api_name: slb_sec_detail
+    doc_url: https://tushare.pro/wctapi/documents/333.md
+    title: 转融券交易明细(停)
+    category: 股票数据,两融及转融通
+    description: 转融券交易明细
+  source_resolution: single_official_index_row
+  scope_state: retired
+  scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
+  in_legacy_inventory: false
+- api_name: st
+  doc_url: https://tushare.pro/wctapi/documents/423.md
+  title: ST风险警示板股票
+  category: 股票数据,基础数据
+  description: ST风险警示板股票列表
+  source_rows:
+  - line_number: 163
+    row_sha256: 939d23a18ab1b5bff469a55976ee2f8f7b6311bc943dbb0885813442b1906fb3
+    api_name: st
+    doc_url: https://tushare.pro/wctapi/documents/423.md
+    title: ST风险警示板股票
+    category: 股票数据,基础数据
+    description: ST风险警示板股票列表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_account
+  doc_url: https://tushare.pro/wctapi/documents/164.md
+  title: 股票开户数据(停)
+  category: 股票数据,参考数据
+  description: 获取股票账户开户数据，统计周期为一周
+  source_rows:
+  - line_number: 149
+    row_sha256: 50e8022793ae92f989b6a8052c8bc8c64665ea6fe2370e84eaace4dc97dbf3e1
+    api_name: stk_account
+    doc_url: https://tushare.pro/wctapi/documents/164.md
+    title: 股票开户数据(停)
+    category: 股票数据,参考数据
+    description: 获取股票账户开户数据，统计周期为一周
+  source_resolution: single_official_index_row
+  scope_state: retired
+  scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
+  in_legacy_inventory: false
+- api_name: stk_account_old
+  doc_url: https://tushare.pro/wctapi/documents/165.md
+  title: 股票开户数据(旧)
+  category: 股票数据,参考数据
+  description: 获取股票账户开户数据旧版格式数据，数据从2008年1月开始，到2015年5月29，新数据请通过[股票开户数据](https://tushare.pro/document/2?doc_id=164)获取。
+  source_rows:
+  - line_number: 155
+    row_sha256: e2c9671e0af6c7b313e49213b5df9a122e80dab57f5efb3aa90fed906ec8c256
+    api_name: stk_account_old
+    doc_url: https://tushare.pro/wctapi/documents/165.md
+    title: 股票开户数据(旧)
+    category: 股票数据,参考数据
+    description: 获取股票账户开户数据旧版格式数据，数据从2008年1月开始，到2015年5月29，新数据请通过[股票开户数据](https://tushare.pro/document/2?doc_id=164)获取。
+  source_resolution: single_official_index_row
+  scope_state: retired
+  scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
+  in_legacy_inventory: false
+- api_name: stk_ah_comparison
+  doc_url: https://tushare.pro/wctapi/documents/399.md
+  title: AH股比价
+  category: 股票数据,特色数据
+  description: AH股比价数据，可根据交易日期获取历史
+  source_rows:
+  - line_number: 205
+    row_sha256: 6a73d4a01bbf0febb9870527947b5a1e2a01a274fa812dd95c72c777ebb949db
+    api_name: stk_ah_comparison
+    doc_url: https://tushare.pro/wctapi/documents/399.md
+    title: AH股比价
+    category: 股票数据,特色数据
+    description: AH股比价数据，可根据交易日期获取历史
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: stk_alert
+  doc_url: https://tushare.pro/wctapi/documents/453.md
+  title: 交易所重点提示证券
+  category: 股票数据,参考数据
+  description: 根据证券交易所交易规则的有关规定，交易所每日发布重点提示证券
+  source_rows:
+  - line_number: 150
+    row_sha256: f8b0f318e7097dbbd624d4afe07f3f4932f5102154defa930c08bbbbdb55bfda
+    api_name: stk_alert
+    doc_url: https://tushare.pro/wctapi/documents/453.md
+    title: 交易所重点提示证券
+    category: 股票数据,参考数据
+    description: 根据证券交易所交易规则的有关规定，交易所每日发布重点提示证券
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_auction
+  doc_url: https://tushare.pro/wctapi/documents/369.md
+  title: 开盘竞价成交(当日)
+  category: 股票数据,打板专题数据
+  description: 获取当日个股和ETF的集合竞价成交情况，每天9点26~29分之间可以获取当日的集合竞价成交数据。本接口历史数据开始于2025年1月。
+  source_rows:
+  - line_number: 173
+    row_sha256: 8c8d9bad899221138257df0f550653f4921341e551c2fb8f3f9fff6a654a27ad
+    api_name: stk_auction
+    doc_url: https://tushare.pro/wctapi/documents/369.md
+    title: 开盘竞价成交(当日)
+    category: 股票数据,打板专题数据
+    description: 获取当日个股和ETF的集合竞价成交情况，每天9点26~29分之间可以获取当日的集合竞价成交数据。本接口历史数据开始于2025年1月。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_auction_c
+  doc_url: https://tushare.pro/wctapi/documents/354.md
+  title: 股票收盘集合竞价数据
+  category: 股票数据,特色数据
+  description: 股票收盘15:00集合竞价数据，每天盘后更新
+  source_rows:
+  - line_number: 203
+    row_sha256: 79f1d6193d4a5a2d9112bde160b7bd3fc8426377280765cbe0928e0d4ac9ef5a
+    api_name: stk_auction_c
+    doc_url: https://tushare.pro/wctapi/documents/354.md
+    title: 股票收盘集合竞价数据
+    category: 股票数据,特色数据
+    description: 股票收盘15:00集合竞价数据，每天盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_auction_o
+  doc_url: https://tushare.pro/wctapi/documents/353.md
+  title: 股票开盘集合竞价数据
+  category: 股票数据,特色数据
+  description: 股票开盘9:30集合竞价数据，每天盘后更新
+  source_rows:
+  - line_number: 202
+    row_sha256: db28e2f7b39990d755803ba767df81e186a725afd84015fcc0905428063ecbba
+    api_name: stk_auction_o
+    doc_url: https://tushare.pro/wctapi/documents/353.md
+    title: 股票开盘集合竞价数据
+    category: 股票数据,特色数据
+    description: 股票开盘9:30集合竞价数据，每天盘后更新
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_factor
+  doc_url: https://tushare.pro/wctapi/documents/296.md
+  title: 股票技术面因子
+  category: 股票数据,特色数据
+  description: 获取股票每日技术面因子数据，用于跟踪股票当前走势情况，数据由Tushare社区自产，覆盖全历史
+  source_rows:
+  - line_number: 207
+    row_sha256: 1925390c2ef3fc9283575487dbf1de7a1c10890ef55b597b5fe4c63816597e3c
+    api_name: stk_factor
+    doc_url: https://tushare.pro/wctapi/documents/296.md
+    title: 股票技术面因子
+    category: 股票数据,特色数据
+    description: 获取股票每日技术面因子数据，用于跟踪股票当前走势情况，数据由Tushare社区自产，覆盖全历史
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_factor_pro
+  doc_url: https://tushare.pro/wctapi/documents/328.md
+  title: 股票技术面因子(专业版)
+  category: 股票数据,特色数据
+  description: 获取股票每日技术面因子数据，用于跟踪股票当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，_qfq表示前复权 _hfq表示后复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_rows:
+  - line_number: 201
+    row_sha256: e0b722bd7cb7f0e89bbb3f14e74f3021a063239de192dea2e3822bf989956507
+    api_name: stk_factor_pro
+    doc_url: https://tushare.pro/wctapi/documents/328.md
+    title: 股票技术面因子(专业版)
+    category: 股票数据,特色数据
+    description: 获取股票每日技术面因子数据，用于跟踪股票当前走势情况，数据由Tushare社区自产，覆盖全历史；输出参数_bfq表示不复权，_qfq表示前复权 _hfq表示后复权，描述中说明了因子的默认传参，如需要特殊参数或者更多因子可以联系管理员评估
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_high_shock
+  doc_url: https://tushare.pro/wctapi/documents/452.md
+  title: 个股严重异常波动
+  category: 股票数据,参考数据
+  description: 根据证券交易所交易规则的有关规定，交易所每日发布股票交易严重异常波动情况
+  source_rows:
+  - line_number: 151
+    row_sha256: 0418fef00e096e489945dcac094702eece8092e742b01d6a70e97b6ad5aaf555
+    api_name: stk_high_shock
+    doc_url: https://tushare.pro/wctapi/documents/452.md
+    title: 个股严重异常波动
+    category: 股票数据,参考数据
+    description: 根据证券交易所交易规则的有关规定，交易所每日发布股票交易严重异常波动情况
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_holdernumber
+  doc_url: https://tushare.pro/wctapi/documents/166.md
+  title: 股东人数
+  category: 股票数据,参考数据
+  description: 获取上市公司股东户数数据，数据不定期公布
+  source_rows:
+  - line_number: 154
+    row_sha256: 5a0973e8c0d089397e2a190d967bd00ebc5d84b6720434e9aa95cbd825283971
+    api_name: stk_holdernumber
+    doc_url: https://tushare.pro/wctapi/documents/166.md
+    title: 股东人数
+    category: 股票数据,参考数据
+    description: 获取上市公司股东户数数据，数据不定期公布
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_holdertrade
+  doc_url: https://tushare.pro/wctapi/documents/175.md
+  title: 股东增减持
+  category: 股票数据,参考数据
+  description: 获取上市公司增减持数据，了解重要股东近期及历史上的股份增减变化
+  source_rows:
+  - line_number: 153
+    row_sha256: c445b5577cb424aa6cfcea152473c0274b433d0b145c67782b67b9e6a86c0be6
+    api_name: stk_holdertrade
+    doc_url: https://tushare.pro/wctapi/documents/175.md
+    title: 股东增减持
+    category: 股票数据,参考数据
+    description: 获取上市公司增减持数据，了解重要股东近期及历史上的股份增减变化
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_limit
+  doc_url: https://tushare.pro/wctapi/documents/183.md
+  title: 每日涨跌停价格
+  category: 股票数据,行情数据
+  description: 获取全市场（包含A/B股和基金）每日涨跌停价格，包括涨停价格，跌停价格等，每个交易日8点40左右更新当日股票涨跌停价格。
+  source_rows:
+  - line_number: 219
+    row_sha256: 959684fc44c17ae114759ca6684a6ac6be0f987b0b126d5c71eed5b446c33362
+    api_name: stk_limit
+    doc_url: https://tushare.pro/wctapi/documents/183.md
+    title: 每日涨跌停价格
+    category: 股票数据,行情数据
+    description: 获取全市场（包含A/B股和基金）每日涨跌停价格，包括涨停价格，跌停价格等，每个交易日8点40左右更新当日股票涨跌停价格。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_managers
+  doc_url: https://tushare.pro/wctapi/documents/193.md
+  title: 上市公司管理层
+  category: 股票数据,基础数据
+  description: 获取上市公司管理层
+  source_rows:
+  - line_number: 162
+    row_sha256: 39461eaf86be8e336b8836e39a95d8321b68f99aab26e75eeff39173d537709d
+    api_name: stk_managers
+    doc_url: https://tushare.pro/wctapi/documents/193.md
+    title: 上市公司管理层
+    category: 股票数据,基础数据
+    description: 获取上市公司管理层
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_mins
+  doc_url: https://tushare.pro/wctapi/documents/370.md
+  title: 历史分钟
+  category: 股票数据,行情数据
+  description: 获取A股分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_rows:
+  - line_number: 214
+    row_sha256: ed41e7acb9b2944b928ba94dbe2206d9d422db2e014bc27d02f6f66093b90707
+    api_name: stk_mins
+    doc_url: https://tushare.pro/wctapi/documents/370.md
+    title: 历史分钟
+    category: 股票数据,行情数据
+    description: 获取A股分钟数据，支持1min/5min/15min/30min/60min行情，提供Python SDK和 http Restful API两种方式
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_nineturn
+  doc_url: https://tushare.pro/wctapi/documents/364.md
+  title: 神奇九转指标
+  category: 股票数据,特色数据
+  description: 神奇九转（又称“九转序列”）是一种基于技术分析的股票趋势反转指标，其思想来源于技术分析大师汤姆·迪马克（Tom DeMark）的TD序列。该指标的核心功能是通过识别股价在上涨或下跌过程中连续9天的特定走势，来判断股价的潜在反转点，从而帮助投资者提高抄底和逃顶的成功率，日线级别配合60min的九转效果更好，数据从20230101开始。
+  source_rows:
+  - line_number: 204
+    row_sha256: d08a6022f9ecbbad73915b50c9a031fba43bf9b36c2318468744482ac79a077c
+    api_name: stk_nineturn
+    doc_url: https://tushare.pro/wctapi/documents/364.md
+    title: 神奇九转指标
+    category: 股票数据,特色数据
+    description: 神奇九转（又称“九转序列”）是一种基于技术分析的股票趋势反转指标，其思想来源于技术分析大师汤姆·迪马克（Tom DeMark）的TD序列。该指标的核心功能是通过识别股价在上涨或下跌过程中连续9天的特定走势，来判断股价的潜在反转点，从而帮助投资者提高抄底和逃顶的成功率，日线级别配合60min的九转效果更好，数据从20230101开始。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_premarket
+  doc_url: https://tushare.pro/wctapi/documents/329.md
+  title: 每日股本(盘前)
+  category: 股票数据,基础数据
+  description: 每日开盘前获取当日股票的股本情况，包括总股本和流通股本，涨跌停价格等。
+  source_rows:
+  - line_number: 159
+    row_sha256: 31a9936f8aceb9b3478544de03235370b1dd7aa9a78c5abdb5ff49269312435e
+    api_name: stk_premarket
+    doc_url: https://tushare.pro/wctapi/documents/329.md
+    title: 每日股本(盘前)
+    category: 股票数据,基础数据
+    description: 每日开盘前获取当日股票的股本情况，包括总股本和流通股本，涨跌停价格等。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_rewards
+  doc_url: https://tushare.pro/wctapi/documents/194.md
+  title: 管理层薪酬和持股
+  category: 股票数据,基础数据
+  description: 获取上市公司管理层薪酬和持股
+  source_rows:
+  - line_number: 157
+    row_sha256: 222b60cc089223bbf5465ef37f498181451b0098f209c64df12ffef349195922
+    api_name: stk_rewards
+    doc_url: https://tushare.pro/wctapi/documents/194.md
+    title: 管理层薪酬和持股
+    category: 股票数据,基础数据
+    description: 获取上市公司管理层薪酬和持股
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_shock
+  doc_url: https://tushare.pro/wctapi/documents/451.md
+  title: 个股异常波动
+  category: 股票数据,参考数据
+  description: 根据证券交易所交易规则的有关规定，交易所每日发布股票交易异常波动情况
+  source_rows:
+  - line_number: 152
+    row_sha256: dd9faf22370a5403fab28c65c5a87b9ffdf075933988c35a09ba643c24a4e527
+    api_name: stk_shock
+    doc_url: https://tushare.pro/wctapi/documents/451.md
+    title: 个股异常波动
+    category: 股票数据,参考数据
+    description: 根据证券交易所交易规则的有关规定，交易所每日发布股票交易异常波动情况
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_surv
+  doc_url: https://tushare.pro/wctapi/documents/275.md
+  title: 机构调研数据
+  category: 股票数据,特色数据
+  description: 获取上市公司机构调研记录数据
+  source_rows:
+  - line_number: 196
+    row_sha256: 2c1500c1dfa17d75ed3d36bfa57c2c0ce61a1113561e9fd82ec14302669cb3ea
+    api_name: stk_surv
+    doc_url: https://tushare.pro/wctapi/documents/275.md
+    title: 机构调研数据
+    category: 股票数据,特色数据
+    description: 获取上市公司机构调研记录数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stk_week_month_adj
+  doc_url: https://tushare.pro/wctapi/documents/365.md
+  title: 周月线复权行情(每日更新)
+  category: 股票数据,行情数据
+  description: 股票周/月线行情(复权--每日更新)
+  source_rows:
+  - line_number: 213
+    row_sha256: 84c963d54efa671a96dc0fe509f1232d14a77935b6f98e66bb6a08d2b9a15fe2
+    api_name: stk_week_month_adj
+    doc_url: https://tushare.pro/wctapi/documents/365.md
+    title: 周月线复权行情(每日更新)
+    category: 股票数据,行情数据
+    description: 股票周/月线行情(复权--每日更新)
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stk_weekly_monthly
+  doc_url: https://tushare.pro/wctapi/documents/336.md
+  title: 周月线行情(每日更新)
+  category: 股票数据,行情数据
+  description: 股票周/月线行情(每日更新)
+  source_rows:
+  - line_number: 212
+    row_sha256: 90ec8c9cda91467c0b292a0793c9eff1bfc48a0892285045fec23d19abfb542d
+    api_name: stk_weekly_monthly
+    doc_url: https://tushare.pro/wctapi/documents/336.md
+    title: 周月线行情(每日更新)
+    category: 股票数据,行情数据
+    description: 股票周/月线行情(每日更新)
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stock_basic
+  doc_url: https://tushare.pro/wctapi/documents/25.md
+  title: 股票列表
+  category: 股票数据,基础数据
+  description: 获取基础信息数据，包括股票代码、名称、上市日期、退市日期等
+  source_rows:
+  - line_number: 166
+    row_sha256: f025b97fba3b319a1dcf0fbb86958d57f0c706c0d721502393e75a9d4c3b2708
+    api_name: stock_basic
+    doc_url: https://tushare.pro/wctapi/documents/25.md
+    title: 股票列表
+    category: 股票数据,基础数据
+    description: 获取基础信息数据，包括股票代码、名称、上市日期、退市日期等
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stock_company
+  doc_url: https://tushare.pro/wctapi/documents/112.md
+  title: 上市公司基本信息
+  category: 股票数据,基础数据
+  description: 获取上市公司基础信息，单次提取4500条，可以根据交易所分批提取
+  source_rows:
+  - line_number: 164
+    row_sha256: 25056ce2be7608bcf0c4e804a93b0f6213feead12465807ce2980ae89eadaa92
+    api_name: stock_company
+    doc_url: https://tushare.pro/wctapi/documents/112.md
+    title: 上市公司基本信息
+    category: 股票数据,基础数据
+    description: 获取上市公司基础信息，单次提取4500条，可以根据交易所分批提取
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: stock_hsgt
+  doc_url: https://tushare.pro/wctapi/documents/398.md
+  title: 沪深港通股票列表
+  category: 股票数据,基础数据
+  description: 获取沪深港通股票列表
+  source_rows:
+  - line_number: 168
+    row_sha256: 0bbaca1ddab655aa13d92d5fc09c99b003d17213aa799d82b56b1ca98eec40e3
+    api_name: stock_hsgt
+    doc_url: https://tushare.pro/wctapi/documents/398.md
+    title: 沪深港通股票列表
+    category: 股票数据,基础数据
+    description: 获取沪深港通股票列表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: stock_st
+  doc_url: https://tushare.pro/wctapi/documents/397.md
+  title: ST股票列表
+  category: 股票数据,基础数据
+  description: 获取ST股票列表，可根据交易日期获取历史上每天的ST列表
+  source_rows:
+  - line_number: 161
+    row_sha256: 85dac90472247d68de444786ce1a0e6b63c9002b9888d54ab5102bd39fe3e90d
+    api_name: stock_st
+    doc_url: https://tushare.pro/wctapi/documents/397.md
+    title: ST股票列表
+    category: 股票数据,基础数据
+    description: 获取ST股票列表，可根据交易日期获取历史上每天的ST列表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: suspend_d
+  doc_url: https://tushare.pro/wctapi/documents/214.md
+  title: 每日停复牌信息
+  category: 股票数据,行情数据
+  description: 按日期方式获取股票每日停复牌信息
+  source_rows:
+  - line_number: 210
+    row_sha256: ac3734ace479c7cce3137fa436c119d3c11e250c59a663c7819f6e1f9bd0216f
+    api_name: suspend_d
+    doc_url: https://tushare.pro/wctapi/documents/214.md
+    title: 每日停复牌信息
+    category: 股票数据,行情数据
+    description: 按日期方式获取股票每日停复牌信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: sw_daily
+  doc_url: https://tushare.pro/wctapi/documents/327.md
+  title: 申万日线行情
+  category: 指数专题
+  description: 获取申万行业日线行情（默认是申万2021版行情）
+  source_rows:
+  - line_number: 95
+    row_sha256: d27fe12b81f0452604fe1f9986cd0f64d5fba994d8258b1177af699cb7aa4549
+    api_name: sw_daily
+    doc_url: https://tushare.pro/wctapi/documents/327.md
+    title: 申万日线行情
+    category: 指数专题
+    description: 获取申万行业日线行情（默认是申万2021版行情）
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: sw_mins
+  doc_url: https://tushare.pro/wctapi/documents/469.md
+  title: SW历史分钟
+  category: 指数专题
+  description: 获取申万指数历史分钟数据
+  source_rows:
+  - line_number: 79
+    row_sha256: e15d3ae2eb489ca4e5447c0d02ad28f518b0bbc839731e897e152d385b077761
+    api_name: sw_mins
+    doc_url: https://tushare.pro/wctapi/documents/469.md
+    title: SW历史分钟
+    category: 指数专题
+    description: 获取申万指数历史分钟数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: sz_daily_info
+  doc_url: https://tushare.pro/wctapi/documents/268.md
+  title: 深圳市场每日交易情况
+  category: 指数专题
+  description: 获取深圳市场每日交易概况
+  source_rows:
+  - line_number: 94
+    row_sha256: 4a24caf323029de2322ec895883d267820516822788d67ac7fc2322bdb174e46
+    api_name: sz_daily_info
+    doc_url: https://tushare.pro/wctapi/documents/268.md
+    title: 深圳市场每日交易情况
+    category: 指数专题
+    description: 获取深圳市场每日交易概况
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: tdx_daily
+  doc_url: https://tushare.pro/wctapi/documents/378.md
+  title: TDX概念板块行情
+  category: 股票数据,打板专题数据
+  description: 获取各板块行情，包括成交和估值等数据
+  source_rows:
+  - line_number: 187
+    row_sha256: 38a37edeb5a3466be0f9b97c1ce26cf6d33bc0ab0be600482260ee4be5cf69d6
+    api_name: tdx_daily
+    doc_url: https://tushare.pro/wctapi/documents/378.md
+    title: TDX概念板块行情
+    category: 股票数据,打板专题数据
+    description: 获取各板块行情，包括成交和估值等数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: tdx_index
+  doc_url: https://tushare.pro/wctapi/documents/376.md
+  title: TDX概念板块分类
+  category: 股票数据,打板专题数据
+  description: 获取板块基础信息，包括概念板块、行业、风格、地域等
+  source_rows:
+  - line_number: 172
+    row_sha256: 8cbcb79fd3d93c8a4d1c56dea242940be2a5b6d261aff5a4974c7dcdd8e096f8
+    api_name: tdx_index
+    doc_url: https://tushare.pro/wctapi/documents/376.md
+    title: TDX概念板块分类
+    category: 股票数据,打板专题数据
+    description: 获取板块基础信息，包括概念板块、行业、风格、地域等
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: tdx_member
+  doc_url: https://tushare.pro/wctapi/documents/377.md
+  title: TDX概念板块成分
+  category: 股票数据,打板专题数据
+  description: 获取各板块成分股信息
+  source_rows:
+  - line_number: 178
+    row_sha256: 9668367b250c4ec991a0c93c94fb3e81eed2da0be78dac4032459889548558ea
+    api_name: tdx_member
+    doc_url: https://tushare.pro/wctapi/documents/377.md
+    title: TDX概念板块成分
+    category: 股票数据,打板专题数据
+    description: 获取各板块成分股信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: ths_daily
+  doc_url: https://tushare.pro/wctapi/documents/260.md
+  title: THS概念板块行情
+  category: 股票数据,打板专题数据
+  description: 获取板块指数行情
+  source_rows:
+  - line_number: 171
+    row_sha256: d54c0ca6ffaa05ee30ffe123984ee46005b36730c6d0a927b27c8931ebce7625
+    api_name: ths_daily
+    doc_url: https://tushare.pro/wctapi/documents/260.md
+    title: THS概念板块行情
+    category: 股票数据,打板专题数据
+    description: 获取板块指数行情
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: ths_hot
+  doc_url: https://tushare.pro/wctapi/documents/320.md
+  title: THS热榜
+  category: 股票数据,打板专题数据
+  description: 获取热榜数据，包括热股、概念板块、ETF、可转债、港美股等等，每日盘中提取4次，收盘后4次，最晚22点提取一次。
+  source_rows:
+  - line_number: 182
+    row_sha256: 14c29c0801c064b318cbbce1a7701ff470be03a6f4ae0d5b09ee50bd0e69a28e
+    api_name: ths_hot
+    doc_url: https://tushare.pro/wctapi/documents/320.md
+    title: THS热榜
+    category: 股票数据,打板专题数据
+    description: 获取热榜数据，包括热股、概念板块、ETF、可转债、港美股等等，每日盘中提取4次，收盘后4次，最晚22点提取一次。
+  source_resolution: single_official_index_row
+  scope_state: unknown
+  scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
+  in_legacy_inventory: true
+- api_name: ths_index
+  doc_url: https://tushare.pro/wctapi/documents/259.md
+  title: THS概念板块分类
+  category: 股票数据,打板专题数据
+  description: 获取板块指数，包括概念、行业、特色指数。
+  source_rows:
+  - line_number: 176
+    row_sha256: 8c9dedf8f1cd97ce29f889fccdc31d226c34caa3ef08458bef98b3c092d22b3a
+    api_name: ths_index
+    doc_url: https://tushare.pro/wctapi/documents/259.md
+    title: THS概念板块分类
+    category: 股票数据,打板专题数据
+    description: 获取板块指数，包括概念、行业、特色指数。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: ths_member
+  doc_url: https://tushare.pro/wctapi/documents/261.md
+  title: THS概念板块成分
+  category: 股票数据,打板专题数据
+  description: 获取概念板块成分列表
+  source_rows:
+  - line_number: 170
+    row_sha256: ae777afa17880144e0c6796c0829ed168e486afa865975b4df07f6244ca1914b
+    api_name: ths_member
+    doc_url: https://tushare.pro/wctapi/documents/261.md
+    title: THS概念板块成分
+    category: 股票数据,打板专题数据
+    description: 获取概念板块成分列表
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: top10_cb_holders
+  doc_url: https://tushare.pro/wctapi/documents/459.md
+  title: 可转债十大持有人
+  category: 债券专题
+  description: 获取可转债前十大持有人
+  source_rows:
+  - line_number: 26
+    row_sha256: 8c54561af50bce7fcd48b2339490d24bfbd7c2e151d670ba90c43c0737d3fb59
+    api_name: top10_cb_holders
+    doc_url: https://tushare.pro/wctapi/documents/459.md
+    title: 可转债十大持有人
+    category: 债券专题
+    description: 获取可转债前十大持有人
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: top10_floatholders
+  doc_url: https://tushare.pro/wctapi/documents/62.md
+  title: 前十大流通股东
+  category: 股票数据,参考数据
+  description: 获取上市公司前十大流通股东数据
+  source_rows:
+  - line_number: 144
+    row_sha256: ca9517d7c1c2ffa1ac3cbd9ac8c211bada5f4cedf1e0e77969322c99137bff03
+    api_name: top10_floatholders
+    doc_url: https://tushare.pro/wctapi/documents/62.md
+    title: 前十大流通股东
+    category: 股票数据,参考数据
+    description: 获取上市公司前十大流通股东数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: top10_holders
+  doc_url: https://tushare.pro/wctapi/documents/61.md
+  title: 前十大股东
+  category: 股票数据,参考数据
+  description: 获取上市公司前十大股东数据，包括持有数量和比例等信息
+  source_rows:
+  - line_number: 143
+    row_sha256: de72ab0c4034b0b4fb1435d7b28674971ff007b56cc0d4c542b135f9805dc058
+    api_name: top10_holders
+    doc_url: https://tushare.pro/wctapi/documents/61.md
+    title: 前十大股东
+    category: 股票数据,参考数据
+    description: 获取上市公司前十大股东数据，包括持有数量和比例等信息
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: top_inst
+  doc_url: https://tushare.pro/wctapi/documents/107.md
+  title: 龙虎榜机构交易单
+  category: 股票数据,打板专题数据
+  description: 龙虎榜机构成交明细
+  source_rows:
+  - line_number: 191
+    row_sha256: 8f4eea7cf795ab9b11755e2c67cad728e2d9d244b7bcfb530c62b3290b1cf188
+    api_name: top_inst
+    doc_url: https://tushare.pro/wctapi/documents/107.md
+    title: 龙虎榜机构交易单
+    category: 股票数据,打板专题数据
+    description: 龙虎榜机构成交明细
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: top_list
+  doc_url: https://tushare.pro/wctapi/documents/106.md
+  title: 龙虎榜每日统计单
+  category: 股票数据,打板专题数据
+  description: 龙虎榜每日交易明细
+  source_rows:
+  - line_number: 192
+    row_sha256: 320833341d04a0c6216c21034e337666f04db46ab90c892c9bed9821b9497055
+    api_name: top_list
+    doc_url: https://tushare.pro/wctapi/documents/106.md
+    title: 龙虎榜每日统计单
+    category: 股票数据,打板专题数据
+    description: 龙虎榜每日交易明细
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: trade_cal
+  doc_url: https://tushare.pro/wctapi/documents/26.md
+  title: 交易日历
+  category: 股票数据,基础数据
+  description: 获取各大交易所交易日历数据,默认提取的是上交所
+  source_rows:
+  - line_number: 167
+    row_sha256: ef9afbe2eaba086b1fca4a99af292352d832204ca78d3f5839c717d98c4de232
+    api_name: trade_cal
+    doc_url: https://tushare.pro/wctapi/documents/26.md
+    title: 交易日历
+    category: 股票数据,基础数据
+    description: 获取各大交易所交易日历数据,默认提取的是上交所
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: us_adjfactor
+  doc_url: https://tushare.pro/wctapi/documents/402.md
+  title: 美股复权因子
+  category: 美股数据
+  description: 获取美股每日复权因子数据，在每天美股收盘后滚动刷新
+  source_rows:
+  - line_number: 135
+    row_sha256: e6fb999097ca88518f8e92955841f4059b2845c61edf72f6548d1577fd007737
+    api_name: us_adjfactor
+    doc_url: https://tushare.pro/wctapi/documents/402.md
+    title: 美股复权因子
+    category: 美股数据
+    description: 获取美股每日复权因子数据，在每天美股收盘后滚动刷新
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_balancesheet
+  doc_url: https://tushare.pro/wctapi/documents/395.md
+  title: 美股资产负债表
+  category: 美股数据
+  description: 获取美股上市公司资产负债表（目前只覆盖主要美股和中概股）
+  source_rows:
+  - line_number: 133
+    row_sha256: e7893b82a4cff5c428f4149474526197feaab27f661b550ba47d4fd6c8127b54
+    api_name: us_balancesheet
+    doc_url: https://tushare.pro/wctapi/documents/395.md
+    title: 美股资产负债表
+    category: 美股数据
+    description: 获取美股上市公司资产负债表（目前只覆盖主要美股和中概股）
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_basic
+  doc_url: https://tushare.pro/wctapi/documents/252.md
+  title: 美股基础信息
+  category: 美股数据
+  description: 获取美股列表信息
+  source_rows:
+  - line_number: 130
+    row_sha256: 60f3c635da3d7ea132b99b23687551849212dcd8af46d57a68f3732a2a379f06
+    api_name: us_basic
+    doc_url: https://tushare.pro/wctapi/documents/252.md
+    title: 美股基础信息
+    category: 美股数据
+    description: 获取美股列表信息
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: us_cashflow
+  doc_url: https://tushare.pro/wctapi/documents/396.md
+  title: 美股现金流量表
+  category: 美股数据
+  description: 获取美股上市公司现金流量表数据（目前只覆盖主要美股和中概股）
+  source_rows:
+  - line_number: 134
+    row_sha256: 4259dad72c6c48d58b37a5e7b3d2ed24b2a64992de48613847fe2c4c62602a76
+    api_name: us_cashflow
+    doc_url: https://tushare.pro/wctapi/documents/396.md
+    title: 美股现金流量表
+    category: 美股数据
+    description: 获取美股上市公司现金流量表数据（目前只覆盖主要美股和中概股）
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_daily
+  doc_url: https://tushare.pro/wctapi/documents/254.md
+  title: 美股日线行情
+  category: 美股数据
+  description: 获取美股行情（未复权），包括全部股票全历史行情，以及重要的市场和估值指标
+  source_rows:
+  - line_number: 128
+    row_sha256: bbea8ec59c69c197b951bc55cddff9cc0bd017f01c5152b280558a0e3b32b2b0
+    api_name: us_daily
+    doc_url: https://tushare.pro/wctapi/documents/254.md
+    title: 美股日线行情
+    category: 美股数据
+    description: 获取美股行情（未复权），包括全部股票全历史行情，以及重要的市场和估值指标
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: us_daily_adj
+  doc_url: https://tushare.pro/wctapi/documents/338.md
+  title: 美股复权行情
+  category: 美股数据
+  description: 获取美股复权行情，支持美股全市场股票，提供股本、市值、复权因子和成交信息等多个数据指标
+  source_rows:
+  - line_number: 127
+    row_sha256: 11c17884f8750e44232b82d157053dd634cf087c28a4b2f7a54174de3c28c5c4
+    api_name: us_daily_adj
+    doc_url: https://tushare.pro/wctapi/documents/338.md
+    title: 美股复权行情
+    category: 美股数据
+    description: 获取美股复权行情，支持美股全市场股票，提供股本、市值、复权因子和成交信息等多个数据指标
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_fina_indicator
+  doc_url: https://tushare.pro/wctapi/documents/393.md
+  title: 美股财务指标数据
+  category: 美股数据
+  description: 获取美股上市公司财务指标数据，目前只覆盖主要美股和中概股。为避免服务器压力，现阶段每次请求最多返回200条记录，可通过设置日期多次请求获取更多数据。
+  source_rows:
+  - line_number: 131
+    row_sha256: d173851e738d02b8d47a43347db897cbb15b6672cd8393a39fda126b07809bc0
+    api_name: us_fina_indicator
+    doc_url: https://tushare.pro/wctapi/documents/393.md
+    title: 美股财务指标数据
+    category: 美股数据
+    description: 获取美股上市公司财务指标数据，目前只覆盖主要美股和中概股。为避免服务器压力，现阶段每次请求最多返回200条记录，可通过设置日期多次请求获取更多数据。
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_income
+  doc_url: https://tushare.pro/wctapi/documents/394.md
+  title: 美股利润表
+  category: 美股数据
+  description: 获取美股上市公司财务利润表数据（目前只覆盖主要美股和中概股）
+  source_rows:
+  - line_number: 132
+    row_sha256: 53a58aafa9d6ef5699c5a8ea958280d16c8cea79ae9db7b341a565ca5c72aea8
+    api_name: us_income
+    doc_url: https://tushare.pro/wctapi/documents/394.md
+    title: 美股利润表
+    category: 美股数据
+    description: 获取美股上市公司财务利润表数据（目前只覆盖主要美股和中概股）
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_tbr
+  doc_url: https://tushare.pro/wctapi/documents/221.md
+  title: 短期国债利率
+  category: 宏观经济,国际宏观,美国利率
+  description: 获取美国短期国债利率数据
+  source_rows:
+  - line_number: 76
+    row_sha256: 27762f08b7cc1987af45a5b630a6457dab706908f5a3ba56fcd790b15bf302e9
+    api_name: us_tbr
+    doc_url: https://tushare.pro/wctapi/documents/221.md
+    title: 短期国债利率
+    category: 宏观经济,国际宏观,美国利率
+    description: 获取美国短期国债利率数据
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: us_tltr
+  doc_url: https://tushare.pro/wctapi/documents/222.md
+  title: 国债长期利率
+  category: 宏观经济,国际宏观,美国利率
+  description: 国债长期利率
+  source_rows:
+  - line_number: 77
+    row_sha256: 4f04220aada5831f50c2b265a14103636605f41952cdbc5e6fc209233e3947c4
+    api_name: us_tltr
+    doc_url: https://tushare.pro/wctapi/documents/222.md
+    title: 国债长期利率
+    category: 宏观经济,国际宏观,美国利率
+    description: 国债长期利率
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: us_tradecal
+  doc_url: https://tushare.pro/wctapi/documents/253.md
+  title: 美股交易日历
+  category: 美股数据
+  description: 获取美股交易日历信息
+  source_rows:
+  - line_number: 129
+    row_sha256: 1343a3f123e2013f603ef639b9bc4a4fcc5b0bc67577eeb93bfb297cd23cabc5
+    api_name: us_tradecal
+    doc_url: https://tushare.pro/wctapi/documents/253.md
+    title: 美股交易日历
+    category: 美股数据
+    description: 获取美股交易日历信息
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_trltr
+  doc_url: https://tushare.pro/wctapi/documents/223.md
+  title: 国债长期利率平均值
+  category: 宏观经济,国际宏观,美国利率
+  description: 国债实际长期利率平均值
+  source_rows:
+  - line_number: 74
+    row_sha256: 07cf5bda3a9de87aea70e0198e9d11103bc91a0759b86e6ce4c9e48f7db8dbb7
+    api_name: us_trltr
+    doc_url: https://tushare.pro/wctapi/documents/223.md
+    title: 国债长期利率平均值
+    category: 宏观经济,国际宏观,美国利率
+    description: 国债实际长期利率平均值
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_trycr
+  doc_url: https://tushare.pro/wctapi/documents/220.md
+  title: 国债实际收益率曲线利率
+  category: 宏观经济,国际宏观,美国利率
+  description: 国债实际收益率曲线利率
+  source_rows:
+  - line_number: 75
+    row_sha256: 38e66b7ba4d84233f01b07809ce6b966f2f8cc72425df98834ca88ac4486c0ee
+    api_name: us_trycr
+    doc_url: https://tushare.pro/wctapi/documents/220.md
+    title: 国债实际收益率曲线利率
+    category: 宏观经济,国际宏观,美国利率
+    description: 国债实际收益率曲线利率
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: false
+- api_name: us_tycr
+  doc_url: https://tushare.pro/wctapi/documents/219.md
+  title: 国债收益率曲线利率
+  category: 宏观经济,国际宏观,美国利率
+  description: 获取美国每日国债收益率曲线利率
+  source_rows:
+  - line_number: 73
+    row_sha256: 5fdf950cdc00e5a6c104f16a85cc9ddf57249ed56c054a164f70dd8a5bb555d5
+    api_name: us_tycr
+    doc_url: https://tushare.pro/wctapi/documents/219.md
+    title: 国债收益率曲线利率
+    category: 宏观经济,国际宏观,美国利率
+    description: 获取美国每日国债收益率曲线利率
+  source_resolution: single_official_index_row
+  scope_state: excluded
+  scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
+  in_legacy_inventory: true
+- api_name: weekly
+  doc_url: https://tushare.pro/wctapi/documents/144.md
+  title: 周线行情
+  category: 股票数据,行情数据
+  description: 获取A股周线行情，本接口每周最后一个交易日更新，如需要使用每天更新的周线数据，请使用[日度更新的周线行情接口](https://tushare.pro/document/2?doc_id=336)。
+  source_rows:
+  - line_number: 226
+    row_sha256: f568c7a7670372eafce638c78ba9a726cfdf3bc8db9c8493a3d2d8641c126cfd
+    api_name: weekly
+    doc_url: https://tushare.pro/wctapi/documents/144.md
+    title: 周线行情
+    category: 股票数据,行情数据
+    description: 获取A股周线行情，本接口每周最后一个交易日更新，如需要使用每天更新的周线数据，请使用[日度更新的周线行情接口](https://tushare.pro/document/2?doc_id=336)。
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: true
+- api_name: wz_index
+  doc_url: https://tushare.pro/wctapi/documents/173.md
+  title: 温州民间借贷利率
+  category: 宏观经济,国内宏观,利率数据
+  description: 温州民间借贷利率，即温州指数
+  source_rows:
+  - line_number: 67
+    row_sha256: a290ccf1fff995c5033c173a012eeac9d2d6d26f28f61659cf8333d06b4e5ca7
+    api_name: wz_index
+    doc_url: https://tushare.pro/wctapi/documents/173.md
+    title: 温州民间借贷利率
+    category: 宏观经济,国内宏观,利率数据
+    description: 温州民间借贷利率，即温州指数
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
+- api_name: yc_cb
+  doc_url: https://tushare.pro/wctapi/documents/201.md
+  title: 国债收益率曲线
+  category: 债券专题
+  description: 获取中债收益率曲线，目前可获取中债国债收益率曲线即期和到期收益率曲线数据
+  source_rows:
+  - line_number: 27
+    row_sha256: 18d4dc8d095c7bf690a0bef74302a806c03dfef95d1f4dfb9e59b8d5fd1cbdb2
+    api_name: yc_cb
+    doc_url: https://tushare.pro/wctapi/documents/201.md
+    title: 国债收益率曲线
+    category: 债券专题
+    description: 获取中债收益率曲线，目前可获取中债国债收益率曲线即期和到期收益率曲线数据
+  source_resolution: single_official_index_row
+  scope_state: in_scope
+  scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
+  in_legacy_inventory: false
