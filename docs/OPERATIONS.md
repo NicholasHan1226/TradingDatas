@@ -9,17 +9,21 @@
 /etc/tradingdatas/internal-api.env
 ```
 
-当前唯一已定义的 systemd unit：
+仓库当前只定义以下 systemd 服务面：
 
 - `tradingdatas-v1-internal.service`
+- `tradingdatas-provider-native-collect.service`
+- `tradingdatas-provider-native-collect.timer`
 
-它只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
-`POST /v1/query`，并以独立 `tradingdatas` 账号只读访问数据目录。当前候选不安装
-公网入口、provider 专用路由或采集 timer。
+API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
+`POST /v1/query`，并以独立 `tradingdatas` 账号只读访问数据目录。仓库不安装
+公网入口或 provider 专用路由。
 
-后续采集调度只允许一个 registry-driven runner；不再使用项目 crontab，也不按
-Tushare API 增加 service/timer。所有频率来自 registry cadence。runner 尚未完成
-fresh 验收前，不在生产启用采集 timer。
+采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
+planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
+Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
+registry cadence。没有正式 Tushare Token、真实 latest collection 与 fresh readback
+前，不在生产启用采集 timer。
 
 ## 运行顺序
 
@@ -33,18 +37,22 @@ fresh 验收前，不在生产启用采集 timer。
      --database /opt/investment-data/tradingdatas/read_model/provider_native.sqlite
    ```
 
-3. 创建由 `tradingdatas:tradingdatas` 持有且权限严格为 `0600` 的
+3. 创建 `root:tradingdatas` 持有、权限为 `0750` 且不含 symlink 的
+   `/etc/tradingdatas` 父目录。API 认证加载器会逐级打开并绑定目录，只有执行位的
+   `0710` 不足以完成安全读取；Tushare loader 当前只使用 `O_NOFOLLOW` 绑定 Token
+   叶子文件，因此发布 preflight 必须另外拒绝父目录 symlink。再创建由
+   `tradingdatas:tradingdatas` 持有且权限严格为 `0600` 的
    `/etc/tradingdatas/api_tokens.json`、`/etc/tradingdatas/token_salt` 与
    `/etc/tradingdatas/tushare.token`。Tushare token 必须是单一硬链接的普通文件，
-   文件 owner 必须等于采集进程的有效 UID；root 进程因此只能读取 root-owned
-   token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
+   文件 owner 必须等于采集进程的有效 UID；因此采集进程会拒绝 root-owned 或
+   其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
 4. 执行 entitlement probe；
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
-7. 在 generic runner 独立验收后才安装一个采集 timer；
-8. 观察完整 cadence 周期；
+7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
+8. 正式 Token、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 
 ## 发布门禁

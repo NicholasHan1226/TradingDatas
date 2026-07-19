@@ -20,12 +20,14 @@ def test_deploy_tree_contains_only_the_internal_v1_service_surface() -> None:
 
     assert files == {
         "runtime_paths.sh",
+        "systemd/tradingdatas-provider-native-collect.service",
+        "systemd/tradingdatas-provider-native-collect.timer",
         "systemd/tradingdatas-v1-internal.service",
         "tradingdatas_internal.env",
     }
 
 
-def test_deploy_tree_has_no_public_ingress_or_scheduled_job() -> None:
+def test_deploy_tree_has_no_public_ingress_or_legacy_scheduler() -> None:
     text = "\n".join(
         path.read_text(encoding="utf-8") for path in DEPLOY.rglob("*") if path.is_file()
     ).lower()
@@ -34,14 +36,35 @@ def test_deploy_tree_has_no_public_ingress_or_scheduled_job() -> None:
         "cloudflared",
         "nginx",
         "proxy_pass",
-        "wantedby=timers.target",
-        "oncalendar=",
         "crontab",
-        "/tushare",
+        "sharedsignals",
+        "location /tushare",
         "/source_status",
         "/opening_gate",
     ):
         assert forbidden not in text
+
+
+def test_deploy_tree_has_one_provider_neutral_scheduler_surface() -> None:
+    service = (
+        DEPLOY / "systemd" / "tradingdatas-provider-native-collect.service"
+    ).read_text(encoding="utf-8")
+    timer = (
+        DEPLOY / "systemd" / "tradingdatas-provider-native-collect.timer"
+    ).read_text(encoding="utf-8")
+
+    assert service.count("ExecStart=") == 1
+    assert "tools/run_provider_native_schedule.py" in service
+    assert "--execute" in service
+    assert "https://api.tushare.pro" in service
+    assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token" in service
+    assert "TUSHARE_TOKEN=" not in service
+    assert "QUICKSYNC" not in service
+    assert "dataset_id" not in service.lower()
+    assert "api_name" not in service.lower()
+    assert "OnCalendar=*-*-* *:0/5:00" in timer
+    assert "Unit=tradingdatas-provider-native-collect.service" in timer
+    assert "WantedBy=timers.target" in timer
 
 
 def _check_runtime_paths(env: dict[str, str]) -> subprocess.CompletedProcess[str]:

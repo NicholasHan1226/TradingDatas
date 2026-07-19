@@ -1,0 +1,46 @@
+[Unit]
+Description=TradingDatas registry-driven provider-native collection
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/investment/releases/tradingdatas/current/config/provider_native_dataset_registry.yaml
+ConditionPathExists=/opt/investment/releases/tradingdatas/current/config/provider_native_schedule.yaml
+ConditionPathExists=/opt/investment-data/tradingdatas/read_model/provider_native.sqlite
+ConditionPathExists=/etc/tradingdatas/tushare.token
+
+[Service]
+Type=oneshot
+User=tradingdatas
+Group=tradingdatas
+WorkingDirectory=/opt/investment/releases/tradingdatas/current
+Environment="TRADINGDATAS_DATA_MOUNT=/opt/investment-data"
+Environment="TRADINGDATAS_DATA_ROOT=/opt/investment-data/tradingdatas"
+Environment="TRADINGDATAS_DB_PATH=/opt/investment-data/tradingdatas/read_model/provider_native.sqlite"
+Environment="TRADINGDATAS_REGISTRY_PATH=/opt/investment/releases/tradingdatas/current/config/provider_native_dataset_registry.yaml"
+Environment="TRADINGDATAS_SCHEDULE_PATH=/opt/investment/releases/tradingdatas/current/config/provider_native_schedule.yaml"
+Environment="TRADINGDATAS_ROOT=/opt/investment/releases/tradingdatas/current"
+Environment="TUSHARE_API_URL=https://api.tushare.pro"
+Environment="TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/run_provider_native_schedule.py --db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite --schedule-config /opt/investment/releases/tradingdatas/current/config/provider_native_schedule.yaml --lock-path /run/tradingdatas/collect.lock --execute
+SuccessExitStatus=75
+TimeoutStartSec=45min
+UMask=0077
+RuntimeDirectory=tradingdatas
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc/tradingdatas
+ReadWritePaths=/opt/investment-data/tradingdatas
+StandardOutput=journal
+StandardError=journal

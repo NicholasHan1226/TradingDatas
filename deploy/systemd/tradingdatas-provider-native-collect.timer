@@ -1,0 +1,12 @@
+[Unit]
+Description=Wake the TradingDatas registry-driven cadence planner
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00
+AccuracySec=1s
+RandomizedDelaySec=15s
+Persistent=true
+Unit=tradingdatas-provider-native-collect.service
+
+[Install]
+WantedBy=timers.target
