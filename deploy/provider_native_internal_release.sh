@@ -32,6 +32,8 @@ SYSTEMCTL="/bin/systemctl"
 CURL="/usr/bin/curl"
 SS="/usr/bin/ss"
 SHA256SUM="/usr/bin/sha256sum"
+LISTENER_READY_ATTEMPTS=200
+LISTENER_READY_DELAY_SECONDS=0.1
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PROFILE_RELATIVE="deploy/provider_native_internal.env"
 UNIT_RELATIVE="deploy/systemd/sharedsignals-v1-internal.service"
@@ -1095,6 +1097,33 @@ require_unit_listener() {
 }
 
 
+unit_listener_ready() {
+  local pid output
+  pid="$("$SYSTEMCTL" show -p MainPID --value "$SERVICE" 2>/dev/null)" \
+    || return 1
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+  output="$("$SS" -H -ltnp "sport = :${PORT}" 2>/dev/null)" \
+    || return 1
+  [ "$(printf '%s\n' "$output" | sed '/^$/d' | wc -l | tr -d ' ')" = "1" ] \
+    || return 1
+  printf '%s' "$output" | grep -F "127.0.0.1:${PORT}" >/dev/null \
+    || return 1
+  printf '%s' "$output" | grep -F "pid=${pid}," >/dev/null
+}
+
+
+wait_for_unit_listener() {
+  local attempt
+  for ((attempt = 0; attempt < LISTENER_READY_ATTEMPTS; attempt += 1)); do
+    if unit_listener_ready; then
+      return 0
+    fi
+    sleep "$LISTENER_READY_DELAY_SECONDS"
+  done
+  require_unit_listener
+}
+
+
 assert_installed_units_match_release() {
   local release="$1" index target observed expected
   for index in 0 1 2 3 4; do
@@ -1304,7 +1333,7 @@ restore_from_state() {
     assert_no_absent_lane_residue
     require_port_idle
   elif [ "$(state_value "$state" UNIT_0_ACTIVE)" = "active" ]; then
-    require_unit_listener
+    wait_for_unit_listener
   fi
   assert_legacy_identity "$state"
 }
@@ -1470,6 +1499,7 @@ apply_release() {
   "$SYSTEMCTL" stop "${ONESHOT_NAMES[@]}" >/dev/null
   "$SYSTEMCTL" enable "$SERVICE" >/dev/null
   "$SYSTEMCTL" restart "$SERVICE"
+  wait_for_unit_listener
   readback "$state"
   assert_ops_disabled_after_apply
   trap - ERR

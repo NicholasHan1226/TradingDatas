@@ -611,6 +611,44 @@ def test_release_control_never_writes_python_bytecode_into_release_tree(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_release_control_waits_for_the_service_listener_without_weakening_checks(
+    tmp_path: Path,
+) -> None:
+    counter = tmp_path / "listener-attempts"
+    fake_systemctl = tmp_path / "systemctl"
+    fake_systemctl.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = show ]; then printf '4242\\n'; else exit 64; fi\n",
+        encoding="utf-8",
+    )
+    fake_systemctl.chmod(0o755)
+    fake_ss = tmp_path / "ss"
+    fake_ss.write_text(
+        "#!/bin/sh\n"
+        f"counter={shlex.quote(str(counter))}\n"
+        "attempt=0\n"
+        "if [ -f \"$counter\" ]; then attempt=$(cat \"$counter\"); fi\n"
+        "attempt=$((attempt + 1))\n"
+        "printf '%s' \"$attempt\" >\"$counter\"\n"
+        "if [ \"$attempt\" -ge 3 ]; then\n"
+        "  printf '%s\\n' 'LISTEN 0 128 127.0.0.1:18082 0.0.0.0:* users:((python,pid=4242,fd=3))'\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    fake_ss.chmod(0o755)
+
+    result = _bash(
+        f"source {shlex.quote(str(RELEASE))}; "
+        f"SYSTEMCTL={shlex.quote(str(fake_systemctl))}; "
+        f"SS={shlex.quote(str(fake_ss))}; "
+        "LISTENER_READY_ATTEMPTS=4; LISTENER_READY_DELAY_SECONDS=0.01; "
+        "wait_for_unit_listener"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert counter.read_text(encoding="utf-8") == "3"
+
+
 def test_systemd_units_use_supported_required_path_conditions() -> None:
     for path in CONDITIONED_UNITS:
         source = path.read_text(encoding="utf-8")
