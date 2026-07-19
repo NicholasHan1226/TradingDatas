@@ -1,0 +1,21 @@
+[Unit]
+Description=SharedSignals authenticated internal V1 readiness probe
+Wants=network-online.target sharedsignals-v1-internal.service
+After=network-online.target sharedsignals-v1-internal.service
+ConditionPathIsRegular=/etc/sharedsignals/provider-native-probe.secrets
+ConditionPathIsRegular=/opt/investment/releases/sharedsignals-v1/current/config/provider_native_dataset_registry.yaml
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120s
+User=marketgraph
+Group=marketgraph
+WorkingDirectory=/opt/investment/releases/sharedsignals-v1/current
+EnvironmentFile=/opt/investment/releases/sharedsignals-v1/current/deploy/provider_native_internal.env
+EnvironmentFile=/etc/sharedsignals/provider-native-probe.secrets
+ExecStart=/opt/sharedsignals/venv/bin/python3 /opt/investment/releases/sharedsignals-v1/current/tools/internal_v1_probe.py --registry /opt/investment/releases/sharedsignals-v1/current/config/provider_native_dataset_registry.yaml --startup-policy strict
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict

@@ -1,0 +1,17 @@
+version: 1
+dataset_timeout_seconds: 900
+cadences:
+  daily_reference:
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    not_before_local: "00:30"
+    partition_offset_days: 0
+    range_days: 7
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+  postclose_daily:
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    not_before_local: "16:30"
+    partition_offset_days: 0
+    range_days: 1
+    weekdays: [1, 2, 3, 4, 5]
