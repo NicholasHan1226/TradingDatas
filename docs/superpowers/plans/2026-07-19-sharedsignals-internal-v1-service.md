@@ -1,9 +1,10 @@
 # SharedSignals Internal V1 Service Implementation Plan
 
-> Status: local integration candidate and execution/release plan for the
-> internal-first data service lane. The candidate is based on `0be6f83` and
-> integrates `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`; it is not merged to
-> `main`, pushed to GitHub, deployed, or evidence that a service is running.
+> Status: reviewed GitHub code and execution/release plan for the internal-first
+> data service lane. The code chain is based on `0be6f83` and integrates
+> `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`; `2468f80` has local, origin, and
+> live GitHub readback, but it is not deployed and is not evidence that a
+> service is running.
 
 ## Outcome
 

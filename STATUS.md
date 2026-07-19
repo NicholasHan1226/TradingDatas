@@ -82,17 +82,19 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
     `stock_basic`、`daily` 批量响应不再误触统一默认节点上限；
 20. `50ac13f` + `98a9ea3`：把 internal-first 路线写入 ROADMAP 与 ADR，外部 Beta 后置；
 21. `0be6f83`：普通 Tushare binding 按 reviewed upstream contract 发送字段清单；
-    local/origin/GitHub 三方 readback 一致。
+22. `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`：加入内部 V1 的 activation、通用
+    scheduler/probe、隔离 runtime/release control 与原子 store 初始化；截至 2026-07-19
+    16:48 CST，`2468f80` 已完成 local/origin/live GitHub 三方 readback。
 
-`0be6f83` 是当前 local/origin/live GitHub 三方 readback 一致的代码 checkpoint。它已经包含
-三个首批 dataset 的通用 transport、provider-native facts/receipts、固定 catalog/query 数据面、
-受信 registry 资源预算和 reviewed upstream fields；它不包含生产 activation、systemd 或旧
-runtime 切换。发布候选、生产 runtime 和内部消费者接入继续分别验收，不能从 GitHub checkpoint
-推断为已上线。
+`2468f80` 是当前 provider-native 内部 V1 代码的 local/origin/live GitHub 三方 readback
+checkpoint。它已经包含三个首批 dataset 的通用 transport、provider-native facts/receipts、固定
+catalog/query 数据面、activation、scheduler/probe 和隔离发布控制；它仍不证明服务器新 lane、
+真实采集、内部消费者接入或生产稳定。后续 doc-only 状态提交会自然推进仓库 HEAD，代码 checkpoint
+和生产 runtime 继续分层验证。
 
-### 内部 V1 最终本地集成候选（尚未合入、推送或发布）
+### 内部 V1 GitHub 代码层已完成，生产尚未发布
 
-以 `0be6f83` 为 base 的线性本地候选为
+以 `0be6f83` 为 base 的线性代码链为
 `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`：依次加入三个 dataset 的独立 activation
 authority、registry-driven scheduler/strict HTTP probe、loopback-only runtime/release control，以及
 runtime store 的原子初始化修正。候选固定 `127.0.0.1:18082`、
@@ -101,10 +103,11 @@ runtime store 的原子初始化修正。候选固定 `127.0.0.1:18082`、
 `cn.market.trade_calendar`、`cn.equity.security_master`、`cn.equity.daily` 三个 dataset，五个
 新 units 仅属于该独立 lane。
 
-该候选不是 `main`、`origin/main` 或 GitHub 已验证状态，也没有部署到服务器：不得把其代码存在、
-active registry binding、unit 文件或本文件改动写成服务已运行、数据已采集、内部消费者可接入或
-已发布。它不得改动 legacy `127.0.0.1:8082`、legacy SQLite、外部 ingress 或
-`REAL_TRADING_ENABLED=false`。
+该代码链已通过 fresh independent review（P0/P1/P2=0），定向 `140 passed`、最终组合全量
+`2542 passed`，并完成 local/origin/live GitHub readback；它仍没有部署到服务器。不得把代码、
+active registry binding、unit 文件或文档写成服务已运行、数据已采集、内部消费者可接入或已发布。
+发布必须继续证明 legacy `127.0.0.1:8082`、legacy SQLite、外部 ingress 与
+`REAL_TRADING_ENABLED=false` 全部不变。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
