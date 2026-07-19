@@ -30,7 +30,7 @@
 最近完成 local `main`、`origin/main` 与 GitHub `main` 三方 readback 的代码 checkpoint 为：
 
 ```text
-0be6f83247eddd489489cdf64c310e785b9cd14e
+685f3d7599d6b0238ba9f9928af2844635df3403
 ```
 
 本文件后续的 doc-only 状态提交会自然推进 HEAD；精确当前 HEAD 必须用 `git rev-parse HEAD` 与
@@ -85,29 +85,38 @@ tracked/index clean；既有 `.codegraphcontext/` 为 CodeGraph 占用的 untrac
 22. `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`：加入内部 V1 的 activation、通用
     scheduler/probe、隔离 runtime/release control 与原子 store 初始化；截至 2026-07-19
     16:48 CST，`2468f80` 已完成 local/origin/live GitHub 三方 readback。
+23. `e49d059`：严格 probe 改为比较 catalog/query 的语义时间证据，同时继续精确绑定 receipt，
+    fresh reviewer P0/P1/P2=0、定向 54 与全量 2565 项通过；已发布到隔离内部 lane 并完成三
+    dataset 严格 probe。
+24. `685f3d7`：QuickSync Tushare-compatible transport 只允许 canonical HTTPS endpoint，使用
+    系统 CA、证书/hostname 校验并暂时双向 pin TLS 1.3；scheduler 在 credential 进入 collector
+    前执行同一目的地门禁，禁止 HTTP fallback。两路 fresh reviewer 均无 P0/P1，定向 495、
+    全量 2574 项通过，local/origin/GitHub 与 production release 均已 readback。
 
-`2468f80` 是当前 provider-native 内部 V1 代码的 local/origin/live GitHub 三方 readback
-checkpoint。它已经包含三个首批 dataset 的通用 transport、provider-native facts/receipts、固定
-catalog/query 数据面、activation、scheduler/probe 和隔离发布控制；它仍不证明服务器新 lane、
-真实采集、内部消费者接入或生产稳定。后续 doc-only 状态提交会自然推进仓库 HEAD，代码 checkpoint
-和生产 runtime 继续分层验证。
+`685f3d7` 是当前 provider-native 内部 V1 代码与 production runtime 的共同 checkpoint。
+它已经包含三个首批 dataset 的通用 transport、provider-native facts/receipts、固定 catalog/query
+数据面、activation、scheduler/probe 和隔离发布控制。Authenticated API、现有 facts/receipts、
+严格 probe 与真实 TLS 1.3 handshake 已 fresh 验证；采集/probe timers 仍因上游 token 轮换门禁
+保持 disabled，因此尚不能写成持续采集闭环完成。后续 doc-only 状态提交会自然推进仓库 HEAD，
+代码 checkpoint、生产 release 与运行状态必须继续分层说明。
 
-### 内部 V1 GitHub 代码层已完成，生产尚未发布
+### 内部 V1 API lane 已发布，持续采集尚未启用
 
-以 `0be6f83` 为 base 的线性代码链为
-`7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`：依次加入三个 dataset 的独立 activation
-authority、registry-driven scheduler/strict HTTP probe、loopback-only runtime/release control，以及
-runtime store 的原子初始化修正。候选固定 `127.0.0.1:18082`、
+当前 production release 为 `685f3d7`。线性代码链在内部 V1 activation、registry-driven
+scheduler/strict HTTP probe、loopback-only runtime/release control 和原子 store 初始化之上，
+增加 probe 语义时间比较与 QuickSync TLS 1.3/canonical endpoint 门禁。运行面固定
+`127.0.0.1:18082`、
 `/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite`、
 `GET /v1/catalog` 与 `POST /v1/query`；首批仅
 `cn.market.trade_calendar`、`cn.equity.security_master`、`cn.equity.daily` 三个 dataset，五个
 新 units 仅属于该独立 lane。
 
-该代码链已通过 fresh independent review（P0/P1/P2=0），定向 `140 passed`、最终组合全量
-`2542 passed`，并完成 local/origin/live GitHub readback；它仍没有部署到服务器。不得把代码、
-active registry binding、unit 文件或文档写成服务已运行、数据已采集、内部消费者可接入或已发布。
-发布必须继续证明 legacy `127.0.0.1:8082`、legacy SQLite、外部 ingress 与
-`REAL_TRADING_ENABLED=false` 全部不变。
+新 API service 已 active/enabled，认证 catalog/query、strict probe、三 dataset SQLite
+facts/receipts、same-snapshot 可复现与 cursor continuation 均通过。legacy
+`127.0.0.1:8082` 与约 23 GB legacy SQLite 保持原 device/inode/path，外部 ingress 与
+`REAL_TRADING_ENABLED=false` 未改变。Collection/probe timers 仍 disabled；上游旧 token 曾经由
+HTTP 用于手动 bootstrap，必须先吊销并轮换，随后以 canonical HTTPS 运行一次受控 collector
+oneshot，才允许启用 timers。不得用当前健康 API 或历史 facts 代替持续采集停止线。
 
 `e9f06ca` 在目标主线 fresh readback 的相关回归为 `216 passed`；其独立 clean-overlay reviewer
 结论为 PASS，P0/P1/P2=0。完整 provider-native payload 不包含 SQLite 的 `payload_json`、
@@ -184,10 +193,10 @@ active registry binding、unit 文件或文档写成服务已运行、数据已�
 - exact8 r2 已由 fresh reviewer 判定 PASS（P0/P1=0）并在 `6c7ded4` 进入 GitHub；
   `schema_major`、same-as-of/receipt watermark 实证、healthy/stale fixture 与 2331 项全量回归
   均绿，三份文档的核心 truth statement 逐字一致；
-- 相关提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。三个首批 dataset
-  均已有真实 generic backfill/server canary/query readback，但冻结 catalog snapshot、稳定内部
-  base URL、认证接入与生产 impaired-state 证据仍未完成。因此在内部 V1 生产停止线通过前，
-  **TradingAgent 当前不可接入**。
+- 相关提交没有新增 TA 业务表、因子、交易语义、provider 分支或公共 route。当前生产 catalog
+  version `v1-18bfcb88c92f3232`、schema major 2、三个 dataset ID、loopback base URL 与认证
+  catalog/query 已有 fresh readback；但 collector/probe timers 尚未通过 fresh-token 持续运行停止线。
+  在该停止线通过并形成消费者 handoff 前，**TradingAgent 当前不可接入生产 lane**。
 
 候选没有 fresh PASS、没有被精确吸收到 `main` 并完成 GitHub readback 前，均不得写成“已完成”。
 
@@ -262,29 +271,36 @@ dataset 和该受限窗口，不等于生产发布、TA 可接入、其它 datas
 - 证据只证明这两个受限真实切片及当时精确字节。它没有启用 systemd/timer、没有替换生产
   checkout 或数据库，也不等于内部 V1 已稳定运行。
 
-至此三个首批 dataset 都已有独立真实 provider-to-API canary 证据；下一停止线是把同一通用
-管线发布到独立 `18082`/新 SQLite 运行面并通过持续 probe，而不是继续逐接口重写采集器。
+至此三个首批 dataset 都已有独立真实 provider-to-API canary 证据；同一通用管线现已发布到
+独立 `18082`/新 SQLite 运行面。下一停止线是轮换暴露 token、以 canonical HTTPS 完成受控
+collector oneshot，并启用/观察持续 probe 与 scheduler；不是继续逐接口重写采集器。
 
-## 生产现状（2026-07-19 15:02 CST fresh 只读证据）
+## 生产现状（2026-07-19 20:18 CST fresh 证据）
 
-- **生产未改变**；下列事实来自本轮只读盘点。
-- 生产 SharedSignals checkout clean，仍是旧提交 `ccff5c8`；本轮没有 deploy、restart、cron/env、DB
-  或外部路由写入。
-- 旧 `sharedsignals-api.service` active/enabled，MainPID `147834`，同一 PID 唯一监听
-  `127.0.0.1:8082`；provider-native `18082` 为空闲。
-- 旧生产 SQLite fresh fingerprint 为 dev `66308`、inode `1048617`、size
-  `23,203,987,456`、mode `0644`、uid/gid `1000/1000`；检查前后身份一致。只读
-  `PRAGMA quick_check` 在 600 秒内未完成且进程已退出，没有得到 corruption 结论；本内部新库
-  lane 不打开、迁移、复制或依赖旧库，因此该超时记录为未验证的旧库健康项，不扩大成本次
-  隔离发布门禁。
-- 新 `/opt/investment-data/sharedsignals-v1`、`/opt/investment/releases/sharedsignals-v1`、
-  `/etc/sharedsignals` 和 5 个 systemd units 均尚不存在；这证明本轮仍未部署。发布前需创建
-  root-owned `/opt/investment/releases` 安全父目录，以及三份最小权限凭据文件；这三份文件分别
-  供 API、collector、probe 使用，均为 root-owned `0600`，任何 unit 都不得加载其它 lane 的文件。
-- 服务器 Python 3.12.3、SQLite 3.45.1，`serialize`/`deserialize` round-trip、磁盘、内存和
-  systemd/tooling 均满足独立新 SQLite lane 的运行前提。
-- 生产仍是 NO-GO。HTTP 200、配置存在、旧表有数据或“114/114”都不能代替逐 dataset 的
-  receipt、freshness、quality、lineage 和真实 query 证据。
+- SharedSignals provider-native source checkout、`origin/main` 与 active immutable release 均为
+  `685f3d7599d6b0238ba9f9928af2844635df3403`，source checkout clean；release evidence 位于
+  `/opt/investment/releases/sharedsignals-v1/evidence/`，不含 secret value。
+- 新 `sharedsignals-v1-internal.service` active/enabled，唯一监听 `127.0.0.1:18082`；未认证
+  catalog 为 401、认证 catalog 为 200、legacy route 为 404、错误 method 为 405。旧
+  `sharedsignals-api.service` 仍 active/enabled 并监听 `127.0.0.1:8082`。
+- 新 SQLite 位于 `/opt/investment-data/sharedsignals-v1/read_model/provider_native.sqlite`，
+  `PRAGMA quick_check=ok`，dev `66308`、inode `15466502`、mode `0600`。现有真实 facts/receipt：
+  `cn.equity.daily` 5,522 行、`cn.equity.security_master` 5,607 行、
+  `cn.market.trade_calendar` 7 行；每个 dataset 各有一条匹配 success receipt。
+- Catalog version 为 `v1-18bfcb88c92f3232`，三个 dataset 的 schema major 均为 2，runtime 均
+  `success`、`degraded=false` 且 receipt 存在。三个 query 均为
+  `ready/success/fresh/valid/complete`，provider lineage 为 `tushare`，receipt/data-through/
+  observed-at 均非空；同一 verified snapshot 的重复请求除 `request_id` 外一致，signed cursor
+  第二页返回不同的下一行。
+- 手动 strict probe 结果为 `success`、exit 0。生产同一 Python 3.12 runtime 通过实际网络验证
+  `https://api.quicksync.cn` 返回 HTTP 200 且协商 `TLSv1.3`；该握手未发送 provider token。
+- 旧生产 SQLite 保持路径 `/opt/investment-data/SharedSignals/runtime/read_model/marketdata.sqlite`、
+  dev `66308`、inode `1048617`、mode `0644`；约 23 GB 旧库和 8082 lane 没有被新 release
+  打开、迁移、替换或停止。
+- `sharedsignals-provider-native-collect.timer` 与 `sharedsignals-v1-probe.timer` 仍为
+  disabled/inactive。旧 collector token 曾由早期手动 bootstrap 经 HTTP 使用，按暴露处理；
+  在吊销/轮换、以 canonical HTTPS 完成一次受控 collector oneshot 并再次 strict probe 前，
+  禁止启用 timers，禁止 HTTP fallback，也禁止把 API 当前健康写成持续采集完成。
 
 ## 权威层与验收分层
 
@@ -333,20 +349,21 @@ generic replacement PASS
 
 ## 下一步
 
-1. canonical schema、TA consumer handoff、双注册表 runtime，以及 `trade_cal`、`stock_basic`、
-   `daily` 三个 upstream contract 已进入 GitHub；当前 target 有 3 项，其余 111 项保持明确
-   unresolved；
-2. 三个首批 dataset 均已在独立 server canary 中完成真实
-   `Tushare -> generic SQLite row+receipt -> /v1/catalog -> /v1/query`；
-3. 当前只推进独立内部 V1 运行面：fresh production preflight、精确 Git release、全新 SQLite
-   bootstrap、仅 loopback API、三 dataset 手动通用采集、facts/receipt 守恒、strict probe，
-   通过后再启用采集与 probe timers；store bootstrap 必须在 runtime parent 下的随机 sibling
-   staging root 中完成并以 `renameat2(RENAME_NOREPLACE)` 发布，partial final 必须 fail closed，
-   stale staging 只报告保留、不得自动清理；旧 `8082` 和旧数据库保持不变；
-4. 内部服务稳定并向 TA/MG 交付冻结 catalog/base URL/auth 合同后，再逐批扩境内 dataset；
-5. 受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger、网关和外部
-   ingress 全部后置到 external Beta；
-6. 替代链稳定并完成 no-use 观察后，才退役旧代码、文档、cron 和 worktree。
+1. 立即吊销并轮换曾经由 HTTP 使用的 collector token；secret value 不进入 Git、任务消息、日志
+   或 release evidence。将 root-owned `0600` collector secret 原子替换为 canonical HTTPS URL 与
+   fresh token，旧 token 不得成为 rollback 内容；
+2. 两个 timers 保持 disabled，先运行一次受控 generic collector oneshot，证明真实 provider
+   response、SQLite facts/receipt、catalog/query metadata 与日志脱敏；随后再次执行 strict probe；
+3. 只有 fresh-token oneshot 与 probe 均通过，才启用 collection/probe timers，并至少观察一个
+   probe 周期和一个 scheduler 周期，验证无 overlap、无 HTTP fallback、无 secret leakage；
+4. 向 TA/MG 交付冻结 catalog version、schema major 2、三个 dataset ID、loopback base URL、认证
+   接入方式与 healthy/impaired envelope；消费者只通过 catalog/query，不直读 SQLite 或 legacy
+   route；
+5. 内部持续采集稳定后再逐批扩境内 dataset。其余 111 项必须先补 reviewed upstream contract，
+   普通 dataset 继续只扩 registry/config，不新增 collector/table/scheduler/query/public route；
+6. 受邀账户 credential、scope、rate/concurrency、quota、revocation、usage ledger、网关和外部
+   ingress 全部后置到 external Beta；替代链稳定并完成 no-use 观察后，才退役旧代码、文档、
+   cron 和 worktree。
 
 ## 本地验证入口
 

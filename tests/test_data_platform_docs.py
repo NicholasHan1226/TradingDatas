@@ -38,7 +38,7 @@ def test_core_docs_freeze_sharedsignals_product_boundary() -> None:
     assert "只改 registry/config" in collectors
     assert "provider-native 查询省略 `fields`" in readme
     assert "本地候选" in status
-    assert "生产未改变" in status
+    assert "不得用当前健康 API 或历史 facts 代替持续采集停止线" in status
     assert "uv run --python 3.12" in readme
     assert "uv run --python 3.12" in status
     repo_wide_ruff = (

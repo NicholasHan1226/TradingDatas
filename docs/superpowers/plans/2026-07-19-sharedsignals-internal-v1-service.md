@@ -1,10 +1,12 @@
 # SharedSignals Internal V1 Service Implementation Plan
 
-> Status: reviewed GitHub code and execution/release plan for the internal-first
-> data service lane. The code chain is based on `0be6f83` and integrates
-> `7f5e20a -> 43af5c2 -> 976ad6b -> 2468f80`; `2468f80` has local, origin, and
-> live GitHub readback, but it is not deployed and is not evidence that a
-> service is running.
+> Status: the isolated internal API lane is deployed from reviewed commit
+> `685f3d7599d6b0238ba9f9928af2844635df3403`. The authenticated loopback API,
+> three initial datasets, SQLite facts/receipts, strict probe, and TLS 1.3
+> upstream handshake have fresh production readback. Collection and probe
+> timers remain disabled until the upstream token previously used over HTTP is
+> revoked and replaced; therefore the internal completion stop line is not yet
+> satisfied.
 
 ## Outcome
 
@@ -64,6 +66,26 @@ collector, and probe must not load one another's credential file. Creating or
 copying these credentials is a separately confirmed production action; tests
 and release evidence may validate names, ownership, modes, and successful use,
 but must never print their values.
+
+## Upstream transport security
+
+The approved QuickSync Tushare-compatible collection endpoint is exactly
+`https://api.quicksync.cn` at the root path and default port 443. The QuickSync
+transport uses the system trust store, requires certificate and hostname
+verification, and currently pins both the minimum and maximum TLS version to
+TLS 1.3 because the production endpoint does not complete the default Python
+TLS negotiation. HTTP, userinfo, non-default ports, non-root paths, query
+strings, fragments, or a different hostname fail before any credential is sent.
+Other providers retain the default verified Python HTTPS transport and do not
+inherit the QuickSync-specific TLS pin.
+
+There is no HTTP fallback. The token used by the earlier manual HTTP bootstrap
+must be treated as exposed: it must be revoked and replaced before collection
+is run again or the collection timer is enabled. Safe rollback keeps collection
+disabled and preserves HTTPS, or revokes the replacement token; it must never
+restore the old token or an HTTP endpoint. The TLS 1.3 pin may be removed only
+after a separately reviewed production canary proves the upstream endpoint can
+use normal verified TLS negotiation without downgrade or credential exposure.
 
 ## Frozen authority chain
 
@@ -209,11 +231,14 @@ Acceptance:
    specific code path.
 7. Verify per-dataset facts/latest-success-receipt conservation and
    catalog/query metadata, then run the strict authenticated probe.
-8. Enable the collection and probe timers only after the manual pass and strict
-   probe succeed. The regular scheduler may subsequently skip datasets that
-   are outside their configured weekday/window without invalidating the
+8. Revoke the token used by any earlier HTTP collection, install a fresh token
+   with the canonical HTTPS endpoint in the root-owned collector secret file,
+   and run one bounded collection pass while both timers remain disabled.
+9. Enable the collection and probe timers only after that fresh-token pass and
+   strict probe succeed. The regular scheduler may subsequently skip datasets
+   that are outside their configured weekday/window without invalidating the
    already-verified bootstrap.
-9. Re-run production readback and prove the legacy service/database identities
+10. Re-run production readback and prove the legacy service/database identities
    are unchanged.
 
 Any unknown dirty production state, missing credential, unsafe path, failed
