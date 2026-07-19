@@ -34,7 +34,11 @@ fresh 验收前，不在生产启用采集 timer。
    ```
 
 3. 创建由 `tradingdatas:tradingdatas` 持有且权限严格为 `0600` 的
-   `/etc/tradingdatas/api_tokens.json` 与 `/etc/tradingdatas/token_salt`。内部
+   `/etc/tradingdatas/api_tokens.json`、`/etc/tradingdatas/token_salt` 与
+   `/etc/tradingdatas/tushare.token`。Tushare token 必须是单一硬链接的普通文件，
+   文件 owner 必须等于采集进程的有效 UID；root 进程因此只能读取 root-owned
+   token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
+   和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
 4. 执行 entitlement probe；
 5. 运行一次受控 latest/current collection；

@@ -1319,7 +1319,7 @@ def _validated_api_url(raw_url: object) -> str:
     return raw_url
 
 
-def _read_root_owned_token_file(raw_path: object) -> str:
+def _read_private_token_file(raw_path: object) -> str:
     if type(raw_path) is not str or not raw_path or raw_path != raw_path.strip():
         raise RuntimeError("TUSHARE_TOKEN_FILE is unavailable")
     path = os.path.abspath(raw_path)
@@ -1334,9 +1334,9 @@ def _read_root_owned_token_file(raw_path: object) -> str:
         metadata = os.fstat(descriptor)
         if (
             not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_uid != 0
+            or metadata.st_uid != os.geteuid()
             or metadata.st_nlink != 1
-            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or stat.S_IMODE(metadata.st_mode) != 0o600
             or metadata.st_size <= 0
             or metadata.st_size > _MAX_TOKEN_FILE_BYTES
         ):
@@ -1372,12 +1372,12 @@ def _read_root_owned_token_file(raw_path: object) -> str:
 def read_tushare_config(
     env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Read only the approved API URL and root-owned token file."""
+    """Read the approved API URL and private token owned by this process user."""
 
     source = os.environ if env is None else env
     return {
         "api_url": _validated_api_url(source.get(TUSHARE_API_URL_ENV)),
-        "token": _read_root_owned_token_file(source.get(TUSHARE_TOKEN_FILE_ENV)),
+        "token": _read_private_token_file(source.get(TUSHARE_TOKEN_FILE_ENV)),
     }
 
 

@@ -44,18 +44,10 @@ def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
     return requests
 
 
-def test_config_reads_only_api_url_and_root_owned_token_file(tmp_path, monkeypatch):
+def test_config_reads_only_api_url_and_current_euid_owned_token_file(tmp_path):
     token_file = tmp_path / "tushare-token"
     token_file.write_text("test-token\n", encoding="utf-8")
     token_file.chmod(0o600)
-    real_fstat = os.fstat
-
-    def root_owned(descriptor):
-        values = list(real_fstat(descriptor))
-        values[4] = 0
-        return os.stat_result(values)
-
-    monkeypatch.setattr(tushare_common.os, "fstat", root_owned)
 
     assert tushare_common.read_tushare_config(
         {
@@ -68,7 +60,7 @@ def test_config_reads_only_api_url_and_root_owned_token_file(tmp_path, monkeypat
     }
 
 
-def test_config_rejects_env_tokens_fallbacks_and_non_root_token_file(
+def test_config_rejects_env_tokens_fallbacks_and_non_euid_token_file(
     tmp_path, monkeypatch
 ):
     token_file = tmp_path / "tushare-token"
@@ -76,12 +68,13 @@ def test_config_rejects_env_tokens_fallbacks_and_non_root_token_file(
     token_file.chmod(0o600)
     real_fstat = os.fstat
 
-    def user_owned(descriptor):
+    def mismatched_owner(descriptor):
         values = list(real_fstat(descriptor))
-        values[4] = 501
+        values[4] = 4243
         return os.stat_result(values)
 
-    monkeypatch.setattr(tushare_common.os, "fstat", user_owned)
+    monkeypatch.setattr(tushare_common.os, "fstat", mismatched_owner)
+    monkeypatch.setattr(tushare_common.os, "geteuid", lambda: 4242)
     with pytest.raises(RuntimeError, match="ownership or mode"):
         tushare_common.read_tushare_config(
             {
@@ -96,6 +89,37 @@ def test_config_rejects_env_tokens_fallbacks_and_non_root_token_file(
             {
                 "TUSHARE_API_URL": "https://api.tushare.pro",
                 "TUSHARE_TOKEN": "must-not-be-read",
+            }
+        )
+
+
+@pytest.mark.parametrize("mode", [0o400, 0o640, 0o660, 0o601])
+def test_config_rejects_token_file_without_exact_0600_mode(tmp_path, mode):
+    token_file = tmp_path / "tushare-token"
+    token_file.write_text("test-token\n", encoding="utf-8")
+    token_file.chmod(mode)
+
+    with pytest.raises(RuntimeError, match="ownership or mode"):
+        tushare_common.read_tushare_config(
+            {
+                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_TOKEN_FILE": str(token_file),
+            }
+        )
+
+
+def test_config_rejects_symlink_token_file(tmp_path):
+    token_file = tmp_path / "tushare-token"
+    token_file.write_text("test-token\n", encoding="utf-8")
+    token_file.chmod(0o600)
+    token_link = tmp_path / "tushare-token-link"
+    token_link.symlink_to(token_file)
+
+    with pytest.raises(RuntimeError, match="TUSHARE_TOKEN_FILE is unavailable"):
+        tushare_common.read_tushare_config(
+            {
+                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_TOKEN_FILE": str(token_link),
             }
         )
 

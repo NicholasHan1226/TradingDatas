@@ -615,7 +615,7 @@ def test_global_lock_rejects_overlap_before_provider_call(tmp_path: Path) -> Non
     assert calls == []
 
 
-def test_collector_credentials_use_validated_url_and_root_owned_token_file(
+def test_collector_credentials_use_validated_url_and_private_token_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HOME", "/nonexistent-protected-home")
