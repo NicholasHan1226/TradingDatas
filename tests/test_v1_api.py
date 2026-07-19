@@ -14,7 +14,6 @@ import re
 import socket
 import threading
 import time
-from types import SimpleNamespace
 from typing import Any, Callable
 import uuid
 
@@ -46,9 +45,9 @@ from storage.receipt_projection import RuntimeProjectionError
 
 
 SIGNING_KEY = b"phase2-test-signing-key-32-bytes-minimum"
-JWT_HS256_SECRET = "sharedsignals-hs256-test-secret-at-least-32-bytes"
+JWT_HS256_SECRET = "tradingdatas-hs256-test-secret-at-least-32-bytes"
 GOOD_QUERY = {"dataset_id": "cn.equity.daily", "schema_major": 1}
-V1_SCOPES = ("market_data", "events", "external_read", "read", "full", "*")
+V1_SCOPES = ("external_read", "read", "internal", "full", "*")
 
 
 def _token_hash(token: str) -> str:
@@ -59,7 +58,7 @@ def _hs256_jwt(*, secret: str = JWT_HS256_SECRET) -> str:
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
         "sub": "tenant-jwt",
-        "iss": "sharedsignals-tests",
+        "iss": "tradingdatas-tests",
         "exp": int(time.time()) + 300,
         "scopes": ["external_read"],
     }
@@ -309,12 +308,11 @@ def v1_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
     monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
     monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
-    monkeypatch.setattr(api_server, "reader", SimpleNamespace())
     monkeypatch.setattr(
         api_server, "_build_v1_services", lambda: (catalog, query), raising=False
     )
 
-    server = api_server.SharedSignalsHTTPServer(
+    server = api_server.TradingDatasHTTPServer(
         ("127.0.0.1", 0),
         api_server.Handler,
         request_timeout=5,
@@ -494,12 +492,17 @@ def test_v1_group_02_unknown_path_precedes_arbitrary_method(
 
 
 @pytest.mark.parametrize("method", ["HEAD", "PUT", "PATCH", "DELETE", "BREW"])
-def test_v1_group_02_legacy_unknown_methods_remain_normal_501(
+def test_v1_group_02_retired_routes_are_bounded_404(
     v1_server: _Harness,
     method: str,
 ) -> None:
-    status, _payload, _headers, _raw = v1_server.request(method, "/legacy-unknown")
-    assert status == 501
+    status, payload, _headers, _raw = v1_server.request(method, "/legacy-unknown")
+    assert status == 404
+    if method == "HEAD":
+        assert payload is None
+    else:
+        assert payload is not None
+        _error_shape(payload, "not_found")
 
 
 @pytest.mark.parametrize(
@@ -864,7 +867,7 @@ def test_v1_group_15_success_request_ids_are_unique_forwarded_and_logs_are_safe(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     secret_cursor = "cursor-secret-must-not-appear"
-    caplog.set_level("INFO", logger="sharedsignals.api")
+    caplog.set_level("INFO", logger="tradingdatas.api")
 
     first_status, first, _headers, _raw = v1_server.request(
         "GET",
@@ -924,7 +927,7 @@ def test_v1_group_16_malformed_jwt_object_shape_is_bounded_401(
     token: str,
 ) -> None:
     monkeypatch.setattr(auth, "JWT_VERIFY_KEY", JWT_HS256_SECRET)
-    monkeypatch.setattr(auth, "JWT_ISSUER", "sharedsignals-tests")
+    monkeypatch.setattr(auth, "JWT_ISSUER", "tradingdatas-tests")
     monkeypatch.setattr(auth, "JWT_ALGORITHM", "HS256", raising=False)
 
     status, payload, _headers, raw = v1_server.request(
@@ -951,7 +954,7 @@ def test_v1_group_16_jwt_algorithm_is_bound_by_server_policy(
 ) -> None:
     token = _hs256_jwt()
     monkeypatch.setattr(auth, "JWT_VERIFY_KEY", JWT_HS256_SECRET)
-    monkeypatch.setattr(auth, "JWT_ISSUER", "sharedsignals-tests")
+    monkeypatch.setattr(auth, "JWT_ISSUER", "tradingdatas-tests")
     monkeypatch.setattr(auth, "JWT_ALGORITHM", configured_algorithm, raising=False)
 
     status, payload, _headers, raw = v1_server.request(
@@ -973,8 +976,6 @@ def test_v1_group_16_jwt_algorithm_is_bound_by_server_policy(
 @pytest.mark.parametrize(
     "token",
     [
-        "market-token",
-        "events-token",
         "external-token",
         "read-token",
         "full-token",
@@ -992,7 +993,15 @@ def test_v1_group_17_endpoint_scope_positive_matrix(
 
 
 @pytest.mark.parametrize(
-    "token", ["health-token", "status-token", "tushare-token", "fundamentals-token"]
+    "token",
+    [
+        "health-token",
+        "status-token",
+        "tushare-token",
+        "fundamentals-token",
+        "market-token",
+        "events-token",
+    ],
 )
 def test_v1_group_17_endpoint_scope_negative_matrix(
     v1_server: _Harness, token: str
@@ -1125,6 +1134,9 @@ def test_v1_group_21_concurrency_claim_is_released_on_service_error(
             headers=_post_headers(body),
         )
         assert status == 400
+    deadline = time.monotonic() + 5
+    while auth._ACTIVE_REQUESTS and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert auth._ACTIVE_REQUESTS == {}
 
 
@@ -1204,24 +1216,14 @@ def test_v1_group_21_response_budget_is_checked_before_headers_and_releases_clai
     assert auth._ACTIVE_REQUESTS == {}
 
 
-def test_v1_group_22_lazy_services_do_not_block_health_or_import(
+def test_v1_group_22_lazy_services_do_not_import_product_or_trading_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert importlib.util.find_spec("data_plane_runtime") is not None
-    monkeypatch.delenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", raising=False)
     source = (api_server.ROOT / "api_server.py").read_text(encoding="utf-8")
     assert "TradingAgent" not in source
     assert "MarketGraph" not in source
-    top_level_start = source.index("class _V1ProtocolError")
-    top_level_end = source.index("def _ensure_runtime_loaded", top_level_start)
-    handler_start = source.index("    def _write_v1_json")
-    handler_end = source.index("    def _dispatch(", handler_start)
-    v1_source = (
-        source[top_level_start:top_level_end] + source[handler_start:handler_end]
-    )
-    assert (
-        re.search(r"(?:from|import)\s+(?:TradingAgent|MarketGraph)", v1_source) is None
-    )
+    assert re.search(r"(?:from|import)\s+(?:TradingAgent|MarketGraph)", source) is None
     for forbidden in (
         "opening_gate",
         "candidate_pool",
@@ -1229,7 +1231,7 @@ def test_v1_group_22_lazy_services_do_not_block_health_or_import(
         "trading_order",
         "trade_fill",
     ):
-        assert forbidden not in v1_source
+        assert forbidden not in source
 
 
 def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
@@ -1238,9 +1240,16 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
 ) -> None:
     real_import = builtins.__import__
     imported_legacy: list[str] = []
+    forbidden_modules = {
+        "api_control_plane",
+        "api_response",
+        "legacy_query_compat",
+        "reader",
+        "sector_flow_v2",
+    }
 
     def guarded_import(name: str, *args: object, **kwargs: object) -> object:
-        if name in {"reader", "sector_flow_v2"}:
+        if name in forbidden_modules:
             imported_legacy.append(name)
             raise AssertionError("process bootstrap must not import legacy runtime")
         return real_import(name, *args, **kwargs)
@@ -1249,9 +1258,9 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
         probe.bind(("127.0.0.1", 0))
         port = int(probe.getsockname()[1])
 
-    real_server_class = api_server.SharedSignalsHTTPServer
+    real_server_class = api_server.TradingDatasHTTPServer
     server_started = threading.Event()
-    servers: list[api_server.SharedSignalsHTTPServer] = []
+    servers: list[api_server.TradingDatasHTTPServer] = []
 
     def build_server(*args: object, **kwargs: object) -> object:
         server = real_server_class(*args, **kwargs)
@@ -1259,11 +1268,11 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
         server_started.set()
         return server
 
-    monkeypatch.setenv("SHAREDSIGNALS_API_HOST", "127.0.0.1")
-    monkeypatch.setenv("SHAREDSIGNALS_API_PORT", str(port))
-    monkeypatch.setenv("SHAREDSIGNALS_API_VERSION", "task5-test")
-    monkeypatch.setenv("SHAREDSIGNALS_REQUEST_TIMEOUT", "30")
-    monkeypatch.setenv("SHAREDSIGNALS_MAX_THREADS", "20")
+    monkeypatch.setenv("TRADINGDATAS_API_HOST", "127.0.0.1")
+    monkeypatch.setenv("TRADINGDATAS_API_PORT", str(port))
+    monkeypatch.setenv("TRADINGDATAS_API_VERSION", "clean-slate-test")
+    monkeypatch.setenv("TRADINGDATAS_HTTP_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("TRADINGDATAS_API_MAX_THREADS", "20")
     monkeypatch.setattr(api_server, "HOST", api_server.HOST)
     monkeypatch.setattr(api_server, "PORT", api_server.PORT)
     monkeypatch.setattr(api_server, "VERSION", api_server.VERSION)
@@ -1273,14 +1282,7 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
         api_server.Handler, "server_version", api_server.Handler.server_version
     )
     monkeypatch.setattr(api_server, "_process_config_loaded", False, raising=False)
-    monkeypatch.setattr(api_server, "reader", None)
-    monkeypatch.setattr(api_server, "sector_flow_v2", None)
-    monkeypatch.setattr(
-        api_server,
-        "_get_health",
-        lambda: {"status": "ok", "timestamp": "2026-07-16T00:00:00+00:00"},
-    )
-    monkeypatch.setattr(api_server, "SharedSignalsHTTPServer", build_server)
+    monkeypatch.setattr(api_server, "TradingDatasHTTPServer", build_server)
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     main_errors: list[BaseException] = []
@@ -1304,7 +1306,7 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
         v1_status, v1_payload, _headers, _raw = main_harness.request(
             "GET", "/v1/catalog"
         )
-        health_status, health_payload, _headers, _raw = main_harness.request(
+        retired_status, retired_payload, _headers, _raw = main_harness.request(
             "GET", "/health"
         )
     finally:
@@ -1317,69 +1319,51 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
     assert not thread.is_alive()
     assert v1_status == 200
     assert v1_payload is not None and v1_payload["api_version"] == "v1"
-    assert health_status == 200
-    assert health_payload == {
-        "status": "ok",
-        "timestamp": "2026-07-16T00:00:00+00:00",
-    }
+    assert retired_status == 404
+    assert retired_payload is not None
+    _error_shape(retired_payload, "not_found")
 
 
-def test_v1_group_22_health_and_v1_do_not_import_legacy_runtime(
+def test_v1_group_22_retired_routes_do_not_import_legacy_runtime(
     v1_server: _Harness,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     real_import = builtins.__import__
     imported_legacy: list[str] = []
-    allow_legacy = False
-    fake_reader = SimpleNamespace(
-        _CACHE_GENERATION=1,
-        CACHE_TTL_SECONDS=300,
-        CACHE_MAX_BYTES=1024,
-        _CACHED_FUNCTIONS=(),
-        cache_byte_estimate=lambda: 0,
-        _cache_entry_count=lambda: 0,
-    )
-    fake_sector_flow = SimpleNamespace()
+    forbidden_modules = {
+        "api_control_plane",
+        "api_response",
+        "legacy_query_compat",
+        "reader",
+        "sector_flow_v2",
+    }
 
     def guarded_import(name: str, *args: object, **kwargs: object) -> object:
-        if name in {"reader", "sector_flow_v2"}:
+        if name in forbidden_modules:
             imported_legacy.append(name)
-            if not allow_legacy:
-                raise AssertionError("health and V1 must not import legacy runtime")
-            return fake_reader if name == "reader" else fake_sector_flow
+            raise AssertionError("V1 server must not import legacy runtime")
         return real_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(api_server, "reader", None)
-    monkeypatch.setattr(api_server, "sector_flow_v2", None)
-    monkeypatch.setattr(
-        api_server,
-        "_get_health",
-        lambda: {"status": "ok", "timestamp": "2026-07-16T00:00:00+00:00"},
-    )
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     v1_status, v1_payload, _headers, _raw = v1_server.request("GET", "/v1/catalog")
-    health_status, health_payload, _headers, _raw = v1_server.request("GET", "/health")
-
     assert v1_status == 200
     assert v1_payload is not None and v1_payload["api_version"] == "v1"
-    assert health_status == 200
-    assert health_payload == {
-        "status": "ok",
-        "timestamp": "2026-07-16T00:00:00+00:00",
-    }
+    for retired_route in (
+        "/health",
+        "/cache/status",
+        "/tushare",
+        "/source_status",
+        "/opening_gate",
+        "/crypto",
+        "/pm_markets",
+        "/v2/sector-flow/snapshot",
+    ):
+        status, payload, _headers, _raw = v1_server.request("GET", retired_route)
+        assert status == 404
+        assert payload is not None
+        _error_shape(payload, "not_found")
     assert imported_legacy == []
-
-    allow_legacy = True
-    legacy_status, legacy_payload, _headers, _raw = v1_server.request(
-        "GET", "/cache/status"
-    )
-
-    assert legacy_status == 200
-    assert legacy_payload is not None and legacy_payload["generation"] == 1
-    assert imported_legacy == ["reader", "sector_flow_v2"]
-    assert api_server.reader is fake_reader
-    assert api_server.sector_flow_v2 is fake_sector_flow
 
 
 def test_v1_group_01_unknown_provider_route_never_builds_services(
@@ -1699,7 +1683,7 @@ def test_v1_group_19_http_context_normalizes_scopes_and_recomputes_policy(
 
     def reordered(headers: Any, client_host: str) -> dict[str, Any]:
         account = dict(real_authenticate(headers, client_host))
-        account["scopes"] = ["market_data", "events", "market_data"]
+        account["scopes"] = ["read", "external_read", "read"]
         account["policy_id"] = "untrusted"
         account["allowed_dataset_ids"] = ["cn.secret.dataset"]
         return account
@@ -1712,7 +1696,7 @@ def test_v1_group_19_http_context_normalizes_scopes_and_recomputes_policy(
     access = v1_server.catalog.calls[-1]["access"]
     expected = QueryAccessContext.from_grants(
         tenant_id="tenant-a",
-        scopes=("events", "market_data"),
+        scopes=("external_read", "read"),
         allowed_dataset_ids=(),
     )
     assert access == expected
@@ -1934,7 +1918,7 @@ def test_v1_group_22_data_plane_constructor_is_lazy(
         assert first is second
         assert calls == 1
     finally:
-        reloaded._SERVICES = None
+        reloaded._reset_data_plane_runtime_for_tests()
 
 
 @pytest.mark.parametrize("signing_key", [None, "short"])
@@ -1945,32 +1929,26 @@ def test_v1_group_22_missing_or_short_key_only_degrades_v1(
 ) -> None:
     import data_plane_runtime
 
-    data_plane_runtime._SERVICES = None
+    data_plane_runtime._reset_data_plane_runtime_for_tests()
     if signing_key is None:
-        monkeypatch.delenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", raising=False)
+        monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
     else:
-        monkeypatch.setenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", signing_key)
+        monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY", signing_key)
     monkeypatch.setattr(
         api_server,
         "_build_v1_services",
         data_plane_runtime.build_data_plane_services,
     )
-    monkeypatch.setattr(api_server, "sector_flow_v2", SimpleNamespace())
-    monkeypatch.setattr(
-        api_server,
-        "_get_health",
-        lambda: {"status": "ok", "timestamp": "2026-07-16T00:00:00+00:00"},
-    )
-
     status, payload, _headers, _raw = v1_server.request("GET", "/v1/catalog")
     assert status == 503
     assert payload is not None
     _error_shape(payload, "service_unavailable")
 
-    health_status, health, _headers, _raw = v1_server.request("GET", "/health")
-    assert health_status == 200
-    assert health == {"status": "ok", "timestamp": "2026-07-16T00:00:00+00:00"}
-    data_plane_runtime._SERVICES = None
+    retired_status, retired, _headers, _raw = v1_server.request("GET", "/health")
+    assert retired_status == 404
+    assert retired is not None
+    _error_shape(retired, "not_found")
+    data_plane_runtime._reset_data_plane_runtime_for_tests()
 
 
 def test_v1_group_22_missing_read_model_is_503_without_file_fallback(
@@ -1983,11 +1961,11 @@ def test_v1_group_22_missing_read_model_is_503_without_file_fallback(
 
     missing = tmp_path / "missing" / "marketdata.sqlite"
     monkeypatch.setenv(
-        "SHAREDSIGNALS_CURSOR_SIGNING_KEY",
+        "TRADINGDATAS_CURSOR_SIGNING_KEY",
         SIGNING_KEY.decode("ascii"),
     )
     monkeypatch.setattr(runtime_paths, "marketdata_sqlite_path", lambda: missing)
-    data_plane_runtime._SERVICES = None
+    data_plane_runtime._reset_data_plane_runtime_for_tests()
     monkeypatch.setattr(
         api_server,
         "_build_v1_services",
@@ -1998,7 +1976,7 @@ def test_v1_group_22_missing_read_model_is_503_without_file_fallback(
     assert payload is not None
     _error_shape(payload, "service_unavailable")
     assert not missing.exists()
-    data_plane_runtime._SERVICES = None
+    data_plane_runtime._reset_data_plane_runtime_for_tests()
 
 
 def test_v1_group_22_invalid_server_clock_is_503(
@@ -2015,7 +1993,7 @@ def test_v1_group_22_invalid_server_clock_is_503(
             return datetime(2026, 7, 16, 0, 0, 0)
 
     monkeypatch.setenv(
-        "SHAREDSIGNALS_CURSOR_SIGNING_KEY",
+        "TRADINGDATAS_CURSOR_SIGNING_KEY",
         SIGNING_KEY.decode("ascii"),
     )
     monkeypatch.setattr(
@@ -2024,7 +2002,7 @@ def test_v1_group_22_invalid_server_clock_is_503(
         lambda: tmp_path / "missing.sqlite",
     )
     monkeypatch.setattr(api_server, "datetime", NaiveClock)
-    data_plane_runtime._SERVICES = None
+    data_plane_runtime._reset_data_plane_runtime_for_tests()
     monkeypatch.setattr(
         api_server,
         "_build_v1_services",
@@ -2034,4 +2012,4 @@ def test_v1_group_22_invalid_server_clock_is_503(
     assert status == 503
     assert payload is not None
     _error_shape(payload, "service_unavailable")
-    data_plane_runtime._SERVICES = None
+    data_plane_runtime._reset_data_plane_runtime_for_tests()

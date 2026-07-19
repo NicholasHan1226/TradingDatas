@@ -8,7 +8,7 @@ provenance:
   index_sha256: 0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2
 scope:
   scope_id: tushare-capability-scope.v1
-  scope_sha256: b73e9efa32b4e80483ae5939c9e32ca7f70caae16ea534689b93de498e14db3f
+  scope_sha256: 72a85f8ecca99c25eb36a06363884cba7ca0b0ad188cc246cc5d0c970424083c
 counts:
   official_source_rows: 240
   official_unique_api_names: 239
@@ -19,31 +19,6 @@ scope_counts:
   excluded: 36
   retired: 5
   non_data_operation: 4
-legacy_coverage:
-  authority: migration_input_only
-  inventory_path: config/tushare_capability_plan.yaml
-  inventory_sha256: eea516832489f7341f61e0ae5bf8e86a89606c5bb800c198a87a43c7340d4200
-  counts:
-    legacy_api_names: 114
-    official_legacy_overlap: 109
-    official_only: 130
-    legacy_only: 5
-  legacy_only_reviews:
-  - api_name: concept
-    review_state: migration_review_required
-    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
-  - api_name: concept_detail
-    review_state: migration_review_required
-    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
-  - api_name: hs_const
-    review_state: migration_review_required
-    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
-  - api_name: index_member
-    review_state: migration_review_required
-    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
-  - api_name: limit_list
-    review_state: migration_review_required
-    reason: Absent from the pinned official index; requires successor or deprecation review and cannot become official capability authority.
 capabilities:
 - api_name: adj_factor
   doc_url: https://tushare.pro/wctapi/documents/28.md
@@ -61,7 +36,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: anns_d
   doc_url: https://tushare.pro/wctapi/documents/176.md
   title: 上市公司公告
@@ -78,7 +52,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: bak_basic
   doc_url: https://tushare.pro/wctapi/documents/262.md
   title: 股票历史列表
@@ -95,7 +68,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: bak_daily
   doc_url: https://tushare.pro/wctapi/documents/255.md
   title: 备用行情
@@ -112,7 +84,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: balancesheet
   doc_url: https://tushare.pro/wctapi/documents/36.md
   title: 资产负债表
@@ -129,7 +100,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: bc_bestotcqt
   doc_url: https://tushare.pro/wctapi/documents/323.md
   title: 柜台流通式债券最优报价
@@ -146,7 +116,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: bc_otcqt
   doc_url: https://tushare.pro/wctapi/documents/322.md
   title: 柜台流通式债券报价
@@ -163,7 +132,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: block_trade
   doc_url: https://tushare.pro/wctapi/documents/161.md
   title: 大宗交易
@@ -180,7 +148,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: bond_blk
   doc_url: https://tushare.pro/wctapi/documents/271.md
   title: 大宗交易
@@ -197,7 +164,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: bond_blk_detail
   doc_url: https://tushare.pro/wctapi/documents/272.md
   title: 大宗交易明细
@@ -214,7 +180,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: broker_recommend
   doc_url: https://tushare.pro/wctapi/documents/267.md
   title: 券商月度金股
@@ -231,7 +196,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: bse_mapping
   doc_url: https://tushare.pro/wctapi/documents/375.md
   title: 北交所新旧代码对照
@@ -248,7 +212,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cashflow
   doc_url: https://tushare.pro/wctapi/documents/44.md
   title: 现金流量表
@@ -265,7 +228,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cb_basic
   doc_url: https://tushare.pro/wctapi/documents/185.md
   title: 可转债基础信息
@@ -282,7 +244,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cb_call
   doc_url: https://tushare.pro/wctapi/documents/269.md
   title: 可转债赎回信息
@@ -299,7 +260,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cb_daily
   doc_url: https://tushare.pro/wctapi/documents/187.md
   title: 可转债行情
@@ -316,7 +276,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cb_factor_pro
   doc_url: https://tushare.pro/wctapi/documents/392.md
   title: 可转债技术面因子(专业版)
@@ -333,7 +292,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cb_issue
   doc_url: https://tushare.pro/wctapi/documents/186.md
   title: 可转债发行
@@ -350,7 +308,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cb_price_chg
   doc_url: https://tushare.pro/wctapi/documents/246.md
   title: 可转债转股价变动
@@ -367,7 +324,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cb_rate
   doc_url: https://tushare.pro/wctapi/documents/305.md
   title: 可转债票面利率
@@ -384,7 +340,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cb_rating
   doc_url: https://tushare.pro/wctapi/documents/458.md
   title: 可转债债券评级
@@ -401,7 +356,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cb_share
   doc_url: https://tushare.pro/wctapi/documents/247.md
   title: 可转债转股结果
@@ -418,7 +372,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: ccass_hold
   doc_url: https://tushare.pro/wctapi/documents/295.md
   title: 中央结算系统持股统计
@@ -435,7 +388,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: ccass_hold_detail
   doc_url: https://tushare.pro/wctapi/documents/274.md
   title: 中央结算系统持股明细
@@ -452,7 +404,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: cctv_news
   doc_url: https://tushare.pro/wctapi/documents/154.md
   title: 新闻联播文字稿
@@ -469,7 +420,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: ci_daily
   doc_url: https://tushare.pro/wctapi/documents/308.md
   title: 中信行业指数日行情
@@ -486,7 +436,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: ci_index_member
   doc_url: https://tushare.pro/wctapi/documents/373.md
   title: 中信行业成分
@@ -503,7 +452,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cn_cpi
   doc_url: https://tushare.pro/wctapi/documents/228.md
   title: 居民消费价格指数(CPI)
@@ -520,7 +468,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cn_gdp
   doc_url: https://tushare.pro/wctapi/documents/227.md
   title: 国内生产总值(GDP)
@@ -537,7 +484,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cn_m
   doc_url: https://tushare.pro/wctapi/documents/242.md
   title: 货币供应量(月)
@@ -554,7 +500,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cn_pmi
   doc_url: https://tushare.pro/wctapi/documents/325.md
   title: 采购经理指数(PMI)
@@ -571,7 +516,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cn_ppi
   doc_url: https://tushare.pro/wctapi/documents/245.md
   title: 工业生产者出厂价格指数(PPI)
@@ -588,7 +532,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cn_schedule
   doc_url: https://tushare.pro/wctapi/documents/461.md
   title: 中国经济数据发布日程
@@ -605,7 +548,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: cyq_chips
   doc_url: https://tushare.pro/wctapi/documents/294.md
   title: 每日筹码分布
@@ -622,7 +564,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: cyq_perf
   doc_url: https://tushare.pro/wctapi/documents/293.md
   title: 每日筹码及胜率
@@ -639,7 +580,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: daily
   doc_url: https://tushare.pro/wctapi/documents/27.md
   title: 历史日线
@@ -656,7 +596,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: daily_basic
   doc_url: https://tushare.pro/wctapi/documents/32.md
   title: 每日指标
@@ -673,7 +612,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: daily_info
   doc_url: https://tushare.pro/wctapi/documents/215.md
   title: 沪深市场每日交易统计
@@ -690,7 +628,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: dc_concept
   doc_url: https://tushare.pro/wctapi/documents/421.md
   title: 题材数据(DC)
@@ -707,7 +644,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: dc_concept_cons
   doc_url: https://tushare.pro/wctapi/documents/422.md
   title: 题材成分(DC)
@@ -724,7 +660,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: dc_daily
   doc_url: https://tushare.pro/wctapi/documents/382.md
   title: DC概念板块行情
@@ -741,7 +676,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: dc_hot
   doc_url: https://tushare.pro/wctapi/documents/321.md
   title: DC热榜
@@ -758,7 +692,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: unknown
   scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
-  in_legacy_inventory: false
 - api_name: dc_index
   doc_url: https://tushare.pro/wctapi/documents/362.md
   title: DC概念板块分类
@@ -775,7 +708,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: dc_member
   doc_url: https://tushare.pro/wctapi/documents/363.md
   title: DC概念板块成分
@@ -792,7 +724,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: disclosure_date
   doc_url: https://tushare.pro/wctapi/documents/162.md
   title: 财报披露日期表
@@ -809,7 +740,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: dividend
   doc_url: https://tushare.pro/wctapi/documents/103.md
   title: 分红送股数据
@@ -826,7 +756,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: eco_cal
   doc_url: https://tushare.pro/wctapi/documents/233.md
   title: 全球财经事件
@@ -843,7 +772,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: etf_basic
   doc_url: https://tushare.pro/wctapi/documents/385.md
   title: ETF基本信息
@@ -860,7 +788,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: etf_index
   doc_url: https://tushare.pro/wctapi/documents/386.md
   title: ETF跟踪指数
@@ -877,7 +804,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: etf_mins
   doc_url: https://tushare.pro/wctapi/documents/387.md
   title: ETF历史分钟
@@ -894,7 +820,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: etf_sh_cons
   doc_url: https://tushare.pro/wctapi/documents/471.md
   title: 每日篮子组合(沪市PCF)
@@ -911,7 +836,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: etf_share_size
   doc_url: https://tushare.pro/wctapi/documents/408.md
   title: ETF份额规模
@@ -928,7 +852,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: etf_sz_cons
   doc_url: https://tushare.pro/wctapi/documents/472.md
   title: 每日篮子组合(深市PCF)
@@ -945,7 +868,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: express
   doc_url: https://tushare.pro/wctapi/documents/46.md
   title: 业绩快报
@@ -962,7 +884,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fina_audit
   doc_url: https://tushare.pro/wctapi/documents/80.md
   title: 财务审计意见
@@ -979,7 +900,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fina_indicator
   doc_url: https://tushare.pro/wctapi/documents/79.md
   title: 财务指标数据
@@ -996,7 +916,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fina_mainbz
   doc_url: https://tushare.pro/wctapi/documents/81.md
   title: 主营业务构成
@@ -1013,7 +932,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: forecast
   doc_url: https://tushare.pro/wctapi/documents/45.md
   title: 业绩预告
@@ -1030,7 +948,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: ft_limit
   doc_url: https://tushare.pro/wctapi/documents/368.md
   title: 期货合约涨跌停价格
@@ -1047,7 +964,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: ft_mins
   doc_url: https://tushare.pro/wctapi/documents/313.md
   title: 历史分钟行情
@@ -1064,7 +980,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fund_adj
   doc_url: https://tushare.pro/wctapi/documents/199.md
   title: ETF复权因子
@@ -1081,7 +996,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_basic
   doc_url: https://tushare.pro/wctapi/documents/19.md
   title: 基金列表
@@ -1098,7 +1012,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_company
   doc_url: https://tushare.pro/wctapi/documents/118.md
   title: 基金管理人
@@ -1115,7 +1028,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fund_daily
   doc_url: https://tushare.pro/wctapi/documents/127.md
   title: ETF日线行情
@@ -1132,7 +1044,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_div
   doc_url: https://tushare.pro/wctapi/documents/120.md
   title: 基金分红
@@ -1149,7 +1060,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_factor_pro
   doc_url: https://tushare.pro/wctapi/documents/359.md
   title: 基金技术面因子(专业版)
@@ -1166,7 +1076,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fund_manager
   doc_url: https://tushare.pro/wctapi/documents/208.md
   title: 基金经理
@@ -1183,7 +1092,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fund_nav
   doc_url: https://tushare.pro/wctapi/documents/119.md
   title: 基金净值
@@ -1200,7 +1108,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_portfolio
   doc_url: https://tushare.pro/wctapi/documents/121.md
   title: 基金持仓
@@ -1217,7 +1124,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fund_share
   doc_url: https://tushare.pro/wctapi/documents/207.md
   title: 基金规模
@@ -1234,7 +1140,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fut_basic
   doc_url: https://tushare.pro/wctapi/documents/135.md
   title: 合约信息
@@ -1251,7 +1156,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fut_daily
   doc_url: https://tushare.pro/wctapi/documents/138.md
   title: 日线行情
@@ -1268,7 +1172,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fut_holding
   doc_url: https://tushare.pro/wctapi/documents/139.md
   title: 每日持仓排名
@@ -1285,7 +1188,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: fut_index_daily
   doc_url: https://tushare.pro/wctapi/documents/468.md
   title: 南华期货指数日线行情
@@ -1302,7 +1204,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_mapping
   doc_url: https://tushare.pro/wctapi/documents/189.md
   title: 期货主力与连续合约
@@ -1319,7 +1220,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_settle
   doc_url: https://tushare.pro/wctapi/documents/141.md
   title: 每日结算参数
@@ -1336,7 +1236,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_trade_cal
   doc_url: https://tushare.pro/wctapi/documents/467.md
   title: 期货交易日历
@@ -1353,7 +1252,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_weekly_detail
   doc_url: https://tushare.pro/wctapi/documents/216.md
   title: 期货主要品种交易周报
@@ -1370,7 +1268,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_weekly_monthly
   doc_url: https://tushare.pro/wctapi/documents/337.md
   title: 期货周月线行情(每日更新)
@@ -1387,7 +1284,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fut_wsr
   doc_url: https://tushare.pro/wctapi/documents/140.md
   title: 仓单日报
@@ -1404,7 +1300,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: fx_daily
   doc_url: https://tushare.pro/wctapi/documents/179.md
   title: 外汇日线行情
@@ -1421,7 +1316,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: fx_obasic
   doc_url: https://tushare.pro/wctapi/documents/178.md
   title: 外汇基础信息(海外)
@@ -1438,7 +1332,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: ggt_daily
   doc_url: https://tushare.pro/wctapi/documents/196.md
   title: 港股通每日成交统计
@@ -1455,7 +1348,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: ggt_top10
   doc_url: https://tushare.pro/wctapi/documents/49.md
   title: 港股通十大成交股
@@ -1472,7 +1364,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: gz_index
   doc_url: https://tushare.pro/wctapi/documents/174.md
   title: 广州民间借贷利率
@@ -1489,7 +1380,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: hibor
   doc_url: https://tushare.pro/wctapi/documents/153.md
   title: Hibor利率
@@ -1506,7 +1396,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_adjfactor
   doc_url: https://tushare.pro/wctapi/documents/401.md
   title: 港股复权因子
@@ -1523,7 +1412,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: hk_balancesheet
   doc_url: https://tushare.pro/wctapi/documents/390.md
   title: 港股资产负债表
@@ -1540,7 +1428,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_basic
   doc_url: https://tushare.pro/wctapi/documents/191.md
   title: 港股基础信息
@@ -1557,7 +1444,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_cashflow
   doc_url: https://tushare.pro/wctapi/documents/391.md
   title: 港股现金流量表
@@ -1574,7 +1460,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_daily
   doc_url: https://tushare.pro/wctapi/documents/192.md
   title: 港股日线行情
@@ -1591,7 +1476,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_daily_adj
   doc_url: https://tushare.pro/wctapi/documents/339.md
   title: 港股复权行情
@@ -1608,7 +1492,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: hk_fina_indicator
   doc_url: https://tushare.pro/wctapi/documents/388.md
   title: 港股财务指标数据
@@ -1625,7 +1508,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: hk_hold
   doc_url: https://tushare.pro/wctapi/documents/188.md
   title: 沪深股通持股明细
@@ -1642,7 +1524,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: hk_income
   doc_url: https://tushare.pro/wctapi/documents/389.md
   title: 港股利润表
@@ -1659,7 +1540,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: hk_mins
   doc_url: https://tushare.pro/wctapi/documents/304.md
   title: 港股分钟行情
@@ -1676,7 +1556,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: hk_tradecal
   doc_url: https://tushare.pro/wctapi/documents/250.md
   title: 港股交易日历
@@ -1693,7 +1572,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: hm_detail
   doc_url: https://tushare.pro/wctapi/documents/312.md
   title: 游资交易每日明细
@@ -1710,7 +1588,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: hm_list
   doc_url: https://tushare.pro/wctapi/documents/311.md
   title: 市场游资最全名录
@@ -1727,7 +1604,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: hsgt_top10
   doc_url: https://tushare.pro/wctapi/documents/48.md
   title: 沪深股通十大成交股
@@ -1744,7 +1620,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: idx_anns
   doc_url: https://tushare.pro/wctapi/documents/460.md
   title: 指数公司公告
@@ -1761,7 +1636,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: unknown
   scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
-  in_legacy_inventory: false
 - api_name: idx_factor_pro
   doc_url: https://tushare.pro/wctapi/documents/358.md
   title: 指数技术面因子(专业版)
@@ -1778,7 +1652,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: idx_mins
   doc_url: https://tushare.pro/wctapi/documents/419.md
   title: 指数历史分钟
@@ -1795,7 +1668,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: income
   doc_url: https://tushare.pro/wctapi/documents/33.md
   title: 利润表
@@ -1812,7 +1684,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_basic
   doc_url: https://tushare.pro/wctapi/documents/94.md
   title: 指数基本信息
@@ -1829,7 +1700,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_classify
   doc_url: https://tushare.pro/wctapi/documents/181.md
   title: 申万行业分类
@@ -1846,7 +1716,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_daily
   doc_url: https://tushare.pro/wctapi/documents/95.md
   title: 指数日线行情
@@ -1863,7 +1732,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_dailybasic
   doc_url: https://tushare.pro/wctapi/documents/128.md
   title: 大盘指数每日指标
@@ -1880,7 +1748,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_global
   doc_url: https://tushare.pro/wctapi/documents/211.md
   title: 国际主要指数
@@ -1897,7 +1764,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: index_member_all
   doc_url: https://tushare.pro/wctapi/documents/335.md
   title: 申万行业成分(分级)
@@ -1914,7 +1780,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_monthly
   doc_url: https://tushare.pro/wctapi/documents/172.md
   title: 指数月线行情
@@ -1931,7 +1796,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_weekly
   doc_url: https://tushare.pro/wctapi/documents/171.md
   title: 指数周线行情
@@ -1948,7 +1812,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: index_weight
   doc_url: https://tushare.pro/wctapi/documents/96.md
   title: 指数成分和权重
@@ -1965,7 +1828,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: irm_qa_sh
   doc_url: https://tushare.pro/wctapi/documents/366.md
   title: 上证e互动问答
@@ -1982,7 +1844,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: irm_qa_sz
   doc_url: https://tushare.pro/wctapi/documents/367.md
   title: 深证易互动问答
@@ -1999,7 +1860,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: kpl_concept_cons
   doc_url: https://tushare.pro/wctapi/documents/351.md
   title: 题材成分(KP)
@@ -2016,7 +1876,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: kpl_list
   doc_url: https://tushare.pro/wctapi/documents/347.md
   title: 榜单数据(KP)
@@ -2033,7 +1892,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: libor
   doc_url: https://tushare.pro/wctapi/documents/152.md
   title: Libor利率
@@ -2050,7 +1908,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: limit_cpt_list
   doc_url: https://tushare.pro/wctapi/documents/357.md
   title: 涨停最强板块统计
@@ -2067,7 +1924,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: limit_list_d
   doc_url: https://tushare.pro/wctapi/documents/298.md
   title: 涨跌停和炸板数据
@@ -2084,7 +1940,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: limit_list_ths
   doc_url: https://tushare.pro/wctapi/documents/355.md
   title: THS涨跌停榜单
@@ -2101,7 +1956,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: limit_step
   doc_url: https://tushare.pro/wctapi/documents/356.md
   title: 涨停股票连板天梯
@@ -2118,7 +1972,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: major_news
   doc_url: https://tushare.pro/wctapi/documents/195.md
   title: 新闻通讯(长篇)
@@ -2135,7 +1988,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: margin
   doc_url: https://tushare.pro/wctapi/documents/58.md
   title: 融资融券交易汇总
@@ -2152,7 +2004,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: margin_detail
   doc_url: https://tushare.pro/wctapi/documents/59.md
   title: 融资融券交易明细
@@ -2169,7 +2020,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: margin_secs
   doc_url: https://tushare.pro/wctapi/documents/326.md
   title: 融资融券标的(盘前)
@@ -2186,7 +2036,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: mkt_idx_bmk
   doc_url: https://tushare.pro/wctapi/documents/462.md
   title: 基金业绩基准
@@ -2203,7 +2052,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: monetary_policy
   doc_url: https://tushare.pro/wctapi/documents/465.md
   title: 央行货币政策执行报告
@@ -2220,7 +2068,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow
   doc_url: https://tushare.pro/wctapi/documents/170.md
   title: 个股资金流向
@@ -2237,7 +2084,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: moneyflow_cnt_ths
   doc_url: https://tushare.pro/wctapi/documents/371.md
   title: 板块资金流向(THS)
@@ -2254,7 +2100,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow_dc
   doc_url: https://tushare.pro/wctapi/documents/349.md
   title: 个股资金流向(DC)
@@ -2271,7 +2116,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow_hsgt
   doc_url: https://tushare.pro/wctapi/documents/47.md
   title: 沪深港通资金流向
@@ -2288,7 +2132,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: moneyflow_ind_dc
   doc_url: https://tushare.pro/wctapi/documents/344.md
   title: 板块资金流向(DC)
@@ -2305,7 +2148,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow_ind_ths
   doc_url: https://tushare.pro/wctapi/documents/343.md
   title: 行业资金流向(THS)
@@ -2322,7 +2164,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow_mkt_dc
   doc_url: https://tushare.pro/wctapi/documents/345.md
   title: 大盘资金流向(DC)
@@ -2339,7 +2180,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: moneyflow_ths
   doc_url: https://tushare.pro/wctapi/documents/348.md
   title: 个股资金流向(THS)
@@ -2356,7 +2196,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: monthly
   doc_url: https://tushare.pro/wctapi/documents/145.md
   title: 月线行情
@@ -2373,7 +2212,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: namechange
   doc_url: https://tushare.pro/wctapi/documents/100.md
   title: 股票曾用名
@@ -2390,7 +2228,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: new_share
   doc_url: https://tushare.pro/wctapi/documents/123.md
   title: IPO新股上市
@@ -2407,7 +2244,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: news
   doc_url: https://tushare.pro/wctapi/documents/143.md
   title: 新闻快讯(短讯)
@@ -2424,7 +2260,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: npr
   doc_url: https://tushare.pro/wctapi/documents/406.md
   title: 国家政策库
@@ -2441,7 +2276,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: opt_basic
   doc_url: https://tushare.pro/wctapi/documents/158.md
   title: 期权合约信息
@@ -2458,7 +2292,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: opt_daily
   doc_url: https://tushare.pro/wctapi/documents/159.md
   title: 期权日线行情
@@ -2475,7 +2308,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: opt_mins
   doc_url: https://tushare.pro/wctapi/documents/341.md
   title: 期权分钟行情
@@ -2492,7 +2324,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: p_delete
   doc_url: https://tushare.pro/wctapi/documents/447.md
   title: 组合删除
@@ -2509,7 +2340,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: non_data_operation
   scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
-  in_legacy_inventory: false
 - api_name: p_get
   doc_url: https://tushare.pro/wctapi/documents/449.md
   title: 成分查询
@@ -2526,7 +2356,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: non_data_operation
   scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
-  in_legacy_inventory: false
 - api_name: p_list
   doc_url: https://tushare.pro/wctapi/documents/446.md
   title: 组合列表
@@ -2543,7 +2372,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: non_data_operation
   scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
-  in_legacy_inventory: false
 - api_name: p_save
   doc_url: https://tushare.pro/wctapi/documents/445.md
   title: 组合保存
@@ -2560,7 +2388,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: non_data_operation
   scope_reason: The pinned category and description identify account-owned watchlist management, not a provider market-data ingest dataset.
-  in_legacy_inventory: false
 - api_name: pledge_detail
   doc_url: https://tushare.pro/wctapi/documents/111.md
   title: 股权质押明细数据
@@ -2577,7 +2404,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: pledge_stat
   doc_url: https://tushare.pro/wctapi/documents/110.md
   title: 股权质押统计数据
@@ -2594,7 +2420,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: pro_bar
   doc_url: https://tushare.pro/wctapi/documents/109.md
   title: 通用行情接口
@@ -2618,7 +2443,6 @@ capabilities:
   source_resolution: The pinned index has two pro_bar rows. The unified API document is the reviewed canonical catalog row; both official source rows remain preserved.
   scope_state: unknown
   scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
-  in_legacy_inventory: false
 - api_name: repo_daily
   doc_url: https://tushare.pro/wctapi/documents/256.md
   title: 债券回购日行情
@@ -2635,7 +2459,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: report_rc
   doc_url: https://tushare.pro/wctapi/documents/292.md
   title: 券商盈利预测数据
@@ -2652,7 +2475,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: repurchase
   doc_url: https://tushare.pro/wctapi/documents/124.md
   title: 股票回购
@@ -2669,7 +2491,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: research_report
   doc_url: https://tushare.pro/wctapi/documents/415.md
   title: 券商研究报告
@@ -2686,7 +2507,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_etf_k
   doc_url: https://tushare.pro/wctapi/documents/400.md
   title: ETF实时日线
@@ -2703,7 +2523,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_etf_min
   doc_url: https://tushare.pro/wctapi/documents/416.md
   title: ETF实时分钟
@@ -2720,7 +2539,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_etf_min_daily
   doc_url: https://tushare.pro/wctapi/documents/470.md
   title: ETF实时分钟-日累计
@@ -2737,7 +2555,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_etf_sz_iopv
   doc_url: https://tushare.pro/wctapi/documents/454.md
   title: ETF实时参考
@@ -2754,7 +2571,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_fut_min
   doc_url: https://tushare.pro/wctapi/documents/340.md
   title: 实时分钟行情
@@ -2771,7 +2587,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: rt_hk_k
   doc_url: https://tushare.pro/wctapi/documents/383.md
   title: 港股实时日线
@@ -2788,7 +2603,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: rt_idx_k
   doc_url: https://tushare.pro/wctapi/documents/403.md
   title: 指数实时日线
@@ -2805,7 +2619,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_idx_min
   doc_url: https://tushare.pro/wctapi/documents/420.md
   title: 指数实时分钟
@@ -2822,7 +2635,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_k
   doc_url: https://tushare.pro/wctapi/documents/372.md
   title: 实时日线
@@ -2839,7 +2651,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_min
   doc_url: https://tushare.pro/wctapi/documents/374.md
   title: 实时分钟
@@ -2856,7 +2667,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: rt_min_daily
   doc_url: https://tushare.pro/wctapi/documents/457.md
   title: A股实时分钟-日累计
@@ -2873,7 +2683,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: rt_sw_k
   doc_url: https://tushare.pro/wctapi/documents/417.md
   title: 申万实时行情
@@ -2890,7 +2699,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: sf_month
   doc_url: https://tushare.pro/wctapi/documents/310.md
   title: 社融增量(月度)
@@ -2907,7 +2715,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: sge_basic
   doc_url: https://tushare.pro/wctapi/documents/284.md
   title: 上海黄金基础信息
@@ -2924,7 +2731,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: sge_daily
   doc_url: https://tushare.pro/wctapi/documents/285.md
   title: 上海黄金现货日行情
@@ -2941,7 +2747,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: share_float
   doc_url: https://tushare.pro/wctapi/documents/160.md
   title: 限售股解禁
@@ -2958,7 +2763,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: shibor
   doc_url: https://tushare.pro/wctapi/documents/149.md
   title: Shibor利率
@@ -2975,7 +2779,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: shibor_lpr
   doc_url: https://tushare.pro/wctapi/documents/151.md
   title: LPR贷款基础利率
@@ -2992,7 +2795,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: shibor_quote
   doc_url: https://tushare.pro/wctapi/documents/150.md
   title: Shibor报价数据
@@ -3009,7 +2811,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: slb_len
   doc_url: https://tushare.pro/wctapi/documents/331.md
   title: 转融资交易汇总
@@ -3026,7 +2827,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: slb_len_mm
   doc_url: https://tushare.pro/wctapi/documents/334.md
   title: 做市借券交易汇总(停)
@@ -3043,7 +2843,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: retired
   scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
-  in_legacy_inventory: false
 - api_name: slb_sec
   doc_url: https://tushare.pro/wctapi/documents/332.md
   title: 转融券交易汇总(停)
@@ -3060,7 +2859,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: retired
   scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
-  in_legacy_inventory: false
 - api_name: slb_sec_detail
   doc_url: https://tushare.pro/wctapi/documents/333.md
   title: 转融券交易明细(停)
@@ -3077,7 +2875,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: retired
   scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
-  in_legacy_inventory: false
 - api_name: st
   doc_url: https://tushare.pro/wctapi/documents/423.md
   title: ST风险警示板股票
@@ -3094,7 +2891,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_account
   doc_url: https://tushare.pro/wctapi/documents/164.md
   title: 股票开户数据(停)
@@ -3111,7 +2907,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: retired
   scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
-  in_legacy_inventory: false
 - api_name: stk_account_old
   doc_url: https://tushare.pro/wctapi/documents/165.md
   title: 股票开户数据(旧)
@@ -3128,7 +2923,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: retired
   scope_reason: The pinned index title or description marks this capability stopped, old, or replaced. This classification does not authorize legacy data or consumer deletion.
-  in_legacy_inventory: false
 - api_name: stk_ah_comparison
   doc_url: https://tushare.pro/wctapi/documents/399.md
   title: AH股比价
@@ -3145,7 +2939,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: stk_alert
   doc_url: https://tushare.pro/wctapi/documents/453.md
   title: 交易所重点提示证券
@@ -3162,7 +2955,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_auction
   doc_url: https://tushare.pro/wctapi/documents/369.md
   title: 开盘竞价成交(当日)
@@ -3179,7 +2971,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_auction_c
   doc_url: https://tushare.pro/wctapi/documents/354.md
   title: 股票收盘集合竞价数据
@@ -3196,7 +2987,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_auction_o
   doc_url: https://tushare.pro/wctapi/documents/353.md
   title: 股票开盘集合竞价数据
@@ -3213,7 +3003,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_factor
   doc_url: https://tushare.pro/wctapi/documents/296.md
   title: 股票技术面因子
@@ -3230,7 +3019,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_factor_pro
   doc_url: https://tushare.pro/wctapi/documents/328.md
   title: 股票技术面因子(专业版)
@@ -3247,7 +3035,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_high_shock
   doc_url: https://tushare.pro/wctapi/documents/452.md
   title: 个股严重异常波动
@@ -3264,7 +3051,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_holdernumber
   doc_url: https://tushare.pro/wctapi/documents/166.md
   title: 股东人数
@@ -3281,7 +3067,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_holdertrade
   doc_url: https://tushare.pro/wctapi/documents/175.md
   title: 股东增减持
@@ -3298,7 +3083,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_limit
   doc_url: https://tushare.pro/wctapi/documents/183.md
   title: 每日涨跌停价格
@@ -3315,7 +3099,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_managers
   doc_url: https://tushare.pro/wctapi/documents/193.md
   title: 上市公司管理层
@@ -3332,7 +3115,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_mins
   doc_url: https://tushare.pro/wctapi/documents/370.md
   title: 历史分钟
@@ -3349,7 +3131,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_nineturn
   doc_url: https://tushare.pro/wctapi/documents/364.md
   title: 神奇九转指标
@@ -3366,7 +3147,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_premarket
   doc_url: https://tushare.pro/wctapi/documents/329.md
   title: 每日股本(盘前)
@@ -3383,7 +3163,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_rewards
   doc_url: https://tushare.pro/wctapi/documents/194.md
   title: 管理层薪酬和持股
@@ -3400,7 +3179,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_shock
   doc_url: https://tushare.pro/wctapi/documents/451.md
   title: 个股异常波动
@@ -3417,7 +3195,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_surv
   doc_url: https://tushare.pro/wctapi/documents/275.md
   title: 机构调研数据
@@ -3434,7 +3211,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stk_week_month_adj
   doc_url: https://tushare.pro/wctapi/documents/365.md
   title: 周月线复权行情(每日更新)
@@ -3451,7 +3227,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stk_weekly_monthly
   doc_url: https://tushare.pro/wctapi/documents/336.md
   title: 周月线行情(每日更新)
@@ -3468,7 +3243,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stock_basic
   doc_url: https://tushare.pro/wctapi/documents/25.md
   title: 股票列表
@@ -3485,7 +3259,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stock_company
   doc_url: https://tushare.pro/wctapi/documents/112.md
   title: 上市公司基本信息
@@ -3502,7 +3275,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: stock_hsgt
   doc_url: https://tushare.pro/wctapi/documents/398.md
   title: 沪深港通股票列表
@@ -3519,7 +3291,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: stock_st
   doc_url: https://tushare.pro/wctapi/documents/397.md
   title: ST股票列表
@@ -3536,7 +3307,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: suspend_d
   doc_url: https://tushare.pro/wctapi/documents/214.md
   title: 每日停复牌信息
@@ -3553,7 +3323,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: sw_daily
   doc_url: https://tushare.pro/wctapi/documents/327.md
   title: 申万日线行情
@@ -3570,7 +3339,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: sw_mins
   doc_url: https://tushare.pro/wctapi/documents/469.md
   title: SW历史分钟
@@ -3587,7 +3355,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: sz_daily_info
   doc_url: https://tushare.pro/wctapi/documents/268.md
   title: 深圳市场每日交易情况
@@ -3604,7 +3371,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: tdx_daily
   doc_url: https://tushare.pro/wctapi/documents/378.md
   title: TDX概念板块行情
@@ -3621,7 +3387,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: tdx_index
   doc_url: https://tushare.pro/wctapi/documents/376.md
   title: TDX概念板块分类
@@ -3638,7 +3403,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: tdx_member
   doc_url: https://tushare.pro/wctapi/documents/377.md
   title: TDX概念板块成分
@@ -3655,7 +3419,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: ths_daily
   doc_url: https://tushare.pro/wctapi/documents/260.md
   title: THS概念板块行情
@@ -3672,7 +3435,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: ths_hot
   doc_url: https://tushare.pro/wctapi/documents/320.md
   title: THS热榜
@@ -3689,7 +3451,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: unknown
   scope_reason: The pinned index alone does not establish a domestic-only data contract or unambiguous canonical capability; additional contract review is required.
-  in_legacy_inventory: true
 - api_name: ths_index
   doc_url: https://tushare.pro/wctapi/documents/259.md
   title: THS概念板块分类
@@ -3706,7 +3467,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: ths_member
   doc_url: https://tushare.pro/wctapi/documents/261.md
   title: THS概念板块成分
@@ -3723,7 +3483,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: top10_cb_holders
   doc_url: https://tushare.pro/wctapi/documents/459.md
   title: 可转债十大持有人
@@ -3740,7 +3499,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: top10_floatholders
   doc_url: https://tushare.pro/wctapi/documents/62.md
   title: 前十大流通股东
@@ -3757,7 +3515,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: top10_holders
   doc_url: https://tushare.pro/wctapi/documents/61.md
   title: 前十大股东
@@ -3774,7 +3531,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: top_inst
   doc_url: https://tushare.pro/wctapi/documents/107.md
   title: 龙虎榜机构交易单
@@ -3791,7 +3547,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: top_list
   doc_url: https://tushare.pro/wctapi/documents/106.md
   title: 龙虎榜每日统计单
@@ -3808,7 +3563,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: trade_cal
   doc_url: https://tushare.pro/wctapi/documents/26.md
   title: 交易日历
@@ -3825,7 +3579,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: us_adjfactor
   doc_url: https://tushare.pro/wctapi/documents/402.md
   title: 美股复权因子
@@ -3842,7 +3595,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_balancesheet
   doc_url: https://tushare.pro/wctapi/documents/395.md
   title: 美股资产负债表
@@ -3859,7 +3611,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_basic
   doc_url: https://tushare.pro/wctapi/documents/252.md
   title: 美股基础信息
@@ -3876,7 +3627,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: us_cashflow
   doc_url: https://tushare.pro/wctapi/documents/396.md
   title: 美股现金流量表
@@ -3893,7 +3643,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_daily
   doc_url: https://tushare.pro/wctapi/documents/254.md
   title: 美股日线行情
@@ -3910,7 +3659,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: us_daily_adj
   doc_url: https://tushare.pro/wctapi/documents/338.md
   title: 美股复权行情
@@ -3927,7 +3675,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_fina_indicator
   doc_url: https://tushare.pro/wctapi/documents/393.md
   title: 美股财务指标数据
@@ -3944,7 +3691,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_income
   doc_url: https://tushare.pro/wctapi/documents/394.md
   title: 美股利润表
@@ -3961,7 +3707,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_tbr
   doc_url: https://tushare.pro/wctapi/documents/221.md
   title: 短期国债利率
@@ -3978,7 +3723,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: us_tltr
   doc_url: https://tushare.pro/wctapi/documents/222.md
   title: 国债长期利率
@@ -3995,7 +3739,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: us_tradecal
   doc_url: https://tushare.pro/wctapi/documents/253.md
   title: 美股交易日历
@@ -4012,7 +3755,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_trltr
   doc_url: https://tushare.pro/wctapi/documents/223.md
   title: 国债长期利率平均值
@@ -4029,7 +3771,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_trycr
   doc_url: https://tushare.pro/wctapi/documents/220.md
   title: 国债实际收益率曲线利率
@@ -4046,7 +3787,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: false
 - api_name: us_tycr
   doc_url: https://tushare.pro/wctapi/documents/219.md
   title: 国债收益率曲线利率
@@ -4063,7 +3803,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: excluded
   scope_reason: The pinned index explicitly describes HK, US, global, overseas, southbound, cross-border depository, or AH-comparison data outside the domestic-first phase.
-  in_legacy_inventory: true
 - api_name: weekly
   doc_url: https://tushare.pro/wctapi/documents/144.md
   title: 周线行情
@@ -4080,7 +3819,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: true
 - api_name: wz_index
   doc_url: https://tushare.pro/wctapi/documents/173.md
   title: 温州民间借贷利率
@@ -4097,7 +3835,6 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false
 - api_name: yc_cb
   doc_url: https://tushare.pro/wctapi/documents/201.md
   title: 国债收益率曲线
@@ -4114,4 +3851,3 @@ capabilities:
   source_resolution: single_official_index_row
   scope_state: in_scope
   scope_reason: The pinned index describes provider read data within the reviewed China-domestic product scope. This is a contract-review candidate only; entitlement, activation, cadence, and field contracts remain unverified.
-  in_legacy_inventory: false

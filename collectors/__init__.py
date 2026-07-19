@@ -1,1 +1,1 @@
-"""SharedSignals data collectors — unified data ingestion framework."""
+"""TradingDatas provider transport adapters."""

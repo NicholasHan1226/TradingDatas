@@ -1,0 +1,266 @@
+version: 1
+bundle_id: tushare-reviewed-contracts.v1
+provider: tushare
+provenance:
+  repository_url: https://github.com/waditu-tushare/skills.git
+  pinned_commit: 5e12b31d09123e262c5fb38564e80c26d05cb830
+  index_path: tushare/references/数据接口.md
+  index_sha256: 0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2
+contracts:
+  - dataset_id: cn.market.trade_calendar
+    aliases: [tushare.trade_cal]
+    domain: market_data
+    market: CN
+    entity_type: trade_calendar
+    data_classification: objective_factual
+    provider: tushare
+    api_name: trade_cal
+    source_document_url: https://tushare.pro/wctapi/documents/26.md
+    source_document_sha256: bb615ca96bf9995d70c9ba90b0e3744e2d452553c116aa6ca94a9f487e77fb22
+    schema_version: 2.0.0
+    fields:
+      - name: exchange
+        declared_source_type: str
+        logical_type: text
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: cal_date
+        declared_source_type: str
+        logical_type: text
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: is_open
+        declared_source_type: str
+        logical_type: integer
+        nullable: false
+        selectable: true
+        filterable: true
+        sortable: true
+      - name: pretrade_date
+        declared_source_type: str
+        logical_type: text
+        nullable: true
+        selectable: true
+        filterable: true
+        sortable: true
+    primary_key: [exchange, cal_date]
+    default_projection: [exchange, cal_date, is_open, pretrade_date]
+    as_of_field: cal_date
+    as_of_format: yyyymmdd
+    range_field: cal_date
+    partition_field: cal_date
+    cadence_class: daily_reference
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 604800
+    point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: forbidden
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      exchange: SSE
+      start_date: ${window.start_date}
+      end_date: ${window.end_date}
+    request_variants:
+      - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys: [start_date, end_date]
+      formats:
+        start_date: yyyymmdd
+        end_date: yyyymmdd
+      range_start_key: start_date
+      range_end_key: end_date
+      max_span_days: 366
+    response_completeness:
+      strategy: one_row_per_calendar_date
+      date_field: cal_date
+      request_start_key: start_date
+      request_end_key: end_date
+      fixed_field_matches:
+        exchange: exchange
+      reject_at_row_limit: false
+    requested_fields: []
+    budgets:
+      max_rows_per_attempt: 1000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 4194304
+      max_nesting_depth: 16
+    reviewed_type_overrides:
+      - field: is_open
+        declared_source_type: str
+        observed_json_type: integer
+        logical_type: integer
+        reason: Bounded real Tushare transport returned JSON integers without coercion.
+        evidence: Isolated canary window 20260701 through 20260717 on 2026-07-17.
+  - dataset_id: cn.equity.security_master
+    aliases: [tushare.stock_basic]
+    domain: reference
+    market: CN
+    entity_type: security_master
+    data_classification: objective_factual
+    provider: tushare
+    api_name: stock_basic
+    source_document_url: https://tushare.pro/wctapi/documents/25.md
+    source_document_sha256: 4882535fae578462818619025ed61ad0634c5091cd75a63ebef0e84bc6285e96
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: symbol, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: area, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: industry, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: fullname, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: enname, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: cnspell, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: market, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: exchange, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: curr_type, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: list_status, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: list_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: delist_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: is_hs, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: act_name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: act_ent_type, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code]
+    default_projection: [ts_code, symbol, name, area, industry, cnspell, market, list_date, act_name, act_ent_type]
+    as_of_field: null
+    as_of_format: null
+    range_field: null
+    partition_field: null
+    cadence_class: daily_reference
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 604800
+    point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: forbidden
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      list_status: L
+    request_variants:
+      - list_status: L
+      - list_status: D
+      - list_status: P
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields:
+      - ts_code
+      - symbol
+      - name
+      - area
+      - industry
+      - fullname
+      - enname
+      - cnspell
+      - market
+      - exchange
+      - curr_type
+      - list_status
+      - list_date
+      - delist_date
+      - is_hs
+      - act_name
+      - act_ent_type
+    budgets:
+      max_rows_per_attempt: 6000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 16777216
+      max_nesting_depth: 16
+    reviewed_type_overrides: []
+  - dataset_id: cn.equity.daily
+    aliases: [tushare.daily]
+    domain: market_data
+    market: CN
+    entity_type: daily
+    data_classification: objective_factual
+    provider: tushare
+    api_name: daily
+    source_document_url: https://tushare.pro/wctapi/documents/27.md
+    source_document_sha256: e31ee01b411925e0400ba3cd5bed9c38f39d38dd2bede51261d4aa24e81c3879
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: open, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: high, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: low, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pre_close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: change, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pct_chg, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: vol, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ah_vol, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ah_amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code, trade_date]
+    default_projection: [ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: postclose_daily
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 259200
+    point_in_time: current_snapshot
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+      - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys: [trade_date]
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields:
+      - ts_code
+      - trade_date
+      - open
+      - high
+      - low
+      - close
+      - pre_close
+      - change
+      - pct_chg
+      - vol
+      - amount
+      - ah_vol
+      - ah_amount
+    budgets:
+      max_rows_per_attempt: 6000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 16777216
+      max_nesting_depth: 16
+    reviewed_type_overrides: []

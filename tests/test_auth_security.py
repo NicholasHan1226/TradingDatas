@@ -15,7 +15,8 @@ import pytest
 import auth
 
 ROOT = Path(__file__).resolve().parents[1]
-HS256_TEST_SECRET = "sharedsignals-hs256-test-secret-at-least-32-bytes"
+HS256_TEST_SECRET = "tradingdatas-hs256-test-secret-at-least-32-bytes"
+TOKEN_TEST_SALT = "tradingdatas-test-token-salt-32-bytes"
 RS256_TEST_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvLLh99yunJ6M04WFRJ5g
 sZooFzw9vRwTlHZzCEBzx3h+3C2FcaHiYxt+UKA72GqKOCTcI5Wg83eAct/8S7K/
@@ -57,16 +58,22 @@ def _jwt(
 
 def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     for key in (
-        "SHAREDSIGNALS_JWT_PUBLIC_KEY",
-        "SHAREDSIGNALS_JWT_ISSUER",
-        "SHAREDSIGNALS_JWT_ALGORITHM",
-        "SHAREDSIGNALS_JWT_LEEWAY_SECONDS",
-        "SHAREDSIGNALS_TOKEN_HASH_FILE",
-        "SHAREDSIGNALS_TOKEN_HASHES_JSON",
-        "SHAREDSIGNALS_TOKEN_SALT",
-        "SHAREDSIGNALS_LOCALHOST_BYPASS",
+        "TRADINGDATAS_JWT_PUBLIC_KEY",
+        "TRADINGDATAS_JWT_ISSUER",
+        "TRADINGDATAS_JWT_ALGORITHM",
+        "TRADINGDATAS_JWT_LEEWAY_SECONDS",
+        "TRADINGDATAS_TOKEN_HASH_FILE",
+        "TRADINGDATAS_TOKEN_HASHES_JSON",
+        "TRADINGDATAS_TOKEN_SALT",
+        "TRADINGDATAS_TOKEN_SALT_FILE",
+        "TRADINGDATAS_LOCALHOST_BYPASS",
     ):
         monkeypatch.delenv(key, raising=False)
+    if (
+        "TRADINGDATAS_TOKEN_SALT" not in env
+        and "TRADINGDATAS_TOKEN_SALT_FILE" not in env
+    ):
+        monkeypatch.setenv("TRADINGDATAS_TOKEN_SALT", TOKEN_TEST_SALT)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     return importlib.reload(auth)
@@ -75,7 +82,7 @@ def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
 def test_forged_jwt_is_rejected_when_jwt_key_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
     token = _jwt(
         {"alg": "none", "typ": "JWT"},
         {"sub": "attacker", "tier": "enterprise", "scopes": ["full"]},
@@ -90,16 +97,16 @@ def test_signed_jwt_without_scope_defaults_to_minimum_scope(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="HS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="HS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
         {
             "sub": "tenant-a",
-            "iss": "sharedsignals-tests",
+            "iss": "tradingdatas-tests",
             "exp": int(time.time()) + 300,
         },
         key=HS256_TEST_SECRET,
@@ -111,64 +118,18 @@ def test_signed_jwt_without_scope_defaults_to_minimum_scope(
 
     assert account["auth_method"] == "jwt"
     assert account["tenant_id"] == "tenant-a"
-    assert account["scopes"] == ["health"]
-    assert not auth_module.check_endpoint_scope(account, "/market_data")
-
-
-def test_pm_scope_covers_markets_and_prices() -> None:
-    account = {"scopes": ["pm"]}
-
-    assert auth.check_endpoint_scope(account, "/pm_markets")
-    assert auth.check_endpoint_scope(account, "/pm_prices")
-    assert not auth.check_endpoint_scope(account, "/market_data")
-
-
-def test_industry_reference_scope_is_exact_and_least_privilege() -> None:
-    expected = {
-        "/industry/snapshot",
-        "/industry/taxonomy",
-        "/industry/memberships",
-    }
-    account = {"scopes": ["industry_reference"]}
-
-    assert auth.SCOPE_ENDPOINTS["industry_reference"] == expected
-    for path in expected:
-        assert auth.check_endpoint_scope(account, path), path
-    for path in (
-        "/industry",
-        "/fundamentals",
-        "/events",
-        "/health",
-        "/cache/status",
-        "/cache/invalidate",
-    ):
-        assert not auth.check_endpoint_scope(account, path), path
-
-
-def test_industry_reference_routes_are_only_in_approved_composites() -> None:
-    paths = {
-        "/industry/snapshot",
-        "/industry/taxonomy",
-        "/industry/memberships",
-    }
-
-    for scope in ("fundamentals", "external_read", "read"):
-        account = {"scopes": [scope]}
-        for path in paths:
-            assert auth.check_endpoint_scope(account, path), (scope, path)
-    for scope in ("status", "health", "events"):
-        account = {"scopes": [scope]}
-        for path in paths:
-            assert not auth.check_endpoint_scope(account, path), (scope, path)
+    assert account["scopes"] == ["catalog"]
+    assert auth_module.check_endpoint_scope(account, "/v1/catalog")
+    assert not auth_module.check_endpoint_scope(account, "/v1/query")
 
 
 def test_signed_jwt_wrong_issuer_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="HS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="HS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
@@ -188,17 +149,17 @@ def test_signed_jwt_wrong_issuer_is_rejected(monkeypatch: pytest.MonkeyPatch) ->
 def test_signed_jwt_expired_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="HS256",
-        SHAREDSIGNALS_JWT_LEEWAY_SECONDS="0",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="HS256",
+        TRADINGDATAS_JWT_LEEWAY_SECONDS="0",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
         {
             "sub": "tenant-a",
-            "iss": "sharedsignals-tests",
+            "iss": "tradingdatas-tests",
             "exp": int(time.time()) - 1,
             "scopes": ["full"],
         },
@@ -216,10 +177,10 @@ def test_jwt_header_and_payload_must_be_json_objects(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="HS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="HS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
 
     with pytest.raises(auth_module.AuthError):
@@ -235,18 +196,18 @@ def test_jwt_requires_explicit_supported_server_algorithm(
     configured_algorithm: str | None,
 ) -> None:
     env = {
-        "SHAREDSIGNALS_JWT_PUBLIC_KEY": HS256_TEST_SECRET,
-        "SHAREDSIGNALS_JWT_ISSUER": "sharedsignals-tests",
-        "SHAREDSIGNALS_TOKEN_HASHES_JSON": "[]",
+        "TRADINGDATAS_JWT_PUBLIC_KEY": HS256_TEST_SECRET,
+        "TRADINGDATAS_JWT_ISSUER": "tradingdatas-tests",
+        "TRADINGDATAS_TOKEN_HASHES_JSON": "[]",
     }
     if configured_algorithm is not None:
-        env["SHAREDSIGNALS_JWT_ALGORITHM"] = configured_algorithm
+        env["TRADINGDATAS_JWT_ALGORITHM"] = configured_algorithm
     auth_module = _reload_auth(monkeypatch, **env)
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
         {
             "sub": "tenant-a",
-            "iss": "sharedsignals-tests",
+            "iss": "tradingdatas-tests",
             "exp": int(time.time()) + 300,
             "scopes": ["external_read"],
         },
@@ -265,16 +226,16 @@ def test_jwt_header_algorithm_must_match_server_policy(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="RS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="RS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
         {
             "sub": "tenant-a",
-            "iss": "sharedsignals-tests",
+            "iss": "tradingdatas-tests",
             "exp": int(time.time()) + 300,
             "scopes": ["external_read"],
         },
@@ -302,16 +263,16 @@ def test_hs256_rejects_weak_or_pem_shaped_server_key(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=secret,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="HS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=secret,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="HS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
     token = _jwt(
         {"alg": "HS256", "typ": "JWT"},
         {
             "sub": "tenant-a",
-            "iss": "sharedsignals-tests",
+            "iss": "tradingdatas-tests",
             "exp": int(time.time()) + 300,
         },
         key=secret,
@@ -327,12 +288,16 @@ def test_hs256_rejects_weak_or_pem_shaped_server_key(
 def test_rs256_accepts_only_the_configured_public_key_verifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    payload_segment = RS256_TEST_TOKEN.split(".")[1]
+    signed_issuer = json.loads(
+        base64.urlsafe_b64decode(payload_segment + "=" * (-len(payload_segment) % 4))
+    )["iss"]
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=RS256_TEST_PUBLIC_KEY,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="RS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=RS256_TEST_PUBLIC_KEY,
+        TRADINGDATAS_JWT_ISSUER=signed_issuer,
+        TRADINGDATAS_JWT_ALGORITHM="RS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
 
     account = auth_module.authenticate(
@@ -349,10 +314,10 @@ def test_rs256_rejects_non_public_key_material(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
-        SHAREDSIGNALS_JWT_ISSUER="sharedsignals-tests",
-        SHAREDSIGNALS_JWT_ALGORITHM="RS256",
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_JWT_PUBLIC_KEY=HS256_TEST_SECRET,
+        TRADINGDATAS_JWT_ISSUER="tradingdatas-tests",
+        TRADINGDATAS_JWT_ALGORITHM="RS256",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
     )
 
     with pytest.raises(auth_module.AuthError):
@@ -366,14 +331,14 @@ def test_token_account_max_concurrent_is_enforced(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     token = "tenant-token"
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    token_hash = _token_hash(token)
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     {
-                        "sha256": token_hash,
+                        "token_hash": token_hash,
                         "tenant_id": "tenant-concurrent",
                         "tier": "pro",
                         "scopes": ["read"],
@@ -399,7 +364,7 @@ def test_token_account_max_concurrent_is_enforced(
 def test_x_api_key_header_authenticates_token(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     _token_config(
@@ -413,15 +378,16 @@ def test_x_api_key_header_authenticates_token(monkeypatch: pytest.MonkeyPatch) -
     account = auth_module.authenticate({"X-API-Key": "x-api-key-token"}, "203.0.113.10")
 
     assert account["tenant_id"] == "tenant-x-api-key"
-    assert auth_module.check_endpoint_scope(account, "/agent_config")
+    assert auth_module.check_endpoint_scope(account, "/v1/catalog")
+    assert auth_module.check_endpoint_scope(account, "/v1/query")
 
 
-def test_external_read_scope_allows_full_data_surface_without_operator_control(
+def test_external_read_scope_allows_only_the_fixed_data_surface(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     _token_config(
@@ -435,41 +401,17 @@ def test_external_read_scope_allows_full_data_surface_without_operator_control(
     account = auth_module.authenticate(
         {"Authorization": "Bearer external-token"}, "203.0.113.10"
     )
-    allowed_paths = [
-        "/health",
-        "/capabilities",
-        "/agent_config",
-        "/source_status",
-        "/cache/status",
-        "/market_data",
-        "/realtime_5min",
-        "/is_trading_day",
-        "/fundamentals",
-        "/reference",
-        "/industry",
-        "/industry/snapshot",
-        "/industry/taxonomy",
-        "/industry/memberships",
-        "/macro",
-        "/capital_flow",
-        "/events",
-        "/sentiment",
-        "/crypto",
-        "/pm_markets",
-        "/pm_prices",
-        "/associations",
-        "/impacts",
-        "/tushare",
-    ]
+    allowed_paths = ["/v1/catalog", "/v1/query"]
 
     for path in allowed_paths:
         assert auth_module.check_endpoint_scope(account, path), path
-    assert not auth_module.check_endpoint_scope(account, "/cache/invalidate")
+    for retired in ("/health", "/tushare", "/source_status", "/opening_gate"):
+        assert not auth_module.check_endpoint_scope(account, retired)
 
 
 @pytest.mark.parametrize(
     "scope",
-    ["market_data", "events", "external_read", "read", "full", "*"],
+    ["external_read", "read", "internal", "full", "*"],
 )
 def test_v1_data_routes_use_only_the_frozen_endpoint_scopes(scope: str) -> None:
     account = {"scopes": [scope]}
@@ -479,7 +421,7 @@ def test_v1_data_routes_use_only_the_frozen_endpoint_scopes(scope: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "scope", ["health", "status", "tushare", "fundamentals", "macro"]
+    "scope", ["health", "status", "tushare", "fundamentals", "macro", "events"]
 )
 def test_legacy_narrow_scopes_cannot_enter_v1(scope: str) -> None:
     account = {"scopes": [scope]}
@@ -503,7 +445,7 @@ def test_ambiguous_or_duplicate_credential_headers_fail_closed(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     _token_config("first", "tenant-first", ["external_read"]),
@@ -536,7 +478,7 @@ def test_api_tokens_example_matches_loader_schema() -> None:
 
 
 def test_default_free_concurrency_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
     account = {"tenant_id": "tenant-free", "tier": "free", "scopes": ["read"]}
 
     auth_module.claim_concurrency(account)
@@ -550,7 +492,7 @@ def test_default_free_concurrency_limit(monkeypatch: pytest.MonkeyPatch) -> None
 def test_unlimited_concurrency_claim_does_not_release_same_tenant_finite_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
     finite = {"tenant_id": "tenant-mixed", "tier": "free", "max_concurrent": 1}
     unlimited = {
         "tenant_id": "tenant-mixed",
@@ -573,12 +515,17 @@ def test_unlimited_concurrency_claim_does_not_release_same_tenant_finite_claim(
 
 
 def _token_hash(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        token.encode("utf-8"),
+        TOKEN_TEST_SALT.encode("utf-8"),
+        100000,
+    ).hex()
 
 
 def _token_config(token: str, tenant_id: str, scopes: list[str]) -> dict[str, Any]:
     return {
-        "sha256": _token_hash(token),
+        "token_hash": _token_hash(token),
         "tenant_id": tenant_id,
         "tier": "free",
         "scopes": scopes,
@@ -588,7 +535,7 @@ def _token_config(token: str, tenant_id: str, scopes: list[str]) -> dict[str, An
 def test_rate_limit_exceeded(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {"tokens": [_token_config("rate-token", "tenant-rate", ["read"])]}
         ),
     )
@@ -606,7 +553,7 @@ def test_rate_limit_exceeded(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     _token_config("a-token", "tenant-a", ["read"]),
@@ -635,7 +582,7 @@ def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_account_tiers_define_internal_and_future_packages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
 
     assert auth_module.RATE_LIMITS["internal"] is None
     assert auth_module.CONCURRENCY_LIMITS["internal"] is None
@@ -653,47 +600,45 @@ def test_account_tiers_define_internal_and_future_packages(
     )
 
 
-def test_scope_isolation_limits_endpoint_access(
+def test_unknown_scope_is_denied_every_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
-            {"tokens": [_token_config("health-token", "tenant-health", ["health"])]}
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("old-token", "tenant-old", ["health"])]}
         ),
     )
 
     account = auth_module.authenticate(
-        {"Authorization": "Bearer health-token"}, "203.0.113.10"
+        {"Authorization": "Bearer old-token"}, "203.0.113.10"
     )
 
-    assert auth_module.check_endpoint_scope(account, "/health")
-    assert not auth_module.check_endpoint_scope(account, "/market_data")
-    assert not auth_module.check_endpoint_scope(account, "/tushare")
+    assert not auth_module.check_endpoint_scope(account, "/v1/catalog")
+    assert not auth_module.check_endpoint_scope(account, "/v1/query")
+    assert not auth_module.check_endpoint_scope(account, "/health")
 
 
 def test_localhost_bypass_is_disabled_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    auth_module = _reload_auth(monkeypatch, SHAREDSIGNALS_TOKEN_HASHES_JSON="[]")
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
 
     with pytest.raises(auth_module.AuthError):
         auth_module.authenticate({}, "127.0.0.1")
 
 
-def test_localhost_bypass_requires_explicit_env(
+def test_localhost_never_bypasses_explicit_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
-        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_LOCALHOST_BYPASS="1",
     )
 
-    account = auth_module.authenticate({}, "127.0.0.1")
-
-    assert account["auth_method"] == "localhost"
-    assert account["scopes"] == ["full"]
+    with pytest.raises(auth_module.AuthError):
+        auth_module.authenticate({}, "127.0.0.1")
 
 
 def test_localhost_request_with_token_does_not_use_bypass(
@@ -701,7 +646,7 @@ def test_localhost_request_with_token_does_not_use_bypass(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON=json.dumps(
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
             {
                 "tokens": [
                     _token_config(
@@ -710,7 +655,7 @@ def test_localhost_request_with_token_does_not_use_bypass(
                 ]
             }
         ),
-        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+        TRADINGDATAS_LOCALHOST_BYPASS="1",
     )
 
     account = auth_module.authenticate(
@@ -719,8 +664,9 @@ def test_localhost_request_with_token_does_not_use_bypass(
 
     assert account["auth_method"] == "token_hash"
     assert account["tenant_id"] == "tenant-local-token"
-    assert auth_module.check_endpoint_scope(account, "/tushare")
-    assert not auth_module.check_endpoint_scope(account, "/cache/invalidate")
+    assert auth_module.check_endpoint_scope(account, "/v1/catalog")
+    assert auth_module.check_endpoint_scope(account, "/v1/query")
+    assert not auth_module.check_endpoint_scope(account, "/tushare")
 
 
 def test_forwarded_localhost_request_requires_real_auth(
@@ -728,8 +674,8 @@ def test_forwarded_localhost_request_requires_real_auth(
 ) -> None:
     auth_module = _reload_auth(
         monkeypatch,
-        SHAREDSIGNALS_TOKEN_HASHES_JSON="[]",
-        SHAREDSIGNALS_LOCALHOST_BYPASS="1",
+        TRADINGDATAS_TOKEN_HASHES_JSON="[]",
+        TRADINGDATAS_LOCALHOST_BYPASS="1",
     )
 
     with pytest.raises(auth_module.AuthError):
@@ -737,3 +683,211 @@ def test_forwarded_localhost_request_requires_real_auth(
 
     with pytest.raises(auth_module.AuthError):
         auth_module.authenticate({"CF-Connecting-IP": "203.0.113.20"}, "127.0.0.1")
+
+
+def test_unsalted_plain_sha_token_config_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "unsalted-token"
+    auth_module = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT="",
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
+            {
+                "tokens": [
+                    {
+                        "token_hash": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                        "tenant_id": "tenant-unsalted",
+                        "tier": "internal",
+                        "scopes": ["read"],
+                    }
+                ]
+            }
+        ),
+    )
+
+    with pytest.raises(auth_module.AuthError, match="salt"):
+        auth_module.authenticate(
+            {"Authorization": f"Bearer {token}"},
+            "127.0.0.1",
+        )
+
+
+def test_token_hash_file_requires_private_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "file-token"
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text(
+        json.dumps(
+            {
+                "tokens": [
+                    {
+                        "token_hash": _token_hash(token),
+                        "tenant_id": "tenant-file",
+                        "tier": "internal",
+                        "scopes": ["read"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    token_file.chmod(0o644)
+    auth_module = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+
+    with pytest.raises(auth_module.AuthError, match="mode"):
+        auth_module.authenticate(
+            {"Authorization": f"Bearer {token}"},
+            "127.0.0.1",
+        )
+
+
+def test_token_salt_file_requires_private_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    salt_file = tmp_path / "token_salt"
+    salt_file.write_text(TOKEN_TEST_SALT, encoding="utf-8")
+    salt_file.chmod(0o644)
+    token = "salt-file-token"
+    auth_module = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT_FILE=str(salt_file),
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
+            {
+                "tokens": [
+                    {
+                        "token_hash": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                        "tenant_id": "tenant-salt-file",
+                        "tier": "internal",
+                        "scopes": ["read"],
+                    }
+                ]
+            }
+        ),
+    )
+
+    with pytest.raises(auth_module.AuthError, match="mode"):
+        auth_module.authenticate(
+            {"Authorization": f"Bearer {token}"},
+            "127.0.0.1",
+        )
+
+
+def test_private_token_and_salt_files_authenticate_explicit_loopback_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    salt_file = tmp_path / "token_salt"
+    salt_file.write_text(TOKEN_TEST_SALT, encoding="utf-8")
+    salt_file.chmod(0o600)
+    token = "private-file-token"
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text(
+        json.dumps(
+            {
+                "tokens": [
+                    {
+                        "token_hash": _token_hash(token),
+                        "tenant_id": "tenant-private-file",
+                        "tier": "internal",
+                        "scopes": ["read"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    token_file.chmod(0o600)
+    auth_module = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+        TRADINGDATAS_TOKEN_SALT_FILE=str(salt_file),
+    )
+
+    account = auth_module.authenticate(
+        {"Authorization": f"Bearer {token}"},
+        "127.0.0.1",
+    )
+
+    assert account["tenant_id"] == "tenant-private-file"
+    assert account["auth_method"] == "token_hash"
+    assert auth_module.check_endpoint_scope(account, "/v1/catalog")
+    assert auth_module.check_endpoint_scope(account, "/v1/query")
+
+
+@pytest.mark.parametrize("label", ["token hash", "token salt"])
+def test_private_auth_file_rejects_replacement_between_name_check_and_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+) -> None:
+    target = tmp_path / label.replace(" ", "_")
+    target.write_bytes(b"trusted-auth-material")
+    target.chmod(0o600)
+    replacement = tmp_path / f".{target.name}.replacement"
+    replacement.write_bytes(b"attacker-auth-material")
+    replacement.chmod(0o600)
+    real_open = auth.os.open
+    swapped = False
+
+    def racing_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if (
+            not swapped
+            and Path(path).name == target.name
+            and not flags & getattr(auth.os, "O_DIRECTORY", 0)
+        ):
+            replacement.replace(target)
+            swapped = True
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(auth.os, "open", racing_open)
+
+    with pytest.raises(auth.AuthError, match="binding changed"):
+        auth._private_file_bytes(str(target), label=label, max_bytes=4096)
+
+    assert swapped
+
+
+def test_private_auth_file_closes_all_descriptors_on_base_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "token_salt"
+    target.write_bytes(b"trusted-auth-material")
+    target.chmod(0o600)
+    real_open = auth.os.open
+    real_close = auth.os.close
+    opened: set[int] = set()
+    closed: set[int] = set()
+
+    class FatalRead(BaseException):
+        pass
+
+    def tracking_open(path, flags, *args, **kwargs):
+        descriptor = real_open(path, flags, *args, **kwargs)
+        opened.add(descriptor)
+        return descriptor
+
+    def tracking_close(descriptor: int) -> None:
+        closed.add(descriptor)
+        real_close(descriptor)
+
+    def fatal_read(descriptor: int, size: int) -> bytes:
+        raise FatalRead
+
+    monkeypatch.setattr(auth.os, "open", tracking_open)
+    monkeypatch.setattr(auth.os, "close", tracking_close)
+    monkeypatch.setattr(auth.os, "read", fatal_read)
+
+    with pytest.raises(FatalRead):
+        auth._private_file_bytes(str(target), label="token salt", max_bytes=4096)
+
+    assert opened
+    assert opened <= closed

@@ -320,7 +320,9 @@ def _parse_fields(value: object, defaults: QueryDefaults) -> tuple[str, ...]:
         raise QueryBudgetError(
             f"fields exceeds max_selected_fields={defaults.max_selected_fields}"
         )
-    fields = tuple(_field_name(field, f"fields[{index}]") for index, field in enumerate(value))
+    fields = tuple(
+        _field_name(field, f"fields[{index}]") for index, field in enumerate(value)
+    )
     if len(set(fields)) != len(fields):
         raise QueryValidationError("fields must not contain duplicates")
     return fields
@@ -339,9 +341,7 @@ def _normalize_filter_value(
     if not is_operator_mapping:
         return MappingProxyType({"eq": _json_scalar(value, f"filters.{field}")})
     if len(value) != 1:
-        raise QueryValidationError(
-            f"filters.{field} must contain exactly one operator"
-        )
+        raise QueryValidationError(f"filters.{field} must contain exactly one operator")
     operator, operand = next(iter(value.items()))
     if type(operator) is not str or operator not in _FILTER_OPERATORS:
         raise QueryValidationError(f"filters.{field} uses an unsupported operator")
@@ -352,9 +352,7 @@ def _normalize_filter_value(
         )
     else:
         valid_sequence = (
-            type(operand) in {list, tuple}
-            if allow_immutable
-            else type(operand) is list
+            type(operand) in {list, tuple} if allow_immutable else type(operand) is list
         )
         if not valid_sequence:
             raise QueryValidationError(f"filters.{field}.{operator} must be a list")
@@ -368,8 +366,7 @@ def _normalize_filter_value(
                 raise QueryValidationError(f"filters.{field}.in must not be empty")
             if len(operand) > defaults.max_in_values:
                 raise QueryBudgetError(
-                    f"filters.{field}.in exceeds max_in_values="
-                    f"{defaults.max_in_values}"
+                    f"filters.{field}.in exceeds max_in_values={defaults.max_in_values}"
                 )
         values = tuple(
             _json_scalar(item, f"filters.{field}.{operator}[{index}]")
@@ -398,7 +395,9 @@ def _parse_filters(
     *,
     allow_immutable: bool = False,
 ) -> Mapping[str, object]:
-    valid_mapping = isinstance(value, Mapping) if allow_immutable else type(value) is dict
+    valid_mapping = (
+        isinstance(value, Mapping) if allow_immutable else type(value) is dict
+    )
     if not valid_mapping:
         raise QueryValidationError("filters must be an object")
     if len(value) > defaults.max_filter_terms:
@@ -462,7 +461,9 @@ def parse_query_request(payload: object) -> QueryRequest:
             ).encode("utf-8")
         )
     except (TypeError, ValueError) as exc:
-        raise QueryValidationError("query request must contain only JSON values") from exc
+        raise QueryValidationError(
+            "query request must contain only JSON values"
+        ) from exc
     if request_size > defaults.max_request_bytes:
         raise QueryBudgetError(
             f"query request exceeds max_request_bytes={defaults.max_request_bytes}"
@@ -472,10 +473,14 @@ def parse_query_request(payload: object) -> QueryRequest:
         raise QueryValidationError("query request keys must be strings")
     unknown = sorted(set(payload) - _REQUEST_KEYS)
     if unknown:
-        raise QueryValidationError(f"unknown query request key(s): {', '.join(unknown)}")
+        raise QueryValidationError(
+            f"unknown query request key(s): {', '.join(unknown)}"
+        )
     missing = sorted(_REQUEST_REQUIRED_KEYS - set(payload))
     if missing:
-        raise QueryValidationError(f"missing query request key(s): {', '.join(missing)}")
+        raise QueryValidationError(
+            f"missing query request key(s): {', '.join(missing)}"
+        )
 
     dataset_id = _canonical_non_empty_string(payload["dataset_id"], "dataset_id")
     if _DATASET_ID_RE.fullmatch(dataset_id) is None:
@@ -496,9 +501,7 @@ def parse_query_request(payload: object) -> QueryRequest:
         "limit",
     )
     if limit > defaults.max_page_size:
-        raise QueryBudgetError(
-            f"limit exceeds max_page_size={defaults.max_page_size}"
-        )
+        raise QueryBudgetError(f"limit exceeds max_page_size={defaults.max_page_size}")
 
     raw_cursor = payload.get("cursor")
     cursor = (
@@ -556,7 +559,9 @@ def normalized_query_hash(
         "fields": request.fields if effective_fields is None else effective_fields,
         "filters": request.filters,
         "order": request.order if effective_order is None else effective_order,
-        "requested_as_of": request.as_of if requested_as_of is None else requested_as_of,
+        "requested_as_of": request.as_of
+        if requested_as_of is None
+        else requested_as_of,
         "resolved_as_of": resolved_as_of,
         "limit": request.limit,
         "execution_options": {

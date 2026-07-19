@@ -11,7 +11,7 @@ import struct
 import sys
 import uuid
 from collections.abc import Mapping
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,15 +25,22 @@ from storage.ingest_receipts import (
     UNMAPPED_TUSHARE_ADAPTER_VERSION,
     IngestContext,
     IngestCounts,
+    ProviderRequestIdentity,
     make_unmapped_tushare_dataset_id,
     make_receipt_id,
+    parse_provider_call_attempt_id,
 )
-from storage.read_model_store import (
-    ReadModelLockError,
-    read_model_snapshot_lock,
-    read_model_snapshot_open_lock,
+from storage.schema_contract import (
+    PROVIDER_DATASET_ROWS_COLUMNS,
+    PROVIDER_DATASET_ROWS_INDEX_COLUMNS,
+    PROVIDER_DATASET_ROWS_TABLE,
+    TYPE_MAP,
+    get_table,
 )
-from storage.schema_contract import TYPE_MAP, get_table
+from storage.sqlite_authority_lock import (
+    SqliteAuthorityLockError,
+    sqlite_authority_lock,
+)
 
 
 RuntimeState = Literal[
@@ -59,6 +66,7 @@ _RECEIPT_PAYLOAD_KEYS = frozenset(
         "provider",
         "provider_api",
         "receipt_id",
+        "request_identity",
         "request_window",
         "schema_version",
         "started_at",
@@ -77,6 +85,7 @@ _RECEIPT_PAYLOAD_MARKERS = frozenset(
         "payload_fingerprint",
         "provider_api",
         "receipt_id",
+        "request_identity",
         "request_window",
         "schema_version",
         "target_table",
@@ -135,6 +144,24 @@ _EXPECTED_INGEST_RUN_TABLE_INFO = tuple(
         0,
     )
     for index, column in enumerate(_INGEST_RUN_CONTRACT.columns)
+)
+_EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO = tuple(
+    (
+        index,
+        name,
+        sqlite_type,
+        int(not nullable),
+        default,
+        primary_key_position,
+        0,
+    )
+    for index, (
+        name,
+        sqlite_type,
+        nullable,
+        default,
+        primary_key_position,
+    ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
 _FileIdentity = tuple[int, int, int]
@@ -230,6 +257,11 @@ class _Receipt:
     started_sort: datetime
     finished_sort: datetime
     attempt_context: str
+    execution_id: str
+    physical_call_index: int | None
+    retry_index: int | None
+    request_identity_context: str
+    execution_context: str
 
 
 @dataclass(frozen=True)
@@ -395,6 +427,34 @@ def _validate_errors(payload: Mapping[str, object], status: str) -> tuple[str, .
     return errors
 
 
+def _validate_request_identity(
+    payload: Mapping[str, object],
+) -> ProviderRequestIdentity:
+    raw_identity = payload.get("request_identity")
+    expected_keys = {
+        "fanout_parameter",
+        "fanout_values",
+        "page_index",
+        "page_offset",
+        "request_variant",
+    }
+    if type(raw_identity) is not dict or set(raw_identity) != expected_keys:
+        raise ValueError("receipt_request_identity_invalid")
+    try:
+        identity = ProviderRequestIdentity(
+            request_variant=raw_identity["request_variant"],
+            fanout_parameter=raw_identity["fanout_parameter"],
+            fanout_values=raw_identity["fanout_values"],
+            page_offset=raw_identity["page_offset"],
+            page_index=raw_identity["page_index"],
+        )
+    except (TypeError, ValueError):
+        raise ValueError("receipt_request_identity_invalid") from None
+    if _canonical_json(identity.canonical_payload()) != _canonical_json(raw_identity):
+        raise ValueError("receipt_request_identity_invalid")
+    return identity
+
+
 def _related_to_dataset(
     payload: Mapping[str, object],
     envelope_source: object,
@@ -543,6 +603,7 @@ def _is_valid_unmapped_tushare_attempt(
     try:
         counts = _validate_counts(payload, "failed")
         errors = _validate_errors(payload, "failed")
+        request_identity = _validate_request_identity(payload)
         request_window = payload.get("request_window")
         if type(request_window) is not dict or set(request_window) != {
             "end_date",
@@ -602,6 +663,7 @@ def _is_valid_unmapped_tushare_attempt(
             adapter_version=UNMAPPED_TUSHARE_ADAPTER_VERSION,
             started_at=started_at,
             data_through=payload.get("data_through"),
+            request_identity=request_identity,
         )
         expected_receipt_id = make_receipt_id(context, None, 0)
         started_sort = _parse_aware_datetime(started_at)
@@ -737,8 +799,10 @@ def _validate_receipt_row(
         return _InvalidReceipt("adapter_version_mismatch", receipt_id, observed_at)
 
     target_table = payload.get("target_table")
+    if binding.target_tables != (PROVIDER_DATASET_ROWS_TABLE,):
+        return _InvalidReceipt("target_table_mismatch", receipt_id, observed_at)
     if status == "success":
-        if type(target_table) is not str or target_table not in binding.target_tables:
+        if target_table != PROVIDER_DATASET_ROWS_TABLE:
             return _InvalidReceipt("target_table_mismatch", receipt_id, observed_at)
     elif target_table is not None:
         return _InvalidReceipt("target_table_mismatch", receipt_id, observed_at)
@@ -765,6 +829,11 @@ def _validate_receipt_row(
         return _InvalidReceipt("invalid_data_through", receipt_id, observed_at)
 
     try:
+        request_identity = _validate_request_identity(payload)
+    except ValueError as exc:
+        return _InvalidReceipt(str(exc), receipt_id, observed_at)
+
+    try:
         context = IngestContext(
             attempt_id=payload.get("attempt_id"),
             dataset_id=payload.get("dataset_id"),
@@ -775,6 +844,7 @@ def _validate_receipt_row(
             adapter_version=payload.get("adapter_version"),
             started_at=payload.get("started_at"),
             data_through=data_through,
+            request_identity=request_identity,
         )
         expected_receipt_id = make_receipt_id(
             context,
@@ -799,6 +869,24 @@ def _validate_receipt_row(
     assert type(run_id) is str
     assert type(started_at) is str
     assert type(finished_at) is str
+    try:
+        physical_attempt = parse_provider_call_attempt_id(attempt_id)
+    except (TypeError, ValueError):
+        return _InvalidReceipt("receipt_identity_mismatch", receipt_id, observed_at)
+    request_identity_context = _canonical_json(
+        context.request_identity.canonical_payload()
+    )
+    execution_context = _canonical_json(
+        {
+            "adapter_version": context.adapter_version,
+            "config_hash": context.config_hash,
+            "dataset_id": context.dataset_id,
+            "provider": context.provider,
+            "provider_api": context.provider_api,
+            "request_window": dict(context.request_window),
+            "started_at": context.started_at,
+        }
+    )
     return _Receipt(
         receipt_id=run_id,
         attempt_id=attempt_id,
@@ -819,10 +907,22 @@ def _validate_receipt_row(
                 "dataset_id": context.dataset_id,
                 "provider": context.provider,
                 "provider_api": context.provider_api,
+                "request_identity": context.request_identity.canonical_payload(),
                 "request_window": dict(context.request_window),
                 "started_at": context.started_at,
             }
         ),
+        execution_id=(
+            attempt_id if physical_attempt is None else physical_attempt.root_attempt_id
+        ),
+        physical_call_index=(
+            None if physical_attempt is None else physical_attempt.call_index
+        ),
+        retry_index=(
+            None if physical_attempt is None else physical_attempt.retry_index
+        ),
+        request_identity_context=request_identity_context,
+        execution_context=execution_context,
     )
 
 
@@ -841,33 +941,27 @@ def _invalid_receipt_sort_key(
     )
 
 
-def _attempt_sort_key(receipt: _Receipt) -> tuple[datetime, str]:
-    return (receipt.started_sort, receipt.attempt_id)
+def _execution_sort_key(receipt: _Receipt) -> tuple[datetime, str]:
+    return (receipt.started_sort, receipt.execution_id)
 
 
 def _success_sort_key(
     receipt: _Receipt,
-) -> tuple[datetime, str, int, datetime, str]:
+) -> tuple[datetime, str, int, int, int, datetime, str]:
     return (
         receipt.started_sort,
-        receipt.attempt_id,
+        receipt.execution_id,
+        -1 if receipt.physical_call_index is None else receipt.physical_call_index,
+        -1 if receipt.retry_index is None else receipt.retry_index,
         receipt.transaction_index,
         receipt.finished_sort,
         receipt.receipt_id,
     )
 
 
-def _latest_attempt_receipt(receipts: list[_Receipt]) -> _Receipt:
-    """Choose one attempt terminal before considering its chunk sequence."""
-
-    latest_attempt = max(receipts, key=_attempt_sort_key)
-    attempt_receipts = [
-        receipt
-        for receipt in receipts
-        if receipt.attempt_id == latest_attempt.attempt_id
-    ]
+def _terminal_receipt_for_attempt(receipts: list[_Receipt]) -> _Receipt:
     terminal_receipts = [
-        receipt for receipt in attempt_receipts if receipt.status in {"empty", "failed"}
+        receipt for receipt in receipts if receipt.status in {"empty", "failed"}
     ]
     if terminal_receipts:
         return max(
@@ -879,13 +973,68 @@ def _latest_attempt_receipt(receipts: list[_Receipt]) -> _Receipt:
             ),
         )
     return max(
-        attempt_receipts,
+        receipts,
         key=lambda receipt: (
             receipt.transaction_index,
             receipt.finished_sort,
             receipt.receipt_id,
         ),
     )
+
+
+def _physical_receipt_sort_key(
+    receipt: _Receipt,
+) -> tuple[int, int, int, datetime, str]:
+    assert receipt.physical_call_index is not None
+    assert receipt.retry_index is not None
+    return (
+        receipt.physical_call_index,
+        receipt.retry_index,
+        receipt.transaction_index,
+        receipt.finished_sort,
+        receipt.receipt_id,
+    )
+
+
+def _provider_execution_terminal(receipts: list[_Receipt]) -> _Receipt:
+    logical_requests: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        logical_requests.setdefault(receipt.request_identity_context, []).append(
+            receipt
+        )
+
+    request_terminals: list[_Receipt] = []
+    for request_receipts in logical_requests.values():
+        attempts: dict[str, list[_Receipt]] = {}
+        for receipt in request_receipts:
+            attempts.setdefault(receipt.attempt_id, []).append(receipt)
+        latest_attempt = max(
+            attempts.values(),
+            key=lambda values: _physical_receipt_sort_key(values[0]),
+        )
+        request_terminals.append(_terminal_receipt_for_attempt(latest_attempt))
+
+    for status in ("failed", "success", "empty"):
+        matching = [
+            receipt for receipt in request_terminals if receipt.status == status
+        ]
+        if matching:
+            return max(matching, key=_physical_receipt_sort_key)
+    raise ValueError("provider execution has no terminal receipt")
+
+
+def _latest_attempt_receipt(receipts: list[_Receipt]) -> _Receipt:
+    """Choose one logical execution terminal before considering older runs."""
+
+    latest_execution = max(receipts, key=_execution_sort_key)
+    execution_receipts = [
+        receipt
+        for receipt in receipts
+        if receipt.execution_id == latest_execution.execution_id
+    ]
+    if latest_execution.physical_call_index is not None:
+        return _provider_execution_terminal(execution_receipts)
+    return _terminal_receipt_for_attempt(execution_receipts)
 
 
 def _attempt_context_failures(
@@ -915,6 +1064,101 @@ def _attempt_context_failures(
                 representative.finished_at,
             )
         )
+    return tuple(failures)
+
+
+def _execution_context_failures(
+    receipts: list[_Receipt],
+) -> tuple[_InvalidReceipt, ...]:
+    executions: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        executions.setdefault(receipt.execution_id, []).append(receipt)
+
+    failures: list[_InvalidReceipt] = []
+    for execution_receipts in executions.values():
+        representative = max(
+            execution_receipts,
+            key=lambda receipt: (
+                receipt.finished_sort,
+                receipt.receipt_id,
+            ),
+        )
+        physical_states = {
+            receipt.physical_call_index is not None for receipt in execution_receipts
+        }
+        contexts = {receipt.execution_context for receipt in execution_receipts}
+        if len(physical_states) != 1:
+            failures.append(
+                _InvalidReceipt(
+                    "receipt_execution_inconsistent",
+                    representative.receipt_id,
+                    representative.finished_at,
+                )
+            )
+            continue
+        if physical_states == {False}:
+            continue
+        if len(contexts) != 1:
+            failures.append(
+                _InvalidReceipt(
+                    "receipt_execution_inconsistent",
+                    representative.receipt_id,
+                    representative.finished_at,
+                )
+            )
+            continue
+
+        attempts: dict[str, list[_Receipt]] = {}
+        for receipt in execution_receipts:
+            attempts.setdefault(receipt.attempt_id, []).append(receipt)
+        attempt_representatives = [values[0] for values in attempts.values()]
+        call_indexes = sorted(
+            receipt.physical_call_index for receipt in attempt_representatives
+        )
+        if (
+            any(call_index is None for call_index in call_indexes)
+            or len(set(call_indexes)) != len(call_indexes)
+            or call_indexes != list(range(len(call_indexes)))
+        ):
+            failures.append(
+                _InvalidReceipt(
+                    "receipt_execution_inconsistent",
+                    representative.receipt_id,
+                    representative.finished_at,
+                )
+            )
+            continue
+
+        logical_requests: dict[str, list[_Receipt]] = {}
+        for receipt in attempt_representatives:
+            logical_requests.setdefault(
+                receipt.request_identity_context,
+                [],
+            ).append(receipt)
+        inconsistent_retry_group = False
+        for request_receipts in logical_requests.values():
+            ordered = sorted(request_receipts, key=_physical_receipt_sort_key)
+            first_call_index = ordered[0].physical_call_index
+            assert first_call_index is not None
+            actual = [
+                (receipt.physical_call_index, receipt.retry_index)
+                for receipt in ordered
+            ]
+            expected = [
+                (first_call_index + retry_index, retry_index)
+                for retry_index in range(len(ordered))
+            ]
+            if actual != expected:
+                inconsistent_retry_group = True
+                break
+        if inconsistent_retry_group:
+            failures.append(
+                _InvalidReceipt(
+                    "receipt_execution_inconsistent",
+                    representative.receipt_id,
+                    representative.finished_at,
+                )
+            )
     return tuple(failures)
 
 
@@ -1011,6 +1255,7 @@ def _project_dataset_runtime(
     receipts = current_receipts
 
     invalid.extend(_attempt_context_failures(receipts))
+    invalid.extend(_execution_context_failures(receipts))
 
     successful = [receipt for receipt in receipts if receipt.status == "success"]
     last_success = max(successful, key=_success_sort_key, default=None)
@@ -1216,6 +1461,7 @@ def _trusted_receipts_for_evidence(
                 continue
         current_receipts.append(receipt)
     invalid.extend(_attempt_context_failures(current_receipts))
+    invalid.extend(_execution_context_failures(current_receipts))
     return current_receipts, invalid
 
 
@@ -1232,9 +1478,7 @@ def validated_receipt_history(
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
     _canonical_now(now)
-    known_dataset_ids = frozenset(
-        dataset.dataset_id for dataset in registry.datasets
-    )
+    known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
     rows = _scan_ingest_run_rows(conn)
     entries: list[ValidatedReceiptHistoryEntry] = []
     invalid: list[_InvalidReceipt] = []
@@ -1270,6 +1514,45 @@ def validated_receipt_history(
                 entry.receipt_id,
             ),
         )
+    )
+
+
+def validated_success_receipt_ids(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    provider_binding: ProviderBinding,
+    *,
+    now: datetime,
+) -> frozenset[str]:
+    """Return success IDs only after the full projection receipt validator.
+
+    Generic fanout uses this narrow surface rather than reimplementing a weaker
+    receipt parser. Any malformed receipt related to the source dataset makes
+    the complete source authority unavailable.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    if provider_binding not in dataset.provider_bindings:
+        raise ValueError("provider_binding must belong to dataset")
+    _canonical_now(now)
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
+    receipts, invalid = _trusted_receipts_for_evidence(
+        dataset,
+        now=now,
+        known_dataset_ids=known_dataset_ids,
+        rows=_scan_ingest_run_rows(conn),
+        expected_binding=provider_binding,
+    )
+    if invalid:
+        raise RuntimeProjectionError("receipt authority contains invalid evidence")
+    return frozenset(
+        receipt.receipt_id for receipt in receipts if receipt.status == "success"
     )
 
 
@@ -1324,7 +1607,7 @@ def project_dataset_runtime_evidence(
                 {
                     receipt.provider
                     for receipt in receipts
-                    if receipt.attempt_id == latest.attempt_id
+                    if receipt.execution_id == latest.execution_id
                 }
             )
         )
@@ -1336,7 +1619,7 @@ def project_dataset_runtime_evidence(
                 {
                     receipt.provider
                     for receipt in successful
-                    if receipt.attempt_id == last_success.attempt_id
+                    if receipt.execution_id == last_success.execution_id
                 }
             )
         )
@@ -1464,7 +1747,7 @@ def project_registry_runtime(
                 paused_api_names.append(interface_name)
 
     return {
-        "report_version": "sharedsignals.interface_runtime.v2",
+        "report_version": "tradingdatas.interface_runtime.v1",
         "authority": "sqlite_ingest_receipts",
         "status": overall_status,
         "generated_at": generated_at,
@@ -1741,6 +2024,38 @@ def _open_bound_receipt_database_ro(
             if len(primary_indexes) == 1
             else ()
         )
+        provider_table_info = tuple(
+            tuple(row)
+            for row in conn.execute(
+                "PRAGMA main.table_xinfo('provider_dataset_rows')"
+            ).fetchall()
+        )
+        provider_table_entries = tuple(
+            tuple(row)
+            for row in conn.execute(
+                "PRAGMA main.table_list('provider_dataset_rows')"
+            ).fetchall()
+        )
+        provider_indexes = {
+            str(row[1]): tuple(
+                str(column[0])
+                for column in conn.execute(
+                    "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
+                    (str(row[1]),),
+                ).fetchall()
+            )
+            for row in conn.execute(
+                "PRAGMA main.index_list('provider_dataset_rows')"
+            ).fetchall()
+            if str(row[3]) == "c"
+        }
+        authority_tables = {
+            str(row[1])
+            for row in conn.execute("PRAGMA main.table_list").fetchall()
+            if str(row[0]) == "main"
+            and str(row[2]) == "table"
+            and not str(row[1]).startswith("sqlite_")
+        }
         if (
             table_info != _EXPECTED_INGEST_RUN_TABLE_INFO
             or primary_columns != _INGEST_RUN_CONTRACT.primary_key
@@ -1751,6 +2066,16 @@ def _open_bound_receipt_database_ro(
             or int(table_entries[0][3]) != len(_INGEST_RUN_CONTRACT.columns)
             or int(table_entries[0][4]) != 0
             or int(table_entries[0][5]) != 0
+            or provider_table_info != _EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO
+            or len(provider_table_entries) != 1
+            or str(provider_table_entries[0][0]) != "main"
+            or str(provider_table_entries[0][1]) != PROVIDER_DATASET_ROWS_TABLE
+            or str(provider_table_entries[0][2]) != "table"
+            or int(provider_table_entries[0][3]) != len(PROVIDER_DATASET_ROWS_COLUMNS)
+            or int(provider_table_entries[0][4]) != 0
+            or int(provider_table_entries[0][5]) != 0
+            or provider_indexes != PROVIDER_DATASET_ROWS_INDEX_COLUMNS
+            or authority_tables != {PROVIDER_DATASET_ROWS_TABLE, "market_ingest_runs"}
         ):
             raise RuntimeProjectionError("receipt database schema is unavailable")
         conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()
@@ -1809,33 +2134,38 @@ def _connection_epoch_evidence(conn: sqlite3.Connection) -> tuple[object, ...]:
 
 @contextmanager
 def open_verified_read_model_snapshot(db_path: Path):
-    """Yield one canonical read transaction under cooperative coordination locks."""
+    """Yield one canonical read transaction under the clean-slate authority lock."""
 
     try:
-        with read_model_snapshot_lock(db_path):
-            with ExitStack() as cleanup:
-                with read_model_snapshot_open_lock(db_path):
-                    conn, binding = _open_receipt_database_ro(db_path)
-                    cleanup.callback(conn.close)
-                    primary_evidence = _connection_epoch_evidence(conn)
-                    verifier: sqlite3.Connection | None = None
-                    try:
-                        verifier = _open_bound_receipt_database_ro(binding)
-                        if _connection_epoch_evidence(verifier) != primary_evidence:
-                            raise RuntimeProjectionError(
-                                "receipt database connection target changed"
-                            )
-                        verifier.commit()
-                    finally:
-                        if verifier is not None:
-                            verifier.close()
+        with sqlite_authority_lock(
+            db_path,
+            mode="shared",
+            create=False,
+            timeout=0.0,
+        ):
+            conn, binding = _open_receipt_database_ro(db_path)
+            try:
+                primary_evidence = _connection_epoch_evidence(conn)
+                verifier: sqlite3.Connection | None = None
+                try:
+                    verifier = _open_bound_receipt_database_ro(binding)
+                    if _connection_epoch_evidence(verifier) != primary_evidence:
+                        raise RuntimeProjectionError(
+                            "receipt database connection target changed"
+                        )
+                    verifier.commit()
+                finally:
+                    if verifier is not None:
+                        verifier.close()
                 yield conn
                 conn.commit()
+            finally:
+                conn.close()
     except RuntimeProjectionError:
         raise
     except (
         OSError,
-        ReadModelLockError,
+        SqliteAuthorityLockError,
         TimeoutError,
         sqlite3.Error,
         TypeError,

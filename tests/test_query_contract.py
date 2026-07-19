@@ -296,9 +296,7 @@ def test_query_request_direct_construction_deeply_freezes_filters() -> None:
 
     source["symbol"]["in"][0] = "300750.SZ"
 
-    assert request.filters["symbol"] == {
-        "in": ("000001.SZ", "600519.SH")
-    }
+    assert request.filters["symbol"] == {"in": ("000001.SZ", "600519.SH")}
     assert contract.normalized_query_hash(request) == initial_hash
 
     replacement_source = {"symbol": {"eq": "600519.SH"}}
@@ -500,9 +498,7 @@ def test_query_as_of_rfc3339_in_rejects_invalid_member() -> None:
         _payload(
             as_of="2026-07-16T12:00:00Z",
             filters={
-                "collected_at": {
-                    "in": ["2026-07-16T11:00:00Z", "not-a-timestamp"]
-                }
+                "collected_at": {"in": ["2026-07-16T11:00:00Z", "not-a-timestamp"]}
             },
         )
     )
@@ -551,9 +547,7 @@ def test_query_as_of_rfc3339_cross_timezone_preserves_valid_offset_boundary() ->
     request = contract.parse_query_request(
         _payload(
             as_of="2026-07-16T23:59:59Z",
-            filters={
-                "collected_at": {"eq": "2026-07-16T00:00:00+08:59"}
-            },
+            filters={"collected_at": {"eq": "2026-07-16T00:00:00+08:59"}},
         )
     )
 
@@ -600,6 +594,4 @@ def test_internal_query_options_classify_or_term_overflow_as_budget() -> None:
 
     assert options.any_of_eq_filters == four_terms
     with pytest.raises(contract.QueryBudgetError):
-        contract.QueryExecutionOptions(
-            any_of_eq_filters=(*four_terms, ("e", 5))
-        )
+        contract.QueryExecutionOptions(any_of_eq_filters=(*four_terms, ("e", 5)))

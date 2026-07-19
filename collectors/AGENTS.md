@@ -1,4 +1,4 @@
-# Collectors — SharedSignals 数据采集层
+# TradingDatas provider adapters
 
 > **阅读顺序：** [../AGENTS.md](../AGENTS.md) → [../STATUS.md](../STATUS.md) → 本文件
 
@@ -26,10 +26,9 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 
 | 文件 | 职责 |
 |------|------|
-| `base.py` | Provider adapter 基类与通用错误边界 |
-| `models.py` | 数据模型：CollectionResult、HealthStatus 等 |
 | `tushare/collector.py` | 唯一 generic Tushare transport adapter；普通接口不得复制它 |
 | `tushare/provider_native_ingest.py` | registry 驱动的 provider-native SQLite/receipt 入口 |
+| `tushare/tushare_common.py` | Tushare 通用请求/响应与凭证边界 |
 
 ### 子 Collector
 
@@ -37,11 +36,7 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 |------|------|--------|----------|
 | `tushare/` | 首期境内金融事实数据 | Tushare API | `collector.py`, `provider_native_ingest.py` |
 
-Crypto、预测市场、港股、美股及其历史 collector/cron 不属于首期 Beta 激活范围；保留代码不等于现役或获准调度。不得从历史目录重新扩展这些市场。
-
-### RSS/RSSHub 退役状态
-
-RSS/RSSHub 旧 collector 代码已删除。当前主服务器不把 RSS/RSSHub 当作现役 collector。恢复事件采集前必须作为新的 SharedSignals collector 重新设计调度、数据库归属、直接入库、健康检查和回滚方案，不得从 MarketGraph 或旧 RSSCollector 恢复旧采集。
+Crypto、预测市场、港股、美股及其历史 collector/cron 不在新代码树中。未来新闻、公告或舆情来源按新的 provider adapter 接入，不恢复旧 RSS/MarketGraph fallback。
 
 ## 修改规则
 
@@ -56,4 +51,4 @@ RSS/RSSHub 旧 collector 代码已删除。当前主服务器不把 RSS/RSSHub �
 
 ## 运行方式
 
-生产运行命令以 registry-driven scheduler/runbook 为准。历史 `sync_daily.py --tier ...`、Crypto/PM wrapper 和 opening/readiness cron 仅是迁移盘点，不是新增数据集的目标入口。任何文档或代码若要求为新 Tushare API 新增 tier、wrapper 或 collector，应停止并回到根层产品合同修正。
+生产运行命令以 registry-driven runner 与 `docs/OPERATIONS.md` 为准。任何文档或代码若要求为新 Tushare API 新增 tier、wrapper 或 collector，应停止并回到根层产品合同修正。

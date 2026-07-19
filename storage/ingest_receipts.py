@@ -10,18 +10,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
 import stat
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 
+from storage.schema_contract import require_clean_sqlite_authority_schema
+from storage.sqlite_authority_lock import sqlite_authority_lock
 
-RECEIPT_SCHEMA_VERSION = "sharedsignals.ingest_receipt.v1"
+
+RECEIPT_SCHEMA_VERSION = "tradingdatas.ingest_receipt.v1"
 UNMAPPED_TUSHARE_ADAPTER_VERSION = "unresolved.v1"
 
 _RECEIPT_STATUSES = frozenset({"success", "empty", "failed"})
@@ -53,6 +57,13 @@ _SENSITIVE_NAME_FRAGMENTS = (
 )
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _TABLE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_PROVIDER_CALL_ORDINAL_WIDTH = 12
+_PROVIDER_CALL_ORDINAL_LIMIT = 10**_PROVIDER_CALL_ORDINAL_WIDTH
+_PROVIDER_CALL_ATTEMPT_PATTERN = re.compile(
+    rf"(?P<root>.+):provider-call:"
+    rf"(?P<call>[0-9]{{{_PROVIDER_CALL_ORDINAL_WIDTH}}}):"
+    rf"retry:(?P<retry>[0-9]{{{_PROVIDER_CALL_ORDINAL_WIDTH}}})"
+)
 _SECRET_MATERIAL_PATTERN = re.compile(
     r"(?:\bbearer\s+\S+|"
     r"\b(?:access|refresh)?[_-]?token\s*[:=]|"
@@ -159,6 +170,75 @@ def _require_optional_nonnegative_int(value: object, field_name: str) -> int | N
     return _require_nonnegative_int(value, field_name)
 
 
+@dataclass(frozen=True)
+class ProviderCallAttemptIdentity:
+    """Parsed identity for one physical provider call inside one execution."""
+
+    root_attempt_id: str
+    call_index: int
+    retry_index: int
+
+    def __post_init__(self) -> None:
+        _require_public_text(self.root_attempt_id, "root_attempt_id")
+        call_index = _require_nonnegative_int(self.call_index, "call_index")
+        retry_index = _require_nonnegative_int(self.retry_index, "retry_index")
+        if (
+            call_index >= _PROVIDER_CALL_ORDINAL_LIMIT
+            or retry_index >= _PROVIDER_CALL_ORDINAL_LIMIT
+        ):
+            raise ValueError("provider call ordinal exceeds the deterministic bound")
+        if retry_index > call_index:
+            raise ValueError("retry_index cannot exceed call_index")
+
+
+def make_provider_call_attempt_id(
+    root_attempt_id: object,
+    *,
+    call_index: object,
+    retry_index: object,
+) -> str:
+    """Return the canonical fixed-width identity for one physical call."""
+
+    identity = ProviderCallAttemptIdentity(
+        root_attempt_id=_require_public_text(root_attempt_id, "root_attempt_id"),
+        call_index=_require_nonnegative_int(call_index, "call_index"),
+        retry_index=_require_nonnegative_int(retry_index, "retry_index"),
+    )
+    return (
+        f"{identity.root_attempt_id}:provider-call:"
+        f"{identity.call_index:0{_PROVIDER_CALL_ORDINAL_WIDTH}d}:"
+        f"retry:{identity.retry_index:0{_PROVIDER_CALL_ORDINAL_WIDTH}d}"
+    )
+
+
+def parse_provider_call_attempt_id(
+    attempt_id: object,
+) -> ProviderCallAttemptIdentity | None:
+    """Parse a canonical physical-call identity; ordinary attempts return ``None``."""
+
+    text = _require_public_text(attempt_id, "attempt_id")
+    match = _PROVIDER_CALL_ATTEMPT_PATTERN.fullmatch(text)
+    if match is None:
+        if ":provider-call:" in text:
+            raise ValueError("provider call attempt identity is not canonical")
+        return None
+    identity = ProviderCallAttemptIdentity(
+        root_attempt_id=match.group("root"),
+        call_index=int(match.group("call")),
+        retry_index=int(match.group("retry")),
+    )
+    if (
+        make_provider_call_attempt_id(
+            identity.root_attempt_id,
+            call_index=identity.call_index,
+            retry_index=identity.retry_index,
+        )
+        != text
+    ):
+        raise ValueError("provider call attempt identity is not canonical")
+    return identity
+
+
 def _canonical_json(payload: Mapping[str, object]) -> str:
     return json.dumps(
         payload,
@@ -190,6 +270,106 @@ def _utc_now() -> str:
     )
 
 
+ProviderRequestScalar = str | int | float | bool
+
+
+def _reject_sensitive_parameter_name(value: str, field_name: str) -> None:
+    compact = re.sub(r"[^a-z0-9]", "", value.casefold())
+    if any(fragment in compact for fragment in _SENSITIVE_NAME_FRAGMENTS):
+        raise ValueError(f"{field_name} must not contain sensitive parameter keys")
+
+
+def _require_request_scalar(
+    value: object,
+    field_name: str,
+) -> ProviderRequestScalar:
+    if type(value) not in (str, int, float, bool):
+        raise TypeError(f"{field_name} must be a provider request scalar")
+    if type(value) is float and not math.isfinite(value):
+        raise ValueError(f"{field_name} must be finite")
+    return value  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
+class ProviderRequestIdentity:
+    """Canonical identity for exactly one real provider call."""
+
+    request_variant: Mapping[str, ProviderRequestScalar]
+    fanout_parameter: str | None
+    fanout_values: tuple[ProviderRequestScalar, ...]
+    page_offset: int | None
+    page_index: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request_variant, Mapping):
+            raise TypeError("request_variant must be a mapping")
+        normalized_variant: dict[str, ProviderRequestScalar] = {}
+        for key, value in self.request_variant.items():
+            normalized_key = _require_text(key, "request_variant key")
+            _reject_sensitive_parameter_name(normalized_key, "request_variant")
+            normalized_variant[normalized_key] = _require_request_scalar(
+                value,
+                f"request_variant[{normalized_key}]",
+            )
+        object.__setattr__(
+            self,
+            "request_variant",
+            MappingProxyType(dict(sorted(normalized_variant.items()))),
+        )
+
+        if self.fanout_parameter is not None:
+            normalized_parameter = _require_text(
+                self.fanout_parameter,
+                "fanout_parameter",
+            )
+            _reject_sensitive_parameter_name(
+                normalized_parameter,
+                "fanout_parameter",
+            )
+            object.__setattr__(self, "fanout_parameter", normalized_parameter)
+
+        if isinstance(self.fanout_values, (str, bytes)) or not isinstance(
+            self.fanout_values,
+            Sequence,
+        ):
+            raise TypeError("fanout_values must be a non-string sequence")
+        object.__setattr__(
+            self,
+            "fanout_values",
+            tuple(
+                _require_request_scalar(value, f"fanout_values[{index}]")
+                for index, value in enumerate(self.fanout_values)
+            ),
+        )
+
+        if self.page_offset is not None and (type(self.page_offset) is not int):
+            raise TypeError("page_offset must be an integer or None")
+        _require_nonnegative_int(self.page_index, "page_index")
+
+    @classmethod
+    def trivial(cls) -> ProviderRequestIdentity:
+        """Return the explicit identity for one unvaried, unpaged call."""
+
+        return cls(
+            request_variant={},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=None,
+            page_index=0,
+        )
+
+    def canonical_payload(self) -> dict[str, object]:
+        """Return the JSON-compatible identity bound into receipt evidence."""
+
+        return {
+            "fanout_parameter": self.fanout_parameter,
+            "fanout_values": list(self.fanout_values),
+            "page_index": self.page_index,
+            "page_offset": self.page_offset,
+            "request_variant": dict(self.request_variant),
+        }
+
+
 @dataclass(frozen=True)
 class IngestContext:
     attempt_id: str
@@ -201,6 +381,9 @@ class IngestContext:
     adapter_version: str
     started_at: str
     data_through: str | None
+    request_identity: ProviderRequestIdentity = field(
+        default_factory=ProviderRequestIdentity.trivial
+    )
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -216,6 +399,8 @@ class IngestContext:
         _require_timestamp(self.started_at, "started_at")
         if self.data_through is not None:
             _require_public_text(self.data_through, "data_through")
+        if not isinstance(self.request_identity, ProviderRequestIdentity):
+            raise TypeError("request_identity must be ProviderRequestIdentity")
         if not isinstance(self.request_window, Mapping):
             raise TypeError("request_window must be a mapping")
 
@@ -286,6 +471,7 @@ class ReceiptEvidence:
     rows_written: int
     canonical_notes: bytes
     schema_version: str
+    request_identity: ProviderRequestIdentity
     target_table: str | None
     transaction_index: int
 
@@ -307,6 +493,8 @@ class ReceiptEvidence:
         _require_public_text(self.source, "source")
         if self.schema_version != RECEIPT_SCHEMA_VERSION:
             raise ValueError("schema_version is not recognized")
+        if not isinstance(self.request_identity, ProviderRequestIdentity):
+            raise TypeError("request_identity must be ProviderRequestIdentity")
         if self.target_table is not None and type(self.target_table) is not str:
             raise TypeError("target_table must be a string or None")
         _validated_target_table(self.target_table)
@@ -343,6 +531,7 @@ class ReceiptEvidence:
             ("status", self.status),
             ("dataset_id", self.source),
             ("schema_version", self.schema_version),
+            ("request_identity", self.request_identity.canonical_payload()),
             ("target_table", self.target_table),
             ("transaction_index", self.transaction_index),
         )
@@ -404,7 +593,7 @@ class IngestResult:
         receipt_ids = _validated_receipt_ids(self.receipt_ids)
         errors = _validated_errors(self.errors)
         _validate_status_errors(status, errors)
-        _validate_status_counts(status, self.counts)
+        _validate_result_status_counts(status, self.counts)
         if status == "success" and not receipt_ids:
             raise ValueError("success result requires at least one receipt_id")
         object.__setattr__(self, "receipt_ids", receipt_ids)
@@ -488,6 +677,26 @@ def _validate_status_counts(status: str, counts: IngestCounts) -> None:
             raise ValueError(f"{status} receipt requires explicit integer zero counts")
 
 
+def _validate_result_status_counts(status: str, counts: IngestCounts) -> None:
+    """Validate an aggregate result without weakening singular receipts."""
+
+    if (
+        status == "failed"
+        and counts.count_semantics == "aggregate_partial_physical_call_transactions"
+    ):
+        if counts.committed == 0 or counts.committed != counts.validated:
+            raise ValueError(
+                "partial aggregate failure requires non-zero committed = validated"
+            )
+        if any(
+            value is None
+            for value in (counts.inserted, counts.updated, counts.unchanged)
+        ):
+            raise ValueError("partial aggregate failure requires exact row outcomes")
+        return
+    _validate_status_counts(status, counts)
+
+
 def _canonical_db_path(db_path: Path) -> Path:
     return Path(os.path.abspath(os.fspath(db_path)))
 
@@ -556,7 +765,7 @@ def _validated_sqlite_file_identity(db_path: Path) -> _FileIdentity:
     return opened_identity
 
 
-def _validated_existing_sqlite_binding(db_path: Path) -> _SqlitePathBinding:
+def validated_existing_sqlite_binding(db_path: Path) -> _SqlitePathBinding:
     canonical_path = _canonical_db_path(db_path)
     parent_identities = _validated_parent_chain(canonical_path)
     database_identity = _validated_sqlite_file_identity(canonical_path)
@@ -573,9 +782,9 @@ def _validated_existing_sqlite_binding(db_path: Path) -> _SqlitePathBinding:
     )
 
 
-def _require_unchanged_sqlite_binding(expected: _SqlitePathBinding) -> None:
+def require_unchanged_sqlite_binding(expected: _SqlitePathBinding) -> None:
     try:
-        observed = _validated_existing_sqlite_binding(expected.canonical_path)
+        observed = validated_existing_sqlite_binding(expected.canonical_path)
     except (OSError, RuntimeError, ValueError):
         raise RuntimeError(
             "db_path binding changed during terminal receipt write"
@@ -597,6 +806,7 @@ def make_receipt_id(
     index = _require_nonnegative_int(transaction_index, "transaction_index")
     identity = {
         "attempt_id": context.attempt_id,
+        "request_identity": context.request_identity.canonical_payload(),
         "target_table": table,
         "transaction_index": index,
     }
@@ -631,6 +841,7 @@ def _receipt_payload(
         "provider": context.provider,
         "provider_api": context.provider_api,
         "receipt_id": receipt_id,
+        "request_identity": context.request_identity.canonical_payload(),
         "request_window": dict(context.request_window),
         "schema_version": RECEIPT_SCHEMA_VERSION,
         "started_at": context.started_at,
@@ -667,7 +878,9 @@ def insert_ingest_receipt_with_evidence(
         if normalized_status != "failed":
             raise ValueError("config_hash is required for success and empty receipts")
         if normalized_errors != ("config_error",):
-            raise ValueError("missing config_hash requires the config_error terminal code")
+            raise ValueError(
+                "missing config_hash requires the config_error terminal code"
+            )
     table = _validated_target_table(target_table)
     _validate_status_counts_and_target(normalized_status, counts, table)
     index = _require_nonnegative_int(transaction_index, "transaction_index")
@@ -695,11 +908,12 @@ def insert_ingest_receipt_with_evidence(
         rows_written=counts.committed,
         canonical_notes=_canonical_json(payload).encode("utf-8"),
         schema_version=RECEIPT_SCHEMA_VERSION,
+        request_identity=context.request_identity,
         target_table=table,
         transaction_index=index,
     )
 
-    conn.execute(
+    cursor = conn.execute(
         """INSERT INTO market_ingest_runs
            (run_id, started_at, finished_at, status, source,
             rows_read, rows_written, notes)
@@ -715,7 +929,35 @@ def insert_ingest_receipt_with_evidence(
             evidence.canonical_notes.decode("utf-8"),
         ),
     )
+    if cursor.rowcount != 1:
+        raise RuntimeError("ingest receipt insert did not affect exactly one row")
     return evidence
+
+
+def require_receipt_evidence_readback(
+    conn: sqlite3.Connection,
+    evidence: ReceiptEvidence,
+) -> None:
+    """Require one inserted receipt to read back byte-for-byte in-transaction."""
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not isinstance(evidence, ReceiptEvidence):
+        raise TypeError("evidence must be ReceiptEvidence")
+    row = conn.execute(
+        """SELECT typeof(run_id), run_id,
+                  typeof(started_at), started_at,
+                  typeof(finished_at), finished_at,
+                  typeof(status), status,
+                  typeof(source), source,
+                  typeof(rows_read), rows_read,
+                  typeof(rows_written), rows_written,
+                  typeof(notes), CAST(notes AS BLOB)
+           FROM market_ingest_runs WHERE run_id = ?""",
+        (evidence.receipt_id,),
+    ).fetchone()
+    if row is None or tuple(row) != evidence.sqlite_row:
+        raise RuntimeError("ingest receipt transaction readback is inconsistent")
 
 
 def insert_ingest_receipt(
@@ -729,7 +971,7 @@ def insert_ingest_receipt(
     errors: Sequence[str],
     payload_fingerprint: str,
 ) -> str:
-    """Compatibility wrapper returning the inserted receipt ID."""
+    """Insert one receipt and return its canonical public identifier."""
 
     evidence = insert_ingest_receipt_with_evidence(
         conn,
@@ -772,27 +1014,47 @@ def write_terminal_receipt(
     )
     empty_fingerprint = hashlib.sha256(b"").hexdigest()
 
-    db_binding = _validated_existing_sqlite_binding(db_path)
-    conn = sqlite3.connect(f"{db_binding.canonical_path.as_uri()}?mode=rw", uri=True)
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        _require_unchanged_sqlite_binding(db_binding)
-        receipt_id = insert_ingest_receipt(
-            conn,
-            context=context,
-            target_table=None,
-            transaction_index=0,
-            status=normalized_status,
-            counts=counts,
-            errors=normalized_errors,
-            payload_fingerprint=empty_fingerprint,
+    initial_db_binding = validated_existing_sqlite_binding(db_path)
+    with sqlite_authority_lock(
+        db_path,
+        mode="exclusive",
+        create=True,
+        timeout=180.0,
+    ) as authority_lease:
+        db_binding = validated_existing_sqlite_binding(db_path)
+        if db_binding != initial_db_binding:
+            raise RuntimeError("db_path binding changed during terminal receipt write")
+        conn = sqlite3.connect(
+            f"{db_binding.canonical_path.as_uri()}?mode=rw",
+            uri=True,
         )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            require_clean_sqlite_authority_schema(conn)
+            require_unchanged_sqlite_binding(db_binding)
+            evidence = insert_ingest_receipt_with_evidence(
+                conn,
+                context=context,
+                target_table=None,
+                transaction_index=0,
+                status=normalized_status,
+                counts=counts,
+                errors=normalized_errors,
+                payload_fingerprint=empty_fingerprint,
+            )
+            receipt_id = evidence.receipt_id
+            require_receipt_evidence_readback(conn, evidence)
+            require_unchanged_sqlite_binding(db_binding)
+            authority_lease.validate()
+            conn.commit()
+        except BaseException:
+            try:
+                conn.rollback()
+            except BaseException:
+                pass
+            raise
+        finally:
+            conn.close()
 
     return IngestResult(
         status=normalized_status,

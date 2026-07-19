@@ -18,7 +18,9 @@ def encode_cursor(scope: str, snapshot_id: str, sort_key: Sequence[Any]) -> str:
 
 def decode_cursor(cursor: str, *, scope: str, snapshot_id: str = "") -> tuple[Any, ...]:
     try:
-        payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        payload = json.loads(
+            base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        )
     except Exception as exc:
         raise ValueError("invalid cursor") from exc
     if (

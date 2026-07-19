@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Compile the pinned official Tushare interface index into an offline catalog.
 
-The official Markdown index is capability authority. The legacy 114-name plan is
-read only to produce a migration coverage diff. Scope classification and the one
-reviewed duplicate-document resolution live in a separate versioned config file.
-This module has no provider or network path and emits no runtime activation data.
+The official Markdown index is capability authority. Scope classification and the
+one reviewed duplicate-document resolution live in a separate versioned config
+file. This module has no provider/network path and emits no runtime activation or
+legacy-system migration data.
 """
 
 from __future__ import annotations
@@ -26,20 +26,13 @@ import yaml
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SCOPE_PATH = (
-    REPOSITORY_ROOT / "config" / "tushare_capability_scope.v1.yaml"
-)
-DEFAULT_LEGACY_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_plan.yaml"
-DEFAULT_CATALOG_PATH = (
-    REPOSITORY_ROOT / "config" / "tushare_capability_catalog.v1.yaml"
-)
+DEFAULT_SCOPE_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_scope.v1.yaml"
+DEFAULT_CATALOG_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_catalog.v1.yaml"
 
 PINNED_REPOSITORY_URL = "https://github.com/waditu-tushare/skills.git"
 PINNED_SOURCE_COMMIT = "5e12b31d09123e262c5fb38564e80c26d05cb830"
 PINNED_INDEX_PATH = "tushare/references/数据接口.md"
-PINNED_INDEX_SHA256 = (
-    "0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2"
-)
+PINNED_INDEX_SHA256 = "0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2"
 
 EXPECTED_OFFICIAL_COUNTS = {
     "official_source_rows": 240,
@@ -53,12 +46,6 @@ EXPECTED_SCOPE_COUNTS = {
     "retired": 5,
     "non_data_operation": 4,
 }
-EXPECTED_LEGACY_COUNTS = {
-    "legacy_api_names": 114,
-    "official_legacy_overlap": 109,
-    "official_only": 130,
-    "legacy_only": 5,
-}
 SCOPE_STATES = tuple(EXPECTED_SCOPE_COUNTS)
 
 _EXPECTED_PREAMBLE = (
@@ -71,9 +58,7 @@ _EXPECTED_PREAMBLE = (
 )
 _EXPECTED_HEADER = ("在线文档", "接口名", "标题", "分类", "描述")
 _API_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
-_DOC_URL_PATTERN = re.compile(
-    r"https://tushare\.pro/wctapi/documents/[1-9][0-9]*\.md"
-)
+_DOC_URL_PATTERN = re.compile(r"https://tushare\.pro/wctapi/documents/[1-9][0-9]*\.md")
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 _ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9.-]*")
@@ -89,27 +74,13 @@ _SCOPE_ROOT_KEYS = frozenset(
         "expected_counts",
         "duplicate_api_resolutions",
         "classifications",
-        "legacy_coverage",
     }
 )
 _SOURCE_KEYS = frozenset(
     {"repository_url", "pinned_commit", "index_path", "index_sha256"}
 )
-_DUPLICATE_RESOLUTION_KEYS = frozenset(
-    {"api_name", "canonical_doc_url", "reason"}
-)
+_DUPLICATE_RESOLUTION_KEYS = frozenset({"api_name", "canonical_doc_url", "reason"})
 _CLASSIFICATION_KEYS = frozenset({"scope_state", "reason", "api_names"})
-_LEGACY_SCOPE_KEYS = frozenset(
-    {
-        "authority",
-        "inventory_path",
-        "inventory_sha256",
-        "expected_counts",
-        "legacy_only_reviews",
-    }
-)
-_LEGACY_REVIEW_KEYS = frozenset({"api_name", "review_state", "reason"})
-
 _CATALOG_ROOT_KEYS = frozenset(
     {
         "version",
@@ -119,20 +90,10 @@ _CATALOG_ROOT_KEYS = frozenset(
         "scope",
         "counts",
         "scope_counts",
-        "legacy_coverage",
         "capabilities",
     }
 )
 _CATALOG_SCOPE_KEYS = frozenset({"scope_id", "scope_sha256"})
-_CATALOG_LEGACY_KEYS = frozenset(
-    {
-        "authority",
-        "inventory_path",
-        "inventory_sha256",
-        "counts",
-        "legacy_only_reviews",
-    }
-)
 _CAPABILITY_KEYS = frozenset(
     {
         "api_name",
@@ -144,7 +105,6 @@ _CAPABILITY_KEYS = frozenset(
         "source_resolution",
         "scope_state",
         "scope_reason",
-        "in_legacy_inventory",
     }
 )
 _SOURCE_ROW_KEYS = frozenset(
@@ -158,13 +118,6 @@ _SOURCE_ROW_KEYS = frozenset(
         "description",
     }
 )
-_LEGACY_PLAN_ROOT_KEYS = frozenset(
-    {"version", "purpose", "activation_modes", "modules"}
-)
-_LEGACY_MODULE_KEYS = frozenset(
-    {"module", "market", "default_cadence", "apis"}
-)
-_LEGACY_API_KEYS = frozenset({"api_name", "mode", "tier", "cadence"})
 
 
 @dataclass(frozen=True)
@@ -271,9 +224,7 @@ def _validate_exact_counts(
 ) -> dict[str, int]:
     counts = _mapping(value, label)
     _reject_unknown_keys(counts, frozenset(expected), label)
-    normalized = {
-        key: _required_int(counts[key], f"{label}.{key}") for key in expected
-    }
+    normalized = {key: _required_int(counts[key], f"{label}.{key}") for key in expected}
     if normalized != dict(expected):
         raise ValueError(f"{label} does not match the frozen expected counts")
     return normalized
@@ -321,9 +272,7 @@ def validate_scope_document(document: object) -> dict[str, Any]:
         resolution = _mapping(raw_resolution, label)
         _reject_unknown_keys(resolution, _DUPLICATE_RESOLUTION_KEYS, label)
         api_name = _validate_api_name(resolution["api_name"], f"{label}.api_name")
-        _validate_doc_url(
-            resolution["canonical_doc_url"], f"{label}.canonical_doc_url"
-        )
+        _validate_doc_url(resolution["canonical_doc_url"], f"{label}.canonical_doc_url")
         _required_text(resolution["reason"], f"{label}.reason")
         if api_name in resolution_names:
             raise ValueError(f"duplicate resolution for api_name: {api_name}")
@@ -338,9 +287,7 @@ def validate_scope_document(document: object) -> dict[str, Any]:
         label = f"scope document.classifications[{index}]"
         classification = _mapping(raw_classification, label)
         _reject_unknown_keys(classification, _CLASSIFICATION_KEYS, label)
-        state = _required_text(
-            classification["scope_state"], f"{label}.scope_state"
-        )
+        state = _required_text(classification["scope_state"], f"{label}.scope_state")
         if state not in SCOPE_STATES:
             raise ValueError(f"{label}.scope_state is invalid: {state}")
         if state in observed_states:
@@ -359,50 +306,13 @@ def validate_scope_document(document: object) -> dict[str, Any]:
             observed_counts[state] += 1
     if observed_states != set(SCOPE_STATES):
         missing = sorted(set(SCOPE_STATES) - observed_states)
-        raise ValueError(f"scope document is missing scope_state(s): {', '.join(missing)}")
-    normalized_scope_counts = {
-        state: observed_counts[state] for state in SCOPE_STATES
-    }
+        raise ValueError(
+            f"scope document is missing scope_state(s): {', '.join(missing)}"
+        )
+    normalized_scope_counts = {state: observed_counts[state] for state in SCOPE_STATES}
     if normalized_scope_counts != EXPECTED_SCOPE_COUNTS:
         raise ValueError("scope classification counts do not match the frozen review")
 
-    legacy = _mapping(root["legacy_coverage"], "scope document.legacy_coverage")
-    _reject_unknown_keys(legacy, _LEGACY_SCOPE_KEYS, "scope document.legacy_coverage")
-    if legacy["authority"] != "migration_input_only":
-        raise ValueError("legacy coverage authority must be migration_input_only")
-    if legacy["inventory_path"] != "config/tushare_capability_plan.yaml":
-        raise ValueError("legacy coverage inventory_path is not the frozen input")
-    _validate_hash(
-        legacy["inventory_sha256"],
-        "scope document.legacy_coverage.inventory_sha256",
-    )
-    _validate_exact_counts(
-        legacy["expected_counts"],
-        EXPECTED_LEGACY_COUNTS,
-        "scope document.legacy_coverage.expected_counts",
-    )
-    review_names: list[str] = []
-    for index, raw_review in enumerate(
-        _sequence(
-            legacy["legacy_only_reviews"],
-            "scope document.legacy_coverage.legacy_only_reviews",
-        )
-    ):
-        label = f"scope document.legacy_coverage.legacy_only_reviews[{index}]"
-        review = _mapping(raw_review, label)
-        _reject_unknown_keys(review, _LEGACY_REVIEW_KEYS, label)
-        review_names.append(
-            _validate_api_name(review["api_name"], f"{label}.api_name")
-        )
-        if review["review_state"] != "migration_review_required":
-            raise ValueError(f"{label}.review_state is invalid")
-        _required_text(review["reason"], f"{label}.reason")
-    if review_names != sorted(review_names):
-        raise ValueError("legacy-only reviews must be sorted by api_name")
-    if len(review_names) != len(set(review_names)):
-        raise ValueError("legacy-only reviews contain duplicate api_name values")
-    if len(review_names) != EXPECTED_LEGACY_COUNTS["legacy_only"]:
-        raise ValueError("legacy-only review count does not match the frozen review")
     return root
 
 
@@ -550,60 +460,6 @@ def resolve_official_rows(
     return tuple(resolved)
 
 
-def _parse_legacy_api_names(legacy_bytes: bytes) -> tuple[str, ...]:
-    try:
-        document = yaml.safe_load(legacy_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise ValueError("legacy inventory must be valid UTF-8 YAML") from exc
-    root = _mapping(document, "legacy inventory")
-    _reject_unknown_keys(root, _LEGACY_PLAN_ROOT_KEYS, "legacy inventory")
-    _required_text(
-        root["purpose"],
-        "legacy inventory.purpose",
-        allow_surrounding=True,
-    )
-    activation_modes = _mapping(
-        root["activation_modes"], "legacy inventory.activation_modes"
-    )
-    for mode, description in activation_modes.items():
-        _required_text(mode, "legacy inventory.activation_modes key")
-        _required_text(
-            description, f"legacy inventory.activation_modes.{mode}"
-        )
-
-    names: list[str] = []
-    for module_index, raw_module in enumerate(
-        _sequence(root["modules"], "legacy inventory.modules")
-    ):
-        label = f"legacy inventory.modules[{module_index}]"
-        module = _mapping(raw_module, label)
-        _reject_unknown_keys(module, _LEGACY_MODULE_KEYS, label)
-        for key in ("module", "market", "default_cadence"):
-            _required_text(module[key], f"{label}.{key}")
-        for api_index, raw_api in enumerate(
-            _sequence(module["apis"], f"{label}.apis")
-        ):
-            api_label = f"{label}.apis[{api_index}]"
-            api = _mapping(raw_api, api_label)
-            _reject_unknown_keys(
-                api,
-                _LEGACY_API_KEYS,
-                api_label,
-                required=frozenset({"api_name", "mode", "cadence"}),
-            )
-            names.append(
-                _validate_api_name(api["api_name"], f"{api_label}.api_name")
-            )
-            _required_text(api["mode"], f"{api_label}.mode")
-            _required_text(api["cadence"], f"{api_label}.cadence")
-            if "tier" in api:
-                _required_text(api["tier"], f"{api_label}.tier")
-    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
-    if duplicates:
-        raise ValueError(f"legacy inventory duplicate api_name(s): {', '.join(duplicates)}")
-    return tuple(sorted(names))
-
-
 def _classification_index(
     scope: Mapping[str, object], official_names: set[str]
 ) -> dict[str, tuple[str, str]]:
@@ -620,7 +476,9 @@ def _classification_index(
     missing = sorted(official_names - set(result))
     extra = sorted(set(result) - official_names)
     if missing:
-        raise ValueError(f"official api_name(s) lack classification: {', '.join(missing)}")
+        raise ValueError(
+            f"official api_name(s) lack classification: {', '.join(missing)}"
+        )
     if extra:
         raise ValueError(f"scope classifies unknown api_name(s): {', '.join(extra)}")
     return result
@@ -631,7 +489,6 @@ def compile_capability_catalog(
     index_bytes: bytes,
     scope_document: object,
     scope_sha256: str,
-    legacy_bytes: bytes,
 ) -> dict[str, object]:
     """Compile one deterministic catalog from already-local bytes."""
 
@@ -645,7 +502,9 @@ def compile_capability_catalog(
         raise ValueError("official source row count does not match the frozen source")
     official_names = {row.api_name for row in rows}
     if len(official_names) != EXPECTED_OFFICIAL_COUNTS["official_unique_api_names"]:
-        raise ValueError("official unique api_name count does not match the frozen source")
+        raise ValueError(
+            "official unique api_name count does not match the frozen source"
+        )
     resolved = resolve_official_rows(
         rows,
         _sequence(
@@ -654,34 +513,6 @@ def compile_capability_catalog(
         ),
     )
     classifications = _classification_index(scope, official_names)
-
-    legacy = _mapping(scope["legacy_coverage"], "scope.legacy_coverage")
-    if _sha256_bytes(legacy_bytes) != legacy["inventory_sha256"]:
-        raise ValueError("legacy inventory SHA-256 does not match the reviewed input")
-    legacy_names = set(_parse_legacy_api_names(legacy_bytes))
-    overlap = official_names & legacy_names
-    official_only = official_names - legacy_names
-    legacy_only = legacy_names - official_names
-    coverage_counts = {
-        "legacy_api_names": len(legacy_names),
-        "official_legacy_overlap": len(overlap),
-        "official_only": len(official_only),
-        "legacy_only": len(legacy_only),
-    }
-    if coverage_counts != EXPECTED_LEGACY_COUNTS:
-        raise ValueError("legacy coverage diff does not match the frozen review")
-
-    raw_reviews = _sequence(
-        legacy["legacy_only_reviews"], "legacy.legacy_only_reviews"
-    )
-    review_names = {str(review["api_name"]) for review in raw_reviews}
-    if review_names != legacy_only:
-        missing = sorted(legacy_only - review_names)
-        extra = sorted(review_names - legacy_only)
-        raise ValueError(
-            "legacy-only reviews do not match the coverage diff; "
-            f"missing={missing}, extra={extra}"
-        )
 
     capabilities: list[dict[str, object]] = []
     for capability in sorted(resolved, key=lambda item: str(item["api_name"])):
@@ -698,7 +529,6 @@ def compile_capability_catalog(
                 "source_resolution": capability["source_resolution"],
                 "scope_state": state,
                 "scope_reason": reason,
-                "in_legacy_inventory": api_name in legacy_names,
             }
         )
 
@@ -718,20 +548,6 @@ def compile_capability_catalog(
         },
         "counts": dict(EXPECTED_OFFICIAL_COUNTS),
         "scope_counts": dict(EXPECTED_SCOPE_COUNTS),
-        "legacy_coverage": {
-            "authority": "migration_input_only",
-            "inventory_path": legacy["inventory_path"],
-            "inventory_sha256": legacy["inventory_sha256"],
-            "counts": coverage_counts,
-            "legacy_only_reviews": [
-                {
-                    "api_name": review["api_name"],
-                    "review_state": review["review_state"],
-                    "reason": review["reason"],
-                }
-                for review in raw_reviews
-            ],
-        },
         "capabilities": capabilities,
     }
     return validate_catalog_document(catalog)
@@ -779,7 +595,6 @@ def compile_from_paths(
     *,
     source_root: Path,
     scope_path: Path = DEFAULT_SCOPE_PATH,
-    legacy_path: Path = DEFAULT_LEGACY_PATH,
 ) -> dict[str, object]:
     """Compile from an offline pinned checkout and local reviewed config."""
 
@@ -792,7 +607,6 @@ def compile_from_paths(
         index_bytes=_read_pinned_index(source_root),
         scope_document=scope_payload,
         scope_sha256=_sha256_bytes(scope_bytes),
-        legacy_bytes=legacy_path.read_bytes(),
     )
 
 
@@ -834,48 +648,11 @@ def validate_catalog_document(document: object) -> dict[str, Any]:
         "capability catalog.scope_counts",
     )
 
-    legacy = _mapping(root["legacy_coverage"], "capability catalog.legacy_coverage")
-    _reject_unknown_keys(legacy, _CATALOG_LEGACY_KEYS, "capability catalog.legacy_coverage")
-    if legacy["authority"] != "migration_input_only":
-        raise ValueError("catalog legacy authority must be migration_input_only")
-    if legacy["inventory_path"] != "config/tushare_capability_plan.yaml":
-        raise ValueError("catalog legacy inventory_path is invalid")
-    _validate_hash(
-        legacy["inventory_sha256"],
-        "capability catalog.legacy_coverage.inventory_sha256",
-    )
-    legacy_counts = _validate_exact_counts(
-        legacy["counts"],
-        EXPECTED_LEGACY_COUNTS,
-        "capability catalog.legacy_coverage.counts",
-    )
-    legacy_review_names: list[str] = []
-    for index, raw_review in enumerate(
-        _sequence(
-            legacy["legacy_only_reviews"],
-            "capability catalog.legacy_coverage.legacy_only_reviews",
-        )
-    ):
-        label = f"capability catalog.legacy_coverage.legacy_only_reviews[{index}]"
-        review = _mapping(raw_review, label)
-        _reject_unknown_keys(review, _LEGACY_REVIEW_KEYS, label)
-        legacy_review_names.append(
-            _validate_api_name(review["api_name"], f"{label}.api_name")
-        )
-        if review["review_state"] != "migration_review_required":
-            raise ValueError(f"{label}.review_state is invalid")
-        _required_text(review["reason"], f"{label}.reason")
-    if legacy_review_names != sorted(legacy_review_names):
-        raise ValueError("catalog legacy-only reviews must be sorted")
-    if len(set(legacy_review_names)) != legacy_counts["legacy_only"]:
-        raise ValueError("catalog legacy-only reviews are duplicate or incomplete")
-
     capabilities = _sequence(root["capabilities"], "capability catalog.capabilities")
     api_names: list[str] = []
     actual_scope_counts: Counter[str] = Counter()
     source_line_numbers: list[int] = []
     source_row_hashes: list[str] = []
-    legacy_overlap_count = 0
     for index, raw_capability in enumerate(capabilities):
         label = f"capability catalog.capabilities[{index}]"
         capability = _mapping(raw_capability, label)
@@ -896,10 +673,6 @@ def validate_catalog_document(document: object) -> dict[str, Any]:
             raise ValueError(f"{label}.scope_state is invalid")
         actual_scope_counts[state] += 1
         _required_text(capability["scope_reason"], f"{label}.scope_reason")
-        if type(capability["in_legacy_inventory"]) is not bool:
-            raise ValueError(f"{label}.in_legacy_inventory must be a boolean")
-        legacy_overlap_count += int(capability["in_legacy_inventory"])
-
         source_rows = _sequence(capability["source_rows"], f"{label}.source_rows")
         if not source_rows:
             raise ValueError(f"{label}.source_rows must not be empty")
@@ -946,11 +719,15 @@ def validate_catalog_document(document: object) -> dict[str, Any]:
         if len(local_line_numbers) != len(set(local_line_numbers)):
             raise ValueError(f"{label}.source_rows contain duplicate line identity")
         if canonical_matches != 1:
-            raise ValueError(f"{label} canonical fields must match exactly one source row")
+            raise ValueError(
+                f"{label} canonical fields must match exactly one source row"
+            )
         if len(source_rows) == 1 and resolution != "single_official_index_row":
             raise ValueError(f"{label}.source_resolution is invalid for one source row")
         if len(source_rows) > 1 and resolution == "single_official_index_row":
-            raise ValueError(f"{label}.source_resolution lacks reviewed duplicate reason")
+            raise ValueError(
+                f"{label}.source_resolution lacks reviewed duplicate reason"
+            )
 
     duplicate_api_names = sorted(
         name for name, count in Counter(api_names).items() if count > 1
@@ -962,13 +739,13 @@ def validate_catalog_document(document: object) -> dict[str, Any]:
     if api_names != sorted(api_names):
         raise ValueError("capability catalog api_name values must be sorted")
     if len(api_names) != EXPECTED_OFFICIAL_COUNTS["official_unique_api_names"]:
-        raise ValueError("capability catalog does not contain exactly 239 api_name values")
+        raise ValueError(
+            "capability catalog does not contain exactly 239 api_name values"
+        )
     if {
         state: actual_scope_counts[state] for state in SCOPE_STATES
     } != EXPECTED_SCOPE_COUNTS:
         raise ValueError("capability rows do not match scope_counts")
-    if legacy_overlap_count != legacy_counts["official_legacy_overlap"]:
-        raise ValueError("capability legacy overlap flags do not match coverage counts")
     if len(source_line_numbers) != EXPECTED_OFFICIAL_COUNTS["official_source_rows"]:
         raise ValueError("catalog source row count does not match counts")
     if len(source_line_numbers) != len(set(source_line_numbers)):
@@ -977,8 +754,6 @@ def validate_catalog_document(document: object) -> dict[str, Any]:
         raise ValueError("catalog source line identities do not cover the pinned table")
     if len(source_row_hashes) != len(set(source_row_hashes)):
         raise ValueError("catalog contains duplicate source row SHA-256 identity")
-    if set(legacy_review_names) & set(api_names):
-        raise ValueError("legacy-only review api_name appears in official catalog")
     return root
 
 
@@ -1028,7 +803,6 @@ def _parser() -> argparse.ArgumentParser:
         help="local offline checkout at the frozen Git commit",
     )
     parser.add_argument("--scope", type=Path, default=DEFAULT_SCOPE_PATH)
-    parser.add_argument("--legacy", type=Path, default=DEFAULT_LEGACY_PATH)
     parser.add_argument(
         "--catalog-path",
         type=Path,
@@ -1047,7 +821,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         catalog = compile_from_paths(
             source_root=args.source_root,
             scope_path=args.scope,
-            legacy_path=args.legacy,
         )
         rendered = render_catalog(catalog)
         if args.check:
@@ -1058,11 +831,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _atomic_write(args.output, rendered)
         else:
             sys.stdout.buffer.write(rendered)
-        coverage = catalog["legacy_coverage"]["counts"]
         print(
-            "official=239 legacy=114 overlap="
-            f"{coverage['official_legacy_overlap']} official_only="
-            f"{coverage['official_only']} legacy_only={coverage['legacy_only']}",
+            "official=239 in_scope=190",
             file=sys.stderr,
         )
         return 0

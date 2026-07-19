@@ -10,14 +10,19 @@ import pytest
 
 from collectors.tushare import tushare_common
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
+import storage.provider_dataset_rows as provider_rows_module
 from dataset_registry import load_dataset_registry
-from storage.ingest_receipts import IngestContext
+from storage.ingest_receipts import IngestContext, ProviderRequestIdentity
 from storage.provider_dataset_rows import (
-    PROVIDER_DATASET_ROWS_DDL,
     ProviderNativeAdmissionError,
     ingest_provider_native_rows,
 )
 from storage.schema import SCHEMA_SQL
+from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
+from storage.sqlite_authority_lock import (
+    SqliteAuthorityLockError,
+    sqlite_authority_lock_path,
+)
 from tests.test_provider_native_registry import generic_dataset, write_registry
 
 
@@ -60,6 +65,13 @@ def _context(dataset, binding, attempt: int = 1) -> IngestContext:
         adapter_version=binding.adapter_version,
         started_at=f"2026-07-17T01:00:{attempt:02d}+00:00",
         data_through=None,
+        request_identity=ProviderRequestIdentity(
+            request_variant={"adjustment": "none"},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=(attempt - 1) * 100,
+            page_index=attempt - 1,
+        ),
     )
 
 
@@ -568,7 +580,9 @@ def test_missing_table_fails_closed_without_creating_it(tmp_path: Path) -> None:
         )
 
 
-def test_receipt_insert_failure_rolls_back_fact_rows(tmp_path: Path) -> None:
+def test_undeclared_receipt_trigger_is_rejected_before_fact_write(
+    tmp_path: Path,
+) -> None:
     db_path = tmp_path / "facts.sqlite"
     _db(db_path)
     _, dataset, binding = _contract(tmp_path)
@@ -583,7 +597,7 @@ def test_receipt_insert_failure_rolls_back_fact_rows(tmp_path: Path) -> None:
             """
         )
 
-    with pytest.raises(sqlite3.IntegrityError, match="receipt rejected"):
+    with pytest.raises(RuntimeError, match="unsupported.*triggers"):
         ingest_provider_native_rows(
             db_path,
             dataset=dataset,
@@ -600,6 +614,125 @@ def test_receipt_insert_failure_rolls_back_fact_rows(tmp_path: Path) -> None:
         assert (
             conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
         )
+
+
+@pytest.mark.parametrize(
+    "schema_object",
+    (
+        """CREATE TRIGGER ignore_generic_fact
+            BEFORE INSERT ON provider_dataset_rows
+            BEGIN SELECT RAISE(IGNORE); END;""",
+        """CREATE TRIGGER ignore_generic_receipt
+            BEFORE INSERT ON market_ingest_runs
+            BEGIN SELECT RAISE(IGNORE); END;""",
+        """CREATE VIEW provider_fact_shadow AS
+            SELECT * FROM provider_dataset_rows;""",
+    ),
+)
+def test_trigger_or_view_cannot_silently_split_fact_and_receipt_transaction(
+    tmp_path: Path,
+    schema_object: str,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(schema_object)
+
+    with pytest.raises(RuntimeError, match="unsupported"):
+        ingest_provider_native_rows(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            rows=[_row()],
+            context=_context(dataset, binding),
+        )
+
+    with sqlite3.connect(db_path) as conn:
+        fact_count = conn.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone()[0]
+        receipt_count = conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone()[0]
+    assert fact_count == 0
+    assert receipt_count == 0
+
+
+def test_same_named_index_with_changed_sql_is_rejected_before_write(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            DROP INDEX provider_dataset_rows_receipt_idx;
+            CREATE INDEX provider_dataset_rows_receipt_idx
+            ON provider_dataset_rows (receipt_id COLLATE NOCASE DESC);
+            """
+        )
+
+    with pytest.raises(RuntimeError, match="unsupported.*indexes"):
+        ingest_provider_native_rows(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            rows=[_row()],
+            context=_context(dataset, binding),
+        )
+
+    with sqlite3.connect(db_path) as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
+        )
+
+
+def test_replaced_lock_sentinel_is_detected_before_success_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    original = provider_rows_module.insert_ingest_receipt_with_evidence
+
+    def replace_sentinel_after_insert(*args: object, **kwargs: object):
+        evidence = original(*args, **kwargs)
+        lock_path = sqlite_authority_lock_path(db_path)
+        lock_path.unlink()
+        lock_path.touch(mode=0o600)
+        return evidence
+
+    monkeypatch.setattr(
+        provider_rows_module,
+        "insert_ingest_receipt_with_evidence",
+        replace_sentinel_after_insert,
+    )
+
+    with pytest.raises(SqliteAuthorityLockError, match="binding changed"):
+        ingest_provider_native_rows(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            rows=[_row()],
+            context=_context(dataset, binding),
+        )
+
+    with sqlite3.connect(db_path) as conn:
+        fact_count = conn.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone()[0]
+        receipt_count = conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone()[0]
+    assert fact_count == 0
+    assert receipt_count == 0
 
 
 class _FixtureResponse:
@@ -709,6 +842,13 @@ def test_provider_entry_resolves_request_and_writes_terminal_receipts(
     assert receipt["provider"] == "tushare"
     assert receipt["provider_api"] == "synthetic_native"
     assert receipt["adapter_version"] == "tushare-provider-native.v1"
+    assert receipt["request_identity"] == {
+        "fanout_parameter": None,
+        "fanout_values": [],
+        "page_index": 0,
+        "page_offset": None,
+        "request_variant": {},
+    }
     assert receipt["request_window"] == {
         "end_date": "20260717",
         "start_date": "20260701",
@@ -892,7 +1032,7 @@ def test_provider_entry_conflicting_stable_key_writes_only_failed_receipt(
     assert json.loads(receipts[0][1])["errors"] == ["validation_failed"]
 
 
-def test_provider_entry_records_storage_failure_without_partial_facts(
+def test_provider_entry_rejects_undeclared_storage_trigger_before_provider_call(
     tmp_path: Path,
 ) -> None:
     db_path = tmp_path / "facts.sqlite"
@@ -919,31 +1059,27 @@ def test_provider_entry_records_storage_failure_without_partial_facts(
             """
         )
 
-    result = collect_provider_native_dataset(
-        db_path,
-        registry=registry,
-        collector=collector,
-        dataset_id=dataset.dataset_id,
-        request_window={"end_date": "20260717", "start_date": "20260701"},
-        attempt_id="018f47de-0000-7000-8000-000000000001",
-        started_at="2026-07-17T01:00:00+00:00",
-    )
+    with pytest.raises(RuntimeError, match="unsupported.*triggers"):
+        collect_provider_native_dataset(
+            db_path,
+            registry=registry,
+            collector=collector,
+            dataset_id=dataset.dataset_id,
+            request_window={"end_date": "20260717", "start_date": "20260701"},
+            attempt_id="018f47de-0000-7000-8000-000000000001",
+            started_at="2026-07-17T01:00:00+00:00",
+        )
 
-    assert result.status == "failed"
-    assert result.errors == ("storage_failed",)
+    assert collector.calls == []
     with sqlite3.connect(db_path) as conn:
         assert (
             conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()[0]
             == 0
         )
-        receipts = conn.execute(
-            "SELECT status, notes FROM market_ingest_runs"
-        ).fetchall()
-    assert len(receipts) == 1
-    assert receipts[0][0] == "failed"
-    notes = json.loads(receipts[0][1])
-    assert notes["data_through"] is None
-    assert notes["errors"] == ["storage_failed"]
+        receipt_count = conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone()[0]
+    assert receipt_count == 0
 
 
 def test_provider_entry_rejects_invalid_window_before_provider_or_sqlite(

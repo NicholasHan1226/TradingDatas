@@ -1,12 +1,13 @@
-"""Canonical storage schema contract for SQLite and DuckDB.
+"""Clean-slate provider-native SQLite schema contract.
 
-This module is the single source of truth for the SharedSignals table
-storage contract.  SQLite remains the authoritative write model; DuckDB mirrors
-the same logical structure with dialect-specific column types.
+Fresh TradingDatas databases contain only the generic provider fact authority
+and its transaction-scoped receipt authority. Historical market business
+tables and DuckDB rendering are intentionally outside this contract.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, replace
 
 
@@ -23,7 +24,6 @@ class Table:
     columns: tuple[Column, ...]
     primary_key: tuple[str, ...] = ()
     indexes: tuple[tuple[str, tuple[str, ...]], ...] = ()
-    # Partial unique indexes: (name, columns, where_clause).
     unique_indexes: tuple[tuple[str, tuple[str, ...], str], ...] = ()
 
 
@@ -33,44 +33,8 @@ TYPE_MAP: dict[str, dict[str, str]] = {
         "float": "REAL",
         "integer": "INTEGER",
     },
-    "duckdb": {
-        "text": "VARCHAR",
-        "float": "DOUBLE",
-        "integer": "BIGINT",
-    },
 }
 
-
-# SQLite read-side keyset order for ``reader.get_events_page``.  These
-# expressions are shared with the reader so ORDER BY, cursor predicates and
-# the supporting expression index cannot silently drift apart.
-EVENT_CURSOR_TIME_SQL = (
-    "COALESCE(NULLIF(event_time, ''), NULLIF(collected_at, ''), "
-    "NULLIF(trade_date, ''), '')"
-)
-EVENT_CURSOR_KEY_SQL = "COALESCE(NULLIF(event_id, ''), NULLIF(event_hash, ''), '')"
-EVENT_CURSOR_REVISION_SQL = "COALESCE(revision, 0)"
-EVENT_CURSOR_HASH_SQL = "COALESCE(NULLIF(event_hash, ''), '')"
-SQLITE_EXPRESSION_INDEXES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
-    "market_events": (
-        (
-            "idx_market_events_cursor_order",
-            (
-                EVENT_CURSOR_TIME_SQL,
-                EVENT_CURSOR_KEY_SQL,
-                EVENT_CURSOR_REVISION_SQL,
-                EVENT_CURSOR_HASH_SQL,
-            ),
-        ),
-    ),
-}
-
-
-# ``provider_dataset_rows`` is intentionally SQLite-only.  It is the generic
-# provider-native fact authority used by the external data service and must not
-# silently enter the retired DuckDB mirror path.  Keep its complete DDL here so
-# fresh SQLite databases and the dedicated additive migration share one
-# canonical contract.
 PROVIDER_DATASET_ROWS_TABLE = "provider_dataset_rows"
 PROVIDER_DATASET_ROWS_COLUMNS: tuple[tuple[str, str, bool, str | None, int], ...] = (
     ("dataset_id", "TEXT", False, None, 1),
@@ -137,456 +101,193 @@ PROVIDER_DATASET_ROWS_INDEX_SQL: tuple[str, ...] = tuple(
     f"({', '.join(columns)})"
     for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
 )
-PROVIDER_DATASET_ROWS_MIGRATION_STATEMENTS: tuple[str, ...] = (
-    PROVIDER_DATASET_ROWS_CREATE_SQL,
-    *PROVIDER_DATASET_ROWS_INDEX_SQL,
-)
 PROVIDER_DATASET_ROWS_DDL = (
-    ";\n".join(PROVIDER_DATASET_ROWS_MIGRATION_STATEMENTS) + ";\n"
+    ";\n".join((PROVIDER_DATASET_ROWS_CREATE_SQL, *PROVIDER_DATASET_ROWS_INDEX_SQL))
+    + ";\n"
 )
 
+PROVIDER_DATASET_ROWS_CONTRACT = Table(
+    name=PROVIDER_DATASET_ROWS_TABLE,
+    columns=tuple(
+        Column(
+            name=name,
+            logical_type={"TEXT": "text", "INTEGER": "integer"}[sqlite_type],
+            nullable=nullable,
+        )
+        for name, sqlite_type, nullable, _default, _pk_position in PROVIDER_DATASET_ROWS_COLUMNS
+    ),
+    primary_key=("dataset_id", "provider", "schema_major", "row_key"),
+    indexes=tuple(PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()),
+)
+
+MARKET_INGEST_RUNS_CONTRACT = Table(
+    name="market_ingest_runs",
+    columns=(
+        Column("run_id", "text"),
+        Column("started_at", "text"),
+        Column("finished_at", "text"),
+        Column("status", "text"),
+        Column("source", "text"),
+        Column("rows_read", "integer"),
+        Column("rows_written", "integer"),
+        Column("notes", "text"),
+    ),
+    primary_key=("run_id",),
+)
 
 TABLES: tuple[Table, ...] = (
-    Table(
-        name="market_assets",
-        columns=(
-            Column("market", "text", False),
-            Column("symbol", "text", False),
-            Column("name", "text"),
-            Column("asset_type", "text"),
-            Column("exchange", "text"),
-            Column("sector", "text"),
-            Column("list_date", "text"),
-            Column("last_trade_date", "text"),
-            Column("expiry_date", "text"),
-            Column("status", "text"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("updated_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("market", "symbol"),
-        indexes=(
-            ("idx_market_assets_provider_market_symbol", ("provider", "market", "symbol")),
-            ("idx_market_assets_updated_at", ("updated_at",)),
-        ),
-    ),
-    Table(
-        name="market_relationships",
-        columns=(
-            Column("relationship_hash", "text"),
-            Column("provider", "text"),
-            Column("relationship_type", "text"),
-            Column("market", "text"),
-            Column("parent_symbol", "text"),
-            Column("parent_name", "text"),
-            Column("child_symbol", "text"),
-            Column("child_name", "text"),
-            Column("start_date", "text"),
-            Column("end_date", "text"),
-            Column("trade_date", "text"),
-            Column("weight", "float"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("relationship_hash",),
-        indexes=(
-            ("idx_market_relationships_parent", ("provider", "relationship_type", "parent_symbol")),
-            ("idx_market_relationships_child", ("child_symbol", "relationship_type")),
-            ("idx_market_relationships_trade_date", ("trade_date",)),
-            ("idx_market_relationships_collected_at", ("collected_at",)),
-        ),
-    ),
-    Table(
-        name="market_bars_daily",
-        columns=(
-            Column("market", "text", False),
-            Column("symbol", "text", False),
-            Column("trade_date", "text", False),
-            Column("open", "float"),
-            Column("high", "float"),
-            Column("low", "float"),
-            Column("close", "float"),
-            Column("volume", "float"),
-            Column("amount", "float"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("market", "symbol", "trade_date"),
-        indexes=(
-            ("idx_market_bars_daily_lookup", ("market", "symbol", "trade_date")),
-        ),
-    ),
-    Table(
-        name="market_bars_intraday",
-        columns=(
-            Column("market", "text", False),
-            Column("symbol", "text", False),
-            Column("bar_time", "text", False),
-            Column("trade_date", "text"),
-            Column("interval", "text"),
-            Column("open", "float"),
-            Column("high", "float"),
-            Column("low", "float"),
-            Column("close", "float"),
-            Column("volume", "float"),
-            Column("amount", "float"),
-            Column("bid_price", "float"),
-            Column("ask_price", "float"),
-            Column("bid_size", "float"),
-            Column("ask_size", "float"),
-            Column("last_trade_date", "text"),
-            Column("expiry_date", "text"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("market", "symbol", "bar_time", "interval", "provider"),
-        indexes=(
-            ("idx_market_bars_intraday_lookup", ("market", "symbol", "trade_date", "interval")),
-            ("idx_market_bars_intraday_market_date_time", ("market", "trade_date", "interval", "bar_time")),
-            ("idx_market_bars_intraday_collected_at", ("market", "collected_at")),
-        ),
-    ),
-    Table(
-        name="market_events",
-        columns=(
-            Column("event_hash", "text"),
-            Column("event_id", "text"),
-            Column("revision", "integer"),
-            Column("source_family", "text"),
-            Column("provider", "text"),
-            Column("event_type", "text"),
-            Column("event_time", "text"),
-            Column("trade_date", "text"),
-            Column("market", "text"),
-            Column("symbol", "text"),
-            Column("title", "text"),
-            Column("content", "text"),
-            Column("url", "text"),
-            Column("source", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("event_hash",),
-        indexes=(
-            ("idx_market_events_lookup", ("provider", "event_type", "event_time")),
-            ("idx_market_events_identity", ("event_id", "revision")),
-            ("idx_market_events_time_identity", ("event_time", "event_id", "revision")),
-            ("idx_market_events_trade_date", ("trade_date",)),
-            ("idx_market_events_market_symbol_trade_date", ("market", "symbol", "trade_date")),
-            ("idx_market_events_collected_at", ("collected_at",)),
-        ),
-    ),
-    Table(
-        name="market_industry_snapshots",
-        columns=(
-            Column("snapshot_id", "text", False), Column("taxonomy_system", "text", False),
-            Column("taxonomy_version", "text", False), Column("provider", "text", False),
-            Column("started_at", "text", False), Column("completed_at", "text"),
-            Column("status", "text", False), Column("expected_partition_count", "integer", False),
-            Column("successful_partition_count", "integer", False), Column("taxonomy_row_count", "integer", False),
-            Column("membership_row_count", "integer", False), Column("unique_symbol_count", "integer", False),
-            Column("active_universe_count", "integer", False), Column("coverage_ratio", "float", False),
-            Column("validation_errors_json", "text", False), Column("source_run_id", "text", False),
-            Column("promoted_at", "text"),
-        ),
-        primary_key=("snapshot_id",),
-        indexes=(("idx_industry_snapshots_current", ("taxonomy_system", "taxonomy_version", "status")),),
-        unique_indexes=(
-            (
-                "idx_industry_snapshots_one_promoted",
-                ("taxonomy_system", "taxonomy_version"),
-                "status = 'promoted'",
-            ),
-        ),
-    ),
-    Table(
-        name="market_industry_taxonomy",
-        columns=(
-            Column("taxonomy_node_key", "text", False), Column("snapshot_id", "text", False),
-            Column("taxonomy_system", "text", False), Column("taxonomy_version", "text", False),
-            Column("level", "text", False), Column("index_code", "text", False),
-            Column("industry_code", "text", False), Column("industry_name", "text", False),
-            Column("parent_industry_code", "text"), Column("is_published", "text"),
-            Column("provider", "text", False), Column("collected_at", "text", False),
-            Column("raw_json", "text", False),
-        ),
-        primary_key=("taxonomy_node_key",),
-        indexes=(
-            ("idx_industry_taxonomy_page", ("snapshot_id", "level", "index_code", "taxonomy_node_key")),
-            ("idx_industry_taxonomy_code", ("snapshot_id", "industry_code")),
-            ("idx_industry_taxonomy_parent", ("snapshot_id", "parent_industry_code")),
-        ),
-    ),
-    Table(
-        name="market_industry_memberships",
-        columns=(
-            Column("membership_key", "text", False), Column("snapshot_id", "text", False),
-            Column("market", "text", False), Column("symbol", "text", False), Column("name", "text", False),
-            Column("l1_code", "text", False), Column("l1_name", "text", False),
-            Column("l2_code", "text", False), Column("l2_name", "text", False),
-            Column("l3_code", "text", False), Column("l3_name", "text", False),
-            Column("in_date", "text"), Column("out_date", "text"), Column("is_current", "text", False),
-            Column("provider", "text", False), Column("collected_at", "text", False), Column("raw_json", "text", False),
-        ),
-        primary_key=("membership_key",),
-        indexes=(
-            ("idx_industry_memberships_page", ("snapshot_id", "symbol", "membership_key")),
-            ("idx_industry_memberships_l1", ("snapshot_id", "l1_code")),
-            ("idx_industry_memberships_l2", ("snapshot_id", "l2_code")),
-            ("idx_industry_memberships_l3", ("snapshot_id", "l3_code")),
-        ),
-    ),
-    Table(
-        name="market_sector_flow_snapshots_v2",
-        columns=(
-            Column("snapshot_id", "text", False),
-            Column("schema_version", "text", False),
-            Column("fact_kind", "text", False),
-            Column("market", "text", False),
-            Column("trade_date", "text", False),
-            Column("effective_at", "text", False),
-            Column("available_at", "text", False),
-            Column("collected_at", "text", False),
-            Column("provider", "text", False),
-            Column("source_run_id", "text", False),
-            Column("source_hash", "text", False),
-            Column("industry_snapshot_id", "text", False),
-            Column("status", "text", False),
-            Column("expected_industry_count", "integer", False),
-            Column("observed_industry_count", "integer", False),
-            Column("expected_constituent_count", "integer", False),
-            Column("observed_constituent_count", "integer", False),
-            Column("industry_coverage_ratio", "float", False),
-            Column("constituent_coverage_ratio", "float", False),
-            Column("runtime_status", "text", False),
-            Column("runtime_reason", "text"),
-            Column("raw_json", "text", False),
-        ),
-        primary_key=("snapshot_id",),
-        indexes=(
-            (
-                "idx_sector_flow_snapshots_v2_latest",
-                ("market", "fact_kind", "status", "effective_at", "available_at"),
-            ),
-            ("idx_sector_flow_snapshots_v2_trade_date", ("trade_date", "fact_kind")),
-            ("idx_sector_flow_snapshots_v2_industry_snapshot", ("industry_snapshot_id",)),
-        ),
-    ),
-    Table(
-        name="market_sector_flow_industries_v2",
-        columns=(
-            Column("snapshot_id", "text", False),
-            Column("industry_code", "text", False),
-            Column("industry_name", "text", False),
-            Column("industry_level", "text", False),
-            Column("effective_at", "text", False),
-            Column("available_at", "text", False),
-            Column("provider", "text", False),
-            Column("source_hash", "text", False),
-            Column("gross_inflow", "float"),
-            Column("gross_outflow", "float"),
-            Column("net_inflow", "float"),
-            Column("turnover_amount", "float"),
-            Column("constituent_count", "integer"),
-            Column("covered_constituent_count", "integer"),
-            Column("coverage_ratio", "float"),
-            Column("raw_json", "text", False),
-        ),
-        primary_key=("snapshot_id", "industry_code"),
-        indexes=(
-            ("idx_sector_flow_industries_v2_page", ("snapshot_id", "industry_level", "industry_code")),
-        ),
-    ),
-    Table(
-        name="market_sector_flow_constituents_v2",
-        columns=(
-            Column("snapshot_id", "text", False),
-            Column("industry_code", "text", False),
-            Column("symbol", "text", False),
-            Column("name", "text"),
-            Column("effective_at", "text", False),
-            Column("available_at", "text", False),
-            Column("provider", "text", False),
-            Column("source_hash", "text", False),
-            Column("gross_inflow", "float"),
-            Column("gross_outflow", "float"),
-            Column("net_inflow", "float"),
-            Column("turnover_amount", "float"),
-            Column("raw_json", "text", False),
-        ),
-        primary_key=("snapshot_id", "industry_code", "symbol"),
-        indexes=(
-            ("idx_sector_flow_constituents_v2_page", ("snapshot_id", "industry_code", "symbol")),
-            ("idx_sector_flow_constituents_v2_symbol", ("snapshot_id", "symbol")),
-        ),
-    ),
-    Table(
-        name="market_pm_markets",
-        columns=(
-            Column("market_id", "text"),
-            Column("question", "text"),
-            Column("slug", "text"),
-            Column("end_date", "text"),
-            Column("volume", "float"),
-            Column("liquidity", "float"),
-            Column("active", "text"),
-            Column("closed", "text"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("market_id",),
-    ),
-    Table(
-        name="market_pm_prices",
-        columns=(
-            Column("price_hash", "text"),
-            Column("market_id", "text"),
-            Column("token_id", "text"),
-            Column("price_time", "text"),
-            Column("price", "float"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("price_hash",),
-        indexes=(
-            ("idx_market_pm_prices_lookup", ("market_id", "price_time")),
-        ),
-    ),
-    Table(
-        name="market_factors",
-        columns=(
-            Column("factor_hash", "text"),
-            Column("market", "text"),
-            Column("symbol", "text"),
-            Column("factor_name", "text"),
-            Column("event_time", "text"),
-            Column("value", "float"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("factor_hash",),
-        indexes=(
-            ("idx_market_factors_symbol", ("symbol", "event_time")),
-            ("idx_market_factors_provider_event_time", ("provider", "event_time")),
-            ("idx_market_factors_market_event_time", ("market", "event_time")),
-            ("idx_market_factors_collected_at", ("collected_at",)),
-        ),
-    ),
-    Table(
-        name="market_fund_portfolio",
-        columns=(
-            Column("portfolio_hash", "text"),
-            Column("market", "text"),
-            Column("symbol", "text"),
-            Column("holding_symbol", "text"),
-            Column("ann_date", "text"),
-            Column("end_date", "text"),
-            Column("market_value", "float"),
-            Column("amount", "float"),
-            Column("stk_mkv_ratio", "float"),
-            Column("stk_float_ratio", "float"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("collected_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("portfolio_hash",),
-        indexes=(
-            ("idx_market_fund_portfolio_symbol_ann", ("symbol", "ann_date")),
-            ("idx_market_fund_portfolio_holding_ann", ("holding_symbol", "ann_date")),
-            ("idx_market_fund_portfolio_provider_ann", ("provider", "ann_date")),
-            ("idx_market_fund_portfolio_collected_at", ("collected_at",)),
-        ),
-    ),
-    Table(
-        name="market_ingest_runs",
-        columns=(
-            Column("run_id", "text"),
-            Column("started_at", "text"),
-            Column("finished_at", "text"),
-            Column("status", "text"),
-            Column("source", "text"),
-            Column("rows_read", "integer"),
-            Column("rows_written", "integer"),
-            Column("notes", "text"),
-        ),
-        primary_key=("run_id",),
-    ),
-    Table(
-        name="market_coverage_status",
-        columns=(
-            Column("market", "text", False),
-            Column("trade_date", "text", False),
-            Column("symbol", "text", False),
-            Column("coverage_status", "text", False),
-            Column("reason", "text"),
-            Column("provider", "text"),
-            Column("source_file", "text"),
-            Column("updated_at", "text"),
-            Column("raw_json", "text"),
-        ),
-        primary_key=("market", "trade_date", "symbol"),
-        indexes=(
-            ("idx_market_coverage_status_lookup", ("market", "trade_date", "coverage_status")),
-        ),
-    ),
-    Table(
-        name="market_backfill_status",
-        columns=(
-            Column("market", "text", False),
-            Column("dataset", "text", False),
-            Column("trade_date", "text", False),
-            Column("status", "text", False),
-            Column("rows_read", "integer"),
-            Column("rows_written", "integer"),
-            Column("error", "text"),
-            Column("updated_at", "text", False),
-        ),
-        primary_key=("market", "dataset", "trade_date"),
-        indexes=(
-            ("idx_market_backfill_status_lookup", ("market", "dataset", "status")),
-        ),
-    ),
-    Table(
-        name="provider_interface_matrix",
-        columns=(
-            Column("matrix_id", "text"),
-            Column("layer", "text", False),
-            Column("interface_name", "text", False),
-            Column("provider", "text"),
-            Column("source_family", "text"),
-            Column("mcp_tool", "text"),
-            Column("collector_scripts", "text"),
-            Column("collection_schedule", "text"),
-            Column("storage_kind", "text"),
-            Column("storage_path", "text"),
-            Column("read_model_table", "text"),
-            Column("actual_state", "text"),
-            Column("updated_at", "text", False),
-        ),
-        primary_key=("matrix_id",),
-        indexes=(
-            ("idx_provider_interface_matrix_lookup", ("provider", "layer", "interface_name")),
-        ),
-    ),
+    PROVIDER_DATASET_ROWS_CONTRACT,
+    MARKET_INGEST_RUNS_CONTRACT,
 )
+
+
+def _expected_table_xinfo(table: Table) -> tuple[tuple[object, ...], ...]:
+    primary_key_positions = {
+        name: index for index, name in enumerate(table.primary_key, start=1)
+    }
+    if table.name == PROVIDER_DATASET_ROWS_TABLE:
+        return tuple(
+            (
+                index,
+                name,
+                sqlite_type,
+                int(not nullable),
+                default,
+                primary_key_position,
+                0,
+            )
+            for index, (
+                name,
+                sqlite_type,
+                nullable,
+                default,
+                primary_key_position,
+            ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
+        )
+    return tuple(
+        (
+            index,
+            column.name,
+            {"text": "TEXT", "integer": "INTEGER"}[column.logical_type],
+            int(not column.nullable),
+            None,
+            primary_key_positions.get(column.name, 0),
+            0,
+        )
+        for index, column in enumerate(table.columns)
+    )
+
+
+def _sqlite_schema_sql(ddl: str) -> str:
+    """Return SQLite's stored SQL text for one canonical DDL statement."""
+
+    normalized = ddl.strip().removesuffix(";")
+    for object_type in ("TABLE", "INDEX"):
+        prefix = f"CREATE {object_type} IF NOT EXISTS "
+        if normalized.startswith(prefix):
+            return f"CREATE {object_type} {normalized.removeprefix(prefix)}"
+    raise ValueError("canonical SQLite DDL must use CREATE ... IF NOT EXISTS")
+
+
+def _expected_sqlite_objects() -> dict[tuple[str, str, str], str]:
+    expected = {
+        ("table", table.name, table.name): _sqlite_schema_sql(
+            render_table(table, "sqlite")
+        )
+        for table in TABLES
+    }
+    expected.update(
+        {
+            ("index", name, PROVIDER_DATASET_ROWS_TABLE): _sqlite_schema_sql(
+                "CREATE INDEX IF NOT EXISTS "
+                f"{name} ON {PROVIDER_DATASET_ROWS_TABLE} "
+                f"({', '.join(columns)});"
+            )
+            for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
+        }
+    )
+    return expected
+
+
+def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
+    """Require the exact two-table clean-slate authority on a live connection.
+
+    Runtime writers call this after ``BEGIN IMMEDIATE``.  Rejecting all views,
+    triggers, and undeclared tables/indexes prevents a pre-provisioned SQLite
+    object from silently rewriting or ignoring either facts or receipts.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+
+    expected_tables = {table.name: _expected_table_xinfo(table) for table in TABLES}
+    for table_name, expected in expected_tables.items():
+        observed = tuple(
+            tuple(row)
+            for row in conn.execute(
+                f"PRAGMA main.table_xinfo('{table_name}')"
+            ).fetchall()
+        )
+        if observed != expected:
+            raise RuntimeError(f"{table_name} table is missing or incompatible")
+
+    objects = {
+        (str(row[0]), str(row[1]), str(row[2])): row[3]
+        for row in conn.execute(
+            "SELECT type, name, tbl_name, sql FROM main.sqlite_schema "
+            "WHERE name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    }
+    expected_objects = _expected_sqlite_objects()
+    if objects != expected_objects:
+        raise RuntimeError(
+            "SQLite authority contains unsupported tables, views, triggers, or indexes"
+        )
+
+    provider_indexes = {
+        str(row[1]): (int(row[2]), str(row[3]), int(row[4]))
+        for row in conn.execute(
+            "PRAGMA main.index_list('provider_dataset_rows')"
+        ).fetchall()
+        if str(row[3]) == "c"
+    }
+    expected_provider_indexes = {
+        name: (0, "c", 0) for name in PROVIDER_DATASET_ROWS_INDEX_COLUMNS
+    }
+    if provider_indexes != expected_provider_indexes:
+        raise RuntimeError("provider_dataset_rows indexes are incompatible")
+    for name, expected_columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items():
+        columns = tuple(
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
+                (name,),
+            ).fetchall()
+        )
+        if columns != expected_columns:
+            raise RuntimeError("provider_dataset_rows indexes are incompatible")
+
+    receipt_custom_indexes = tuple(
+        row
+        for row in conn.execute(
+            "PRAGMA main.index_list('market_ingest_runs')"
+        ).fetchall()
+        if str(row[3]) == "c"
+    )
+    if receipt_custom_indexes:
+        raise RuntimeError("market_ingest_runs indexes are incompatible")
+
+
+def _type_map(dialect: str) -> dict[str, str]:
+    try:
+        return TYPE_MAP[dialect]
+    except KeyError:
+        raise ValueError(f"unsupported dialect: {dialect}") from None
 
 
 def get_table(name: str) -> Table:
-    """Return a table contract by name."""
+    """Return one clean-slate table contract by name."""
+
     for table in TABLES:
         if table.name == name:
             return table
@@ -594,8 +295,11 @@ def get_table(name: str) -> Table:
 
 
 def render_table(table: Table, dialect: str) -> str:
-    """Render a single CREATE TABLE statement for sqlite or duckdb."""
-    type_map = TYPE_MAP[dialect]
+    """Render one SQLite CREATE TABLE statement."""
+
+    type_map = _type_map(dialect)
+    if table.name == PROVIDER_DATASET_ROWS_TABLE:
+        return f"{PROVIDER_DATASET_ROWS_CREATE_SQL};"
     lines = []
     for column in table.columns:
         column_type = type_map[column.logical_type]
@@ -608,25 +312,18 @@ def render_table(table: Table, dialect: str) -> str:
 
 
 def render_indexes(table: Table, dialect: str = "sqlite") -> str:
-    """Render CREATE INDEX statements for a table."""
-    statements = []
-    for index_name, columns in table.indexes:
+    """Render SQLite indexes for one clean-slate table."""
+
+    _type_map(dialect)
+    statements = [
+        f"CREATE INDEX IF NOT EXISTS {name} ON {table.name} ({', '.join(columns)});"
+        for name, columns in table.indexes
+    ]
+    for name, columns, where_clause in table.unique_indexes:
         statements.append(
-            f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} ({', '.join(columns)});"
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {name} ON {table.name} "
+            f"({', '.join(columns)}) WHERE {where_clause};"
         )
-    # Partial unique indexes are SQLite-only (DuckDB does not support them).
-    if dialect == "sqlite":
-        for index_name, columns, where_clause in table.unique_indexes:
-            statements.append(
-                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table.name} "
-                f"({', '.join(columns)}) WHERE {where_clause};"
-            )
-    if dialect == "sqlite":
-        for index_name, expressions in SQLITE_EXPRESSION_INDEXES.get(table.name, ()):
-            statements.append(
-                f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} "
-                f"({', '.join(expressions)});"
-            )
     return "\n".join(statements)
 
 
@@ -635,36 +332,36 @@ def render_schema(
     *,
     include_provider_dataset_rows: bool = True,
 ) -> str:
-    """Return full schema DDL for sqlite or duckdb.
+    """Return the fresh SQLite schema; DuckDB is intentionally unsupported."""
 
-    ``provider_dataset_rows`` is part of the canonical fresh SQLite schema.
-    Existing databases must add it through the dedicated atomic migration, so
-    the legacy generic migrator explicitly renders with this flag disabled.
-    """
-    if dialect not in TYPE_MAP:
-        raise ValueError(f"unsupported dialect: {dialect}")
-
+    _type_map(dialect)
     statements: list[str] = []
     for table in TABLES:
+        if (
+            table.name == PROVIDER_DATASET_ROWS_TABLE
+            and not include_provider_dataset_rows
+        ):
+            continue
         statements.append(render_table(table, dialect))
         index_sql = render_indexes(table, dialect)
         if index_sql:
             statements.append(index_sql)
-    if dialect == "sqlite" and include_provider_dataset_rows:
-        statements.append(PROVIDER_DATASET_ROWS_DDL.rstrip())
     return "\n\n".join(statements) + "\n"
 
 
 def table_primary_keys() -> dict[str, list[str]]:
-    """Return the primary-key columns for every table."""
+    """Return primary-key columns for the two clean-slate authorities."""
+
     return {table.name: list(table.primary_key) for table in TABLES}
 
 
 def table_names() -> list[str]:
-    """Return table names in dependency-safe order."""
+    """Return clean-slate table names in creation order."""
+
     return [table.name for table in TABLES]
 
 
 def table_with_name(table: Table, name: str) -> Table:
-    """Return a copy of a table contract with a different table name."""
+    """Return a copy of a table contract with a different name."""
+
     return replace(table, name=name)

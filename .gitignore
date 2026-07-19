@@ -12,25 +12,13 @@ node_modules/
 .DS_Store
 .venv/
 
-# Runtime patrol/heal artifacts (keep dir structure)
-memory/*.json
-memory/*.jsonl
-memory/*.tmp
-!memory/.gitkeep
-
-# Tools runtime artifacts
+# Tool runtime artifacts
 tools/__pycache__/
-tools/capability_changes.jsonl
-tools/capability_registry.json
 reference/__pycache__/
 tests/__pycache__/
-data/tushare/
-# Local database/read-model runtime artifacts
+
+# Local database/runtime artifacts
 runtime/
 staging/
-data/*.csv
-data/*.duckdb
-data/*.duckdb.wal
-data/*.duckdb.tmp
-*.parquet
-storage/cold/
+data/
+evidence/

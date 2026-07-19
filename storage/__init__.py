@@ -1,1 +1,1 @@
-"""SharedSignals storage layer — DuckDB shadow + SQLite authoritative write model."""
+"""TradingDatas provider-native SQLite facts and ingest receipts."""

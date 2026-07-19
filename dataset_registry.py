@@ -1,4 +1,4 @@
-"""Provider-neutral dataset declarations for SharedSignals.
+"""Provider-neutral dataset declarations for TradingDatas.
 
 The registry describes immutable dataset, ingest-adapter, and read-model
 contracts only. Runtime collection state remains authoritative in SQLite ingest
@@ -8,6 +8,7 @@ receipts and is deliberately rejected from this YAML authority.
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dataclass_field
+import math
 import os
 from pathlib import Path
 import re
@@ -18,15 +19,11 @@ from typing import Any, Mapping
 import yaml
 
 
-DATASET_REGISTRY_PATH = (
-    Path(__file__).resolve().parent / "config" / "dataset_registry.yaml"
-)
 PROVIDER_NATIVE_DATASET_REGISTRY_PATH = (
-    Path(__file__).resolve().parent
-    / "config"
-    / "provider_native_dataset_registry.yaml"
+    Path(__file__).resolve().parent / "config" / "provider_native_dataset_registry.yaml"
 )
-DATASET_REGISTRY_PATH_ENV = "SHAREDSIGNALS_DATASET_REGISTRY_PATH"
+DATASET_REGISTRY_PATH = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
+DATASET_REGISTRY_PATH_ENV = "TRADINGDATAS_REGISTRY_PATH"
 
 _ROOT_KEYS = frozenset({"version", "query_defaults", "schema_profiles", "datasets"})
 _ROOT_REQUIRED_KEYS = frozenset({"version", "query_defaults", "datasets"})
@@ -121,8 +118,11 @@ _BINDING_KEYS = frozenset(
         "entitlement_state",
         "activation_state",
         "target_tables",
+        "request_shape",
         "request_template",
         "request_variants",
+        "fanout",
+        "pagination",
         "request_window_policy",
         "response_completeness",
         "requested_fields",
@@ -139,6 +139,18 @@ _REQUEST_WINDOW_POLICY_KEYS = frozenset(
         "range_start_key",
         "range_end_key",
         "max_span_days",
+    }
+)
+_FANOUT_KEYS = frozenset(
+    {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+)
+_PAGINATION_KEYS = frozenset(
+    {
+        "strategy",
+        "limit_parameter",
+        "offset_parameter",
+        "page_size",
+        "max_pages",
     }
 )
 _RESPONSE_COMPLETENESS_KEYS = frozenset(
@@ -174,7 +186,13 @@ _READ_MODEL_ADAPTER_KEYS = frozenset(
     }
 )
 _READ_MODEL_ADAPTER_REQUIRED_KEYS = frozenset(
-    {"adapter_version", "primary_table", "fixed_field_filters"}
+    {
+        "adapter_version",
+        "primary_table",
+        "fixed_field_filters",
+        "storage_kind",
+        "row_key_strategy",
+    }
 )
 _FIXED_FILTER_KEYS = frozenset({"field", "allowed_values"})
 
@@ -188,6 +206,16 @@ _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
 _AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
 _REQUEST_WINDOW_FORMATS = frozenset({"yyyymmdd"})
+_REQUEST_SHAPES = frozenset(
+    {
+        "snapshot_or_date_range",
+        "entity_fanout",
+        "dimension_fanout",
+        "event_or_intraday_window",
+    }
+)
+_FANOUT_STRATEGIES = frozenset({"none", "dataset_field"})
+_PAGINATION_STRATEGIES = frozenset({"none", "offset"})
 _RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
     {
         "one_row_per_calendar_date",
@@ -196,7 +224,9 @@ _RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
     }
 )
 _ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
-_STORAGE_KINDS = frozenset({"typed_columns", "provider_native_rows"})
+_PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
+_PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
+_STORAGE_KINDS = frozenset({_PROVIDER_NATIVE_STORAGE_KIND})
 _ROW_KEY_STRATEGIES = frozenset({"primary_key", "payload_hash"})
 _PROVIDER_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _WINDOW_PLACEHOLDER_PATTERN = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
@@ -205,8 +235,11 @@ _SCHEMA_VERSION_PATTERN = re.compile(
 )
 _GENERIC_BINDING_KEYS = frozenset(
     {
+        "request_shape",
         "request_template",
         "requested_fields",
+        "fanout",
+        "pagination",
         "max_rows_per_attempt",
         "max_payload_bytes_per_row",
         "max_batch_bytes",
@@ -280,8 +313,33 @@ class ReadModelAdapter:
     adapter_version: str
     primary_table: str
     fixed_field_filters: tuple[FixedFieldFilter, ...]
-    storage_kind: str = "typed_columns"
+    storage_kind: str = _PROVIDER_NATIVE_STORAGE_KIND
     row_key_strategy: str | None = None
+
+
+RequestScalar = str | int | float | bool
+
+
+@dataclass(frozen=True)
+class FanoutPolicy:
+    """Provider-neutral request fanout declaration."""
+
+    strategy: str
+    parameter: str | None = None
+    source_dataset_id: str | None = None
+    source_field: str | None = None
+    batch_size: int | None = None
+
+
+@dataclass(frozen=True)
+class PaginationPolicy:
+    """Provider-neutral upstream pagination declaration."""
+
+    strategy: str
+    limit_parameter: str | None = None
+    offset_parameter: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
 
 
 @dataclass(frozen=True)
@@ -295,12 +353,15 @@ class ProviderBinding:
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
+    request_shape: str | None = None
     request_template: Mapping[str, str] = dataclass_field(
         default_factory=lambda: MappingProxyType({})
     )
-    request_variants: tuple[Mapping[str, str], ...] = dataclass_field(
+    request_variants: tuple[Mapping[str, RequestScalar], ...] = dataclass_field(
         default_factory=lambda: (MappingProxyType({}),)
     )
+    fanout: FanoutPolicy | None = None
+    pagination: PaginationPolicy | None = None
     request_window_policy: RequestWindowPolicy | None = None
     response_completeness: ResponseCompletenessPolicy | None = None
     requested_fields: tuple[str, ...] = ()
@@ -507,22 +568,6 @@ class DatasetRegistry:
                 return binding
         raise KeyError(f"dataset {dataset_id} has no provider binding for {provider}")
 
-    def compatibility_api_names(self, provider: str) -> frozenset[str]:
-        return frozenset(
-            binding.api_name
-            for dataset in self._datasets
-            for binding in dataset.provider_bindings
-            if binding.provider == provider
-        )
-
-    def compatibility_table_map(self, provider: str) -> dict[str, str]:
-        return {
-            binding.api_name: dataset.read_model_adapter.primary_table
-            for dataset in self._datasets
-            for binding in dataset.provider_bindings
-            if binding.provider == provider
-        }
-
     def active_for_cadence(self, cadence_class: str) -> tuple[DatasetDefinition, ...]:
         return tuple(
             dataset
@@ -651,15 +696,15 @@ def _request_variants(
     *,
     path: str,
     request_template: Mapping[str, str],
-) -> tuple[Mapping[str, str], ...]:
+) -> tuple[Mapping[str, RequestScalar], ...]:
     if not isinstance(raw, list) or not raw:
         raise ValueError(f"{path} must be a non-empty list")
-    normalized: list[Mapping[str, str]] = []
+    normalized: list[Mapping[str, RequestScalar]] = []
     expected_keys: frozenset[str] | None = None
-    seen: set[tuple[tuple[str, str], ...]] = set()
+    seen: set[tuple[tuple[str, tuple[str, RequestScalar]], ...]] = set()
     for index, raw_variant in enumerate(raw):
         value = _mapping(raw_variant, f"{path}[{index}]")
-        variant: dict[str, str] = {}
+        variant: dict[str, RequestScalar] = {}
         for raw_key, raw_value in value.items():
             key = _provider_field_name(raw_key, f"{path}[{index}] key")
             if key not in request_template:
@@ -670,9 +715,7 @@ def _request_variants(
                 raise ValueError(
                     f"{path}[{index}].{key} cannot override a window placeholder"
                 )
-            item = _non_empty_string(raw_value, f"{path}[{index}].{key}")
-            if any(ord(character) < 32 for character in item) or "${" in item:
-                raise ValueError(f"{path}[{index}].{key} must be a concrete value")
+            item = _request_variant_scalar(raw_value, f"{path}[{index}].{key}")
             variant[key] = item
         keys = frozenset(variant)
         if not keys:
@@ -682,18 +725,100 @@ def _request_variants(
             expected_keys = keys
         elif keys != expected_keys:
             raise ValueError(f"{path} variants must use the same keys")
-        identity = tuple(sorted(variant.items()))
+        identity = tuple(
+            (key, (type(item).__name__, item)) for key, item in sorted(variant.items())
+        )
         if identity in seen:
             raise ValueError(f"{path} contains a duplicate variant")
         seen.add(identity)
-        normalized.append(MappingProxyType(dict(identity)))
+        normalized.append(MappingProxyType(dict(sorted(variant.items()))))
     if expected_keys is not None:
         template_default = tuple(
-            sorted((key, request_template[key]) for key in expected_keys)
+            (key, (type(request_template[key]).__name__, request_template[key]))
+            for key in sorted(expected_keys)
         )
         if template_default not in seen:
             raise ValueError(f"{path} must include the request_template default")
     return tuple(normalized)
+
+
+def _request_variant_scalar(value: Any, path: str) -> RequestScalar:
+    if isinstance(value, str):
+        if (
+            not value
+            or any(ord(character) < 32 for character in value)
+            or "${" in value
+        ):
+            raise ValueError(f"{path} must be a concrete finite JSON scalar")
+        return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    raise ValueError(f"{path} must be a concrete finite JSON scalar")
+
+
+def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
+    value = _mapping(raw, path)
+    _reject_unknown_keys(value, _FANOUT_KEYS, path, required=frozenset({"strategy"}))
+    strategy = _choice(value["strategy"], _FANOUT_STRATEGIES, f"{path}.strategy")
+    if strategy == "none":
+        _reject_unknown_keys(
+            value,
+            frozenset({"strategy"}),
+            path,
+            required=frozenset({"strategy"}),
+        )
+        return FanoutPolicy(strategy="none")
+    _reject_unknown_keys(value, _FANOUT_KEYS, path, required=_FANOUT_KEYS)
+    return FanoutPolicy(
+        strategy="dataset_field",
+        parameter=_provider_field_name(value["parameter"], f"{path}.parameter"),
+        source_dataset_id=_non_empty_string(
+            value["source_dataset_id"], f"{path}.source_dataset_id"
+        ),
+        source_field=_provider_field_name(
+            value["source_field"], f"{path}.source_field"
+        ),
+        batch_size=_positive_int(value["batch_size"], f"{path}.batch_size"),
+    )
+
+
+def _pagination_policy(raw: Any, *, path: str) -> PaginationPolicy:
+    value = _mapping(raw, path)
+    _reject_unknown_keys(
+        value,
+        _PAGINATION_KEYS,
+        path,
+        required=frozenset({"strategy"}),
+    )
+    strategy = _choice(value["strategy"], _PAGINATION_STRATEGIES, f"{path}.strategy")
+    if strategy == "none":
+        _reject_unknown_keys(
+            value,
+            frozenset({"strategy"}),
+            path,
+            required=frozenset({"strategy"}),
+        )
+        return PaginationPolicy(strategy="none")
+    _reject_unknown_keys(value, _PAGINATION_KEYS, path, required=_PAGINATION_KEYS)
+    limit_parameter = _provider_field_name(
+        value["limit_parameter"], f"{path}.limit_parameter"
+    )
+    offset_parameter = _provider_field_name(
+        value["offset_parameter"], f"{path}.offset_parameter"
+    )
+    if limit_parameter == offset_parameter:
+        raise ValueError(f"{path} limit_parameter and offset_parameter must differ")
+    return PaginationPolicy(
+        strategy="offset",
+        limit_parameter=limit_parameter,
+        offset_parameter=offset_parameter,
+        page_size=_positive_int(value["page_size"], f"{path}.page_size"),
+        max_pages=_positive_int(value["max_pages"], f"{path}.max_pages"),
+    )
 
 
 def _request_window_policy(
@@ -807,7 +932,9 @@ def _response_completeness_policy(
     if strategy == "one_row_per_calendar_date":
         allowed_keys = allowed_keys | {"reject_at_row_limit"}
     _reject_unknown_keys(value, allowed_keys, path, required=required_keys)
-    reject_at_row_limit = _boolean(value.get("reject_at_row_limit", False), f"{path}.reject_at_row_limit")
+    reject_at_row_limit = _boolean(
+        value.get("reject_at_row_limit", False), f"{path}.reject_at_row_limit"
+    )
 
     date_field: str | None = None
     request_start_key: str | None = None
@@ -825,12 +952,16 @@ def _response_completeness_policy(
         if request_window_policy is None:
             raise ValueError(f"{path} requires request_window_policy")
         if request_start_key != request_window_policy.range_start_key:
-            raise ValueError(f"{path}.request_start_key must equal the window range start")
+            raise ValueError(
+                f"{path}.request_start_key must equal the window range start"
+            )
         if request_end_key != request_window_policy.range_end_key:
             raise ValueError(f"{path}.request_end_key must equal the window range end")
     elif strategy == "unique_primary_key_snapshot":
         if request_window_policy is not None:
-            raise ValueError(f"{path}.unique_primary_key_snapshot must not use request_window_policy")
+            raise ValueError(
+                f"{path}.unique_primary_key_snapshot must not use request_window_policy"
+            )
     else:
         partition_field = _provider_field_name(
             value["partition_field"], f"{path}.partition_field"
@@ -851,9 +982,7 @@ def _response_completeness_policy(
                 "max_span_days=1 request window key"
             )
 
-    raw_matches = _mapping(
-        value["fixed_field_matches"], f"{path}.fixed_field_matches"
-    )
+    raw_matches = _mapping(value["fixed_field_matches"], f"{path}.fixed_field_matches")
     fixed_field_matches: dict[str, str] = {}
     for raw_field, raw_param in raw_matches.items():
         field_name = _provider_field_name(
@@ -1008,6 +1137,15 @@ def _load_binding(
     )
     target_tables = _string_tuple(value["target_tables"], f"{path}.target_tables")
     _reject_duplicate_strings(target_tables, f"{path}.target_tables")
+    request_shape = (
+        None
+        if "request_shape" not in value
+        else _choice(
+            value["request_shape"],
+            _REQUEST_SHAPES,
+            f"{path}.request_shape",
+        )
+    )
     request_template = _request_template(
         value.get("request_template", {}),
         f"{path}.request_template",
@@ -1017,6 +1155,23 @@ def _load_binding(
         path=f"{path}.request_variants",
         request_template=request_template,
     )
+    fanout = (
+        None
+        if "fanout" not in value
+        else _fanout_policy(value["fanout"], path=f"{path}.fanout")
+    )
+    pagination = (
+        None
+        if "pagination" not in value
+        else _pagination_policy(value["pagination"], path=f"{path}.pagination")
+    )
+    if request_shape in {"entity_fanout", "dimension_fanout"} and fanout is not None:
+        if fanout.strategy != "dataset_field":
+            raise ValueError(
+                f"{path}.{request_shape} requires fanout.strategy=dataset_field"
+            )
+    elif request_shape is not None and fanout is not None and fanout.strategy != "none":
+        raise ValueError(f"{path}.{request_shape} requires fanout.strategy=none")
     request_window_policy = _request_window_policy(
         value.get("request_window_policy"),
         path=f"{path}.request_window_policy",
@@ -1052,8 +1207,11 @@ def _load_binding(
         entitlement_state=entitlement_state,
         activation_state=activation_state,
         target_tables=target_tables,
+        request_shape=request_shape,
         request_template=request_template,
         request_variants=request_variants,
+        fanout=fanout,
+        pagination=pagination,
         request_window_policy=request_window_policy,
         response_completeness=response_completeness,
         requested_fields=requested_fields,
@@ -1080,7 +1238,6 @@ def _load_read_model_adapter(
     raw: Any,
     *,
     dataset_id: str,
-    fields_by_name: Mapping[str, DatasetField],
 ) -> ReadModelAdapter:
     path = f"dataset {dataset_id}.read_model_adapter"
     value = _mapping(raw, path)
@@ -1095,54 +1252,27 @@ def _load_read_model_adapter(
         value["adapter_version"], f"{path}.adapter_version"
     )
     primary_table = _non_empty_string(value["primary_table"], f"{path}.primary_table")
+    if primary_table != _PROVIDER_NATIVE_TABLE:
+        raise ValueError(f"{path}.primary_table must be {_PROVIDER_NATIVE_TABLE}")
     raw_filters = value["fixed_field_filters"]
     if not isinstance(raw_filters, list):
         raise ValueError(f"{path}.fixed_field_filters must be a list")
-
-    fixed_filters: list[FixedFieldFilter] = []
-    seen_fields: set[str] = set()
-    for index, raw_filter in enumerate(raw_filters):
-        filter_path = f"{path}.fixed_field_filters[{index}]"
-        filter_value = _mapping(raw_filter, filter_path)
-        _reject_unknown_keys(filter_value, _FIXED_FILTER_KEYS, filter_path)
-        field = _non_empty_string(filter_value["field"], f"{filter_path}.field")
-        if field not in fields_by_name:
-            raise ValueError(
-                f"{path}.fixed_field_filters references unknown field: {field}"
-            )
-        if field in seen_fields:
-            raise ValueError(
-                f"{path}.fixed_field_filters contains duplicate field: {field}"
-            )
-        seen_fields.add(field)
-        allowed_values = _string_tuple(
-            filter_value["allowed_values"], f"{filter_path}.allowed_values"
-        )
-        _reject_duplicate_strings(allowed_values, f"{filter_path}.allowed_values")
-        fixed_filters.append(
-            FixedFieldFilter(
-                field=field,
-                allowed_values=allowed_values,
-            )
-        )
+    if raw_filters:
+        raise ValueError(f"{path}.fixed_field_filters must be empty")
 
     return ReadModelAdapter(
         adapter_version=adapter_version,
         primary_table=primary_table,
-        fixed_field_filters=tuple(fixed_filters),
+        fixed_field_filters=(),
         storage_kind=_choice(
-            value.get("storage_kind", "typed_columns"),
+            value["storage_kind"],
             _STORAGE_KINDS,
             f"{path}.storage_kind",
         ),
-        row_key_strategy=(
-            None
-            if value.get("row_key_strategy") is None
-            else _choice(
-                value["row_key_strategy"],
-                _ROW_KEY_STRATEGIES,
-                f"{path}.row_key_strategy",
-            )
+        row_key_strategy=_choice(
+            value["row_key_strategy"],
+            _ROW_KEY_STRATEGIES,
+            f"{path}.row_key_strategy",
         ),
     )
 
@@ -1166,7 +1296,11 @@ def _load_schema_contract(
             raise ValueError(f"{owner}.fields contains duplicate field: {field.name}")
         fields_by_name[field.name] = field
 
-    primary_key = _string_tuple(value["primary_key"], f"{owner}.primary_key")
+    primary_key = _string_tuple(
+        value["primary_key"],
+        f"{owner}.primary_key",
+        allow_empty=True,
+    )
     _reject_duplicate_strings(primary_key, f"{owner}.primary_key")
     missing_primary_fields = sorted(set(primary_key) - set(fields_by_name))
     if missing_primary_fields:
@@ -1236,6 +1370,12 @@ def _load_schema_contract(
         fields_by_name=fields_by_name,
     )
 
+    point_in_time = _choice(
+        value["point_in_time"], _POINT_IN_TIME_MODES, f"{owner}.point_in_time"
+    )
+    if point_in_time == "current_snapshot" and not primary_key:
+        raise ValueError(f"{owner} current_snapshot requires a non-empty primary_key")
+
     return DatasetSchemaProfile(
         schema_version=_non_empty_string(
             value["schema_version"], f"{owner}.schema_version"
@@ -1257,9 +1397,7 @@ def _load_schema_contract(
             path=f"{owner}.max_lookback_days",
             default=query_defaults.max_lookback_days,
         ),
-        point_in_time=_choice(
-            value["point_in_time"], _POINT_IN_TIME_MODES, f"{owner}.point_in_time"
-        ),
+        point_in_time=point_in_time,
         backfill_policy=_choice(
             value["backfill_policy"],
             _BACKFILL_POLICIES,
@@ -1386,45 +1524,22 @@ def _load_dataset(
     read_model_adapter = _load_read_model_adapter(
         value["read_model_adapter"],
         dataset_id=dataset_id,
-        fields_by_name=fields_by_name,
     )
-    if read_model_adapter.storage_kind == "typed_columns":
-        if read_model_adapter.row_key_strategy is not None:
-            raise ValueError(
-                f"dataset {dataset_id} typed_columns must not declare row_key_strategy"
-            )
-        if not read_model_adapter.fixed_field_filters:
-            raise ValueError(
-                f"dataset {dataset_id} typed_columns fixed_field_filters "
-                "must be a non-empty list"
-            )
-        for raw_binding_index, raw_binding in enumerate(raw_bindings):
-            binding_value = _mapping(
-                raw_binding,
-                f"dataset {dataset_id}.provider_bindings[{raw_binding_index}]",
-            )
-            unexpected = sorted(
-                (_GENERIC_BINDING_KEYS | _OPTIONAL_GENERIC_BINDING_KEYS)
-                & set(binding_value)
-            )
-            if unexpected:
-                raise ValueError(
-                    f"dataset {dataset_id} typed_columns binding must not declare "
-                    f"generic request contract keys: {', '.join(unexpected)}"
-                )
-    else:
+    if read_model_adapter.storage_kind == _PROVIDER_NATIVE_STORAGE_KIND:
         nullable_primary_fields = [
-            field_name for field_name in primary_key if fields_by_name[field_name].nullable
+            field_name
+            for field_name in primary_key
+            if fields_by_name[field_name].nullable
         ]
         if nullable_primary_fields:
             raise ValueError(
                 f"dataset {dataset_id}.primary_key fields must not be nullable: "
                 f"{', '.join(nullable_primary_fields)}"
             )
-        if read_model_adapter.primary_table != "provider_dataset_rows":
+        if read_model_adapter.primary_table != _PROVIDER_NATIVE_TABLE:
             raise ValueError(
                 f"dataset {dataset_id} provider_native_rows primary_table must be "
-                "provider_dataset_rows"
+                f"{_PROVIDER_NATIVE_TABLE}"
             )
         if read_model_adapter.fixed_field_filters:
             raise ValueError(
@@ -1472,10 +1587,10 @@ def _load_dataset(
                     f"{binding_path} missing generic request contract key(s): "
                     f"{', '.join(missing_generic_keys)}"
                 )
-            if binding.target_tables != ("provider_dataset_rows",):
+            if binding.target_tables != (_PROVIDER_NATIVE_TABLE,):
                 raise ValueError(
                     f"{binding_path}.target_tables must be exactly "
-                    "provider_dataset_rows"
+                    f"{_PROVIDER_NATIVE_TABLE}"
                 )
             undeclared_requested_fields = sorted(
                 set(binding.requested_fields) - set(fields_by_name)
@@ -1508,9 +1623,9 @@ def _load_dataset(
                 field_contract = fields_by_name[fixed_field]
                 if field_contract.logical_type != "text" or field_contract.nullable:
                     raise ValueError(
-                    f"{binding_path}.response_completeness.fixed_field_matches "
-                    "fields must be non-null text"
-                )
+                        f"{binding_path}.response_completeness.fixed_field_matches "
+                        "fields must be non-null text"
+                    )
             completeness_key_fields = set(primary_key) | set(
                 completeness.fixed_field_matches
             )
@@ -1614,20 +1729,6 @@ def _load_dataset(
             "provider binding target_tables for: "
             f"{', '.join(missing_read_tables)}"
         )
-    if read_model_adapter.storage_kind == "typed_columns":
-        provider_filters = tuple(
-            fixed_filter
-            for fixed_filter in read_model_adapter.fixed_field_filters
-            if fixed_filter.field == "provider"
-        )
-        if len(provider_filters) != 1 or set(provider_filters[0].allowed_values) != set(
-            read_discriminator_values
-        ):
-            raise ValueError(
-                f"dataset {dataset_id} provider binding read_discriminator_value "
-                "values must exactly equal read_model_adapter provider allowed_values"
-            )
-
     return DatasetDefinition(
         dataset_id=dataset_id,
         aliases=_string_tuple(value["aliases"], f"dataset {dataset_id}.aliases"),
@@ -1705,15 +1806,14 @@ def load_dataset_registry(
 def runtime_dataset_registry_path() -> Path:
     """Return the process-selected registry without exposing a path selector.
 
-    An unset environment variable preserves the legacy compatibility registry.
-    The only accepted override is the repository-owned provider-native target
-    artifact. Request, tenant, dataset and ordinary CLI input therefore cannot
-    redirect the process to an arbitrary contract.
+    The default and only accepted override are the repository-owned
+    provider-native artifact. Request, tenant, dataset and ordinary CLI input
+    therefore cannot redirect the process to an arbitrary contract.
     """
 
     raw_path = os.environ.get(DATASET_REGISTRY_PATH_ENV)
     if raw_path is None:
-        return DATASET_REGISTRY_PATH
+        return PROVIDER_NATIVE_DATASET_REGISTRY_PATH
     if not raw_path or raw_path != raw_path.strip():
         raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} is invalid")
 
@@ -1743,16 +1843,4 @@ def runtime_dataset_registry_path() -> Path:
 def load_runtime_dataset_registry() -> DatasetRegistry:
     """Load the immutable registry chosen by trusted process configuration."""
 
-    path = runtime_dataset_registry_path()
-    if path == DATASET_REGISTRY_PATH:
-        # Preserve the legacy no-argument loader seam for compatibility tests
-        # and consumers that inject the default registry before runtime build.
-        return load_dataset_registry()
-    return load_dataset_registry(path)
-
-
-_DEFAULT_DATASET_REGISTRY = load_dataset_registry()
-TUSHARE_API_TO_TABLE_MAP: Mapping[str, str] = MappingProxyType(
-    _DEFAULT_DATASET_REGISTRY.compatibility_table_map("tushare")
-)
-TUSHARE_ALLOWED_API_NAMES = _DEFAULT_DATASET_REGISTRY.compatibility_api_names("tushare")
+    return load_dataset_registry(runtime_dataset_registry_path())

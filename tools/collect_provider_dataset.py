@@ -3,7 +3,7 @@
 
 The CLI intentionally accepts a dataset ID and request-window values only.
 Provider API names, provider fields, static request parameters, budgets, and
-activation state always come from the process-selected SharedSignals dataset
+activation state always come from the process-selected TradingDatas dataset
 registry. Only trusted process configuration can select the provider-native
 target artifact. Plan mode is the default and neither calls the provider nor
 opens the database.
@@ -32,6 +32,7 @@ from dataset_registry import (  # noqa: E402
     DatasetDefinition,
     DatasetRegistry,
     ProviderBinding,
+    RequestScalar,
     load_runtime_dataset_registry,
 )
 from storage.ingest_receipts import IngestContext, IngestResult  # noqa: E402
@@ -53,6 +54,7 @@ class _CollectionPlan:
     dataset: DatasetDefinition
     binding: ProviderBinding
     request_window: Mapping[str, str]
+    request_variant: Mapping[str, RequestScalar]
     parameter_keys: tuple[str, ...]
 
 
@@ -130,6 +132,7 @@ def _build_plan(
         binding,
         request_window,
     )
+    request_variant = binding.request_variants[0]
 
     # Reuse the receipt boundary's public-text and timestamp validation in plan
     # mode without touching SQLite or the provider.
@@ -148,6 +151,7 @@ def _build_plan(
         dataset=dataset,
         binding=binding,
         request_window=MappingProxyType(normalized_window),
+        request_variant=MappingProxyType(dict(request_variant)),
         parameter_keys=tuple(sorted(params)),
     )
 
@@ -281,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
             request_window=plan.request_window,
             attempt_id=attempt_id,
             started_at=started_at,
+            request_variant=plan.request_variant,
         )
         exit_code, summary = _result_summary(plan, result)
     except Exception:

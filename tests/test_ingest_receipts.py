@@ -13,11 +13,16 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    ProviderRequestIdentity,
     insert_ingest_receipt,
     make_receipt_id,
     write_terminal_receipt,
 )
 from storage.schema import SCHEMA_SQL
+from storage.sqlite_authority_lock import (
+    SqliteAuthorityLockError,
+    sqlite_authority_lock_path,
+)
 
 
 CONFIG_HASH = "a" * 64
@@ -29,6 +34,7 @@ def _context(
     *,
     attempt_id: str = "018f47de-0000-7000-8000-000000000001",
     request_window: dict[str, str] | None = None,
+    request_identity: ProviderRequestIdentity | None = None,
 ) -> IngestContext:
     return IngestContext(
         attempt_id=attempt_id,
@@ -42,6 +48,7 @@ def _context(
         adapter_version="tushare-direct-sqlite.v1",
         started_at="2026-07-15T04:00:00+00:00",
         data_through="2026-07-15",
+        request_identity=request_identity or ProviderRequestIdentity.trivial(),
     )
 
 
@@ -100,6 +107,61 @@ def _receipt_count(db_path: Path) -> int:
         conn.close()
 
 
+def test_terminal_receipt_uses_authority_lock_and_rolls_back_on_sentinel_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "terminal.sqlite"
+    _file_db(db_path)
+    original = receipt_module.insert_ingest_receipt_with_evidence
+
+    def replace_sentinel_after_insert(*args: object, **kwargs: object):
+        evidence = original(*args, **kwargs)
+        lock_path = sqlite_authority_lock_path(db_path)
+        lock_path.unlink()
+        lock_path.touch(mode=0o600)
+        return evidence
+
+    monkeypatch.setattr(
+        receipt_module,
+        "insert_ingest_receipt_with_evidence",
+        replace_sentinel_after_insert,
+    )
+
+    with pytest.raises(SqliteAuthorityLockError, match="binding changed"):
+        write_terminal_receipt(
+            db_path,
+            context=_context(attempt_id="terminal-sentinel-swap"),
+            status="failed",
+            errors=("storage_failed",),
+        )
+
+    assert _receipt_count(db_path) == 0
+
+
+def test_terminal_receipt_rejects_silent_ignore_trigger_without_success(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "terminal.sqlite"
+    _file_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """CREATE TRIGGER ignore_terminal_receipt
+               BEFORE INSERT ON market_ingest_runs
+               BEGIN SELECT RAISE(IGNORE); END;"""
+        )
+
+    with pytest.raises(RuntimeError, match="unsupported.*triggers"):
+        write_terminal_receipt(
+            db_path,
+            context=_context(attempt_id="terminal-ignore-trigger"),
+            status="failed",
+            errors=("storage_failed",),
+        )
+
+    assert _receipt_count(db_path) == 0
+
+
 def test_receipt_value_objects_are_frozen_and_context_copies_request_window() -> None:
     request_window = {"trade_date": "20260715"}
     context = _context(request_window=request_window)
@@ -123,28 +185,22 @@ def test_receipt_value_objects_are_frozen_and_context_copies_request_window() ->
         result.status = "failed"  # type: ignore[misc]
 
 
-def test_receipt_id_depends_only_on_attempt_table_and_transaction_index() -> None:
+def test_receipt_id_binds_full_request_attempt_table_and_transaction_index() -> None:
     context = _context()
-    same_identity_different_metadata = IngestContext(
-        attempt_id=context.attempt_id,
-        dataset_id="cn.reference.trade_calendar",
-        provider="other-provider",
-        provider_api="other_api",
-        request_window={"trade_date": "20200101"},
-        config_hash="c" * 64,
-        adapter_version="other-adapter.v9",
-        started_at="2020-01-01T00:00:00+00:00",
-        data_through=None,
+    next_page = _context(
+        request_identity=ProviderRequestIdentity(
+            request_variant={},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=None,
+            page_index=1,
+        )
     )
 
     receipt_id = make_receipt_id(context, "market_bars_daily", 0)
 
     assert receipt_id == make_receipt_id(context, "market_bars_daily", 0)
-    assert receipt_id == make_receipt_id(
-        same_identity_different_metadata,
-        "market_bars_daily",
-        0,
-    )
+    assert receipt_id != make_receipt_id(next_page, "market_bars_daily", 0)
     assert receipt_id != make_receipt_id(context, "market_bars_daily", 1)
     assert receipt_id != make_receipt_id(context, "market_events", 0)
     assert receipt_id != make_receipt_id(context, None, 0)
@@ -272,6 +328,7 @@ def test_insert_serializes_canonical_versioned_notes_without_owning_transaction(
                 "end_date": "20260715",
                 "start_date": "20260714",
             },
+            "request_identity": context.request_identity.canonical_payload(),
             "schema_version": RECEIPT_SCHEMA_VERSION,
             "started_at": context.started_at,
             "status": "success",

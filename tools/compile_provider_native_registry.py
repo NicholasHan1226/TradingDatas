@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
-"""Compile legacy Tushare registry/config into a provider-native candidate.
+"""Compile reviewed declarations into the provider-native dataset registry.
 
-The compiler is deliberately offline and side-effect free by default.  It reads
-the existing registry, capability plan, and collector configuration, then emits
-either a deterministic bundle, a candidate registry, or an unresolved/conflict
-report.  It never changes ``config/dataset_registry.yaml`` and never calls a
-provider.
-
-Examples::
-
-    python tools/compile_provider_native_registry.py
-    python tools/compile_provider_native_registry.py --kind report
-    python tools/compile_provider_native_registry.py \
-      --kind candidate --output /private/tmp/provider-native-registry.yaml
+The compiler is offline, deterministic, and fail closed. Dataset identity,
+schema, cadence, request execution, and budgets come only from the pinned
+upstream contract bundle. Entitlement/activation comes only from the activation
+manifest. Query limits come only from the explicit query-default declaration.
+The only artifact written is the provider-native dataset registry.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 from copy import deepcopy
-import hashlib
+import math
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import re
 import tempfile
 from typing import Any, Mapping, Sequence
@@ -32,12 +23,8 @@ import yaml
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REGISTRY_PATH = REPOSITORY_ROOT / "config" / "dataset_registry.yaml"
-DEFAULT_CAPABILITY_PLAN_PATH = (
-    REPOSITORY_ROOT / "config" / "tushare_capability_plan.yaml"
-)
-DEFAULT_COLLECTOR_CONFIG_PATH = (
-    REPOSITORY_ROOT / "collectors" / "tushare" / "config.yaml"
+DEFAULT_OUTPUT_PATH = (
+    REPOSITORY_ROOT / "config" / "provider_native_dataset_registry.yaml"
 )
 DEFAULT_UPSTREAM_CONTRACTS_PATH = (
     REPOSITORY_ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
@@ -48,23 +35,44 @@ PROVIDER = "tushare"
 PROVIDER_ADAPTER_VERSION = "tushare-provider-native.v1"
 READ_ADAPTER_VERSION = "provider-native-json.v1"
 PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
+DEFAULT_QUERY_DEFAULTS = {
+    "max_request_bytes": 65_536,
+    "max_response_bytes": 4_194_304,
+    "max_page_size": 500,
+    "max_lookback_days": 36_500,
+    "max_selected_fields": 100,
+    "max_filter_terms": 16,
+    "max_in_values": 100,
+    "max_order_terms": 8,
+    "max_catalog_search_chars": 128,
+    "cursor_ttl_seconds": 900,
+    "sqlite_progress_steps": 1_000_000,
+}
 
 _SAFE_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _WINDOW_PLACEHOLDER = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
-_SCHEMA_VERSION_PATTERN = re.compile(r"[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
-_LOGICAL_TYPES = frozenset({"text", "integer", "float"})
-_AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
-_ROOT_CONTRACT_KEYS = frozenset(
-    {"version", "bundle_id", "provider", "provenance", "contracts"}
+_SCHEMA_VERSION_PATTERN = re.compile(
+    r"[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 )
+_EVIDENCE_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}")
+_SENSITIVE_EVIDENCE_PATTERN = re.compile(
+    r"(?:secret|token|password|authorization|bearer|credential|api[_-]?key)",
+    re.IGNORECASE,
+)
+_ROOT_KEYS = frozenset({"version", "bundle_id", "provider", "provenance", "contracts"})
 _PROVENANCE_KEYS = frozenset(
     {"repository_url", "pinned_commit", "index_path", "index_sha256"}
 )
 _CONTRACT_KEYS = frozenset(
     {
         "dataset_id",
+        "aliases",
+        "domain",
+        "market",
+        "entity_type",
+        "data_classification",
         "provider",
         "api_name",
         "source_document_url",
@@ -78,13 +86,18 @@ _CONTRACT_KEYS = frozenset(
         "range_field",
         "partition_field",
         "cadence_class",
+        "timezone",
+        "freshness_sla_seconds",
         "point_in_time",
         "backfill_policy",
         "empty_data_policy",
         "required_scope",
         "quota_class",
+        "request_shape",
         "request_template",
         "request_variants",
+        "fanout",
+        "pagination",
         "request_window_policy",
         "response_completeness",
         "requested_fields",
@@ -93,7 +106,7 @@ _CONTRACT_KEYS = frozenset(
     }
 )
 _CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {"request_window_policy"}
-_CONTRACT_FIELD_KEYS = frozenset(
+_FIELD_KEYS = frozenset(
     {
         "name",
         "declared_source_type",
@@ -104,16 +117,42 @@ _CONTRACT_FIELD_KEYS = frozenset(
         "sortable",
     }
 )
-_WINDOW_POLICY_KEYS = frozenset(
+_ACTIVATION_ROOT_KEYS = frozenset({"version", "activations"})
+_ACTIVATION_KEYS = frozenset(
+    {"dataset_id", "provider", "entitlement_state", "activation_state", "evidence_ref"}
+)
+_ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
+_ACTIVATION_STATES = frozenset({"active", "paused"})
+_REQUEST_SHAPES = frozenset(
     {
-        "required_keys",
-        "formats",
-        "range_start_key",
-        "range_end_key",
-        "max_span_days",
+        "snapshot_or_date_range",
+        "entity_fanout",
+        "dimension_fanout",
+        "event_or_intraday_window",
     }
 )
-_RESPONSE_COMPLETENESS_KEYS = frozenset(
+_CADENCE_CLASSES = frozenset(
+    {
+        "session_minute",
+        "postclose_daily",
+        "daily_reference",
+        "weekly",
+        "monthly",
+        "quarterly_reporting",
+        "event",
+        "on_demand",
+    }
+)
+_FANOUT_KEYS = frozenset(
+    {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+)
+_PAGINATION_KEYS = frozenset(
+    {"strategy", "limit_parameter", "offset_parameter", "page_size", "max_pages"}
+)
+_WINDOW_KEYS = frozenset(
+    {"required_keys", "formats", "range_start_key", "range_end_key", "max_span_days"}
+)
+_COMPLETENESS_KEYS = frozenset(
     {
         "strategy",
         "date_field",
@@ -125,7 +164,7 @@ _RESPONSE_COMPLETENESS_KEYS = frozenset(
         "reject_at_row_limit",
     }
 )
-_RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
+_COMPLETENESS_STRATEGIES = frozenset(
     {
         "one_row_per_calendar_date",
         "unique_primary_key_snapshot",
@@ -140,7 +179,7 @@ _BUDGET_KEYS = frozenset(
         "max_nesting_depth",
     }
 )
-_TYPE_OVERRIDE_KEYS = frozenset(
+_OVERRIDE_KEYS = frozenset(
     {
         "field",
         "declared_source_type",
@@ -149,23 +188,6 @@ _TYPE_OVERRIDE_KEYS = frozenset(
         "reason",
         "evidence",
     }
-)
-_ACTIVATION_ROOT_KEYS = frozenset({"version", "activations"})
-_ACTIVATION_ENTRY_KEYS = frozenset(
-    {
-        "dataset_id",
-        "provider",
-        "entitlement_state",
-        "activation_state",
-        "evidence_ref",
-    }
-)
-_ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
-_ACTIVATION_STATES = frozenset({"active", "paused"})
-_EVIDENCE_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}")
-_SENSITIVE_EVIDENCE_PATTERN = re.compile(
-    r"(?:secret|token|password|authorization|bearer|credential|api[_-]?key)",
-    re.IGNORECASE,
 )
 
 
@@ -181,136 +203,7 @@ def _sequence(value: object, label: str) -> list[Any]:
     return value
 
 
-def _non_empty_text(value: object) -> str | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
-
-
-def _plan_index(
-    plan: Mapping[str, Any],
-) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, object]]]:
-    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    conflicts: list[dict[str, object]] = []
-    modules = plan.get("modules", [])
-    if not isinstance(modules, list):
-        return index, [
-            {
-                "code": "invalid_capability_plan_modules",
-                "api_name": None,
-                "details": ["modules must be a list"],
-            }
-        ]
-    for module_index, raw_module in enumerate(modules):
-        if not isinstance(raw_module, dict):
-            conflicts.append(
-                {
-                    "code": "invalid_capability_plan_module",
-                    "api_name": None,
-                    "details": [f"modules[{module_index}] must be a mapping"],
-                }
-            )
-            continue
-        apis = raw_module.get("apis", [])
-        if not isinstance(apis, list):
-            conflicts.append(
-                {
-                    "code": "invalid_capability_plan_apis",
-                    "api_name": None,
-                    "details": [f"modules[{module_index}].apis must be a list"],
-                }
-            )
-            continue
-        for api_index, raw_api in enumerate(apis):
-            if not isinstance(raw_api, dict):
-                conflicts.append(
-                    {
-                        "code": "invalid_capability_plan_api",
-                        "api_name": None,
-                        "details": [
-                            f"modules[{module_index}].apis[{api_index}] must be a mapping"
-                        ],
-                    }
-                )
-                continue
-            api_name = _non_empty_text(raw_api.get("api_name"))
-            if api_name is None:
-                conflicts.append(
-                    {
-                        "code": "missing_capability_api_name",
-                        "api_name": None,
-                        "details": [f"modules[{module_index}].apis[{api_index}]"],
-                    }
-                )
-                continue
-            item = deepcopy(raw_api)
-            item["module"] = raw_module.get("module")
-            item["market"] = raw_module.get("market")
-            item["effective_cadence"] = raw_api.get("cadence") or raw_module.get(
-                "default_cadence"
-            )
-            index[api_name].append(item)
-    return dict(index), conflicts
-
-
-def _collector_index(
-    collector: Mapping[str, Any],
-) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, object]]]:
-    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    conflicts: list[dict[str, object]] = []
-    priorities = collector.get("priorities", {})
-    if not isinstance(priorities, dict):
-        return index, [
-            {
-                "code": "invalid_collector_priorities",
-                "api_name": None,
-                "details": ["priorities must be a mapping"],
-            }
-        ]
-    for raw_tier, raw_items in priorities.items():
-        tier = _non_empty_text(raw_tier)
-        if tier is None or not isinstance(raw_items, list):
-            conflicts.append(
-                {
-                    "code": "invalid_collector_tier",
-                    "api_name": None,
-                    "details": [str(raw_tier)],
-                }
-            )
-            continue
-        for item_index, raw_item in enumerate(raw_items):
-            if not isinstance(raw_item, dict):
-                conflicts.append(
-                    {
-                        "code": "invalid_collector_item",
-                        "api_name": None,
-                        "details": [f"{tier}[{item_index}] must be a mapping"],
-                    }
-                )
-                continue
-            api_name = _non_empty_text(raw_item.get("api_name"))
-            if api_name is None:
-                conflicts.append(
-                    {
-                        "code": "missing_collector_api_name",
-                        "api_name": None,
-                        "details": [f"{tier}[{item_index}]"],
-                    }
-                )
-                continue
-            item = deepcopy(raw_item)
-            item["compiler_tier"] = tier
-            index[api_name].append(item)
-    return dict(index), conflicts
-
-
-def _append_reason(
-    reasons: list[dict[str, object]], code: str, details: Sequence[str]
-) -> None:
-    reasons.append({"code": code, "details": list(details)})
-
-
-def _reject_contract_keys(
+def _reject_keys(
     value: Mapping[str, Any],
     allowed: frozenset[str],
     label: str,
@@ -320,16 +213,15 @@ def _reject_contract_keys(
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ValueError(f"{label} has unknown key(s): {', '.join(unknown)}")
-    missing = sorted((required or allowed) - set(value))
+    missing = sorted((allowed if required is None else required) - set(value))
     if missing:
         raise ValueError(f"{label} is missing key(s): {', '.join(missing)}")
 
 
 def _required_text(value: object, label: str) -> str:
-    normalized = _non_empty_text(value)
-    if normalized is None:
+    if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty string")
-    return normalized
+    return value.strip()
 
 
 def _required_bool(value: object, label: str) -> bool:
@@ -338,394 +230,397 @@ def _required_bool(value: object, label: str) -> bool:
     return value
 
 
-def _activation_index(
-    document: Mapping[str, Any] | None,
-) -> dict[tuple[str, str], dict[str, str | None]]:
-    if document is None:
-        return {}
-    root = _mapping(deepcopy(document), "activation manifest")
-    _reject_contract_keys(root, _ACTIVATION_ROOT_KEYS, "activation manifest")
-    if type(root["version"]) is not int or root["version"] != 1:
-        raise ValueError("activation manifest.version must be integer 1")
-    index: dict[tuple[str, str], dict[str, str | None]] = {}
-    for entry_index, raw_entry in enumerate(
-        _sequence(root["activations"], "activation manifest.activations")
-    ):
-        label = f"activation manifest.activations[{entry_index}]"
-        entry = _mapping(raw_entry, label)
-        _reject_contract_keys(entry, _ACTIVATION_ENTRY_KEYS, label)
-        dataset_id = _required_text(entry["dataset_id"], f"{label}.dataset_id")
-        provider = _required_text(entry["provider"], f"{label}.provider")
-        entitlement_state = _required_text(
-            entry["entitlement_state"], f"{label}.entitlement_state"
-        )
-        activation_state = _required_text(
-            entry["activation_state"], f"{label}.activation_state"
-        )
-        if entitlement_state not in _ENTITLEMENT_STATES:
-            raise ValueError(f"{label}.entitlement_state is unsupported")
-        if activation_state not in _ACTIVATION_STATES:
-            raise ValueError(f"{label}.activation_state is unsupported")
-        raw_evidence_ref = entry["evidence_ref"]
-        if raw_evidence_ref is None:
-            evidence_ref = None
-        else:
-            evidence_ref = _required_text(raw_evidence_ref, f"{label}.evidence_ref")
-            path = PurePosixPath(evidence_ref)
-            if (
-                evidence_ref != str(path)
-                or path.is_absolute()
-                or ".." in path.parts
-                or _EVIDENCE_REF_PATTERN.fullmatch(evidence_ref) is None
-                or _SENSITIVE_EVIDENCE_PATTERN.search(evidence_ref) is not None
-            ):
-                raise ValueError(
-                    f"{label}.evidence_ref must be a non-sensitive relative reference"
-                )
-        if activation_state == "active":
-            if entitlement_state != "active":
-                raise ValueError(
-                    f"{label} activation_state=active requires entitlement_state=active"
-                )
-            if evidence_ref is None:
-                raise ValueError(f"{label} active activation requires evidence_ref")
-        key = (dataset_id, provider)
-        if key in index:
-            raise ValueError(
-                f"duplicate activation for dataset/provider: {dataset_id}/{provider}"
-            )
-        index[key] = {
-            "entitlement_state": entitlement_state,
-            "activation_state": activation_state,
-            "evidence_ref": evidence_ref,
-        }
-    return index
-
-
 def _required_positive_int(value: object, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{label} must be a positive integer")
     return value
 
 
-def _required_string_list(
-    value: object,
-    label: str,
-    *,
-    allow_empty: bool = False,
-) -> list[str]:
-    items = _sequence(value, label)
-    if not items and not allow_empty:
+def _string_list(value: object, label: str, *, allow_empty: bool = False) -> list[str]:
+    values = _sequence(value, label)
+    normalized = [
+        _required_text(item, f"{label}[{index}]") for index, item in enumerate(values)
+    ]
+    if not allow_empty and not normalized:
         raise ValueError(f"{label} must not be empty")
-    normalized = [_required_text(item, f"{label} item") for item in items]
     if len(normalized) != len(set(normalized)):
         raise ValueError(f"{label} must not contain duplicates")
     return normalized
 
 
-def _declared_field(
-    raw: object,
-    *,
-    contract_label: str,
-    index: int,
-) -> dict[str, Any]:
-    label = f"{contract_label}.fields[{index}]"
-    value = _mapping(raw, label)
-    _reject_contract_keys(value, _CONTRACT_FIELD_KEYS, label)
-    name = _required_text(value["name"], f"{label}.name")
-    if _SAFE_IDENTIFIER.fullmatch(name) is None:
-        raise ValueError(f"{label}.name must use the provider field grammar")
-    logical_type = _required_text(value["logical_type"], f"{label}.logical_type")
-    if logical_type not in _LOGICAL_TYPES:
-        raise ValueError(f"{label}.logical_type is unsupported")
+def _json_scalar(value: object, label: str) -> str | int | float | bool | None:
+    if value is None or type(value) in {str, int, bool}:
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    raise ValueError(f"{label} must be a concrete finite JSON scalar")
+
+
+def _query_defaults(value: Mapping[str, Any] | None) -> dict[str, int]:
+    source = DEFAULT_QUERY_DEFAULTS if value is None else value
+    declaration = _mapping(deepcopy(source), "query defaults")
+    _reject_keys(declaration, frozenset(DEFAULT_QUERY_DEFAULTS), "query defaults")
     return {
-        "name": name,
-        "declared_source_type": _required_text(
-            value["declared_source_type"], f"{label}.declared_source_type"
-        ),
-        "logical_type": logical_type,
-        "nullable": _required_bool(value["nullable"], f"{label}.nullable"),
-        "selectable": _required_bool(value["selectable"], f"{label}.selectable"),
-        "filterable": _required_bool(value["filterable"], f"{label}.filterable"),
-        "sortable": _required_bool(value["sortable"], f"{label}.sortable"),
+        key: _required_positive_int(declaration[key], f"query defaults.{key}")
+        for key in DEFAULT_QUERY_DEFAULTS
     }
 
 
-def _request_template_contract(raw: object, label: str) -> dict[str, str]:
-    value = _mapping(raw, label)
-    normalized: dict[str, str] = {}
-    for raw_key in sorted(value, key=str):
+def _activation_index(
+    document: Mapping[str, Any] | None,
+) -> dict[tuple[str, str], dict[str, str | None]]:
+    if document is None:
+        return {}
+    root = _mapping(deepcopy(document), "activation manifest")
+    _reject_keys(root, _ACTIVATION_ROOT_KEYS, "activation manifest")
+    if type(root["version"]) is not int or root["version"] != 1:
+        raise ValueError("activation manifest.version must be integer 1")
+    result: dict[tuple[str, str], dict[str, str | None]] = {}
+    for index, raw_entry in enumerate(
+        _sequence(root["activations"], "activation manifest.activations")
+    ):
+        label = f"activation manifest.activations[{index}]"
+        entry = _mapping(raw_entry, label)
+        _reject_keys(entry, _ACTIVATION_KEYS, label)
+        dataset_id = _required_text(entry["dataset_id"], f"{label}.dataset_id")
+        provider = _required_text(entry["provider"], f"{label}.provider")
+        entitlement = _required_text(
+            entry["entitlement_state"], f"{label}.entitlement_state"
+        )
+        activation = _required_text(
+            entry["activation_state"], f"{label}.activation_state"
+        )
+        if entitlement not in _ENTITLEMENT_STATES:
+            raise ValueError(f"{label}.entitlement_state is unsupported")
+        if activation not in _ACTIVATION_STATES:
+            raise ValueError(f"{label}.activation_state is unsupported")
+        raw_evidence = entry["evidence_ref"]
+        evidence = (
+            None
+            if raw_evidence is None
+            else _required_text(raw_evidence, f"{label}.evidence_ref")
+        )
+        if evidence is not None:
+            path = PurePosixPath(evidence)
+            if (
+                evidence != str(path)
+                or path.is_absolute()
+                or ".." in path.parts
+                or _EVIDENCE_REF_PATTERN.fullmatch(evidence) is None
+                or _SENSITIVE_EVIDENCE_PATTERN.search(evidence) is not None
+            ):
+                raise ValueError(
+                    f"{label}.evidence_ref must be a non-sensitive relative reference"
+                )
+        if activation == "active" and entitlement != "active":
+            raise ValueError(
+                f"{label} activation_state=active requires entitlement_state=active"
+            )
+        if activation == "active" and evidence is None:
+            raise ValueError(f"{label} active activation requires evidence_ref")
+        key = (dataset_id, provider)
+        if key in result:
+            raise ValueError(
+                f"duplicate activation for dataset/provider: {dataset_id}/{provider}"
+            )
+        result[key] = {
+            "entitlement_state": entitlement,
+            "activation_state": activation,
+            "evidence_ref": evidence,
+        }
+    return result
+
+
+def _fields(raw: object, label: str) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for index, raw_field in enumerate(_sequence(raw, f"{label}.fields")):
+        field_label = f"{label}.fields[{index}]"
+        field = _mapping(raw_field, field_label)
+        _reject_keys(field, _FIELD_KEYS, field_label)
+        name = _required_text(field["name"], f"{field_label}.name")
+        if _SAFE_IDENTIFIER.fullmatch(name) is None:
+            raise ValueError(f"{field_label}.name must use provider field grammar")
+        logical_type = _required_text(
+            field["logical_type"], f"{field_label}.logical_type"
+        )
+        if logical_type not in {"text", "integer", "float"}:
+            raise ValueError(f"{field_label}.logical_type is unsupported")
+        result.append(
+            {
+                "name": name,
+                "declared_source_type": _required_text(
+                    field["declared_source_type"], f"{field_label}.declared_source_type"
+                ),
+                "logical_type": logical_type,
+                "nullable": _required_bool(
+                    field["nullable"], f"{field_label}.nullable"
+                ),
+                "selectable": _required_bool(
+                    field["selectable"], f"{field_label}.selectable"
+                ),
+                "filterable": _required_bool(
+                    field["filterable"], f"{field_label}.filterable"
+                ),
+                "sortable": _required_bool(
+                    field["sortable"], f"{field_label}.sortable"
+                ),
+            }
+        )
+    if not result:
+        raise ValueError(f"{label}.fields must not be empty")
+    names = [field["name"] for field in result]
+    if len(names) != len(set(names)):
+        raise ValueError(f"{label}.fields contains duplicate field names")
+    return result
+
+
+def _request_template(raw: object, label: str) -> dict[str, str]:
+    source = _mapping(raw, label)
+    result: dict[str, str] = {}
+    for raw_key, raw_value in source.items():
         key = _required_text(raw_key, f"{label} key")
         if _SAFE_IDENTIFIER.fullmatch(key) is None:
-            raise ValueError(f"{label} key must use the provider field grammar")
-        template_value = value[raw_key]
-        if not isinstance(template_value, str) or not template_value:
-            raise ValueError(f"{label}.{key} must be a non-empty string")
-        if any(ord(character) < 32 for character in template_value):
-            raise ValueError(f"{label}.{key} must not contain control characters")
-        if "${" in template_value and _WINDOW_PLACEHOLDER.fullmatch(template_value) is None:
-            raise ValueError(f"{label}.{key} has an invalid window placeholder")
-        normalized[key] = template_value
-    return normalized
+            raise ValueError(f"{label} key must use provider parameter grammar")
+        result[key] = _required_text(raw_value, f"{label}.{key}")
+    return dict(sorted(result.items()))
 
 
-def _request_variants_contract(
-    raw: object,
-    *,
-    request_template: Mapping[str, str],
-    label: str,
-) -> list[dict[str, str]]:
-    values = _sequence(raw, label)
-    if not values:
+def _request_variants(
+    raw: object, template: Mapping[str, str], label: str
+) -> list[dict[str, Any]]:
+    variants: list[dict[str, Any]] = []
+    for index, raw_variant in enumerate(_sequence(raw, label)):
+        variant_label = f"{label}[{index}]"
+        variant = _mapping(raw_variant, variant_label)
+        unknown = sorted(set(variant) - set(template))
+        if unknown:
+            raise ValueError(
+                f"{variant_label} key is absent from request_template: {unknown[0]}"
+            )
+        normalized: dict[str, Any] = {}
+        for key in sorted(variant):
+            if _WINDOW_PLACEHOLDER.fullmatch(template[key]):
+                raise ValueError(
+                    f"{variant_label} cannot override placeholder parameter: {key}"
+                )
+            value = _json_scalar(variant[key], f"{variant_label}.{key}")
+            normalized[key] = value
+        variants.append(normalized)
+    if not variants:
         raise ValueError(f"{label} must not be empty")
-    normalized: list[dict[str, str]] = []
-    expected_keys: frozenset[str] | None = None
-    seen: set[tuple[tuple[str, str], ...]] = set()
-    for index, raw_variant in enumerate(values):
-        value = _mapping(raw_variant, f"{label}[{index}]")
-        variant: dict[str, str] = {}
-        for raw_key in sorted(value, key=str):
-            key = _required_text(raw_key, f"{label}[{index}] key")
-            if _SAFE_IDENTIFIER.fullmatch(key) is None:
-                raise ValueError(f"{label}[{index}] key must use provider grammar")
-            if key not in request_template:
-                raise ValueError(
-                    f"{label}[{index}].{key} is missing from request_template"
-                )
-            if _WINDOW_PLACEHOLDER.fullmatch(request_template[key]):
-                raise ValueError(
-                    f"{label}[{index}].{key} cannot override a window placeholder"
-                )
-            item = _required_text(value[raw_key], f"{label}[{index}].{key}")
-            if any(ord(character) < 32 for character in item) or "${" in item:
-                raise ValueError(f"{label}[{index}].{key} must be a concrete value")
-            variant[key] = item
-        keys = frozenset(variant)
-        if not keys:
-            if len(values) != 1:
-                raise ValueError(f"{label} empty variant must be the only variant")
-        elif expected_keys is None:
-            expected_keys = keys
-        elif keys != expected_keys:
-            raise ValueError(f"{label} variants must use the same keys")
-        identity = tuple(sorted(variant.items()))
-        if identity in seen:
-            raise ValueError(f"{label} contains a duplicate variant")
-        seen.add(identity)
-        normalized.append(dict(identity))
-    if expected_keys is not None:
-        template_default = tuple(
-            sorted((key, request_template[key]) for key in expected_keys)
-        )
-        if template_default not in seen:
-            raise ValueError(f"{label} must include the request_template default")
-    return normalized
+    static_defaults = {
+        key: value
+        for key, value in template.items()
+        if _WINDOW_PLACEHOLDER.fullmatch(value) is None
+    }
+    if {} not in variants and not any(
+        all(variant.get(key) == value for key, value in static_defaults.items())
+        for variant in variants
+    ):
+        raise ValueError(f"{label} must include the request_template default variant")
+    return variants
 
 
-def _window_policy_contract(
+def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
+    value = _mapping(raw, label)
+    strategy = _required_text(value.get("strategy"), f"{label}.strategy")
+    if strategy == "none":
+        _reject_keys(value, frozenset({"strategy"}), label)
+        result = {"strategy": "none"}
+    elif strategy == "dataset_field":
+        _reject_keys(value, _FANOUT_KEYS, label)
+        parameter = _required_text(value["parameter"], f"{label}.parameter")
+        source_field = _required_text(value["source_field"], f"{label}.source_field")
+        if (
+            _SAFE_IDENTIFIER.fullmatch(parameter) is None
+            or _SAFE_IDENTIFIER.fullmatch(source_field) is None
+        ):
+            raise ValueError(f"{label} fields must use provider field grammar")
+        result = {
+            "strategy": strategy,
+            "parameter": parameter,
+            "source_dataset_id": _required_text(
+                value["source_dataset_id"], f"{label}.source_dataset_id"
+            ),
+            "source_field": source_field,
+            "batch_size": _required_positive_int(
+                value["batch_size"], f"{label}.batch_size"
+            ),
+        }
+    else:
+        raise ValueError(f"{label}.strategy is unsupported")
+    requires_fanout = request_shape in {"entity_fanout", "dimension_fanout"}
+    if requires_fanout != (result["strategy"] == "dataset_field"):
+        expected = "dataset_field" if requires_fanout else "none"
+        raise ValueError(f"{label} for {request_shape} requires strategy={expected}")
+    return result
+
+
+def _pagination(raw: object, label: str) -> dict[str, Any]:
+    value = _mapping(raw, label)
+    strategy = _required_text(value.get("strategy"), f"{label}.strategy")
+    if strategy == "none":
+        _reject_keys(value, frozenset({"strategy"}), label)
+        return {"strategy": "none"}
+    if strategy != "offset":
+        raise ValueError(f"{label}.strategy is unsupported")
+    _reject_keys(value, _PAGINATION_KEYS, label)
+    limit_parameter = _required_text(
+        value["limit_parameter"], f"{label}.limit_parameter"
+    )
+    offset_parameter = _required_text(
+        value["offset_parameter"], f"{label}.offset_parameter"
+    )
+    if limit_parameter == offset_parameter:
+        raise ValueError(f"{label} limit_parameter and offset_parameter must differ")
+    if (
+        _SAFE_IDENTIFIER.fullmatch(limit_parameter) is None
+        or _SAFE_IDENTIFIER.fullmatch(offset_parameter) is None
+    ):
+        raise ValueError(f"{label} parameters must use provider field grammar")
+    return {
+        "strategy": strategy,
+        "limit_parameter": limit_parameter,
+        "offset_parameter": offset_parameter,
+        "page_size": _required_positive_int(value["page_size"], f"{label}.page_size"),
+        "max_pages": _required_positive_int(value["max_pages"], f"{label}.max_pages"),
+    }
+
+
+def _window_policy(
+    raw: object, template: Mapping[str, str], label: str
+) -> dict[str, Any] | None:
+    placeholders = sorted(
+        match.group(1)
+        for value in template.values()
+        if (match := _WINDOW_PLACEHOLDER.fullmatch(value)) is not None
+    )
+    if raw is None:
+        if placeholders:
+            raise ValueError(f"{label} is required for window placeholders")
+        return None
+    value = _mapping(raw, label)
+    _reject_keys(value, _WINDOW_KEYS, label)
+    required_keys = _string_list(value["required_keys"], f"{label}.required_keys")
+    formats = _mapping(value["formats"], f"{label}.formats")
+    if set(required_keys) != set(formats) or set(required_keys) != set(placeholders):
+        raise ValueError(f"{label} keys must exactly match request window placeholders")
+    normalized_formats = {
+        key: _required_text(formats[key], f"{label}.formats.{key}")
+        for key in sorted(formats)
+    }
+    if any(item not in {"yyyymmdd", "rfc3339"} for item in normalized_formats.values()):
+        raise ValueError(f"{label}.formats contains unsupported format")
+    start = _required_text(value["range_start_key"], f"{label}.range_start_key")
+    end = _required_text(value["range_end_key"], f"{label}.range_end_key")
+    if start not in required_keys or end not in required_keys:
+        raise ValueError(f"{label} range keys must be required keys")
+    return {
+        "required_keys": required_keys,
+        "formats": normalized_formats,
+        "range_start_key": start,
+        "range_end_key": end,
+        "max_span_days": _required_positive_int(
+            value["max_span_days"], f"{label}.max_span_days"
+        ),
+    }
+
+
+def _completeness(
     raw: object,
     *,
-    request_template: Mapping[str, str],
+    fields: set[str],
+    template: Mapping[str, str],
+    window: Mapping[str, Any] | None,
     label: str,
 ) -> dict[str, Any] | None:
     if raw is None:
         return None
     value = _mapping(raw, label)
-    _reject_contract_keys(value, _WINDOW_POLICY_KEYS, label)
-    required_keys = _required_string_list(value["required_keys"], f"{label}.required_keys")
-    formats_value = _mapping(value["formats"], f"{label}.formats")
-    formats = {
-        _required_text(key, f"{label}.formats key"): _required_text(
-            item, f"{label}.formats.{key}"
-        )
-        for key, item in formats_value.items()
-    }
-    if set(formats) != set(required_keys):
-        raise ValueError(f"{label}.formats keys must exactly equal required_keys")
-    if set(formats.values()) != {"yyyymmdd"}:
-        raise ValueError(f"{label}.formats only supports yyyymmdd")
-    placeholders = [
-        match.group(1)
-        for template_value in request_template.values()
-        if (match := _WINDOW_PLACEHOLDER.fullmatch(template_value)) is not None
-    ]
-    if len(placeholders) != len(set(placeholders)) or set(placeholders) != set(
-        required_keys
-    ):
-        raise ValueError(
-            f"{label} request_template placeholders must exactly equal required_keys"
-        )
-    start_key = _required_text(value["range_start_key"], f"{label}.range_start_key")
-    end_key = _required_text(value["range_end_key"], f"{label}.range_end_key")
-    max_span_days = _required_positive_int(
-        value["max_span_days"], f"{label}.max_span_days"
-    )
-    if start_key == end_key and not (
-        required_keys == [start_key] and max_span_days == 1
-    ):
-        raise ValueError(
-            f"{label} range keys must be distinct declared required_keys unless one "
-            "key has max_span_days=1"
-        )
-    if {start_key, end_key} - set(required_keys):
-        raise ValueError(f"{label} range keys must be declared required_keys")
-    return {
-        "required_keys": required_keys,
-        "formats": dict(sorted(formats.items())),
-        "range_start_key": start_key,
-        "range_end_key": end_key,
-        "max_span_days": max_span_days,
-    }
-
-
-def _response_completeness_contract(
-    raw: object,
-    *,
-    fields_by_name: Mapping[str, Mapping[str, Any]],
-    request_template: Mapping[str, str],
-    window_policy: Mapping[str, Any] | None,
-    as_of_field: str | None,
-    as_of_format: str | None,
-    label: str,
-) -> dict[str, Any]:
-    value = _mapping(raw, label)
-    strategy = _required_text(value["strategy"], f"{label}.strategy")
-    if strategy not in _RESPONSE_COMPLETENESS_STRATEGIES:
+    unknown = sorted(set(value) - _COMPLETENESS_KEYS)
+    if unknown:
+        raise ValueError(f"{label} has unknown key(s): {', '.join(unknown)}")
+    strategy = _required_text(value.get("strategy"), f"{label}.strategy")
+    if strategy not in _COMPLETENESS_STRATEGIES:
         raise ValueError(f"{label}.strategy is unsupported")
-    required_keys = {
-        "one_row_per_calendar_date": {
+    fixed = _mapping(value.get("fixed_field_matches"), f"{label}.fixed_field_matches")
+    normalized_fixed: dict[str, str] = {}
+    for field, parameter in fixed.items():
+        field_name = _required_text(field, f"{label}.fixed_field_matches key")
+        parameter_name = _required_text(
+            parameter, f"{label}.fixed_field_matches.{field_name}"
+        )
+        if field_name not in fields:
+            raise ValueError(
+                f"{label}.fixed_field_matches references undeclared field: {field_name}"
+            )
+        if parameter_name not in template:
+            raise ValueError(
+                f"{label}.fixed_field_matches references missing parameter: {parameter_name}"
+            )
+        normalized_fixed[field_name] = parameter_name
+    result: dict[str, Any] = {
+        "strategy": strategy,
+        "fixed_field_matches": dict(sorted(normalized_fixed.items())),
+        "reject_at_row_limit": _required_bool(
+            value.get("reject_at_row_limit", True), f"{label}.reject_at_row_limit"
+        ),
+    }
+    if strategy == "one_row_per_calendar_date":
+        required = {
             "strategy",
             "date_field",
             "request_start_key",
             "request_end_key",
             "fixed_field_matches",
-        },
-        "unique_primary_key_snapshot": {
-            "strategy",
-            "fixed_field_matches",
-            "reject_at_row_limit",
-        },
-        "single_partition_unique_primary_key": {
+        }
+        missing = sorted(required - set(value))
+        if missing:
+            raise ValueError(f"{label} is missing key(s): {', '.join(missing)}")
+        if window is None:
+            raise ValueError(f"{label} requires request_window_policy")
+        date_field = _required_text(value["date_field"], f"{label}.date_field")
+        start = _required_text(value["request_start_key"], f"{label}.request_start_key")
+        end = _required_text(value["request_end_key"], f"{label}.request_end_key")
+        if date_field not in fields:
+            raise ValueError(f"{label}.date_field is undeclared")
+        if start not in window["required_keys"] or end not in window["required_keys"]:
+            raise ValueError(f"{label} request range keys must exist in window policy")
+        result.update(
+            date_field=date_field, request_start_key=start, request_end_key=end
+        )
+    elif strategy == "single_partition_unique_primary_key":
+        required = {
             "strategy",
             "partition_field",
             "request_partition_key",
             "fixed_field_matches",
-            "reject_at_row_limit",
-        },
-    }[strategy]
-    allowed_keys = set(required_keys)
-    if strategy == "one_row_per_calendar_date":
-        allowed_keys.add("reject_at_row_limit")
-    _reject_contract_keys(value, frozenset(allowed_keys), label, required=frozenset(required_keys))
-    reject_at_row_limit = _required_bool(
-        value.get("reject_at_row_limit", False), f"{label}.reject_at_row_limit"
-    )
-
-    date_field: str | None = None
-    request_start_key: str | None = None
-    request_end_key: str | None = None
-    partition_field: str | None = None
-    request_partition_key: str | None = None
-    if strategy == "one_row_per_calendar_date":
-        date_field = _required_text(value["date_field"], f"{label}.date_field")
-        request_start_key = _required_text(
-            value["request_start_key"], f"{label}.request_start_key"
-        )
-        request_end_key = _required_text(
-            value["request_end_key"], f"{label}.request_end_key"
-        )
-        if window_policy is None:
+        }
+        missing = sorted(required - set(value))
+        if missing:
+            raise ValueError(f"{label} is missing key(s): {', '.join(missing)}")
+        if window is None:
             raise ValueError(f"{label} requires request_window_policy")
-        if request_start_key != window_policy["range_start_key"]:
-            raise ValueError(f"{label}.request_start_key must equal the window range start")
-        if request_end_key != window_policy["range_end_key"]:
-            raise ValueError(f"{label}.request_end_key must equal the window range end")
-    elif strategy == "unique_primary_key_snapshot":
-        if window_policy is not None:
-            raise ValueError(f"{label}.unique_primary_key_snapshot must not use request_window_policy")
-    else:
-        partition_field = _required_text(
-            value["partition_field"], f"{label}.partition_field"
-        )
-        request_partition_key = _required_text(
+        partition = _required_text(value["partition_field"], f"{label}.partition_field")
+        request_key = _required_text(
             value["request_partition_key"], f"{label}.request_partition_key"
         )
-        if window_policy is None:
-            raise ValueError(f"{label} requires request_window_policy")
-        if (
-            window_policy["required_keys"] != [request_partition_key]
-            or window_policy["range_start_key"] != request_partition_key
-            or window_policy["range_end_key"] != request_partition_key
-            or window_policy["max_span_days"] != 1
-        ):
-            raise ValueError(
-                f"{label}.single_partition_unique_primary_key requires one "
-                "max_span_days=1 request window key"
-            )
-
-    raw_matches = _mapping(
-        value["fixed_field_matches"], f"{label}.fixed_field_matches"
-    )
-    fixed_field_matches: dict[str, str] = {}
-    for raw_field, raw_param in raw_matches.items():
-        field_name = _required_text(
-            raw_field, f"{label}.fixed_field_matches row field"
-        )
-        param_name = _required_text(
-            raw_param, f"{label}.fixed_field_matches.{field_name}"
-        )
-        if _SAFE_IDENTIFIER.fullmatch(field_name) is None:
-            raise ValueError(
-                f"{label}.fixed_field_matches row field must use provider grammar"
-            )
-        if _SAFE_IDENTIFIER.fullmatch(param_name) is None:
-            raise ValueError(
-                f"{label}.fixed_field_matches target must use provider grammar"
-            )
-        if field_name not in fields_by_name:
-            raise ValueError(
-                f"{label}.fixed_field_matches references undeclared field: {field_name}"
-            )
-        if param_name not in request_template:
-            raise ValueError(
-                f"{label}.fixed_field_matches target is missing from request_template: "
-                f"{param_name}"
-            )
-        fixed_field_matches[field_name] = param_name
-    normalized = {
-        "strategy": strategy,
-        "fixed_field_matches": dict(sorted(fixed_field_matches.items())),
-        "reject_at_row_limit": reject_at_row_limit,
-    }
-    if strategy == "one_row_per_calendar_date":
-        normalized.update(
-            {
-                "date_field": date_field,
-                "request_start_key": request_start_key,
-                "request_end_key": request_end_key,
-            }
-        )
-    elif strategy == "single_partition_unique_primary_key":
-        normalized.update(
-            {
-                "partition_field": partition_field,
-                "request_partition_key": request_partition_key,
-            }
-        )
-    return normalized
+        if partition not in fields or request_key not in window["required_keys"]:
+            raise ValueError(f"{label} partition identity is not declared")
+        result.update(partition_field=partition, request_partition_key=request_key)
+    return result
 
 
 def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str, Any]:
     label = f"upstream contracts[{index}]"
     value = _mapping(raw, label)
-    _reject_contract_keys(value, _CONTRACT_KEYS, label, required=_CONTRACT_REQUIRED_KEYS)
-    dataset_id = _required_text(value["dataset_id"], f"{label}.dataset_id")
+    _reject_keys(value, _CONTRACT_KEYS, label, required=_CONTRACT_REQUIRED_KEYS)
     contract_provider = _required_text(value["provider"], f"{label}.provider")
     if contract_provider != provider:
         raise ValueError(f"{label}.provider must match bundle provider")
     api_name = _required_text(value["api_name"], f"{label}.api_name")
     if _SAFE_IDENTIFIER.fullmatch(api_name) is None:
-        raise ValueError(f"{label}.api_name must use the provider API grammar")
+        raise ValueError(f"{label}.api_name must use provider API grammar")
     source_hash = _required_text(
         value["source_document_sha256"], f"{label}.source_document_sha256"
     )
@@ -734,238 +629,193 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     schema_version = _required_text(value["schema_version"], f"{label}.schema_version")
     if _SCHEMA_VERSION_PATTERN.fullmatch(schema_version) is None:
         raise ValueError(f"{label}.schema_version must use MAJOR.MINOR.PATCH")
-
-    raw_fields = _sequence(value["fields"], f"{label}.fields")
-    if not raw_fields:
-        raise ValueError(f"{label}.fields must not be empty")
-    fields = [
-        _declared_field(field, contract_label=label, index=field_index)
-        for field_index, field in enumerate(raw_fields)
-    ]
-    field_names = [field["name"] for field in fields]
-    if len(field_names) != len(set(field_names)):
-        raise ValueError(f"{label}.fields contains duplicate field names")
+    fields = _fields(value["fields"], label)
     fields_by_name = {field["name"]: field for field in fields}
-
-    primary_key = _required_string_list(value["primary_key"], f"{label}.primary_key")
-    default_projection = _required_string_list(
+    primary_key = _string_list(
+        value["primary_key"],
+        f"{label}.primary_key",
+        allow_empty=True,
+    )
+    default_projection = _string_list(
         value["default_projection"], f"{label}.default_projection"
     )
-    for key_name, names in (
+    for key, names in (
         ("primary_key", primary_key),
         ("default_projection", default_projection),
     ):
-        undeclared = sorted(set(names) - set(fields_by_name))
-        if undeclared:
+        missing = sorted(set(names) - set(fields_by_name))
+        if missing:
             raise ValueError(
-                f"{label}.{key_name} references undeclared field(s): {', '.join(undeclared)}"
+                f"{label}.{key} references undeclared field(s): {', '.join(missing)}"
             )
     if any(fields_by_name[name]["nullable"] for name in primary_key):
         raise ValueError(f"{label}.primary_key fields must not be nullable")
-
-    optional_fields: dict[str, str | None] = {}
+    optional: dict[str, str | None] = {}
     for key in ("as_of_field", "range_field", "partition_field"):
         raw_name = value[key]
         name = None if raw_name is None else _required_text(raw_name, f"{label}.{key}")
         if name is not None and name not in fields_by_name:
             raise ValueError(f"{label}.{key} references undeclared field: {name}")
-        optional_fields[key] = name
+        optional[key] = name
     as_of_format = value["as_of_format"]
-    if optional_fields["as_of_field"] is None:
+    if optional["as_of_field"] is None:
         if as_of_format is not None:
             raise ValueError(f"{label}.as_of_format requires as_of_field")
-    else:
-        as_of_format = _required_text(as_of_format, f"{label}.as_of_format")
-        if as_of_format not in _AS_OF_FORMATS:
-            raise ValueError(f"{label}.as_of_format is unsupported")
-
-    request_template = _request_template_contract(
-        value["request_template"], f"{label}.request_template"
+    elif as_of_format not in {"yyyymmdd", "rfc3339"}:
+        raise ValueError(f"{label}.as_of_format is unsupported")
+    request_shape = _required_text(value["request_shape"], f"{label}.request_shape")
+    if request_shape not in _REQUEST_SHAPES:
+        raise ValueError(f"{label}.request_shape is unsupported")
+    template = _request_template(value["request_template"], f"{label}.request_template")
+    variants = _request_variants(
+        value["request_variants"], template, f"{label}.request_variants"
     )
-    request_variants = _request_variants_contract(
-        value["request_variants"],
-        request_template=request_template,
-        label=f"{label}.request_variants",
+    fanout = _fanout(value["fanout"], request_shape, f"{label}.fanout")
+    pagination = _pagination(value["pagination"], f"{label}.pagination")
+    window = _window_policy(
+        value.get("request_window_policy"), template, f"{label}.request_window_policy"
     )
-    window_policy = _window_policy_contract(
-        value.get("request_window_policy"),
-        request_template=request_template,
-        label=f"{label}.request_window_policy",
-    )
-    response_completeness = _response_completeness_contract(
+    completeness = _completeness(
         value["response_completeness"],
-        fields_by_name=fields_by_name,
-        request_template=request_template,
-        window_policy=window_policy,
-        as_of_field=optional_fields["as_of_field"],
-        as_of_format=as_of_format,
+        fields=set(fields_by_name),
+        template=template,
+        window=window,
         label=f"{label}.response_completeness",
     )
-    requested_fields = _required_string_list(
-        value["requested_fields"],
-        f"{label}.requested_fields",
-        allow_empty=True,
+    requested_fields = _string_list(
+        value["requested_fields"], f"{label}.requested_fields", allow_empty=True
     )
-    undeclared_requested = sorted(set(requested_fields) - set(fields_by_name))
-    if undeclared_requested:
+    missing_requested = sorted(set(requested_fields) - set(fields_by_name))
+    if missing_requested:
         raise ValueError(
-            f"{label}.requested_fields references undeclared field(s): "
-            f"{', '.join(undeclared_requested)}"
+            f"{label}.requested_fields references undeclared field(s): {', '.join(missing_requested)}"
         )
-
     empty_data_policy = _required_text(
         value["empty_data_policy"], f"{label}.empty_data_policy"
     )
-    if (
-        response_completeness["strategy"] == "one_row_per_calendar_date"
-        and empty_data_policy != "forbidden"
-    ):
-        raise ValueError(
-            f"{label}.empty_data_policy must be forbidden for "
-            "one_row_per_calendar_date"
-        )
-
-    for fixed_field in response_completeness["fixed_field_matches"]:
-        field_contract = fields_by_name[fixed_field]
-        if field_contract["logical_type"] != "text" or field_contract["nullable"]:
-            raise ValueError(
-                f"{label}.response_completeness.fixed_field_matches fields must be "
-                "non-null text"
-            )
-    completeness_key_fields = set(primary_key) | set(
-        response_completeness["fixed_field_matches"]
+    fixed_fields = (
+        set() if completeness is None else set(completeness["fixed_field_matches"])
     )
-    if response_completeness["strategy"] == "one_row_per_calendar_date":
-        date_field = response_completeness["date_field"]
-        if date_field not in fields_by_name:
+    for fixed_field in fixed_fields:
+        field = fields_by_name[fixed_field]
+        if field["logical_type"] != "text" or field["nullable"]:
             raise ValueError(
-                f"{label}.response_completeness.date_field is undeclared: {date_field}"
+                f"{label}.response_completeness.fixed_field_matches fields "
+                "must be non-null text"
             )
-        if optional_fields["as_of_field"] != date_field or as_of_format != "yyyymmdd":
-            raise ValueError(
-                f"{label}.response_completeness.date_field must be the contract "
-                "yyyymmdd as_of_field"
-            )
-        if {
-            optional_fields["range_field"],
-            optional_fields["partition_field"],
-        } != {date_field}:
-            raise ValueError(
-                f"{label}.response_completeness requires as_of/range/partition to "
-                "equal date_field"
-            )
-        completeness_date_field = fields_by_name[date_field]
+    completeness_fields = set(primary_key) | fixed_fields
+    if (
+        completeness is not None
+        and completeness["strategy"] == "one_row_per_calendar_date"
+    ):
+        date_field = completeness["date_field"]
         if (
-            completeness_date_field["logical_type"] != "text"
-            or completeness_date_field["nullable"]
-        ):
-            raise ValueError(
-                f"{label}.response_completeness.date_field must be non-null text"
-            )
-        calendar_key_fields = {
-            date_field,
-            *response_completeness["fixed_field_matches"],
-        }
-        if set(primary_key) != calendar_key_fields:
-            raise ValueError(
-                f"{label}.primary_key must exactly contain completeness date_field "
-                "and fixed row fields"
-            )
-    elif response_completeness["strategy"] == "single_partition_unique_primary_key":
-        partition_field = response_completeness["partition_field"]
-        if partition_field not in fields_by_name:
-            raise ValueError(
-                f"{label}.response_completeness.partition_field is undeclared: "
-                f"{partition_field}"
-            )
-        if (
-            optional_fields["as_of_field"] != partition_field
-            or optional_fields["range_field"] != partition_field
-            or optional_fields["partition_field"] != partition_field
+            optional["as_of_field"] != date_field
+            or optional["range_field"] != date_field
+            or optional["partition_field"] != date_field
             or as_of_format != "yyyymmdd"
         ):
             raise ValueError(
-                f"{label}.response_completeness.partition_field must be the "
+                f"{label}.response_completeness.date_field must be the "
                 "contract yyyymmdd as_of/range/partition field"
             )
-        partition_contract = fields_by_name[partition_field]
+        if set(primary_key) != {date_field, *fixed_fields}:
+            raise ValueError(
+                f"{label}.primary_key must exactly contain completeness "
+                "date_field and fixed row fields"
+            )
+        if empty_data_policy != "forbidden":
+            raise ValueError(
+                f"{label}.empty_data_policy must be forbidden for calendar completeness"
+            )
+        completeness_fields.add(date_field)
+    elif (
+        completeness is not None
+        and completeness["strategy"] == "single_partition_unique_primary_key"
+    ):
+        partition_field = completeness["partition_field"]
         if (
-            partition_contract["logical_type"] != "text"
-            or partition_contract["nullable"]
+            optional["as_of_field"] != partition_field
+            or optional["range_field"] != partition_field
+            or optional["partition_field"] != partition_field
+            or as_of_format != "yyyymmdd"
+            or partition_field not in primary_key
         ):
             raise ValueError(
-                f"{label}.response_completeness.partition_field must be non-null text"
+                f"{label}.response_completeness.partition_field must be the "
+                "contract yyyymmdd primary-key partition field"
             )
-        if partition_field not in primary_key:
-            raise ValueError(
-                f"{label}.response_completeness.partition_field must be in "
-                "primary_key"
-            )
-        completeness_key_fields.add(partition_field)
+        completeness_fields.add(partition_field)
     if requested_fields:
-        missing_completeness_fields = sorted(
-            completeness_key_fields - set(requested_fields)
-        )
-        if missing_completeness_fields:
+        missing_completeness = sorted(completeness_fields - set(requested_fields))
+        if missing_completeness:
             raise ValueError(
                 f"{label}.requested_fields must include completeness field(s): "
-                f"{', '.join(missing_completeness_fields)}"
+                f"{', '.join(missing_completeness)}"
             )
-
     budgets_value = _mapping(value["budgets"], f"{label}.budgets")
-    _reject_contract_keys(budgets_value, _BUDGET_KEYS, f"{label}.budgets")
+    _reject_keys(budgets_value, _BUDGET_KEYS, f"{label}.budgets")
     budgets = {
         key: _required_positive_int(budgets_value[key], f"{label}.budgets.{key}")
         for key in sorted(_BUDGET_KEYS)
     }
-    if (
-        window_policy is not None
-        and budgets["max_rows_per_attempt"] < window_policy["max_span_days"]
-    ):
+    if window is not None and budgets["max_rows_per_attempt"] < window["max_span_days"]:
         raise ValueError(
-            f"{label}.budgets.max_rows_per_attempt must be >= "
-            "request_window_policy.max_span_days"
+            f"{label}.budgets.max_rows_per_attempt must cover max_span_days"
         )
-
     overrides: list[dict[str, str]] = []
-    override_fields: set[str] = set()
+    override_names: set[str] = set()
     for override_index, raw_override in enumerate(
         _sequence(value["reviewed_type_overrides"], f"{label}.reviewed_type_overrides")
     ):
         override_label = f"{label}.reviewed_type_overrides[{override_index}]"
         override = _mapping(raw_override, override_label)
-        _reject_contract_keys(override, _TYPE_OVERRIDE_KEYS, override_label)
+        _reject_keys(override, _OVERRIDE_KEYS, override_label)
         normalized = {
             key: _required_text(override[key], f"{override_label}.{key}")
-            for key in sorted(_TYPE_OVERRIDE_KEYS)
+            for key in sorted(_OVERRIDE_KEYS)
         }
         field_name = normalized["field"]
-        if field_name not in fields_by_name:
-            raise ValueError(f"{override_label}.field is undeclared")
-        if field_name in override_fields:
-            raise ValueError(f"{label} has duplicate type override for {field_name}")
+        if field_name not in fields_by_name or field_name in override_names:
+            raise ValueError(
+                f"{override_label}.field must name one unique declared field"
+            )
         field = fields_by_name[field_name]
-        if normalized["declared_source_type"] != field["declared_source_type"]:
-            raise ValueError(f"{override_label} declared source type does not match field")
-        if normalized["logical_type"] != field["logical_type"]:
-            raise ValueError(f"{override_label} logical type does not match field")
-        override_fields.add(field_name)
+        if (
+            normalized["declared_source_type"] != field["declared_source_type"]
+            or normalized["logical_type"] != field["logical_type"]
+        ):
+            raise ValueError(f"{override_label} must match the declared field contract")
+        override_names.add(field_name)
         overrides.append(normalized)
-
-    declared_default_types = {"str": "text", "int": "integer", "float": "float"}
+    default_types = {"str": "text", "int": "integer", "float": "float"}
     for field in fields:
-        expected = declared_default_types.get(field["declared_source_type"])
-        if expected is not None and field["logical_type"] != expected:
-            if field["name"] not in override_fields:
-                raise ValueError(
-                    f"{label}.fields {field['name']} changes declared type without reviewed override"
-                )
-
+        expected = default_types.get(field["declared_source_type"])
+        if (
+            expected is not None
+            and field["logical_type"] != expected
+            and field["name"] not in override_names
+        ):
+            raise ValueError(
+                f"{label}.fields {field['name']} changes declared type without reviewed override"
+            )
+    cadence = _required_text(value["cadence_class"], f"{label}.cadence_class")
+    if cadence not in _CADENCE_CLASSES:
+        raise ValueError(f"{label}.cadence_class is unsupported")
     point_in_time = _required_text(value["point_in_time"], f"{label}.point_in_time")
     if point_in_time not in {"current_snapshot", "append_only"}:
         raise ValueError(f"{label}.point_in_time is unsupported")
+    if point_in_time == "current_snapshot" and not primary_key:
+        raise ValueError(f"{label} current_snapshot requires a non-empty primary_key")
+    if value["data_classification"] != "objective_factual":
+        raise ValueError(f"{label}.data_classification is unsupported")
     return {
-        "dataset_id": dataset_id,
+        "dataset_id": _required_text(value["dataset_id"], f"{label}.dataset_id"),
+        "aliases": _string_list(value["aliases"], f"{label}.aliases"),
+        "domain": _required_text(value["domain"], f"{label}.domain"),
+        "market": _required_text(value["market"], f"{label}.market"),
+        "entity_type": _required_text(value["entity_type"], f"{label}.entity_type"),
+        "data_classification": "objective_factual",
         "provider": contract_provider,
         "api_name": api_name,
         "source_document_url": _required_text(
@@ -976,10 +826,12 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         "fields": fields,
         "primary_key": primary_key,
         "default_projection": default_projection,
-        **optional_fields,
+        **optional,
         "as_of_format": as_of_format,
-        "cadence_class": _required_text(
-            value["cadence_class"], f"{label}.cadence_class"
+        "cadence_class": cadence,
+        "timezone": _required_text(value["timezone"], f"{label}.timezone"),
+        "freshness_sla_seconds": _required_positive_int(
+            value["freshness_sla_seconds"], f"{label}.freshness_sla_seconds"
         ),
         "point_in_time": point_in_time,
         "backfill_policy": _required_text(
@@ -990,10 +842,13 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
             value["required_scope"], f"{label}.required_scope"
         ),
         "quota_class": _required_text(value["quota_class"], f"{label}.quota_class"),
-        "request_template": request_template,
-        "request_variants": request_variants,
-        "request_window_policy": window_policy,
-        "response_completeness": response_completeness,
+        "request_shape": request_shape,
+        "request_template": template,
+        "request_variants": variants,
+        "fanout": fanout,
+        "pagination": pagination,
+        "request_window_policy": window,
+        "response_completeness": completeness,
         "requested_fields": requested_fields,
         "budgets": budgets,
         "reviewed_type_overrides": overrides,
@@ -1004,47 +859,56 @@ def load_upstream_contract_bundle(document: Mapping[str, Any]) -> dict[str, Any]
     """Strictly normalize one pinned upstream contract bundle."""
 
     root = _mapping(deepcopy(document), "upstream contract bundle")
-    _reject_contract_keys(root, _ROOT_CONTRACT_KEYS, "upstream contract bundle")
-    if root["version"] != 1 or isinstance(root["version"], bool):
+    _reject_keys(root, _ROOT_KEYS, "upstream contract bundle")
+    if type(root["version"]) is not int or root["version"] != 1:
         raise ValueError("upstream contract bundle.version must be integer 1")
     provider = _required_text(root["provider"], "upstream contract bundle.provider")
     if provider != PROVIDER:
         raise ValueError(f"upstream contract bundle.provider must be {PROVIDER}")
     provenance = _mapping(root["provenance"], "upstream contract bundle.provenance")
-    _reject_contract_keys(
-        provenance,
-        _PROVENANCE_KEYS,
-        "upstream contract bundle.provenance",
-    )
+    _reject_keys(provenance, _PROVENANCE_KEYS, "upstream contract bundle.provenance")
     normalized_provenance = {
-        key: _required_text(provenance[key], f"upstream contract bundle.provenance.{key}")
+        key: _required_text(
+            provenance[key], f"upstream contract bundle.provenance.{key}"
+        )
         for key in sorted(_PROVENANCE_KEYS)
     }
     if _COMMIT_PATTERN.fullmatch(normalized_provenance["pinned_commit"]) is None:
         raise ValueError("upstream contract bundle provenance commit must be a git SHA")
     if _HASH_PATTERN.fullmatch(normalized_provenance["index_sha256"]) is None:
         raise ValueError("upstream contract bundle provenance index must be SHA-256")
-
     contracts = [
-        _normalized_contract(contract, index=index, provider=provider)
-        for index, contract in enumerate(
+        _normalized_contract(item, index=index, provider=provider)
+        for index, item in enumerate(
             _sequence(root["contracts"], "upstream contract bundle.contracts")
         )
     ]
     by_dataset: dict[str, dict[str, Any]] = {}
     by_api: dict[str, str] = {}
+    aliases: set[str] = set()
     for contract in contracts:
         dataset_id = contract["dataset_id"]
         api_name = contract["api_name"]
         if dataset_id in by_dataset:
-            raise ValueError(f"duplicate dataset_id in upstream contracts: {dataset_id}")
+            raise ValueError(
+                f"duplicate dataset_id in upstream contracts: {dataset_id}"
+            )
         if api_name in by_api:
             raise ValueError(
-                f"duplicate provider API in upstream contracts: {api_name} "
-                f"({by_api[api_name]}, {dataset_id})"
+                f"duplicate provider API in upstream contracts: {api_name}"
             )
+        overlap = aliases.intersection(contract["aliases"])
+        if overlap:
+            raise ValueError(
+                f"duplicate alias in upstream contracts: {sorted(overlap)[0]}"
+            )
+        if dataset_id in aliases or any(
+            alias in by_dataset for alias in contract["aliases"]
+        ):
+            raise ValueError("dataset identity conflicts with an alias")
         by_dataset[dataset_id] = contract
         by_api[api_name] = dataset_id
+        aliases.update(contract["aliases"])
     return {
         "version": 1,
         "bundle_id": _required_text(
@@ -1056,348 +920,122 @@ def load_upstream_contract_bundle(document: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
-def compile_provider_native_registry(
-    registry_document: Mapping[str, Any],
-    capability_plan: Mapping[str, Any],
-    collector_config: Mapping[str, Any],
-    upstream_contracts: Mapping[str, Any],
-    *,
-    activation_document: Mapping[str, Any] | None = None,
-    source_sha256: Mapping[str, str] | None = None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return a deterministic candidate registry and fail-closed report."""
-
-    source_registry = _mapping(deepcopy(registry_document), "registry")
-    datasets = _sequence(source_registry.get("datasets"), "registry.datasets")
-    normalized_bundle = load_upstream_contract_bundle(upstream_contracts)
-    activation_index = _activation_index(activation_document)
-    contract_index = {
-        contract["dataset_id"]: contract for contract in normalized_bundle["contracts"]
+def _compiled_dataset(
+    contract: Mapping[str, Any], activation: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    binding = {
+        "provider": contract["provider"],
+        "api_name": contract["api_name"],
+        "adapter_version": PROVIDER_ADAPTER_VERSION,
+        "read_discriminator_value": f"{contract['provider']}_{contract['api_name']}",
+        "entitlement_state": "unknown"
+        if activation is None
+        else activation["entitlement_state"],
+        "activation_state": "paused"
+        if activation is None
+        else activation["activation_state"],
+        "target_tables": [PROVIDER_NATIVE_TABLE],
+        "request_shape": contract["request_shape"],
+        "request_template": deepcopy(contract["request_template"]),
+        "request_variants": deepcopy(contract["request_variants"]),
+        "fanout": deepcopy(contract["fanout"]),
+        "pagination": deepcopy(contract["pagination"]),
+        "request_window_policy": deepcopy(contract["request_window_policy"]),
+        "response_completeness": deepcopy(contract["response_completeness"]),
+        "requested_fields": list(contract["requested_fields"]),
+        **deepcopy(contract["budgets"]),
     }
-    candidate: dict[str, Any] = {
-        "version": deepcopy(source_registry.get("version")),
-        "query_defaults": deepcopy(source_registry.get("query_defaults")),
-        "datasets": [],
-    }
-    plan_index, global_conflicts = _plan_index(capability_plan)
-    collector_index, collector_conflicts = _collector_index(collector_config)
-    global_conflicts.extend(collector_conflicts)
-
-    registry_api_names: set[str] = set()
-    registry_dataset_ids: set[str] = set()
-    resolved: list[dict[str, object]] = []
-    unresolved: list[dict[str, object]] = []
-    conflicts: list[dict[str, object]] = list(global_conflicts)
-
-    for dataset_index, raw_dataset in enumerate(datasets):
-        if not isinstance(raw_dataset, dict):
-            conflicts.append(
-                {
-                    "code": "invalid_registry_dataset",
-                    "api_name": None,
-                    "details": [f"datasets[{dataset_index}] must be a mapping"],
-                }
-            )
-            continue
-        dataset_id = _non_empty_text(raw_dataset.get("dataset_id")) or (
-            f"datasets[{dataset_index}]"
-        )
-        registry_dataset_ids.add(dataset_id)
-        raw_bindings = raw_dataset.get("provider_bindings", [])
-        bindings = raw_bindings if isinstance(raw_bindings, list) else []
-        tushare_bindings = [
-            binding
-            for binding in bindings
-            if isinstance(binding, dict) and binding.get("provider") == PROVIDER
-        ]
-        api_name = (
-            _non_empty_text(tushare_bindings[0].get("api_name"))
-            if len(tushare_bindings) == 1
-            else None
-        )
-        if api_name is not None:
-            registry_api_names.add(api_name)
-
-        contract = contract_index.get(dataset_id)
-        if contract is None:
-            unresolved.append(
-                {
-                    "dataset_id": dataset_id,
-                    "api_name": api_name,
-                    "reason_codes": ["missing_upstream_contract"],
-                }
-            )
-            continue
-        reasons: list[dict[str, object]] = []
-        if len(tushare_bindings) != 1:
-            _append_reason(
-                reasons,
-                "missing_or_duplicate_tushare_binding",
-                [f"count={len(tushare_bindings)}"],
-            )
-        if any(
-            isinstance(binding, dict) and binding.get("provider") != PROVIDER
-            for binding in bindings
-        ):
-            _append_reason(
-                reasons,
-                "additional_provider_binding",
-                sorted(
-                    str(binding.get("provider"))
-                    for binding in bindings
-                    if isinstance(binding, dict) and binding.get("provider") != PROVIDER
-                ),
-            )
-
-        plan_rows = plan_index.get(api_name or "", [])
-        config_rows = collector_index.get(api_name or "", [])
-        if api_name is not None:
-            if contract["provider"] != PROVIDER or contract["api_name"] != api_name:
-                _append_reason(
-                    reasons,
-                    "upstream_contract_binding_mismatch",
-                    [
-                        f"registry={PROVIDER}/{api_name}",
-                        f"contract={contract['provider']}/{contract['api_name']}",
-                    ],
-                )
-
-        if reasons:
-            reason_codes = sorted({str(reason["code"]) for reason in reasons})
-            unresolved.append(
-                {
-                    "dataset_id": dataset_id,
-                    "api_name": api_name,
-                    "reason_codes": reason_codes,
-                }
-            )
-            for reason in sorted(reasons, key=lambda item: str(item["code"])):
-                if reason["code"] == "missing_upstream_contract":
-                    continue
-                conflicts.append(
-                    {
-                        "code": reason["code"],
-                        "dataset_id": dataset_id,
-                        "api_name": api_name,
-                        "details": reason["details"],
-                    }
-                )
-            continue
-
-        assert api_name is not None
-        compiled_dataset = deepcopy(raw_dataset)
-        for key in (
-            "schema_profile",
-            "fields",
-            "primary_key",
-            "default_projection",
-            "as_of_field",
-            "as_of_format",
-            "range_field",
-            "partition_field",
-            "max_page_size",
-            "max_lookback_days",
-            "point_in_time",
-            "backfill_policy",
-            "empty_data_policy",
-            "required_scope",
-            "quota_class",
-        ):
-            compiled_dataset.pop(key, None)
-        compiled_dataset.update(
-            {
-                "schema_version": contract["schema_version"],
-                "fields": [
-                    {
-                        key: field[key]
-                        for key in (
-                            "name",
-                            "logical_type",
-                            "nullable",
-                            "selectable",
-                            "filterable",
-                            "sortable",
-                        )
-                    }
-                    for field in contract["fields"]
-                ],
-                "primary_key": contract["primary_key"],
-                "default_projection": contract["default_projection"],
-                "as_of_field": contract["as_of_field"],
-                "as_of_format": contract["as_of_format"],
-                "range_field": contract["range_field"],
-                "partition_field": contract["partition_field"],
-                "cadence_class": contract["cadence_class"],
-                "point_in_time": contract["point_in_time"],
-                "backfill_policy": contract["backfill_policy"],
-                "empty_data_policy": contract["empty_data_policy"],
-                "required_scope": contract["required_scope"],
-                "quota_class": contract["quota_class"],
-            }
-        )
-        binding = deepcopy(tushare_bindings[0])
-        activation = activation_index.get((dataset_id, PROVIDER))
-        binding["entitlement_state"] = (
-            "unknown" if activation is None else activation["entitlement_state"]
-        )
-        binding["activation_state"] = (
-            "paused" if activation is None else activation["activation_state"]
-        )
-        binding["adapter_version"] = PROVIDER_ADAPTER_VERSION
-        binding["target_tables"] = [PROVIDER_NATIVE_TABLE]
-        binding["request_template"] = contract["request_template"]
-        binding["request_variants"] = contract["request_variants"]
-        binding["request_window_policy"] = contract["request_window_policy"]
-        binding["response_completeness"] = contract["response_completeness"]
-        binding["requested_fields"] = contract["requested_fields"]
-        binding.update(contract["budgets"])
-        compiled_dataset["provider_bindings"] = [binding]
-        row_key_strategy = {
-            "current_snapshot": "primary_key",
-            "append_only": "payload_hash",
-        }[contract["point_in_time"]]
-        compiled_dataset["read_model_adapter"] = {
+    return {
+        "dataset_id": contract["dataset_id"],
+        "aliases": list(contract["aliases"]),
+        "domain": contract["domain"],
+        "market": contract["market"],
+        "entity_type": contract["entity_type"],
+        "data_classification": contract["data_classification"],
+        "schema_version": contract["schema_version"],
+        "cadence_class": contract["cadence_class"],
+        "timezone": contract["timezone"],
+        "freshness_sla_seconds": contract["freshness_sla_seconds"],
+        "provider_bindings": [binding],
+        "read_model_adapter": {
             "adapter_version": READ_ADAPTER_VERSION,
             "primary_table": PROVIDER_NATIVE_TABLE,
             "fixed_field_filters": [],
             "storage_kind": "provider_native_rows",
-            "row_key_strategy": row_key_strategy,
-        }
-        candidate["datasets"].append(compiled_dataset)
-        plan_row = plan_rows[0] if len(plan_rows) == 1 else None
-        config_row = config_rows[0] if len(config_rows) == 1 else None
-        resolved.append(
+            "row_key_strategy": {
+                "current_snapshot": "primary_key",
+                "append_only": "payload_hash",
+            }[contract["point_in_time"]],
+        },
+        "fields": [
             {
-                "dataset_id": dataset_id,
-                "api_name": api_name,
-                "mode": None if plan_row is None else plan_row.get("mode"),
-                "cadence": contract["cadence_class"],
-                "tier": None if config_row is None else config_row.get("compiler_tier"),
-                "requested_fields_source": "upstream_all"
-                if not contract["requested_fields"]
-                else "reviewed_projection",
-                "requested_fields_count": len(contract["requested_fields"]),
-                "source_document_sha256": contract["source_document_sha256"],
-                "reviewed_type_overrides": sorted(
-                    override["field"]
-                    for override in contract["reviewed_type_overrides"]
-                ),
-                "request_window_fields": []
-                if contract["request_window_policy"] is None
-                else list(contract["request_window_policy"]["required_keys"]),
-                "response_completeness_strategy": contract[
-                    "response_completeness"
-                ]["strategy"],
-                "activation_evidence_ref": None
-                if activation is None
-                else activation["evidence_ref"],
+                key: field[key]
+                for key in (
+                    "name",
+                    "logical_type",
+                    "nullable",
+                    "selectable",
+                    "filterable",
+                    "sortable",
+                )
             }
-        )
-
-    compiled_activation_keys = {
-        (dataset["dataset_id"], binding["provider"])
-        for dataset in candidate["datasets"]
-        for binding in dataset["provider_bindings"]
+            for field in contract["fields"]
+        ],
+        "primary_key": list(contract["primary_key"]),
+        "default_projection": list(contract["default_projection"]),
+        "as_of_field": contract["as_of_field"],
+        "as_of_format": contract["as_of_format"],
+        "range_field": contract["range_field"],
+        "partition_field": contract["partition_field"],
+        "point_in_time": contract["point_in_time"],
+        "backfill_policy": contract["backfill_policy"],
+        "empty_data_policy": contract["empty_data_policy"],
+        "required_scope": contract["required_scope"],
+        "quota_class": contract["quota_class"],
     }
-    unknown_activation_keys = sorted(set(activation_index) - compiled_activation_keys)
-    if unknown_activation_keys:
-        targets = ", ".join(
-            f"{dataset_id}/{provider}"
-            for dataset_id, provider in unknown_activation_keys
-        )
-        raise ValueError(f"unknown activation target(s): {targets}")
 
-    for api_name in sorted(set(plan_index) - registry_api_names):
-        conflicts.append(
-            {
-                "code": "capability_api_without_registry",
-                "dataset_id": None,
-                "api_name": api_name,
-                "details": [],
-            }
-        )
-    for api_name in sorted(set(collector_index) - registry_api_names):
-        conflicts.append(
-            {
-                "code": "collector_api_without_registry",
-                "dataset_id": None,
-                "api_name": api_name,
-                "details": [],
-            }
-        )
-    for dataset_id in sorted(set(contract_index) - registry_dataset_ids):
-        contract = contract_index[dataset_id]
-        conflicts.append(
-            {
-                "code": "upstream_contract_without_registry_owner",
-                "dataset_id": None,
-                "api_name": contract["api_name"],
-                "details": [dataset_id],
-            }
-        )
 
-    conflicts.sort(
-        key=lambda item: (
-            str(item.get("dataset_id") or ""),
-            str(item.get("api_name") or ""),
-            str(item.get("code") or ""),
-            tuple(str(detail) for detail in item.get("details", [])),
-        )
-    )
-    report: dict[str, Any] = {
-        "report_version": 3,
-        "compiler_contract": "provider-native-registry-compiler.v3",
-        "sources": dict(sorted((source_sha256 or {}).items())),
-        "upstream_contract_bundle": {
-            "bundle_id": normalized_bundle["bundle_id"],
-            "provider": normalized_bundle["provider"],
-            "provenance": normalized_bundle["provenance"],
-        },
-        "budget_policy": {
-            "source": "upstream_contract_bundle.contracts[].budgets",
-            "missing_or_invalid": "unresolved",
-        },
-        "totals": {
-            "registry_datasets": len(datasets),
-            "converted_datasets": len(resolved),
-            "unresolved_datasets": len(unresolved),
-            "conflict_records": len(conflicts),
-            "global_conflicts": sum(
-                1 for conflict in conflicts if conflict.get("dataset_id") is None
-            ),
-        },
-        "resolved": resolved,
-        "unresolved": unresolved,
-        "conflicts": conflicts,
+def compile_provider_native_registry(
+    upstream_contracts: Mapping[str, Any],
+    *,
+    activation_document: Mapping[str, Any] | None = None,
+    query_defaults: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the deterministic single-authority registry document."""
+
+    bundle = load_upstream_contract_bundle(upstream_contracts)
+    activations = _activation_index(activation_document)
+    contract_keys = {
+        (contract["dataset_id"], contract["provider"])
+        for contract in bundle["contracts"]
     }
-    return candidate, report
+    unknown_activations = sorted(set(activations) - contract_keys)
+    if unknown_activations:
+        dataset_id, provider = unknown_activations[0]
+        raise ValueError(f"unknown activation target: {dataset_id}/{provider}")
+    return {
+        "version": 1,
+        "query_defaults": _query_defaults(query_defaults),
+        "datasets": [
+            _compiled_dataset(
+                contract,
+                activations.get((contract["dataset_id"], contract["provider"])),
+            )
+            for contract in bundle["contracts"]
+        ],
+    }
 
 
-def render_compilation(
-    candidate: Mapping[str, Any], report: Mapping[str, Any], *, kind: str
-) -> str:
-    """Render one deterministic YAML artifact."""
+def render_registry(registry: Mapping[str, Any]) -> str:
+    """Render the registry with stable key and dataset ordering."""
 
-    if kind == "candidate":
-        payload: Mapping[str, Any] = candidate
-    elif kind == "report":
-        payload = report
-    elif kind == "bundle":
-        payload = {"candidate_registry": candidate, "report": report}
-    else:
-        raise ValueError("output kind must be bundle, candidate, or report")
     return yaml.safe_dump(
-        dict(payload),
+        dict(registry),
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=False,
         width=100,
     )
-
-
-def _load_yaml(path: Path, label: str) -> dict[str, Any]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return _mapping(raw, label)
 
 
 class _DuplicateKeySafeLoader(yaml.SafeLoader):
@@ -1416,9 +1054,9 @@ def _construct_unique_mapping(
         try:
             duplicate = key in mapping
         except TypeError as exc:
-            raise ValueError("activation YAML mapping key must be hashable") from exc
+            raise ValueError("YAML mapping key must be hashable") from exc
         if duplicate:
-            raise ValueError(f"duplicate YAML mapping key in activation manifest: {key}")
+            raise ValueError(f"duplicate YAML mapping key: {key}")
         mapping[key] = loader.construct_object(value_node, deep=deep)
     return mapping
 
@@ -1429,23 +1067,15 @@ _DuplicateKeySafeLoader.add_constructor(
 )
 
 
-def _load_activation_yaml(path: Path) -> dict[str, Any]:
-    raw = yaml.load(
-        path.read_text(encoding="utf-8"),
-        Loader=_DuplicateKeySafeLoader,
-    )
-    return _mapping(raw, "activation manifest")
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _load_yaml(path: Path, label: str) -> dict[str, Any]:
+    raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_DuplicateKeySafeLoader)
+    return _mapping(raw, label)
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    parent = path.parent
-    if not parent.is_dir():
-        raise ValueError(f"output parent does not exist: {parent}")
-    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=parent)
+    if not path.parent.is_dir():
+        raise ValueError(f"output parent does not exist: {path.parent}")
+    descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temp_path = Path(temp_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -1459,78 +1089,31 @@ def _atomic_write(path: Path, content: str) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY_PATH)
     parser.add_argument(
-        "--capability-plan", type=Path, default=DEFAULT_CAPABILITY_PLAN_PATH
+        "--upstream-contracts", type=Path, default=DEFAULT_UPSTREAM_CONTRACTS_PATH
     )
-    parser.add_argument(
-        "--collector-config", type=Path, default=DEFAULT_COLLECTOR_CONFIG_PATH
-    )
-    parser.add_argument(
-        "--upstream-contracts",
-        type=Path,
-        default=DEFAULT_UPSTREAM_CONTRACTS_PATH,
-    )
-    parser.add_argument(
-        "--kind",
-        choices=("bundle", "candidate", "report"),
-        default="bundle",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        help="write only this explicit path; stdout is the default",
-    )
+    parser.add_argument("--activation", type=Path, default=DEFAULT_ACTIVATION_PATH)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    input_paths = (
-        args.registry,
-        args.capability_plan,
-        args.collector_config,
-        args.upstream_contracts,
-        DEFAULT_ACTIVATION_PATH,
-    )
-    for path in input_paths:
+    for path in (args.upstream_contracts, args.activation):
         if not path.is_file():
             parser.error(f"input file does not exist: {path}")
-    if args.output is not None:
-        output_resolved = args.output.resolve(strict=False)
-        if any(output_resolved == path.resolve() for path in input_paths):
-            parser.error("refusing to overwrite an input file")
-
-    source_hashes = {
-        "collectors/tushare/config.yaml": _sha256(args.collector_config),
-        "config/dataset_registry.yaml": _sha256(args.registry),
-        "config/tushare_capability_plan.yaml": _sha256(args.capability_plan),
-        "config/tushare_upstream_contracts.v1.yaml": _sha256(
-            args.upstream_contracts
-        ),
-        "config/provider_native_activation.yaml": _sha256(DEFAULT_ACTIVATION_PATH),
-    }
-    candidate, report = compile_provider_native_registry(
-        _load_yaml(args.registry, "registry"),
-        _load_yaml(args.capability_plan, "capability plan"),
-        _load_yaml(args.collector_config, "collector config"),
-        _load_yaml(args.upstream_contracts, "upstream contracts"),
-        activation_document=_load_activation_yaml(DEFAULT_ACTIVATION_PATH),
-        source_sha256=source_hashes,
+    output = args.output.resolve(strict=False)
+    if output in {args.upstream_contracts.resolve(), args.activation.resolve()}:
+        parser.error("refusing to overwrite an input file")
+    registry = compile_provider_native_registry(
+        _load_yaml(args.upstream_contracts, "upstream contract bundle"),
+        activation_document=_load_yaml(args.activation, "activation manifest"),
+        query_defaults=DEFAULT_QUERY_DEFAULTS,
     )
-    if args.kind in {"candidate", "bundle"}:
-        if not candidate["datasets"]:
-            parser.error(
-                "refusing to render a target candidate with zero resolved contracts"
-            )
-        if report["totals"]["conflict_records"]:
-            parser.error("refusing to render a target candidate with contract conflicts")
-    content = render_compilation(candidate, report, kind=args.kind)
-    if args.output is None:
-        print(content, end="")
-    else:
-        _atomic_write(args.output, content)
+    if not registry["datasets"]:
+        parser.error("refusing to write a registry with zero contracts")
+    _atomic_write(args.output, render_registry(registry))
     return 0
 
 

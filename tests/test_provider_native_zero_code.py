@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 import sqlite3
 import threading
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -24,14 +23,16 @@ from collectors.tushare.provider_native_ingest import collect_provider_native_da
 from dataset_registry import DatasetRegistry, load_dataset_registry
 from query_cursor import SignedCursorCodec
 from query_service import QueryService
-from storage.provider_dataset_rows import PROVIDER_DATASET_ROWS_DDL
 from storage.schema import SCHEMA_SQL
+from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 
 
 SIGNING_KEY = b"provider-native-zero-code-signing-key"
 TOKEN = "provider-native-zero-code-token"
 TARGET_REGISTRY_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "provider_native_dataset_registry.yaml"
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "provider_native_dataset_registry.yaml"
 )
 
 
@@ -124,11 +125,14 @@ def _registry_document() -> dict[str, object]:
                         "entitlement_state": "active",
                         "activation_state": "active",
                         "target_tables": ["provider_dataset_rows"],
+                        "request_shape": "snapshot_or_date_range",
                         "request_template": {
                             "start_date": "${window.start_date}",
                             "end_date": "${window.end_date}",
                             "exchange": "SSE",
                         },
+                        "fanout": {"strategy": "none"},
+                        "pagination": {"strategy": "none"},
                         "requested_fields": [
                             "ts_code",
                             "trade_date",
@@ -225,7 +229,7 @@ class _Response:
         return self._payload
 
 
-def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
+def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -310,7 +314,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
     )
 
     assert result.status == "success"
-    assert result.counts.committed == binding.max_rows_per_attempt
+    assert result.counts.committed == 6000
     assert observed_requested_fields == [",".join(fields)]
     assert len(observed_scan_budgets) == 1
     assert isinstance(
@@ -321,10 +325,17 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM provider_dataset_rows"
-        ).fetchone() == (binding.max_rows_per_attempt,)
-        assert connection.execute(
-            "SELECT status, rows_written FROM market_ingest_runs"
-        ).fetchone() == ("success", binding.max_rows_per_attempt)
+        ).fetchone() == (6000,)
+        receipt = connection.execute(
+            "SELECT status, rows_written, notes FROM market_ingest_runs"
+        ).fetchone()
+    assert receipt is not None
+    assert receipt[:2] == ("success", 6000)
+    receipt_payload = json.loads(receipt[2])
+    assert receipt_payload["errors"] == []
+    assert receipt_payload["request_identity"]["request_variant"] == {
+        "list_status": "L"
+    }
 
 
 def test_registry_scan_budget_hard_cap_fails_before_provider_call(
@@ -414,8 +425,7 @@ def test_registry_scan_budget_rejects_provider_token_at_any_row_position(
     fields = [field.name for field in dataset.fields]
     provider_token = "provider-secret-must-not-cross-boundary"
     items: list[list[object]] = [
-        [f"{index:06d}.SZ", "20260717", index, f"safe-{index}"]
-        for index in range(3)
+        [f"{index:06d}.SZ", "20260717", index, f"safe-{index}"] for index in range(3)
     ]
     items[secret_row_index][-1] = provider_token
     database = tmp_path / "marketdata.sqlite"
@@ -644,12 +654,14 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, fields, scan_budget=None: tushare_common.tushare_rows_outcome(
-            api_name,
-            "synthetic-provider-token",
-            params=params,
-            fields=fields,
-            scan_budget=scan_budget,
+        lambda api_name, params, fields, scan_budget=None: (
+            tushare_common.tushare_rows_outcome(
+                api_name,
+                "synthetic-provider-token",
+                params=params,
+                fields=fields,
+                scan_budget=scan_budget,
+            )
         ),
     )
     TushareCollector._rate_calls.clear()
@@ -705,11 +717,6 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     receipt_notes = json.loads(receipt[1])
     assert receipt_notes["data_through"] == "20260717"
 
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (tmp_path / f".{database.name}.read_model_store.lock").touch()
-    monkeypatch.setenv("SHAREDSIGNALS_MAINTENANCE_LOCK_FILE", str(maintenance_lock))
-
     codec = SignedCursorCodec(SIGNING_KEY)
     query = QueryService(db_path=database, registry=registry, cursor_codec=codec)
     catalog = CatalogService(db_path=database, registry=registry, cursor_codec=codec)
@@ -720,7 +727,7 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
             _token_hash(TOKEN): {
                 "tenant_id": "zero-code-tenant",
                 "tier": "internal",
-                "scopes": ["market_data"],
+                "scopes": ["query", "market_data"],
                 "auth_method": "token_hash",
             }
         },
@@ -737,12 +744,11 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
     monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
     monkeypatch.setattr(api_server, "datetime", FrozenApiClock)
-    monkeypatch.setattr(api_server, "reader", SimpleNamespace())
     monkeypatch.setattr(
         api_server, "_build_v1_services", lambda: (catalog, query), raising=False
     )
 
-    server = api_server.SharedSignalsHTTPServer(
+    server = api_server.TradingDatasHTTPServer(
         ("127.0.0.1", 0), api_server.Handler, request_timeout=5, max_threads=4
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -779,31 +785,6 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
 @pytest.mark.parametrize(
     ("dataset_id", "request_window", "row", "expected_params"),
     [
-        pytest.param(
-            "cn.equity.security_master",
-            {},
-            {
-                "ts_code": "600000.SH",
-                "symbol": "600000",
-                "name": "浦发银行",
-                "area": "上海",
-                "industry": "银行",
-                "fullname": "上海浦东发展银行股份有限公司",
-                "enname": "Shanghai Pudong Development Bank",
-                "cnspell": "PFYH",
-                "market": "主板",
-                "exchange": "SSE",
-                "curr_type": "CNY",
-                "list_status": "L",
-                "list_date": "19991110",
-                "delist_date": None,
-                "is_hs": "H",
-                "act_name": "上海国际集团有限公司",
-                "act_ent_type": "地方国有企业",
-            },
-            {"list_status": "L"},
-            id="stock-basic-all-17-fields",
-        ),
         pytest.param(
             "cn.equity.daily",
             {"trade_date": "20260717"},
@@ -864,12 +845,14 @@ def test_target_contract_requests_all_declared_fields_and_complete_response_is_v
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
-            api_name,
-            "synthetic-provider-token",
-            params=params,
-            fields=requested_fields,
-            scan_budget=scan_budget,
+        lambda api_name, params, requested_fields, scan_budget=None: (
+            tushare_common.tushare_rows_outcome(
+                api_name,
+                "synthetic-provider-token",
+                params=params,
+                fields=requested_fields,
+                scan_budget=scan_budget,
+            )
         ),
     )
     TushareCollector._rate_calls.clear()
@@ -905,17 +888,14 @@ def test_target_contract_requests_all_declared_fields_and_complete_response_is_v
     ("dataset_id", "request_window", "fields", "items", "expected_params"),
     [
         pytest.param(
-            "cn.equity.security_master",
-            {},
-            ["ts_code", "symbol", "name", "provider_added_without_registry_change"],
-            [["600000.SH", "600000", "浦发银行", {"nested": [1, "原样保留"]}]],
-            {"list_status": "L"},
-            id="snapshot",
-        ),
-        pytest.param(
             "cn.equity.daily",
             {"trade_date": "20260717"},
-            ["ts_code", "trade_date", "close", "provider_added_without_registry_change"],
+            [
+                "ts_code",
+                "trade_date",
+                "close",
+                "provider_added_without_registry_change",
+            ],
             [["600000.SH", "20260717", 10.5, {"nested": [1, "原样保留"]}]],
             {"trade_date": "20260717"},
             id="single-partition",
@@ -962,12 +942,14 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
-            api_name,
-            "synthetic-provider-token",
-            params=params,
-            fields=requested_fields,
-            scan_budget=scan_budget,
+        lambda api_name, params, requested_fields, scan_budget=None: (
+            tushare_common.tushare_rows_outcome(
+                api_name,
+                "synthetic-provider-token",
+                params=params,
+                fields=requested_fields,
+                scan_budget=scan_budget,
+            )
         ),
     )
     TushareCollector._rate_calls.clear()
@@ -1006,10 +988,6 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
     assert receipt is not None and receipt[0] == "success"
     assert json.loads(receipt[1])["request_window"] == request_window
 
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (tmp_path / f".{database.name}.read_model_store.lock").touch()
-    monkeypatch.setenv("SHAREDSIGNALS_MAINTENANCE_LOCK_FILE", str(maintenance_lock))
     query = QueryService(
         db_path=database,
         registry=registry,
@@ -1032,7 +1010,7 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
             _token_hash(TOKEN): {
                 "tenant_id": "zero-code-tenant",
                 "tier": "internal",
-                "scopes": ["market_data"],
+                "scopes": ["query", "market_data"],
                 "auth_method": "token_hash",
             }
         },
@@ -1049,10 +1027,11 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
     monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
     monkeypatch.setattr(api_server, "datetime", FrozenApiClock)
-    monkeypatch.setattr(api_server, "reader", SimpleNamespace())
-    monkeypatch.setattr(api_server, "_build_v1_services", lambda: (catalog, query))
+    monkeypatch.setattr(
+        api_server, "_build_v1_services", lambda: (catalog, query), raising=False
+    )
 
-    server = api_server.SharedSignalsHTTPServer(
+    server = api_server.TradingDatasHTTPServer(
         ("127.0.0.1", 0), api_server.Handler, request_timeout=5, max_threads=4
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1116,12 +1095,14 @@ def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
-        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
-            api_name,
-            "synthetic-provider-token",
-            params=params,
-            fields=requested_fields,
-            scan_budget=scan_budget,
+        lambda api_name, params, requested_fields, scan_budget=None: (
+            tushare_common.tushare_rows_outcome(
+                api_name,
+                "synthetic-provider-token",
+                params=params,
+                fields=requested_fields,
+                scan_budget=scan_budget,
+            )
         ),
     )
     TushareCollector._rate_calls.clear()

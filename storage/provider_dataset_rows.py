@@ -24,35 +24,52 @@ from storage.ingest_receipts import (
     IngestResult,
     insert_ingest_receipt_with_evidence,
     make_receipt_id,
+    require_receipt_evidence_readback,
+    require_unchanged_sqlite_binding,
+    validated_existing_sqlite_binding,
 )
-from storage.read_model_store import read_model_lock
 from storage.schema_contract import (
-    PROVIDER_DATASET_ROWS_DDL as _PROVIDER_DATASET_ROWS_DDL,
+    PROVIDER_DATASET_ROWS_COLUMNS,
     PROVIDER_DATASET_ROWS_TABLE,
+    get_table,
+    require_clean_sqlite_authority_schema,
 )
+from storage.sqlite_authority_lock import sqlite_authority_lock
 
 
-# Backwards-compatible import surface for existing tests and isolated callers.
-PROVIDER_DATASET_ROWS_DDL = _PROVIDER_DATASET_ROWS_DDL
-
-
-_REQUIRED_COLUMNS = frozenset(
-    {
-        "dataset_id",
-        "provider",
-        "schema_major",
-        "ingested_schema_version",
-        "row_key",
-        "observed_at",
-        "partition_value",
-        "payload_json",
-        "payload_hash",
-        "quality_state",
-        "quality_issues_json",
-        "collected_at",
-        "receipt_id",
-        "revision",
-    }
+_EXPECTED_PROVIDER_TABLE_INFO = tuple(
+    (
+        index,
+        name,
+        sqlite_type,
+        int(not nullable),
+        default,
+        primary_key_position,
+        0,
+    )
+    for index, (
+        name,
+        sqlite_type,
+        nullable,
+        default,
+        primary_key_position,
+    ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
+)
+_INGEST_RUN_CONTRACT = get_table("market_ingest_runs")
+_INGEST_RUN_PRIMARY_KEY_POSITIONS = {
+    name: index for index, name in enumerate(_INGEST_RUN_CONTRACT.primary_key, start=1)
+}
+_EXPECTED_INGEST_TABLE_INFO = tuple(
+    (
+        index,
+        column.name,
+        {"text": "TEXT", "integer": "INTEGER"}[column.logical_type],
+        int(not column.nullable),
+        None,
+        _INGEST_RUN_PRIMARY_KEY_POSITIONS.get(column.name, 0),
+        0,
+    )
+    for index, column in enumerate(_INGEST_RUN_CONTRACT.columns)
 )
 _INT64_MIN = -(2**63)
 _INT64_MAX = 2**63 - 1
@@ -392,10 +409,32 @@ def _require_generic_contract(
 
 
 def _require_existing_table(conn: sqlite3.Connection) -> None:
-    rows = conn.execute("PRAGMA table_xinfo(provider_dataset_rows)").fetchall()
-    columns = {str(row[1]) for row in rows}
-    if not rows or not _REQUIRED_COLUMNS.issubset(columns):
+    provider_rows = tuple(
+        tuple(row)
+        for row in conn.execute(
+            "PRAGMA main.table_xinfo('provider_dataset_rows')"
+        ).fetchall()
+    )
+    receipt_rows = tuple(
+        tuple(row)
+        for row in conn.execute(
+            "PRAGMA main.table_xinfo('market_ingest_runs')"
+        ).fetchall()
+    )
+    authority_tables = {
+        str(row[1])
+        for row in conn.execute("PRAGMA main.table_list").fetchall()
+        if str(row[0]) == "main"
+        and str(row[2]) == "table"
+        and not str(row[1]).startswith("sqlite_")
+    }
+    if provider_rows != _EXPECTED_PROVIDER_TABLE_INFO:
         raise RuntimeError("provider_dataset_rows table is missing or incompatible")
+    if receipt_rows != _EXPECTED_INGEST_TABLE_INFO:
+        raise RuntimeError("market_ingest_runs table is missing or incompatible")
+    if authority_tables != {PROVIDER_DATASET_ROWS_TABLE, "market_ingest_runs"}:
+        raise RuntimeError("SQLite authority contains unsupported tables")
+    require_clean_sqlite_authority_schema(conn)
 
 
 def validate_provider_dataset_store(db_path: Path) -> None:
@@ -406,21 +445,6 @@ def validate_provider_dataset_store(db_path: Path) -> None:
     conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
     try:
         _require_existing_table(conn)
-        receipt_columns = {
-            str(row[1])
-            for row in conn.execute("PRAGMA table_xinfo(market_ingest_runs)").fetchall()
-        }
-        if not {
-            "run_id",
-            "started_at",
-            "finished_at",
-            "status",
-            "source",
-            "rows_read",
-            "rows_written",
-            "notes",
-        }.issubset(receipt_columns):
-            raise RuntimeError("market_ingest_runs table is missing or incompatible")
     finally:
         conn.close()
 
@@ -433,21 +457,48 @@ def _write_prepared_rows(
     rows: Sequence[_PreparedProviderRow],
     receipt_id: str,
     collected_at: str,
-) -> IngestCounts:
+) -> tuple[IngestCounts, dict[tuple[str, str, int, str], tuple[object, ...]]]:
     inserted = 0
     updated = 0
     unchanged = 0
     schema_major = dataset.schema_major
+    expected_rows: dict[
+        tuple[str, str, int, str],
+        tuple[object, ...],
+    ] = {}
     for row in rows:
         existing = conn.execute(
-            """SELECT payload_hash, revision
+            """SELECT dataset_id, provider, schema_major,
+                      ingested_schema_version, row_key, observed_at,
+                      partition_value, payload_json, payload_hash,
+                      quality_state, quality_issues_json, collected_at,
+                      receipt_id, revision
                FROM provider_dataset_rows
                WHERE dataset_id = ? AND provider = ?
                  AND schema_major = ? AND row_key = ?""",
             (dataset.dataset_id, binding.provider, schema_major, row.row_key),
         ).fetchone()
+        identity = (
+            dataset.dataset_id,
+            binding.provider,
+            schema_major,
+            row.row_key,
+        )
+        desired_content = (
+            dataset.dataset_id,
+            binding.provider,
+            schema_major,
+            dataset.schema_version,
+            row.row_key,
+            row.observed_at,
+            row.partition_value,
+            row.payload_json,
+            row.payload_hash,
+            row.quality_state,
+            row.quality_issues_json,
+        )
         if existing is None:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO provider_dataset_rows
                    (dataset_id, provider, schema_major, ingested_schema_version,
                     row_key, observed_at, partition_value, payload_json,
@@ -470,14 +521,26 @@ def _write_prepared_rows(
                     receipt_id,
                 ),
             )
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "provider fact insert did not affect exactly one row"
+                )
+            expected_rows[identity] = (
+                *desired_content,
+                collected_at,
+                receipt_id,
+                1,
+            )
             inserted += 1
             continue
-        if str(existing[0]) == row.payload_hash:
+        existing_tuple = tuple(existing)
+        if existing_tuple[:11] == desired_content:
+            expected_rows[identity] = existing_tuple
             unchanged += 1
             continue
         if dataset.point_in_time != "current_snapshot":
             raise RuntimeError("append_only provider identity must not update")
-        conn.execute(
+        cursor = conn.execute(
             """UPDATE provider_dataset_rows
                SET ingested_schema_version = ?, observed_at = ?,
                    partition_value = ?, payload_json = ?, payload_hash = ?,
@@ -495,15 +558,23 @@ def _write_prepared_rows(
                 row.quality_issues_json,
                 collected_at,
                 receipt_id,
-                int(existing[1]) + 1,
+                int(existing_tuple[13]) + 1,
                 dataset.dataset_id,
                 binding.provider,
                 schema_major,
                 row.row_key,
             ),
         )
+        if cursor.rowcount != 1:
+            raise RuntimeError("provider fact update did not affect exactly one row")
+        expected_rows[identity] = (
+            *desired_content,
+            collected_at,
+            receipt_id,
+            int(existing_tuple[13]) + 1,
+        )
         updated += 1
-    return IngestCounts(
+    counts = IngestCounts(
         returned=len(rows),
         validated=len(rows),
         inserted=inserted,
@@ -513,6 +584,30 @@ def _write_prepared_rows(
         committed=len(rows),
         count_semantics="exact_row_outcomes",
     )
+    return counts, expected_rows
+
+
+def _require_provider_fact_readback(
+    conn: sqlite3.Connection,
+    expected_rows: Mapping[
+        tuple[str, str, int, str],
+        tuple[object, ...],
+    ],
+) -> None:
+    for identity, expected in expected_rows.items():
+        observed = conn.execute(
+            """SELECT dataset_id, provider, schema_major,
+                      ingested_schema_version, row_key, observed_at,
+                      partition_value, payload_json, payload_hash,
+                      quality_state, quality_issues_json, collected_at,
+                      receipt_id, revision
+               FROM provider_dataset_rows
+               WHERE dataset_id = ? AND provider = ?
+                 AND schema_major = ? AND row_key = ?""",
+            identity,
+        ).fetchone()
+        if observed is None or tuple(observed) != expected:
+            raise RuntimeError("provider fact transaction readback is inconsistent")
 
 
 def ingest_provider_native_rows(
@@ -540,12 +635,22 @@ def ingest_provider_native_rows(
         ("[" + ",".join(row.payload_json for row in prepared) + "]").encode("utf-8")
     ).hexdigest()
 
-    with read_model_lock(db_path, mode="exclusive", create=True):
-        conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=rw", uri=True)
+    with sqlite_authority_lock(
+        db_path,
+        mode="exclusive",
+        create=True,
+        timeout=180.0,
+    ) as authority_lease:
+        db_binding = validated_existing_sqlite_binding(db_path)
+        conn = sqlite3.connect(
+            f"{db_binding.canonical_path.as_uri()}?mode=rw",
+            uri=True,
+        )
         try:
-            _require_existing_table(conn)
             conn.execute("BEGIN IMMEDIATE")
-            counts = _write_prepared_rows(
+            _require_existing_table(conn)
+            require_unchanged_sqlite_binding(db_binding)
+            counts, expected_rows = _write_prepared_rows(
                 conn,
                 dataset=dataset,
                 binding=binding,
@@ -565,6 +670,10 @@ def ingest_provider_native_rows(
             )
             if evidence.receipt_id != receipt_id:
                 raise RuntimeError("receipt identity changed during generic write")
+            _require_provider_fact_readback(conn, expected_rows)
+            require_receipt_evidence_readback(conn, evidence)
+            require_unchanged_sqlite_binding(db_binding)
+            authority_lease.validate()
             conn.commit()
         except BaseException:
             try:

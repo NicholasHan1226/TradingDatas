@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared helpers for the SharedSignals Tushare collectors."""
+"""Shared helpers for the TradingDatas Tushare transport adapter."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ import json
 import math
 import os
 import re
-import ssl
-import time
+import stat
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -16,26 +15,12 @@ import urllib.request
 from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping as MappingABC
 from dataclasses import InitVar, dataclass, field
-from datetime import datetime
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    try:
-        import tomli as tomllib
-    except ModuleNotFoundError:  # pragma: no cover
-        tomllib = None
-
-# Codex config is the canonical source for Tushare/QuickSync token and API URL.
-# Environment variables (QUICKSYNC_TOKEN, QUICKSYNC_API_URL, etc.) can be used
-# as an optional override; set them when you need to temporarily switch provider.
-CONFIG = Path.home() / ".codex" / "config.toml"
-DEFAULT_API_URL = "https://api.tushare.pro"
-QUICKSYNC_API_URL = "https://api.quicksync.cn"
-_TUSHARE_CONFIG_CACHE: dict[str, str] | None = None
+TUSHARE_API_URL_ENV = "TUSHARE_API_URL"
+TUSHARE_TOKEN_FILE_ENV = "TUSHARE_TOKEN_FILE"
+_MAX_TOKEN_FILE_BYTES = 4_096
 
 _REDACTION_MARKER = "[REDACTED]"
 _CREDENTIAL_NAME_PATTERN = (
@@ -145,9 +130,7 @@ def _normalize_utf16_surrogates(value: str) -> str:
             if not 0xDC00 <= low_surrogate <= 0xDFFF:
                 raise _SensitiveScanFailure from None
             code_point = (
-                0x10000
-                + ((code_unit - 0xD800) << 10)
-                + (low_surrogate - 0xDC00)
+                0x10000 + ((code_unit - 0xD800) << 10) + (low_surrogate - 0xDC00)
             )
             normalized.append(chr(code_point))
             index += 2
@@ -180,9 +163,8 @@ def _decode_backslash_escapes(value: str) -> str:
             width = {"u": 4, "U": 8, "x": 2}[marker]
             start = index + 2
             encoded = value[start : start + width]
-            if (
-                len(encoded) != width
-                or any(digit not in _HEX_DIGITS for digit in encoded)
+            if len(encoded) != width or any(
+                digit not in _HEX_DIGITS for digit in encoded
             ):
                 raise _SensitiveScanFailure from None
             try:
@@ -232,9 +214,7 @@ def _safe_text_transform(transform: Any, value: str) -> str:
 
 def _strip_unicode_format_controls(value: str) -> str:
     return "".join(
-        character
-        for character in value
-        if unicodedata.category(character) != "Cf"
+        character for character in value if unicodedata.category(character) != "Cf"
     )
 
 
@@ -484,8 +464,7 @@ def _credential_detection_views(
     scan_budget: SensitiveScanBudget,
 ) -> tuple[str, ...]:
     return tuple(
-        view.strip()
-        for view in _diagnostic_views(value, scan_budget=scan_budget)
+        view.strip() for view in _diagnostic_views(value, scan_budget=scan_budget)
     )
 
 
@@ -826,7 +805,7 @@ def _redact_sensitive_text(
 
 @dataclass(frozen=True)
 class ProviderCallOutcome:
-    """Provider truth preserved before compatibility row conversion."""
+    """Provider truth preserved through provider-neutral row normalization."""
 
     state: Literal["success", "empty", "failed"]
     rows: tuple[Mapping[str, Any], ...]
@@ -904,8 +883,7 @@ class ProviderCallOutcome:
                 scan_budget=budget,
             )
         if self.state == "failed" and (
-            not diagnostic_trusted
-            or provider_code == _UNTRUSTED_PROVIDER_CODE
+            not diagnostic_trusted or provider_code == _UNTRUSTED_PROVIDER_CODE
         ):
             error_code = "provider_error"
         object.__setattr__(self, "provider_code", provider_code)
@@ -967,7 +945,14 @@ class ProviderCallOutcome:
 
 _SAFE_PROVIDER_CODE = re.compile(r"-?(?:0|[1-9][0-9]{0,15})")
 _SAFE_ERROR_CODES = frozenset(
-    (None, "provider_error", "rate_limited", "permission_denied")
+    (
+        None,
+        "provider_error",
+        "rate_limited",
+        "permission_denied",
+        "resource_budget",
+        "transport_error",
+    )
 )
 _UNTRUSTED_PROVIDER_CODE = "<untrusted-provider-code>"
 _UNTRUSTED_ERROR_CODE = "<untrusted-error-code>"
@@ -1056,8 +1041,7 @@ def provider_outcome_log_fields(
         error_message = None
         diagnostic_trusted = True
     if outcome.state == "failed" and (
-        not diagnostic_trusted
-        or provider_code == _UNTRUSTED_PROVIDER_CODE
+        not diagnostic_trusted or provider_code == _UNTRUSTED_PROVIDER_CODE
     ):
         error_code = "provider_error"
     return {
@@ -1274,15 +1258,11 @@ def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
             "Tushare response fields must contain valid field names"
         )
     if len(set(fields)) != len(fields):
-        raise _ProviderResponseValidationError(
-            "Tushare response fields must be unique"
-        )
+        raise _ProviderResponseValidationError("Tushare response fields must be unique")
 
     items = data["items"]
     if not isinstance(items, list):
-        raise _ProviderResponseValidationError(
-            "Tushare response items must be a list"
-        )
+        raise _ProviderResponseValidationError("Tushare response items must be a list")
 
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(items):
@@ -1311,95 +1291,98 @@ def _provider_response_metadata(body: Mapping[str, Any]) -> dict[str, Any]:
     data = body.get("data")
     if type(data) is dict:
         data_metadata = {
-            key: value
-            for key, value in data.items()
-            if key not in ("fields", "items")
+            key: value for key, value in data.items() if key not in ("fields", "items")
         }
         if data_metadata:
             metadata["data"] = data_metadata
     return metadata
 
 
-def _parse_tushare_url(raw_url: str) -> dict[str, str]:
-    parsed = urllib.parse.urlparse(raw_url)
-    token = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
-    if not token and "token=" in raw_url:
-        token = raw_url.split("token=", 1)[1].split("&", 1)[0]
-    api_url = urllib.parse.urlunparse(parsed._replace(query="", fragment="")).rstrip("/")
-    return {"api_url": api_url or DEFAULT_API_URL, "token": token}
-
-
-def _read_tushare_config_from_env(env: Mapping[str, str]) -> dict[str, str] | None:
-    url_keys = ("TUSHARE_MCP_URL", "TUSHARE_API_URL", "QUICKSYNC_API_URL", "QUICKSYNC_URL")
-    token_keys = ("TUSHARE_TOKEN", "TUSHARE_API_TOKEN", "QUICKSYNC_TOKEN", "QUICKSYNC_API_TOKEN")
-    raw_url = next((str(env.get(key) or "") for key in url_keys if env.get(key)), "")
-    token = next((str(env.get(key) or "") for key in token_keys if env.get(key)), "")
-    if raw_url and "token=" in raw_url:
-        parsed = _parse_tushare_url(raw_url)
-        if parsed["token"]:
-            return parsed
-    if token:
-        api_url = raw_url.rstrip("/") if raw_url else (
-            QUICKSYNC_API_URL if any(env.get(key) for key in ("QUICKSYNC_TOKEN", "QUICKSYNC_API_TOKEN")) else DEFAULT_API_URL
-        )
-        return {"api_url": api_url, "token": token}
-    return None
-
-
-def _read_tushare_config_from_codex(path: Path = CONFIG) -> dict[str, str]:
+def _validated_api_url(raw_url: object) -> str:
+    if type(raw_url) is not str or not raw_url or raw_url != raw_url.strip():
+        raise RuntimeError("TUSHARE_API_URL is unavailable")
+    parsed = urllib.parse.urlsplit(raw_url)
     try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    if tomllib is not None:
-        try:
-            with path.open("rb") as handle:
-                config = tomllib.load(handle)
-            raw_url = (
-                config.get("mcp_servers", {})
-                .get("tushareMcp", {})
-                .get("url", "")
-            )
-            if raw_url and "token=" in raw_url:
-                parsed = _parse_tushare_url(raw_url)
-                if parsed["token"]:
-                    return parsed
-        except Exception:
-            pass  # fall through to regex fallback
-    match = re.search(r"\[mcp_servers\.tushareMcp\][\s\S]*?url\s*=\s*\"([^\"]+)\"", text)
-    if not match or "token=" not in match.group(1):
-        raise RuntimeError("Tushare token not found in Codex config")
-    return _parse_tushare_url(match.group(1))
+        port = parsed.port
+    except ValueError:
+        raise RuntimeError("TUSHARE_API_URL is invalid") from None
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
+        or bool(parsed.query)
+        or bool(parsed.fragment)
+    ):
+        raise RuntimeError("TUSHARE_API_URL is invalid")
+    return raw_url
 
 
-def decode_cn_quote_bytes(data: bytes) -> str:
-    """Decode Chinese market quote payloads without letting codec drift break workflows."""
-    for encoding in ("gbk", "gb18030", "gb2312", "utf-8", "latin-1"):
-        try:
-            return data.decode(encoding, "ignore")
-        except LookupError:
-            continue
-    return data.decode("latin-1", "ignore")
+def _read_root_owned_token_file(raw_path: object) -> str:
+    if type(raw_path) is not str or not raw_path or raw_path != raw_path.strip():
+        raise RuntimeError("TUSHARE_TOKEN_FILE is unavailable")
+    path = os.path.abspath(raw_path)
+    if path != raw_path:
+        raise RuntimeError("TUSHARE_TOKEN_FILE must be an absolute canonical path")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        raise RuntimeError("TUSHARE_TOKEN_FILE is unavailable") from None
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or metadata.st_size <= 0
+            or metadata.st_size > _MAX_TOKEN_FILE_BYTES
+        ):
+            raise RuntimeError("TUSHARE_TOKEN_FILE ownership or mode is invalid")
+        chunks: list[bytes] = []
+        remaining = _MAX_TOKEN_FILE_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+    finally:
+        os.close(descriptor)
+    if not raw or len(raw) > _MAX_TOKEN_FILE_BYTES:
+        raise RuntimeError("TUSHARE_TOKEN_FILE size is invalid")
+    try:
+        token = raw.decode("utf-8").rstrip("\r\n")
+    except UnicodeDecodeError:
+        raise RuntimeError("TUSHARE_TOKEN_FILE must contain UTF-8") from None
+    if (
+        not token
+        or token != token.strip()
+        or "\n" in token
+        or "\r" in token
+        or any(ord(character) < 33 or ord(character) == 127 for character in token)
+    ):
+        raise RuntimeError("TUSHARE_TOKEN_FILE contains an invalid token")
+    return token
 
 
-def read_tushare_config() -> dict[str, str]:
-    """Read Tushare/QuickSync config: codex config.toml is canonical;
-    environment variables can be used as an optional override."""
-    env_config = _read_tushare_config_from_env(os.environ)
-    if env_config:
-        return env_config
-    return _read_tushare_config_from_codex(CONFIG)
+def read_tushare_config(
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Read only the approved API URL and root-owned token file."""
 
-
-def read_token() -> str:
-    return read_tushare_config()["token"]
+    source = os.environ if env is None else env
+    return {
+        "api_url": _validated_api_url(source.get(TUSHARE_API_URL_ENV)),
+        "token": _read_root_owned_token_file(source.get(TUSHARE_TOKEN_FILE_ENV)),
+    }
 
 
 def get_tushare_config() -> dict[str, str]:
-    global _TUSHARE_CONFIG_CACHE
-    if _TUSHARE_CONFIG_CACHE is None:
-        _TUSHARE_CONFIG_CACHE = read_tushare_config()
-    return _TUSHARE_CONFIG_CACHE
+    return read_tushare_config()
 
 
 def get_token() -> str:
@@ -1415,73 +1398,10 @@ def _provider_urlopen(
     *,
     timeout: float,
 ) -> Any:
-    """Open one provider request with the provider's verified TLS contract."""
+    """Open one request; URL validation occurs before request construction."""
 
-    parsed = urllib.parse.urlsplit(request.full_url)
-    quicksync_host = urllib.parse.urlsplit(QUICKSYNC_API_URL).hostname
-    if parsed.hostname == quicksync_host:
-        try:
-            port = parsed.port
-        except ValueError:
-            raise RuntimeError("QuickSync provider URL is invalid") from None
-        if (
-            parsed.scheme != "https"
-            or parsed.username is not None
-            or parsed.password is not None
-            or port not in {None, 443}
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise RuntimeError("QuickSync provider requires verified HTTPS")
-        context = ssl.create_default_context()
-        context.minimum_version = ssl.TLSVersion.TLSv1_3
-        context.maximum_version = ssl.TLSVersion.TLSv1_3
-        return urllib.request.urlopen(request, timeout=timeout, context=context)
+    _validated_api_url(request.full_url)
     return urllib.request.urlopen(request, timeout=timeout)
-
-
-def tushare_data(
-    api_name: str,
-    params: dict[str, Any] | None = None,
-    fields: str = "",
-    *,
-    retries: int = 3,
-    strict: bool = True,
-    timeout: float = 30,
-) -> dict[str, Any]:
-    payload = json.dumps(
-        {"api_name": api_name, "token": get_token(), "params": params or {}, "fields": fields}
-    ).encode("utf-8")
-    last_error: Exception | None = None
-    for attempt in range(1, retries + 1):
-        req = urllib.request.Request(
-            get_api_url(),
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            body = _loads_provider_json(
-                _provider_urlopen(req, timeout=timeout).read().decode("utf-8")
-            )
-            if body.get("code") != 0:
-                if not strict:
-                    return {"fields": [], "items": [], "error": body.get("msg", ""), "code": body.get("code")}
-                raise RuntimeError(body.get("msg", "Tushare request failed"))
-            return body.get("data") or {"fields": [], "items": []}
-        except Exception as exc:
-            last_error = exc
-            if attempt < retries:
-                time.sleep(0.4 * attempt)
-    if strict:
-        raise RuntimeError(str(last_error))
-    return {"fields": [], "items": [], "error": str(last_error), "code": "local_error"}
-
-
-def rows_to_dicts(data: dict[str, Any]) -> list[dict[str, Any]]:
-    fields = data.get("fields") or []
-    return [dict(zip(fields, row)) for row in data.get("items") or []]
 
 
 def tushare_rows_outcome(
@@ -1517,7 +1437,7 @@ def tushare_rows_outcome(
             state="failed",
             rows=(),
             provider_code=None,
-            error_code="provider_error",
+            error_code="transport_error",
             error_message=safe_provider_exception_message(exc),
             sensitive_values=sensitive_values,
             scan_budget=scan_budget,
@@ -1526,9 +1446,7 @@ def tushare_rows_outcome(
     try:
         body = _loads_provider_json(response_payload.decode("utf-8"))
         if not isinstance(body, dict):
-            raise _ProviderResponseValidationError(
-                "Tushare response must be a mapping"
-            )
+            raise _ProviderResponseValidationError("Tushare response must be a mapping")
 
         raw_provider_code = body.get("code")
         provider_code = (
@@ -1550,10 +1468,7 @@ def tushare_rows_outcome(
                 scan_budget=scan_budget,
             )
             classified_error_code = "provider_error"
-            if (
-                diagnostic_trusted
-                and safe_provider_code != _UNTRUSTED_PROVIDER_CODE
-            ):
+            if diagnostic_trusted and safe_provider_code != _UNTRUSTED_PROVIDER_CODE:
                 classified_error_code = _provider_error_code(
                     safe_provider_code,
                     safe_message,
@@ -1573,24 +1488,24 @@ def tushare_rows_outcome(
             )
 
         provider_metadata = _provider_response_metadata(body)
-        if _contains_structured_credential(
-            body,
-            scan_budget=scan_budget,
-        ) or _contains_sensitive_value(
-            body,
-            sensitive_values,
-            scan_budget=scan_budget,
-        ) or _contains_provider_metadata_credential(
-            provider_metadata,
-            scan_budget=scan_budget,
+        if (
+            _contains_structured_credential(
+                body,
+                scan_budget=scan_budget,
+            )
+            or _contains_sensitive_value(
+                body,
+                sensitive_values,
+                scan_budget=scan_budget,
+            )
+            or _contains_provider_metadata_credential(
+                provider_metadata,
+                scan_budget=scan_budget,
+            )
         ):
-            raise _ProviderResponseValidationError(
-                _redacted_diagnostic_summary()
-            )
+            raise _ProviderResponseValidationError(_redacted_diagnostic_summary())
         if "data" not in body:
-            raise _ProviderResponseValidationError(
-                "Tushare response must contain data"
-            )
+            raise _ProviderResponseValidationError("Tushare response must contain data")
         rows = _strict_provider_rows(body["data"])
         return ProviderCallOutcome(
             state="success" if rows else "empty",
@@ -1619,104 +1534,3 @@ def tushare_rows_outcome(
             sensitive_values=sensitive_values,
             scan_budget=scan_budget,
         )
-
-
-def tushare_rows(
-    api_name: str,
-    params: dict[str, Any] | None = None,
-    fields: str = "",
-    *,
-    retries: int = 3,
-    strict: bool = True,
-    timeout: float = 30,
-) -> list[dict[str, Any]]:
-    return rows_to_dicts(tushare_data(api_name, params, fields, retries=retries, strict=strict, timeout=timeout))
-
-
-def to_float(value: Any, default: float = 0.0, *, strict: bool = False) -> float:
-    try:
-        if value is None or value == "":
-            if strict:
-                raise ValueError(f"Cannot convert {value!r} to float")
-            return default
-        return float(value)
-    except (TypeError, ValueError) as exc:
-        if strict:
-            raise ValueError(f"Cannot convert {value!r} to float") from exc
-        return default
-
-
-def today_yyyymmdd() -> str:
-    return datetime.now().strftime("%Y%m%d")
-
-
-def latest_trade_date(end_date: str | None = None) -> str:
-    end = end_date or today_yyyymmdd()
-    start = str(int(end[:4]) - 1) + end[4:]
-    rows = tushare_rows("trade_cal", {"exchange": "", "start_date": start, "end_date": end}, "cal_date,is_open")
-    dates = sorted(str(row["cal_date"]) for row in rows if str(row.get("is_open")) == "1")
-    if not dates:
-        raise RuntimeError("No open trade date found")
-    return dates[-1]
-
-
-def previous_trade_date(before_date: str) -> str | None:
-    """Return the latest trade date strictly before `before_date`.
-
-    Uses Tushare trade_cal to find the most recent open day.
-    Returns None if no earlier trade date is found.
-    """
-    start = str(int(before_date[:4]) - 1) + before_date[4:]
-    rows = tushare_rows("trade_cal", {"exchange": "", "start_date": start, "end_date": before_date}, "cal_date,is_open")
-    dates = sorted(str(row["cal_date"]) for row in rows if str(row.get("is_open")) == "1")
-    # Return the last date that is strictly before `before_date`
-    for date in reversed(dates):
-        if date < before_date:
-            return date
-    return None
-
-
-def next_trade_date(after_date: str) -> str | None:
-    end_year = str(int(after_date[:4]) + 1) + after_date[4:]
-    rows = tushare_rows("trade_cal", {"exchange": "", "start_date": after_date, "end_date": end_year}, "cal_date,is_open")
-    dates = sorted(str(row["cal_date"]) for row in rows if str(row.get("is_open")) == "1")
-    for date in dates:
-        if date > after_date:
-            return date
-    return None
-
-
-def normalize_code(raw: str) -> str:
-    text = raw.strip()
-    if re.fullmatch(r"\d{6}\.(SH|SZ|BJ)", text, flags=re.I):
-        code, suffix = text.split(".")
-        return f"{code}.{suffix.upper()}"
-    if re.fullmatch(r"(sh|sz|bj)\d{6}", text, flags=re.I):
-        suffix = text[:2].upper()
-        return f"{text[-6:]}.{suffix}"
-    if re.fullmatch(r"\d{6}", text):
-        if text.startswith(("6", "5")):
-            return f"{text}.SH"
-        if text.startswith(("8", "4", "9")):
-            return f"{text}.BJ"
-        return f"{text}.SZ"
-    raise ValueError(f"Unsupported stock code: {raw}")
-
-
-def to_tencent_symbol(ts_code: str) -> str:
-    code = normalize_code(ts_code)
-    number, suffix = code.split(".")
-    return suffix.lower() + number
-
-
-def daily_map(trade_date: str) -> dict[str, dict[str, Any]]:
-    rows = tushare_rows(
-        "daily",
-        {"trade_date": trade_date},
-        "ts_code,trade_date,open,high,low,close,pre_close,pct_chg,amount",
-    )
-    return {row["ts_code"]: row for row in rows}
-
-
-def safe_round(value: Any, digits: int = 2) -> float:
-    return round(to_float(value), digits)

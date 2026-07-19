@@ -801,7 +801,7 @@ def test_from_env_rejects_missing_empty_or_short_utf8_key(
     monkeypatch: pytest.MonkeyPatch,
     value: str,
 ) -> None:
-    monkeypatch.setenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", value)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY", value)
 
     with pytest.raises(CursorConfigurationError, match="signing key") as exc_info:
         SignedCursorCodec.from_env()
@@ -812,7 +812,7 @@ def test_from_env_rejects_missing_empty_or_short_utf8_key(
 def test_from_env_rejects_missing_key_without_a_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
 
     with pytest.raises(CursorConfigurationError, match="signing key"):
         SignedCursorCodec.from_env()
@@ -823,7 +823,7 @@ def test_from_env_accepts_exactly_32_utf8_bytes(
     claims: CursorClaims,
     expectation: CursorExpectation,
 ) -> None:
-    monkeypatch.setenv("SHAREDSIGNALS_CURSOR_SIGNING_KEY", "é" * 16)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY", "é" * 16)
     codec = SignedCursorCodec.from_env()
 
     assert codec.decode(codec.encode(claims), expected=expectation, now=NOW) == claims
@@ -835,7 +835,7 @@ def test_from_env_maps_utf8_encoding_failure_to_configuration_error(
     monkeypatch.setattr(
         query_cursor.os,
         "environ",
-        {"SHAREDSIGNALS_CURSOR_SIGNING_KEY": "\ud800" * 32},
+        {"TRADINGDATAS_CURSOR_SIGNING_KEY": "\ud800" * 32},
     )
 
     with pytest.raises(CursorConfigurationError, match="signing key"):
@@ -846,7 +846,7 @@ def test_missing_environment_key_does_not_break_module_import(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment = os.environ.copy()
-    environment.pop("SHAREDSIGNALS_CURSOR_SIGNING_KEY", None)
+    environment.pop("TRADINGDATAS_CURSOR_SIGNING_KEY", None)
 
     completed = subprocess.run(
         [sys.executable, "-c", "import query_cursor"],

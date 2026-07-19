@@ -1,7 +1,7 @@
 import json
 import math
+import os
 import re
-import ssl
 import urllib.error
 import urllib.parse
 from dataclasses import FrozenInstanceError
@@ -27,25 +27,6 @@ class _RawResponse:
         return self._payload.encode("utf-8")
 
 
-def test_tushare_data_retries_transient_http_error(monkeypatch):
-    attempts = []
-
-    def fake_urlopen(request, timeout):
-        attempts.append((request, timeout))
-        if len(attempts) == 1:
-            raise urllib.error.HTTPError(request.full_url, 502, "Bad Gateway", {}, None)
-        return _Response({"code": 0, "data": {"fields": ["value"], "items": [[1]]}})
-
-    monkeypatch.setattr(tushare_common, "get_token", lambda: "test-token")
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
-
-    result = tushare_common.tushare_data("rt_min", retries=2)
-
-    assert result == {"fields": ["value"], "items": [[1]]}
-    assert len(attempts) == 2
-
-
 def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
     requests: list[dict] = []
 
@@ -63,70 +44,60 @@ def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
     return requests
 
 
-def test_quicksync_transport_requires_verified_tls13(monkeypatch):
-    observed: dict[str, object] = {}
+def test_config_reads_only_api_url_and_root_owned_token_file(tmp_path, monkeypatch):
+    token_file = tmp_path / "tushare-token"
+    token_file.write_text("test-token\n", encoding="utf-8")
+    token_file.chmod(0o600)
+    real_fstat = os.fstat
 
-    def fake_urlopen(request, timeout, *, context):
-        observed.update(
-            {
-                "context": context,
-                "timeout": timeout,
-                "url": request.full_url,
-            }
-        )
-        return _Response(
-            {
-                "code": 0,
-                "msg": None,
-                "data": {"fields": ["value"], "items": [[1]]},
-            }
-        )
+    def root_owned(descriptor):
+        values = list(real_fstat(descriptor))
+        values[4] = 0
+        return os.stat_result(values)
 
-    monkeypatch.setattr(
-        tushare_common,
-        "get_api_url",
-        lambda: tushare_common.QUICKSYNC_API_URL,
-    )
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(tushare_common.os, "fstat", root_owned)
 
-    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
-
-    context = observed["context"]
-    assert isinstance(context, ssl.SSLContext)
-    assert context.check_hostname is True
-    assert context.verify_mode is ssl.CERT_REQUIRED
-    assert context.minimum_version is ssl.TLSVersion.TLSv1_3
-    assert context.maximum_version is ssl.TLSVersion.TLSv1_3
-    assert observed["timeout"] == 30
-    assert observed["url"] == tushare_common.QUICKSYNC_API_URL
-    assert outcome.state == "success"
+    assert tushare_common.read_tushare_config(
+        {
+            "TUSHARE_API_URL": "https://api.tushare.pro",
+            "TUSHARE_TOKEN_FILE": str(token_file),
+        }
+    ) == {
+        "api_url": "https://api.tushare.pro",
+        "token": "test-token",
+    }
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://api.quicksync.cn",
-        "https://api.quicksync.cn:444",
-        "https://api.quicksync.cn/provider",
-    ],
-)
-def test_quicksync_transport_rejects_unverified_routes_before_token_send(
-    monkeypatch,
-    url,
+def test_config_rejects_env_tokens_fallbacks_and_non_root_token_file(
+    tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: url)
-    monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: pytest.fail(
-            "unverified QuickSync route must fail before network access"
-        ),
-    )
+    token_file = tmp_path / "tushare-token"
+    token_file.write_text("test-token\n", encoding="utf-8")
+    token_file.chmod(0o600)
+    real_fstat = os.fstat
 
-    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
+    def user_owned(descriptor):
+        values = list(real_fstat(descriptor))
+        values[4] = 501
+        return os.stat_result(values)
 
-    assert outcome.state == "failed"
-    assert outcome.error_code == "provider_error"
+    monkeypatch.setattr(tushare_common.os, "fstat", user_owned)
+    with pytest.raises(RuntimeError, match="ownership or mode"):
+        tushare_common.read_tushare_config(
+            {
+                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_TOKEN_FILE": str(token_file),
+                "TUSHARE_TOKEN": "must-not-be-read",
+                "QUICKSYNC_TOKEN": "must-not-be-read",
+            }
+        )
+    with pytest.raises(RuntimeError, match="TUSHARE_TOKEN_FILE"):
+        tushare_common.read_tushare_config(
+            {
+                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_TOKEN": "must-not-be-read",
+            }
+        )
 
 
 def test_non_quicksync_transport_keeps_default_verified_urlopen(monkeypatch):
@@ -1011,7 +982,7 @@ def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
     assert outcome.state == "failed"
     assert outcome.rows == ()
     assert outcome.provider_code is None
-    assert outcome.error_code == "provider_error"
+    assert outcome.error_code == "transport_error"
     assert outcome.error_message == "provider transport unavailable"
 
 
@@ -1029,7 +1000,7 @@ def test_tushare_rows_outcome_redacts_transport_error_before_return(monkeypatch)
 
     assert outcome.state == "failed"
     assert outcome.provider_code is None
-    assert outcome.error_code == "provider_error"
+    assert outcome.error_code == "transport_error"
     assert "S3CR3T-DO-NOT-LOG" not in outcome.error_message
     assert outcome.error_message == "provider transport unavailable"
 
@@ -1195,6 +1166,7 @@ def test_strict_provider_return_is_safe_for_delimited_secret(
             ),
         )
     else:
+
         def raise_transport(*_args, **_kwargs):
             raise RuntimeError(message)
 
@@ -1264,7 +1236,11 @@ def test_provider_boundary_replaces_exact_token_equivalent_forms(
 ):
     _stub_outcome_response(
         monkeypatch,
-        {"code": -2001, "msg": f"provider echoed {echoed_token}; status=401", "data": None},
+        {
+            "code": -2001,
+            "msg": f"provider echoed {echoed_token}; status=401",
+            "data": None,
+        },
     )
 
     outcome = tushare_common.tushare_rows_outcome("daily", _EXACT_TOKEN)
@@ -2809,9 +2785,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
             id="foreign-authorization-row",
         ),
         pytest.param(
-            _provider_success_payload(
-                {"fields": ["Authorization"], "items": []}
-            ),
+            _provider_success_payload({"fields": ["Authorization"], "items": []}),
             "Authorization",
             id="credential-field-with-empty-items",
         ),
@@ -2864,13 +2838,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
                 {
                     "fields": ["value"],
                     "items": [
-                        [
-                            {
-                                "proxy-authorization": (
-                                    "Bearer SYNTH-FOREIGN-PROXY-AUTH"
-                                )
-                            }
-                        ]
+                        [{"proxy-authorization": ("Bearer SYNTH-FOREIGN-PROXY-AUTH")}]
                     ],
                 }
             ),
@@ -2973,9 +2941,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
             id="metadata-standalone-bearer-value",
         ),
         pytest.param(
-            _provider_success_payload_with_metadata_value(
-                "Basic U1lOVEg6Rk9SRUlHTg=="
-            ),
+            _provider_success_payload_with_metadata_value("Basic U1lOVEg6Rk9SRUlHTg=="),
             "U1lOVEg6Rk9SRUlHTg==",
             id="metadata-standalone-basic-value",
         ),
@@ -2997,8 +2963,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
             _provider_success_payload_with_metadata_value(
                 urllib.parse.quote(
                     urllib.parse.quote(
-                        '{"Authorization":"Bearer '
-                        'SYNTH-FOREIGN-ENCODED-JSON"}',
+                        '{"Authorization":"Bearer SYNTH-FOREIGN-ENCODED-JSON"}',
                         safe="",
                     ),
                     safe="",
@@ -3017,10 +2982,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
         ),
         pytest.param(
             _provider_success_payload_with_metadata_value(
-                repr(
-                    '{"Authorization":"Bearer '
-                    'SYNTH-FOREIGN-REPR-JSON"}'
-                )
+                repr('{"Authorization":"Bearer SYNTH-FOREIGN-REPR-JSON"}')
             ),
             "SYNTH-FOREIGN-REPR-JSON",
             id="metadata-repr-wrapped-json-value",
@@ -3040,9 +3002,7 @@ def test_direct_outcome_accepts_two_word_auth_prose(value):
         pytest.param(
             _provider_success_payload(
                 {"fields": ["value"], "items": [["safe"]]},
-                metadata={
-                    "Authorization": "Bearer SYNTH-FOREIGN-METADATA-AUTH"
-                },
+                metadata={"Authorization": "Bearer SYNTH-FOREIGN-METADATA-AUTH"},
             ),
             "SYNTH-FOREIGN-METADATA-AUTH",
             id="top-level-metadata-authorization",

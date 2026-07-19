@@ -23,7 +23,6 @@ from dataset_registry import (
     DatasetDefinition,
     DatasetField,
     DatasetRegistry,
-    FixedFieldFilter,
     ProviderBinding,
     ReadModelAdapter,
     load_dataset_registry,
@@ -92,7 +91,6 @@ def _catalog_dataset(
 ) -> DatasetDefinition:
     base = _dataset()
     slug = dataset_id.replace(".", "_").replace("-", "_")
-    table = f"facts_{slug}"
     primary = ProviderBinding(
         provider=f"source_{slug}",
         api_name=f"api_{slug}",
@@ -100,7 +98,7 @@ def _catalog_dataset(
         read_discriminator_value=f"lane_{slug}",
         entitlement_state=entitlement_state,
         activation_state=activation_state,
-        target_tables=(table,),
+        target_tables=("provider_dataset_rows",),
     )
     bindings = (primary,)
     if second_binding:
@@ -118,6 +116,7 @@ def _catalog_dataset(
         base,
         dataset_id=dataset_id,
         aliases=aliases,
+        schema_version="1.2.0",
         domain="market_data",
         market=market,
         entity_type="quote",
@@ -140,16 +139,33 @@ def _catalog_dataset(
         provider_bindings=bindings,
         read_model_adapter=ReadModelAdapter(
             adapter_version=f"read_{slug}.v1",
-            primary_table=table,
-            fixed_field_filters=(FixedFieldFilter("lane_key", (f"lane_{slug}",)),),
+            primary_table="provider_dataset_rows",
+            fixed_field_filters=(),
+            storage_kind="provider_native_rows",
+            row_key_strategy="primary_key",
         ),
     )
 
 
 def _queryable_table(conn: sqlite3.Connection, dataset: DatasetDefinition) -> None:
-    conn.execute(
-        f'CREATE TABLE "{dataset.read_model_adapter.primary_table}" ('
-        '"symbol" TEXT, "value" REAL, "revision" INTEGER, "lane_key" TEXT)'
+    del dataset
+    conn.executescript(SCHEMA_SQL)
+
+
+def _receipt_dataset(dataset: DatasetDefinition) -> DatasetDefinition:
+    return replace(
+        dataset,
+        provider_bindings=tuple(
+            replace(binding, target_tables=("provider_dataset_rows",))
+            for binding in dataset.provider_bindings
+        ),
+        read_model_adapter=ReadModelAdapter(
+            adapter_version="provider-native-json.v1",
+            primary_table="provider_dataset_rows",
+            fixed_field_filters=(),
+            storage_kind="provider_native_rows",
+            row_key_strategy="primary_key",
+        ),
     )
 
 
@@ -386,38 +402,52 @@ def real_catalog_harness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    success = _catalog_dataset(
-        "cn.runtime.a_success",
-        aliases=("tushare.daily",),
-        entitlement_state="locked",
+    success = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.a_success",
+            aliases=("tushare.daily",),
+            entitlement_state="locked",
+        )
     )
-    empty = _catalog_dataset(
-        "cn.runtime.b_empty",
-        entitlement_state="unknown",
+    empty = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.b_empty",
+            entitlement_state="unknown",
+        )
     )
-    unobserved = _catalog_dataset(
-        "cn.runtime.c_unobserved",
-        entitlement_state="unknown",
+    unobserved = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.c_unobserved",
+            entitlement_state="unknown",
+        )
     )
-    paused = _catalog_dataset(
-        "cn.runtime.d_paused",
-        entitlement_state="locked",
-        activation_state="paused",
+    paused = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.d_paused",
+            entitlement_state="locked",
+            activation_state="paused",
+        )
     )
-    failed = _catalog_dataset("cn.runtime.e_failed")
-    stale = _catalog_dataset("cn.runtime.f_stale")
-    excluded = _catalog_dataset(
-        "cn.runtime.g_excluded",
-        entitlement_state="excluded",
+    failed = _receipt_dataset(_catalog_dataset("cn.runtime.e_failed"))
+    stale = _receipt_dataset(_catalog_dataset("cn.runtime.f_stale"))
+    excluded = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.g_excluded",
+            entitlement_state="excluded",
+        )
     )
-    retired = _catalog_dataset(
-        "cn.runtime.h_retired",
-        entitlement_state="retired",
+    retired = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.h_retired",
+            entitlement_state="retired",
+        )
     )
-    foreign = _catalog_dataset("us.runtime.i_foreign", market="US")
-    other_scope = _catalog_dataset(
-        "cn.runtime.j_other_scope",
-        required_scope="fundamentals",
+    foreign = _receipt_dataset(_catalog_dataset("us.runtime.i_foreign", market="US"))
+    other_scope = _receipt_dataset(
+        _catalog_dataset(
+            "cn.runtime.j_other_scope",
+            required_scope="fundamentals",
+        )
     )
     datasets = (
         success,
@@ -441,19 +471,18 @@ def real_catalog_harness(
         ),
     )
     db_path = (tmp_path / "catalog-receipts.sqlite").absolute()
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (tmp_path / f".{db_path.name}.read_model_store.lock").touch()
-    monkeypatch.setenv(
-        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
-        str(maintenance_lock),
-    )
+    (tmp_path / f".{db_path.name}.tradingdatas.lock").touch(mode=0o600)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_SQL)
-    for dataset in datasets:
-        if dataset is not stale:
-            _queryable_table(conn, dataset)
     conn.commit()
+    monkeypatch.setattr(
+        catalog_module,
+        "inspect_dataset_queryability",
+        lambda _conn, dataset: DatasetQueryability(
+            queryable=dataset is not stale,
+            reasons=() if dataset is not stale else ("primary_table_unavailable",),
+        ),
+    )
     boundary = (NOW - timedelta(seconds=3_600)).isoformat()
     stale_through = (NOW - timedelta(seconds=3_601)).isoformat()
     _insert_runtime_receipt(
@@ -608,27 +637,30 @@ def test_initial_release_eligibility_is_cn_and_binding_based_only() -> None:
     )
 
 
-def test_queryability_uses_declared_main_rowid_table_contract() -> None:
-    dataset = _dataset()
+def test_queryability_rejects_arbitrary_table_without_inspecting_it() -> None:
+    dataset = _catalog_dataset("cn.queryability.arbitrary")
+    dataset = replace(
+        dataset,
+        provider_bindings=(
+            replace(dataset.provider_bindings[0], target_tables=("facts_quotes",)),
+        ),
+        read_model_adapter=replace(
+            dataset.read_model_adapter,
+            primary_table="facts_quotes",
+        ),
+    )
     conn = sqlite3.connect(":memory:")
-    columns = ", ".join(
-        f'"{field.name}" '
-        + {"text": "TEXT", "float": "REAL", "integer": "INTEGER"}[field.logical_type]
-        for field in dataset.fields
-    )
-    fixed_columns = ", ".join(
-        f'"{item.field}" TEXT'
-        for item in dataset.read_model_adapter.fixed_field_filters
-        if item.field not in {field.name for field in dataset.fields}
-    )
-    all_columns = ", ".join(part for part in (columns, fixed_columns) if part)
-    conn.execute(
-        f'CREATE TABLE "{dataset.read_model_adapter.primary_table}" ({all_columns})'
-    )
+    conn.execute('CREATE TABLE "facts_quotes" ("payload_json" TEXT)')
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
 
     result = inspect_dataset_queryability(conn, dataset)
 
-    assert result == DatasetQueryability(queryable=True, reasons=())
+    assert result == DatasetQueryability(
+        queryable=False,
+        reasons=("primary_table_unavailable",),
+    )
+    assert statements == []
     assert conn.total_changes == 0
 
 
@@ -759,8 +791,8 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
         "activation_states": ["paused"],
     }
     assert first["data"][1]["queryability"] == {
-        "queryable": False,
-        "reasons": ["primary_table_unavailable"],
+        "queryable": True,
+        "reasons": [],
     }
 
     allowed_only = QueryAccessContext.from_grants(
@@ -1230,44 +1262,30 @@ def test_real_receipt_snapshot_preserves_all_six_projected_states(
 
 def test_queryability_reports_only_frozen_physical_reason_enums() -> None:
     dataset = _catalog_dataset("cn.physical.contract")
-    table = dataset.read_model_adapter.primary_table
+    table = "provider_dataset_rows"
 
-    without_rowid = sqlite3.connect(":memory:")
-    without_rowid.execute(
-        f'CREATE TABLE "{table}" ('
-        '"symbol" TEXT PRIMARY KEY, "value" REAL, "revision" INTEGER, '
-        '"lane_key" TEXT) WITHOUT ROWID'
-    )
-    assert inspect_dataset_queryability(without_rowid, dataset) == DatasetQueryability(
-        False,
-        ("rowid_unavailable",),
-    )
-
-    shadowed = sqlite3.connect(":memory:")
-    shadowed.execute(
-        f'CREATE TABLE "{table}" ('
-        '"symbol" TEXT, "value" REAL, "revision" INTEGER, "lane_key" TEXT, '
-        '"_rowid_" INTEGER)'
-    )
-    assert inspect_dataset_queryability(shadowed, dataset) == DatasetQueryability(
-        False,
-        ("rowid_unavailable",),
+    canonical = sqlite3.connect(":memory:")
+    canonical.executescript(SCHEMA_SQL)
+    assert inspect_dataset_queryability(canonical, dataset) == DatasetQueryability(
+        True,
+        (),
     )
 
     missing = sqlite3.connect(":memory:")
-    missing.execute(f'CREATE TABLE "{table}" ("symbol" TEXT)')
+    missing.execute(f'CREATE TABLE "{table}" ("dataset_id" TEXT)')
     assert inspect_dataset_queryability(missing, dataset) == DatasetQueryability(
         False,
-        (
-            "fixed_filter_columns_unavailable",
-            "query_columns_unavailable",
-        ),
+        ("query_columns_unavailable",),
     )
 
     incompatible = sqlite3.connect(":memory:")
     incompatible.execute(
         f'CREATE TABLE "{table}" ('
-        '"symbol" TEXT, "value" TEXT, "revision" INTEGER, "lane_key" TEXT)'
+        '"dataset_id" INTEGER, "provider" TEXT, "schema_major" INTEGER, '
+        '"ingested_schema_version" TEXT, "row_key" TEXT, "observed_at" TEXT, '
+        '"partition_value" TEXT, "payload_json" TEXT, "payload_hash" TEXT, '
+        '"quality_state" TEXT, "quality_issues_json" TEXT, "collected_at" TEXT, '
+        '"receipt_id" TEXT, "revision" INTEGER)'
     )
     assert inspect_dataset_queryability(incompatible, dataset) == DatasetQueryability(
         False,

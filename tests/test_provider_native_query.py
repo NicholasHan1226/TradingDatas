@@ -67,6 +67,7 @@ def _native_dataset():
         base,
         dataset_id="cn.native.query",
         aliases=("tushare.native_query",),
+        schema_version="1.2.0",
         fields=fields,
         primary_key=("symbol", "trade_date"),
         default_projection=("symbol", "trade_date", "note", "big"),
@@ -629,6 +630,38 @@ def test_native_default_order_matches_catalog_primary_key_and_keeps_stable_curso
     assert [row["symbol"] for row in pages] == ["000", "AAA", "BBB", "BBB", "ZZZ"]
     assert pages[2]["note"] is None
     assert pages[3]["note"] == "provider-b"
+
+
+def test_catalog_only_append_only_query_uses_physical_cursor_without_guessed_key(
+    native_harness: dict[str, object],
+) -> None:
+    source = native_harness["registry"]
+    dataset = replace(
+        native_harness["dataset"],
+        primary_key=(),
+        point_in_time="append_only",
+        read_model_adapter=replace(
+            native_harness["dataset"].read_model_adapter,
+            row_key_strategy="payload_hash",
+        ),
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=source.query_defaults)
+    native_harness["service"] = QueryService(
+        db_path=Path("/tmp/provider-native-catalog-only.sqlite"),
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+
+    request = _request(fields=(), order=None, limit=1)
+    symbols: list[str] = []
+    while True:
+        response = _execute(native_harness, request)
+        symbols.append(response["data"][0]["symbol"])
+        if response["next_cursor"] is None:
+            break
+        request = replace(request, cursor=response["next_cursor"])
+
+    assert symbols == ["AAA", "BBB", "BBB"]
 
 
 def test_native_query_rejects_internal_storage_field_requests(

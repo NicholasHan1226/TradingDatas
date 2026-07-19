@@ -1,1 +1,1 @@
-"""SharedSignals tools package."""
+"""TradingDatas offline compilers and bounded runtime commands."""

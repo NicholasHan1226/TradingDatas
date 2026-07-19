@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authentication, rate limiting, and request dedup for SharedSignals API."""
+"""Authentication, rate limiting, and request dedup for TradingDatas V1."""
 
 from __future__ import annotations
 
@@ -10,18 +10,23 @@ import hashlib
 import hmac
 import json
 import os
+import stat
 import threading
 import time
 from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Any
 
-from env_bootstrap import env_bool, env_int
+from env_bootstrap import env_int
 
 ROOT = Path(__file__).resolve().parent
-TOKEN_HASH_FILE = Path(
-    os.environ.get("SHAREDSIGNALS_TOKEN_HASH_FILE", ROOT / "config" / "api_tokens.json")
+TOKEN_HASH_FILE_RAW = os.environ.get(
+    "TRADINGDATAS_TOKEN_HASH_FILE",
+    os.fspath(ROOT / "config" / "api_tokens.json"),
 )
+TOKEN_HASH_FILE = Path(TOKEN_HASH_FILE_RAW)
+TOKEN_SALT_FILE_RAW = os.environ.get("TRADINGDATAS_TOKEN_SALT_FILE", "").strip()
+TOKEN_SALT_RAW = os.environ.get("TRADINGDATAS_TOKEN_SALT", "")
 RATE_LIMITS = {
     "free": 60,
     "starter": 60,
@@ -38,100 +43,37 @@ CONCURRENCY_LIMITS = {
     "enterprise": None,
     "internal": None,
 }
-LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
-LOCALHOST_BYPASS = env_bool("SHAREDSIGNALS_LOCALHOST_BYPASS", False)
-JWT_VERIFY_KEY = os.environ.get("SHAREDSIGNALS_JWT_PUBLIC_KEY", "").strip()
-JWT_ISSUER = os.environ.get("SHAREDSIGNALS_JWT_ISSUER", "").strip()
-JWT_ALGORITHM = os.environ.get("SHAREDSIGNALS_JWT_ALGORITHM", "")
+# Retained only for existing in-process test harnesses. Authentication never
+# consults this constant and no environment variable can enable a bypass.
+LOCALHOST_BYPASS = False
+JWT_VERIFY_KEY = os.environ.get("TRADINGDATAS_JWT_PUBLIC_KEY", "").strip()
+JWT_ISSUER = os.environ.get("TRADINGDATAS_JWT_ISSUER", "").strip()
+JWT_ALGORITHM = os.environ.get("TRADINGDATAS_JWT_ALGORITHM", "")
 JWT_LEEWAY_SECONDS = env_int(
-    "SHAREDSIGNALS_JWT_LEEWAY_SECONDS", 60, min_value=0, max_value=3600
+    "TRADINGDATAS_JWT_LEEWAY_SECONDS", 60, min_value=0, max_value=3600
 )
-_SALT_RAW = os.environ.get("SHAREDSIGNALS_TOKEN_SALT", "")
-if not _SALT_RAW:
-    import warnings
-
-    warnings.warn(
-        "SHAREDSIGNALS_TOKEN_SALT is empty — token hashing disabled; set SHAREDSIGNALS_TOKEN_SALT in environment",
-        RuntimeWarning,
-    )
-TOKEN_SALT = _SALT_RAW.encode("utf-8")
 DEDUP_TTL_SECONDS = 60
 RATE_WINDOW_SECONDS = 3600
-DEDUP_MAX_ENTRIES = env_int("SHAREDSIGNALS_DEDUP_MAX_ENTRIES", 2048, min_value=1)
-DEDUP_MAX_BYTES = env_int(
-    "SHAREDSIGNALS_DEDUP_MAX_BYTES", 10 * 1024 * 1024, min_value=0
-)
+DEDUP_MAX_ENTRIES = env_int("TRADINGDATAS_DEDUP_MAX_ENTRIES", 2048, min_value=1)
+DEDUP_MAX_BYTES = env_int("TRADINGDATAS_DEDUP_MAX_BYTES", 10 * 1024 * 1024, min_value=0)
 DEDUP_MAX_ENTRY_BYTES = env_int(
-    "SHAREDSIGNALS_DEDUP_MAX_ENTRY_BYTES", 1024 * 1024, min_value=1
+    "TRADINGDATAS_DEDUP_MAX_ENTRY_BYTES", 1024 * 1024, min_value=1
 )
-RATE_MAX_TENANTS = env_int("SHAREDSIGNALS_RATE_MAX_TENANTS", 1024, min_value=1)
+RATE_MAX_TENANTS = env_int("TRADINGDATAS_RATE_MAX_TENANTS", 1024, min_value=1)
 RATE_MAX_EVENTS_PER_TENANT = env_int(
-    "SHAREDSIGNALS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1
+    "TRADINGDATAS_RATE_MAX_EVENTS_PER_TENANT", 1000, min_value=1
 )
 
-# Scope presets — which endpoints each scope grants access to
-STATUS_ENDPOINTS = {
-    "/health",
-    "/capabilities",
-    "/agent_config",
-    "/source_status",
-    "/opening_gate",
-    "/cache/status",
-}
-INDUSTRY_REFERENCE_ENDPOINTS = {
-    "/industry/snapshot",
-    "/industry/taxonomy",
-    "/industry/memberships",
-}
-SECTOR_FLOW_V2_ENDPOINTS = {
-    "/v2/sector-flow/snapshot",
-    "/v2/sector-flow/industries",
-    "/v2/sector-flow/constituents",
-}
 V1_DATA_ENDPOINTS = {"/v1/catalog", "/v1/query"}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
-    "status": STATUS_ENDPOINTS,
-    "health": {*STATUS_ENDPOINTS, "/cache/invalidate"},
-    "market_data": {
-        "/market_data",
-        "/realtime_5min",
-        "/is_trading_day",
-        *V1_DATA_ENDPOINTS,
-    },
-    "industry_reference": INDUSTRY_REFERENCE_ENDPOINTS,
-    "sector_flow_v2": SECTOR_FLOW_V2_ENDPOINTS,
-    "fundamentals": {
-        "/fundamentals",
-        "/reference",
-        "/industry",
-        *INDUSTRY_REFERENCE_ENDPOINTS,
-    },
-    "macro": {"/macro", "/capital_flow"},
-    "events": {"/events", "/sentiment", *V1_DATA_ENDPOINTS},
-    "crypto": {"/crypto"},
-    "pm": {"/pm_markets", "/pm_prices"},
-    "associations": {"/associations", "/impacts"},
-    "tushare": {"/tushare"},
-    "full": {"*"},
+    "catalog": {"/v1/catalog"},
+    "query": {"/v1/query"},
+    "read": V1_DATA_ENDPOINTS,
+    "external_read": V1_DATA_ENDPOINTS,
+    "internal": V1_DATA_ENDPOINTS,
+    "full": V1_DATA_ENDPOINTS,
 }
-SCOPE_ENDPOINTS["external_read"] = set().union(
-    SCOPE_ENDPOINTS["status"],
-    SCOPE_ENDPOINTS["market_data"],
-    SCOPE_ENDPOINTS["fundamentals"],
-    SCOPE_ENDPOINTS["industry_reference"],
-    SCOPE_ENDPOINTS["sector_flow_v2"],
-    SCOPE_ENDPOINTS["macro"],
-    SCOPE_ENDPOINTS["events"],
-    SCOPE_ENDPOINTS["crypto"],
-    SCOPE_ENDPOINTS["pm"],
-    SCOPE_ENDPOINTS["associations"],
-    SCOPE_ENDPOINTS["tushare"],
-)
-# "read" scope grants access to all read endpoints
-SCOPE_ENDPOINTS["read"] = set().union(
-    *(v for k, v in SCOPE_ENDPOINTS.items() if k not in ("full",))
-)
 
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
@@ -139,6 +81,8 @@ _ACTIVE_REQUESTS: dict[str, int] = {}
 _DEDUP_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _DEDUP_CACHE_BYTES = 0
 _TOKEN_HASHES: dict[str, dict[str, Any]] | None = None
+_TOKEN_SALT: bytes | None = None
+_EPHEMERAL_TOKEN_SALT = os.urandom(32)
 
 
 class AuthError(Exception):
@@ -353,16 +297,208 @@ def _verify_jwt_signature(
     return False
 
 
-def _hash_token(token: str) -> str:
-    """Hash a bearer token for lookup. Uses HMAC-SHA256 when TOKEN_SALT is configured,
-    falling back to plain SHA256 for backward compatibility."""
-    if TOKEN_SALT:
-        return (
-            hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), TOKEN_SALT, 100000)
-            .hex()
-            .lower()
+def _private_file_bytes(raw_path: str, *, label: str, max_bytes: int) -> bytes:
+    if (
+        not raw_path.startswith("/")
+        or raw_path.startswith("//")
+        or os.path.normpath(raw_path) != raw_path
+    ):
+        raise AuthError(f"{label} path must be absolute lexical canonical")
+    path = Path(raw_path)
+    components = path.parts[1:]
+    if not components:
+        raise AuthError(f"{label} file is unavailable")
+
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+    )
+    file_flags = (
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    directory_descriptors: list[int] = []
+    directory_bindings: list[tuple[int, str, int]] = []
+    descriptor: int | None = None
+    primary_error: BaseException | None = None
+    try:
+        directory_descriptors.append(os.open(path.anchor, directory_flags))
+        for component in components[:-1]:
+            parent_descriptor = directory_descriptors[-1]
+            try:
+                named = os.stat(
+                    component,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+                child_descriptor = os.open(
+                    component,
+                    directory_flags,
+                    dir_fd=parent_descriptor,
+                )
+            except OSError as exc:
+                raise AuthError(f"{label} path is unavailable") from exc
+            directory_descriptors.append(child_descriptor)
+            opened = os.fstat(child_descriptor)
+            if stat.S_ISLNK(named.st_mode):
+                raise AuthError(f"{label} path may not contain a symlink")
+            if not stat.S_ISDIR(named.st_mode) or not stat.S_ISDIR(opened.st_mode):
+                raise AuthError(f"{label} path is unavailable")
+            if (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino):
+                raise AuthError(f"{label} path binding changed while opening")
+            directory_bindings.append((parent_descriptor, component, child_descriptor))
+
+        parent_descriptor = directory_descriptors[-1]
+        filename = components[-1]
+        try:
+            named_before = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+            descriptor = os.open(filename, file_flags, dir_fd=parent_descriptor)
+        except OSError as exc:
+            raise AuthError(f"{label} file is unavailable") from exc
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise AuthError(f"{label} must be one regular file")
+        if before.st_uid != os.geteuid():
+            raise AuthError(f"{label} owner is unsafe")
+        if stat.S_IMODE(before.st_mode) != 0o600:
+            raise AuthError(f"{label} mode must be 0600")
+        binding_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_nlink,
+            before.st_uid,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
         )
-    return hashlib.sha256(token.encode("utf-8")).hexdigest().lower()
+        named_binding_before = (
+            named_before.st_dev,
+            named_before.st_ino,
+            named_before.st_mode,
+            named_before.st_nlink,
+            named_before.st_uid,
+            named_before.st_size,
+            named_before.st_mtime_ns,
+            named_before.st_ctime_ns,
+        )
+        if named_binding_before != binding_before:
+            raise AuthError(f"{label} binding changed while opening")
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        after = os.fstat(descriptor)
+        try:
+            named_after = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise AuthError(f"{label} binding changed while reading") from exc
+        binding_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_nlink,
+            after.st_uid,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        named_binding_after = (
+            named_after.st_dev,
+            named_after.st_ino,
+            named_after.st_mode,
+            named_after.st_nlink,
+            named_after.st_uid,
+            named_after.st_size,
+            named_after.st_mtime_ns,
+            named_after.st_ctime_ns,
+        )
+        if binding_before != binding_after or binding_after != named_binding_after:
+            raise AuthError(f"{label} binding changed while reading")
+        for parent_fd, component, child_fd in directory_bindings:
+            try:
+                named_directory = os.stat(
+                    component,
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+            except OSError as exc:
+                raise AuthError(f"{label} path binding changed while reading") from exc
+            opened_directory = os.fstat(child_fd)
+            if (named_directory.st_dev, named_directory.st_ino) != (
+                opened_directory.st_dev,
+                opened_directory.st_ino,
+            ):
+                raise AuthError(f"{label} path binding changed while reading")
+        if len(data) > max_bytes:
+            raise AuthError(f"{label} file is too large")
+        if len(data) != before.st_size:
+            raise AuthError(f"{label} file changed while reading")
+        return data
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        cleanup_error: OSError | None = None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                cleanup_error = exc
+        for directory_descriptor in reversed(directory_descriptors):
+            try:
+                os.close(directory_descriptor)
+            except OSError as exc:
+                cleanup_error = cleanup_error or exc
+        if cleanup_error is not None and primary_error is None:
+            raise AuthError(f"{label} descriptor cleanup failed") from cleanup_error
+
+
+def _load_token_salt(*, required: bool) -> bytes:
+    global _TOKEN_SALT
+    if _TOKEN_SALT is not None:
+        return _TOKEN_SALT
+    if TOKEN_SALT_FILE_RAW and TOKEN_SALT_RAW:
+        raise AuthError("token salt configuration is ambiguous")
+    if TOKEN_SALT_FILE_RAW:
+        raw = _private_file_bytes(
+            TOKEN_SALT_FILE_RAW,
+            label="token salt",
+            max_bytes=4096,
+        ).strip()
+    elif TOKEN_SALT_RAW:
+        raw = TOKEN_SALT_RAW.encode("utf-8")
+    elif required:
+        raise AuthError("token salt is required")
+    else:
+        return _EPHEMERAL_TOKEN_SALT
+    if len(raw) < 16:
+        raise AuthError("token salt must contain at least 16 bytes")
+    _TOKEN_SALT = raw
+    return raw
+
+
+def _hash_token(token: str) -> str:
+    """Hash a bearer token with PBKDF2; plain SHA compatibility is forbidden."""
+
+    salt = _load_token_salt(required=False)
+    return (
+        hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), salt, 100000).hex().lower()
+    )
 
 
 def _load_token_hashes() -> dict[str, dict[str, Any]]:
@@ -370,18 +506,26 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
     if _TOKEN_HASHES is not None:
         return _TOKEN_HASHES
 
+    _load_token_salt(required=True)
+
     items: dict[str, dict[str, Any]] = {}
-    raw_json = os.environ.get("SHAREDSIGNALS_TOKEN_HASHES_JSON", "").strip()
+    raw_json = os.environ.get("TRADINGDATAS_TOKEN_HASHES_JSON", "").strip()
     if raw_json:
         try:
             payload = json.loads(raw_json)
-        except json.JSONDecodeError:
-            payload = {}
-    elif TOKEN_HASH_FILE.exists():
+        except json.JSONDecodeError as exc:
+            raise AuthError("token hash configuration is invalid") from exc
+    elif os.path.lexists(TOKEN_HASH_FILE_RAW):
         try:
-            payload = json.loads(TOKEN_HASH_FILE.read_text())
-        except json.JSONDecodeError:
-            payload = {}
+            payload = json.loads(
+                _private_file_bytes(
+                    TOKEN_HASH_FILE_RAW,
+                    label="token hash",
+                    max_bytes=1024 * 1024,
+                ).decode("utf-8")
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise AuthError("token hash configuration is invalid") from exc
     else:
         payload = {}
 
@@ -397,9 +541,7 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
     for item in candidates:
         if not isinstance(item, dict):
             continue
-        token_hash = (
-            str(item.get("sha256") or item.get("token_hash") or "").strip().lower()
-        )
+        token_hash = str(item.get("token_hash") or "").strip().lower()
         if len(token_hash) != 64:
             continue
         tenant_id = (
@@ -449,7 +591,7 @@ def _normalize_jwt_scopes(payload: dict[str, Any]) -> list[str]:
     for scope in candidates:
         if scope in SCOPE_ENDPOINTS or scope in {"*", "full"}:
             scopes.append(scope)
-    return scopes or ["health"]
+    return scopes or ["catalog"]
 
 
 def _parse_jwt(token: str) -> dict[str, Any] | None:
@@ -541,39 +683,8 @@ def _extract_bearer_token(headers: Any) -> str:
     raise AuthError("missing bearer token")
 
 
-def _has_external_auth_header(headers: Any) -> bool:
-    return bool(
-        _header_values(headers, "Authorization") or _header_values(headers, "X-API-Key")
-    )
-
-
-def _has_forwarded_client_header(headers: Any) -> bool:
-    if not headers:
-        return False
-    forwarded_headers = (
-        "CF-Connecting-IP",
-        "Forwarded",
-        "X-Forwarded-For",
-        "X-Real-IP",
-        "X-Client-IP",
-    )
-    return any(_header_values(headers, header) for header in forwarded_headers)
-
-
 def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
-    host = (client_host or "").strip()
-    if (
-        host in LOCALHOSTS
-        and LOCALHOST_BYPASS
-        and not _has_external_auth_header(headers)
-        and not _has_forwarded_client_header(headers)
-    ):
-        return {
-            "tenant_id": "internal",
-            "tier": "internal",
-            "scopes": ["full"],
-            "auth_method": "localhost",
-        }
+    del client_host
 
     token = _extract_bearer_token(headers)
     jwt_claims = _parse_jwt(token)
@@ -590,15 +701,10 @@ def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
 def check_endpoint_scope(account: dict[str, Any], path: str) -> bool:
     """Check if the account's scopes allow access to the given endpoint path."""
     scopes: list[str] = account.get("scopes", ["health"])
-    if "full" in scopes or "*" in scopes:
-        return True
-
     allowed: set[str] = set()
     for scope in scopes:
-        allowed.update(SCOPE_ENDPOINTS.get(scope, set()))
-
-    if "*" in allowed:
-        return True
+        normalized = "full" if scope == "*" else scope
+        allowed.update(SCOPE_ENDPOINTS.get(normalized, set()))
     return path in allowed
 
 

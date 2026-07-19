@@ -1,0 +1,33 @@
+version: 1
+policy_id: tushare-runtime-contract-policy.v1
+provider: tushare
+source_snapshot_id: tushare-official-document-contracts.v1
+source_snapshot_canonical_sha256: 5464e124e40c51fb0a6a42b78f0f4ab28a74bdcb84d8be9bfcd37119fdbf3844
+catalog_only_defaults:
+  dataset_id_prefix: cn.dataset
+  domain: provider_data
+  market: CN
+  entity_type: provider_row
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: Asia/Shanghai
+  freshness_sla_seconds: 86400
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
+  request_shape: snapshot_or_date_range
+  max_default_projection_fields: 100
+  budgets:
+    max_rows_per_attempt: 10000
+    max_payload_bytes_per_row: 65536
+    max_batch_bytes: 67108864
+    max_nesting_depth: 16
+
+# These defaults make every official in-scope interface discoverable through
+# the common registry without claiming that it is entitled or schedulable.
+# Unreviewed contracts are absent from the activation manifest, therefore they
+# remain entitlement_state=unknown and activation_state=paused. Activation
+# requires a separate real-provider contract and entitlement proof.

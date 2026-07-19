@@ -14,7 +14,12 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from dataset_registry import DatasetDefinition, DatasetRegistry, ProviderBinding
+from dataset_registry import (
+    DatasetDefinition,
+    DatasetRegistry,
+    ProviderBinding,
+    RequestScalar,
+)
 from storage.receipt_projection import (
     RuntimeProjectionError,
     ValidatedReceiptHistoryEntry,
@@ -35,7 +40,9 @@ CADENCE_CLASSES = frozenset(
         "on_demand",
     }
 )
-_ROOT_KEYS = frozenset({"version", "dataset_timeout_seconds", "rate_budgets", "cadences"})
+_ROOT_KEYS = frozenset(
+    {"version", "dataset_timeout_seconds", "rate_budgets", "cadences"}
+)
 _CADENCE_KEYS = frozenset(
     {
         "automatic",
@@ -121,7 +128,9 @@ class ScheduledRun:
     cadence_class: str
     request_window: Mapping[str, str]
     priority: str = "current"
-    request_variant: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    request_variant: Mapping[str, RequestScalar] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
     rate_budget_class: str = "standard"
     retry: RetryPolicy = RetryPolicy(1, 0, 0, 0)
     retry_jitter_seconds: int = 0
@@ -151,15 +160,21 @@ class _DatasetState:
 class PlannerState:
     datasets: Mapping[tuple[str, str], _DatasetState]
 
-    def get(self, dataset: DatasetDefinition, binding: ProviderBinding) -> _DatasetState:
-        return self.datasets.get((dataset.dataset_id, binding.provider), _DatasetState())
+    def get(
+        self, dataset: DatasetDefinition, binding: ProviderBinding
+    ) -> _DatasetState:
+        return self.datasets.get(
+            (dataset.dataset_id, binding.provider), _DatasetState()
+        )
 
 
 class _UniqueLoader(yaml.SafeLoader):
     pass
 
 
-def _unique_mapping(loader: _UniqueLoader, node: yaml.MappingNode, deep: bool = False) -> dict[object, object]:
+def _unique_mapping(
+    loader: _UniqueLoader, node: yaml.MappingNode, deep: bool = False
+) -> dict[object, object]:
     result: dict[object, object] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
@@ -169,7 +184,9 @@ def _unique_mapping(loader: _UniqueLoader, node: yaml.MappingNode, deep: bool = 
     return result
 
 
-_UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
+_UniqueLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping
+)
 
 
 def _mapping(value: object, label: str) -> dict[object, object]:
@@ -186,7 +203,9 @@ def _text(value: object, label: str) -> str:
 
 def _integer(value: object, label: str, *, positive: bool = False) -> int:
     if type(value) is not int or value < (1 if positive else 0):
-        raise ValueError(f"{label} must be {'positive' if positive else 'non-negative'}")
+        raise ValueError(
+            f"{label} must be {'positive' if positive else 'non-negative'}"
+        )
     return value
 
 
@@ -209,19 +228,37 @@ def _day(value: object, label: str) -> date | None:
 
 
 def load_schedule(path: Path) -> Schedule:
-    root = _mapping(yaml.load(Path(path).read_text(encoding="utf-8"), Loader=_UniqueLoader), "schedule")
-    if set(root) != _ROOT_KEYS or root["version"] != 2 or type(root["version"]) is not int:
+    root = _mapping(
+        yaml.load(Path(path).read_text(encoding="utf-8"), Loader=_UniqueLoader),
+        "schedule",
+    )
+    if (
+        set(root) != _ROOT_KEYS
+        or root["version"] != 2
+        or type(root["version"]) is not int
+    ):
         raise ValueError("schedule root contract is invalid")
     raw_budgets = _mapping(root["rate_budgets"], "schedule.rate_budgets")
     budgets: dict[str, RateBudget] = {}
     for raw_name, raw in raw_budgets.items():
         name = _text(raw_name, "rate budget name")
         value = _mapping(raw, f"rate budget {name}")
-        if set(value) != {"account_requests_per_run", "provider_requests_per_run", "api_requests_per_run"}:
+        if set(value) != {
+            "account_requests_per_run",
+            "provider_requests_per_run",
+            "api_requests_per_run",
+        }:
             raise ValueError("rate budget keys are invalid")
-        budgets[name] = RateBudget(*(_integer(value[key], key, positive=True) for key in (
-            "account_requests_per_run", "provider_requests_per_run", "api_requests_per_run"
-        )))
+        budgets[name] = RateBudget(
+            *(
+                _integer(value[key], key, positive=True)
+                for key in (
+                    "account_requests_per_run",
+                    "provider_requests_per_run",
+                    "api_requests_per_run",
+                )
+            )
+        )
     raw_cadences = _mapping(root["cadences"], "schedule.cadences")
     if set(raw_cadences) != CADENCE_CLASSES:
         raise ValueError("schedule must declare the eight cadence classes")
@@ -246,7 +283,12 @@ def load_schedule(path: Path) -> Schedule:
                 tuple(open_values),
             )
         retry_value = _mapping(value["retry"], f"cadence {name}.retry")
-        if set(retry_value) != {"max_attempts", "base_delay_seconds", "max_delay_seconds", "jitter_seconds"}:
+        if set(retry_value) != {
+            "max_attempts",
+            "base_delay_seconds",
+            "max_delay_seconds",
+            "jitter_seconds",
+        }:
             raise ValueError("retry keys are invalid")
         retry = RetryPolicy(
             _integer(retry_value["max_attempts"], "retry.max_attempts", positive=True),
@@ -257,7 +299,11 @@ def load_schedule(path: Path) -> Schedule:
         if retry.max_delay_seconds < retry.base_delay_seconds:
             raise ValueError("retry delay is invalid")
         weekdays = value["weekdays"]
-        if type(weekdays) is not list or not weekdays or any(type(day) is not int or not 1 <= day <= 7 for day in weekdays):
+        if (
+            type(weekdays) is not list
+            or not weekdays
+            or any(type(day) is not int or not 1 <= day <= 7 for day in weekdays)
+        ):
             raise ValueError("weekdays are invalid")
         start_policy = _text(value["backfill_start_policy"], "backfill_start_policy")
         start_date = _day(value["backfill_start_date"], "backfill_start_date")
@@ -273,11 +319,24 @@ def load_schedule(path: Path) -> Schedule:
             raise ValueError("automatic must be boolean")
         incremental = _text(value["incremental_mode"], "incremental_mode")
         frequency = _text(value["partition_frequency"], "partition_frequency")
-        if incremental not in {"request_shape", "append", "on_demand"} or frequency not in {
-            "session", "open_day", "day", "week", "month", "quarter", "event", "none"
+        if incremental not in {
+            "request_shape",
+            "append",
+            "on_demand",
+        } or frequency not in {
+            "session",
+            "open_day",
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "event",
+            "none",
         }:
             raise ValueError("incremental partition policy is invalid")
-        if automatic == (incremental == "on_demand") or (incremental == "on_demand") != (frequency == "none"):
+        if automatic == (incremental == "on_demand") or (
+            incremental == "on_demand"
+        ) != (frequency == "none"):
             raise ValueError("automatic/on-demand policy is inconsistent")
         rate_class = _text(value["rate_budget_class"], "rate_budget_class")
         if rate_class not in budgets:
@@ -289,21 +348,37 @@ def load_schedule(path: Path) -> Schedule:
             incremental,
             frequency,
             calendar,
-            _integer(value["minimum_interval_seconds"], "minimum_interval_seconds", positive=True),
-            _integer(value["failure_retry_seconds"], "failure_retry_seconds", positive=True),
+            _integer(
+                value["minimum_interval_seconds"],
+                "minimum_interval_seconds",
+                positive=True,
+            ),
+            _integer(
+                value["failure_retry_seconds"], "failure_retry_seconds", positive=True
+            ),
             _integer(value["correction_overlap_days"], "correction_overlap_days"),
             _integer(value["correction_overlap_bars"], "correction_overlap_bars"),
             start_policy,
             lookback,
             start_date,
-            _integer(value["backfill_chunk_span_days"], "backfill_chunk_span_days", positive=True),
+            _integer(
+                value["backfill_chunk_span_days"],
+                "backfill_chunk_span_days",
+                positive=True,
+            ),
             _integer(value["future_horizon_days"], "future_horizon_days"),
-            _integer(value["max_backfill_chunks_per_run"], "max_backfill_chunks_per_run", positive=True),
+            _integer(
+                value["max_backfill_chunks_per_run"],
+                "max_backfill_chunks_per_run",
+                positive=True,
+            ),
             rate_class,
             retry,
         )
     return Schedule(
-        _integer(root["dataset_timeout_seconds"], "dataset_timeout_seconds", positive=True),
+        _integer(
+            root["dataset_timeout_seconds"], "dataset_timeout_seconds", positive=True
+        ),
         MappingProxyType(dict(sorted(budgets.items()))),
         MappingProxyType(dict(sorted(cadences.items()))),
     )
@@ -323,7 +398,13 @@ def _json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def _canonical_json(value: Mapping[str, object]) -> str:
-    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 
 def _partition(value: object) -> date:
@@ -337,7 +418,8 @@ def _partition(value: object) -> date:
 
 def _active_binding(dataset: DatasetDefinition) -> ProviderBinding:
     bindings = tuple(
-        item for item in dataset.provider_bindings
+        item
+        for item in dataset.provider_bindings
         if item.entitlement_state == "active" and item.activation_state == "active"
     )
     if len(bindings) != 1:
@@ -345,14 +427,17 @@ def _active_binding(dataset: DatasetDefinition) -> ProviderBinding:
     return bindings[0]
 
 
-def load_planner_state(db_path: Path, registry: DatasetRegistry, *, now: datetime) -> PlannerState:
+def load_planner_state(
+    db_path: Path, registry: DatasetRegistry, *, now: datetime
+) -> PlannerState:
     datasets = {
-        item.dataset_id: item for item in registry.datasets
+        item.dataset_id: item
+        for item in registry.datasets
         if item.read_model_adapter.storage_kind == "provider_native_rows"
     }
-    receipts: dict[
-        tuple[str, str], list[ValidatedReceiptHistoryEntry]
-    ] = defaultdict(list)
+    receipts: dict[tuple[str, str], list[ValidatedReceiptHistoryEntry]] = defaultdict(
+        list
+    )
     facts: dict[tuple[str, str], list[_Fact]] = defaultdict(list)
     try:
         with open_verified_read_model_snapshot(db_path) as conn:
@@ -365,7 +450,11 @@ def load_planner_state(db_path: Path, registry: DatasetRegistry, *, now: datetim
                 except ValueError:
                     continue
                 key = (dataset.dataset_id, binding.provider)
-                success_ids = {item.receipt_id for item in receipts[key] if item.status == "success"}
+                success_ids = {
+                    item.receipt_id
+                    for item in receipts[key]
+                    if item.status == "success"
+                }
                 for partition_value, payload_json, receipt_id in conn.execute(
                     "SELECT partition_value, payload_json, receipt_id FROM provider_dataset_rows "
                     "WHERE dataset_id=? AND provider=? AND schema_major=?",
@@ -374,53 +463,89 @@ def load_planner_state(db_path: Path, registry: DatasetRegistry, *, now: datetim
                     if receipt_id not in success_ids:
                         continue
                     try:
-                        payload = json.loads(payload_json, object_pairs_hook=_json_pairs)
-                    except (json.JSONDecodeError, TypeError, ValueError, _DuplicateKey) as exc:
-                        raise RuntimeError("provider-native fact authority is invalid") from exc
-                    if type(payload) is not dict or (partition_value is not None and type(partition_value) is not str):
+                        payload = json.loads(
+                            payload_json, object_pairs_hook=_json_pairs
+                        )
+                    except (
+                        json.JSONDecodeError,
+                        TypeError,
+                        ValueError,
+                        _DuplicateKey,
+                    ) as exc:
+                        raise RuntimeError(
+                            "provider-native fact authority is invalid"
+                        ) from exc
+                    if type(payload) is not dict or (
+                        partition_value is not None and type(partition_value) is not str
+                    ):
                         raise RuntimeError("provider-native fact authority is invalid")
-                    facts[key].append(_Fact(partition_value, MappingProxyType(payload), receipt_id))
+                    facts[key].append(
+                        _Fact(partition_value, MappingProxyType(payload), receipt_id)
+                    )
     except RuntimeProjectionError as exc:
         raise RuntimeError("provider-native planner authority is unavailable") from exc
     keys = set(receipts) | set(facts)
-    return PlannerState(MappingProxyType({key: _DatasetState(tuple(receipts[key]), tuple(facts[key])) for key in keys}))
+    return PlannerState(
+        MappingProxyType(
+            {
+                key: _DatasetState(tuple(receipts[key]), tuple(facts[key]))
+                for key in keys
+            }
+        )
+    )
 
 
 def _latest_available(now: datetime, policy: CadencePolicy) -> date:
     if policy.availability_after_local is None:
         raise ValueError("automatic cadence requires availability")
-    day = now.date() - timedelta(days=now.timetz().replace(tzinfo=None) < policy.availability_after_local)
+    day = now.date() - timedelta(
+        days=now.timetz().replace(tzinfo=None) < policy.availability_after_local
+    )
     while day.isoweekday() not in policy.weekdays:
         day -= timedelta(days=1)
     return day
 
 
-def _calendar(registry: DatasetRegistry, state: PlannerState, policy: CadencePolicy) -> Mapping[date, bool] | None:
+def _calendar(
+    registry: DatasetRegistry, state: PlannerState, policy: CadencePolicy
+) -> Mapping[date, bool] | None:
     if policy.calendar is None:
         return None
     dataset = registry.resolve(policy.calendar.dataset_id)
     binding = _active_binding(dataset)
     result: dict[date, bool] = {}
     for fact in state.get(dataset, binding).facts:
-        day = _partition(fact.payload.get(policy.calendar.date_field, fact.partition_value))
+        day = _partition(
+            fact.payload.get(policy.calendar.date_field, fact.partition_value)
+        )
         if fact.partition_value is not None and _partition(fact.partition_value) != day:
             raise RuntimeError("calendar partition is inconsistent")
-        opened = fact.payload.get(policy.calendar.open_field) in policy.calendar.open_values
+        opened = (
+            fact.payload.get(policy.calendar.open_field) in policy.calendar.open_values
+        )
         if day in result and result[day] != opened:
             raise RuntimeError("calendar session is conflicting")
         result[day] = opened
     return MappingProxyType(result)
 
 
-def _desired(start: date, end: date, policy: CadencePolicy, calendar: Mapping[date, bool] | None) -> tuple[date, ...]:
-    days = tuple(start + timedelta(days=i) for i in range(max(0, (end - start).days + 1)))
+def _desired(
+    start: date, end: date, policy: CadencePolicy, calendar: Mapping[date, bool] | None
+) -> tuple[date, ...]:
+    days = tuple(
+        start + timedelta(days=i) for i in range(max(0, (end - start).days + 1))
+    )
     if policy.partition_frequency in {"session", "open_day"}:
         if calendar is None:
             raise ValueError("open-session cadence requires calendar")
         return tuple(day for day in days if calendar.get(day) is True)
     if policy.partition_frequency in {"day", "event"}:
         return days
-    eligible = tuple(day for day in days if calendar.get(day) is True) if calendar is not None else days
+    eligible = (
+        tuple(day for day in days if calendar.get(day) is True)
+        if calendar is not None
+        else days
+    )
     grouped: dict[tuple[int, ...], date] = {}
     for day in eligible:
         if policy.partition_frequency == "week":
@@ -436,12 +561,17 @@ def _desired(start: date, end: date, policy: CadencePolicy, calendar: Mapping[da
     return tuple(sorted(grouped.values()))
 
 
-def _window_dates(binding: ProviderBinding, window: Mapping[str, str]) -> tuple[date, ...]:
+def _window_dates(
+    binding: ProviderBinding, window: Mapping[str, str]
+) -> tuple[date, ...]:
     policy = binding.request_window_policy
     if policy is None or set(window) != set(policy.required_keys):
         return ()
     try:
-        start, end = _partition(window[policy.range_start_key]), _partition(window[policy.range_end_key])
+        start, end = (
+            _partition(window[policy.range_start_key]),
+            _partition(window[policy.range_end_key]),
+        )
     except (KeyError, ValueError):
         return ()
     if end < start or (end - start).days + 1 > policy.max_span_days:
@@ -453,8 +583,14 @@ def _latest(
     receipts: Sequence[ValidatedReceiptHistoryEntry],
     window: Mapping[str, str] | None = None,
 ) -> ValidatedReceiptHistoryEntry | None:
-    items = [item for item in receipts if window is None or dict(item.request_window) == dict(window)]
-    return max(items, key=lambda item: (item.finished_at, item.receipt_id), default=None)
+    items = [
+        item
+        for item in receipts
+        if window is None or dict(item.request_window) == dict(window)
+    ]
+    return max(
+        items, key=lambda item: (item.finished_at, item.receipt_id), default=None
+    )
 
 
 def _chunks(days: Sequence[date], span: int) -> tuple[tuple[date, date], ...]:
@@ -481,26 +617,52 @@ def _window(binding: ProviderBinding, start: date, end: date) -> Mapping[str, st
         return MappingProxyType({policy.range_start_key: start.strftime("%Y%m%d")})
     if (end - start).days + 1 > policy.max_span_days:
         raise ValueError("request exceeds registry span")
-    return MappingProxyType({
-        policy.range_start_key: start.strftime("%Y%m%d"),
-        policy.range_end_key: end.strftime("%Y%m%d"),
-    })
+    return MappingProxyType(
+        {
+            policy.range_start_key: start.strftime("%Y%m%d"),
+            policy.range_end_key: end.strftime("%Y%m%d"),
+        }
+    )
 
 
-def _runs(dataset: DatasetDefinition, binding: ProviderBinding, policy: CadencePolicy, window: Mapping[str, str], priority: str) -> tuple[ScheduledRun, ...]:
+def _runs(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    policy: CadencePolicy,
+    window: Mapping[str, str],
+    priority: str,
+) -> tuple[ScheduledRun, ...]:
     result: list[ScheduledRun] = []
     for variant in binding.request_variants:
-        identity = _canonical_json({
-            "dataset_id": dataset.dataset_id, "provider": binding.provider,
-            "provider_api": binding.api_name, "window": dict(window), "variant": dict(variant),
-        })
-        jitter = 0 if policy.retry.jitter_seconds == 0 else int.from_bytes(
-            hashlib.sha256(identity.encode()).digest()[:8], "big"
-        ) % (policy.retry.jitter_seconds + 1)
-        result.append(ScheduledRun(
-            dataset.dataset_id, binding.provider, binding.api_name, dataset.cadence_class,
-            window, priority, variant, policy.rate_budget_class, policy.retry, jitter,
-        ))
+        identity = _canonical_json(
+            {
+                "dataset_id": dataset.dataset_id,
+                "provider": binding.provider,
+                "provider_api": binding.api_name,
+                "window": dict(window),
+                "variant": dict(variant),
+            }
+        )
+        jitter = (
+            0
+            if policy.retry.jitter_seconds == 0
+            else int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big")
+            % (policy.retry.jitter_seconds + 1)
+        )
+        result.append(
+            ScheduledRun(
+                dataset.dataset_id,
+                binding.provider,
+                binding.api_name,
+                dataset.cadence_class,
+                window,
+                priority,
+                variant,
+                policy.rate_budget_class,
+                policy.retry,
+                jitter,
+            )
+        )
     return tuple(result)
 
 
@@ -521,16 +683,15 @@ def _dataset_plans(
             healthy = latest.status == "empty" or any(
                 fact.receipt_id == latest.receipt_id for fact in current.facts
             )
-            if (
-                latest.status == "failed"
-                and age < policy.failure_retry_seconds
-            ) or (
+            if (latest.status == "failed" and age < policy.failure_retry_seconds) or (
                 latest.status != "failed"
                 and healthy
                 and age < policy.minimum_interval_seconds
             ):
                 return (), "not_due"
-        return _runs(dataset, binding, policy, MappingProxyType({}), "current"), "planned"
+        return _runs(
+            dataset, binding, policy, MappingProxyType({}), "current"
+        ), "planned"
     local_now = now.astimezone(ZoneInfo(dataset.timezone))
     available = _latest_available(local_now, policy)
     start = (
@@ -543,16 +704,32 @@ def _dataset_plans(
     desired = _desired(start, end, policy, calendar)
     if policy.calendar is not None and not calendar:
         return (), "calendar_unavailable"
-    covered = {_partition(fact.partition_value) for fact in current.facts if fact.partition_value is not None}
+    covered = {
+        _partition(fact.partition_value)
+        for fact in current.facts
+        if fact.partition_value is not None
+    }
     for receipt in current.receipts:
         if receipt.status == "empty":
             covered.update(_window_dates(binding, receipt.request_window))
     missing = set(desired) - covered
-    overlap: set[date] = set(desired[-policy.correction_overlap_bars :]) if policy.correction_overlap_bars else set()
+    overlap: set[date] = (
+        set(desired[-policy.correction_overlap_bars :])
+        if policy.correction_overlap_bars
+        else set()
+    )
     if policy.correction_overlap_days:
-        overlap.update(day for day in desired if day >= available - timedelta(days=policy.correction_overlap_days - 1))
+        overlap.update(
+            day
+            for day in desired
+            if day >= available - timedelta(days=policy.correction_overlap_days - 1)
+        )
     needed = missing | overlap
-    current_days = {day for day in needed if day >= available and (policy.future_horizon_days or day == available)}
+    current_days = {
+        day
+        for day in needed
+        if day >= available and (policy.future_horizon_days or day == available)
+    }
     backfill_days = missing - current_days
     correction_days = overlap - missing - current_days
     window_policy = binding.request_window_policy
@@ -568,7 +745,9 @@ def _dataset_plans(
     for priority, chunk_start, chunk_end in demands:
         request_window = _window(binding, chunk_start, chunk_end)
         prior = _latest(current.receipts, request_window)
-        correction_only = not any(day in missing for day in _window_dates(binding, request_window))
+        correction_only = not any(
+            day in missing for day in _window_dates(binding, request_window)
+        )
         if prior is not None:
             age = (now_utc - prior.finished_at).total_seconds()
             if (prior.status == "failed" and age < policy.failure_retry_seconds) or (
@@ -577,7 +756,11 @@ def _dataset_plans(
                 suppressed = True
                 continue
         plans.extend(_runs(dataset, binding, policy, request_window, priority))
-    return (tuple(plans), "planned") if plans else ((), "not_due" if suppressed else "up_to_date")
+    return (
+        (tuple(plans), "planned")
+        if plans
+        else ((), "not_due" if suppressed else "up_to_date")
+    )
 
 
 def plan_runs(
@@ -592,7 +775,15 @@ def plan_runs(
             binding = _active_binding(dataset)
         except ValueError:
             for item in dataset.provider_bindings:
-                skips.append(PlannerSkip(dataset.dataset_id, item.provider, "paused" if item.activation_state != "active" else "not_entitled"))
+                skips.append(
+                    PlannerSkip(
+                        dataset.dataset_id,
+                        item.provider,
+                        "paused"
+                        if item.activation_state != "active"
+                        else "not_entitled",
+                    )
+                )
             continue
         try:
             policy = schedule.cadences[dataset.cadence_class]
@@ -610,11 +801,18 @@ def plan_runs(
     provider: dict[tuple[str, str], int] = defaultdict(int)
     api: dict[tuple[str, str, str], int] = defaultdict(int)
     accepted: list[ScheduledRun] = []
-    for _, plan in sorted(enumerate(candidates), key=lambda item: (_PRIORITY[item[1].priority], item[1].dataset_id, item[0])):
+    for _, plan in sorted(
+        enumerate(candidates),
+        key=lambda item: (_PRIORITY[item[1].priority], item[1].dataset_id, item[0]),
+    ):
         budget = schedule.rate_budgets[plan.rate_budget_class]
         provider_key = (plan.rate_budget_class, plan.provider)
         api_key = (plan.rate_budget_class, plan.provider, plan.provider_api)
-        if account[plan.rate_budget_class] >= budget.account_requests_per_run or provider[provider_key] >= budget.provider_requests_per_run or api[api_key] >= budget.api_requests_per_run:
+        if (
+            account[plan.rate_budget_class] >= budget.account_requests_per_run
+            or provider[provider_key] >= budget.provider_requests_per_run
+            or api[api_key] >= budget.api_requests_per_run
+        ):
             skips.append(PlannerSkip(plan.dataset_id, plan.provider, "rate_budget"))
             continue
         account[plan.rate_budget_class] += 1

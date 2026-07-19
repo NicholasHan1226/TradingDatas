@@ -10,6 +10,7 @@ default.  ``--execute`` is intended for the reviewed systemd oneshot unit.
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,10 +18,8 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
-from typing import Callable, Iterator, MutableMapping
-from urllib.parse import urlsplit
+from typing import Callable, Iterator
 import uuid
 
 
@@ -28,13 +27,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dataset_registry import (  # noqa: E402
-    DATASET_REGISTRY_PATH_ENV,
-    DatasetRegistry,
-    load_runtime_dataset_registry,
+from dataset_registry import DatasetRegistry, load_runtime_dataset_registry  # noqa: E402
+from collectors.tushare.collector import (  # noqa: E402
+    RequestBudgetExceeded,
+    TushareCollector,
 )
-from collectors.tushare.tushare_common import QUICKSYNC_API_URL  # noqa: E402
-from runtime_paths import marketdata_sqlite_path  # noqa: E402
+from collectors.tushare.provider_native_ingest import (  # noqa: E402
+    RetrySettings,
+    collect_provider_native_dataset,
+)
+from collectors.tushare.tushare_common import read_tushare_config  # noqa: E402
+from runtime_paths import provider_native_sqlite_path  # noqa: E402
 from tools.provider_native_cadence_planner import (  # noqa: E402
     Schedule,
     ScheduledRun,
@@ -44,49 +47,36 @@ from tools.provider_native_cadence_planner import (  # noqa: E402
 )
 
 
-DEFAULT_SCHEDULE_CONFIG = ROOT / "config" / "provider_native_schedule.yaml"
-DEFAULT_LOCK_PATH = Path("/run/sharedsignals/provider-native-collect.lock")
+DEFAULT_SCHEDULE_CONFIG = Path(
+    os.environ.get(
+        "TRADINGDATAS_SCHEDULE_PATH",
+        ROOT / "config" / "provider_native_schedule.yaml",
+    )
+)
+DEFAULT_LOCK_PATH = Path(
+    os.environ.get(
+        "TRADINGDATAS_COLLECT_LOCK",
+        "/run/lock/tradingdatas-collect.lock",
+    )
+)
 
 
 def load_schedule(path: Path = DEFAULT_SCHEDULE_CONFIG) -> Schedule:
     return _load_schedule(path)
-INTERNAL_CURRENT_ROOT = Path("/opt/investment/releases/sharedsignals-v1/current")
-PROVIDER_NATIVE_REGISTRY_RELATIVE = Path(
-    "config/provider_native_dataset_registry.yaml"
-)
-_TERMINAL_STATES = frozenset({"success", "empty", "validation", "failed"})
+
+
 _SUCCESS_STATES = frozenset({"success", "empty"})
 _STATE_EXIT_CODES = {"success": 0, "empty": 3, "validation": 2, "failed": 4}
-_RUNNER_RESULT_KEYS = frozenset(
-    {
-        "counts",
-        "dataset_id",
-        "error_codes",
-        "mode",
-        "provider",
-        "provider_api",
-        "receipt_count",
-        "state",
-    }
-)
-_RUNNER_COUNT_KEYS = frozenset(
-    {
-        "committed",
-        "inserted",
-        "rejected",
-        "returned",
-        "unchanged",
-        "updated",
-        "validated",
-    }
+_VALIDATION_ERROR_CODES = frozenset(
+    {"config_error", "resource_budget", "validation_failed"}
 )
 _FORBIDDEN_COLLECTOR_CREDENTIALS = frozenset(
     {
         "QUICKSYNC_API_TOKEN",
+        "QUICKSYNC_API_URL",
+        "QUICKSYNC_TOKEN",
         "QUICKSYNC_URL",
-        "SHAREDSIGNALS_INTERNAL_V1_TOKEN",
         "TUSHARE_API_TOKEN",
-        "TUSHARE_API_URL",
         "TUSHARE_MCP_URL",
         "TUSHARE_TOKEN",
     }
@@ -153,142 +143,78 @@ class ScheduleResult:
         }
 
 
+class RuntimeRateBudgetLedger:
+    """Count every real provider call across the entire runner process."""
+
+    def __init__(self, schedule: Schedule) -> None:
+        self._schedule = schedule
+        self._account: dict[str, int] = defaultdict(int)
+        self._provider: dict[tuple[str, str], int] = defaultdict(int)
+        self._api: dict[tuple[str, str, str], int] = defaultdict(int)
+
+    def consume(self, plan: ScheduledRun, api_name: str) -> None:
+        if api_name != plan.provider_api:
+            raise RequestBudgetExceeded("provider API identity changed")
+        budget = self._schedule.rate_budgets[plan.rate_budget_class]
+        account_key = plan.rate_budget_class
+        provider_key = (plan.rate_budget_class, plan.provider)
+        api_key = (plan.rate_budget_class, plan.provider, plan.provider_api)
+        if (
+            self._account[account_key] >= budget.account_requests_per_run
+            or self._provider[provider_key] >= budget.provider_requests_per_run
+            or self._api[api_key] >= budget.api_requests_per_run
+        ):
+            raise RequestBudgetExceeded("provider request budget exhausted")
+        self._account[account_key] += 1
+        self._provider[provider_key] += 1
+        self._api[api_key] += 1
+
+
 def _validated_collector_credentials() -> None:
     if any(os.environ.get(name) for name in _FORBIDDEN_COLLECTOR_CREDENTIALS):
         raise ValueError("collector credential source is not allowed")
-    api_url = os.environ.get("QUICKSYNC_API_URL")
-    token = os.environ.get("QUICKSYNC_TOKEN")
-    if (
-        type(api_url) is not str
-        or not api_url
-        or api_url != api_url.strip()
-        or type(token) is not str
-        or not token
-        or token != token.strip()
-        or any(ord(character) < 33 or ord(character) == 127 for character in token)
-    ):
-        raise ValueError("collector credentials are unavailable")
-    parsed = urlsplit(api_url)
-    approved_host = urlsplit(QUICKSYNC_API_URL).hostname
     try:
-        port = parsed.port
-    except ValueError:
-        raise ValueError("collector API URL is invalid") from None
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != approved_host
-        or parsed.username is not None
-        or parsed.password is not None
-        or port not in {None, 443}
-        or parsed.path not in {"", "/"}
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise ValueError("collector API URL is invalid")
+        read_tushare_config()
+    except RuntimeError as exc:
+        raise ValueError("collector credentials are unavailable") from exc
 
 
-def _pin_runtime_registry_to_release(
-    *,
-    environment: MutableMapping[str, str] = os.environ,
-    current_root: Path = INTERNAL_CURRENT_ROOT,
-    release_root: Path = ROOT,
-) -> Path:
-    """Bind the stable systemd pointer to this immutable release.
-
-    The public profile is Git-owned and therefore names ``current``.  Before
-    loading the registry or spawning collectors, the scheduler proves that
-    pointer resolves to the release containing this executable, then replaces
-    only its process-local environment value with the immutable target.
-    """
-
-    stable_path = current_root / PROVIDER_NATIVE_REGISTRY_RELATIVE
-    immutable_path = release_root / PROVIDER_NATIVE_REGISTRY_RELATIVE
-    configured = environment.get(DATASET_REGISTRY_PATH_ENV)
-    if configured not in {str(stable_path), str(immutable_path)}:
-        raise ValueError("runtime dataset registry pointer is invalid")
-    if release_root.resolve(strict=True) != release_root:
-        raise ValueError("scheduler release root is not canonical")
-    if not immutable_path.is_file() or immutable_path.is_symlink():
-        raise ValueError("immutable runtime dataset registry is invalid")
-    if immutable_path.resolve(strict=True) != immutable_path:
-        raise ValueError("immutable runtime dataset registry is not canonical")
-    if current_root.resolve(strict=True) != release_root:
-        raise ValueError("runtime current pointer targets another release")
-    if stable_path.resolve(strict=True) != immutable_path:
-        raise ValueError("runtime registry pointer targets another artifact")
-    environment[DATASET_REGISTRY_PATH_ENV] = str(immutable_path)
-    return immutable_path
-
-
-def _subprocess_executor(
+def _in_process_executor(
     plan: ScheduledRun,
     *,
+    registry: DatasetRegistry,
     db_path: Path,
-    timeout_seconds: int,
     started_at: str,
+    rate_ledger: RuntimeRateBudgetLedger,
 ) -> DatasetResult:
-    if plan.request_variant:
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    command = [
-        sys.executable,
-        str(ROOT / "tools" / "collect_provider_dataset.py"),
-        "--db-path",
-        str(db_path),
-        "--dataset-id",
-        plan.dataset_id,
-        "--request-window-json",
-        json.dumps(dict(plan.request_window), separators=(",", ":"), sort_keys=True),
-        "--attempt-id",
-        str(uuid.uuid4()),
-        "--started-at",
-        started_at,
-        "--execute",
-    ]
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    lines = [line for line in completed.stdout.splitlines() if line.strip()]
-    if len(lines) != 1:
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    try:
-        payload = json.loads(lines[0])
-    except json.JSONDecodeError:
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    if type(payload) is not dict or set(payload) != _RUNNER_RESULT_KEYS:
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    counts = payload.get("counts")
-    error_codes = payload.get("error_codes")
-    receipt_count = payload.get("receipt_count")
-    state = payload.get("state")
-    count_values_valid = type(counts) is dict and set(counts) == _RUNNER_COUNT_KEYS
-    if count_values_valid:
-        count_values_valid = all(
-            value is None or (type(value) is int and value >= 0)
-            for value in counts.values()
-        )
-    if (
-        not count_values_valid
-        or type(error_codes) is not list
-        or any(type(code) is not str or not code for code in error_codes)
-        or type(receipt_count) is not int
-        or receipt_count < 0
-        or payload.get("mode") != "execute"
-        or payload.get("dataset_id") != plan.dataset_id
-        or payload.get("provider") != plan.provider
-        or payload.get("provider_api") != plan.provider_api
-        or type(state) is not str
-        or state not in _TERMINAL_STATES
-        or _STATE_EXIT_CODES[state] != completed.returncode
-    ):
-        return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
-    return DatasetResult(plan.dataset_id, plan.provider, state, completed.returncode)
+    """Execute one plan while sharing the runner's actual-call budget ledger."""
+
+    collector = TushareCollector(
+        request_gate=lambda api_name: rate_ledger.consume(plan, api_name)
+    )
+    result = collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id=plan.dataset_id,
+        request_window=plan.request_window,
+        request_variant=plan.request_variant,
+        attempt_id=str(uuid.uuid4()),
+        started_at=started_at,
+        retry=RetrySettings(
+            max_attempts=plan.retry.max_attempts,
+            base_delay_seconds=plan.retry.base_delay_seconds,
+            max_delay_seconds=plan.retry.max_delay_seconds,
+            jitter_seconds=plan.retry_jitter_seconds,
+        ),
+    )
+    if result.status == "success":
+        return DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+    if result.status == "empty":
+        return DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+    if set(result.errors) & _VALIDATION_ERROR_CODES:
+        return DatasetResult(plan.dataset_id, plan.provider, "validation", 2)
+    return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
 
 
 def run_schedule(
@@ -318,12 +244,14 @@ def run_schedule(
         )
         return ScheduleResult(0, "plan", planned, skipped, plans)
     started_at = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    rate_ledger = RuntimeRateBudgetLedger(schedule)
     execute_one = executor or (
-        lambda plan: _subprocess_executor(
+        lambda plan: _in_process_executor(
             plan,
+            registry=registry,
             db_path=db_path,
-            timeout_seconds=schedule.dataset_timeout_seconds,
             started_at=started_at,
+            rate_ledger=rate_ledger,
         )
     )
     results: list[DatasetResult] = []
@@ -341,9 +269,7 @@ def run_schedule(
             result = DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
         results.append(result)
     failed = any(item.state not in _SUCCESS_STATES for item in results)
-    return ScheduleResult(
-        1 if failed else 0, "execute", tuple(results), skipped, plans
-    )
+    return ScheduleResult(1 if failed else 0, "execute", tuple(results), skipped, plans)
 
 
 @contextmanager
@@ -377,7 +303,7 @@ def _now(value: str | None) -> datetime:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db-path", type=Path, default=marketdata_sqlite_path())
+    parser.add_argument("--db-path", type=Path, default=provider_native_sqlite_path())
     parser.add_argument("--schedule-config", type=Path, default=DEFAULT_SCHEDULE_CONFIG)
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK_PATH)
     parser.add_argument("--execute", action="store_true")
@@ -393,7 +319,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.execute:
             _validated_collector_credentials()
-            _pin_runtime_registry_to_release()
         with exclusive_schedule_lock(args.lock_path):
             result = run_schedule(
                 registry=load_runtime_dataset_registry(),

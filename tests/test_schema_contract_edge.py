@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from storage import duckdb_schema
-from storage.schema_contract import Column, Table, get_table, render_schema, render_table, table_primary_keys
+from storage.schema_contract import (
+    Column,
+    Table,
+    get_table,
+    render_schema,
+    render_table,
+    table_names,
+    table_primary_keys,
+)
 
 
 def test_schema_contract_unknown_dialect_raises_value_error() -> None:
@@ -33,15 +40,23 @@ def test_schema_contract_table_without_pk_renders_without_primary_key() -> None:
     assert "PRIMARY KEY" not in ddl
 
 
-def test_duckdb_schema_exports_primary_keys() -> None:
-    assert duckdb_schema.TABLE_PRIMARY_KEYS == table_primary_keys()
-    assert duckdb_schema.TABLE_PRIMARY_KEYS["market_relationships"] == ["relationship_hash"]
-    assert duckdb_schema.TABLE_PRIMARY_KEYS["market_fund_portfolio"] == ["portfolio_hash"]
+def test_schema_contract_is_sqlite_only() -> None:
+    with pytest.raises(ValueError, match="unsupported dialect"):
+        render_schema("duckdb")
+    with pytest.raises(ValueError, match="unsupported dialect"):
+        render_table(get_table("market_ingest_runs"), "duckdb")
 
 
-def test_capital_growth_tables_and_event_identity_are_in_contract() -> None:
-    events = get_table("market_events")
-    assert {column.name for column in events.columns} >= {"event_id", "revision", "source_family"}
-    assert table_primary_keys()["market_industry_snapshots"] == ["snapshot_id"]
-    assert table_primary_keys()["market_industry_taxonomy"] == ["taxonomy_node_key"]
-    assert table_primary_keys()["market_industry_memberships"] == ["membership_key"]
+def test_clean_slate_schema_contains_only_fact_and_receipt_authorities() -> None:
+    assert table_names() == ["provider_dataset_rows", "market_ingest_runs"]
+    assert table_primary_keys() == {
+        "provider_dataset_rows": ["dataset_id", "provider", "schema_major", "row_key"],
+        "market_ingest_runs": ["run_id"],
+    }
+
+    ddl = render_schema("sqlite")
+    assert ddl.count("CREATE TABLE IF NOT EXISTS") == 2
+    assert "CREATE TABLE IF NOT EXISTS provider_dataset_rows" in ddl
+    assert "CREATE TABLE IF NOT EXISTS market_ingest_runs" in ddl
+    assert "market_events" not in ddl
+    assert "market_bars_daily" not in ddl

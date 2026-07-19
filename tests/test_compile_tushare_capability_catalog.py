@@ -24,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "compile_tushare_capability_catalog.py"
 SCOPE_PATH = ROOT / "config" / "tushare_capability_scope.v1.yaml"
 CATALOG_PATH = ROOT / "config" / "tushare_capability_catalog.v1.yaml"
-LEGACY_PATH = ROOT / "config" / "tushare_capability_plan.yaml"
 
 
 def _index(*rows: str, header: str | None = None, suffix: str = "") -> bytes:
@@ -92,14 +91,17 @@ def test_parser_preserves_official_fields_and_source_row_identity() -> None:
     assert rows[0].category == "股票数据,基础数据"
     assert rows[0].description == "获取基础信息"
     assert rows[0].line_number == 9
-    assert rows[0].row_sha256 == hashlib.sha256(
-        _row(
-            "stock_basic",
-            25,
-            title="股票列表",
-            description="获取基础信息",
-        ).encode()
-    ).hexdigest()
+    assert (
+        rows[0].row_sha256
+        == hashlib.sha256(
+            _row(
+                "stock_basic",
+                25,
+                title="股票列表",
+                description="获取基础信息",
+            ).encode()
+        ).hexdigest()
+    )
     assert rows[1].description == ""
 
 
@@ -116,9 +118,7 @@ def test_parser_preserves_official_fields_and_source_row_identity() -> None:
         (_index(_row("daily", 27), suffix="\nnot-a-table-row"), "format drift"),
         (_index("| only | four | cells | here |"), "five cells"),
         (
-            _index(
-                "| https://example.invalid/27.md | daily | 标题 | 分类 | 描述 |"
-            ),
+            _index("| https://example.invalid/27.md | daily | 标题 | 分类 | 描述 |"),
             "doc_url",
         ),
         (_index(_row("Daily", 27)), "api_name"),
@@ -149,9 +149,7 @@ def test_duplicate_api_requires_explicit_canonical_document_resolution() -> None
         [
             {
                 "api_name": "pro_bar",
-                "canonical_doc_url": (
-                    "https://tushare.pro/wctapi/documents/109.md"
-                ),
+                "canonical_doc_url": ("https://tushare.pro/wctapi/documents/109.md"),
                 "reason": "Reviewed canonical unified API document.",
             }
         ],
@@ -280,9 +278,7 @@ def test_checked_in_scope_is_exhaustive_and_does_not_claim_entitlement() -> None
             "unknown key",
         ),
         (
-            lambda scope: scope["classifications"][0].update(
-                scope_state="active"
-            ),
+            lambda scope: scope["classifications"][0].update(scope_state="active"),
             "scope_state",
         ),
         (
@@ -327,12 +323,10 @@ def test_checked_in_catalog_is_the_exact_239_api_snapshot() -> None:
         "official_source_rows": 240,
         "official_unique_api_names": 239,
     }
-    assert catalog["scope"]["scope_sha256"] == hashlib.sha256(
-        SCOPE_PATH.read_bytes()
-    ).hexdigest()
-    assert catalog["legacy_coverage"]["inventory_sha256"] == hashlib.sha256(
-        LEGACY_PATH.read_bytes()
-    ).hexdigest()
+    assert (
+        catalog["scope"]["scope_sha256"]
+        == hashlib.sha256(SCOPE_PATH.read_bytes()).hexdigest()
+    )
     assert catalog["scope_counts"] == {
         "in_scope": 190,
         "locked": 0,
@@ -341,17 +335,7 @@ def test_checked_in_catalog_is_the_exact_239_api_snapshot() -> None:
         "retired": 5,
         "non_data_operation": 4,
     }
-    assert catalog["legacy_coverage"]["authority"] == "migration_input_only"
-    assert catalog["legacy_coverage"]["counts"] == {
-        "legacy_api_names": 114,
-        "official_legacy_overlap": 109,
-        "official_only": 130,
-        "legacy_only": 5,
-    }
-    assert [
-        item["api_name"]
-        for item in catalog["legacy_coverage"]["legacy_only_reviews"]
-    ] == ["concept", "concept_detail", "hs_const", "index_member", "limit_list"]
+    assert "legacy_coverage" not in catalog
 
 
 def test_catalog_preserves_all_source_fields_and_pro_bar_variants() -> None:
@@ -369,7 +353,6 @@ def test_catalog_preserves_all_source_fields_and_pro_bar_variants() -> None:
         "source_resolution",
         "scope_state",
         "scope_reason",
-        "in_legacy_inventory",
     }
     assert all(set(item) == required for item in capabilities)
     assert all(item["source_rows"] for item in capabilities)
@@ -446,7 +429,6 @@ def test_source_checkout_head_and_scope_pin_fail_closed() -> None:
         compiler.compile_from_paths(
             source_root=ROOT,
             scope_path=SCOPE_PATH,
-            legacy_path=LEGACY_PATH,
         )
 
     scope = load_scope_document(SCOPE_PATH)
@@ -464,7 +446,6 @@ def test_pinned_offline_checkout_rebuilds_checked_in_catalog_when_supplied() -> 
     rebuilt = compiler.compile_from_paths(
         source_root=Path(source_root_value),
         scope_path=SCOPE_PATH,
-        legacy_path=LEGACY_PATH,
     )
 
     assert render_catalog(rebuilt) == CATALOG_PATH.read_bytes()

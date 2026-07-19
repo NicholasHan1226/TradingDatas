@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -14,13 +15,17 @@ from dataset_registry import (
     DatasetDefinition,
     DatasetField,
     DatasetRegistry,
+    FanoutPolicy,
+    PaginationPolicy,
     ProviderBinding,
     ReadModelAdapter,
     RequestWindowPolicy,
     ResponseCompletenessPolicy,
 )
-from storage.provider_dataset_rows import PROVIDER_DATASET_ROWS_DDL
+from storage.ingest_receipts import IngestResult
+from storage.receipt_projection import load_dataset_runtime_projection
 from storage.schema import SCHEMA_SQL
+from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 import tools.collect_provider_dataset as runner
 
 
@@ -167,9 +172,7 @@ def _strategy_registry(
         )
         replacement = replace(
             binding,
-            request_template=MappingProxyType(
-                {"trade_date": "${window.trade_date}"}
-            ),
+            request_template=MappingProxyType({"trade_date": "${window.trade_date}"}),
             request_window_policy=RequestWindowPolicy(
                 required_keys=("trade_date",),
                 formats=MappingProxyType({"trade_date": "yyyymmdd"}),
@@ -184,6 +187,27 @@ def _strategy_registry(
     else:
         raise ValueError("unsupported test response strategy")
     return DatasetRegistry((dataset,))
+
+
+def _paginated_strategy_registry(*, max_pages: int = 12) -> DatasetRegistry:
+    base = _strategy_registry(
+        "unique_primary_key_snapshot",
+        empty_data_policy="allowed",
+        max_rows_per_attempt=32,
+    )
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        pagination=PaginationPolicy(
+            strategy="offset",
+            limit_parameter="limit",
+            offset_parameter="offset",
+            page_size=1,
+            max_pages=max_pages,
+        ),
+        response_completeness=None,
+    )
+    return DatasetRegistry((replace(dataset, provider_bindings=(binding,)),))
 
 
 def _database(path: Path) -> None:
@@ -263,7 +287,9 @@ def _run(
 
 def provider_fact_count(db_path: Path) -> int:
     with sqlite3.connect(db_path) as conn:
-        return int(conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()[0])
+        return int(
+            conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()[0]
+        )
 
 
 def success_receipt_count(db_path: Path) -> int:
@@ -273,6 +299,547 @@ def success_receipt_count(db_path: Path) -> int:
                 "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
             ).fetchone()[0]
         )
+
+
+def test_retry_attempts_each_write_one_terminal_receipt_with_unique_attempt_id(
+    tmp_path: Path,
+) -> None:
+    class SequenceCollector:
+        def __init__(self) -> None:
+            self.outcomes = iter(
+                (
+                    ProviderCallOutcome(
+                        state="failed",
+                        rows=(),
+                        provider_code=None,
+                        error_code="rate_limited",
+                        error_message="retry later",
+                    ),
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600000.SH",
+                                "trade_date": "20260717",
+                                "close": 12.5,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                )
+            )
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=_registry(),
+        collector=SequenceCollector(),
+        dataset_id="cn.synthetic.runner",
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="retry-root-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+        retry=native_ingest.RetrySettings(max_attempts=2),
+    )
+
+    assert result.status == "success"
+    assert len(result.receipt_ids) == 2
+    assert provider_fact_count(db_path) == 1
+    with sqlite3.connect(db_path) as conn:
+        receipts = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY finished_at, run_id"
+            )
+        ]
+    assert {receipt["status"] for receipt in receipts} == {"failed", "success"}
+    assert len({receipt["attempt_id"] for receipt in receipts}) == 2
+    assert receipts[0]["request_identity"] == receipts[1]["request_identity"]
+    assert all("requests" not in receipt for receipt in receipts)
+
+
+@pytest.mark.parametrize("full_final_page", [False, True])
+def test_each_pagination_call_has_its_own_terminal_receipt(
+    tmp_path: Path,
+    full_final_page: bool,
+) -> None:
+    class SequenceCollector:
+        def __init__(self) -> None:
+            final = (
+                ProviderCallOutcome(
+                    state="success",
+                    rows=(
+                        {
+                            "ts_code": "600002.SH",
+                            "trade_date": "20260717",
+                            "close": 13.0,
+                        },
+                    ),
+                    provider_code=0,
+                    error_code=None,
+                    error_message=None,
+                )
+                if full_final_page
+                else ProviderCallOutcome(
+                    state="empty",
+                    rows=(),
+                    provider_code=0,
+                    error_code=None,
+                    error_message=None,
+                )
+            )
+            self.outcomes = iter(
+                (
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600000.SH",
+                                "trade_date": "20260717",
+                                "close": 12.5,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                    final,
+                )
+            )
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    base = _strategy_registry(
+        "unique_primary_key_snapshot",
+        empty_data_policy="allowed",
+        max_rows_per_attempt=3,
+    )
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        pagination=PaginationPolicy(
+            strategy="offset",
+            limit_parameter="limit",
+            offset_parameter="offset",
+            page_size=1,
+            max_pages=2,
+        ),
+    )
+    registry = DatasetRegistry((replace(dataset, provider_bindings=(binding,)),))
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=SequenceCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id="pagination-root-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+    )
+
+    assert len(result.receipt_ids) == 2
+    assert result.status == ("failed" if full_final_page else "success")
+    assert provider_fact_count(db_path) == (0 if full_final_page else 1)
+    with sqlite3.connect(db_path) as conn:
+        receipts = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY run_id"
+            )
+        ]
+    assert len({receipt["attempt_id"] for receipt in receipts}) == 2
+    assert {receipt["request_identity"]["page_index"] for receipt in receipts} == {0, 1}
+    assert all("requests" not in receipt for receipt in receipts)
+    if full_final_page:
+        assert {receipt["status"] for receipt in receipts} == {"failed"}
+        assert {tuple(receipt["errors"]) for receipt in receipts} == {
+            ("resource_budget",)
+        }
+
+
+def test_later_storage_failure_reports_prior_committed_physical_call_truthfully(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SequenceCollector:
+        def __init__(self) -> None:
+            self.outcomes = iter(
+                (
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600000.SH",
+                                "trade_date": "20260717",
+                                "close": 12.5,
+                            },
+                            {
+                                "ts_code": "600002.SH",
+                                "trade_date": "20260717",
+                                "close": 12.75,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600001.SH",
+                                "trade_date": "20260717",
+                                "close": 13.0,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                )
+            )
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    base = _strategy_registry(
+        "unique_primary_key_snapshot",
+        max_rows_per_attempt=5,
+    )
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        pagination=PaginationPolicy(
+            strategy="offset",
+            limit_parameter="limit",
+            offset_parameter="offset",
+            page_size=2,
+            max_pages=2,
+        ),
+        response_completeness=None,
+    )
+    dataset = replace(dataset, provider_bindings=(binding,))
+    registry = DatasetRegistry((dataset,))
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    original = native_ingest.ingest_provider_native_rows
+    storage_call_count = 0
+
+    def fail_second_storage_call(*args: object, **kwargs: object):
+        nonlocal storage_call_count
+        storage_call_count += 1
+        if storage_call_count == 2:
+            raise sqlite3.OperationalError("injected second-call storage failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        native_ingest,
+        "ingest_provider_native_rows",
+        fail_second_storage_call,
+    )
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=SequenceCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id="partial-storage-root",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("storage_failed",)
+    assert result.counts.committed == 2
+    assert result.counts.inserted == 2
+    assert result.counts.count_semantics == (
+        "aggregate_partial_physical_call_transactions"
+    )
+    assert len(result.receipt_ids) == 2
+    assert provider_fact_count(db_path) == 2
+    with sqlite3.connect(db_path) as conn:
+        statuses = conn.execute(
+            "SELECT status FROM market_ingest_runs ORDER BY run_id"
+        ).fetchall()
+    assert {row[0] for row in statuses} == {"success", "failed"}
+    projection = load_dataset_runtime_projection(
+        db_path,
+        dataset,
+        registry=registry,
+        now=datetime.now(timezone.utc),
+    )
+    assert projection.state == "failed"
+    assert projection.reasons == ("storage_failed",)
+
+
+@pytest.mark.parametrize("failed_call_index", (2, 10))
+@pytest.mark.parametrize("recovery_state", ("empty", "success"))
+def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_call_index: int,
+    recovery_state: str,
+) -> None:
+    class SequenceCollector:
+        def __init__(self, outcomes: tuple[ProviderCallOutcome, ...]) -> None:
+            self.outcomes = iter(outcomes)
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    def success(index: int) -> ProviderCallOutcome:
+        return ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": f"{600000 + index:06d}.SH",
+                    "trade_date": "20260720",
+                    "close": 10.0 + index,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    empty = ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    registry = _paginated_strategy_registry()
+    dataset = registry.resolve("cn.synthetic.runner")
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    original = native_ingest.ingest_provider_native_rows
+    storage_call_count = 0
+
+    def fail_selected_storage_call(*args: object, **kwargs: object):
+        nonlocal storage_call_count
+        call_index = storage_call_count
+        storage_call_count += 1
+        if call_index == failed_call_index:
+            raise sqlite3.OperationalError("injected physical-call storage failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        native_ingest,
+        "ingest_provider_native_rows",
+        fail_selected_storage_call,
+    )
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=SequenceCollector(
+            tuple(success(index) for index in range(11)) + (empty,)
+        ),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id=f"twelve-call-root-{failed_call_index}",
+        started_at=started_at.isoformat(),
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("storage_failed",)
+    assert result.counts.committed == 10
+    assert result.counts.inserted == 10
+    assert len(result.receipt_ids) == 12
+    assert provider_fact_count(db_path) == 10
+    with sqlite3.connect(db_path) as conn:
+        receipts = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY run_id"
+            )
+        ]
+    failed = [
+        receipt for receipt in receipts if receipt["errors"] == ["storage_failed"]
+    ]
+    assert len(failed) == 1
+    assert failed[0]["attempt_id"].endswith(
+        f":provider-call:{failed_call_index:012d}:retry:000000000000"
+    )
+    assert receipts[-1]["attempt_id"] != failed[0]["attempt_id"]
+
+    projection = load_dataset_runtime_projection(
+        db_path,
+        dataset,
+        registry=registry,
+        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+    )
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id in result.receipt_ids
+    assert projection.reasons == ("storage_failed",)
+
+    monkeypatch.setattr(
+        native_ingest,
+        "ingest_provider_native_rows",
+        original,
+    )
+    recovery_outcomes = (empty,) if recovery_state == "empty" else (success(31), empty)
+    recovered = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=SequenceCollector(recovery_outcomes),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id=f"independent-recovery-{failed_call_index}-{recovery_state}",
+        started_at=(started_at + timedelta(minutes=1)).isoformat(),
+    )
+    assert recovered.status == recovery_state
+    recovered_projection = load_dataset_runtime_projection(
+        db_path,
+        dataset,
+        registry=registry,
+        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+    )
+    assert recovered_projection.state == recovery_state
+    assert recovered_projection.receipt_id in recovered.receipt_ids
+
+
+def test_retry_group_uses_numeric_terminal_retry_before_execution_projection(
+    tmp_path: Path,
+) -> None:
+    class SequenceCollector:
+        def __init__(self) -> None:
+            self.outcomes = iter(
+                (
+                    ProviderCallOutcome(
+                        state="failed",
+                        rows=(),
+                        provider_code=None,
+                        error_code="rate_limited",
+                        error_message="retry later",
+                    ),
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600000.SH",
+                                "trade_date": "20260720",
+                                "close": 12.5,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                    ProviderCallOutcome(
+                        state="empty",
+                        rows=(),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                )
+            )
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    registry = _paginated_strategy_registry(max_pages=2)
+    dataset = registry.resolve("cn.synthetic.runner")
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=SequenceCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id="retry-execution-root",
+        started_at=started_at.isoformat(),
+        retry=native_ingest.RetrySettings(max_attempts=2),
+    )
+
+    assert result.status == "success"
+    assert result.counts.committed == 1
+    assert len(result.receipt_ids) == 3
+    assert provider_fact_count(db_path) == 1
+    with sqlite3.connect(db_path) as conn:
+        receipts = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY run_id"
+            )
+        ]
+    assert sorted(
+        (
+            receipt["request_identity"]["page_index"],
+            int(receipt["attempt_id"].split(":provider-call:")[1][:12]),
+            int(receipt["attempt_id"].rsplit(":retry:", 1)[1]),
+            receipt["status"],
+        )
+        for receipt in receipts
+    ) == [
+        (0, 0, 0, "failed"),
+        (0, 1, 1, "success"),
+        (1, 2, 0, "empty"),
+    ]
+    projection = load_dataset_runtime_projection(
+        db_path,
+        dataset,
+        registry=registry,
+        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+    )
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.receipt_id in result.receipt_ids
+    assert projection.reasons == ()
 
 
 def test_default_plan_validates_registry_without_provider_or_database_write(
@@ -408,9 +975,7 @@ def test_execute_has_distinct_empty_and_failed_exit_codes(
 
     assert code == expected_code
     assert code == (
-        runner.EXIT_VALIDATION
-        if expected_state == "validation"
-        else runner.EXIT_FAILED
+        runner.EXIT_VALIDATION if expected_state == "validation" else runner.EXIT_FAILED
     )
     assert output["state"] == expected_state
     assert len(fake.calls) == 1
@@ -503,7 +1068,9 @@ def test_completeness_empty_uses_the_dataset_empty_data_policy(
         ]
 
 
-def _calendar_row(date_value: object, *, symbol: str = "600000.SH") -> dict[str, object]:
+def _calendar_row(
+    date_value: object, *, symbol: str = "600000.SH"
+) -> dict[str, object]:
     return {
         "ts_code": symbol,
         "trade_date": date_value,
@@ -647,7 +1214,10 @@ def test_snapshot_accepts_unique_primary_keys_below_provider_cap(
         request_window={},
         outcome=ProviderCallOutcome(
             state="success",
-            rows=(_calendar_row("20260717"), _calendar_row("20260718", symbol="000001.SZ")),
+            rows=(
+                _calendar_row("20260717"),
+                _calendar_row("20260718", symbol="000001.SZ"),
+            ),
             provider_code=0,
             error_code=None,
             error_message=None,
@@ -729,7 +1299,9 @@ def test_snapshot_rejects_exact_provider_row_cap_before_storage(
         monkeypatch,
         capsys,
         tmp_path,
-        registry=_strategy_registry("unique_primary_key_snapshot", max_rows_per_attempt=2),
+        registry=_strategy_registry(
+            "unique_primary_key_snapshot", max_rows_per_attempt=2
+        ),
         request_window={},
         outcome=ProviderCallOutcome(
             state="success",
@@ -763,7 +1335,10 @@ def test_partition_accepts_unique_rows_matching_requested_date(
         request_window={"trade_date": "20260717"},
         outcome=ProviderCallOutcome(
             state="success",
-            rows=(_calendar_row("20260717"), _calendar_row("20260717", symbol="000001.SZ")),
+            rows=(
+                _calendar_row("20260717"),
+                _calendar_row("20260717", symbol="000001.SZ"),
+            ),
             provider_code=0,
             error_code=None,
             error_message=None,
@@ -929,7 +1504,9 @@ def test_success_empty_and_failed_receipts_keep_config_hash_and_honest_data_thro
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    registry = _strategy_registry("unique_primary_key_snapshot", empty_data_policy="allowed")
+    registry = _strategy_registry(
+        "unique_primary_key_snapshot", empty_data_policy="allowed"
+    )
     dataset = registry.resolve("cn.synthetic.runner")
     binding = registry.provider_binding(dataset.dataset_id, "tushare")
     expected_hash = native_ingest._config_hash(dataset, binding)  # noqa: SLF001
@@ -1256,3 +1833,245 @@ def test_cli_has_no_provider_api_or_field_override() -> None:
 
     assert not hasattr(args, "api_name")
     assert not hasattr(args, "fields")
+
+
+def test_singular_request_identity_reaches_typed_storage_receipt_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _registry()
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = base.provider_binding(dataset.dataset_id, "tushare")
+    variant = MappingProxyType({"symbol": "600001.SH"})
+    binding = replace(
+        binding,
+        request_variants=(MappingProxyType({"symbol": "600000.SH"}), variant),
+        pagination=PaginationPolicy(
+            strategy="offset",
+            limit_parameter="limit",
+            offset_parameter="offset",
+            page_size=2,
+            max_pages=2,
+        ),
+    )
+    dataset = replace(dataset, provider_bindings=(binding,))
+    registry = DatasetRegistry((dataset,))
+    fake = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600001.SH",
+                    "trade_date": "20260717",
+                    "close": 12.5,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    captured: list[tuple[native_ingest.ProviderCall, ...]] = []
+    original = native_ingest._persist_provider_execution
+
+    def capture(*args: object, **kwargs: object) -> IngestResult:
+        execution = kwargs["execution"]
+        assert isinstance(execution, native_ingest.ProviderExecution)
+        captured.append(execution.calls)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(native_ingest, "_persist_provider_execution", capture)
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=fake,
+        dataset_id=dataset.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        request_variant=variant,
+        attempt_id="typed-identity-attempt",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    assert result.status == "success"
+    assert result.errors == ()
+    assert provider_fact_count(db_path) == 1
+    assert len(captured) == 1
+    request = captured[0][0].identity
+    assert dict(request.request_variant) == {"symbol": "600001.SH"}
+    assert request.fanout_parameter is None
+    assert request.fanout_values == ()
+    assert request.page_offset == 0
+    assert request.page_index == 0
+    with sqlite3.connect(db_path) as conn:
+        notes = json.loads(
+            conn.execute("SELECT notes FROM market_ingest_runs").fetchone()[0]
+        )
+    assert notes["request_identity"] == request.canonical_payload()
+
+
+def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _registry()
+    source = base.resolve("cn.synthetic.runner")
+    source_binding = replace(
+        base.provider_binding(source.dataset_id, "tushare"),
+        response_completeness=None,
+    )
+    source = replace(source, provider_bindings=(source_binding,))
+    target_binding = replace(
+        source_binding,
+        api_name="synthetic_target",
+        read_discriminator_value="synthetic_target",
+        request_shape="entity_fanout",
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="symbol",
+            source_dataset_id=source.dataset_id,
+            source_field="ts_code",
+            batch_size=1,
+        ),
+        pagination=PaginationPolicy(strategy="none"),
+        response_completeness=None,
+    )
+    target = replace(
+        source,
+        dataset_id="cn.synthetic.target",
+        aliases=("tushare.synthetic_target",),
+        provider_bindings=(target_binding,),
+    )
+    registry = DatasetRegistry((source, target))
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    source_collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600001.SH",
+                    "trade_date": "20260716",
+                    "close": 10.0,
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260717",
+                    "close": 11.0,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    source_result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=source_collector,
+        dataset_id=source.dataset_id,
+        request_window={"start_date": "20260716", "end_date": "20260717"},
+        attempt_id="source-completed-attempt",
+        started_at=now,
+    )
+    assert source_result.status == "success"
+
+    target_collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260717",
+                    "close": 11.0,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    target_result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=target_collector,
+        dataset_id=target.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="target-fanout-attempt",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    assert [call[1]["symbol"] for call in target_collector.calls] == [
+        "600000.SH",
+        "600001.SH",
+    ]
+    assert target_result.status == "success"
+    assert target_result.errors == ()
+    assert len(target_result.receipt_ids) == 2
+    assert provider_fact_count(db_path) == 3
+    with sqlite3.connect(db_path) as conn:
+        target_receipts = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT notes FROM market_ingest_runs WHERE source=? ORDER BY run_id",
+                (target.dataset_id,),
+            )
+        ]
+    assert len({receipt["attempt_id"] for receipt in target_receipts}) == 2
+    assert {
+        tuple(receipt["request_identity"]["fanout_values"])
+        for receipt in target_receipts
+    } == {("600000.SH",), ("600001.SH",)}
+
+    with sqlite3.connect(db_path) as conn:
+        source_receipt_id, source_notes = conn.execute(
+            "SELECT run_id, notes FROM market_ingest_runs WHERE source=?",
+            (source.dataset_id,),
+        ).fetchone()
+        forged = json.loads(source_notes)
+        forged["schema_version"] = "tradingdatas.ingest_receipt.v999"
+        conn.execute(
+            "UPDATE market_ingest_runs SET notes=? WHERE run_id=?",
+            (
+                json.dumps(
+                    forged,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                source_receipt_id,
+            ),
+        )
+
+    rejected_collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260717",
+                    "close": 11.0,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    rejected = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=rejected_collector,
+        dataset_id=target.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="target-forged-source-attempt",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    assert rejected.status == "failed"
+    assert rejected.errors == ("config_error",)
+    assert rejected_collector.calls == []

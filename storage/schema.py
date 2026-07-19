@@ -1,7 +1,7 @@
-"""SharedSignals SQLite storage schema.
+"""TradingDatas clean-slate SQLite storage schema.
 
 The canonical table contract lives in :mod:`storage.schema_contract`; this
-module keeps the historical SQLite-facing exports stable.
+module exposes only the two fresh-database authorities.
 """
 
 from __future__ import annotations

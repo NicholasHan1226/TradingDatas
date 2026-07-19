@@ -17,7 +17,12 @@ import pytest
 import storage.ingest_receipts as receipt_module
 import storage.receipt_projection as projection_module
 from dataset_registry import DatasetDefinition, DatasetRegistry, load_dataset_registry
-from storage.ingest_receipts import IngestContext, IngestCounts, insert_ingest_receipt
+from storage.ingest_receipts import (
+    IngestContext,
+    IngestCounts,
+    ProviderRequestIdentity,
+    insert_ingest_receipt,
+)
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     RuntimeProjectionError,
@@ -70,8 +75,10 @@ def _insert_receipt(
     finished_at: str,
     data_through: str | None,
     transaction_index: int = 0,
+    request_identity: ProviderRequestIdentity | None = None,
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
+    binding = _dataset().provider_bindings[0]
     context = IngestContext(
         attempt_id=attempt_id,
         dataset_id="cn.equity.daily",
@@ -79,9 +86,10 @@ def _insert_receipt(
         provider_api="daily",
         request_window={"trade_date": "20260715"},
         config_hash=CONFIG_HASH,
-        adapter_version="tushare-direct-sqlite.v1",
+        adapter_version=binding.adapter_version,
         started_at=started_at,
         data_through=data_through,
+        request_identity=request_identity or ProviderRequestIdentity.trivial(),
     )
     if status == "success":
         counts = IngestCounts(
@@ -94,7 +102,7 @@ def _insert_receipt(
             committed=1,
             count_semantics="exact_row_outcomes",
         )
-        target_table = "market_bars_daily"
+        target_table = "provider_dataset_rows"
         errors: tuple[str, ...] = ()
     else:
         count_semantics = (
@@ -284,9 +292,7 @@ def test_validated_receipt_history_is_typed_and_immutable(
     assert entry.dataset_id == "cn.equity.daily"
     assert entry.provider == "tushare"
     assert entry.status == "success"
-    assert entry.finished_at == datetime(
-        2026, 7, 15, 0, 1, tzinfo=timezone.utc
-    )
+    assert entry.finished_at == datetime(2026, 7, 15, 0, 1, tzinfo=timezone.utc)
     assert dict(entry.request_window) == {"trade_date": "20260715"}
     with pytest.raises(FrozenInstanceError):
         entry.status = "failed"  # type: ignore[misc]
@@ -380,6 +386,104 @@ def test_projector_accepts_recognized_success_and_empty_receipts(
     assert projection.observed_at == "2026-07-15T00:01:00+00:00"
     assert projection.receipt_id == receipt_id
     assert projection.reasons == expected_reason
+
+
+def test_projector_binds_complete_singular_provider_request_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    request_identity = ProviderRequestIdentity(
+        request_variant={"adjustment": "qfq", "include_suspended": False},
+        fanout_parameter="ts_code",
+        fanout_values=("000001.SZ",),
+        page_offset=100,
+        page_index=1,
+    )
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-singular-provider-call",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+        request_identity=request_identity,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.receipt_id == receipt_id
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_reason"),
+    [
+        (
+            lambda payload: payload["request_identity"].__setitem__("page_index", 2),
+            "receipt_identity_mismatch",
+        ),
+        (
+            lambda payload: payload["request_identity"].__setitem__(
+                "fanout_values", "000001.SZ"
+            ),
+            "receipt_request_identity_invalid",
+        ),
+        (
+            lambda payload: payload.__setitem__(
+                "requests", [payload["request_identity"]]
+            ),
+            "receipt_payload_invalid",
+        ),
+    ],
+)
+def test_projector_rejects_tampered_or_aggregate_request_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    mutate,
+    expected_reason: str,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=f"attempt-request-identity-{expected_reason}",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+        request_identity=ProviderRequestIdentity(
+            request_variant={"adjustment": "qfq"},
+            fanout_parameter="ts_code",
+            fanout_values=("000001.SZ",),
+            page_offset=0,
+            page_index=0,
+        ),
+    )
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    mutate(payload)
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+        (_canonical_json(payload), receipt_id),
+    )
+    conn.commit()
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == (expected_reason,)
 
 
 def test_terminal_failure_overrides_higher_index_success_chunks_in_same_attempt(
@@ -991,16 +1095,9 @@ def test_interface_projection_is_scoped_to_its_provider_binding(
 
 def test_file_projection_rejects_ingest_schema_without_primary_key(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "missing-primary-key.sqlite"
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (tmp_path / f".{db_path.name}.read_model_store.lock").touch()
-    monkeypatch.setenv(
-        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
-        str(maintenance_lock),
-    )
+    (tmp_path / f".{db_path.name}.tradingdatas.lock").touch()
     conn = sqlite3.connect(db_path)
     conn.execute(
         """CREATE TABLE market_ingest_runs (
@@ -1027,22 +1124,34 @@ def test_file_projection_rejects_ingest_schema_without_primary_key(
 
 def test_file_projection_rejects_hidden_generated_ingest_column(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "hidden-column.sqlite"
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    maintenance_lock.touch()
-    (tmp_path / f".{db_path.name}.read_model_store.lock").touch()
-    monkeypatch.setenv(
-        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
-        str(maintenance_lock),
-    )
+    (tmp_path / f".{db_path.name}.tradingdatas.lock").touch()
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_SQL)
     conn.execute(
         "ALTER TABLE market_ingest_runs ADD COLUMN hidden_copy TEXT "
         "GENERATED ALWAYS AS (run_id) VIRTUAL"
     )
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(RuntimeProjectionError, match="schema"):
+        load_interface_runtime_report(
+            db_path,
+            load_dataset_registry(),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_file_projection_rejects_legacy_or_business_tables(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "legacy-table.sqlite"
+    (tmp_path / f".{db_path.name}.tradingdatas.lock").touch()
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.execute("CREATE TABLE market_bars_daily (symbol TEXT)")
     conn.commit()
     conn.close()
 
@@ -1073,19 +1182,13 @@ def _exclusive_lock_available(path: Path) -> bool:
     )
 
 
-def test_large_projection_releases_writer_lock_but_holds_maintenance_lock(
+def test_large_projection_holds_one_shared_authority_lock_until_read_finishes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "marketdata.sqlite"
-    maintenance_lock = tmp_path / "read_model_maintenance.lock"
-    writer_lock = tmp_path / f".{db_path.name}.read_model_store.lock"
-    maintenance_lock.touch()
-    writer_lock.touch()
-    monkeypatch.setenv(
-        "SHAREDSIGNALS_MAINTENANCE_LOCK_FILE",
-        str(maintenance_lock),
-    )
+    authority_lock = tmp_path / f".{db_path.name}.tradingdatas.lock"
+    authority_lock.touch()
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_SQL)
     conn.commit()
@@ -1117,13 +1220,13 @@ def test_large_projection_releases_writer_lock_but_holds_maintenance_lock(
         )
         assert projection_started.wait(timeout=5)
         try:
-            assert _exclusive_lock_available(writer_lock) is True
-            assert _exclusive_lock_available(maintenance_lock) is False
+            assert _exclusive_lock_available(authority_lock) is False
         finally:
             release_projection.set()
         assert future.result(timeout=5) == expected_report
 
     assert calls == 1
+    assert _exclusive_lock_available(authority_lock) is True
 
 
 def test_primary_connection_is_closed_when_snapshot_setup_exits_with_error(
@@ -1134,19 +1237,14 @@ def test_primary_connection_is_closed_when_snapshot_setup_exits_with_error(
     binding = object()
 
     @contextlib.contextmanager
-    def fail_after_setup(_path: Path):
+    def fail_after_setup(_path: Path, **_kwargs: object):
         yield
         raise OSError("injected setup cleanup failure")
 
     monkeypatch.setattr(
         projection_module,
-        "read_model_snapshot_lock",
+        "sqlite_authority_lock",
         fail_after_setup,
-    )
-    monkeypatch.setattr(
-        projection_module,
-        "read_model_snapshot_open_lock",
-        lambda _path: contextlib.nullcontext(),
     )
     monkeypatch.setattr(
         projection_module,
@@ -1183,13 +1281,8 @@ def test_primary_connection_is_closed_when_lightweight_verifier_open_fails(
     binding = object()
     monkeypatch.setattr(
         projection_module,
-        "read_model_snapshot_lock",
-        lambda _path: contextlib.nullcontext(),
-    )
-    monkeypatch.setattr(
-        projection_module,
-        "read_model_snapshot_open_lock",
-        lambda _path: contextlib.nullcontext(),
+        "sqlite_authority_lock",
+        lambda _path, **_kwargs: contextlib.nullcontext(),
     )
     monkeypatch.setattr(
         projection_module,
@@ -1447,7 +1540,7 @@ def test_receipt_like_unknown_schema_fails_closed() -> None:
     payload = {
         "dataset_id": "cn.equity.daily",
         "receipt_id": receipt_id,
-        "schema_version": "sharedsignals.ingest_receipt.v999",
+        "schema_version": "tradingdatas.ingest_receipt.v999",
     }
     conn.execute(
         "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

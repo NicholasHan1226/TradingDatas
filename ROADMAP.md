@@ -1,88 +1,72 @@
-# SharedSignals Development Roadmap
+# TradingDatas Roadmap
 
-## Current execution priority
+## 最终目标
 
-SharedSignals remains a Tushare-like independent multi-source financial data platform.
+所有已购买、已授权且属于首期境内只读范围的 Tushare 数据集，都能：
 
-The current provider-native production lane proves only three datasets:
-`trade_cal`, `stock_basic`, and `daily`. The legacy 114-name inventory is a
-migration input, not the full Tushare capability baseline. The versioned upstream
-baseline is the pinned official capability index described in
-[ADR-0009](docs/adr/ADR-0009-tushare-capability-cadence-retirement.md); its current
-snapshot contains 239 unique API names, each of which must receive an explicit
-scope/entitlement classification before any activation claim.
+1. 从统一 provider transport 获取；
+2. 按注册频率与修订窗口自动运行；
+3. 无损写入通用 SQLite facts；
+4. 在同一事务提交 success receipt；
+5. 通过 `/v1/catalog` 和 `/v1/query` 供内部调用；
+6. 如实暴露 success、empty、unobserved、paused、failed、stale；
+7. 支持当前数据优先、历史数据后台回填和失败后有界重试。
 
-The implementation order is fixed:
+首期不包含港股、美股、加密货币、预测市场和 provider 写操作。
 
-1. Provider-native dataset bulk expansion
-2. Internal consumer service (TradingAgent / MarketGraph)
-3. Internal production stabilization
-4. External Beta service
+## Phase 0 — clean-slate 基础
 
-## Phase 1 — Provider-native bulk expansion
+- 产品和仓库统一命名为 TradingDatas；
+- 删除旧路由、旧 cron、旧交易门禁、旧专项 collector、DuckDB 和旧文档；
+- 新运行面只保留 provider-native SQLite 与固定 catalog/query API；
+- 旧生产系统只作为短期回滚源，不进入新代码依赖。
 
-Goal:
+退出条件：新代码树不存在旧公共 route、旧业务系统 import、dataset-specific Tushare collector 或旧 scheduler 分支。
 
-Convert existing upstream capabilities into the generic provider-native pipeline.
+## Phase 1 — 全量 Tushare 合同与采集
 
-Priorities:
+- 固定官方能力目录版本；
+- 批量读取官方接口文档的输入/输出表，生成字段与请求合同；禁止逐接口手写 Python；
+- 对每个 API 标记 scope、entitlement、activation 和 successor；
+- 批量生成 provider-neutral dataset registry；
+- 一次实现四种 request shape：
+  - `snapshot_or_date_range`
+  - `entity_fanout`
+  - `dimension_fanout`
+  - `event_or_intraday_window`
+- 一次实现通用 pagination、request variants、rate budgets 和 retries；
+- 使用八种 cadence class：
+  - `session_minute`
+  - `postclose_daily`
+  - `daily_reference`
+  - `weekly`
+  - `monthly`
+  - `quarterly_reporting`
+  - `event`
+  - `on_demand`
 
-- Generate a versioned capability snapshot from the pinned official Tushare source
-- Classify every upstream API as in-scope, locked, unknown, excluded, retired, or non-data operation
-- Complete reviewed upstream contracts for entitled domestic read datasets
-- Expand registry-driven dataset definitions in bounded cadence batches
-- Reuse generic adapter, ingest, receipt, storage and query pipeline
-- Avoid dataset-specific collectors, tables and routes
-- Implement the four generic request shapes and eight generic cadence classes in ADR-0009
-- Derive missing partitions and bounded backfill from SQLite facts/receipts rather than latest-receipt time
+退出条件：所有首期 API 均有明确分类；所有已授权 in-scope API 都有可执行合同或明确 blocked 原因；普通 dataset onboarding 不修改 Python。
 
-Acceptance:
+## Phase 2 — 内部服务
 
-- New normal datasets can onboard through registry/config only
-- No new public API route is required
-- Provider data, receipt and metadata are queryable through the common data plane
-- Every pinned upstream API has an explicit classification; no static count is used as runtime proof
-- Every activated dataset has reviewed availability/cadence, entitlement, real receipt, query readback and observed timer evidence
-- `trade_cal` has bounded history plus a future horizon, and `daily` catches up every missing trading partition
+- 优先采集最新/当前数据；
+- 启动后台历史回填；
+- 完成 catalog/query、metadata、认证和监控；
+- TradingAgent、MarketGraph 与内部研究工具只通过 API 消费；
+- same-as-of 查询可复现。
 
-## Phase 2 — Internal service
+退出条件：内部消费者不再访问旧数据库、旧 route 或 provider；真实 Tushare -> SQLite -> receipt -> API readback 通过。
 
-Consumers:
+## Phase 3 — 生产稳定与旧系统删除
 
-- TradingAgent
-- MarketGraph
-- Internal research tools
+- 在 `/opt/investment/TradingDatas` 和独立数据目录发布；
+- systemd service/timer 观察至少一个完整运行周期；
+- 验证频率、积压、失败重试、资源预算、备份和回滚；
+- 切换消费者；
+- 停止并删除旧 SharedSignals 服务、cron、代码、文档和依赖。
 
-Priorities:
+数据库和历史数据只有在单独批准的数据保留清单中才可删除。
 
-- Stable catalog/query access
-- Freshness and quality metadata
-- Internal authentication
-- Consumer contract validation
-- Monitoring and recovery
+## Phase 4 — 后续扩源与外部 Beta
 
-## Phase 3 — Internal production
-
-Priorities:
-
-- Production backfill
-- Data parity validation
-- Consumer migration
-- Runtime monitoring
-- Backup and rollback verification
-- Stop legacy writes, observe no-use, and retire approved old code, dependencies, docs, cron and units
-
-Legacy data, facts, receipts, journals, audit evidence and rollback artifacts are
-not deleted as part of code retirement.
-
-## Phase 4 — External Beta
-
-Only after internal service is stable:
-
-- External tenant access
-- Quota and entitlement
-- External onboarding
-- Public documentation
-- External SLA
-
-External productization must not delay completion of internal data service capability.
+内部稳定后才增加外部账户治理。新增 provider 继续复用固定 API；只有 transport/auth/pagination 不同才增加 provider adapter。
