@@ -84,6 +84,7 @@ _CONTRACT_KEYS = frozenset(
         "required_scope",
         "quota_class",
         "request_template",
+        "request_variants",
         "request_window_policy",
         "response_completeness",
         "requested_fields",
@@ -468,6 +469,59 @@ def _request_template_contract(raw: object, label: str) -> dict[str, str]:
     return normalized
 
 
+def _request_variants_contract(
+    raw: object,
+    *,
+    request_template: Mapping[str, str],
+    label: str,
+) -> list[dict[str, str]]:
+    values = _sequence(raw, label)
+    if not values:
+        raise ValueError(f"{label} must not be empty")
+    normalized: list[dict[str, str]] = []
+    expected_keys: frozenset[str] | None = None
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    for index, raw_variant in enumerate(values):
+        value = _mapping(raw_variant, f"{label}[{index}]")
+        variant: dict[str, str] = {}
+        for raw_key in sorted(value, key=str):
+            key = _required_text(raw_key, f"{label}[{index}] key")
+            if _SAFE_IDENTIFIER.fullmatch(key) is None:
+                raise ValueError(f"{label}[{index}] key must use provider grammar")
+            if key not in request_template:
+                raise ValueError(
+                    f"{label}[{index}].{key} is missing from request_template"
+                )
+            if _WINDOW_PLACEHOLDER.fullmatch(request_template[key]):
+                raise ValueError(
+                    f"{label}[{index}].{key} cannot override a window placeholder"
+                )
+            item = _required_text(value[raw_key], f"{label}[{index}].{key}")
+            if any(ord(character) < 32 for character in item) or "${" in item:
+                raise ValueError(f"{label}[{index}].{key} must be a concrete value")
+            variant[key] = item
+        keys = frozenset(variant)
+        if not keys:
+            if len(values) != 1:
+                raise ValueError(f"{label} empty variant must be the only variant")
+        elif expected_keys is None:
+            expected_keys = keys
+        elif keys != expected_keys:
+            raise ValueError(f"{label} variants must use the same keys")
+        identity = tuple(sorted(variant.items()))
+        if identity in seen:
+            raise ValueError(f"{label} contains a duplicate variant")
+        seen.add(identity)
+        normalized.append(dict(identity))
+    if expected_keys is not None:
+        template_default = tuple(
+            sorted((key, request_template[key]) for key in expected_keys)
+        )
+        if template_default not in seen:
+            raise ValueError(f"{label} must include the request_template default")
+    return normalized
+
+
 def _window_policy_contract(
     raw: object,
     *,
@@ -728,6 +782,11 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     request_template = _request_template_contract(
         value["request_template"], f"{label}.request_template"
     )
+    request_variants = _request_variants_contract(
+        value["request_variants"],
+        request_template=request_template,
+        label=f"{label}.request_variants",
+    )
     window_policy = _window_policy_contract(
         value.get("request_window_policy"),
         request_template=request_template,
@@ -932,6 +991,7 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         ),
         "quota_class": _required_text(value["quota_class"], f"{label}.quota_class"),
         "request_template": request_template,
+        "request_variants": request_variants,
         "request_window_policy": window_policy,
         "response_completeness": response_completeness,
         "requested_fields": requested_fields,
@@ -1186,6 +1246,7 @@ def compile_provider_native_registry(
         binding["adapter_version"] = PROVIDER_ADAPTER_VERSION
         binding["target_tables"] = [PROVIDER_NATIVE_TABLE]
         binding["request_template"] = contract["request_template"]
+        binding["request_variants"] = contract["request_variants"]
         binding["request_window_policy"] = contract["request_window_policy"]
         binding["response_completeness"] = contract["response_completeness"]
         binding["requested_fields"] = contract["requested_fields"]

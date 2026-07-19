@@ -122,6 +122,7 @@ _BINDING_KEYS = frozenset(
         "activation_state",
         "target_tables",
         "request_template",
+        "request_variants",
         "request_window_policy",
         "response_completeness",
         "requested_fields",
@@ -296,6 +297,9 @@ class ProviderBinding:
     target_tables: tuple[str, ...]
     request_template: Mapping[str, str] = dataclass_field(
         default_factory=lambda: MappingProxyType({})
+    )
+    request_variants: tuple[Mapping[str, str], ...] = dataclass_field(
+        default_factory=lambda: (MappingProxyType({}),)
     )
     request_window_policy: RequestWindowPolicy | None = None
     response_completeness: ResponseCompletenessPolicy | None = None
@@ -642,6 +646,56 @@ def _request_template(raw: Any, path: str) -> Mapping[str, str]:
     return MappingProxyType(dict(sorted(normalized.items())))
 
 
+def _request_variants(
+    raw: Any,
+    *,
+    path: str,
+    request_template: Mapping[str, str],
+) -> tuple[Mapping[str, str], ...]:
+    if not isinstance(raw, list) or not raw:
+        raise ValueError(f"{path} must be a non-empty list")
+    normalized: list[Mapping[str, str]] = []
+    expected_keys: frozenset[str] | None = None
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    for index, raw_variant in enumerate(raw):
+        value = _mapping(raw_variant, f"{path}[{index}]")
+        variant: dict[str, str] = {}
+        for raw_key, raw_value in value.items():
+            key = _provider_field_name(raw_key, f"{path}[{index}] key")
+            if key not in request_template:
+                raise ValueError(
+                    f"{path}[{index}].{key} is missing from request_template"
+                )
+            if _WINDOW_PLACEHOLDER_PATTERN.fullmatch(request_template[key]):
+                raise ValueError(
+                    f"{path}[{index}].{key} cannot override a window placeholder"
+                )
+            item = _non_empty_string(raw_value, f"{path}[{index}].{key}")
+            if any(ord(character) < 32 for character in item) or "${" in item:
+                raise ValueError(f"{path}[{index}].{key} must be a concrete value")
+            variant[key] = item
+        keys = frozenset(variant)
+        if not keys:
+            if len(raw) != 1:
+                raise ValueError(f"{path} empty variant must be the only variant")
+        elif expected_keys is None:
+            expected_keys = keys
+        elif keys != expected_keys:
+            raise ValueError(f"{path} variants must use the same keys")
+        identity = tuple(sorted(variant.items()))
+        if identity in seen:
+            raise ValueError(f"{path} contains a duplicate variant")
+        seen.add(identity)
+        normalized.append(MappingProxyType(dict(identity)))
+    if expected_keys is not None:
+        template_default = tuple(
+            sorted((key, request_template[key]) for key in expected_keys)
+        )
+        if template_default not in seen:
+            raise ValueError(f"{path} must include the request_template default")
+    return tuple(normalized)
+
+
 def _request_window_policy(
     raw: Any,
     *,
@@ -958,6 +1012,11 @@ def _load_binding(
         value.get("request_template", {}),
         f"{path}.request_template",
     )
+    request_variants = _request_variants(
+        value.get("request_variants", [{}]),
+        path=f"{path}.request_variants",
+        request_template=request_template,
+    )
     request_window_policy = _request_window_policy(
         value.get("request_window_policy"),
         path=f"{path}.request_window_policy",
@@ -994,6 +1053,7 @@ def _load_binding(
         activation_state=activation_state,
         target_tables=target_tables,
         request_template=request_template,
+        request_variants=request_variants,
         request_window_policy=request_window_policy,
         response_completeness=response_completeness,
         requested_fields=requested_fields,

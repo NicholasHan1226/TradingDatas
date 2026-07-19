@@ -58,6 +58,8 @@ contracts:
       exchange: SSE
       start_date: ${window.start_date}
       end_date: ${window.end_date}
+    request_variants:
+      - {}
     request_window_policy:
       required_keys: [start_date, end_date]
       formats:
@@ -125,6 +127,10 @@ contracts:
     quota_class: beta_standard
     request_template:
       list_status: L
+    request_variants:
+      - list_status: L
+      - list_status: D
+      - list_status: P
     response_completeness:
       strategy: unique_primary_key_snapshot
       fixed_field_matches: {}
@@ -187,6 +193,8 @@ contracts:
     quota_class: beta_standard
     request_template:
       trade_date: ${window.trade_date}
+    request_variants:
+      - {}
     request_window_policy:
       required_keys: [trade_date]
       formats:

@@ -15,6 +15,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -203,6 +204,18 @@ class DatasetRuntimeEvidence:
 
 
 @dataclass(frozen=True)
+class ValidatedReceiptHistoryEntry:
+    """Minimal immutable receipt history exposed to read-only planners."""
+
+    dataset_id: str
+    provider: str
+    receipt_id: str
+    status: Literal["success", "empty", "failed"]
+    finished_at: datetime
+    request_window: Mapping[str, str]
+
+
+@dataclass(frozen=True)
 class _Receipt:
     receipt_id: str
     attempt_id: str
@@ -211,6 +224,7 @@ class _Receipt:
     status: str
     provider: str
     data_through: str | None
+    request_window: Mapping[str, str]
     transaction_index: int
     errors: tuple[str, ...]
     started_sort: datetime
@@ -793,6 +807,7 @@ def _validate_receipt_row(
         status=status,
         provider=binding.provider,
         data_through=data_through,
+        request_window=MappingProxyType(dict(sorted(request_window.items()))),
         transaction_index=transaction_index,
         errors=errors,
         started_sort=started_sort,
@@ -1202,6 +1217,60 @@ def _trusted_receipts_for_evidence(
         current_receipts.append(receipt)
     invalid.extend(_attempt_context_failures(current_receipts))
     return current_receipts, invalid
+
+
+def validated_receipt_history(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    *,
+    now: datetime,
+) -> tuple[ValidatedReceiptHistoryEntry, ...]:
+    """Return fully validated receipt history or fail closed on any invalid row."""
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
+    _canonical_now(now)
+    known_dataset_ids = frozenset(
+        dataset.dataset_id for dataset in registry.datasets
+    )
+    rows = _scan_ingest_run_rows(conn)
+    entries: list[ValidatedReceiptHistoryEntry] = []
+    invalid: list[_InvalidReceipt] = []
+    for dataset in registry.datasets:
+        receipts, rejected = _trusted_receipts_for_evidence(
+            dataset,
+            now=now,
+            known_dataset_ids=known_dataset_ids,
+            rows=rows,
+            expected_binding=None,
+        )
+        invalid.extend(rejected)
+        entries.extend(
+            ValidatedReceiptHistoryEntry(
+                dataset_id=dataset.dataset_id,
+                provider=receipt.provider,
+                receipt_id=receipt.receipt_id,
+                status=receipt.status,  # type: ignore[arg-type]
+                finished_at=receipt.finished_sort,
+                request_window=receipt.request_window,
+            )
+            for receipt in receipts
+        )
+    if invalid:
+        raise RuntimeProjectionError("receipt history contains invalid authority")
+    return tuple(
+        sorted(
+            entries,
+            key=lambda entry: (
+                entry.dataset_id,
+                entry.provider,
+                entry.finished_at,
+                entry.receipt_id,
+            ),
+        )
+    )
 
 
 def project_dataset_runtime_evidence(

@@ -256,6 +256,80 @@ def test_projector_returns_unobserved_without_a_recognized_receipt() -> None:
     assert projection.reasons == ("no_recognized_receipt",)
 
 
+def test_validated_receipt_history_is_typed_and_immutable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="history-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    base = load_dataset_registry()
+    registry = DatasetRegistry((_dataset(),), query_defaults=base.query_defaults)
+
+    history = projection_module.validated_receipt_history(
+        conn,
+        registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(history) == 1
+    entry = history[0]
+    assert entry.receipt_id == receipt_id
+    assert entry.dataset_id == "cn.equity.daily"
+    assert entry.provider == "tushare"
+    assert entry.status == "success"
+    assert entry.finished_at == datetime(
+        2026, 7, 15, 0, 1, tzinfo=timezone.utc
+    )
+    assert dict(entry.request_window) == {"trade_date": "20260715"}
+    with pytest.raises(FrozenInstanceError):
+        entry.status = "failed"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        entry.request_window["trade_date"] = "20260716"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("counts.validated", 0),
+        ("counts.count_semantics", "terminal_no_data_transaction"),
+        ("errors", ["provider_error"]),
+        ("payload_fingerprint", "not-a-sha256"),
+    ],
+)
+def test_validated_receipt_history_rejects_canonical_shaped_tampering(
+    field: str,
+    value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=f"history-tampered-{field}",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    _tamper_notes(conn, receipt_id, field, value)
+    base = load_dataset_registry()
+    registry = DatasetRegistry((_dataset(),), query_defaults=base.query_defaults)
+
+    with pytest.raises(RuntimeProjectionError, match="receipt history"):
+        projection_module.validated_receipt_history(
+            conn,
+            registry,
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
 def test_projector_returns_paused_from_registry_activation() -> None:
     conn = _memory_db()
 

@@ -210,6 +210,50 @@ def test_generic_registry_materializes_frozen_storage_and_request_contract(
         binding.request_template["end_date"] = "mutated"  # type: ignore[index]
 
 
+def test_request_variants_are_frozen_and_scoped_to_static_template_values(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding["request_variants"] = [  # type: ignore[index]
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+    ]
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset))
+    variants = loaded.resolve("cn.synthetic.native").provider_bindings[0].request_variants
+
+    assert tuple(dict(variant) for variant in variants) == (
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+    )
+    with pytest.raises(TypeError):
+        variants[0]["exchange"] = "BSE"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("variants", "message"),
+    [
+        ([{"missing": "SSE"}], "request_variants.*request_template"),
+        ([{"start_date": "20260720"}], "request_variants.*placeholder"),
+        ([{"exchange": "SZSE"}], "request_variants.*template default"),
+        ([{}, {"exchange": "SSE"}], "request_variants.*empty"),
+        ([{"exchange": "SSE"}, {"exchange": "SSE"}], "request_variants.*duplicate"),
+    ],
+)
+def test_request_variants_fail_closed_on_invalid_template_contract(
+    variants: list[dict[str, str]],
+    message: str,
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding["request_variants"] = variants  # type: ignore[index]
+
+    with pytest.raises(ValueError, match=message):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
 def test_existing_registry_remains_legacy_typed_by_default() -> None:
     daily = load_dataset_registry().resolve("cn.equity.daily")
     binding = daily.provider_bindings[0]

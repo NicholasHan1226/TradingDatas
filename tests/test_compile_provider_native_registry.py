@@ -234,6 +234,7 @@ def _contract_bundle(*, contracts: list[dict[str, object]] | None = None) -> dic
             "start_date": "${window.start_date}",
             "end_date": "${window.end_date}",
         },
+        "request_variants": [{}],
         "request_window_policy": {
             "required_keys": ["start_date", "end_date"],
             "formats": {"start_date": "yyyymmdd", "end_date": "yyyymmdd"},
@@ -332,6 +333,26 @@ def test_compiler_replaces_legacy_schema_with_reviewed_provider_contract(tmp_pat
     }
     assert report["resolved"][0]["source_document_sha256"] == "b" * 64
     assert report["resolved"][0]["reviewed_type_overrides"] == ["is_open"]
+
+
+def test_compiler_preserves_binding_scoped_request_variants() -> None:
+    registry, plan, collector = _documents()
+    bundle = _contract_bundle()
+    contract = bundle["contracts"][0]  # type: ignore[index]
+    contract["request_variants"] = [
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+    ]
+
+    candidate, _ = compile_provider_native_registry(
+        registry, plan, collector, bundle
+    )
+
+    binding = candidate["datasets"][0]["provider_bindings"][0]
+    assert binding["request_variants"] == [
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+    ]
 
 
 def test_activation_manifest_is_the_only_state_authority_and_missing_defaults_paused() -> (
@@ -593,6 +614,24 @@ def test_contract_without_registry_owner_is_a_deterministic_global_conflict() ->
             "as_of/range/partition",
         ),
         (
+            lambda bundle: bundle["contracts"][0].update(  # type: ignore[index]
+                request_variants=[{"missing": "SSE"}]
+            ),
+            "request_variants.*request_template",
+        ),
+        (
+            lambda bundle: bundle["contracts"][0].update(  # type: ignore[index]
+                request_variants=[{"start_date": "20260720"}]
+            ),
+            "request_variants.*placeholder",
+        ),
+        (
+            lambda bundle: bundle["contracts"][0].update(  # type: ignore[index]
+                request_variants=[{"exchange": "SZSE"}]
+            ),
+            "request_variants.*template default",
+        ),
+        (
             lambda bundle: bundle["contracts"][0]["fields"][0].update(  # type: ignore[index]
                 declared_source_type="int", logical_type="integer"
             ),
@@ -762,6 +801,19 @@ def test_repository_bundle_resolves_stock_basic_and_daily_contracts_deterministi
     assert daily.provider_bindings[0].requested_fields == daily_fields
     assert trade_cal_contract["requested_fields"] == []
     assert trade_cal.provider_bindings[0].requested_fields == ()
+    assert tuple(
+        dict(variant) for variant in snapshot.provider_bindings[0].request_variants
+    ) == (
+        {"list_status": "L"},
+        {"list_status": "D"},
+        {"list_status": "P"},
+    )
+    assert tuple(
+        dict(variant) for variant in daily.provider_bindings[0].request_variants
+    ) == ({},)
+    assert tuple(
+        dict(variant) for variant in trade_cal.provider_bindings[0].request_variants
+    ) == ({},)
 
 
 def test_completeness_window_keys_are_not_provider_parameter_names() -> None:

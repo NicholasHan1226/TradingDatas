@@ -1,17 +1,224 @@
-version: 1
+version: 2
 dataset_timeout_seconds: 900
+rate_budgets:
+  standard:
+    account_requests_per_run: 32
+    provider_requests_per_run: 32
+    api_requests_per_run: 8
+  intraday:
+    account_requests_per_run: 12
+    provider_requests_per_run: 12
+    api_requests_per_run: 6
+  low_frequency:
+    account_requests_per_run: 16
+    provider_requests_per_run: 16
+    api_requests_per_run: 4
+  event:
+    account_requests_per_run: 12
+    provider_requests_per_run: 12
+    api_requests_per_run: 4
 cadences:
-  daily_reference:
-    minimum_interval_seconds: 86400
-    failure_retry_seconds: 900
-    not_before_local: "00:30"
-    partition_offset_days: 0
-    range_days: 7
-    weekdays: [1, 2, 3, 4, 5, 6, 7]
-  postclose_daily:
-    minimum_interval_seconds: 86400
-    failure_retry_seconds: 900
-    not_before_local: "16:30"
-    partition_offset_days: 0
-    range_days: 1
+  session_minute:
+    automatic: true
+    availability_after_local: "09:30"
     weekdays: [1, 2, 3, 4, 5]
+    incremental_mode: request_shape
+    partition_frequency: session
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+    minimum_interval_seconds: 300
+    failure_retry_seconds: 120
+    correction_overlap_days: 0
+    correction_overlap_bars: 1
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 5
+    backfill_start_date: null
+    backfill_chunk_span_days: 1
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: intraday
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 15
+      max_delay_seconds: 120
+      jitter_seconds: 15
+  postclose_daily:
+    automatic: true
+    availability_after_local: "16:30"
+    weekdays: [1, 2, 3, 4, 5]
+    incremental_mode: request_shape
+    partition_frequency: open_day
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    correction_overlap_days: 0
+    correction_overlap_bars: 2
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 30
+    backfill_start_date: null
+    backfill_chunk_span_days: 1
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 3
+    rate_budget_class: standard
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 60
+      max_delay_seconds: 900
+      jitter_seconds: 60
+  daily_reference:
+    automatic: true
+    availability_after_local: "00:30"
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: request_shape
+    partition_frequency: day
+    calendar: null
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    correction_overlap_days: 7
+    correction_overlap_bars: 0
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 731
+    backfill_start_date: null
+    backfill_chunk_span_days: 366
+    future_horizon_days: 365
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: standard
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 60
+      max_delay_seconds: 900
+      jitter_seconds: 60
+  weekly:
+    automatic: true
+    availability_after_local: "18:00"
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: request_shape
+    partition_frequency: week
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+    minimum_interval_seconds: 604800
+    failure_retry_seconds: 1800
+    correction_overlap_days: 0
+    correction_overlap_bars: 1
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 730
+    backfill_start_date: null
+    backfill_chunk_span_days: 366
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: low_frequency
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 120
+      max_delay_seconds: 1800
+      jitter_seconds: 120
+  monthly:
+    automatic: true
+    availability_after_local: "18:00"
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: request_shape
+    partition_frequency: month
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+    minimum_interval_seconds: 2419200
+    failure_retry_seconds: 3600
+    correction_overlap_days: 0
+    correction_overlap_bars: 1
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 1825
+    backfill_start_date: null
+    backfill_chunk_span_days: 366
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: low_frequency
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 300
+      max_delay_seconds: 3600
+      jitter_seconds: 300
+  quarterly_reporting:
+    automatic: true
+    availability_after_local: "20:00"
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: request_shape
+    partition_frequency: quarter
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+    minimum_interval_seconds: 7776000
+    failure_retry_seconds: 7200
+    correction_overlap_days: 30
+    correction_overlap_bars: 1
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 3650
+    backfill_start_date: null
+    backfill_chunk_span_days: 366
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: low_frequency
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 600
+      max_delay_seconds: 7200
+      jitter_seconds: 600
+  event:
+    automatic: true
+    availability_after_local: "00:00"
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: append
+    partition_frequency: event
+    calendar: null
+    minimum_interval_seconds: 900
+    failure_retry_seconds: 300
+    correction_overlap_days: 2
+    correction_overlap_bars: 0
+    backfill_start_policy: rolling_days
+    backfill_lookback_days: 7
+    backfill_start_date: null
+    backfill_chunk_span_days: 1
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 2
+    rate_budget_class: event
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 30
+      max_delay_seconds: 300
+      jitter_seconds: 30
+  on_demand:
+    automatic: false
+    availability_after_local: null
+    weekdays: [1, 2, 3, 4, 5, 6, 7]
+    incremental_mode: on_demand
+    partition_frequency: none
+    calendar: null
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    correction_overlap_days: 0
+    correction_overlap_bars: 0
+    backfill_start_policy: none
+    backfill_lookback_days: 0
+    backfill_start_date: null
+    backfill_chunk_span_days: 1
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 1
+    rate_budget_class: standard
+    retry:
+      max_attempts: 1
+      base_delay_seconds: 0
+      max_delay_seconds: 0
+      jitter_seconds: 0

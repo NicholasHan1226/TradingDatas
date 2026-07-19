@@ -34,6 +34,8 @@ datasets:
     - provider_dataset_rows
     request_template:
       trade_date: ${window.trade_date}
+    request_variants:
+    - {}
     request_window_policy:
       required_keys:
       - trade_date
@@ -197,6 +199,10 @@ datasets:
     - provider_dataset_rows
     request_template:
       list_status: L
+    request_variants:
+    - list_status: L
+    - list_status: D
+    - list_status: P
     request_window_policy: null
     response_completeness:
       strategy: unique_primary_key_snapshot
@@ -379,6 +385,8 @@ datasets:
       end_date: ${window.end_date}
       exchange: SSE
       start_date: ${window.start_date}
+    request_variants:
+    - {}
     request_window_policy:
       required_keys:
       - start_date
