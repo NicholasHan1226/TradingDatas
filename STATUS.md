@@ -6,8 +6,8 @@
 
 - GitHub 仓库已从 `NicholasHan1226/SharedSignals` 重命名为 `NicholasHan1226/TradingDatas`。
 - 本地新目录为 `/Users/nicholashan/Projects/Finance/TradingDatas`。
-- 当前 local main、origin/main 与 GitHub main 均为 `b0cb692da1153168950d8d56617c81f8cd569f43`。
-- clean-slate 候选位于本地分支 `codex/tradingdatas-v1-clean-slate`，尚未提交、推送或部署；不能把候选状态误报为 main、GitHub 或生产状态。
+- 当前 local main、origin/main、GitHub main 与候选分支均为 `ea33fabfbac82c6e55ada31d32613ed8c73dac20`；clean-slate 代码已通过普通 fast-forward 进入 GitHub main。
+- GitHub 集成不等于生产发布；TradingDatas 新生产 runtime、真实全量采集、API readback 与消费者切换仍未完成。
 - provider-native pilot 已证明 `trade_cal`、`stock_basic`、`daily` 三个数据集的真实 Tushare -> SQLite -> receipt -> catalog/query 纵向切片。
 - 官方固定能力快照当前包含 239 个唯一 API 名称；首期境内只读候选当前分类为 190 个 in-scope。`in_scope` 不等于账号已授权或运行时已激活。
 - 2026-07-20 已对 190 个 in-scope 官方文档做一次批量读取验证：首轮 184 个成功，6 个瞬时网络失败在有界重试后均返回 200；190 个文档都包含可解析的输入参数与输出参数表。合同字段可以批量生成，不需要逐接口手写采集器。
@@ -23,21 +23,19 @@
 
 TradingDatas 尚未达到内部可接入停止线，原因：
 
-1. clean-slate 候选尚未提交、推送和同步到 GitHub main；
-2. provider-native target registry 已包含 190 个 dataset，但只有三个 pilot dataset 具有 activation 证据；其余 187 个仍 paused，尚未完成真实 entitlement、参数和频率验证；
-3. 全量 entitlement 探测、最新数据采集和历史回填尚未完成；
-4. 新生产目录、service/timer、token 和内部消费者尚未完成 TradingDatas 名称切换；
-5. 旧生产回滚源尚未经过新系统 readback 与消费者切换门禁，因此暂不能删除。
+1. provider-native target registry 已包含 190 个 dataset，但只有三个 pilot dataset 具有 activation 证据；其余 187 个仍 paused，尚未完成真实 entitlement、参数和频率验证；
+2. 全量 entitlement 探测、最新数据采集和历史回填尚未完成；
+3. 新生产目录、service/timer、token 和内部消费者尚未完成 TradingDatas 名称切换；
+4. 旧生产回滚源尚未经过新系统 readback 与消费者切换门禁，因此暂不能删除。
 
 ## 当前执行顺序
 
-1. 将已独立验收的 clean-slate 候选精确提交并同步到 GitHub main；
-2. 对账号权限做安全探测，按 entitlement 激活并冻结真实频率；
-3. 按安全发布门禁建立 TradingDatas 新生产 runtime；
-4. 先采最新数据并完成内部 `catalog/query` API readback；
-5. 后台回填历史数据；
-6. 切换内部消费者；
-7. 仅在回滚证据与消费者 readback 通过后删除旧生产代码和服务，数据库及历史数据另行保留或迁移。
+1. 对账号权限做安全探测，按 entitlement 激活并冻结真实频率；
+2. 按安全发布门禁建立 TradingDatas 新生产 runtime；
+3. 先采最新数据并完成内部 `catalog/query` API readback；
+4. 后台回填历史数据；
+5. 切换内部消费者；
+6. 仅在回滚证据与消费者 readback 通过后删除旧生产代码和服务，数据库及历史数据另行保留或迁移。
 
 ## 已验证与未验证
 
@@ -49,6 +47,7 @@ TradingDatas 尚未达到内部可接入停止线，原因：
 - capability snapshot 与 generic cadence planner 的本地/GitHub 代码层。
 - 本地 clean-slate 候选的 190 个 provider-neutral 合同、通用采集与 SQLite transaction receipt；
 - 本地候选的独立 clean-overlay 完整回归、静态门禁及 86 PRESENT / 204 DELETED 精确范围。
+- clean-slate commit `ea33fabfbac82c6e55ada31d32613ed8c73dac20` 的 local main、origin/main 与 GitHub main readback。
 
 未验证：
 

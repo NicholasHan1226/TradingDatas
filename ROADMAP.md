@@ -59,7 +59,9 @@
 
 ## Phase 3 — 生产稳定与旧系统删除
 
-- 在 `/opt/investment/TradingDatas` 和独立数据目录发布；
+- 在 `/opt/investment/releases/tradingdatas/<immutable-release>` 发布不可变代码，使用
+  `/opt/investment/releases/tradingdatas/current` 原子指向当前版本，并把 SQLite 放在独立的
+  `/opt/investment-data/tradingdatas/` 数据目录；
 - systemd service/timer 观察至少一个完整运行周期；
 - 验证频率、积压、失败重试、资源预算、备份和回滚；
 - 切换消费者；
