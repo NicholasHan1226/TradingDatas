@@ -22,6 +22,7 @@ REGISTRY_PATH = ROOT / "config" / "dataset_registry.yaml"
 PLAN_PATH = ROOT / "config" / "tushare_capability_plan.yaml"
 COLLECTOR_CONFIG_PATH = ROOT / "collectors" / "tushare" / "config.yaml"
 CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
+TARGET_REGISTRY_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
@@ -534,6 +535,10 @@ def test_repository_bundle_resolves_stock_basic_and_daily_contracts_deterministi
     assert render_compilation(first_candidate, first_report, kind="bundle") == (
         render_compilation(second_candidate, second_report, kind="bundle")
     )
+    assert first_candidate == _read_yaml(TARGET_REGISTRY_PATH)
+    assert render_compilation(first_candidate, first_report, kind="candidate") == (
+        TARGET_REGISTRY_PATH.read_text(encoding="utf-8")
+    )
     assert first_report["totals"]["converted_datasets"] == 3
     assert first_report["totals"]["unresolved_datasets"] == 111
     assert [item["dataset_id"] for item in first_candidate["datasets"]] == [
@@ -551,10 +556,26 @@ def test_repository_bundle_resolves_stock_basic_and_daily_contracts_deterministi
     target = load_dataset_registry(candidate_path)
     snapshot = target.resolve("tushare.stock_basic")
     daily = target.resolve("tushare.daily")
+    trade_cal = target.resolve("tushare.trade_cal")
+    contract_by_dataset = {
+        contract["dataset_id"]: contract
+        for contract in contracts["contracts"]  # type: ignore[index]
+    }
+    snapshot_contract = contract_by_dataset[snapshot.dataset_id]
+    daily_contract = contract_by_dataset[daily.dataset_id]
+    trade_cal_contract = contract_by_dataset[trade_cal.dataset_id]
+    snapshot_fields = tuple(
+        field["name"] for field in snapshot_contract["fields"]
+    )
+    daily_fields = tuple(field["name"] for field in daily_contract["fields"])
     assert snapshot.dataset_id == "cn.equity.security_master"
     assert daily.dataset_id == "cn.equity.daily"
-    assert snapshot.provider_bindings[0].requested_fields == ()
-    assert daily.provider_bindings[0].requested_fields == ()
+    assert tuple(snapshot_contract["requested_fields"]) == snapshot_fields
+    assert tuple(daily_contract["requested_fields"]) == daily_fields
+    assert snapshot.provider_bindings[0].requested_fields == snapshot_fields
+    assert daily.provider_bindings[0].requested_fields == daily_fields
+    assert trade_cal_contract["requested_fields"] == []
+    assert trade_cal.provider_bindings[0].requested_fields == ()
 
 
 def test_completeness_window_keys_are_not_provider_parameter_names() -> None:

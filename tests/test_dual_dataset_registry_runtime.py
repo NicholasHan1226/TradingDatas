@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 import data_plane_runtime
 import dataset_registry
@@ -86,11 +87,28 @@ def test_target_registry_is_fully_dormant_and_provider_native_where_resolved() -
     assert unresolved == ()
     assert all(binding.activation_state == "paused" for binding in bindings)
     assert all(binding.entitlement_state != "active" for binding in bindings)
-    assert all(
-        registry.provider_binding(dataset.dataset_id, "tushare").requested_fields
-        == ()
-        for dataset in provider_native
+    contract_bundle = yaml.safe_load(
+        (ROOT / "config" / "tushare_upstream_contracts.v1.yaml").read_text(
+            encoding="utf-8"
+        )
     )
+    contract_by_dataset = {
+        contract["dataset_id"]: contract
+        for contract in contract_bundle["contracts"]
+    }
+    requested_fields = {
+        dataset.dataset_id: registry.provider_binding(
+            dataset.dataset_id, "tushare"
+        ).requested_fields
+        for dataset in provider_native
+    }
+    assert requested_fields == {
+        dataset_id: tuple(contract_by_dataset[dataset_id]["requested_fields"])
+        for dataset_id in requested_fields
+    }
+    assert len(requested_fields["cn.equity.security_master"]) == 17
+    assert len(requested_fields["cn.equity.daily"]) == 13
+    assert requested_fields["cn.market.trade_calendar"] == ()
     completeness = {
         dataset.dataset_id: registry.provider_binding(
             dataset.dataset_id, "tushare"

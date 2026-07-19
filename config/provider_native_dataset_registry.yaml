@@ -48,7 +48,20 @@ datasets:
       reject_at_row_limit: true
       partition_field: trade_date
       request_partition_key: trade_date
-    requested_fields: []
+    requested_fields:
+    - ts_code
+    - trade_date
+    - open
+    - high
+    - low
+    - close
+    - pre_close
+    - change
+    - pct_chg
+    - vol
+    - amount
+    - ah_vol
+    - ah_amount
     max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -189,7 +202,24 @@ datasets:
       strategy: unique_primary_key_snapshot
       fixed_field_matches: {}
       reject_at_row_limit: true
-    requested_fields: []
+    requested_fields:
+    - ts_code
+    - symbol
+    - name
+    - area
+    - industry
+    - fullname
+    - enname
+    - cnspell
+    - market
+    - exchange
+    - curr_type
+    - list_status
+    - list_date
+    - delist_date
+    - is_hs
+    - act_name
+    - act_ent_type
     max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536

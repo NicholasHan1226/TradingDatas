@@ -131,11 +131,16 @@ the provider payload. Legitimate empties still follow `empty_data_policy` and
 produce an explicit `empty` receipt; provider and validation failures remain
 `failed` receipts.
 
-Every ordinary Tushare binding emits `requested_fields: []`, so the generic
-adapter omits `fields` and receives the complete upstream `fields/items`
-envelope. That preserves unknown upstream keys for drift evidence; it does not
-promote those keys into the public query allowlist. A legacy collector `fields`
-value is only a diagnostic hint.
+An ordinary Tushare binding freezes `requested_fields` from the reviewed upstream
+contract whenever the provider's default response omits any officially declared
+field. The list must follow the contract `fields` order, and the generic adapter
+sends it as the exact comma-separated provider request. `requested_fields: []`
+is allowed only when reviewed evidence proves that the default response includes
+every declared field. The actual returned `fields/items` envelope remains
+lossless, including unknown keys, but those keys do not enter the public query
+allowlist automatically. A newly declared upstream field is added through a
+reviewed contract/registry refresh, never a dataset-specific Python branch or
+public route. A legacy collector `fields` value is only a diagnostic hint.
 
 `stock_basic` and `daily` are ordinary config-only Tushare extensions under
 this rule. Their onboarding adds neither a public route, a table, nor a

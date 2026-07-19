@@ -234,7 +234,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
     binding = registry.provider_binding(dataset.dataset_id, "tushare")
     fields = [field.name for field in dataset.fields]
     assert len(fields) == 17
-    assert binding.requested_fields == ()
+    assert binding.requested_fields == tuple(fields)
     assert binding.max_rows_per_attempt == 6000
     items = [
         [
@@ -261,6 +261,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
     database = tmp_path / "marketdata.sqlite"
     _create_database(database)
     observed_scan_budgets: list[tushare_common.SensitiveScanBudget | None] = []
+    observed_requested_fields: list[str | None] = []
 
     monkeypatch.setattr(
         tushare_common.urllib.request,
@@ -286,6 +287,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
         scan_budget: tushare_common.SensitiveScanBudget | None = None,
     ) -> tushare_common.ProviderCallOutcome:
         observed_scan_budgets.append(scan_budget)
+        observed_requested_fields.append(requested_fields)
         return tushare_common.tushare_rows_outcome(
             api_name,
             "synthetic-provider-token",
@@ -309,6 +311,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_provider_response(
 
     assert result.status == "success"
     assert result.counts.committed == binding.max_rows_per_attempt
+    assert observed_requested_fields == [",".join(fields)]
     assert len(observed_scan_budgets) == 1
     assert isinstance(
         observed_scan_budgets[0],
@@ -774,6 +777,131 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
 
 
 @pytest.mark.parametrize(
+    ("dataset_id", "request_window", "row", "expected_params"),
+    [
+        pytest.param(
+            "cn.equity.security_master",
+            {},
+            {
+                "ts_code": "600000.SH",
+                "symbol": "600000",
+                "name": "浦发银行",
+                "area": "上海",
+                "industry": "银行",
+                "fullname": "上海浦东发展银行股份有限公司",
+                "enname": "Shanghai Pudong Development Bank",
+                "cnspell": "PFYH",
+                "market": "主板",
+                "exchange": "SSE",
+                "curr_type": "CNY",
+                "list_status": "L",
+                "list_date": "19991110",
+                "delist_date": None,
+                "is_hs": "H",
+                "act_name": "上海国际集团有限公司",
+                "act_ent_type": "地方国有企业",
+            },
+            {"list_status": "L"},
+            id="stock-basic-all-17-fields",
+        ),
+        pytest.param(
+            "cn.equity.daily",
+            {"trade_date": "20260717"},
+            {
+                "ts_code": "600000.SH",
+                "trade_date": "20260717",
+                "open": 10.0,
+                "high": 10.8,
+                "low": 9.9,
+                "close": 10.5,
+                "pre_close": 9.8,
+                "change": 0.7,
+                "pct_chg": 7.1429,
+                "vol": 123456.0,
+                "amount": 1296296.0,
+                "ah_vol": 12.0,
+                "ah_amount": 126.0,
+            },
+            {"trade_date": "20260717"},
+            id="daily-all-13-fields",
+        ),
+    ],
+)
+def test_target_contract_requests_all_declared_fields_and_complete_response_is_valid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dataset_id: str,
+    request_window: dict[str, str],
+    row: dict[str, object],
+    expected_params: dict[str, str],
+) -> None:
+    registry = _active_target_registry(dataset_id)
+    dataset = registry.resolve(dataset_id)
+    binding = registry.provider_binding(dataset_id, "tushare")
+    declared_fields = [field.name for field in dataset.fields]
+    database = tmp_path / "marketdata.sqlite"
+    _create_database(database)
+    captured_request: dict[str, object] = {}
+
+    def urlopen(request: object, timeout: float) -> _Response:
+        assert timeout == 30
+        raw_data = getattr(request, "data")
+        assert isinstance(raw_data, bytes)
+        captured_request.update(json.loads(raw_data.decode("utf-8")))
+        return _Response(
+            {
+                "code": 0,
+                "msg": None,
+                "data": {
+                    "fields": declared_fields,
+                    "items": [[row[field] for field in declared_fields]],
+                },
+            }
+        )
+
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        collector_module,
+        "_TUSHARE_CALL",
+        lambda api_name, params, requested_fields, scan_budget=None: tushare_common.tushare_rows_outcome(
+            api_name,
+            "synthetic-provider-token",
+            params=params,
+            fields=requested_fields,
+            scan_budget=scan_budget,
+        ),
+    )
+    TushareCollector._rate_calls.clear()
+
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset_id,
+        request_window=request_window,
+        attempt_id=f"{dataset_id}-complete-response",
+        started_at="2026-07-17T04:00:00+00:00",
+    )
+
+    assert result.status == "success"
+    assert captured_request == {
+        "api_name": binding.api_name,
+        "token": "synthetic-provider-token",
+        "params": expected_params,
+        "fields": ",".join(declared_fields),
+    }
+    with sqlite3.connect(database) as connection:
+        stored = connection.execute(
+            "SELECT quality_state, quality_issues_json FROM provider_dataset_rows"
+        ).fetchone()
+    assert stored == ("valid", "[]")
+    assert not any(
+        issue.startswith("missing_field:") for issue in json.loads(stored[1])
+    )
+
+
+@pytest.mark.parametrize(
     ("dataset_id", "request_window", "fields", "items", "expected_params"),
     [
         pytest.param(
@@ -804,6 +932,7 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
     expected_params: dict[str, str],
 ) -> None:
     registry = _active_target_registry(dataset_id)
+    dataset = registry.resolve(dataset_id)
     database = tmp_path / "marketdata.sqlite"
     _create_database(database)
     captured_request: dict[str, object] = {}
@@ -856,7 +985,9 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
 
     assert result.status == "success"
     assert captured_request["params"] == expected_params
-    assert "fields" not in captured_request
+    assert captured_request["fields"] == ",".join(
+        field.name for field in dataset.fields
+    )
     conn = sqlite3.connect(database)
     try:
         stored = conn.execute(
@@ -1007,7 +1138,10 @@ def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
 
     assert result.status == expected_status
     assert captured_request["params"] == {"trade_date": "20260717"}
-    assert "fields" not in captured_request
+    dataset = registry.resolve("cn.equity.daily")
+    assert captured_request["fields"] == ",".join(
+        field.name for field in dataset.fields
+    )
     conn = sqlite3.connect(database)
     try:
         receipt = conn.execute("SELECT status FROM market_ingest_runs").fetchone()
