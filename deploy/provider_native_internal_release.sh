@@ -3,6 +3,7 @@
 
 set -Eeuo pipefail
 umask 077
+export PYTHONDONTWRITEBYTECODE=1
 
 SERVICE="sharedsignals-v1-internal.service"
 LEGACY_SERVICE="sharedsignals-api.service"
@@ -388,7 +389,7 @@ validate_activation_registry_pair() {
   local root="$1" registry="$2" activation="$3"
   require_regular_no_link "$registry" "provider-native registry"
   require_regular_no_link "$activation" "provider-native activation manifest"
-  PYTHONPATH="$root" "$VENV_PYTHON" - "$registry" "$activation" <<'PY'
+  PYTHONPATH="$root" "$VENV_PYTHON" -B -P - "$registry" "$activation" <<'PY'
 import sys
 from pathlib import Path
 
@@ -579,6 +580,52 @@ validate_release() {
   manifest="$release_path/$MANIFEST_NAME"
   require_regular_no_link "$manifest" "release manifest"
   require_regular_no_link "$release_path/$SUMS_NAME" "release checksums"
+  if ! "$VENV_PYTHON" -B -P - \
+    "$release_path" "$SUMS_NAME" "$MANIFEST_NAME" <<'PY'
+import os
+from pathlib import Path, PurePosixPath
+import re
+import sys
+
+root = Path(sys.argv[1]).resolve(strict=True)
+sums_name = sys.argv[2]
+manifest_name = sys.argv[3]
+expected_files = {PurePosixPath(sums_name), PurePosixPath(manifest_name)}
+for line in (root / sums_name).read_text(encoding="utf-8").splitlines():
+    if (
+        len(line) < 67
+        or re.fullmatch(r"[0-9a-f]{64}", line[:64]) is None
+        or line[64:66] != "  "
+        or not line[66:].startswith("./")
+    ):
+        raise SystemExit(78)
+    relative = PurePosixPath(line[68:])
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        raise SystemExit(78)
+    expected_files.add(relative)
+
+expected_directories: set[PurePosixPath] = set()
+for relative in expected_files:
+    parent = relative.parent
+    while parent != PurePosixPath("."):
+        expected_directories.add(parent)
+        parent = parent.parent
+
+actual_files: set[PurePosixPath] = set()
+actual_directories: set[PurePosixPath] = set()
+for current, directories, files in os.walk(root, followlinks=False):
+    current_relative = Path(current).relative_to(root)
+    for name in directories:
+        actual_directories.add(PurePosixPath((current_relative / name).as_posix()))
+    for name in files:
+        actual_files.add(PurePosixPath((current_relative / name).as_posix()))
+
+if actual_files != expected_files or actual_directories != expected_directories:
+    raise SystemExit(78)
+PY
+  then
+    die "release artifact set is invalid"
+  fi
   [ "$(manifest_value "$manifest" MANIFEST_VERSION)" = "1" ] \
     || die "release manifest version is invalid"
   [ "$(manifest_value "$manifest" COMMIT)" = "$expected_commit" ] \
@@ -695,7 +742,7 @@ validate_runtime_store() {
   legacy_identity="$(stat_identity "$LEGACY_DATABASE")"
   [ "$database_identity" != "$legacy_identity" ] \
     || die "provider-native database aliases the legacy database"
-  "$VENV_PYTHON" - "$DATABASE" <<'PY'
+  "$VENV_PYTHON" -B -P - "$DATABASE" <<'PY'
 import sqlite3
 import sys
 from pathlib import Path
@@ -730,7 +777,7 @@ try:
 finally:
     conn.close()
 PY
-  PYTHONPATH="$SOURCE_ROOT" "$VENV_PYTHON" - \
+  PYTHONPATH="$SOURCE_ROOT" "$VENV_PYTHON" -B -P - \
     "$DATABASE" "$LEGACY_DATABASE" "$MAINTENANCE_LOCK" <<'PY'
 import sys
 from pathlib import Path
@@ -1366,9 +1413,10 @@ init_store_release() {
     "$("$SHA256SUM" "$release_path/$INIT_RELATIVE" | awk '{print $1}')" >>"$state"
   chmod 0600 "$state"
   validate_runtime_parent
-  output="$(PYTHONPATH="$release_path" "$VENV_PYTHON" "$release_path/tools/init_provider_native_store.py")" \
+  output="$(PYTHONPATH="$release_path" "$VENV_PYTHON" -B -P "$release_path/tools/init_provider_native_store.py")" \
     || die "provider-native store initialization failed"
   unset output
+  validate_release "$release_path" "$expected_commit"
   require_runtime_store_complete
   assert_legacy_identity "$state"
   printf '%s\n' \
@@ -1449,7 +1497,7 @@ require_oneshot_success() {
 verify_expected_facts_and_receipts() {
   local current
   current="$(canonical_existing_path "$CURRENT_LINK")"
-  PYTHONPATH="$current" "$VENV_PYTHON" - \
+  PYTHONPATH="$current" "$VENV_PYTHON" -B -P - \
     "$DATABASE" "$current/$REGISTRY_RELATIVE" "$current/$ACTIVATION_RELATIVE" <<'PY'
 import sqlite3
 import sys
@@ -1624,7 +1672,7 @@ serve() {
   export SHAREDSIGNALS_LOCALHOST_BYPASS=0
   export REAL_TRADING_ENABLED=false
   export PYTHONPATH="$release_root"
-  exec "$VENV_PYTHON" "$release_root/$WRAPPER_RELATIVE"
+  exec "$VENV_PYTHON" -B -P "$release_root/$WRAPPER_RELATIVE"
 }
 
 

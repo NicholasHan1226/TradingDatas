@@ -566,6 +566,8 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
     assert 'rm -f "$DATABASE"' not in source
     assert "nginx reload" not in source.lower()
     assert "cloudflared tunnel" not in source.lower()
+    assert "export PYTHONDONTWRITEBYTECODE=1" in source
+    assert '"$VENV_PYTHON" -B -P' in source
     assert "trap 'handle_apply_error \"$state\"' ERR" in source
     assert "automatic rollback failed" in source
     assert '"$release_path/tools/init_provider_native_store.py"' in source
@@ -575,12 +577,38 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
         "assert_ops_disabled_after_apply() {", 1
     )[0]
     assert "install -d" not in init_store_source
+    post_init = init_store_source.index("unset output")
+    post_init_validation = init_store_source.index(
+        'validate_release "$release_path" "$expected_commit"', post_init
+    )
+    assert post_init < post_init_validation < init_store_source.index(
+        "require_runtime_store_complete", post_init
+    )
 
     serve_source = source.split("serve() {", 1)[1].split("usage() {", 1)[0]
     assert "validate_secret_env" not in serve_source
     assert "SHAREDSIGNALS_TOKEN_HASH_FILE" in serve_source
     assert "SHAREDSIGNALS_TOKEN_SALT" in serve_source
     assert "SHAREDSIGNALS_CURSOR_SIGNING_KEY" in serve_source
+
+
+def test_release_control_never_writes_python_bytecode_into_release_tree(
+    tmp_path: Path,
+) -> None:
+    module_root = tmp_path / "immutable-release"
+    module_root.mkdir()
+    (module_root / "release_probe.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    result = _bash(
+        f"unset PYTHONDONTWRITEBYTECODE; "
+        f"source {shlex.quote(str(RELEASE))}; "
+        f"cd {shlex.quote(str(tmp_path))}; "
+        f"PYTHONPATH={shlex.quote(str(module_root))} "
+        f"{shlex.quote(sys.executable)} -P -c 'import release_probe; assert release_probe.VALUE == 1'; "
+        f"test ! -e {shlex.quote(str(module_root / '__pycache__'))}"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_systemd_units_use_supported_required_path_conditions() -> None:
@@ -647,6 +675,7 @@ def test_release_library_builds_and_verifies_immutable_manifest(tmp_path: Path) 
     for relative in (
         "api_server.py",
         "dataset_registry.py",
+        "config/dataset_registry.yaml",
         "config/provider_native_dataset_registry.yaml",
         "deploy/provider_native_internal.env",
         "deploy/provider_native_internal_release.sh",
@@ -764,6 +793,40 @@ printf '%s' "$release_path"
     assert not any(path.is_symlink() for path in release_path.rglob("*"))
     assert _mode(release_path) == 0o555
     assert all(_mode(path) & 0o222 == 0 for path in release_path.rglob("*"))
+
+    shadow_cwd = tmp_path / "shadow-cwd"
+    shadow_cwd.mkdir()
+    (shadow_cwd / "dataset_registry.py").write_text(
+        "raise RuntimeError('source cwd must not override release modules')\n",
+        encoding="utf-8",
+    )
+    target_bound = _bash(
+        f"source {shlex.quote(str(RELEASE))}; "
+        f"SHA256SUM={shlex.quote(sha256sum)}; "
+        f"RELEASES_DIR={shlex.quote(str(releases))}; "
+        f"VENV_PYTHON={shlex.quote(sys.executable)}; "
+        f"validate_release {shlex.quote(str(release_path))} {shlex.quote(commit)}",
+        cwd=shadow_cwd,
+    )
+    assert target_bound.returncode == 0, target_bound.stdout + target_bound.stderr
+
+    release_path.chmod(0o755)
+    rogue = release_path / "read-only-extra.pyc"
+    rogue.write_bytes(b"not a tracked release artifact")
+    rogue.chmod(0o444)
+    release_path.chmod(0o555)
+    extra_artifact = _bash(
+        f"source {shlex.quote(str(RELEASE))}; "
+        f"SHA256SUM={shlex.quote(sha256sum)}; "
+        f"RELEASES_DIR={shlex.quote(str(releases))}; "
+        f"VENV_PYTHON={shlex.quote(sys.executable)}; "
+        f"validate_release {shlex.quote(str(release_path))} {shlex.quote(commit)}"
+    )
+    assert extra_artifact.returncode != 0
+    assert "release artifact set is invalid" in extra_artifact.stderr
+    release_path.chmod(0o755)
+    rogue.unlink()
+    release_path.chmod(0o555)
 
     (release_path / "api_server.py").chmod(0o644)
     (release_path / "api_server.py").write_text("tampered\n", encoding="utf-8")
