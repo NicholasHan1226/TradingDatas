@@ -115,6 +115,17 @@ units（API、采集 service/timer、probe service/timer）；新库固定为
 
 ## 本地验证
 
+Tushare 能力基线由版本化的
+[范围分类](config/tushare_capability_scope.v1.yaml)与
+[生成目录](config/tushare_capability_catalog.v1.yaml)共同定义；编译器只读取已固定
+commit 的本地 Tushare Skills checkout，不联网、不调用 provider，也不声明运行时已激活：
+
+```bash
+python3 tools/compile_tushare_capability_catalog.py \
+  --source-root /path/to/pinned/tushare-skills \
+  --check
+```
+
 ```bash
 uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q
 uv run --python 3.12 --with-requirements requirements.txt ruff check \
