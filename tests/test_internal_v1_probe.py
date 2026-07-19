@@ -605,10 +605,10 @@ def test_systemd_units_separate_secrets_and_bind_registry_without_cross_exposure
     assert f"EnvironmentFile={probe_secret}" in probe_unit
     assert collector_secret not in probe_unit
     assert "provider-native-internal.secrets" not in probe_unit
-    assert f"ConditionPathIsRegular={collector_secret}" in collect
-    assert f"ConditionPathIsRegular={probe_secret}" in probe_unit
-    assert f"ConditionPathIsRegular={registry}" in collect
-    assert f"ConditionPathIsRegular={registry}" in probe_unit
+    assert f"ConditionPathExists={collector_secret}" in collect
+    assert f"ConditionPathExists={probe_secret}" in probe_unit
+    assert f"ConditionPathExists={registry}" in collect
+    assert f"ConditionPathExists={registry}" in probe_unit
     assert "tools/run_provider_native_schedule.py --execute" in collect
     assert (
         f"tools/internal_v1_probe.py --registry {registry} --startup-policy strict"

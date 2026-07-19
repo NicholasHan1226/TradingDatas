@@ -19,6 +19,11 @@ from storage.schema_contract import PROVIDER_DATASET_ROWS_INDEX_COLUMNS
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "deploy" / "provider_native_internal.env"
 UNIT = ROOT / "deploy" / "systemd" / "sharedsignals-v1-internal.service"
+CONDITIONED_UNITS = (
+    UNIT,
+    ROOT / "deploy" / "systemd" / "sharedsignals-provider-native-collect.service",
+    ROOT / "deploy" / "systemd" / "sharedsignals-v1-probe.service",
+)
 RELEASE = ROOT / "deploy" / "provider_native_internal_release.sh"
 INIT = ROOT / "tools" / "init_provider_native_store.py"
 V1_WRAPPER = ROOT / "tools" / "serve_provider_native_v1.py"
@@ -576,6 +581,13 @@ def test_release_control_plane_has_fixed_scope_and_fail_closed_commands() -> Non
     assert "SHAREDSIGNALS_TOKEN_HASH_FILE" in serve_source
     assert "SHAREDSIGNALS_TOKEN_SALT" in serve_source
     assert "SHAREDSIGNALS_CURSOR_SIGNING_KEY" in serve_source
+
+
+def test_systemd_units_use_supported_required_path_conditions() -> None:
+    for path in CONDITIONED_UNITS:
+        source = path.read_text(encoding="utf-8")
+        assert "ConditionPathIsRegular=" not in source
+        assert "ConditionPathExists=" in source
 
 
 def test_ops_unit_validation_binds_public_profile_and_secret_lane(

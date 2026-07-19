@@ -2,8 +2,8 @@
 Description=SharedSignals provider-native registry scheduler
 Wants=network-online.target sharedsignals-v1-internal.service
 After=network-online.target sharedsignals-v1-internal.service
-ConditionPathIsRegular=/etc/sharedsignals/provider-native-collector.secrets
-ConditionPathIsRegular=/opt/investment/releases/sharedsignals-v1/current/config/provider_native_dataset_registry.yaml
+ConditionPathExists=/etc/sharedsignals/provider-native-collector.secrets
+ConditionPathExists=/opt/investment/releases/sharedsignals-v1/current/config/provider_native_dataset_registry.yaml
 
 [Service]
 Type=oneshot
