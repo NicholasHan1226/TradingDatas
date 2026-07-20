@@ -4,6 +4,7 @@ import math
 import os
 import re
 import ssl
+import socket
 import urllib.error
 import urllib.parse
 from dataclasses import FrozenInstanceError
@@ -184,10 +185,35 @@ def test_quicksync_transport_uses_verified_tls13_and_rejects_redirects(monkeypat
     context = FakeTlsContext()
     observed: dict[str, object] = {}
 
-    class FakeOpener:
-        def open(self, request, *, timeout):
-            observed["request"] = request
+    class FakeConnection:
+        def __init__(
+            self,
+            host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            observed["host"] = host
+            observed["node"] = node
+            observed["context"] = context
             observed["timeout"] = timeout
+            observed["deadline"] = deadline
+            self.on_request_started = on_request_started
+            self.request_started = False
+            self.tls_established = True
+
+        def request(self, method, target, body, headers):
+            self.on_request_started()
+            self.request_started = True
+            observed["method"] = method
+            observed["target"] = target
+            observed["headers"] = headers
+            observed["body"] = body
+
+        def getresponse(self):
             return _Response(
                 {
                     "code": 0,
@@ -196,16 +222,24 @@ def test_quicksync_transport_uses_verified_tls13_and_rejects_redirects(monkeypat
                 }
             )
 
-    def fake_build_opener(*handlers):
-        observed["handlers"] = handlers
-        return FakeOpener()
+        def prepare_response_io(self):
+            observed["prepared_response"] = True
+
+        def close(self):
+            return None
 
     monkeypatch.setattr(tushare_common.ssl, "create_default_context", lambda: context)
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "build_opener",
-        fake_build_opener,
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(  # noqa: SLF001
+                family=socket.AF_INET,
+                sockaddr=("192.0.2.10", 443),
+            ),
+        ),
     )
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
 
     request = tushare_common.urllib.request.Request(
         "https://api.quicksync.cn",
@@ -219,31 +253,20 @@ def test_quicksync_transport_uses_verified_tls13_and_rejects_redirects(monkeypat
     assert context.maximum_version is ssl.TLSVersion.TLSv1_3
     assert context.check_hostname is True
     assert context.verify_mode == ssl.CERT_REQUIRED
-    assert observed["timeout"] == 30
-    assert observed["request"] is request
+    assert 0 < observed["timeout"] <= 30
+    assert observed["host"] == "api.quicksync.cn"
+    assert observed["target"] == "/"
+    assert observed["headers"]["Host"] == "api.quicksync.cn"
+    assert observed["node"].sockaddr == ("192.0.2.10", 443)
 
-    handlers = observed["handlers"]
-    https_handlers = [
-        handler
-        for handler in handlers
-        if isinstance(handler, tushare_common.urllib.request.HTTPSHandler)
-    ]
-    assert len(https_handlers) == 1
-    assert https_handlers[0]._context is context
-
-    redirect_handlers = [
-        handler
-        for handler in handlers
-        if isinstance(handler, tushare_common.urllib.request.HTTPRedirectHandler)
-    ]
-    assert len(redirect_handlers) == 1
+    redirect_handler = tushare_common._RejectProviderRedirect()  # noqa: SLF001
     redirected = tushare_common.urllib.request.Request(
         "https://api.quicksync.cn",
         data=b"{}",
         method="POST",
     )
     try:
-        result = redirect_handlers[0].redirect_request(
+        result = redirect_handler.redirect_request(
             redirected,
             None,
             302,
@@ -255,6 +278,480 @@ def test_quicksync_transport_uses_verified_tls13_and_rejects_redirects(monkeypat
         pass
     else:
         assert result is None
+
+
+def test_quicksync_transport_profile_v2_binds_direct_connect_replay_and_budget_rules():
+    profile = tushare_common.tushare_transport_profile()
+
+    assert profile["profile_id"] == "quicksync-tushare-compatible.v2"
+    assert profile["connection_mode"] == "dns_snapshot_direct_connect"
+    assert profile["canonical_host"] == "api.quicksync.cn"
+    assert profile["host_header"] == "api.quicksync.cn"
+    assert profile["sni_server_name"] == "api.quicksync.cn"
+    assert profile["certificate_hostname"] == "api.quicksync.cn"
+    assert profile["pre_send_node_failover"] is True
+    assert profile["post_send_replay"] is False
+    assert profile["request_rate_limit"] == {
+        "max_requests": 200,
+        "window_seconds": 60,
+    }
+    assert profile["max_concurrency"] == 4
+
+
+@pytest.mark.parametrize(
+    ("family", "sockaddr"),
+    (
+        pytest.param(socket.AF_INET, ("192.0.2.42", 443), id="ipv4"),
+        pytest.param(socket.AF_INET6, ("2001:db8::42", 443, 0, 0), id="ipv6"),
+    ),
+)
+def test_direct_connection_uses_dns_snapshot_but_canonical_sni(
+    monkeypatch,
+    family,
+    sockaddr,
+):
+    observed: dict[str, object] = {}
+
+    class FakeSocket:
+        def settimeout(self, timeout):
+            observed["timeout"] = timeout
+
+        def bind(self, source_address):
+            observed["source_address"] = source_address
+
+        def connect(self, address):
+            observed["address"] = address
+
+        def close(self):
+            observed["closed"] = True
+
+        def sendall(self, payload):
+            observed["sent"] = payload
+
+    class FakeTlsContext:
+        def wrap_socket(self, raw_socket, *, server_hostname):
+            observed["raw_socket"] = raw_socket
+            observed["server_hostname"] = server_hostname
+            return raw_socket
+
+    node = tushare_common._QuickSyncNode(  # noqa: SLF001
+        family=family,
+        sockaddr=sockaddr,
+    )
+    monkeypatch.setattr(
+        tushare_common.socket,
+        "socket",
+        lambda family, socktype: observed.update({"family": family, "socktype": socktype})
+        or FakeSocket(),
+    )
+
+    connection = tushare_common._QuickSyncHTTPSConnection(  # noqa: SLF001
+        "api.quicksync.cn",
+        node=node,
+        context=FakeTlsContext(),
+        timeout=17,
+        deadline=tushare_common.time.monotonic() + 17,
+        on_request_started=lambda: None,
+    )
+    connection.connect()
+
+    assert observed["address"] == sockaddr
+    assert 0 < observed["timeout"] <= 17
+    assert observed["family"] is family
+    assert observed["socktype"] is socket.SOCK_STREAM
+    assert observed["server_hostname"] == "api.quicksync.cn"
+
+
+def test_transport_can_change_node_only_before_any_request_bytes(monkeypatch):
+    attempts: list[tuple[str, int]] = []
+
+    class FakeConnection:
+        def __init__(
+            self,
+            _host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            del context, timeout, deadline
+            self.node = node
+            self.on_request_started = on_request_started
+            self.request_started = False
+            self.tls_established = False
+
+        def request(self, _method, _target, _body, _headers):
+            attempts.append((self.node.sockaddr[0], self.node.sockaddr[1]))
+            if self.node.sockaddr[0] == "192.0.2.1":
+                raise OSError("TLS handshake failed")
+            self.tls_established = True
+            self.on_request_started()
+            self.request_started = True
+
+        def getresponse(self):
+            return _Response({"code": 0, "data": {"fields": [], "items": []}})
+
+        def prepare_response_io(self):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.1", 443)),  # noqa: SLF001
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.2", 443)),  # noqa: SLF001
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
+
+    response = tushare_common._provider_urlopen(
+        tushare_common.urllib.request.Request(
+            "https://api.quicksync.cn", data=b"{}", method="POST"
+        ),
+        timeout=10,
+    )
+
+    assert response.read() != b""
+    assert attempts == [("192.0.2.1", 443), ("192.0.2.2", 443)]
+
+
+def test_transport_never_replays_a_request_after_send(monkeypatch):
+    attempts: list[str] = []
+
+    class FakeConnection:
+        def __init__(
+            self,
+            _host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            del context, timeout, deadline
+            self.node = node
+            self.on_request_started = on_request_started
+            self.request_started = False
+            self.tls_established = True
+
+        def request(self, _method, _target, _body, _headers):
+            attempts.append(self.node.sockaddr[0])
+            self.on_request_started()
+            self.request_started = True
+            raise OSError("peer closed after request bytes")
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.3", 443)),  # noqa: SLF001
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.4", 443)),  # noqa: SLF001
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
+
+    with pytest.raises(OSError, match="after request bytes"):
+        tushare_common._provider_urlopen(
+            tushare_common.urllib.request.Request(
+                "https://api.quicksync.cn", data=b"{}", method="POST"
+            ),
+            timeout=10,
+        )
+
+    assert attempts == ["192.0.2.3"]
+
+
+def test_transport_gate_waits_for_concurrency_and_rate_slots(monkeypatch):
+    clock = [1_000.0]
+    monkeypatch.setattr(tushare_common.time, "monotonic", lambda: clock[0])
+
+    concurrency_gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    leases = [concurrency_gate.acquire(1) for _ in range(4)]
+    waits: list[float] = []
+
+    def release_one_concurrency_slot(timeout):
+        waits.append(timeout)
+        leases[0].release()
+        return True
+
+    concurrency_gate._condition.wait = release_one_concurrency_slot  # noqa: SLF001
+    waited_lease = concurrency_gate.acquire(1)
+    assert waits == [1]
+    waited_lease.release()
+    for lease in leases[1:]:
+        lease.release()
+
+    timeout_gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    timeout_leases = [timeout_gate.acquire(1) for _ in range(4)]
+
+    def exhaust_concurrency_timeout(_timeout):
+        clock[0] = 1_001.0
+        return True
+
+    timeout_gate._condition.wait = exhaust_concurrency_timeout  # noqa: SLF001
+    with pytest.raises(tushare_common._QuickSyncTransportGateError, match="timed out"):  # noqa: SLF001
+        timeout_gate.acquire(1)
+    for lease in timeout_leases:
+        lease.release()
+
+    clock[0] = 1_000.0
+    rate_gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    for _ in range(200):
+        lease = rate_gate.acquire(1)
+        lease.mark_request_started(1)
+        lease.release()
+    rate_waits: list[float] = []
+
+    def advance_to_next_rate_window(timeout):
+        rate_waits.append(timeout)
+        clock[0] = 1_060.0
+        return True
+
+    rate_gate._condition.wait = advance_to_next_rate_window  # noqa: SLF001
+    lease = rate_gate.acquire(1)
+    lease.mark_request_started(61)
+    lease.release()
+    assert rate_waits == [60]
+    assert len(rate_gate._request_starts) == 1  # noqa: SLF001
+
+
+def test_201st_request_start_times_out_without_exceeding_200_per_window(
+    monkeypatch,
+):
+    clock = [2_000.0]
+    monkeypatch.setattr(tushare_common.time, "monotonic", lambda: clock[0])
+    gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    for _ in range(200):
+        lease = gate.acquire(1)
+        lease.mark_request_started(1)
+        lease.release()
+
+    waits: list[float] = []
+
+    def exhaust_timeout(timeout):
+        waits.append(timeout)
+        clock[0] = 2_030.0
+        return True
+
+    gate._condition.wait = exhaust_timeout  # noqa: SLF001
+    lease = gate.acquire(1)
+    with pytest.raises(tushare_common._QuickSyncRateLimitError, match="timed out"):  # noqa: SLF001
+        lease.mark_request_started(30)
+    lease.release()
+
+    assert waits == [30]
+    assert len(gate._request_starts) == 200  # noqa: SLF001
+    assert gate._in_flight == 0  # noqa: SLF001
+
+
+def test_rate_window_timeout_is_exposed_as_rate_limited_outcome(monkeypatch):
+    monkeypatch.setattr(
+        tushare_common,
+        "get_api_url",
+        lambda: "https://api.quicksync.cn",
+    )
+
+    def rate_limited(*_args, **_kwargs):
+        raise tushare_common._QuickSyncRateLimitError(  # noqa: SLF001
+            "QuickSync rate-limit wait timed out"
+        )
+
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", rate_limited)
+
+    outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.error_code == "rate_limited"
+    assert outcome.error_message == "QuickSync local request rate limit reached"
+
+
+def test_all_dns_nodes_share_one_monotonic_deadline(monkeypatch):
+    clock = [100.0]
+    attempts: list[str] = []
+    connection_timeouts: list[float] = []
+    gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    monkeypatch.setattr(tushare_common.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(tushare_common, "_QUICKSYNC_TRANSPORT_GATE", gate)
+    monkeypatch.setattr(
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.71", 443)),  # noqa: SLF001
+            tushare_common._QuickSyncNode(socket.AF_INET6, ("2001:db8::71", 443, 0, 0)),  # noqa: SLF001
+        ),
+    )
+
+    class FakeConnection:
+        def __init__(
+            self,
+            _host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            del context, deadline
+            self.node = node
+            self.on_request_started = on_request_started
+            self.request_started = False
+            self.tls_established = False
+            connection_timeouts.append(timeout)
+
+        def request(self, _method, _target, _body, _headers):
+            attempts.append(self.node.sockaddr[0])
+            if len(attempts) == 1:
+                clock[0] += 20
+                raise OSError("first TLS handshake failed")
+            self.tls_established = True
+            self.on_request_started()
+            self.request_started = True
+
+        def prepare_response_io(self):
+            return None
+
+        def getresponse(self):
+            return _Response({"code": 0, "data": {"fields": [], "items": []}})
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
+
+    response = tushare_common._provider_urlopen(
+        tushare_common.urllib.request.Request(
+            "https://api.quicksync.cn", data=b"{}", method="POST"
+        ),
+        timeout=30,
+    )
+    assert response.read() != b""
+    assert attempts == ["192.0.2.71", "2001:db8::71"]
+    assert connection_timeouts == [30, 10]
+    assert len(gate._request_starts) == 1  # noqa: SLF001
+    assert gate._in_flight == 0  # noqa: SLF001
+
+
+def test_exhausted_shared_deadline_stops_before_next_dns_node(monkeypatch):
+    clock = [300.0]
+    attempts: list[str] = []
+    gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+    monkeypatch.setattr(tushare_common.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(tushare_common, "_QUICKSYNC_TRANSPORT_GATE", gate)
+    monkeypatch.setattr(
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.81", 443)),  # noqa: SLF001
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.82", 443)),  # noqa: SLF001
+        ),
+    )
+
+    class FakeConnection:
+        def __init__(
+            self,
+            _host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            del context, timeout, deadline, on_request_started
+            self.node = node
+            self.request_started = False
+            self.tls_established = False
+
+        def request(self, _method, _target, _body, _headers):
+            attempts.append(self.node.sockaddr[0])
+            clock[0] += 30
+            raise OSError("TLS handshake used the remaining deadline")
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
+
+    with pytest.raises(TimeoutError, match="deadline exhausted"):
+        tushare_common._provider_urlopen(
+            tushare_common.urllib.request.Request(
+                "https://api.quicksync.cn", data=b"{}", method="POST"
+            ),
+            timeout=30,
+        )
+
+    assert attempts == ["192.0.2.81"]
+    assert len(gate._request_starts) == 0  # noqa: SLF001
+    assert gate._in_flight == 0  # noqa: SLF001
+
+
+def test_tls_only_failures_do_not_consume_request_rate_budget(monkeypatch):
+    gate = tushare_common._QuickSyncTransportGate()  # noqa: SLF001
+
+    class FakeConnection:
+        def __init__(
+            self,
+            _host,
+            *,
+            node,
+            context,
+            timeout,
+            deadline,
+            on_request_started,
+        ):
+            del node, context, timeout, deadline, on_request_started
+            self.request_started = False
+            self.tls_established = False
+
+        def request(self, _method, _target, _body, _headers):
+            raise OSError("TLS handshake failed")
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(tushare_common, "_QUICKSYNC_TRANSPORT_GATE", gate)
+    monkeypatch.setattr(
+        tushare_common,
+        "_resolve_quicksync_nodes",
+        lambda: (
+            tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.61", 443)),  # noqa: SLF001
+        ),
+    )
+    monkeypatch.setattr(tushare_common, "_QuickSyncHTTPSConnection", FakeConnection)
+
+    with pytest.raises(OSError, match="TLS handshake failed"):
+        tushare_common._provider_urlopen(
+            tushare_common.urllib.request.Request(
+                "https://api.quicksync.cn", data=b"{}", method="POST"
+            ),
+            timeout=1,
+        )
+
+    assert len(gate._request_starts) == 0  # noqa: SLF001
+    assert gate._in_flight == 0  # noqa: SLF001
+
+
+def test_dns_node_state_prefers_last_known_good_and_skips_cooldown(monkeypatch):
+    monkeypatch.setattr(tushare_common.time, "monotonic", lambda: 1_000.0)
+    first = tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.51", 443))  # noqa: SLF001
+    second = tushare_common._QuickSyncNode(socket.AF_INET, ("192.0.2.52", 443))  # noqa: SLF001
+    state = tushare_common._QuickSyncNodeState()  # noqa: SLF001
+
+    state.record_success(second)
+    assert state.ordered((first, second)) == (second, first)
+
+    state.record_pre_send_failure(second)
+    assert state.ordered((first, second)) == (first,)
 
 
 def test_tushare_rows_outcome_reads_only_budget_plus_one_before_json_parse(

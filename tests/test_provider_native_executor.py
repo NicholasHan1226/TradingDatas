@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from collectors.tushare import tushare_common
 from collectors.tushare.provider_native_ingest import (
     FanoutBatch,
     RetrySettings,
@@ -226,8 +227,10 @@ def test_row_and_byte_budgets_fail_closed_before_storage() -> None:
     assert byte_execution.outcome.error_code == "resource_budget"
 
 
-@pytest.mark.parametrize("retryable", ["rate_limited", "transport_error"])
-def test_retries_only_rate_limit_and_transport(retryable: str) -> None:
+def test_retries_only_rate_limited_provider_outcomes() -> None:
+    """A transport failure may already have written bytes, so never replay it."""
+
+    retryable = "rate_limited"
     collector = _SequenceCollector([_failed(retryable), _success({"id": 1})])
     execution = _execute(
         collector,
@@ -254,6 +257,42 @@ def test_retries_only_rate_limit_and_transport(retryable: str) -> None:
     )
     assert execution.outcome.state == "failed"
     assert len(validation.calls) == 1
+
+    transport = _SequenceCollector([_failed("transport_error"), _success({"id": 1})])
+    execution = _execute(
+        transport,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+    assert execution.outcome.state == "failed"
+    assert len(transport.calls) == 1
+
+
+def test_public_rate_window_outcome_is_retried_by_ingest(monkeypatch) -> None:
+    monkeypatch.setattr(
+        tushare_common,
+        "get_api_url",
+        lambda: "https://api.quicksync.cn",
+    )
+
+    def rate_limited(*_args: object, **_kwargs: object) -> None:
+        raise tushare_common._QuickSyncRateLimitError(  # noqa: SLF001
+            "QuickSync rate-limit wait timed out"
+        )
+
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", rate_limited)
+    public_outcome = tushare_common.tushare_rows_outcome("daily", "stub-token")
+    collector = _SequenceCollector([public_outcome, _success({"id": 1})])
+
+    execution = _execute(
+        collector,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+
+    assert public_outcome.error_code == "rate_limited"
+    assert execution.outcome.state == "success"
+    assert len(collector.calls) == 2
 
 
 def test_retry_attempts_keep_one_singular_identity_and_distinct_call_ordinals() -> None:

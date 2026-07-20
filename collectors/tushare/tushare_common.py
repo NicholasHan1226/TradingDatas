@@ -3,13 +3,18 @@
 
 from __future__ import annotations
 
+from collections import deque
 import hashlib
+import http.client
 import json
 import math
 import os
 import re
+import socket
 import ssl
 import stat
+import threading
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -33,6 +38,10 @@ _QUICKSYNC_TUSHARE_HOST = "api.quicksync.cn"
 _MAX_TOKEN_FILE_BYTES = 4_096
 _DEFAULT_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024
 _MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024 * 1024
+_QUICKSYNC_MAX_REQUESTS = 200
+_QUICKSYNC_REQUEST_WINDOW_SECONDS = 60
+_QUICKSYNC_MAX_CONCURRENCY = 4
+_QUICKSYNC_NODE_COOLDOWN_SECONDS = 30
 
 _REDACTION_MARKER = "[REDACTED]"
 _CREDENTIAL_NAME_PATTERN = (
@@ -1428,6 +1437,318 @@ class _RejectProviderRedirect(urllib.request.HTTPRedirectHandler):
         raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
 
 
+@dataclass(frozen=True)
+class _QuickSyncNode:
+    """One address from the current canonical-host DNS snapshot."""
+
+    family: int
+    sockaddr: tuple[object, ...]
+
+    @property
+    def key(self) -> tuple[int, tuple[object, ...]]:
+        return (self.family, self.sockaddr)
+
+
+class _QuickSyncTransportGateError(RuntimeError):
+    """The local account-wide QuickSync request gate rejected this attempt."""
+
+
+class _QuickSyncRateLimitError(_QuickSyncTransportGateError):
+    """The request stayed pre-send because the 200/60s window was full."""
+
+
+def _quicksync_deadline(timeout: float) -> float:
+    if (
+        type(timeout) not in {int, float}
+        or isinstance(timeout, bool)
+        or not math.isfinite(timeout)
+        or timeout < 0
+    ):
+        raise ValueError("QuickSync transport timeout is invalid")
+    return time.monotonic() + timeout
+
+
+def _quicksync_remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("QuickSync request deadline exhausted")
+    return remaining
+
+
+class _QuickSyncTransportLease:
+    def __init__(self, gate: _QuickSyncTransportGate) -> None:
+        self._gate = gate
+        self._released = False
+        self._request_started = False
+        self._lock = threading.Lock()
+
+    def mark_request_started(self, timeout: float) -> None:
+        """Consume one request token immediately before the first HTTP byte."""
+
+        self.mark_request_started_until(_quicksync_deadline(timeout))
+
+    def mark_request_started_until(self, deadline: float) -> None:
+        """Consume one request token without extending the caller's deadline."""
+
+        with self._lock:
+            if self._released:
+                raise RuntimeError("QuickSync transport lease is already released")
+            if self._request_started:
+                return
+            self._gate.mark_request_started_until(deadline)
+            self._request_started = True
+
+    def release(self) -> None:
+        with self._lock:
+            if self._released:
+                return
+            self._released = True
+        self._gate.release()
+
+
+class _QuickSyncTransportGate:
+    """Thread-safe account-wide rate and concurrency gate for real requests."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._request_starts: deque[float] = deque()
+        self._in_flight = 0
+
+    @staticmethod
+    def _deadline(timeout: float) -> float:
+        return _quicksync_deadline(timeout)
+
+    def acquire(self, timeout: float) -> _QuickSyncTransportLease:
+        return self.acquire_until(self._deadline(timeout))
+
+    def acquire_until(self, deadline: float) -> _QuickSyncTransportLease:
+        with self._condition:
+            while self._in_flight >= _QUICKSYNC_MAX_CONCURRENCY:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise _QuickSyncTransportGateError(
+                        "QuickSync concurrency wait timed out"
+                    )
+                self._condition.wait(remaining)
+            self._in_flight += 1
+        return _QuickSyncTransportLease(self)
+
+    def mark_request_started(self, timeout: float) -> None:
+        self.mark_request_started_until(self._deadline(timeout))
+
+    def mark_request_started_until(self, deadline: float) -> None:
+        with self._condition:
+            while True:
+                now = time.monotonic()
+                cutoff = now - _QUICKSYNC_REQUEST_WINDOW_SECONDS
+                while self._request_starts and self._request_starts[0] <= cutoff:
+                    self._request_starts.popleft()
+                if now >= deadline:
+                    if len(self._request_starts) >= _QUICKSYNC_MAX_REQUESTS:
+                        raise _QuickSyncRateLimitError(
+                            "QuickSync rate-limit wait timed out"
+                        )
+                    raise TimeoutError("QuickSync request deadline exhausted")
+                if len(self._request_starts) < _QUICKSYNC_MAX_REQUESTS:
+                    self._request_starts.append(now)
+                    return
+                remaining = deadline - now
+                if remaining <= 0:
+                    raise _QuickSyncRateLimitError(
+                        "QuickSync rate-limit wait timed out"
+                    )
+                next_slot = self._request_starts[0] + _QUICKSYNC_REQUEST_WINDOW_SECONDS
+                self._condition.wait(min(remaining, max(0.0, next_slot - now)))
+
+    def release(self) -> None:
+        with self._condition:
+            if self._in_flight <= 0:
+                raise RuntimeError("QuickSync transport lease underflow")
+            self._in_flight -= 1
+            self._condition.notify()
+
+
+class _QuickSyncNodeState:
+    """Thread-safe last-known-good and cooldown state for DNS snapshot nodes."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_known_good: tuple[int, tuple[object, ...]] | None = None
+        self._cooldowns: dict[tuple[int, tuple[object, ...]], float] = {}
+
+    def ordered(self, nodes: tuple[_QuickSyncNode, ...]) -> tuple[_QuickSyncNode, ...]:
+        now = time.monotonic()
+        with self._lock:
+            self._cooldowns = {
+                key: until for key, until in self._cooldowns.items() if until > now
+            }
+            live = tuple(node for node in nodes if node.key not in self._cooldowns)
+            candidates = live or nodes
+            return tuple(
+                sorted(
+                    candidates,
+                    key=lambda node: (
+                        0 if node.key == self._last_known_good else 1,
+                        nodes.index(node),
+                    ),
+                )
+            )
+
+    def record_success(self, node: _QuickSyncNode) -> None:
+        with self._lock:
+            self._last_known_good = node.key
+            self._cooldowns.pop(node.key, None)
+
+    def record_pre_send_failure(self, node: _QuickSyncNode) -> None:
+        with self._lock:
+            self._cooldowns[node.key] = time.monotonic() + _QUICKSYNC_NODE_COOLDOWN_SECONDS
+            if self._last_known_good == node.key:
+                self._last_known_good = None
+
+
+class _ManagedQuickSyncResponse:
+    """Release the transport concurrency lease once the bounded response is read."""
+
+    def __init__(
+        self,
+        response: Any,
+        lease: _QuickSyncTransportLease,
+        *,
+        prepare_read: Callable[[], None],
+    ) -> None:
+        self._response = response
+        self._lease = lease
+        self._prepare_read = prepare_read
+        self._closed = False
+
+    def read(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            self._prepare_read()
+            return self._response.read(*args, **kwargs)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            close = getattr(self._response, "close", None)
+            if callable(close):
+                close()
+        finally:
+            self._lease.release()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._response, name)
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def _prepare_quicksync_response_read(response: Any, deadline: float) -> None:
+    """Refresh the response socket timeout without extending the call deadline."""
+
+    remaining = _quicksync_remaining(deadline)
+    if not isinstance(response, http.client.HTTPResponse):
+        return
+    buffered = getattr(response, "fp", None)
+    raw = getattr(buffered, "raw", None)
+    response_socket = getattr(raw, "_sock", None)
+    if response_socket is None:
+        raise RuntimeError("QuickSync response socket is unavailable")
+    response_socket.settimeout(remaining)
+
+
+class _QuickSyncHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS over a DNS-snapshot address while preserving canonical TLS identity."""
+
+    def __init__(
+        self,
+        host: str,
+        *,
+        node: _QuickSyncNode,
+        context: ssl.SSLContext,
+        timeout: float,
+        deadline: float,
+        on_request_started: Callable[[], None],
+    ) -> None:
+        super().__init__(host=host, port=443, timeout=timeout, context=context)
+        self._quicksync_node = node
+        self._quicksync_deadline = deadline
+        self._on_request_started = on_request_started
+        self.request_started = False
+        self.tls_established = False
+
+    def connect(self) -> None:
+        raw_socket: socket.socket | None = None
+        try:
+            raw_socket = socket.socket(
+                self._quicksync_node.family,
+                socket.SOCK_STREAM,
+            )
+            raw_socket.settimeout(_quicksync_remaining(self._quicksync_deadline))
+            if self.source_address is not None:
+                raw_socket.bind(self.source_address)
+            raw_socket.connect(self._quicksync_node.sockaddr)
+            raw_socket.settimeout(_quicksync_remaining(self._quicksync_deadline))
+            self.sock = self._context.wrap_socket(
+                raw_socket,
+                server_hostname=_QUICKSYNC_TUSHARE_HOST,
+            )
+            self.sock.settimeout(_quicksync_remaining(self._quicksync_deadline))
+            self.tls_established = True
+        except Exception:
+            if raw_socket is not None:
+                raw_socket.close()
+            self.sock = None
+            raise
+
+    def send(self, data: bytes) -> None:
+        if self.sock is None:
+            self.connect()
+        if not self.request_started:
+            self._on_request_started()
+        self.request_started = True
+        assert self.sock is not None
+        self.sock.settimeout(_quicksync_remaining(self._quicksync_deadline))
+        self.sock.sendall(data)
+
+    def prepare_response_io(self) -> None:
+        """Apply the one-call remaining deadline before header/body reads."""
+
+        if self.sock is None:
+            raise RuntimeError("QuickSync connection is unavailable")
+        self.sock.settimeout(_quicksync_remaining(self._quicksync_deadline))
+
+
+_QUICKSYNC_TRANSPORT_GATE = _QuickSyncTransportGate()
+_QUICKSYNC_NODE_STATE = _QuickSyncNodeState()
+
+
+def _resolve_quicksync_nodes() -> tuple[_QuickSyncNode, ...]:
+    """Resolve one fresh canonical-host snapshot without storing an IP in code."""
+
+    results = socket.getaddrinfo(
+        _QUICKSYNC_TUSHARE_HOST,
+        443,
+        type=socket.SOCK_STREAM,
+    )
+    nodes: list[_QuickSyncNode] = []
+    seen: set[tuple[int, tuple[object, ...]]] = set()
+    for family, socktype, protocol, _canonical_name, sockaddr in results:
+        del socktype, protocol
+        if family not in {socket.AF_INET, socket.AF_INET6}:
+            continue
+        node = _QuickSyncNode(family=family, sockaddr=tuple(sockaddr))
+        if node.key not in seen:
+            seen.add(node.key)
+            nodes.append(node)
+    if not nodes:
+        raise OSError("QuickSync DNS returned no usable address")
+    return tuple(nodes)
+
+
 def _provider_urlopen(
     request: urllib.request.Request,
     *,
@@ -1436,16 +1757,80 @@ def _provider_urlopen(
     """Open one verified QuickSync request without following redirects."""
 
     _validated_api_url(request.full_url)
+    deadline = _quicksync_deadline(timeout)
     context = ssl.create_default_context()
     context.check_hostname = True
     context.verify_mode = ssl.CERT_REQUIRED
     context.minimum_version = ssl.TLSVersion.TLSv1_3
     context.maximum_version = ssl.TLSVersion.TLSv1_3
-    opener = urllib.request.build_opener(
-        urllib.request.HTTPSHandler(context=context),
-        _RejectProviderRedirect(),
-    )
-    return opener.open(request, timeout=timeout)
+    lease = _QUICKSYNC_TRANSPORT_GATE.acquire_until(deadline)
+    try:
+        parsed = urllib.parse.urlsplit(request.full_url)
+        target = parsed.path or "/"
+        headers = {
+            key: value
+            for key, value in request.header_items()
+            if key.lower() != "host"
+        }
+        headers["Host"] = _QUICKSYNC_TUSHARE_HOST
+        last_error: Exception | None = None
+        _quicksync_remaining(deadline)
+        nodes = _resolve_quicksync_nodes()
+        for node in _QUICKSYNC_NODE_STATE.ordered(nodes):
+            remaining = _quicksync_remaining(deadline)
+            connection = _QuickSyncHTTPSConnection(
+                _QUICKSYNC_TUSHARE_HOST,
+                node=node,
+                context=context,
+                timeout=remaining,
+                deadline=deadline,
+                on_request_started=lambda: lease.mark_request_started_until(deadline),
+            )
+            try:
+                connection.request(
+                    request.get_method(),
+                    target,
+                    request.data,
+                    headers,
+                )
+                connection.prepare_response_io()
+                response = connection.getresponse()
+                if connection.tls_established:
+                    _QUICKSYNC_NODE_STATE.record_success(node)
+                status = getattr(response, "status", None)
+                if isinstance(status, int) and status >= 300:
+                    response.close()
+                    raise urllib.error.HTTPError(
+                        request.full_url,
+                        status,
+                        getattr(response, "reason", "HTTP response rejected"),
+                        getattr(response, "headers", None),
+                        None,
+                    )
+                return _ManagedQuickSyncResponse(
+                    response,
+                    lease,
+                    prepare_read=lambda: _prepare_quicksync_response_read(
+                        response,
+                        deadline,
+                    ),
+                )
+            except _QuickSyncTransportGateError:
+                connection.close()
+                raise
+            except Exception as exc:
+                connection.close()
+                if connection.tls_established:
+                    _QUICKSYNC_NODE_STATE.record_success(node)
+                if connection.request_started:
+                    raise
+                _QUICKSYNC_NODE_STATE.record_pre_send_failure(node)
+                last_error = exc
+        assert last_error is not None
+        raise last_error
+    except Exception:
+        lease.release()
+        raise
 
 
 def tushare_rows_outcome(
@@ -1493,6 +1878,16 @@ def tushare_rows_outcome(
         )
         response_payload = _provider_urlopen(request, timeout=30).read(
             max_response_bytes + 1
+        )
+    except _QuickSyncRateLimitError:
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=None,
+            error_code="rate_limited",
+            error_message="QuickSync local request rate limit reached",
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
         )
     except Exception as exc:
         return ProviderCallOutcome(

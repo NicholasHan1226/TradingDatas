@@ -65,7 +65,7 @@ _PROVIDER_ERROR_CODES = frozenset(
         "resource_budget",
     }
 )
-_RETRYABLE_PROVIDER_ERRORS = frozenset({"rate_limited", "transport_error"})
+_RETRYABLE_PROVIDER_ERRORS = frozenset({"rate_limited"})
 
 
 @dataclass(frozen=True)
