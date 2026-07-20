@@ -25,7 +25,7 @@ Tushare API 增加 service/timer。所有真实采集频率、失败重试与回
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在生产启用采集 timer。
 
-当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。未知 budget 不猜，runner 保持串行，timer 保持 disabled，不因单个接口成功自动扩权。
+当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。2026-07-21 CST（证据时间 2026-07-20Z）的健康单一 HTTPS 节点小响应实测为并发 4、210/210 request starts 在一分钟内成功；当前 `main` 代码采用更保守的保护门禁 200 次/60 秒、并发 4。它不代表供应商合同额度或已部署 production 配置；混合大响应、每日额度和 DNS failover 仍未知，timer 保持 disabled，不因单个接口成功自动扩权。
 
 ## 运行顺序
 
@@ -104,7 +104,7 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
 
-旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、串行 budget 和 impaired API readback。任何 QuickSync 频率/并发说明无法核验时，停在一次性人工 canary，不启用 timer。
+旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、200 次/60 秒账号门禁、并发 4、单一 deadline、仅 pre-send DNS failover 和 impaired API readback。190 接口本机矩阵或分钟吞吐证明都不能替代服务器 provider -> SQLite -> receipt -> API readback；每日额度未知时仍不启用自动历史回填。
 
 ## 旧系统退役
 

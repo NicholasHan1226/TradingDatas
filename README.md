@@ -37,7 +37,7 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 
 Tushare 官方接口文档用于生成普通数据集的请求、字段、schema 和 cadence 参考；它不证明当前 QuickSync 账号的接口权限、分钟/每日额度或并发能力。代码中的 `entitlement_state` 仅表示经 QuickSync 真实有界调用观测到的 provider 权限状态，不表示购买、按接口计费或订阅。
 
-QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。未知 budget 不猜：采集保持串行，production timer 保持 disabled，先做 1–5 个数据集、每个最多一次且零重试的人工 canary，再由真实返回决定 activation。Tushare 官方说明仍可作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
+QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。2026-07-21 CST（证据时间 2026-07-20Z）的受控实测只证明健康单一 HTTPS 节点的小响应 request-start 能力达到 210 次/分钟、并发 4；当前 `main` 代码设置更保守的保护门禁 200 次/60 秒、并发 4，但它不是 QuickSync 合同额度或已部署的 production 配置。混合大响应、每日额度和 DNS failover 仍待服务器验收，也不能由吞吐下限替代逐接口权限、schema、真实 receipt 和 API readback。production timer 在 provider-level transport、权限矩阵与 fresh server canary 全部通过前保持 disabled。Tushare 官方说明仍只作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
 
 ## 固定内部 API
 

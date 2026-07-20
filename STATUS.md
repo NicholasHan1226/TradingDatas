@@ -1,12 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-20。
+最后更新：2026-07-21。
 
 ## 结论
 
 - 2026-07-20 transport 假设已纠正：当前真实上游通道不是官方 `api.tushare.pro` 直连，而是 Tushare-compatible QuickSync。身份固定为 `provider=tushare`、`transport_service=quicksync`；官方 Tushare 文档继续作为 dataset/schema/cadence 参考，QuickSync 文档与有界真实观测才是 endpoint/auth/permission/error/rate/concurrency 的运行事实源。
 - 因此，现有 registry、通用 executor、SQLite facts/receipts 与固定 catalog/query API 可以继续复用，不需要迁库或逐接口重写；旧 official-direct release 与服务器 transport readback 对生产采集结论作废，整体仍为 NO-GO。该旧证据只证明代码层、发布布局和 fail-closed impaired 投影。
-- 当前 QuickSync 账号的确切分钟/每日额度和并发上限尚未从可访问文档冻结，不允许沿用官方 Tushare 积分频次或猜测数值。修正版 production timer 必须保持 disabled，直到 provider-level transport 修复、1–5 dataset 零重试有界 canary、权限码/流控证据及 fresh API readback 全部通过。
+- 2026-07-21 CST（证据时间 2026-07-20Z）已通过文档指定的 HTTP compatibility endpoint 对首期 190/190 个 API 做真实有界调用并形成唯一接口矩阵，缺失 0、额外 0：167 `success`、3 `empty`、14 `permission_denied`、1 `credential_rejected`、5 `unsupported_api`。该矩阵确认 145 个通过严格 activation 停止线；通用数字字段修复又在代码层补回 4 个接口的 29 个字段，形成 149 个候选，但新增 4 个仍待 fresh HTTPS provider -> SQLite -> receipt -> API 纵向 readback。17 个 schema drift、1 个质量异常和其余 impaired 接口继续 paused。矩阵 SHA-256 为 `ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1`，明确 `production_ready=false`；它不是正式 HTTPS server readback。
+- 频率实测只证明健康单一 HTTPS 节点的小响应 request-start 能力至少 200 次/分钟：并发 4 下 210/210 成功，全部 request start 在 59.714 秒内，零限频、零 transport error、零重试；脱敏证据 SHA-256 为 `660c5ef6f1567b9be4673822f891d7ca3b388a6aad37224b2e62fdaa0b1cb935`。当前 `main` 代码设置保护门禁 200 次/60 秒、并发 4，但这不是 QuickSync 合同额度或已部署 production 配置；混合大响应、每日额度与 DNS failover 仍待验收。
+- local main、origin/main 与 live GitHub 已一致为 `c92b001`，包含通用 transport commit `7bf7f71` 与数字字段 commit `c92b001`：前者在一个共享 monotonic deadline 内完成 DNS snapshot direct-connect、TLS 1.3、仅 pre-send 节点切换、send 后零 replay及 `rate_limited` 诚实分类；后者一次修复 provider output field grammar，并保留 API/参数/window 的严格 grammar。组合回归 619 项通过，Ruff/compile/diff-check 通过；服务器、production 与真实 HTTPS 全接口 readback 尚未完成。
 - QuickSync transport 修正已形成 commit `a7e2e59aae877f9cbe0345ce80cbe0dae1e1fff8`：receipt 的 `config_hash` 现在同时绑定 provider-neutral ingest 合同和代码固定的 QuickSync transport profile；query 只有在 receipt hash 与当前 registry/profile 精确匹配时才输出 `transport_service=quicksync`，旧或不明 transport receipt 会 fail closed。最终定向矩阵为 70 项与 72 项通过，fresh reviewer 判定 P0=0、P1=0。
 - 服务器 immutable canary release `a7e2e59aae877f9cbe0345ce80cbe0dae1e1fff8` 已在独立 SQLite 与 `127.0.0.1:18084` transient API 上完成真实纵向切片：`trade_cal` 8 行、`stock_basic` 5,607 行、`daily` 5,524 行，共 11,139 facts；成功数据均有 transaction receipt。catalog 返回 190 个 dataset，`daily` 与 `security_master` query 为 ready/non-degraded、lineage 完整且 transport 为 QuickSync；无认证请求为 401，同一 as-of 两次响应哈希一致；含未来上界的 `trade_cal` 负例返回 `data=[]`、failed/degraded、transport null。
 - 当前 QuickSync DNS 有两个 IPv4 节点，2026-07-20 服务器 fresh TLS 复核中 `111.229.23.244` 的 TLS 1.3 与证书验证正常，而 `101.35.23.219` 对同一 SNI 持续返回 TLS internal error。首次真实采集因此写入一条 failed receipt，系统 resolver 轮换到健康节点后纵向切片成功。这个上游节点不一致在修复或获得稳定 endpoint 前阻断 production timer，不允许通过硬编码 IP、关闭证书校验或伪造 success 绕过。
@@ -36,14 +38,14 @@
 TradingDatas 尚未达到内部可接入停止线，原因：
 
 1. provider-native target registry 已包含 190 个 dataset；其余 187 个已有统一 request profile，其中 135 个已具备有界 runtime request、52 个仍 plan-only，但它们仍全部 paused，尚未完成账号 entitlement、anchor/enum 补齐和真实频率验证；
-2. 新 canary 凭证与三个真实数据集已验证，但正式 `/etc/tradingdatas/quicksync.token` 尚未安装，QuickSync 频率、并发及双 DNS 节点不一致仍未解决；因此正式 timer 继续 disabled，历史回填尚未开始；
+2. 新 canary 凭证与三个真实数据集已验证，健康单节点小响应 request-start 吞吐下限已冻结；但正式 `/etc/tradingdatas/quicksync.token` 尚未安装，混合响应和双 DNS 节点的安全 failover 还没有经过新 release 的服务器 readback，每日额度也未知；因此正式 timer 继续 disabled，历史回填尚未开始；
 3. 18084 已是可认证、可查询真实数据的隔离内部服务，但正式 18082 service 尚未切到 `a7e2e59`，TradingAgent/MarketGraph 也尚未完成 base URL 与 token 的消费者 readback；
 4. 旧生产回滚源尚未经过新系统 readback 与消费者切换门禁，因此暂不能删除。
 
 ## 当前执行顺序
 
-1. 先完成 provider-level QuickSync transport 修正与 fresh review，保持 registry、SQLite schema 和 catalog/query 不变；
-2. 运行零调用 entitlement plan；正式 QuickSync 凭证通过 stat-only 安全门禁后，对 runtime-executable dataset 分小批执行有界 one-shot，人工审核权限码、entitlement、频控与并发 evidence；
+1. 把 190 接口矩阵作为独立、可校验的 transport observation 配置编译进 entitlement/activation，保持 SQLite schema 和 catalog/query 公共合同不变；
+2. 正式 QuickSync 凭证通过 stat-only 安全门禁后，对 activation candidate 分小批执行 HTTPS provider -> SQLite -> receipt -> API one-shot readback；
 3. 只激活已授权且完成频率复核的数据集，先采最新数据并完成内部 `catalog/query` API readback；
 4. 后台回填历史数据；
 5. 切换内部消费者；
@@ -69,8 +71,8 @@ TradingDatas 尚未达到内部可接入停止线，原因：
 
 未验证：
 
-- 所有首期接口经 QuickSync transport 的账号 entitlement；
-- QuickSync 健康 DNS/endpoint、权限码全集、频率与并发合同；
+- 190 个接口在正式 HTTPS transport 与服务器 release 上的逐项 readback；
+- QuickSync 每日额度及双 DNS 节点 failover 的 production runtime 证明；
 - 所有首期接口的真实采集与正确频率；
 - 正式 18082 TradingDatas production runtime；
 - 真实 Tushare facts/receipts 的 catalog/query readback；
