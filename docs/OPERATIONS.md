@@ -48,9 +48,8 @@ registry cadence。没有正式 Tushare Token、真实 latest collection 与 fre
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
-4. 先执行零调用 plan，核对它报告 190 个合同、187 个 request profile、153 个
-   profile-ready、135 个参数已解析画像、3 个 runtime executable probe 和 0 次
-   provider call：
+4. 先执行零调用 plan，核对它报告 190 个合同、187 个 request profile、135 个
+   runtime executable probe、52 个 plan-only profile 和 0 次 provider call：
 
    ```bash
    /opt/tradingdatas/venv/bin/python3 \
@@ -82,10 +81,14 @@ registry cadence。没有正式 Tushare Token、真实 latest collection 与 fre
        > "/opt/investment-data/tradingdatas/evidence/entitlement-$OBSERVED_AT.json"'
    ```
 
-   每次执行必须显式选择 1–5 个 dataset。当前 policy 只允许 `bak_daily`、
-   `fund_adj`、`fund_manager` 以 `limit=1`、`offset=0`、最小字段和 128 KiB
-   响应上限各调用一次，零重试。其余已配置画像在本轮仍保持零调用并返回明确
-   plan-only 原因。stdout evidence 不含 Token、
+   每次执行必须显式选择 1–5 个属于 135 个 runtime-executable profile 的 dataset。
+   单一 resolver 只接受冻结的 literal 与 `observed_at` 五种时钟转换，按
+   `Asia/Shanghai` 和有界 `offset_seconds` 确定性生成参数，并只请求官方冻结合同中
+   第一个合法输出字段。每个 dataset 最多调用一次、零重试，响应上限固定为
+   128 KiB；既有 `bak_daily`、`fund_adj`、`fund_manager` 请求保持不变。52 个需要
+   fresh anchor、无界空参数或未冻结枚举的 profile 仍为 plan-only；缺失、重复、
+   未知、超过 5 个或包含 plan-only 的选择都必须在读取凭证前整体拒绝。
+   stdout evidence 不含 Token、
    Token 路径、原始响应或 provider diagnostic；probe 不写 facts、ingest receipts、
    activation，也不修改 registry、timer 或 API。`entitled_active`/`locked`/`unknown`
    只是一份待审核证据，不能自动启用数据集；

@@ -83,17 +83,21 @@ uv run --python 3.12 --with-requirements requirements.txt \
 ```
 
 `config/tushare_request_profiles.v1.yaml` 以配置方式覆盖其余 187 个合同：153 个
-具备已复核请求画像，其中 135 个参数已解析；本轮运行时仍只允许既有
-`bak_daily`、`fund_adj`、`fund_manager` 使用 `limit=1`、`offset=0` 和最小字段做
-一次性有界探测。新增的 132 个已解析画像保持零调用，等待后续小型 resolver
-独立验收；其余 52 个按缺少 anchor、空参数无界或枚举未冻结等原因保持 plan-only。
-探测不是采集：它不写 facts、ingest receipts 或 activation，也不会启用 scheduler。
+具备已复核请求画像，其中 135 个可由单一通用 resolver 解析为 one-shot probe。
+resolver 只接受冻结的 `literal`，或从显式 UTC `observed_at` 按
+`Asia/Shanghai` 生成 `yyyymmdd`、`yyyymm`、`yyyy_qn`、`yyyyww`、
+`local_datetime_seconds`，并应用有界 `offset_seconds`；字段只取官方冻结合同中的
+第一个合法输出字段。既有 `bak_daily`、`fund_adj`、`fund_manager` 请求字节保持不变。
+其余 52 个按缺少 fresh anchor、空参数无界或枚举未冻结等原因保持 plan-only，
+不会进入 resolver。探测不是采集：它不写 facts、ingest receipts 或 activation，
+也不会启用 scheduler。
 
 执行模式只用于正式 Token 已按运行手册安装后的人工 one-shot。它要求显式传入
-1–5 个 `--dataset-id`、不可变 release commit 和精确 UTC 秒。只有上述三个既有
-探测会读取 Token 并各调用一次；其它选择只输出对应 plan-only 原因、零调用；
-每个响应在 JSON 解析前受 128 KiB 探测上限约束。命令只向 stdout 输出脱敏、
-自哈希 JSON evidence；结果仍需独立审核，不能直接作为自动 activation 指令。
+1–5 个属于上述 135 个 runtime-executable profile 的 `--dataset-id`、不可变 release
+commit 和精确 UTC 秒。缺失、重复、未知、超过 5 个或任何 plan-only 选择都会在
+读取凭证前整体拒绝。每个已选择数据集最多调用一次、零重试，每个响应在 JSON
+解析前受 128 KiB 上限约束。命令只向 stdout 输出脱敏、自哈希 JSON evidence；
+结果仍需独立审核，不能直接作为自动 activation 指令。
 
 ## 本地验证
 
