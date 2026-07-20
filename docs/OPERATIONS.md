@@ -25,6 +25,8 @@ Tushare API 增加 service/timer。所有真实采集频率、失败重试与回
 registry cadence。没有正式 Tushare Token、真实 latest collection 与 fresh readback
 前，不在生产启用采集 timer。
 
+Tushare Token 只建立账号身份，不代表接口权限。运行面必须把积分门槛、单独权限、分钟/每日频控和真实受控探测结果作为独立证据；`entitled_active` 不是购买或计费状态。scheduler 的账号级/API 级预算取官方说明与真实观测中更保守的一侧，未知并发能力时保持串行或最低安全预算，不因单个接口成功自动扩权。
+
 ## 运行顺序
 
 1. 安装代码与只读配置；

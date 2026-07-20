@@ -2,7 +2,7 @@
 
 TradingDatas 是一个类似 Tushare 的、provider-neutral 的金融数据服务。
 
-当前目标只有一条：把已购买且属于首期范围的 Tushare 只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。
+当前目标只有一条：把属于首期范围、且当前 Tushare 账号由积分或单独权限实际允许调用的只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。
 
 ## 唯一数据链
 
@@ -31,6 +31,10 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 
 不得为普通数据集增加专用 collector、业务表、scheduler 分支、query 分支或公共 route。只有 transport、auth 或 pagination 协议真正不同，才增加 provider-level adapter。
 
+## Tushare 权限模型
+
+Tushare Token 只用于识别账号。接口能否调用、分钟/每日频控和可安全使用的并发预算，要结合账号积分、接口单独权限、官方接口说明与真实受控探测确定。部分接口依积分开放，积分越高频次越高；部分接口需要单独权限且与积分无关。代码中的 `entitlement_state` 仅表示真实观测到的 provider 权限状态，不表示购买或按接口计费。参见 [Tushare 平台积分与频次说明](https://tushare.pro/document/1) 与 [权限中心](https://tushare.pro/weborder/#/permission)。
+
 ## 固定内部 API
 
 - `GET /v1/catalog`
@@ -58,7 +62,7 @@ uv run --python 3.12 --with-requirements requirements.txt \
   --cache-dir /path/to/reviewed-cache
 ```
 
-该命令只冻结官方文档合同，不调用付费数据接口，也不把 `in_scope` 误判成已授权或已激活。
+该命令只冻结官方文档合同，不调用真实数据接口，也不把 `in_scope` 误判成账号积分/单独权限已允许或运行时已激活。
 
 文档快照批量编译为统一运行合同与 registry：
 

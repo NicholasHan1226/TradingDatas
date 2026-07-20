@@ -2,9 +2,9 @@
 
 ## 产品定位
 
-TradingDatas 是一个类似 Tushare 的 provider-neutral 金融数据平台。Tushare 是首个已购买上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。
+TradingDatas 是一个类似 Tushare 的 provider-neutral 金融数据平台。Tushare 是首个已接入上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。
 
-唯一当前目标：所有已购买、已授权且属于首期境内只读范围的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。
+唯一当前目标：所有属于首期境内只读范围、且当前 Tushare 账号由积分或单独权限实际允许调用的数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。
 
 TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金、持仓、风控、订单、成交、执行回执或交易建议；不直接 import TradingAgent/MarketGraph 业务代码，不共享数据库，不做跨系统事务或 callback。
 
@@ -43,6 +43,14 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 - 港股、美股、加密货币、预测市场和 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
 - 每个激活数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence。
+
+## Tushare 权限与流控口径
+
+- Token 只标识账号，不证明接口可用、调用额度或并发能力。
+- 普通接口通常由账号积分门槛及对应的分钟/每日频控决定；部分接口需要单独开通权限，可能与积分无关。
+- 项目中的 `entitlement` 是兼容 provider-neutral registry 的技术字段，含义固定为“经真实调用观测到的账号权限状态”，不是购买、计费或订阅状态。
+- activation 只能来自受控真实探测与人工审核；scheduler 的账号级/API 级调用预算必须服从官方说明和真实返回中观测到的频控，不能从 Token 存在、静态积分或接口目录推断。
+- 官方入口：[平台介绍与积分频次](https://tushare.pro/document/1)；[权限中心](https://tushare.pro/weborder/#/permission)。
 
 ## 频率与回填
 

@@ -2,7 +2,7 @@
 
 ## 最终目标
 
-所有已购买、已授权且属于首期境内只读范围的 Tushare 数据集，都能：
+所有属于首期境内只读范围、且当前 Tushare 账号由积分或单独权限实际允许调用的数据集，都能：
 
 1. 从统一 provider transport 获取；
 2. 按注册频率与修订窗口自动运行；
@@ -28,6 +28,7 @@
 - 固定官方能力目录版本；
 - 批量读取官方接口文档的输入/输出表，生成字段与请求合同；禁止逐接口手写 Python；
 - 对每个 API 标记 scope、entitlement、activation 和 successor；
+- 对每个 API 记录积分门槛或单独权限口径，以及官方/实测的分钟、每日和并发预算；Token 存在本身不得视为权限证明；
 - 批量生成 provider-neutral dataset registry；
 - 一次实现四种 request shape：
   - `snapshot_or_date_range`

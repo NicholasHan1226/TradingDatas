@@ -34,6 +34,12 @@ registry 声明 request template、variants、window、fanout、pagination、字
 
 当前数据优先于历史回填；回填必须有界、可恢复、可观察，并遵守账号级和 API 级预算。
 
+## Provider 权限与预算
+
+registry 的 `entitlement` 是 provider-neutral 技术状态。对 Tushare，它表示通过受控真实调用观测到的账号接口权限，来源可能是积分门槛或单独开通权限；它不表示购买、计费或订阅。Token 只建立账号身份，不证明接口权限。
+
+官方接口说明可能同时给出积分门槛、单次行数、分钟频次、每日总量，或声明接口需要与积分无关的单独权限。activation 与 scheduler budget 必须由冻结合同、真实探测结果和人工审核共同确定；未知权限或未知频控保持 paused。任何并发都要受账号级与 API 级预算共同约束，不能因为单次调用成功自动扩大。
+
 ## 通用存储
 
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。

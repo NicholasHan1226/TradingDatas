@@ -5,6 +5,7 @@
 返回当前账户可见的数据集、schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
+`entitlement` 仅表示 provider 侧真实观测到的权限状态。对 Tushare，它可能来自积分门槛或单独权限；Token 存在、静态目录可见或 HTTP 200 都不能单独证明权限、频控或数据可用性。
 
 ## POST /v1/query
 
