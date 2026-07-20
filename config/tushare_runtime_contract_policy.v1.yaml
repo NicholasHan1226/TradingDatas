@@ -28,6 +28,6 @@ catalog_only_defaults:
 
 # These defaults make every official in-scope interface discoverable through
 # the common registry without claiming that it is entitled or schedulable.
-# Unreviewed contracts are absent from the activation manifest, therefore they
-# remain entitlement_state=unknown and activation_state=paused. Activation
-# requires a separate real-provider contract and entitlement proof.
+# Contracts without matching QuickSync observations or explicit active evidence
+# remain fail-closed. Activation requires a separate real-provider contract,
+# entitlement observation, transaction receipt, and API readback.

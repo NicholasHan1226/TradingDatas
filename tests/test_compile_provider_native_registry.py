@@ -22,7 +22,7 @@ from tools.compile_provider_native_registry import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
-ACTIVATION_PATH = ROOT / "config" / "provider_native_activation.yaml"
+OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 TARGET_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
 
@@ -40,26 +40,8 @@ def _bundle() -> dict[str, object]:
     return deepcopy(_read_yaml(CONTRACT_PATH))
 
 
-def _activation(
-    *,
-    dataset_id: str = "cn.market.trade_calendar",
-    provider: str = "tushare",
-    entitlement_state: str = "active",
-    activation_state: str = "active",
-    evidence_ref: object = "server-evidence/compiler-test",
-) -> dict[str, object]:
-    return {
-        "version": 1,
-        "activations": [
-            {
-                "dataset_id": dataset_id,
-                "provider": provider,
-                "entitlement_state": entitlement_state,
-                "activation_state": activation_state,
-                "evidence_ref": evidence_ref,
-            }
-        ],
-    }
+def _observations() -> dict[str, object]:
+    return deepcopy(_read_yaml(OBSERVATIONS_PATH))
 
 
 def _trade_calendar(bundle: dict[str, object]) -> dict[str, object]:
@@ -78,7 +60,7 @@ def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
 
     assert tuple(parameters) == (
         "upstream_contracts",
-        "activation_document",
+        "observations_document",
         "query_defaults",
     )
     source = inspect.getsource(compiler_module)
@@ -126,24 +108,19 @@ def test_contract_bundle_is_the_only_dataset_authority_and_inputs_are_immutable(
 def test_numeric_leading_provider_fields_compile_without_per_api_code() -> None:
     registry = compile_provider_native_registry(_bundle())
     by_api = {
-        item["provider_bindings"][0]["api_name"]: item
-        for item in registry["datasets"]
+        item["provider_bindings"][0]["api_name"]: item for item in registry["datasets"]
     }
 
     assert "1w" in {field["name"] for field in by_api["shibor"]["fields"]}
-    assert "1m_a" in {
-        field["name"] for field in by_api["shibor_quote"]["fields"]
-    }
-    assert "10day" in {
-        field["name"] for field in by_api["tdx_daily"]["fields"]
-    }
+    assert "1m_a" in {field["name"] for field in by_api["shibor_quote"]["fields"]}
+    assert "10day" in {field["name"] for field in by_api["tdx_daily"]["fields"]}
 
 
-def test_activation_declaration_is_the_only_entitlement_and_activation_authority() -> (
+def test_observation_declaration_is_the_only_entitlement_and_activation_authority() -> (
     None
 ):
     registry = compile_provider_native_registry(
-        _bundle(), activation_document=_activation()
+        _bundle(), observations_document=_observations()
     )
     bindings = {
         dataset["dataset_id"]: dataset["provider_bindings"][0]
@@ -152,8 +129,12 @@ def test_activation_declaration_is_the_only_entitlement_and_activation_authority
 
     assert bindings["cn.market.trade_calendar"]["entitlement_state"] == "active"
     assert bindings["cn.market.trade_calendar"]["activation_state"] == "active"
-    assert bindings["cn.equity.daily"]["entitlement_state"] == "unknown"
-    assert bindings["cn.equity.daily"]["activation_state"] == "paused"
+    assert bindings["cn.equity.daily"]["entitlement_state"] == "active"
+    assert bindings["cn.equity.daily"]["activation_state"] == "active"
+    assert bindings["cn.dataset.adj_factor"]["entitlement_state"] == "active"
+    assert bindings["cn.dataset.adj_factor"]["activation_state"] == "paused"
+    assert bindings["cn.dataset.cb_price_chg"]["entitlement_state"] == "locked"
+    assert bindings["cn.dataset.etf_sh_cons"]["entitlement_state"] == "excluded"
 
 
 def test_compiler_preserves_typed_variants_request_shape_fanout_pagination_and_budgets() -> (
@@ -291,29 +272,6 @@ def test_current_snapshot_contract_cannot_defer_primary_key() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mutator", "message"),
-    [
-        (lambda item: item.update(entitlement_state="maybe"), "entitlement_state"),
-        (lambda item: item.update(activation_state="scheduled"), "activation_state"),
-        (
-            lambda item: item.update(entitlement_state="locked"),
-            "activation_state=active requires entitlement_state=active",
-        ),
-        (lambda item: item.update(evidence_ref=None), "requires evidence_ref"),
-        (lambda item: item.update(evidence_ref="../secret"), "evidence_ref"),
-        (lambda item: item.update(dataset_id="cn.unknown"), "unknown activation"),
-    ],
-)
-def test_activation_declarations_fail_closed(mutator: object, message: str) -> None:
-    activation = _activation()
-    entry = activation["activations"][0]  # type: ignore[index]
-    mutator(entry)  # type: ignore[operator]
-
-    with pytest.raises(ValueError, match=message):
-        compile_provider_native_registry(_bundle(), activation_document=activation)
-
-
-@pytest.mark.parametrize(
     "query_defaults",
     [
         {**DEFAULT_QUERY_DEFAULTS, "unknown": 1},
@@ -335,16 +293,16 @@ def test_query_default_declaration_fails_closed(
 
 def test_repository_declarations_rebuild_the_checked_in_single_registry() -> None:
     contracts = _read_yaml(CONTRACT_PATH)
-    activation = _read_yaml(ACTIVATION_PATH)
+    observations = _read_yaml(OBSERVATIONS_PATH)
 
     first = compile_provider_native_registry(
         contracts,
-        activation_document=activation,
+        observations_document=observations,
         query_defaults=DEFAULT_QUERY_DEFAULTS,
     )
     second = compile_provider_native_registry(
         deepcopy(contracts),
-        activation_document=deepcopy(activation),
+        observations_document=deepcopy(observations),
         query_defaults=deepcopy(DEFAULT_QUERY_DEFAULTS),
     )
 
@@ -364,7 +322,6 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
             active_dataset_ids.add(dataset.dataset_id)
         else:
             assert binding.activation_state == "paused"
-            assert binding.entitlement_state == "unknown"
             paused_dataset_ids.add(dataset.dataset_id)
     assert active_dataset_ids == {
         "cn.equity.daily",
@@ -377,7 +334,7 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
 def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(
     tmp_path: Path,
 ) -> None:
-    before = {path: _sha256(path) for path in (CONTRACT_PATH, ACTIVATION_PATH)}
+    before = {path: _sha256(path) for path in (CONTRACT_PATH, OBSERVATIONS_PATH)}
     output = tmp_path / "registry.yaml"
     completed = subprocess.run(
         [
@@ -385,8 +342,8 @@ def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(
             str(ROOT / "tools" / "compile_provider_native_registry.py"),
             "--upstream-contracts",
             str(CONTRACT_PATH),
-            "--activation",
-            str(ACTIVATION_PATH),
+            "--observations",
+            str(OBSERVATIONS_PATH),
             "--output",
             str(output),
         ],
@@ -403,17 +360,12 @@ def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(
 
 
 def test_cli_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
-    activation = tmp_path / "activation.yaml"
-    activation.write_text(
+    observations = tmp_path / "observations.yaml"
+    observations.write_text(
         """\
 version: 1
-activations:
-- dataset_id: cn.market.trade_calendar
-  provider: tushare
-  provider: tushare
-  entitlement_state: active
-  activation_state: active
-  evidence_ref: server-evidence/duplicate
+provider: tushare
+provider: tushare
 """,
         encoding="utf-8",
     )
@@ -421,8 +373,8 @@ activations:
         [
             sys.executable,
             str(ROOT / "tools" / "compile_provider_native_registry.py"),
-            "--activation",
-            str(activation),
+            "--observations",
+            str(observations),
             "--output",
             str(tmp_path / "registry.yaml"),
         ],

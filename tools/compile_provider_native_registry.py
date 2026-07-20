@@ -3,8 +3,9 @@
 
 The compiler is offline, deterministic, and fail closed. Dataset identity,
 schema, cadence, request execution, and budgets come only from the pinned
-upstream contract bundle. Entitlement/activation comes only from the activation
-manifest. Query limits come only from the explicit query-default declaration.
+upstream contract bundle. Entitlement/activation and reviewed runtime
+compatibility come only from one QuickSync observation declaration. Query
+limits come only from the explicit query-default declaration.
 The only artifact written is the provider-native dataset registry.
 """
 
@@ -12,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from datetime import datetime
+import hashlib
 import math
 import os
 from pathlib import Path, PurePosixPath
@@ -29,7 +32,9 @@ DEFAULT_OUTPUT_PATH = (
 DEFAULT_UPSTREAM_CONTRACTS_PATH = (
     REPOSITORY_ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 )
-DEFAULT_ACTIVATION_PATH = REPOSITORY_ROOT / "config" / "provider_native_activation.yaml"
+DEFAULT_OBSERVATIONS_PATH = (
+    REPOSITORY_ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+)
 
 PROVIDER = "tushare"
 PROVIDER_ADAPTER_VERSION = "tushare-provider-native.v1"
@@ -118,9 +123,41 @@ _FIELD_KEYS = frozenset(
         "sortable",
     }
 )
-_ACTIVATION_ROOT_KEYS = frozenset({"version", "activations"})
-_ACTIVATION_KEYS = frozenset(
-    {"dataset_id", "provider", "entitlement_state", "activation_state", "evidence_ref"}
+_OBSERVATION_ROOT_KEYS = frozenset(
+    {
+        "version",
+        "provider",
+        "transport_service",
+        "matrix_evidence",
+        "classifications",
+        "active_evidence",
+    }
+)
+_MATRIX_EVIDENCE_KEYS = frozenset(
+    {
+        "schema_version",
+        "sha256",
+        "observed_at",
+        "api_names_sha256",
+        "interface_count",
+        "raw_data_persisted",
+        "credential_persisted",
+        "interface_probe_scheme",
+        "production_ready",
+        "production_transport_alignment",
+    }
+)
+_CLASSIFICATION_KEYS = frozenset(
+    {
+        "validated_contract_match",
+        "numeric_field_repaired",
+        "schema_subset",
+        "quality_anomaly",
+        "empty",
+        "permission_denied",
+        "credential_rejected",
+        "unsupported",
+    }
 )
 _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
 _ACTIVATION_STATES = frozenset({"active", "paused"})
@@ -267,67 +304,235 @@ def _query_defaults(value: Mapping[str, Any] | None) -> dict[str, int]:
     }
 
 
-def _activation_index(
+def _observation_field_map(raw: object, label: str) -> dict[str, list[str]]:
+    source = _mapping(raw, label)
+    result: dict[str, list[str]] = {}
+    for raw_api_name, raw_fields in source.items():
+        api_name = _required_text(raw_api_name, f"{label} key")
+        if _SAFE_PARAMETER_NAME.fullmatch(api_name) is None:
+            raise ValueError(f"{label} key must use provider API grammar")
+        fields = _string_list(raw_fields, f"{label}.{api_name}")
+        if any(_SAFE_PROVIDER_FIELD.fullmatch(field) is None for field in fields):
+            raise ValueError(f"{label}.{api_name} contains an invalid provider field")
+        result[api_name] = fields
+    return result
+
+
+def _safe_evidence_ref(value: object, label: str) -> str:
+    evidence = _required_text(value, label)
+    path = PurePosixPath(evidence)
+    if (
+        evidence != str(path)
+        or path.is_absolute()
+        or ".." in path.parts
+        or _EVIDENCE_REF_PATTERN.fullmatch(evidence) is None
+        or _SENSITIVE_EVIDENCE_PATTERN.search(evidence) is not None
+    ):
+        raise ValueError(f"{label} must be a non-sensitive relative reference")
+    return evidence
+
+
+def _observation_index(
     document: Mapping[str, Any] | None,
-) -> dict[tuple[str, str], dict[str, str | None]]:
+    contracts: Sequence[Mapping[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
     if document is None:
         return {}
-    root = _mapping(deepcopy(document), "activation manifest")
-    _reject_keys(root, _ACTIVATION_ROOT_KEYS, "activation manifest")
+    root = _mapping(deepcopy(document), "QuickSync observations")
+    _reject_keys(root, _OBSERVATION_ROOT_KEYS, "QuickSync observations")
     if type(root["version"]) is not int or root["version"] != 1:
-        raise ValueError("activation manifest.version must be integer 1")
-    result: dict[tuple[str, str], dict[str, str | None]] = {}
-    for index, raw_entry in enumerate(
-        _sequence(root["activations"], "activation manifest.activations")
+        raise ValueError("QuickSync observations.version must be integer 1")
+    if _required_text(root["provider"], "QuickSync observations.provider") != PROVIDER:
+        raise ValueError(f"QuickSync observations.provider must be {PROVIDER}")
+    if (
+        _required_text(
+            root["transport_service"], "QuickSync observations.transport_service"
+        )
+        != "quicksync"
     ):
-        label = f"activation manifest.activations[{index}]"
-        entry = _mapping(raw_entry, label)
-        _reject_keys(entry, _ACTIVATION_KEYS, label)
-        dataset_id = _required_text(entry["dataset_id"], f"{label}.dataset_id")
-        provider = _required_text(entry["provider"], f"{label}.provider")
-        entitlement = _required_text(
-            entry["entitlement_state"], f"{label}.entitlement_state"
+        raise ValueError("QuickSync observations.transport_service must be quicksync")
+
+    matrix = _mapping(root["matrix_evidence"], "QuickSync observations.matrix_evidence")
+    _reject_keys(
+        matrix, _MATRIX_EVIDENCE_KEYS, "QuickSync observations.matrix_evidence"
+    )
+    for key in ("sha256", "api_names_sha256"):
+        value = _required_text(
+            matrix[key], f"QuickSync observations.matrix_evidence.{key}"
         )
-        activation = _required_text(
-            entry["activation_state"], f"{label}.activation_state"
+        if _HASH_PATTERN.fullmatch(value) is None:
+            raise ValueError(
+                f"QuickSync observations.matrix_evidence.{key} must be SHA-256"
+            )
+    _required_text(
+        matrix["schema_version"],
+        "QuickSync observations.matrix_evidence.schema_version",
+    )
+    observed_at = _required_text(
+        matrix["observed_at"], "QuickSync observations.matrix_evidence.observed_at"
+    )
+    try:
+        parsed_observed_at = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            "QuickSync observations.matrix_evidence.observed_at must be RFC3339"
+        ) from exc
+    if parsed_observed_at.tzinfo is None:
+        raise ValueError(
+            "QuickSync observations.matrix_evidence.observed_at must include timezone"
         )
-        if entitlement not in _ENTITLEMENT_STATES:
-            raise ValueError(f"{label}.entitlement_state is unsupported")
-        if activation not in _ACTIVATION_STATES:
-            raise ValueError(f"{label}.activation_state is unsupported")
-        raw_evidence = entry["evidence_ref"]
-        evidence = (
-            None
-            if raw_evidence is None
-            else _required_text(raw_evidence, f"{label}.evidence_ref")
+    interface_count = _required_positive_int(
+        matrix["interface_count"],
+        "QuickSync observations.matrix_evidence.interface_count",
+    )
+    for key in ("raw_data_persisted", "credential_persisted"):
+        if _required_bool(matrix[key], f"QuickSync observations.matrix_evidence.{key}"):
+            raise ValueError(
+                f"QuickSync observations.matrix_evidence.{key} must be false"
+            )
+    if (
+        _required_text(
+            matrix["interface_probe_scheme"],
+            "QuickSync observations.matrix_evidence.interface_probe_scheme",
         )
-        if evidence is not None:
-            path = PurePosixPath(evidence)
-            if (
-                evidence != str(path)
-                or path.is_absolute()
-                or ".." in path.parts
-                or _EVIDENCE_REF_PATTERN.fullmatch(evidence) is None
-                or _SENSITIVE_EVIDENCE_PATTERN.search(evidence) is not None
-            ):
+        != "http"
+    ):
+        raise ValueError(
+            "QuickSync observations.matrix_evidence.interface_probe_scheme must be http"
+        )
+    if _required_bool(
+        matrix["production_ready"],
+        "QuickSync observations.matrix_evidence.production_ready",
+    ):
+        raise ValueError(
+            "QuickSync observations.matrix_evidence.production_ready must be false"
+        )
+    if (
+        _required_text(
+            matrix["production_transport_alignment"],
+            "QuickSync observations.matrix_evidence.production_transport_alignment",
+        )
+        != "blocked_until_safe_pre_request_dns_failover_is_implemented_and_verified"
+    ):
+        raise ValueError(
+            "QuickSync observations.matrix_evidence.production_transport_alignment "
+            "must remain blocked"
+        )
+
+    classifications = _mapping(
+        root["classifications"], "QuickSync observations.classifications"
+    )
+    _reject_keys(
+        classifications,
+        _CLASSIFICATION_KEYS,
+        "QuickSync observations.classifications",
+    )
+    grouped: dict[str, list[str] | dict[str, list[str]]] = {
+        "validated_contract_match": _string_list(
+            classifications["validated_contract_match"],
+            "QuickSync observations.classifications.validated_contract_match",
+        ),
+        "numeric_field_repaired": _observation_field_map(
+            classifications["numeric_field_repaired"],
+            "QuickSync observations.classifications.numeric_field_repaired",
+        ),
+        "schema_subset": _observation_field_map(
+            classifications["schema_subset"],
+            "QuickSync observations.classifications.schema_subset",
+        ),
+    }
+    for key in (
+        "quality_anomaly",
+        "empty",
+        "permission_denied",
+        "credential_rejected",
+        "unsupported",
+    ):
+        grouped[key] = _string_list(
+            classifications[key],
+            f"QuickSync observations.classifications.{key}",
+            allow_empty=True,
+        )
+
+    api_class: dict[str, str] = {}
+    for classification, entries in grouped.items():
+        api_names = entries if isinstance(entries, list) else list(entries)
+        for api_name in api_names:
+            previous = api_class.get(api_name)
+            if previous is not None:
                 raise ValueError(
-                    f"{label}.evidence_ref must be a non-sensitive relative reference"
+                    f"QuickSync observation API overlaps classifications: {api_name} "
+                    f"({previous}, {classification})"
                 )
-        if activation == "active" and entitlement != "active":
+            api_class[api_name] = classification
+
+    by_api = {contract["api_name"]: contract for contract in contracts}
+    if set(api_class) != set(by_api):
+        missing = sorted(set(by_api) - set(api_class))
+        extra = sorted(set(api_class) - set(by_api))
+        raise ValueError(
+            "QuickSync observation API set must exactly match contracts; "
+            f"missing={missing[:1]}, extra={extra[:1]}"
+        )
+    if interface_count != len(api_class):
+        raise ValueError("QuickSync observation interface_count does not match API set")
+    api_set_hash = hashlib.sha256(
+        ("\n".join(sorted(api_class)) + "\n").encode("utf-8")
+    ).hexdigest()
+    if matrix["api_names_sha256"] != api_set_hash:
+        raise ValueError(
+            "QuickSync observation api_names_sha256 does not match API set"
+        )
+
+    numeric_fields = grouped["numeric_field_repaired"]
+    schema_fields = grouped["schema_subset"]
+    assert isinstance(numeric_fields, dict)
+    assert isinstance(schema_fields, dict)
+    active_source = _mapping(
+        root["active_evidence"], "QuickSync observations.active_evidence"
+    )
+    active_evidence: dict[str, str] = {}
+    for raw_api_name, raw_evidence in active_source.items():
+        api_name = _required_text(
+            raw_api_name, "QuickSync observations.active_evidence key"
+        )
+        if api_class.get(api_name) != "validated_contract_match":
             raise ValueError(
-                f"{label} activation_state=active requires entitlement_state=active"
+                "QuickSync active evidence requires validated_contract_match: "
+                f"{api_name}"
             )
-        if activation == "active" and evidence is None:
-            raise ValueError(f"{label} active activation requires evidence_ref")
-        key = (dataset_id, provider)
-        if key in result:
-            raise ValueError(
-                f"duplicate activation for dataset/provider: {dataset_id}/{provider}"
-            )
-        result[key] = {
-            "entitlement_state": entitlement,
-            "activation_state": activation,
-            "evidence_ref": evidence,
+        active_evidence[api_name] = _safe_evidence_ref(
+            raw_evidence, f"QuickSync observations.active_evidence.{api_name}"
+        )
+
+    entitlement_by_class = {
+        "validated_contract_match": "active",
+        "numeric_field_repaired": "active",
+        "schema_subset": "active",
+        "quality_anomaly": "active",
+        "empty": "active",
+        "permission_denied": "locked",
+        "credential_rejected": "unknown",
+        "unsupported": "excluded",
+    }
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for api_name in sorted(api_class):
+        contract = by_api[api_name]
+        classification = api_class[api_name]
+        declared_fields = {field["name"] for field in contract["fields"]}
+        if classification == "numeric_field_repaired":
+            missing_repaired = sorted(set(numeric_fields[api_name]) - declared_fields)
+            if missing_repaired:
+                raise ValueError(
+                    f"QuickSync repaired field remains absent from contract: {api_name}/"
+                    f"{missing_repaired[0]}"
+                )
+        result[(contract["dataset_id"], contract["provider"])] = {
+            "entitlement_state": entitlement_by_class[classification],
+            "activation_state": "active" if api_name in active_evidence else "paused",
+            "evidence_ref": active_evidence.get(api_name),
+            "classification": classification,
+            "schema_missing_fields": list(schema_fields.get(api_name, [])),
         }
     return result
 
@@ -921,6 +1126,69 @@ def load_upstream_contract_bundle(document: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _apply_observed_schema_subset(
+    contract: Mapping[str, Any], observation: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    normalized = deepcopy(dict(contract))
+    if observation is None:
+        return normalized
+    missing = set(observation["schema_missing_fields"])
+    if not missing:
+        return normalized
+    if observation["classification"] != "schema_subset":
+        raise ValueError("schema missing fields require schema_subset classification")
+    declared = {field["name"] for field in normalized["fields"]}
+    unknown = sorted(missing - declared)
+    if unknown:
+        raise ValueError(
+            f"QuickSync schema subset references undeclared field: "
+            f"{normalized['api_name']}/{unknown[0]}"
+        )
+    completeness = normalized["response_completeness"]
+    protected = set(normalized["primary_key"])
+    protected.update(
+        field
+        for field in (
+            normalized["as_of_field"],
+            normalized["range_field"],
+            normalized["partition_field"],
+        )
+        if field is not None
+    )
+    if completeness is not None:
+        protected.update(completeness["fixed_field_matches"])
+        for key in ("date_field", "partition_field"):
+            field = completeness.get(key)
+            if field is not None:
+                protected.add(field)
+    overlap = sorted(missing & protected)
+    if overlap:
+        raise ValueError(
+            f"QuickSync schema subset cannot remove structural field: "
+            f"{normalized['api_name']}/{overlap[0]}"
+        )
+    normalized["fields"] = [
+        field for field in normalized["fields"] if field["name"] not in missing
+    ]
+    normalized["default_projection"] = [
+        field for field in normalized["default_projection"] if field not in missing
+    ]
+    normalized["requested_fields"] = [
+        field for field in normalized["requested_fields"] if field not in missing
+    ]
+    normalized["reviewed_type_overrides"] = [
+        item
+        for item in normalized["reviewed_type_overrides"]
+        if item["field"] not in missing
+    ]
+    if not normalized["fields"] or not normalized["default_projection"]:
+        raise ValueError(
+            f"QuickSync schema subset cannot empty schema/default projection: "
+            f"{normalized['api_name']}"
+        )
+    return normalized
+
+
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
@@ -999,28 +1267,23 @@ def _compiled_dataset(
 def compile_provider_native_registry(
     upstream_contracts: Mapping[str, Any],
     *,
-    activation_document: Mapping[str, Any] | None = None,
+    observations_document: Mapping[str, Any] | None = None,
     query_defaults: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return the deterministic single-authority registry document."""
 
     bundle = load_upstream_contract_bundle(upstream_contracts)
-    activations = _activation_index(activation_document)
-    contract_keys = {
-        (contract["dataset_id"], contract["provider"])
-        for contract in bundle["contracts"]
-    }
-    unknown_activations = sorted(set(activations) - contract_keys)
-    if unknown_activations:
-        dataset_id, provider = unknown_activations[0]
-        raise ValueError(f"unknown activation target: {dataset_id}/{provider}")
+    observations = _observation_index(observations_document, bundle["contracts"])
     return {
         "version": 1,
         "query_defaults": _query_defaults(query_defaults),
         "datasets": [
             _compiled_dataset(
-                contract,
-                activations.get((contract["dataset_id"], contract["provider"])),
+                _apply_observed_schema_subset(
+                    contract,
+                    observations.get((contract["dataset_id"], contract["provider"])),
+                ),
+                observations.get((contract["dataset_id"], contract["provider"])),
             )
             for contract in bundle["contracts"]
         ],
@@ -1093,7 +1356,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--upstream-contracts", type=Path, default=DEFAULT_UPSTREAM_CONTRACTS_PATH
     )
-    parser.add_argument("--activation", type=Path, default=DEFAULT_ACTIVATION_PATH)
+    parser.add_argument("--observations", type=Path, default=DEFAULT_OBSERVATIONS_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     return parser
 
@@ -1101,15 +1364,15 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    for path in (args.upstream_contracts, args.activation):
+    for path in (args.upstream_contracts, args.observations):
         if not path.is_file():
             parser.error(f"input file does not exist: {path}")
     output = args.output.resolve(strict=False)
-    if output in {args.upstream_contracts.resolve(), args.activation.resolve()}:
+    if output in {args.upstream_contracts.resolve(), args.observations.resolve()}:
         parser.error("refusing to overwrite an input file")
     registry = compile_provider_native_registry(
         _load_yaml(args.upstream_contracts, "upstream contract bundle"),
-        activation_document=_load_yaml(args.activation, "activation manifest"),
+        observations_document=_load_yaml(args.observations, "QuickSync observations"),
         query_defaults=DEFAULT_QUERY_DEFAULTS,
     )
     if not registry["datasets"]:

@@ -28,7 +28,7 @@ datasets:
     api_name: adj_factor
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_adj_factor
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -102,7 +102,7 @@ datasets:
     api_name: anns_d
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_anns_d
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -197,7 +197,7 @@ datasets:
     api_name: bak_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bak_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -418,7 +418,7 @@ datasets:
     api_name: bak_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bak_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -688,7 +688,7 @@ datasets:
     api_name: balancesheet
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_balancesheet
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -1584,42 +1584,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: oth_eq_invest
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: oth_illiq_fin_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: oth_eq_ppbond
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: receiv_financing
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: use_right_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: lease_liab
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: contract_assets
     logical_type: float
     nullable: true
@@ -1789,7 +1753,7 @@ datasets:
     api_name: bc_bestotcqt
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bc_bestotcqt
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -1919,7 +1883,7 @@ datasets:
     api_name: bc_otcqt
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bc_otcqt
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2063,7 +2027,7 @@ datasets:
     api_name: block_trade
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_block_trade
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2165,7 +2129,7 @@ datasets:
     api_name: bond_blk
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bond_blk
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2260,7 +2224,7 @@ datasets:
     api_name: bond_blk_detail
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bond_blk_detail
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2369,7 +2333,7 @@ datasets:
     api_name: broker_recommend
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_broker_recommend
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2450,7 +2414,7 @@ datasets:
     api_name: bse_mapping
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bse_mapping
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -2531,7 +2495,7 @@ datasets:
     api_name: cashflow
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cashflow
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -3263,7 +3227,7 @@ datasets:
     api_name: cb_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -3308,12 +3272,6 @@ datasets:
     filterable: true
     sortable: true
   - name: cb_code
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: cb_type
     logical_type: text
     nullable: true
     selectable: true
@@ -3457,12 +3415,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: maturity_call_price
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: maturity_put_price
     logical_type: text
     nullable: true
@@ -3523,7 +3475,6 @@ datasets:
   - bond_full_name
   - bond_short_name
   - cb_code
-  - cb_type
   - stk_code
   - stk_short_name
   - maturity
@@ -3547,7 +3498,6 @@ datasets:
   - conv_price
   - rate_clause
   - put_clause
-  - maturity_call_price
   - maturity_put_price
   - call_clause
   - reset_clause
@@ -3582,7 +3532,7 @@ datasets:
     api_name: cb_call
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_call
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -3712,7 +3662,7 @@ datasets:
     api_name: cb_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -3870,7 +3820,7 @@ datasets:
     api_name: cb_factor_pro
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_factor_pro
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -4546,7 +4496,7 @@ datasets:
     api_name: cb_issue
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_issue
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -4844,7 +4794,7 @@ datasets:
     api_name: cb_price_chg
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_price_chg
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -4946,7 +4896,7 @@ datasets:
     api_name: cb_rate
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_rate
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5034,7 +4984,7 @@ datasets:
     api_name: cb_rating
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_rating
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5072,37 +5022,7 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: rating_date
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rating_com_name
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rating_way
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rating_type
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: rating
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rating_outlook
     logical_type: text
     nullable: true
     selectable: true
@@ -5112,12 +5032,7 @@ datasets:
   default_projection:
   - ts_code
   - ann_date
-  - rating_date
-  - rating_com_name
-  - rating_way
-  - rating_type
   - rating
-  - rating_outlook
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -5143,7 +5058,7 @@ datasets:
     api_name: cb_share
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_share
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5301,7 +5216,7 @@ datasets:
     api_name: cctv_news
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cctv_news
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5375,7 +5290,7 @@ datasets:
     api_name: ci_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ci_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5505,7 +5420,7 @@ datasets:
     api_name: ci_index_member
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ci_index_member
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5635,7 +5550,7 @@ datasets:
     api_name: cn_cpi
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_cpi
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5779,7 +5694,7 @@ datasets:
     api_name: cn_gdp
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_gdp
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -5895,7 +5810,7 @@ datasets:
     api_name: cn_m
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_m
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -6018,7 +5933,7 @@ datasets:
     api_name: cn_pmi
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_pmi
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -6491,7 +6406,7 @@ datasets:
     api_name: cn_ppi
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_ppi
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -6761,7 +6676,7 @@ datasets:
     api_name: cn_schedule
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_schedule
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -6805,25 +6720,11 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: issuing_org
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: data_api
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - month
   - publish_date
   - title
-  - issuing_org
-  - data_api
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -6849,7 +6750,7 @@ datasets:
     api_name: cyq_chips
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cyq_chips
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -6930,7 +6831,7 @@ datasets:
     api_name: cyq_perf
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cyq_perf
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7060,7 +6961,7 @@ datasets:
     api_name: daily_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_daily_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7194,12 +7095,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: limit_status
-    logical_type: integer
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -7220,7 +7115,6 @@ datasets:
   - free_share
   - total_mv
   - circ_mv
-  - limit_status
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -7246,7 +7140,7 @@ datasets:
     api_name: daily_info
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_daily_info
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7397,7 +7291,7 @@ datasets:
     api_name: dc_concept
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_concept
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7534,7 +7428,7 @@ datasets:
     api_name: dc_concept_cons
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_concept_cons
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7643,7 +7537,7 @@ datasets:
     api_name: dc_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7780,7 +7674,7 @@ datasets:
     api_name: dc_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -7924,7 +7818,7 @@ datasets:
     api_name: dc_member
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_member
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8005,7 +7899,7 @@ datasets:
     api_name: disclosure_date
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_disclosure_date
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8100,7 +7994,7 @@ datasets:
     api_name: dividend
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dividend
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8265,7 +8159,7 @@ datasets:
     api_name: etf_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8416,7 +8310,7 @@ datasets:
     api_name: etf_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8525,7 +8419,7 @@ datasets:
     api_name: etf_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_mins
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8634,7 +8528,7 @@ datasets:
     api_name: etf_sh_cons
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_sh_cons
-    entitlement_state: unknown
+    entitlement_state: excluded
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8757,7 +8651,7 @@ datasets:
     api_name: etf_share_size
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_share_size
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8866,7 +8760,7 @@ datasets:
     api_name: etf_sz_cons
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_sz_cons
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -8940,18 +8834,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: sub_cc
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: red_cc
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: exchange
     logical_type: text
     nullable: true
@@ -8968,8 +8850,6 @@ datasets:
   - sub_flag
   - cpr
   - rdr
-  - sub_cc
-  - red_cc
   - exchange
   as_of_field: null
   as_of_format: null
@@ -8996,7 +8876,7 @@ datasets:
     api_name: express
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_express
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -9100,115 +8980,7 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: yoy_sales
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_op
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_tp
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_dedu_np
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_eps
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_roe
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: growth_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: yoy_equity
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: growth_bps
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: or_last_year
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: op_last_year
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: tp_last_year
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: np_last_year
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: eps_last_year
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: open_net_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: open_bps
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: perf_summary
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: is_audit
-    logical_type: integer
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: remark
     logical_type: text
     nullable: true
     selectable: true
@@ -9229,25 +9001,7 @@ datasets:
   - diluted_roe
   - yoy_net_profit
   - bps
-  - yoy_sales
-  - yoy_op
-  - yoy_tp
-  - yoy_dedu_np
-  - yoy_eps
-  - yoy_roe
-  - growth_assets
-  - yoy_equity
-  - growth_bps
-  - or_last_year
-  - op_last_year
-  - tp_last_year
-  - np_last_year
-  - eps_last_year
-  - open_net_assets
-  - open_bps
   - perf_summary
-  - is_audit
-  - remark
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -9273,7 +9027,7 @@ datasets:
     api_name: fina_audit
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_audit
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -9375,7 +9129,7 @@ datasets:
     api_name: fina_indicator
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_indicator
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -10530,7 +10284,7 @@ datasets:
     api_name: fina_mainbz
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_mainbz
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -10574,12 +10328,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: bz_code
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: bz_sales
     logical_type: float
     nullable: true
@@ -10615,7 +10363,6 @@ datasets:
   - ts_code
   - end_date
   - bz_item
-  - bz_code
   - bz_sales
   - bz_profit
   - bz_cost
@@ -10646,7 +10393,7 @@ datasets:
     api_name: forecast
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_forecast
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -10783,7 +10530,7 @@ datasets:
     api_name: ft_limit
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ft_limit
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -10892,7 +10639,7 @@ datasets:
     api_name: ft_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ft_mins
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11008,7 +10755,7 @@ datasets:
     api_name: fund_adj
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_adj
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11082,7 +10829,7 @@ datasets:
     api_name: fund_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11310,7 +11057,7 @@ datasets:
     api_name: fund_company
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_company
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11489,7 +11236,7 @@ datasets:
     api_name: fund_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11619,7 +11366,7 @@ datasets:
     api_name: fund_div
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_div
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11784,7 +11531,7 @@ datasets:
     api_name: fund_factor_pro
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_factor_pro
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -11822,12 +11569,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: trade_date_doris
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: false
-    sortable: false
   - name: open
     logical_type: float
     nullable: true
@@ -12354,7 +12095,6 @@ datasets:
   default_projection:
   - ts_code
   - trade_date
-  - trade_date_doris
   - open
   - high
   - low
@@ -12467,7 +12207,7 @@ datasets:
     api_name: fund_manager
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_manager
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -12590,7 +12330,7 @@ datasets:
     api_name: fund_nav
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_nav
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -12706,7 +12446,7 @@ datasets:
     api_name: fund_portfolio
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_portfolio
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -12815,7 +12555,7 @@ datasets:
     api_name: fund_share
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_share
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -12889,7 +12629,7 @@ datasets:
     api_name: fut_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13054,7 +12794,7 @@ datasets:
     api_name: fut_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13170,12 +12910,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: delv_settle
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -13193,7 +12927,6 @@ datasets:
   - amount
   - oi
   - oi_chg
-  - delv_settle
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -13219,7 +12952,7 @@ datasets:
     api_name: fut_holding
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_holding
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13342,7 +13075,7 @@ datasets:
     api_name: fut_index_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_index_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13472,7 +13205,7 @@ datasets:
     api_name: fut_mapping
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_mapping
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13546,7 +13279,7 @@ datasets:
     api_name: fut_settle
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_settle
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13683,7 +13416,7 @@ datasets:
     api_name: fut_trade_cal
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_trade_cal
-    entitlement_state: unknown
+    entitlement_state: excluded
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -13936,7 +13669,7 @@ datasets:
     api_name: fut_weekly_monthly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_weekly_monthly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14115,7 +13848,7 @@ datasets:
     api_name: fut_wsr
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_wsr
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14287,7 +14020,7 @@ datasets:
     api_name: gz_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_gz_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14389,7 +14122,7 @@ datasets:
     api_name: hk_hold
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_hk_hold
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14491,7 +14224,7 @@ datasets:
     api_name: hm_detail
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_hm_detail
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14607,7 +14340,7 @@ datasets:
     api_name: hm_list
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_hm_list
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14681,7 +14414,7 @@ datasets:
     api_name: hsgt_top10
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_hsgt_top10
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -14811,7 +14544,7 @@ datasets:
     api_name: idx_factor_pro
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_idx_factor_pro
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -15487,7 +15220,7 @@ datasets:
     api_name: idx_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_idx_mins
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -15596,7 +15329,7 @@ datasets:
     api_name: income
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_income
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16120,61 +15853,7 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: net_after_nr_lp_correct
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: credit_impa_loss
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: net_expo_hedging_benefits
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: oth_impair_loss_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: total_opcost
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: amodcost_fin_assets
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: oth_income
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: asset_disp_income
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: continued_net_profit
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: end_net_profit
     logical_type: float
     nullable: true
     selectable: true
@@ -16271,16 +15950,7 @@ datasets:
   - prfshare_payable_dvd
   - comshare_payable_dvd
   - capit_comstock_div
-  - net_after_nr_lp_correct
-  - credit_impa_loss
-  - net_expo_hedging_benefits
-  - oth_impair_loss_assets
-  - total_opcost
-  - amodcost_fin_assets
-  - oth_income
-  - asset_disp_income
   - continued_net_profit
-  - end_net_profit
   - update_flag
   as_of_field: null
   as_of_format: null
@@ -16307,7 +15977,7 @@ datasets:
     api_name: index_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16451,7 +16121,7 @@ datasets:
     api_name: index_classify
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_classify
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16553,7 +16223,7 @@ datasets:
     api_name: index_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16683,7 +16353,7 @@ datasets:
     api_name: index_dailybasic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_dailybasic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16820,7 +16490,7 @@ datasets:
     api_name: index_member_all
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_member_all
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -16950,7 +16620,7 @@ datasets:
     api_name: index_monthly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_monthly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17080,7 +16750,7 @@ datasets:
     api_name: index_weekly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_weekly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17210,7 +16880,7 @@ datasets:
     api_name: index_weight
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_weight
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17291,7 +16961,7 @@ datasets:
     api_name: irm_qa_sh
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_irm_qa_sh
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17386,7 +17056,7 @@ datasets:
     api_name: irm_qa_sz
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_irm_qa_sz
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17488,7 +17158,7 @@ datasets:
     api_name: kpl_concept_cons
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_kpl_concept_cons
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17590,7 +17260,7 @@ datasets:
     api_name: kpl_list
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_kpl_list
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17811,7 +17481,7 @@ datasets:
     api_name: limit_cpt_list
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_cpt_list
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -17927,7 +17597,7 @@ datasets:
     api_name: limit_list_d
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_list_d
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18106,7 +17776,7 @@ datasets:
     api_name: limit_list_ths
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_list_ths
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18327,7 +17997,7 @@ datasets:
     api_name: limit_step
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_step
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18408,7 +18078,7 @@ datasets:
     api_name: major_news
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_major_news
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18489,7 +18159,7 @@ datasets:
     api_name: margin
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_margin
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18605,7 +18275,7 @@ datasets:
     api_name: margin_detail
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_margin_detail
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18735,7 +18405,7 @@ datasets:
     api_name: margin_secs
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_margin_secs
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18816,7 +18486,7 @@ datasets:
     api_name: mkt_idx_bmk
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_mkt_idx_bmk
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -18866,24 +18536,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: bmk_level
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: bmk_type
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: bmk_src
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: idx_type
     logical_type: text
     nullable: true
@@ -18896,9 +18548,6 @@ datasets:
   - symbol
   - name
   - fullname
-  - bmk_level
-  - bmk_type
-  - bmk_src
   - idx_type
   as_of_field: null
   as_of_format: null
@@ -18925,7 +18574,7 @@ datasets:
     api_name: monetary_policy
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_monetary_policy
-    entitlement_state: unknown
+    entitlement_state: excluded
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19013,7 +18662,7 @@ datasets:
     api_name: moneyflow
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19206,7 +18855,7 @@ datasets:
     api_name: moneyflow_cnt_ths
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_cnt_ths
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19343,7 +18992,7 @@ datasets:
     api_name: moneyflow_dc
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_dc
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19501,7 +19150,7 @@ datasets:
     api_name: moneyflow_hsgt
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_hsgt
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19603,7 +19252,7 @@ datasets:
     api_name: moneyflow_ind_dc
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_ind_dc
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19782,7 +19431,7 @@ datasets:
     api_name: moneyflow_ind_ths
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_ind_ths
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -19919,7 +19568,7 @@ datasets:
     api_name: moneyflow_mkt_dc
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_mkt_dc
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20077,7 +19726,7 @@ datasets:
     api_name: moneyflow_ths
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_ths
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20221,7 +19870,7 @@ datasets:
     api_name: monthly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_monthly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20351,7 +20000,7 @@ datasets:
     api_name: namechange
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_namechange
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20446,7 +20095,7 @@ datasets:
     api_name: new_share
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_new_share
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20583,7 +20232,7 @@ datasets:
     api_name: news
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_news
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20664,7 +20313,7 @@ datasets:
     api_name: npr
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_npr
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20766,7 +20415,7 @@ datasets:
     api_name: opt_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -20793,12 +20442,6 @@ datasets:
     row_key_strategy: payload_hash
   fields:
   - name: ts_code
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: symbol
     logical_type: text
     nullable: true
     selectable: true
@@ -20847,12 +20490,6 @@ datasets:
     filterable: true
     sortable: true
   - name: exercise_price
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: opt_multiplier
     logical_type: float
     nullable: true
     selectable: true
@@ -20915,7 +20552,6 @@ datasets:
   primary_key: []
   default_projection:
   - ts_code
-  - symbol
   - exchange
   - name
   - per_unit
@@ -20924,7 +20560,6 @@ datasets:
   - call_put
   - exercise_type
   - exercise_price
-  - opt_multiplier
   - s_month
   - maturity_date
   - list_price
@@ -20959,7 +20594,7 @@ datasets:
     api_name: opt_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21103,7 +20738,7 @@ datasets:
     api_name: opt_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_mins
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21219,7 +20854,7 @@ datasets:
     api_name: pledge_detail
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_pledge_detail
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21370,7 +21005,7 @@ datasets:
     api_name: pledge_stat
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_pledge_stat
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21472,7 +21107,7 @@ datasets:
     api_name: repo_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_repo_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21609,7 +21244,7 @@ datasets:
     api_name: report_rc
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_report_rc
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21823,7 +21458,7 @@ datasets:
     api_name: repurchase
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_repurchase
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -21939,7 +21574,7 @@ datasets:
     api_name: research_report
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_research_report
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22062,7 +21697,7 @@ datasets:
     api_name: rt_etf_k
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_etf_k
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22206,7 +21841,7 @@ datasets:
     api_name: rt_etf_min
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_etf_min
-    entitlement_state: unknown
+    entitlement_state: excluded
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22315,7 +21950,7 @@ datasets:
     api_name: rt_etf_min_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_etf_min_daily
-    entitlement_state: unknown
+    entitlement_state: excluded
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22424,7 +22059,7 @@ datasets:
     api_name: rt_etf_sz_iopv
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_etf_sz_iopv
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22561,7 +22196,7 @@ datasets:
     api_name: rt_fut_min
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_fut_min
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22684,7 +22319,7 @@ datasets:
     api_name: rt_idx_k
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_idx_k
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22807,7 +22442,7 @@ datasets:
     api_name: rt_idx_min
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_idx_min
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -22916,7 +22551,7 @@ datasets:
     api_name: rt_k
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_k
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23074,7 +22709,7 @@ datasets:
     api_name: rt_min
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_min
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23100,12 +22735,6 @@ datasets:
     storage_kind: provider_native_rows
     row_key_strategy: payload_hash
   fields:
-  - name: code
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: time
     logical_type: text
     nullable: true
@@ -23150,7 +22779,6 @@ datasets:
     sortable: true
   primary_key: []
   default_projection:
-  - code
   - time
   - open
   - close
@@ -23183,7 +22811,7 @@ datasets:
     api_name: rt_min_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_min_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23299,7 +22927,7 @@ datasets:
     api_name: rt_sw_k
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_sw_k
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23429,7 +23057,7 @@ datasets:
     api_name: sf_month
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sf_month
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23510,7 +23138,7 @@ datasets:
     api_name: sge_basic
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sge_basic
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23661,7 +23289,7 @@ datasets:
     api_name: sge_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sge_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23812,7 +23440,7 @@ datasets:
     api_name: share_float
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_share_float
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -23914,7 +23542,7 @@ datasets:
     api_name: shibor
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_shibor
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24030,7 +23658,7 @@ datasets:
     api_name: shibor_lpr
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_shibor_lpr
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24104,7 +23732,7 @@ datasets:
     api_name: shibor_quote
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_shibor_quote
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24283,7 +23911,7 @@ datasets:
     api_name: slb_len
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_slb_len
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24378,7 +24006,7 @@ datasets:
     api_name: st
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_st
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24428,12 +24056,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: st_type
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: st_reason
     logical_type: text
     nullable: true
@@ -24452,7 +24074,6 @@ datasets:
   - name
   - pub_date
   - imp_date
-  - st_type
   - st_reason
   - st_explain
   as_of_field: null
@@ -24480,7 +24101,7 @@ datasets:
     api_name: stk_alert
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_alert
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24568,7 +24189,7 @@ datasets:
     api_name: stk_auction
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_auction
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24684,7 +24305,7 @@ datasets:
     api_name: stk_auction_c
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_auction_c
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24800,7 +24421,7 @@ datasets:
     api_name: stk_auction_o
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_auction_o
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -24916,7 +24537,7 @@ datasets:
     api_name: stk_factor
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_factor
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -25062,96 +24683,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: pre_close_hfq
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: pre_close_qfq
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: macd_dif
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: macd_dea
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: macd
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: kdj_k
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: kdj_d
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: kdj_j
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rsi_6
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rsi_12
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: rsi_24
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: boll_upper
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: boll_mid
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: boll_lower
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: cci
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -25174,21 +24705,6 @@ datasets:
   - high_qfq
   - low_hfq
   - low_qfq
-  - pre_close_hfq
-  - pre_close_qfq
-  - macd_dif
-  - macd_dea
-  - macd
-  - kdj_k
-  - kdj_d
-  - kdj_j
-  - rsi_6
-  - rsi_12
-  - rsi_24
-  - boll_upper
-  - boll_mid
-  - boll_lower
-  - cci
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -25214,7 +24730,7 @@ datasets:
     api_name: stk_factor_pro
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_factor_pro
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -26933,7 +26449,7 @@ datasets:
     api_name: stk_high_shock
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_high_shock
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27028,7 +26544,7 @@ datasets:
     api_name: stk_holdernumber
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_holdernumber
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27109,7 +26625,7 @@ datasets:
     api_name: stk_holdertrade
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_holdertrade
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27253,7 +26769,7 @@ datasets:
     api_name: stk_limit
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_limit
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27341,7 +26857,7 @@ datasets:
     api_name: stk_managers
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_managers
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27478,7 +26994,7 @@ datasets:
     api_name: stk_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_mins
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27587,7 +27103,7 @@ datasets:
     api_name: stk_nineturn
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_nineturn
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27731,7 +27247,7 @@ datasets:
     api_name: stk_premarket
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_premarket
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27833,7 +27349,7 @@ datasets:
     api_name: stk_rewards
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_rewards
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -27935,7 +27451,7 @@ datasets:
     api_name: stk_shock
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_shock
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28030,7 +27546,7 @@ datasets:
     api_name: stk_surv
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_surv
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28153,7 +27669,7 @@ datasets:
     api_name: stk_week_month_adj
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_week_month_adj
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28353,7 +27869,7 @@ datasets:
     api_name: stk_weekly_monthly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_weekly_monthly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28497,7 +28013,7 @@ datasets:
     api_name: stock_company
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stock_company
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28676,7 +28192,7 @@ datasets:
     api_name: stock_hsgt
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stock_hsgt
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28764,7 +28280,7 @@ datasets:
     api_name: stock_st
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stock_st
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28852,7 +28368,7 @@ datasets:
     api_name: suspend_d
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_suspend_d
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -28933,7 +28449,7 @@ datasets:
     api_name: sw_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sw_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29091,7 +28607,7 @@ datasets:
     api_name: sw_mins
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sw_mins
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29200,7 +28716,7 @@ datasets:
     api_name: sz_daily_info
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sz_daily_info
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29316,7 +28832,7 @@ datasets:
     api_name: tdx_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_tdx_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29635,7 +29151,7 @@ datasets:
     api_name: tdx_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_tdx_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29751,7 +29267,7 @@ datasets:
     api_name: tdx_member
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_tdx_member
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29832,7 +29348,7 @@ datasets:
     api_name: ths_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ths_daily
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -29983,7 +29499,7 @@ datasets:
     api_name: ths_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ths_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30078,7 +29594,7 @@ datasets:
     api_name: ths_member
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_ths_member
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30180,7 +29696,7 @@ datasets:
     api_name: top10_cb_holders
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top10_cb_holders
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30218,12 +29734,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: holder_rank
-    logical_type: integer
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: holder_name
     logical_type: text
     nullable: true
@@ -30246,7 +29756,6 @@ datasets:
   default_projection:
   - ts_code
   - end_date
-  - holder_rank
   - holder_name
   - hold_amount
   - hold_ratio
@@ -30275,7 +29784,7 @@ datasets:
     api_name: top10_floatholders
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top10_floatholders
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30391,7 +29900,7 @@ datasets:
     api_name: top10_holders
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top10_holders
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30507,7 +30016,7 @@ datasets:
     api_name: top_inst
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top_inst
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30630,7 +30139,7 @@ datasets:
     api_name: top_list
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top_list
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30788,7 +30297,7 @@ datasets:
     api_name: weekly
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_weekly
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -30918,7 +30427,7 @@ datasets:
     api_name: wz_index
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_wz_index
-    entitlement_state: unknown
+    entitlement_state: active
     activation_state: paused
     target_tables:
     - provider_dataset_rows
@@ -31062,7 +30571,7 @@ datasets:
     api_name: yc_cb
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_yc_cb
-    entitlement_state: unknown
+    entitlement_state: locked
     activation_state: paused
     target_tables:
     - provider_dataset_rows

@@ -1,4 +1,8 @@
-"""Resolve reviewed Tushare request profiles into bounded one-shot probes."""
+"""Validate deprecated Tushare request profiles during contract migration.
+
+This module is migration-only.  It is not an entitlement or activation authority and
+must not be imported by the collector, scheduler, or production command surface.
+"""
 
 from __future__ import annotations
 
@@ -408,7 +412,7 @@ def _transform_observed_at(
 def resolve_request_profile(
     profile: RequestProfileSpec, *, observed_at: str
 ) -> ProbeSpec:
-    """Resolve one reviewed executable profile without credentials or I/O."""
+    """Resolve one migration fixture without credentials, provider I/O, or activation."""
 
     if not isinstance(profile, RequestProfileSpec) or not profile.executable:
         raise ValueError("request profile is not executable")

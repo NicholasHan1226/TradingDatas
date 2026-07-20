@@ -77,37 +77,22 @@ uv run --python 3.12 --with-requirements requirements.txt \
   python tools/compile_provider_native_registry.py
 ```
 
-编译器当前注册 190 个首期官方接口。只有有独立 activation/entitlement
-证据的接口会成为 `active`；其余接口仍可在 catalog 中发现，但固定为
-`entitlement_state=unknown`、`activation_state=paused`，不会被 scheduler 调用。
+编译器当前注册 190 个首期官方接口，并只从
+`config/quicksync_interface_observations.v1.yaml` 读取 QuickSync 权限与兼容性观测。
+该配置绑定脱敏接口矩阵及 API 集合 SHA，完整覆盖 190 个接口且分类零重叠；矩阵明确来自
+HTTP compatibility 探测、`production_ready=false`，不能替代正式 HTTPS
+provider -> SQLite -> receipt -> API readback。
 
-这些官方合同保持可复用，不需要迁库或逐接口重写采集器；修正发生在 provider-level transport/auth/error/rate 边界。
+当前 registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`
+三个 active dataset，其余 187 个全部 paused。validated match 与已修复数字字段只表示
+候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
+unsupported 均按观测结果 fail closed。
 
-## Entitlement 探测
-
-默认命令只校验冻结合同并输出计划，不读取 Token、不调用 provider：
-
-```bash
-uv run --python 3.12 --with-requirements requirements.txt \
-  python tools/probe_provider_entitlements.py
-```
-
-`config/tushare_request_profiles.v1.yaml` 以配置方式覆盖其余 187 个合同：153 个
-具备已复核请求画像，其中 135 个可由单一通用 resolver 解析为 one-shot probe。
-resolver 只接受冻结的 `literal`，或从显式 UTC `observed_at` 按
-`Asia/Shanghai` 生成 `yyyymmdd`、`yyyymm`、`yyyy_qn`、`yyyyww`、
-`local_datetime_seconds`，并应用有界 `offset_seconds`；字段只取官方冻结合同中的
-第一个合法输出字段。既有 `bak_daily`、`fund_adj`、`fund_manager` 请求字节保持不变。
-其余 52 个按缺少 fresh anchor、空参数无界或枚举未冻结等原因保持 plan-only，
-不会进入 resolver。探测不是采集：它不写 facts、ingest receipts 或 activation，
-也不会启用 scheduler。
-
-执行模式只用于正式 QuickSync 凭证文件已按运行手册安装后的人工 one-shot。它要求显式传入
-1–5 个属于上述 135 个 runtime-executable profile 的 `--dataset-id`、不可变 release
-commit 和精确 UTC 秒。缺失、重复、未知、超过 5 个或任何 plan-only 选择都会在
-读取凭证前整体拒绝。每个已选择数据集最多调用一次、零重试，每个响应在 JSON
-解析前受 128 KiB 上限约束。命令只向 stdout 输出脱敏、自哈希 JSON evidence；
-结果仍需独立审核，不能直接作为自动 activation 指令。
+旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
+官方输入参数迁移资料保留：它们不是 entitlement/activation authority，不得被 collector、
+scheduler 或生产命令执行；待输入映射迁入 provider-native runtime contracts 后删除。
+正式验证统一走 registry-driven collector 的受控 one-shot，使真实 facts 与 transaction
+receipt 同事务，再通过固定 catalog/query API readback。
 
 ## 本地验证
 

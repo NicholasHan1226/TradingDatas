@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import re
 
@@ -9,31 +10,63 @@ import yaml
 from collectors.tushare import request_profile_resolver as resolver_module
 from collectors.tushare.request_profile_resolver import (
     ProbeSpec,
+    RequestProfileCatalog,
+    load_request_profile_catalog,
     resolve_request_profile,
 )
-from tools import probe_provider_entitlements as probe
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = ROOT / "config" / "provider_entitlement_probes.v1.yaml"
 REQUEST_PROFILES = ROOT / "config" / "tushare_request_profiles.v1.yaml"
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
+OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 
 
-def _load_policy() -> probe.ProbePolicy:
-    return probe.load_probe_policy(POLICY, DOCUMENTS, REGISTRY, REQUEST_PROFILES)
+def _load_catalog() -> RequestProfileCatalog:
+    documents = yaml.safe_load(DOCUMENTS.read_text(encoding="utf-8"))
+    document_by_api = {
+        contract["api_name"]: contract for contract in documents["contracts"]
+    }
+    registry = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))
+    dataset_by_api: dict[str, str] = {}
+    for dataset in registry["datasets"]:
+        for binding in dataset["provider_bindings"]:
+            if binding["provider"] == "tushare":
+                dataset_by_api[binding["api_name"]] = dataset["dataset_id"]
+
+    observations = yaml.safe_load(OBSERVATIONS.read_text(encoding="utf-8"))
+    classification_by_api: dict[str, str] = {}
+    for classification, members in observations["classifications"].items():
+        api_names = members if type(members) is list else members.keys()
+        for api_name in api_names:
+            assert api_name not in classification_by_api
+            classification_by_api[api_name] = classification
+
+    active_apis = sorted(observations["active_evidence"])
+    assert len(active_apis) == 3
+    return load_request_profile_catalog(
+        yaml.safe_load(REQUEST_PROFILES.read_text(encoding="utf-8")),
+        document_by_api=document_by_api,
+        dataset_by_api=dataset_by_api,
+        classification_by_api=classification_by_api,
+        existing_activations=active_apis,
+        expected_document_sha=hashlib.sha256(DOCUMENTS.read_bytes()).hexdigest(),
+    )
 
 
 def _resolved(dataset_id: str, observed_at: str = "2025-12-31T16:00:00Z"):
-    profile = _load_policy().request_profile_specs[dataset_id]
+    profile = _load_catalog().profiles[dataset_id]
     return resolve_request_profile(profile, observed_at=observed_at)
 
 
 def test_first_output_field_accepts_numeric_leading_provider_name() -> None:
-    assert resolver_module._first_legal_output_field(
-        {"output_fields": [{"name": "1w"}]}, "shibor"
-    ) == "1w"
+    assert (
+        resolver_module._first_legal_output_field(
+            {"output_fields": [{"name": "1w"}]}, "shibor"
+        )
+        == "1w"
+    )
 
 
 def test_first_output_field_rejects_names_longer_than_frozen_contract() -> None:
@@ -52,16 +85,14 @@ def test_input_contract_rejects_parameter_names_longer_than_64_characters() -> N
 
 
 def test_all_135_executable_profiles_resolve_deterministically_to_one_field():
-    policy = _load_policy()
+    catalog = _load_catalog()
     documents = yaml.safe_load(DOCUMENTS.read_text(encoding="utf-8"))
     document_by_api = {
         contract["api_name"]: contract for contract in documents["contracts"]
     }
     legal_field = re.compile(r"[A-Za-z0-9_]{1,64}")
     profiles = tuple(
-        profile
-        for profile in policy.request_profile_specs.values()
-        if profile.executable
+        profile for profile in catalog.profiles.values() if profile.executable
     )
 
     assert len(profiles) == 135
@@ -107,7 +138,7 @@ def test_literal_and_clock_transforms_use_asia_shanghai_and_offsets():
 
 
 def test_plan_only_profile_cannot_be_resolved():
-    profile = _load_policy().request_profile_specs["cn.dataset.pledge_stat"]
+    profile = _load_catalog().profiles["cn.dataset.pledge_stat"]
 
     assert profile.executable is False
     with pytest.raises(ValueError, match="not executable"):
@@ -115,7 +146,7 @@ def test_plan_only_profile_cannot_be_resolved():
 
 
 def test_plan_only_quarter_transform_is_validated_but_not_resolved():
-    profile = _load_policy().request_profile_specs["cn.dataset.stk_rewards"]
+    profile = _load_catalog().profiles["cn.dataset.stk_rewards"]
 
     assert profile.executable is False
     assert profile.parameters["end_date"].transform == "last_completed_quarter_end"

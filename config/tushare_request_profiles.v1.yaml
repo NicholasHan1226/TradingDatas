@@ -1,3 +1,6 @@
+# DEPRECATED, MIGRATION-ONLY: preserves reviewed official input mappings until they
+# are represented by provider-native runtime contracts. This file is not an
+# entitlement/activation authority and must not drive collectors or schedulers.
 version: 1
 profile_id: tushare-request-profiles.v1
 provider: tushare

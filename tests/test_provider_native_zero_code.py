@@ -34,8 +34,10 @@ TARGET_REGISTRY_PATH = (
     / "config"
     / "provider_native_dataset_registry.yaml"
 )
-REQUEST_PROFILES_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "tushare_request_profiles.v1.yaml"
+OBSERVATIONS_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "quicksync_interface_observations.v1.yaml"
 )
 
 
@@ -160,24 +162,45 @@ def _registry_document() -> dict[str, object]:
     }
 
 
-def test_request_profiles_do_not_activate_or_generate_dataset_specific_runtime():
-    profiles = yaml.safe_load(REQUEST_PROFILES_PATH.read_text(encoding="utf-8"))
+def test_observations_compile_without_dataset_specific_runtime():
     registry = yaml.safe_load(TARGET_REGISTRY_PATH.read_text(encoding="utf-8"))
-    profile_apis = {
-        api_name
-        for group in profiles["groups"].values()
-        for api_name in group["api_names"]
-    }
+    observations = yaml.safe_load(OBSERVATIONS_PATH.read_text(encoding="utf-8"))
     bindings = {
         dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
         for dataset in registry["datasets"]
     }
 
-    assert len(profile_apis) == 187
-    assert profile_apis.isdisjoint({"daily", "stock_basic", "trade_cal"})
-    assert all(bindings[api]["entitlement_state"] == "unknown" for api in profile_apis)
-    assert all(bindings[api]["activation_state"] == "paused" for api in profile_apis)
-    assert all(bindings[api]["request_template"] == {} for api in profile_apis)
+    assert len(bindings) == 190
+    active_apis = {"daily", "stock_basic", "trade_cal"}
+    paused_apis = set(bindings) - active_apis
+    assert len(paused_apis) == 187
+    assert all(bindings[api]["activation_state"] == "active" for api in active_apis)
+    assert all(bindings[api]["activation_state"] == "paused" for api in paused_apis)
+    assert all(bindings[api]["request_template"] == {} for api in paused_apis)
+    classifications = observations["classifications"]
+    active_entitlement = (
+        set(classifications["validated_contract_match"])
+        | set(classifications["numeric_field_repaired"])
+        | set(classifications["schema_subset"])
+        | set(classifications["quality_anomaly"])
+        | set(classifications["empty"])
+    )
+    assert all(
+        bindings[api]["entitlement_state"] == "active"
+        for api in paused_apis & active_entitlement
+    )
+    assert all(
+        bindings[api]["entitlement_state"] == "locked"
+        for api in classifications["permission_denied"]
+    )
+    assert all(
+        bindings[api]["entitlement_state"] == "unknown"
+        for api in classifications["credential_rejected"]
+    )
+    assert all(
+        bindings[api]["entitlement_state"] == "excluded"
+        for api in classifications["unsupported"]
+    )
 
 
 def _create_registry(tmp_path: Path):

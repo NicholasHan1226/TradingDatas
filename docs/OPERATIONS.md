@@ -50,50 +50,19 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
-4. 先执行零调用 plan，核对它报告 190 个合同、187 个 request profile、135 个
-   runtime executable probe、52 个 plan-only profile 和 0 次 provider call：
+4. 在不读取凭证、不调用 provider 的情况下重新编译 registry：
 
    ```bash
    /opt/tradingdatas/venv/bin/python3 \
-     /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py
+     /opt/investment/releases/tradingdatas/current/tools/compile_provider_native_registry.py
    ```
 
-   只有 release commit、正式 QuickSync 凭证文件和受控 evidence 目录均通过 preflight 后，
-   才执行一次人工 one-shot。`CODE_COMMIT` 必须来自当前不可变 release 的发布
-   manifest，`OBSERVED_AT` 必须是执行前生成的 UTC 秒；不得手填别的版本或时间：
-
-   ```bash
-   install -d -o tradingdatas -g tradingdatas -m 0700 \
-     /opt/investment-data/tradingdatas/evidence
-   CODE_COMMIT='<40-hex-release-commit>'
-   OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-   sudo -u tradingdatas env \
-     CODE_COMMIT="$CODE_COMMIT" \
-     OBSERVED_AT="$OBSERVED_AT" \
-     TUSHARE_API_URL=https://api.quicksync.cn \
-     TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token \
-     sh -c 'umask 077; exec /opt/tradingdatas/venv/bin/python3 \
-       /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py \
-       --execute \
-       --code-commit "$CODE_COMMIT" \
-       --observed-at "$OBSERVED_AT" \
-       --dataset-id cn.dataset.bak_daily \
-       --dataset-id cn.dataset.fund_adj \
-       --dataset-id cn.dataset.fund_manager \
-       > "/opt/investment-data/tradingdatas/evidence/entitlement-$OBSERVED_AT.json"'
-   ```
-
-   每次执行必须显式选择 1–5 个属于 135 个 runtime-executable profile 的 dataset。
-   单一 resolver 只接受冻结的 literal 与 `observed_at` 五种时钟转换，按
-   `Asia/Shanghai` 和有界 `offset_seconds` 确定性生成参数，并只请求官方冻结合同中
-   第一个合法输出字段。每个 dataset 最多调用一次、零重试，响应上限固定为
-   128 KiB；既有 `bak_daily`、`fund_adj`、`fund_manager` 请求保持不变。52 个需要
-   fresh anchor、无界空参数或未冻结枚举的 profile 仍为 plan-only；缺失、重复、
-   未知、超过 5 个或包含 plan-only 的选择都必须在读取凭证前整体拒绝。
-   stdout evidence 不含 Token、
-   Token 路径、原始响应或 provider diagnostic；probe 不写 facts、ingest receipts、
-   activation，也不修改 registry、timer 或 API。`entitled_active`/`locked`/`unknown`
-   只是一份待审核证据，不能自动启用数据集；
+   编译必须从 `quicksync_interface_observations.v1.yaml` 得到 190 个 dataset、
+   3 active / 187 paused，且输出与 checked-in registry 逐字节一致。观测配置必须保持
+   `interface_probe_scheme=http`、`production_ready=false` 和生产 transport
+   blocked；它不读取 Token，也不是正式 HTTPS 采集证明。旧 manual entitlement probe
+   与 policy 已退役；request-profile 配置与 resolver 仅作官方输入映射迁移资料，既不是
+   entitlement/activation authority，也不得接入 collector、scheduler 或生产命令；
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
