@@ -1193,7 +1193,7 @@ _PERMISSION_DENIED_PATTERNS = (
         rf"{_CHINESE_RETRY_SUFFIX}"
     ),
 )
-_PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 
 
 def _provider_error_code(provider_code: int | str | None, message: str) -> str:

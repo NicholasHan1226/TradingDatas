@@ -86,6 +86,38 @@ def test_query_request_accepts_scalar_and_operator_filters() -> None:
     )
 
 
+def test_query_request_accepts_numeric_leading_provider_fields() -> None:
+    contract = _contract()
+
+    request = contract.parse_query_request(
+        _payload(
+            fields=["1m"],
+            filters={"1m": {"gte": 1.0}},
+            order=["1m:desc"],
+        )
+    )
+
+    assert request.fields == ("1m",)
+    assert dict(request.filters["1m"]) == {"gte": 1.0}
+    assert request.order == ("1m:desc",)
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        {"fields": ["a" * 65]},
+        {"filters": {"a" * 65: {"eq": 1}}},
+        {"order": [f"{'a' * 65}:asc"]},
+    ),
+)
+def test_query_request_rejects_provider_fields_longer_than_64_characters(
+    override: dict[str, object],
+) -> None:
+    contract = _contract()
+    with pytest.raises(contract.QueryValidationError):
+        contract.parse_query_request(_payload(**override))
+
+
 def test_query_request_preserves_registry_owned_default_order() -> None:
     contract = _contract()
 

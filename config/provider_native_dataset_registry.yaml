@@ -23952,10 +23952,59 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1w
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
   - 'on'
+  - 1w
+  - 2w
+  - 1m
+  - 3m
+  - 6m
+  - 9m
+  - 1y
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -24013,9 +24062,23 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1y
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 5y
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
+  - 1y
+  - 5y
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -24091,12 +24154,110 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1w_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1w_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y_b
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y_a
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
   - bank
   - on_b
   - on_a
+  - 1w_b
+  - 1w_a
+  - 2w_b
+  - 2w_a
+  - 1m_b
+  - 1m_a
+  - 3m_b
+  - 3m_a
+  - 6m_b
+  - 6m_a
+  - 9m_b
+  - 9m_a
+  - 1y_b
+  - 1y_a
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -29301,6 +29462,36 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: 3day
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 5day
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 10day
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 20day
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 60day
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   - name: mtd
     logical_type: float
     nullable: true
@@ -29308,6 +29499,12 @@ datasets:
     filterable: true
     sortable: true
   - name: ytd
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1year
     logical_type: float
     nullable: true
     selectable: true
@@ -29395,8 +29592,14 @@ datasets:
   - limit_up_num
   - limit_down_num
   - lu_days
+  - 3day
+  - 5day
+  - 10day
+  - 20day
+  - 60day
   - mtd
   - ytd
+  - 1year
   - pe
   - pb
   - float_mv

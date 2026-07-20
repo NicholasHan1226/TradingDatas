@@ -123,6 +123,22 @@ def test_contract_bundle_is_the_only_dataset_authority_and_inputs_are_immutable(
         assert binding.target_tables == ("provider_dataset_rows",)
 
 
+def test_numeric_leading_provider_fields_compile_without_per_api_code() -> None:
+    registry = compile_provider_native_registry(_bundle())
+    by_api = {
+        item["provider_bindings"][0]["api_name"]: item
+        for item in registry["datasets"]
+    }
+
+    assert "1w" in {field["name"] for field in by_api["shibor"]["fields"]}
+    assert "1m_a" in {
+        field["name"] for field in by_api["shibor_quote"]["fields"]
+    }
+    assert "10day" in {
+        field["name"] for field in by_api["tdx_daily"]["fields"]
+    }
+
+
 def test_activation_declaration_is_the_only_entitlement_and_activation_authority() -> (
     None
 ):

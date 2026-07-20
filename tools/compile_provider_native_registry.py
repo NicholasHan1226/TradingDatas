@@ -49,7 +49,8 @@ DEFAULT_QUERY_DEFAULTS = {
     "sqlite_progress_steps": 1_000_000,
 }
 
-_SAFE_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_SAFE_PROVIDER_FIELD = re.compile(r"[A-Za-z0-9_]{1,64}")
+_SAFE_PARAMETER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _WINDOW_PLACEHOLDER = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
@@ -338,7 +339,7 @@ def _fields(raw: object, label: str) -> list[dict[str, Any]]:
         field = _mapping(raw_field, field_label)
         _reject_keys(field, _FIELD_KEYS, field_label)
         name = _required_text(field["name"], f"{field_label}.name")
-        if _SAFE_IDENTIFIER.fullmatch(name) is None:
+        if _SAFE_PROVIDER_FIELD.fullmatch(name) is None:
             raise ValueError(f"{field_label}.name must use provider field grammar")
         logical_type = _required_text(
             field["logical_type"], f"{field_label}.logical_type"
@@ -379,7 +380,7 @@ def _request_template(raw: object, label: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for raw_key, raw_value in source.items():
         key = _required_text(raw_key, f"{label} key")
-        if _SAFE_IDENTIFIER.fullmatch(key) is None:
+        if _SAFE_PARAMETER_NAME.fullmatch(key) is None:
             raise ValueError(f"{label} key must use provider parameter grammar")
         result[key] = _required_text(raw_value, f"{label}.{key}")
     return dict(sorted(result.items()))
@@ -432,8 +433,8 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
         parameter = _required_text(value["parameter"], f"{label}.parameter")
         source_field = _required_text(value["source_field"], f"{label}.source_field")
         if (
-            _SAFE_IDENTIFIER.fullmatch(parameter) is None
-            or _SAFE_IDENTIFIER.fullmatch(source_field) is None
+            _SAFE_PARAMETER_NAME.fullmatch(parameter) is None
+            or _SAFE_PROVIDER_FIELD.fullmatch(source_field) is None
         ):
             raise ValueError(f"{label} fields must use provider field grammar")
         result = {
@@ -474,8 +475,8 @@ def _pagination(raw: object, label: str) -> dict[str, Any]:
     if limit_parameter == offset_parameter:
         raise ValueError(f"{label} limit_parameter and offset_parameter must differ")
     if (
-        _SAFE_IDENTIFIER.fullmatch(limit_parameter) is None
-        or _SAFE_IDENTIFIER.fullmatch(offset_parameter) is None
+        _SAFE_PARAMETER_NAME.fullmatch(limit_parameter) is None
+        or _SAFE_PARAMETER_NAME.fullmatch(offset_parameter) is None
     ):
         raise ValueError(f"{label} parameters must use provider field grammar")
     return {
@@ -619,7 +620,7 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     if contract_provider != provider:
         raise ValueError(f"{label}.provider must match bundle provider")
     api_name = _required_text(value["api_name"], f"{label}.api_name")
-    if _SAFE_IDENTIFIER.fullmatch(api_name) is None:
+    if _SAFE_PARAMETER_NAME.fullmatch(api_name) is None:
         raise ValueError(f"{label}.api_name must use provider API grammar")
     source_hash = _required_text(
         value["source_document_sha256"], f"{label}.source_document_sha256"

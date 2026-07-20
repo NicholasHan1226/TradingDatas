@@ -216,6 +216,34 @@ def test_generic_registry_materializes_frozen_storage_and_request_contract(
         binding.request_template["end_date"] = "mutated"  # type: ignore[index]
 
 
+def test_registry_accepts_numeric_leading_payload_field_but_not_parameter(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+    dataset["fields"].append(_field("1m", "float", nullable=True))  # type: ignore[union-attr]
+    dataset["default_projection"].append("1m")  # type: ignore[union-attr]
+    dataset["provider_bindings"][0]["requested_fields"].append("1m")  # type: ignore[index,union-attr]
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset))
+    assert "1m" in {field.name for field in loaded.datasets[0].fields}
+
+    dataset["provider_bindings"][0]["request_template"]["1m"] = "x"  # type: ignore[index]
+    with pytest.raises(ValueError, match="parameter name grammar"):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
+@pytest.mark.parametrize("api_name", ["1api", "a" * 65])
+def test_registry_rejects_api_names_outside_provider_parameter_grammar(
+    tmp_path: Path,
+    api_name: str,
+) -> None:
+    dataset = generic_dataset()
+    dataset["provider_bindings"][0]["api_name"] = api_name  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="parameter name grammar"):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
 def test_request_variants_are_frozen_and_scoped_to_static_template_values(
     tmp_path: Path,
 ) -> None:

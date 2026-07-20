@@ -52,8 +52,8 @@ from storage.receipt_projection import (
 
 _AGGREGATE_SCOPES = frozenset({"external_read", "read", "full", "*"})
 _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
-_FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
-_ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
+_FIELD_NAME_RE = re.compile(r"[A-Za-z0-9_]{1,64}\Z")
+_ORDER_RE = re.compile(r"([A-Za-z0-9_]{1,64}):(asc|desc)\Z")
 _FILTER_OPERATORS = frozenset({"eq", "in", "gte", "lte", "between"})
 _PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
 _PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
@@ -61,12 +61,12 @@ _PROVIDER_NATIVE_QUALITY_INDEX = "provider_dataset_rows_quality_idx"
 _PROVIDER_NATIVE_ISSUE_RE = re.compile(
     r"(?:"
     r"(?:missing_field|unknown_field|null_not_allowed|integer_out_of_int64):"
-    r"[A-Za-z_][A-Za-z0-9_]*"
+    r"[A-Za-z0-9_]{1,64}"
     r"|unknown_field_sha256:[0-9a-f]{64}"
-    r"|type_mismatch:[A-Za-z_][A-Za-z0-9_]*:(?:text|integer|float)"
-    r"|time_format_mismatch:[A-Za-z_][A-Za-z0-9_]*:(?:yyyymmdd|rfc3339)"
+    r"|type_mismatch:[A-Za-z0-9_]{1,64}:(?:text|integer|float)"
+    r"|time_format_mismatch:[A-Za-z0-9_]{1,64}:(?:yyyymmdd|rfc3339)"
     r"|snapshot_key_fallback:(?:missing|null|non_scalar|type_mismatch):"
-    r"[A-Za-z_][A-Za-z0-9_]*"
+    r"[A-Za-z0-9_]{1,64}"
     r")\Z"
 )
 _EVIDENCE_ISO_TIMESTAMP_RE = re.compile(

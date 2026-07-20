@@ -228,7 +228,8 @@ _PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
 _PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
 _STORAGE_KINDS = frozenset({_PROVIDER_NATIVE_STORAGE_KIND})
 _ROW_KEY_STRATEGIES = frozenset({"primary_key", "payload_hash"})
-_PROVIDER_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_PROVIDER_FIELD_PATTERN = re.compile(r"[A-Za-z0-9_]{1,64}")
+_PROVIDER_PARAMETER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _WINDOW_PLACEHOLDER_PATTERN = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _SCHEMA_VERSION_PATTERN = re.compile(
     r"(?P<major>[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
@@ -671,11 +672,18 @@ def _provider_field_name(value: Any, path: str) -> str:
     return name
 
 
+def _provider_parameter_name(value: Any, path: str) -> str:
+    name = _non_empty_string(value, path)
+    if _PROVIDER_PARAMETER_PATTERN.fullmatch(name) is None:
+        raise ValueError(f"{path} must use the provider parameter name grammar")
+    return name
+
+
 def _request_template(raw: Any, path: str) -> Mapping[str, str]:
     value = _mapping(raw, path)
     normalized: dict[str, str] = {}
     for raw_key, raw_value in value.items():
-        key = _provider_field_name(raw_key, f"{path} key")
+        key = _provider_parameter_name(raw_key, f"{path} key")
         if not isinstance(raw_value, str):
             raise ValueError(f"{path}.{key} must be a string")
         if any(ord(character) < 32 for character in raw_value):
@@ -706,7 +714,7 @@ def _request_variants(
         value = _mapping(raw_variant, f"{path}[{index}]")
         variant: dict[str, RequestScalar] = {}
         for raw_key, raw_value in value.items():
-            key = _provider_field_name(raw_key, f"{path}[{index}] key")
+            key = _provider_parameter_name(raw_key, f"{path}[{index}] key")
             if key not in request_template:
                 raise ValueError(
                     f"{path}[{index}].{key} is missing from request_template"
@@ -775,7 +783,9 @@ def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
     _reject_unknown_keys(value, _FANOUT_KEYS, path, required=_FANOUT_KEYS)
     return FanoutPolicy(
         strategy="dataset_field",
-        parameter=_provider_field_name(value["parameter"], f"{path}.parameter"),
+        parameter=_provider_parameter_name(
+            value["parameter"], f"{path}.parameter"
+        ),
         source_dataset_id=_non_empty_string(
             value["source_dataset_id"], f"{path}.source_dataset_id"
         ),
@@ -804,10 +814,10 @@ def _pagination_policy(raw: Any, *, path: str) -> PaginationPolicy:
         )
         return PaginationPolicy(strategy="none")
     _reject_unknown_keys(value, _PAGINATION_KEYS, path, required=_PAGINATION_KEYS)
-    limit_parameter = _provider_field_name(
+    limit_parameter = _provider_parameter_name(
         value["limit_parameter"], f"{path}.limit_parameter"
     )
-    offset_parameter = _provider_field_name(
+    offset_parameter = _provider_parameter_name(
         value["offset_parameter"], f"{path}.offset_parameter"
     )
     if limit_parameter == offset_parameter:
@@ -841,7 +851,7 @@ def _request_window_policy(
     formats_value = _mapping(value["formats"], f"{path}.formats")
     formats: dict[str, str] = {}
     for raw_key, raw_format in formats_value.items():
-        key = _provider_field_name(raw_key, f"{path}.formats key")
+        key = _provider_parameter_name(raw_key, f"{path}.formats key")
         formats[key] = _choice(
             raw_format,
             _REQUEST_WINDOW_FORMATS,
@@ -862,10 +872,10 @@ def _request_window_policy(
             f"{path} request_template placeholders must exactly equal required_keys"
         )
 
-    range_start_key = _provider_field_name(
+    range_start_key = _provider_parameter_name(
         value["range_start_key"], f"{path}.range_start_key"
     )
-    range_end_key = _provider_field_name(
+    range_end_key = _provider_parameter_name(
         value["range_end_key"], f"{path}.range_end_key"
     )
     max_span_days = _positive_int(value["max_span_days"], f"{path}.max_span_days")
@@ -943,10 +953,10 @@ def _response_completeness_policy(
     request_partition_key: str | None = None
     if strategy == "one_row_per_calendar_date":
         date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
-        request_start_key = _provider_field_name(
+        request_start_key = _provider_parameter_name(
             value["request_start_key"], f"{path}.request_start_key"
         )
-        request_end_key = _provider_field_name(
+        request_end_key = _provider_parameter_name(
             value["request_end_key"], f"{path}.request_end_key"
         )
         if request_window_policy is None:
@@ -966,7 +976,7 @@ def _response_completeness_policy(
         partition_field = _provider_field_name(
             value["partition_field"], f"{path}.partition_field"
         )
-        request_partition_key = _provider_field_name(
+        request_partition_key = _provider_parameter_name(
             value["request_partition_key"], f"{path}.request_partition_key"
         )
         if request_window_policy is None:
@@ -988,7 +998,7 @@ def _response_completeness_policy(
         field_name = _provider_field_name(
             raw_field, f"{path}.fixed_field_matches row field"
         )
-        param_name = _provider_field_name(
+        param_name = _provider_parameter_name(
             raw_param, f"{path}.fixed_field_matches.{field_name}"
         )
         if param_name not in request_template:
@@ -1118,7 +1128,7 @@ def _load_binding(
     )
 
     provider = _non_empty_string(value["provider"], f"{path}.provider")
-    api_name = _non_empty_string(value["api_name"], f"{path}.api_name")
+    api_name = _provider_parameter_name(value["api_name"], f"{path}.api_name")
     adapter_version = _non_empty_string(
         value["adapter_version"], f"{path}.adapter_version"
     )

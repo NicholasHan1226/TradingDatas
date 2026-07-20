@@ -15,7 +15,8 @@ from zoneinfo import ZoneInfo
 _PROFILE_ID = "tushare-request-profiles.v1"
 _PROVIDER = "tushare"
 _DOCUMENT_SNAPSHOT_ID = "tushare-official-document-contracts.v1"
-_FIELD_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_INPUT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_OUTPUT_FIELD_NAME = re.compile(r"[A-Za-z0-9_]{1,64}")
 _UTC_SECOND = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _MAX_OFFSET_SECONDS = 366 * 24 * 60 * 60
@@ -129,7 +130,7 @@ def _input_contract(
         if type(raw_field) is not dict:
             raise ValueError(f"{api_name}.input field {index} must be a mapping")
         name = _text(raw_field.get("name"), f"{api_name}.input field {index}.name")
-        if _FIELD_NAME.fullmatch(name) is None or name in names:
+        if _INPUT_NAME.fullmatch(name) is None or name in names:
             raise ValueError(f"{api_name}.input field names are invalid")
         names.add(name)
         if raw_field.get("required") == "Y":
@@ -145,7 +146,7 @@ def _first_legal_output_field(document: Mapping[str, Any], api_name: str) -> str
         if type(raw_field) is not dict:
             continue
         name = raw_field.get("name")
-        if type(name) is str and _FIELD_NAME.fullmatch(name) is not None:
+        if type(name) is str and _OUTPUT_FIELD_NAME.fullmatch(name) is not None:
             return name
     raise ValueError(f"{api_name} has no legal documented output field")
 
@@ -195,7 +196,7 @@ def _validated_parameter(
         )
         _text(raw["dataset_id"], f"{label}.dataset_id")
         field = _text(raw["field"], f"{label}.field")
-        if _FIELD_NAME.fullmatch(field) is None:
+        if _OUTPUT_FIELD_NAME.fullmatch(field) is None:
             raise ValueError(f"{label}.field is invalid")
         if raw["requires_fresh_success_receipt"] is not True:
             raise ValueError(
@@ -311,7 +312,7 @@ def load_request_profile_catalog(
             input_fields, required_fields = _input_contract(document, api_name)
             parameter_names = set(raw_parameters)
             if any(
-                type(name) is not str or _FIELD_NAME.fullmatch(name) is None
+                type(name) is not str or _INPUT_NAME.fullmatch(name) is None
                 for name in parameter_names
             ) or not parameter_names.issubset(input_fields):
                 raise ValueError(f"request profile {api_name} parameters differ")
@@ -413,7 +414,7 @@ def resolve_request_profile(
         raise ValueError("request profile is not executable")
     if (
         len(profile.fields) != 1
-        or _FIELD_NAME.fullmatch(profile.fields[0]) is None
+        or _OUTPUT_FIELD_NAME.fullmatch(profile.fields[0]) is None
         or profile.max_response_bytes != _EXPECTED_LIMITS["max_response_bytes"]
     ):
         raise ValueError("request profile output budget is invalid")
@@ -421,7 +422,7 @@ def resolve_request_profile(
     params: dict[str, object] = {}
     parameter_sources: dict[str, str] = {}
     for name, parameter in profile.parameters.items():
-        if type(name) is not str or _FIELD_NAME.fullmatch(name) is None:
+        if type(name) is not str or _INPUT_NAME.fullmatch(name) is None:
             raise ValueError("request profile contains an invalid parameter name")
         if (
             parameter.source == "literal"

@@ -27,6 +27,15 @@ NOW = datetime(2026, 7, 17, 4, 0, tzinfo=timezone.utc)
 SIGNING_KEY = b"provider-native-query-signing-key"
 
 
+def test_numeric_leading_provider_field_uses_safe_json_path() -> None:
+    assert query_module._provider_json_path("1m") == '$."1m"'
+    assert query_module._provider_json_path("10day") == '$."10day"'
+    with pytest.raises(QueryServiceUnavailable):
+        query_module._provider_json_path('1m"].x')
+    with pytest.raises(QueryServiceUnavailable):
+        query_module._provider_json_path("a" * 65)
+
+
 def _native_dataset():
     base = load_dataset_registry().resolve("tushare.daily")
     fields = (

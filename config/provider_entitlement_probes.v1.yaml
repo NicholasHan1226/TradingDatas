@@ -9,7 +9,7 @@ source_documents:
   contract_count: 190
 source_registry:
   version: 1
-  sha256: f86a03ee9c5083443e895fbe94b09ffc072d17fabe6bed87d92d142fe8780523
+  sha256: a29d84c84cd7760561f0fde80a36a56547350e26e30695ef9e23cac2d71b2ebf
   dataset_count: 190
 source_request_profiles:
   version: 1

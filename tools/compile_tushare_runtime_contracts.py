@@ -34,7 +34,7 @@ DEFAULT_POLICY = ROOT / "config" / "tushare_runtime_contract_policy.v1.yaml"
 DEFAULT_OUTPUT = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 
 _SAFE_API_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
-_SAFE_FIELD_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
+_SAFE_FIELD_NAME = re.compile(r"[A-Za-z0-9_]{1,64}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _POLICY_KEYS = frozenset(
     {
@@ -181,8 +181,9 @@ def _field_contracts(document: Mapping[str, Any]) -> list[dict[str, object]]:
             f"{api_name}.output_fields[{index}].declared_type",
         )
         if _SAFE_FIELD_NAME.fullmatch(name) is None:
-            # The raw JSON row is still returned when callers omit fields. An
-            # invalid provider name must not be invented or silently renamed.
+            # Provider payload fields may start with a digit (for example
+            # ``1w`` or ``10day``). Other names remain available only through
+            # the lossless raw payload and must never be silently renamed.
             continue
         if name in seen:
             raise RuntimeContractCompilationError(

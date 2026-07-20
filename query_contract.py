@@ -34,9 +34,9 @@ _REQUEST_KEYS = frozenset(
 )
 _REQUEST_REQUIRED_KEYS = frozenset({"dataset_id", "schema_major"})
 _FILTER_OPERATORS = frozenset({"eq", "in", "gte", "lte", "between"})
-_FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_FIELD_NAME_RE = re.compile(r"[A-Za-z0-9_]{1,64}\Z")
 _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z")
-_ORDER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(asc|desc)\Z")
+_ORDER_RE = re.compile(r"([A-Za-z0-9_]{1,64}):(asc|desc)\Z")
 _RFC3339_RE = re.compile(
     r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
     r"T(?P<hour>[01][0-9]|2[0-3]):(?P<minute>[0-5][0-9]):"

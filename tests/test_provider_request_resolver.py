@@ -6,6 +6,7 @@ import re
 import pytest
 import yaml
 
+from collectors.tushare import request_profile_resolver as resolver_module
 from collectors.tushare.request_profile_resolver import (
     ProbeSpec,
     resolve_request_profile,
@@ -29,13 +30,34 @@ def _resolved(dataset_id: str, observed_at: str = "2025-12-31T16:00:00Z"):
     return resolve_request_profile(profile, observed_at=observed_at)
 
 
+def test_first_output_field_accepts_numeric_leading_provider_name() -> None:
+    assert resolver_module._first_legal_output_field(
+        {"output_fields": [{"name": "1w"}]}, "shibor"
+    ) == "1w"
+
+
+def test_first_output_field_rejects_names_longer_than_frozen_contract() -> None:
+    with pytest.raises(ValueError, match="no legal documented output field"):
+        resolver_module._first_legal_output_field(
+            {"output_fields": [{"name": "a" * 65}]}, "synthetic_api"
+        )
+
+
+def test_input_contract_rejects_parameter_names_longer_than_64_characters() -> None:
+    with pytest.raises(ValueError, match="input field names are invalid"):
+        resolver_module._input_contract(
+            {"input_fields": [{"name": "a" * 65, "required": "N"}]},
+            "synthetic_api",
+        )
+
+
 def test_all_135_executable_profiles_resolve_deterministically_to_one_field():
     policy = _load_policy()
     documents = yaml.safe_load(DOCUMENTS.read_text(encoding="utf-8"))
     document_by_api = {
         contract["api_name"]: contract for contract in documents["contracts"]
     }
-    legal_field = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    legal_field = re.compile(r"[A-Za-z0-9_]{1,64}")
     profiles = tuple(
         profile
         for profile in policy.request_profile_specs.values()

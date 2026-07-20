@@ -1080,6 +1080,19 @@ def test_strict_provider_rows_rejects_non_finite_float_values(value):
         tushare_common._strict_provider_rows({"fields": ["value"], "items": [[value]]})
 
 
+def test_strict_provider_rows_preserves_numeric_leading_field_names() -> None:
+    assert tushare_common._strict_provider_rows(
+        {"fields": ["1w", "10day"], "items": [[1.25, 2.5]]}
+    ) == ({"1w": 1.25, "10day": 2.5},)
+
+
+def test_strict_provider_rows_rejects_field_names_longer_than_64_characters() -> None:
+    with pytest.raises(ValueError, match="valid field names"):
+        tushare_common._strict_provider_rows(
+            {"fields": ["a" * 65], "items": [[1.0]]}
+        )
+
+
 @pytest.mark.parametrize(
     ("state", "rows"),
     [

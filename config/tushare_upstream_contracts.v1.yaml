@@ -24997,10 +24997,66 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1w
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
   - 'on'
+  - 1w
+  - 2w
+  - 1m
+  - 3m
+  - 6m
+  - 9m
+  - 1y
   as_of_field: null
   range_field: null
   partition_field: null
@@ -25050,9 +25106,25 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1y
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 5y
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
+  - 1y
+  - 5y
   as_of_field: null
   range_field: null
   partition_field: null
@@ -25123,12 +25195,124 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
+  - name: 1w_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1w_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 2w_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1m_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 3m_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 6m_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 9m_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y_b
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1y_a
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - date
   - bank
   - on_b
   - on_a
+  - 1w_b
+  - 1w_a
+  - 2w_b
+  - 2w_a
+  - 1m_b
+  - 1m_a
+  - 3m_b
+  - 3m_a
+  - 6m_b
+  - 6m_a
+  - 9m_b
+  - 9m_a
+  - 1y_b
+  - 1y_a
   as_of_field: null
   range_field: null
   partition_field: null
@@ -30622,6 +30806,41 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
+  - name: 3day
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 5day
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 10day
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 20day
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 60day
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   - name: mtd
     declared_source_type: float
     logical_type: float
@@ -30630,6 +30849,13 @@ contracts:
     filterable: true
     sortable: true
   - name: ytd
+    declared_source_type: float
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: 1year
     declared_source_type: float
     logical_type: float
     nullable: true
@@ -30728,8 +30954,14 @@ contracts:
   - limit_up_num
   - limit_down_num
   - lu_days
+  - 3day
+  - 5day
+  - 10day
+  - 20day
+  - 60day
   - mtd
   - ytd
+  - 1year
   - pe
   - pb
   - float_mv

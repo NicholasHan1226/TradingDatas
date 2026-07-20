@@ -70,7 +70,7 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     assert unreviewed["requested_fields"] == []
 
 
-def test_invalid_provider_field_names_remain_in_raw_payload_not_query_schema() -> None:
+def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
     )
@@ -78,7 +78,7 @@ def test_invalid_provider_field_names_remain_in_raw_payload_not_query_schema() -
         item for item in compiled["contracts"] if item["api_name"] == "shibor"
     )
 
-    assert "1w" not in {field["name"] for field in shibor["fields"]}
+    assert "1w" in {field["name"] for field in shibor["fields"]}
     assert shibor["requested_fields"] == []
 
 
