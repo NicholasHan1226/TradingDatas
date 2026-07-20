@@ -7,6 +7,9 @@
 - 2026-07-20 transport 假设已纠正：当前真实上游通道不是官方 `api.tushare.pro` 直连，而是 Tushare-compatible QuickSync。身份固定为 `provider=tushare`、`transport_service=quicksync`；官方 Tushare 文档继续作为 dataset/schema/cadence 参考，QuickSync 文档与有界真实观测才是 endpoint/auth/permission/error/rate/concurrency 的运行事实源。
 - 因此，现有 registry、通用 executor、SQLite facts/receipts 与固定 catalog/query API 可以继续复用，不需要迁库或逐接口重写；旧 official-direct release 与服务器 transport readback 对生产采集结论作废，整体仍为 NO-GO。该旧证据只证明代码层、发布布局和 fail-closed impaired 投影。
 - 当前 QuickSync 账号的确切分钟/每日额度和并发上限尚未从可访问文档冻结，不允许沿用官方 Tushare 积分频次或猜测数值。修正版 production timer 必须保持 disabled，直到 provider-level transport 修复、1–5 dataset 零重试有界 canary、权限码/流控证据及 fresh API readback 全部通过。
+- QuickSync transport 修正已形成 commit `a7e2e59aae877f9cbe0345ce80cbe0dae1e1fff8`：receipt 的 `config_hash` 现在同时绑定 provider-neutral ingest 合同和代码固定的 QuickSync transport profile；query 只有在 receipt hash 与当前 registry/profile 精确匹配时才输出 `transport_service=quicksync`，旧或不明 transport receipt 会 fail closed。最终定向矩阵为 70 项与 72 项通过，fresh reviewer 判定 P0=0、P1=0。
+- 服务器 immutable canary release `a7e2e59aae877f9cbe0345ce80cbe0dae1e1fff8` 已在独立 SQLite 与 `127.0.0.1:18084` transient API 上完成真实纵向切片：`trade_cal` 8 行、`stock_basic` 5,607 行、`daily` 5,524 行，共 11,139 facts；成功数据均有 transaction receipt。catalog 返回 190 个 dataset，`daily` 与 `security_master` query 为 ready/non-degraded、lineage 完整且 transport 为 QuickSync；无认证请求为 401，同一 as-of 两次响应哈希一致；含未来上界的 `trade_cal` 负例返回 `data=[]`、failed/degraded、transport null。
+- 当前 QuickSync DNS 有两个 IPv4 节点，2026-07-20 服务器 fresh TLS 复核中 `111.229.23.244` 的 TLS 1.3 与证书验证正常，而 `101.35.23.219` 对同一 SNI 持续返回 TLS internal error。首次真实采集因此写入一条 failed receipt，系统 resolver 轮换到健康节点后纵向切片成功。这个上游节点不一致在修复或获得稳定 endpoint 前阻断 production timer，不允许通过硬编码 IP、关闭证书校验或伪造 success 绕过。
 
 - GitHub 仓库已从 `NicholasHan1226/SharedSignals` 重命名为 `NicholasHan1226/TradingDatas`。
 - 本地新目录为 `/Users/nicholashan/Projects/Finance/TradingDatas`。
@@ -33,8 +36,8 @@
 TradingDatas 尚未达到内部可接入停止线，原因：
 
 1. provider-native target registry 已包含 190 个 dataset；其余 187 个已有统一 request profile，其中 135 个已具备有界 runtime request、52 个仍 plan-only，但它们仍全部 paused，尚未完成账号 entitlement、anchor/enum 补齐和真实频率验证；
-2. 服务器尚未安装由 `tradingdatas` 用户持有、权限精确为 `0600` 的正式 QuickSync 凭证文件，也未冻结 QuickSync transport profile、权限码、频率与并发 evidence；因此真实 entitlement、最新数据采集和历史回填尚未完成；
-3. 18083 仅为隔离 transient canary；正式 release 与 unit 虽已预置，但正式 18082 service 和采集 timer 均未启用，内部消费者也尚未完成 TradingDatas 名称切换；
+2. 新 canary 凭证与三个真实数据集已验证，但正式 `/etc/tradingdatas/quicksync.token` 尚未安装，QuickSync 频率、并发及双 DNS 节点不一致仍未解决；因此正式 timer 继续 disabled，历史回填尚未开始；
+3. 18084 已是可认证、可查询真实数据的隔离内部服务，但正式 18082 service 尚未切到 `a7e2e59`，TradingAgent/MarketGraph 也尚未完成 base URL 与 token 的消费者 readback；
 4. 旧生产回滚源尚未经过新系统 readback 与消费者切换门禁，因此暂不能删除。
 
 ## 当前执行顺序
@@ -62,11 +65,12 @@ TradingDatas 尚未达到内部可接入停止线，原因：
 - commit `718fed57544c70232fe8b0f55a688bc5f60011b9` 的 local、origin/main、GitHub main、entitlement probe 独立 review、服务器 426 项定向回归、immutable release、零调用 plan 和 inactive unit readback；旧 18082/18083 服务未改动。
 - commit `72876e42f0b14c77476d5732d9f3b474b4193272` 的 local、origin/main、GitHub main、request-profile 独立 review、服务器 430 项定向回归、无 AppleDouble immutable release、零调用 plan 和 inactive unit readback；生产 SQLite 未改写。
 - commit `9fa5838451c07fc8a328e37dd70db33976a733d2` 的 local、origin/main、GitHub main、request-profile resolver fresh independent review、服务器 457 项定向回归、无 AppleDouble immutable release、135 个 runtime request 的零调用 plan 和 inactive unit readback；生产 SQLite 未改写。
+- commit `a7e2e59aae877f9cbe0345ce80cbe0dae1e1fff8` 的 fresh config-hash/lineage review、服务器 immutable release、独立 SQLite 真实 QuickSync 采集、authenticated catalog/query、impaired fail-closed、401 和 same-as-of readback；未切换正式 `current`、18082 或 timer。
 
 未验证：
 
 - 所有首期接口经 QuickSync transport 的账号 entitlement；
-- QuickSync 正式 endpoint/TLS/redirect、权限码、频率与并发合同；
+- QuickSync 健康 DNS/endpoint、权限码全集、频率与并发合同；
 - 所有首期接口的真实采集与正确频率；
 - 正式 18082 TradingDatas production runtime；
 - 真实 Tushare facts/receipts 的 catalog/query readback；
