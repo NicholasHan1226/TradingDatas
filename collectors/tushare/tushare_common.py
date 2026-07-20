@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -14,6 +15,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping as MappingABC
+from collections.abc import Callable
 from dataclasses import InitVar, dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
@@ -21,6 +23,8 @@ from typing import Any, Literal, Mapping
 TUSHARE_API_URL_ENV = "TUSHARE_API_URL"
 TUSHARE_TOKEN_FILE_ENV = "TUSHARE_TOKEN_FILE"
 _MAX_TOKEN_FILE_BYTES = 4_096
+_DEFAULT_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024
+_MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024 * 1024
 
 _REDACTION_MARKER = "[REDACTED]"
 _CREDENTIAL_NAME_PATTERN = (
@@ -1411,11 +1415,27 @@ def tushare_rows_outcome(
     params: Mapping[str, Any] | None = None,
     fields: str | None = None,
     scan_budget: SensitiveScanBudget | None = None,
+    max_response_bytes: int = _DEFAULT_PROVIDER_RESPONSE_BYTES,
+    response_observer: Callable[[int, str | None], None] | None = None,
 ) -> ProviderCallOutcome:
     """Call Tushare once and preserve success, empty, and failure truth."""
 
     provider_code: int | str | None = None
     sensitive_values = (token,)
+    if (
+        type(max_response_bytes) is not int
+        or max_response_bytes <= 0
+        or max_response_bytes > _MAX_PROVIDER_RESPONSE_BYTES
+    ):
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=None,
+            error_code="resource_budget",
+            error_message="provider response byte budget is invalid",
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
+        )
     try:
         request_payload = {
             "api_name": api_name,
@@ -1431,7 +1451,9 @@ def tushare_rows_outcome(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        response_payload = _provider_urlopen(request, timeout=30).read()
+        response_payload = _provider_urlopen(request, timeout=30).read(
+            max_response_bytes + 1
+        )
     except Exception as exc:
         return ProviderCallOutcome(
             state="failed",
@@ -1439,6 +1461,24 @@ def tushare_rows_outcome(
             provider_code=None,
             error_code="transport_error",
             error_message=safe_provider_exception_message(exc),
+            sensitive_values=sensitive_values,
+            scan_budget=scan_budget,
+        )
+
+    response_observer_called = False
+    if len(response_payload) > max_response_bytes:
+        if response_observer is not None:
+            response_observer_called = True
+            try:
+                response_observer(len(response_payload), None)
+            except Exception:
+                pass
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=None,
+            error_code="resource_budget",
+            error_message="provider response exceeded byte budget",
             sensitive_values=sensitive_values,
             scan_budget=scan_budget,
         )
@@ -1455,6 +1495,33 @@ def tushare_rows_outcome(
             and not isinstance(raw_provider_code, bool)
             else None
         )
+        provider_metadata = _provider_response_metadata(body)
+        response_contains_credentials = (
+            _contains_structured_credential(
+                body,
+                scan_budget=scan_budget,
+            )
+            or _contains_sensitive_value(
+                body,
+                sensitive_values,
+                scan_budget=scan_budget,
+            )
+            or _contains_provider_metadata_credential(
+                provider_metadata,
+                scan_budget=scan_budget,
+            )
+        )
+        response_sha256 = (
+            None
+            if response_contains_credentials
+            else hashlib.sha256(response_payload).hexdigest()
+        )
+        if response_observer is not None:
+            response_observer_called = True
+            try:
+                response_observer(len(response_payload), response_sha256)
+            except Exception:
+                pass
         if provider_code not in (0, "0"):
             raw_message = body.get("msg")
             safe_message, diagnostic_trusted = _guard_provider_diagnostic(
@@ -1487,22 +1554,7 @@ def tushare_rows_outcome(
                 scan_budget=scan_budget,
             )
 
-        provider_metadata = _provider_response_metadata(body)
-        if (
-            _contains_structured_credential(
-                body,
-                scan_budget=scan_budget,
-            )
-            or _contains_sensitive_value(
-                body,
-                sensitive_values,
-                scan_budget=scan_budget,
-            )
-            or _contains_provider_metadata_credential(
-                provider_metadata,
-                scan_budget=scan_budget,
-            )
-        ):
+        if response_contains_credentials:
             raise _ProviderResponseValidationError(_redacted_diagnostic_summary())
         if "data" not in body:
             raise _ProviderResponseValidationError("Tushare response must contain data")
@@ -1521,6 +1573,11 @@ def tushare_rows_outcome(
             scan_budget=scan_budget,
         )
     except Exception as exc:
+        if response_observer is not None and not response_observer_called:
+            try:
+                response_observer(len(response_payload), None)
+            except Exception:
+                pass
         return ProviderCallOutcome(
             state="failed",
             rows=(),

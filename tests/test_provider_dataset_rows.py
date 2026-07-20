@@ -739,8 +739,8 @@ class _FixtureResponse:
     def __init__(self, payload: bytes) -> None:
         self.payload = payload
 
-    def read(self) -> bytes:
-        return self.payload
+    def read(self, size: int = -1) -> bytes:
+        return self.payload if size < 0 else self.payload[:size]
 
 
 class _RawEnvelopeCollector:

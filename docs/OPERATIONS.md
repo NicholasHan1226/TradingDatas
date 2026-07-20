@@ -48,7 +48,42 @@ registry cadence。没有正式 Tushare Token、真实 latest collection 与 fre
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
-4. 执行 entitlement probe；
+4. 先执行零调用 plan，核对它只报告 190 个合同、3 个可执行 probe、0 次
+   provider call：
+
+   ```bash
+   /opt/tradingdatas/venv/bin/python3 \
+     /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py
+   ```
+
+   只有 release commit、正式 Token 文件和受控 evidence 目录均通过 preflight 后，
+   才执行一次人工 one-shot。`CODE_COMMIT` 必须来自当前不可变 release 的发布
+   manifest，`OBSERVED_AT` 必须是执行前生成的 UTC 秒；不得手填别的版本或时间：
+
+   ```bash
+   install -d -o tradingdatas -g tradingdatas -m 0700 \
+     /opt/investment-data/tradingdatas/evidence
+   CODE_COMMIT='<40-hex-release-commit>'
+   OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   sudo -u tradingdatas env \
+     CODE_COMMIT="$CODE_COMMIT" \
+     OBSERVED_AT="$OBSERVED_AT" \
+     TUSHARE_API_URL=https://api.tushare.pro \
+     TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token \
+     sh -c 'umask 077; exec /opt/tradingdatas/venv/bin/python3 \
+       /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py \
+       --execute \
+       --code-commit "$CODE_COMMIT" \
+       --observed-at "$OBSERVED_AT" \
+       > "/opt/investment-data/tradingdatas/evidence/entitlement-$OBSERVED_AT.json"'
+   ```
+
+   当前 policy 只允许 `bak_daily`、`fund_adj`、`fund_manager` 以 `limit=1`、
+   `offset=0`、最小字段和 128 KiB 响应上限各调用一次，零重试。其余 187 个
+   合同在参数未复核时保持 `unknown` 并零调用。stdout evidence 不含 Token、
+   Token 路径、原始响应或 provider diagnostic；probe 不写 facts、ingest receipts、
+   activation，也不修改 registry、timer 或 API。`entitled_active`/`locked`/`unknown`
+   只是一份待审核证据，不能自动启用数据集；
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；

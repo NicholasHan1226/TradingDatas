@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 import os
@@ -14,17 +15,23 @@ from collectors.tushare import tushare_common
 class _Response:
     def __init__(self, payload: dict):
         self._payload = payload
+        self.read_sizes: list[int] = []
 
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode("utf-8")
+    def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        payload = json.dumps(self._payload).encode("utf-8")
+        return payload if size < 0 else payload[:size]
 
 
 class _RawResponse:
     def __init__(self, payload: str):
         self._payload = payload
+        self.read_sizes: list[int] = []
 
-    def read(self) -> bytes:
-        return self._payload.encode("utf-8")
+    def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        payload = self._payload.encode("utf-8")
+        return payload if size < 0 else payload[:size]
 
 
 def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
@@ -158,6 +165,118 @@ def test_non_quicksync_transport_keeps_default_verified_urlopen(monkeypatch):
         "url": "https://api.tushare.pro",
     }
     assert outcome.state == "success"
+
+
+def test_tushare_rows_outcome_reads_only_budget_plus_one_before_json_parse(
+    monkeypatch,
+):
+    raw = _RawResponse('{"code":0,"data":{"fields":["x"],"items":[[1]]}}')
+    observed: list[tuple[int, str | None]] = []
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: raw,
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        max_response_bytes=8,
+        response_observer=lambda size, digest: observed.append((size, digest)),
+    )
+
+    assert raw.read_sizes == [9]
+    assert observed == [(9, None)]
+    assert outcome.state == "failed"
+    assert outcome.provider_code is None
+    assert outcome.error_code == "resource_budget"
+    assert outcome.error_message == "provider response exceeded byte budget"
+    assert "code" not in (outcome.error_message or "")
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, "8", 67_108_865])
+def test_tushare_rows_outcome_rejects_invalid_response_budget_without_call(
+    monkeypatch,
+    limit,
+):
+    called = False
+
+    def fake_urlopen(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("provider must not be called")
+
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        max_response_bytes=limit,
+    )
+
+    assert called is False
+    assert outcome.state == "failed"
+    assert outcome.error_code == "resource_budget"
+    assert outcome.error_message == "provider response byte budget is invalid"
+
+
+def test_tushare_rows_outcome_observer_gets_only_safe_size_and_digest(monkeypatch):
+    response = _Response(
+        {
+            "code": 0,
+            "msg": None,
+            "data": {"fields": ["value"], "items": [[1]]},
+        }
+    )
+    observed: list[tuple[int, str | None]] = []
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: response,
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        response_observer=lambda size, digest: observed.append((size, digest)),
+    )
+
+    expected_bytes = json.dumps(response._payload).encode("utf-8")
+    assert outcome.state == "success"
+    assert response.read_sizes == [16 * 1024 * 1024 + 1]
+    assert observed == [
+        (len(expected_bytes), hashlib.sha256(expected_bytes).hexdigest())
+    ]
+
+
+def test_tushare_rows_outcome_observer_never_hashes_credential_response(monkeypatch):
+    observed: list[tuple[int, str | None]] = []
+    response = _Response(
+        {
+            "code": -2001,
+            "msg": "permission denied",
+            "data": None,
+            "token": "stub-token",
+        }
+    )
+    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: response,
+    )
+
+    outcome = tushare_common.tushare_rows_outcome(
+        "daily",
+        "stub-token",
+        response_observer=lambda size, digest: observed.append((size, digest)),
+    )
+
+    assert outcome.state == "failed"
+    assert observed == [(len(json.dumps(response._payload).encode("utf-8")), None)]
 
 
 def test_tushare_rows_outcome_preserves_success_rows_and_is_frozen(monkeypatch):

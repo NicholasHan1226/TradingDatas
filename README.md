@@ -73,6 +73,26 @@ uv run --python 3.12 --with-requirements requirements.txt \
 证据的接口会成为 `active`；其余接口仍可在 catalog 中发现，但固定为
 `entitlement_state=unknown`、`activation_state=paused`，不会被 scheduler 调用。
 
+## Entitlement 探测
+
+默认命令只校验冻结合同并输出计划，不读取 Token、不调用 provider：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/probe_provider_entitlements.py
+```
+
+当前 `config/provider_entitlement_probes.v1.yaml` 精确分类 190 个合同，但只允许
+`bak_daily`、`fund_adj`、`fund_manager` 使用 `limit=1`、`offset=0` 和最小字段做
+一次性有界探测。其余接口缺少已复核参数时保持 `unknown`，选择它们不会调用
+provider。探测不是采集：它不写 facts、ingest receipts 或 activation，也不会启用
+scheduler。
+
+执行模式只用于正式 Token 已按运行手册安装后的人工 one-shot。它要求显式传入
+不可变 release commit 和精确 UTC 秒，单个可执行数据集最多调用一次、零重试；
+每个响应在 JSON 解析前受 128 KiB 探测上限约束。命令只向 stdout 输出脱敏、
+自哈希 JSON evidence；结果仍需独立审核，不能直接作为自动 activation 指令。
+
 ## 本地验证
 
 ```bash

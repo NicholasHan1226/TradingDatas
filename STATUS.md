@@ -13,7 +13,8 @@
 - 2026-07-20 已对 190 个 in-scope 官方文档做一次批量读取验证：首轮 184 个成功，6 个瞬时网络失败在有界重试后均返回 200；190 个文档都包含可解析的输入参数与输出参数表。合同字段可以批量生成，不需要逐接口手写采集器。
 - clean-slate capability catalog 已移除旧 114 接口计划、`legacy_coverage` 和 `in_legacy_inventory`，现在只由固定官方索引与范围分类生成；catalog SHA-256 为 `5bb4a2aae746e31b72ae610bdfe6a3feec469d6f4b8de769ce7e5395c20d3ea1`。
 - `tools/snapshot_tushare_contracts.py` 已重新生成 `config/tushare_document_contracts.v1.yaml`：190 个合同、0 个解析错误，文件 SHA-256 为 `2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da`，且绑定上述 catalog SHA。合同只证明文档解析完整，不代表账号 entitlement、activation 或真实采集已通过。
-- 190 个合同中，144 个没有官方必填入参，可进入统一 entitlement probe；46 个含 1–3 个必填入参，必须先由配置提供真实参数或 fanout 来源，不能猜值。
+- 190 个合同中，144 个没有官方 `required=Y`，但这不等于都能安全空参数调用；46 个含 1–3 个显式必填入参，也不能猜值。当前 reviewed probe policy 将全集互斥分类为：3 个既有 activation evidence、3 个有界静态 probe、13 个条件参数待复核、111 个时间窗口待复核、14 个空参数待复核、46 个必填参数待配置。
+- entitlement probe 当前只允许 `bak_daily`、`fund_adj`、`fund_manager` 使用 `limit=1`、`offset=0`、最小字段和 128 KiB 上限各调用一次、零重试；其余 187 个合同必须零调用并保持 `unknown`。probe 只输出绑定 commit、合同、请求和结果的脱敏自哈希 evidence，不写 facts、ingest receipts 或 activation，也不自动启用 scheduler。
 - `tools/compile_tushare_runtime_contracts.py` 已把 190/190 个官方文档合同编译进单一 provider-neutral registry；`trade_cal`、`stock_basic`、`daily` 继续使用已复核合同和 activation 证据，其余 187 个接口只作为 catalog-visible、append-only、paused 合同，不猜主键、请求参数、采集频率或 entitlement。运行合同与 registry 的编译/加载矩阵当前 98 项通过。
 - 通用 executor 已实现 typed variants、fanout、offset pagination、资源预算、受限重试和进程级调用预算。每个真实 provider call 都有独立 transaction receipt；数据行与 success receipt 同 SQLite 事务提交；失败调用不会被后续 empty 终止页洗白，后续独立执行可以恢复状态。
 - clean-slate 候选已删除 204 个旧系统路径并保留 86 个目标路径。独立 clean-overlay 验收结果为 P0=0、P1=0。当前运行字节在本机 Python 3.12 完整套件为 `1358 passed, 1 skipped`；新 release 的 scheduler/deploy/API 定向矩阵在服务器专用账号下为 `52 passed`。前一提交 `e68d8fc` 的服务器 git-archive 完整 canary 为 `1347 passed, 1 skipped, 1 failed`；唯一 failure 是开发期源码 HEAD pin 测试要求 `.git`，而不可变发布 tar 按设计不包含 `.git`，其余服务器测试未失败。
@@ -33,7 +34,7 @@ TradingDatas 尚未达到内部可接入停止线，原因：
 
 ## 当前执行顺序
 
-1. 对账号权限做安全探测，按 entitlement 激活并冻结真实频率；
+1. 先运行零调用 entitlement plan，再在正式 Token 安装后执行受控 one-shot；人工审核 evidence 后另行决定 activation 与真实频率，probe 本身不自动扩权；
 2. 按安全发布门禁建立 TradingDatas 新生产 runtime；
 3. 先采最新数据并完成内部 `catalog/query` API readback；
 4. 后台回填历史数据；
