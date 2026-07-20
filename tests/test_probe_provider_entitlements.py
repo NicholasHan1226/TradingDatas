@@ -15,12 +15,13 @@ from tools import probe_provider_entitlements as probe
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "config" / "provider_entitlement_probes.v1.yaml"
+REQUEST_PROFILES = ROOT / "config" / "tushare_request_profiles.v1.yaml"
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
 
 def _load_policy() -> probe.ProbePolicy:
-    return probe.load_probe_policy(POLICY, DOCUMENTS, REGISTRY)
+    return probe.load_probe_policy(POLICY, DOCUMENTS, REGISTRY, REQUEST_PROFILES)
 
 
 def _write_policy(tmp_path: Path, mutate) -> Path:
@@ -29,6 +30,20 @@ def _write_policy(tmp_path: Path, mutate) -> Path:
     target = tmp_path / "policy.yaml"
     target.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return target
+
+
+def _write_profiles_and_binding(tmp_path: Path, mutate) -> tuple[Path, Path]:
+    profiles = yaml.safe_load(REQUEST_PROFILES.read_text(encoding="utf-8"))
+    mutate(profiles)
+    profile_path = tmp_path / "profiles-mutated.yaml"
+    profile_path.write_text(yaml.safe_dump(profiles, sort_keys=False), encoding="utf-8")
+    policy = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    policy["source_request_profiles"]["sha256"] = hashlib.sha256(
+        profile_path.read_bytes()
+    ).hexdigest()
+    policy_path = tmp_path / "policy-mutated.yaml"
+    policy_path.write_text(yaml.safe_dump(policy, sort_keys=False), encoding="utf-8")
+    return policy_path, profile_path
 
 
 def test_policy_covers_each_official_contract_once_and_only_reviewed_specs_execute():
@@ -48,6 +63,16 @@ def test_policy_covers_each_official_contract_once_and_only_reviewed_specs_execu
     )
     assert all(
         spec.params == {"limit": 1, "offset": 0} for spec in policy.executable_probes
+    )
+    assert policy.request_profile_count == 187
+    assert policy.profile_ready_count == 153
+    assert policy.parameter_resolved_count == 135
+    assert len(policy.request_profiles) == 187
+    assert sum(state[0] for state in policy.request_profiles.values()) == 135
+    assert policy.max_selected_datasets == 5
+    assert policy.request_profiles["cn.dataset.pledge_stat"] == (
+        False,
+        "requires_fresh_stock_anchor",
     )
 
 
@@ -93,6 +118,25 @@ def test_policy_rejects_source_hash_drift_before_any_probe(tmp_path):
     with pytest.raises(ValueError, match="document snapshot SHA-256 mismatch"):
         probe.load_probe_policy(drifted, DOCUMENTS, REGISTRY)
 
+    profile_copy = tmp_path / "profiles.yaml"
+    profile_copy.write_bytes(REQUEST_PROFILES.read_bytes() + b"\n")
+    with pytest.raises(ValueError, match="request profiles SHA-256 mismatch"):
+        probe.load_probe_policy(POLICY, DOCUMENTS, REGISTRY, profile_copy)
+
+
+def test_policy_rejects_profile_parameter_not_declared_by_official_contract(tmp_path):
+    def add_invalid_parameter(profiles):
+        profiles["groups"]["literal_pagination"]["parameters"]["not_official"] = {
+            "source": "literal",
+            "value": 1,
+        }
+
+    policy_path, profile_path = _write_profiles_and_binding(
+        tmp_path, add_invalid_parameter
+    )
+    with pytest.raises(ValueError, match="parameters differ"):
+        probe.load_probe_policy(policy_path, DOCUMENTS, REGISTRY, profile_path)
+
 
 def test_plan_is_zero_call_and_does_not_read_credentials(monkeypatch, capsys):
     monkeypatch.setattr(
@@ -118,6 +162,12 @@ def test_plan_is_zero_call_and_does_not_read_credentials(monkeypatch, capsys):
     assert payload["provider_calls"] == 0
     assert payload["contract_count"] == 190
     assert payload["executable_probe_count"] == 3
+    assert payload["runtime_executable_probe_count"] == 3
+    assert payload["request_profile_count"] == 187
+    assert payload["profile_ready_count"] == 153
+    assert payload["parameter_resolved_profile_count"] == 135
+    assert payload["ready_but_zero_call_count"] == 132
+    assert payload["plan_only_profile_count"] == 52
 
 
 def test_plan_cli_runs_from_repository_root_without_project_path_bootstrap():
@@ -184,6 +234,9 @@ def test_execute_is_one_shot_redacted_and_self_hashing():
         observed_at="2026-07-20T10:00:00Z",
         code_commit="a" * 40,
         provider_call=provider_call,
+        selected_dataset_ids=tuple(
+            spec.dataset_id for spec in policy.executable_probes
+        ),
     )
 
     assert [call[0] for call in calls] == ["bak_daily", "fund_adj", "fund_manager"]
@@ -325,7 +378,7 @@ def test_selecting_non_executable_is_explicit_unknown_with_zero_calls():
 
     evidence = probe.execute_probe(
         policy,
-        token="private-token",
+        token="",
         observed_at="2026-07-20T10:00:00Z",
         code_commit="e" * 40,
         provider_call=provider_call,
@@ -334,7 +387,7 @@ def test_selecting_non_executable_is_explicit_unknown_with_zero_calls():
 
     assert calls == evidence["provider_calls"] == 0
     assert evidence["results"][0]["decision"] == "unknown"
-    assert evidence["results"][0]["reasons"] == ["not_executable"]
+    assert evidence["results"][0]["reasons"] == ["profile_ready_not_runtime_executable"]
     assert evidence["results"][0]["canonical_request_sha256"] is None
 
 
@@ -355,6 +408,44 @@ def test_selecting_unknown_dataset_fails_before_provider_call():
             selected_dataset_ids=("cn.dataset.not_real",),
         )
     assert calls == 0
+
+
+def test_execute_requires_nonempty_selection_and_caps_it_at_five():
+    policy = _load_policy()
+    with pytest.raises(ValueError, match="explicit dataset selection"):
+        probe.execute_probe(
+            policy,
+            token="private-token",
+            observed_at="2026-07-20T10:00:00Z",
+            code_commit="a" * 40,
+        )
+    with pytest.raises(ValueError, match="at most 5"):
+        probe.execute_probe(
+            policy,
+            token="private-token",
+            observed_at="2026-07-20T10:00:00Z",
+            code_commit="b" * 40,
+            selected_dataset_ids=tuple(sorted(policy.request_profiles)[:6]),
+        )
+
+
+def test_cli_rejects_missing_selection_before_credential_read(monkeypatch):
+    monkeypatch.setattr(
+        probe,
+        "read_tushare_config",
+        lambda: (_ for _ in ()).throw(AssertionError("credential read is forbidden")),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        probe.main(
+            [
+                "--execute",
+                "--code-commit",
+                "a" * 40,
+                "--observed-at",
+                "2026-07-20T10:00:00Z",
+            ]
+        )
+    assert exc_info.value.code == 2
 
 
 def test_probe_tool_has_no_ingest_store_or_activation_writer_dependency():

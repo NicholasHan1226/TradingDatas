@@ -48,7 +48,8 @@ registry cadence。没有正式 Tushare Token、真实 latest collection 与 fre
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
-4. 先执行零调用 plan，核对它只报告 190 个合同、3 个可执行 probe、0 次
+4. 先执行零调用 plan，核对它报告 190 个合同、187 个 request profile、153 个
+   profile-ready、135 个参数已解析画像、3 个 runtime executable probe 和 0 次
    provider call：
 
    ```bash
@@ -75,12 +76,16 @@ registry cadence。没有正式 Tushare Token、真实 latest collection 与 fre
        --execute \
        --code-commit "$CODE_COMMIT" \
        --observed-at "$OBSERVED_AT" \
+       --dataset-id cn.dataset.bak_daily \
+       --dataset-id cn.dataset.fund_adj \
+       --dataset-id cn.dataset.fund_manager \
        > "/opt/investment-data/tradingdatas/evidence/entitlement-$OBSERVED_AT.json"'
    ```
 
-   当前 policy 只允许 `bak_daily`、`fund_adj`、`fund_manager` 以 `limit=1`、
-   `offset=0`、最小字段和 128 KiB 响应上限各调用一次，零重试。其余 187 个
-   合同在参数未复核时保持 `unknown` 并零调用。stdout evidence 不含 Token、
+   每次执行必须显式选择 1–5 个 dataset。当前 policy 只允许 `bak_daily`、
+   `fund_adj`、`fund_manager` 以 `limit=1`、`offset=0`、最小字段和 128 KiB
+   响应上限各调用一次，零重试。其余已配置画像在本轮仍保持零调用并返回明确
+   plan-only 原因。stdout evidence 不含 Token、
    Token 路径、原始响应或 provider diagnostic；probe 不写 facts、ingest receipts、
    activation，也不修改 registry、timer 或 API。`entitled_active`/`locked`/`unknown`
    只是一份待审核证据，不能自动启用数据集；

@@ -30,6 +30,7 @@ from collectors.tushare.tushare_common import (  # noqa: E402
 
 
 DEFAULT_POLICY = ROOT / "config" / "provider_entitlement_probes.v1.yaml"
+DEFAULT_REQUEST_PROFILES = ROOT / "config" / "tushare_request_profiles.v1.yaml"
 DEFAULT_DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 DEFAULT_REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
@@ -50,6 +51,17 @@ _CLASSIFICATIONS = frozenset(
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _UTC_OBSERVED_AT_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+_PROFILE_ID = "tushare-request-profiles.v1"
+_PROFILE_REASONS = frozenset(
+    {
+        "current_approved_bounded_static",
+        "clock_static_literal_ready",
+        "requires_fresh_stock_anchor",
+        "empty_parameter_unbounded",
+        "requires_fresh_anchor",
+        "official_enum_unresolved",
+    }
+)
 
 
 class _UniqueLoader(yaml.SafeLoader):
@@ -96,10 +108,16 @@ class ProbePolicy:
     document_snapshot_id: str
     document_snapshot_sha256: str
     registry_sha256: str
+    request_profiles_sha256: str
     contract_count: int
     classifications: Mapping[str, tuple[str, ...]]
     contract_targets: Mapping[str, tuple[str, str, str]]
     executable_probes: tuple[ProbeSpec, ...]
+    request_profiles: Mapping[str, tuple[bool, str]]
+    request_profile_count: int
+    profile_ready_count: int
+    parameter_resolved_count: int
+    max_selected_datasets: int
     locked_error_code: str
     locked_provider_codes: frozenset[str]
 
@@ -158,14 +176,142 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(rendered).hexdigest()
 
 
+def _request_profile_summary(
+    value: Mapping[str, Any],
+    *,
+    document_by_api: Mapping[str, Mapping[str, Any]],
+    dataset_by_api: Mapping[str, str],
+    existing_activations: Sequence[str],
+    expected_document_sha: str,
+) -> tuple[Mapping[str, tuple[bool, str]], Mapping[str, int], int]:
+    if set(value) != {
+        "version",
+        "profile_id",
+        "provider",
+        "source_documents",
+        "excluded_existing_activations",
+        "counts",
+        "execution_limits",
+        "fields_strategy",
+        "groups",
+    }:
+        raise ValueError("request profiles root keys differ")
+    if (
+        value.get("version") != 1
+        or value.get("profile_id") != _PROFILE_ID
+        or value.get("provider") != _PROVIDER
+    ):
+        raise ValueError("request profiles identity is unsupported")
+    if value["fields_strategy"] != "first_documented_output_field":
+        raise ValueError("request profile fields strategy differs")
+    source = value.get("source_documents")
+    if type(source) is not dict or (
+        source.get("snapshot_id") != "tushare-official-document-contracts.v1"
+        or source.get("sha256") != expected_document_sha
+        or source.get("contract_count") != len(document_by_api)
+    ):
+        raise ValueError("request profile document source differs")
+    if value.get("excluded_existing_activations") != sorted(existing_activations):
+        raise ValueError("request profile existing activations differ")
+    counts = value.get("counts")
+    expected_counts = {
+        "dataset_profiles": 187,
+        "profile_ready": 153,
+        "selectable_probe": 135,
+        "pending_stock_anchor": 18,
+        "plan_only_blocked": 34,
+        "empty_parameter_blocked": 14,
+        "other_anchor_blocked": 18,
+        "unresolved_enum_blocked": 2,
+    }
+    if counts != expected_counts:
+        raise ValueError("request profile counts differ from frozen scope")
+    limits = value.get("execution_limits")
+    if type(limits) is not dict or limits != {
+        "require_explicit_dataset_selection": True,
+        "max_selected_datasets": 5,
+        "max_calls_per_dataset": 1,
+        "retries": 0,
+        "max_response_bytes": 131_072,
+        "timezone": "Asia/Shanghai",
+    }:
+        raise ValueError("request profile execution limits differ")
+    groups = value.get("groups")
+    if type(groups) is not dict or not groups:
+        raise ValueError("request profile groups must be a mapping")
+    by_dataset: dict[str, tuple[bool, str]] = {}
+    seen_apis: set[str] = set()
+    reason_counts = {reason: 0 for reason in _PROFILE_REASONS}
+    resolved_count = 0
+    for group_name, group in groups.items():
+        if type(group_name) is not str or type(group) is not dict:
+            raise ValueError("request profile group is invalid")
+        if set(group) != {"execution_state", "reason", "parameters", "api_names"}:
+            raise ValueError(f"request profile group {group_name} keys differ")
+        state, reason = group["execution_state"], group["reason"]
+        if state not in {"executable", "plan_only"} or reason not in _PROFILE_REASONS:
+            raise ValueError(f"request profile group {group_name} state differs")
+        if type(group["parameters"]) is not dict:
+            raise ValueError(f"request profile group {group_name} params differ")
+        if any(
+            type(parameter) is not dict
+            or parameter.get("source")
+            not in {"literal", "observed_at", "dataset_field", "unresolved_enum"}
+            for parameter in group["parameters"].values()
+        ):
+            raise ValueError(f"request profile group {group_name} source differs")
+        api_names = group["api_names"]
+        if (
+            type(api_names) is not list
+            or not api_names
+            or api_names != sorted(set(api_names))
+        ):
+            raise ValueError(f"request profile group {group_name} APIs differ")
+        for api_name in api_names:
+            if (
+                api_name in seen_apis
+                or api_name not in document_by_api
+                or api_name in existing_activations
+            ):
+                raise ValueError("request profiles contain duplicate or unknown API")
+            input_fields = {
+                field["name"] for field in document_by_api[api_name]["input_fields"]
+            }
+            if not set(group["parameters"]).issubset(input_fields):
+                raise ValueError(f"request profile {api_name} parameters differ")
+            by_dataset[dataset_by_api[api_name]] = (state == "executable", reason)
+            seen_apis.add(api_name)
+            reason_counts[reason] += 1
+            resolved_count += state == "executable"
+    expected_apis = set(document_by_api) - set(existing_activations)
+    if (
+        seen_apis != expected_apis
+        or len(by_dataset) != expected_counts["dataset_profiles"]
+    ):
+        raise ValueError("request profiles do not exactly cover remaining APIs")
+    if (
+        resolved_count != expected_counts["selectable_probe"]
+        or reason_counts["requires_fresh_stock_anchor"] != 18
+        or reason_counts["empty_parameter_unbounded"] != 14
+        or reason_counts["requires_fresh_anchor"] != 18
+        or reason_counts["official_enum_unresolved"] != 2
+    ):
+        raise ValueError("request profile group counts differ")
+    return MappingProxyType(by_dataset), MappingProxyType(expected_counts), 5
+
+
 def load_probe_policy(
     policy_path: Path,
     documents_path: Path,
     registry_path: Path,
+    request_profiles_path: Path = DEFAULT_REQUEST_PROFILES,
 ) -> ProbePolicy:
     policy, policy_raw = _read_yaml(policy_path, "probe policy")
     documents, documents_raw = _read_yaml(documents_path, "document snapshot")
     registry, registry_raw = _read_yaml(registry_path, "dataset registry")
+    request_profiles, request_profiles_raw = _read_yaml(
+        request_profiles_path, "request profiles"
+    )
     _exact_keys(
         policy,
         {
@@ -174,6 +320,7 @@ def load_probe_policy(
             "provider",
             "source_documents",
             "source_registry",
+            "source_request_profiles",
             "permission_policy",
             "classifications",
             "executable_probes",
@@ -187,8 +334,13 @@ def load_probe_policy(
 
     document_source = policy["source_documents"]
     registry_source = policy["source_registry"]
+    profile_source = policy["source_request_profiles"]
     permission_policy = policy["permission_policy"]
-    if type(document_source) is not dict or type(registry_source) is not dict:
+    if (
+        type(document_source) is not dict
+        or type(registry_source) is not dict
+        or type(profile_source) is not dict
+    ):
         raise ValueError("probe policy source bindings must be mappings")
     if type(permission_policy) is not dict:
         raise ValueError("probe policy permission policy must be a mapping")
@@ -201,6 +353,11 @@ def load_probe_policy(
         registry_source,
         {"version", "sha256", "dataset_count"},
         "registry source binding",
+    )
+    _exact_keys(
+        profile_source,
+        {"version", "profile_id", "sha256", "dataset_count"},
+        "request profiles source binding",
     )
     _exact_keys(
         permission_policy,
@@ -221,6 +378,17 @@ def load_probe_policy(
         raise ValueError("document snapshot id mismatch")
     if registry_source["version"] != registry.get("version"):
         raise ValueError("dataset registry version mismatch")
+    expected_profiles_sha = _sha256_text(
+        profile_source["sha256"], "request profiles source SHA-256"
+    )
+    if hashlib.sha256(request_profiles_raw).hexdigest() != expected_profiles_sha:
+        raise ValueError("request profiles SHA-256 mismatch")
+    if (
+        profile_source["version"] != request_profiles.get("version")
+        or profile_source["profile_id"] != request_profiles.get("profile_id")
+        or profile_source["dataset_count"] != 187
+    ):
+        raise ValueError("request profiles identity mismatch")
     document_count = _positive_int(
         document_source["contract_count"], "document contract count"
     )
@@ -310,6 +478,13 @@ def load_probe_policy(
         )
         for api_name in sorted(document_by_api)
     }
+    profile_by_dataset, profile_counts, max_selected = _request_profile_summary(
+        request_profiles,
+        document_by_api=document_by_api,
+        dataset_by_api=dataset_by_api,
+        existing_activations=classifications["existing_activation_evidence"],
+        expected_document_sha=expected_document_sha,
+    )
 
     raw_specs = policy["executable_probes"]
     if type(raw_specs) is not dict:
@@ -436,10 +611,16 @@ def load_probe_policy(
         document_snapshot_id=documents["snapshot_id"],
         document_snapshot_sha256=expected_document_sha,
         registry_sha256=expected_registry_sha,
+        request_profiles_sha256=expected_profiles_sha,
         contract_count=document_count,
         classifications=MappingProxyType(classifications),
         contract_targets=MappingProxyType(contract_targets),
         executable_probes=tuple(specs),
+        request_profiles=profile_by_dataset,
+        request_profile_count=profile_counts["dataset_profiles"],
+        profile_ready_count=profile_counts["profile_ready"],
+        parameter_resolved_count=profile_counts["selectable_probe"],
+        max_selected_datasets=max_selected,
         locked_error_code=locked_error_code,
         locked_provider_codes=locked_codes,
     )
@@ -460,14 +641,26 @@ def build_plan(
         "document_snapshot_id": policy.document_snapshot_id,
         "document_snapshot_sha256": policy.document_snapshot_sha256,
         "registry_sha256": policy.registry_sha256,
+        "request_profiles_sha256": policy.request_profiles_sha256,
         "contract_count": policy.contract_count,
         "classification_counts": {
             key: len(value) for key, value in sorted(policy.classifications.items())
         },
         "executable_probe_count": len(policy.executable_probes),
+        "runtime_executable_probe_count": len(policy.executable_probes),
         "executable_dataset_ids": [
             spec.dataset_id for spec in policy.executable_probes
         ],
+        "request_profile_count": policy.request_profile_count,
+        "profile_ready_count": policy.profile_ready_count,
+        "parameter_resolved_profile_count": policy.parameter_resolved_count,
+        "ready_but_zero_call_count": (
+            policy.parameter_resolved_count - len(policy.executable_probes)
+        ),
+        "plan_only_profile_count": (
+            policy.request_profile_count - policy.parameter_resolved_count
+        ),
+        "max_selected_datasets": policy.max_selected_datasets,
         "provider_calls": 0,
         "facts_written": 0,
         "ingest_receipts_written": 0,
@@ -489,6 +682,24 @@ def _validated_observed_at(value: str) -> str:
     except ValueError:
         raise ValueError("observed_at must be a valid UTC timestamp") from None
     return value
+
+
+def _validated_selection(
+    policy: ProbePolicy, selected_dataset_ids: Sequence[str] | None
+) -> tuple[str, ...]:
+    if not selected_dataset_ids or type(selected_dataset_ids) in {str, bytes}:
+        raise ValueError("execute requires explicit dataset selection")
+    selected = tuple(selected_dataset_ids)
+    if len(selected) > policy.max_selected_datasets:
+        raise ValueError(
+            f"selected_dataset_ids supports at most {policy.max_selected_datasets}"
+        )
+    if len(set(selected)) != len(selected) or any(
+        type(value) is not str or value not in policy.contract_targets
+        for value in selected
+    ):
+        raise ValueError("selected_dataset_ids must be unique known policy datasets")
+    return selected
 
 
 def _decision(
@@ -536,30 +747,29 @@ def execute_probe(
 ) -> dict[str, Any]:
     code_commit = _validated_commit(code_commit)
     observed_at = _validated_observed_at(observed_at)
-    if type(token) is not str or not token:
-        raise ValueError("provider credential is unavailable")
     specs_by_dataset = {spec.dataset_id: spec for spec in policy.executable_probes}
-    if selected_dataset_ids is None:
-        targets: tuple[ProbeSpec | str, ...] = policy.executable_probes
-    else:
-        selected = tuple(selected_dataset_ids)
-        if len(set(selected)) != len(selected) or any(
-            type(value) is not str or value not in policy.contract_targets
-            for value in selected
-        ):
-            raise ValueError(
-                "selected_dataset_ids must be unique known policy datasets"
-            )
-        targets = tuple(
-            specs_by_dataset.get(dataset_id, dataset_id)
-            for dataset_id in sorted(selected)
-        )
+    selected = _validated_selection(policy, selected_dataset_ids)
+    targets: tuple[ProbeSpec | str, ...] = tuple(
+        specs_by_dataset.get(dataset_id, dataset_id) for dataset_id in selected
+    )
+    if any(not isinstance(target, str) for target in targets) and (
+        type(token) is not str or not token
+    ):
+        raise ValueError("provider credential is unavailable")
 
     results: list[dict[str, Any]] = []
     provider_calls = 0
     for target in targets:
         if isinstance(target, str):
             api_name, classification, document_sha256 = policy.contract_targets[target]
+            profile = policy.request_profiles.get(target)
+            reason = (
+                "profile_ready_not_runtime_executable"
+                if profile is not None and profile[0]
+                else profile[1]
+                if profile is not None
+                else "not_executable"
+            )
             results.append(
                 {
                     "dataset_id": target,
@@ -576,7 +786,7 @@ def execute_probe(
                     "response_sha256": None,
                     "response_truncated": False,
                     "decision": "unknown",
-                    "reasons": ["not_executable"],
+                    "reasons": [reason],
                 }
             )
             continue
@@ -676,7 +886,9 @@ def execute_probe(
         "document_snapshot_id": policy.document_snapshot_id,
         "document_snapshot_sha256": policy.document_snapshot_sha256,
         "registry_sha256": policy.registry_sha256,
+        "request_profiles_sha256": policy.request_profiles_sha256,
         "observed_at": observed_at,
+        "selected_dataset_ids": list(selected),
         "provider_calls": provider_calls,
         "facts_written": 0,
         "ingest_receipts_written": 0,
@@ -692,6 +904,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=DEFAULT_POLICY)
     parser.add_argument("--documents", type=Path, default=DEFAULT_DOCUMENTS)
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    parser.add_argument("--profiles", type=Path, default=DEFAULT_REQUEST_PROFILES)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--code-commit")
     parser.add_argument("--observed-at")
@@ -702,19 +915,30 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    policy = load_probe_policy(args.config, args.documents, args.registry)
+    policy = load_probe_policy(
+        args.config, args.documents, args.registry, args.profiles
+    )
     if not args.execute:
         output = build_plan(policy, code_commit=args.code_commit)
     else:
-        if args.code_commit is None or args.observed_at is None:
-            parser.error("--execute requires --code-commit and --observed-at")
-        token = read_tushare_config()["token"]
+        if args.code_commit is None or args.observed_at is None or not args.dataset_id:
+            parser.error(
+                "--execute requires --code-commit, --observed-at, and --dataset-id"
+            )
+        try:
+            selected = _validated_selection(policy, args.dataset_id)
+        except ValueError as exc:
+            parser.error(str(exc))
+        token = ""
+        executable_ids = {spec.dataset_id for spec in policy.executable_probes}
+        if any(dataset_id in executable_ids for dataset_id in selected):
+            token = read_tushare_config()["token"]
         output = execute_probe(
             policy,
             token=token,
             observed_at=args.observed_at,
             code_commit=args.code_commit,
-            selected_dataset_ids=args.dataset_id,
+            selected_dataset_ids=selected,
         )
     print(json.dumps(output, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
     return 0

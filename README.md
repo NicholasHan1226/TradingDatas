@@ -82,14 +82,16 @@ uv run --python 3.12 --with-requirements requirements.txt \
   python tools/probe_provider_entitlements.py
 ```
 
-当前 `config/provider_entitlement_probes.v1.yaml` 精确分类 190 个合同，但只允许
+`config/tushare_request_profiles.v1.yaml` 以配置方式覆盖其余 187 个合同：153 个
+具备已复核请求画像，其中 135 个参数已解析；本轮运行时仍只允许既有
 `bak_daily`、`fund_adj`、`fund_manager` 使用 `limit=1`、`offset=0` 和最小字段做
-一次性有界探测。其余接口缺少已复核参数时保持 `unknown`，选择它们不会调用
-provider。探测不是采集：它不写 facts、ingest receipts 或 activation，也不会启用
-scheduler。
+一次性有界探测。新增的 132 个已解析画像保持零调用，等待后续小型 resolver
+独立验收；其余 52 个按缺少 anchor、空参数无界或枚举未冻结等原因保持 plan-only。
+探测不是采集：它不写 facts、ingest receipts 或 activation，也不会启用 scheduler。
 
 执行模式只用于正式 Token 已按运行手册安装后的人工 one-shot。它要求显式传入
-不可变 release commit 和精确 UTC 秒，单个可执行数据集最多调用一次、零重试；
+1–5 个 `--dataset-id`、不可变 release commit 和精确 UTC 秒。只有上述三个既有
+探测会读取 Token 并各调用一次；其它选择只输出对应 plan-only 原因、零调用；
 每个响应在 JSON 解析前受 128 KiB 探测上限约束。命令只向 stdout 输出脱敏、
 自哈希 JSON evidence；结果仍需独立审核，不能直接作为自动 activation 指令。
 

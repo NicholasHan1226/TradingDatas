@@ -11,6 +11,11 @@ source_registry:
   version: 1
   sha256: f86a03ee9c5083443e895fbe94b09ffc072d17fabe6bed87d92d142fe8780523
   dataset_count: 190
+source_request_profiles:
+  version: 1
+  profile_id: tushare-request-profiles.v1
+  sha256: f3344bf61b69dc73aa7772591c06ffc070836c6804002c5e4fe6545d8840460b
+  dataset_count: 187
 permission_policy:
   version: tushare-permission-denial.v1
   locked_error_code: permission_denied
