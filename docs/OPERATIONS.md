@@ -22,10 +22,10 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
 Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
-registry cadence。没有正式 Tushare Token、真实 latest collection 与 fresh readback
+registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在生产启用采集 timer。
 
-Tushare Token 只建立账号身份，不代表接口权限。运行面必须把积分门槛、单独权限、分钟/每日频控和真实受控探测结果作为独立证据；`entitled_active` 不是购买或计费状态。scheduler 的账号级/API 级预算取官方说明与真实观测中更保守的一侧，未知并发能力时保持串行或最低安全预算，不因单个接口成功自动扩权。
+当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。未知 budget 不猜，runner 保持串行，timer 保持 disabled，不因单个接口成功自动扩权。
 
 ## 运行顺序
 
@@ -45,7 +45,7 @@ Tushare Token 只建立账号身份，不代表接口权限。运行面必须把
    叶子文件，因此发布 preflight 必须另外拒绝父目录 symlink。再创建由
    `tradingdatas:tradingdatas` 持有且权限严格为 `0600` 的
    `/etc/tradingdatas/api_tokens.json`、`/etc/tradingdatas/token_salt` 与
-   `/etc/tradingdatas/tushare.token`。Tushare token 必须是单一硬链接的普通文件，
+   `/etc/tradingdatas/quicksync.token`。QuickSync token 必须是单一硬链接的普通文件，
    文件 owner 必须等于采集进程的有效 UID；因此采集进程会拒绝 root-owned 或
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
@@ -58,7 +58,7 @@ Tushare Token 只建立账号身份，不代表接口权限。运行面必须把
      /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py
    ```
 
-   只有 release commit、正式 Token 文件和受控 evidence 目录均通过 preflight 后，
+   只有 release commit、正式 QuickSync 凭证文件和受控 evidence 目录均通过 preflight 后，
    才执行一次人工 one-shot。`CODE_COMMIT` 必须来自当前不可变 release 的发布
    manifest，`OBSERVED_AT` 必须是执行前生成的 UTC 秒；不得手填别的版本或时间：
 
@@ -70,8 +70,8 @@ Tushare Token 只建立账号身份，不代表接口权限。运行面必须把
    sudo -u tradingdatas env \
      CODE_COMMIT="$CODE_COMMIT" \
      OBSERVED_AT="$OBSERVED_AT" \
-     TUSHARE_API_URL=https://api.tushare.pro \
-     TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token \
+     TUSHARE_API_URL=https://api.quicksync.cn \
+     TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token \
      sh -c 'umask 077; exec /opt/tradingdatas/venv/bin/python3 \
        /opt/investment/releases/tradingdatas/current/tools/probe_provider_entitlements.py \
        --execute \
@@ -97,12 +97,14 @@ Tushare Token 只建立账号身份，不代表接口权限。运行面必须把
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
-8. 正式 Token、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
+8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 
 ## 发布门禁
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
+
+旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、串行 budget 和 impaired API readback。任何 QuickSync 频率/并发说明无法核验时，停在一次性人工 canary，不启用 timer。
 
 ## 旧系统退役
 
@@ -117,3 +119,5 @@ Tushare Token 只建立账号身份，不代表接口权限。运行面必须把
 ## 回滚
 
 回滚只切回已验证的 immutable release，不覆盖 SQLite，不恢复旧 cron，不把旧 provider route 重新引入新系统。
+
+受邀外部账户 Beta 还需要单独核验 QuickSync/Tushare 的缓存与再分发条款；内部运行凭证和 API token 均不得复用于外部账户。

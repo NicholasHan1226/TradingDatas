@@ -10,7 +10,9 @@ import pytest
 
 from catalog_service import DatasetQueryability
 from dataset_registry import DatasetRegistry, load_dataset_registry
-from query_contract import QueryAccessContext, QueryRequest
+from provider_ingest_contract import provider_ingest_config_hash
+from provider_transport import provider_transport_profile
+from query_contract import QueryAccessContext, QueryExecutionOptions, QueryRequest
 from query_cursor import SignedCursorCodec
 import query_service as query_module
 from query_service import QueryService, QueryServiceUnavailable
@@ -22,6 +24,137 @@ from storage.receipt_projection import (
 
 SIGNING_KEY = b"query-service-test-signing-key-32-bytes"
 NOW = datetime(2026, 7, 20, 4, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("state", "providers", "expected_service"),
+    (
+        pytest.param("success", ("tushare",), "quicksync", id="trusted-tushare"),
+        pytest.param("success", ("provider-a",), None, id="other-provider"),
+        pytest.param("unobserved", (), None, id="incomplete-lineage"),
+    ),
+)
+def test_runtime_lineage_binds_quicksync_transport_only_to_complete_tushare(
+    state: str,
+    providers: tuple[str, ...],
+    expected_service: str | None,
+) -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve("cn.equity.daily")
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=dataset.default_projection,
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    complete = state == "success"
+    provider_config_hashes = (
+        (
+            (
+                "tushare",
+                provider_ingest_config_hash(dataset, dataset.provider_bindings[0]),
+            ),
+        )
+        if providers == ("tushare",)
+        else ()
+    )
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state=state,
+            degraded=not complete,
+            data_through="20260719" if complete else None,
+            observed_at="2026-07-20T03:00:00+00:00" if complete else None,
+            receipt_id="receipt-current" if complete else None,
+            reasons=() if complete else ("no_recognized_receipt",),
+        ),
+        current_receipt_status="success" if complete else None,
+        current_providers=providers,
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=provider_config_hashes,
+    )
+
+    metadata, _allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "watermark-test",
+    )
+    lineage = metadata["lineage"]
+    assert lineage["transport_service"] == expected_service
+    if expected_service is None:
+        assert lineage["transport_profile_id"] is None
+        assert lineage["transport_profile_sha256"] is None
+    else:
+        profile = provider_transport_profile("tushare")
+        assert lineage["transport_profile_id"] == profile["profile_id"]
+        assert lineage["transport_profile_sha256"] == profile["profile_sha256"]
+
+
+def test_runtime_lineage_fails_closed_for_unbound_tushare_config_hash() -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve("cn.equity.daily")
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=dataset.default_projection,
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="20260719",
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id="receipt-old-transport",
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("tushare",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=(("tushare", "a" * 64),),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "watermark-old-transport",
+    )
+
+    assert allow_rows is False
+    assert metadata["state"] == "failed"
+    assert metadata["degraded"] is True
+    assert metadata["reasons"] == ["transport_profile_unverified"]
+    assert metadata["lineage"]["complete"] is False
+    assert metadata["lineage"]["transport_service"] is None
 
 
 def test_query_service_constructor_keeps_only_frozen_injected_dependencies(

@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import ssl
 import stat
 import unicodedata
 import urllib.error
@@ -20,8 +21,15 @@ from dataclasses import InitVar, dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
+from provider_transport import (
+    QUICKSYNC_TUSHARE_API_URL,
+    TUSHARE_DATA_PROVIDER,
+    provider_transport_profile,
+)
+
 TUSHARE_API_URL_ENV = "TUSHARE_API_URL"
 TUSHARE_TOKEN_FILE_ENV = "TUSHARE_TOKEN_FILE"
+_QUICKSYNC_TUSHARE_HOST = "api.quicksync.cn"
 _MAX_TOKEN_FILE_BYTES = 4_096
 _DEFAULT_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024
 _MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024 * 1024
@@ -1099,7 +1107,7 @@ def _safe_provider_response_error_message(exc: BaseException) -> str:
     return "Tushare response validation failed"
 
 
-_CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001"))
+_CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001", 40203, "40203"))
 _INTERNAL_ERROR_PATTERNS = (
     re.compile(
         r"\b(?:service|config(?:uration)?|classifier|cache|policy|limiter)\b"
@@ -1312,15 +1320,22 @@ def _validated_api_url(raw_url: object) -> str:
         raise RuntimeError("TUSHARE_API_URL is invalid") from None
     if (
         parsed.scheme != "https"
-        or not parsed.hostname
+        or parsed.hostname != _QUICKSYNC_TUSHARE_HOST
         or parsed.username is not None
         or parsed.password is not None
         or port not in {None, 443}
+        or parsed.path != ""
         or bool(parsed.query)
         or bool(parsed.fragment)
     ):
         raise RuntimeError("TUSHARE_API_URL is invalid")
-    return raw_url
+    return QUICKSYNC_TUSHARE_API_URL
+
+
+def tushare_transport_profile() -> dict[str, object]:
+    """Return the public, credential-free transport identity used by receipts."""
+
+    return provider_transport_profile(TUSHARE_DATA_PROVIDER)
 
 
 def _read_private_token_file(raw_path: object) -> str:
@@ -1397,15 +1412,40 @@ def get_api_url() -> str:
     return get_tushare_config()["api_url"]
 
 
+class _RejectProviderRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so a credential-bearing POST never changes origin."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        del newurl
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
 def _provider_urlopen(
     request: urllib.request.Request,
     *,
     timeout: float,
 ) -> Any:
-    """Open one request; URL validation occurs before request construction."""
+    """Open one verified QuickSync request without following redirects."""
 
     _validated_api_url(request.full_url)
-    return urllib.request.urlopen(request, timeout=timeout)
+    context = ssl.create_default_context()
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=context),
+        _RejectProviderRedirect(),
+    )
+    return opener.open(request, timeout=timeout)
 
 
 def tushare_rows_outcome(

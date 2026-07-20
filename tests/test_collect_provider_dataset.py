@@ -11,6 +11,7 @@ import pytest
 
 from collectors.tushare.tushare_common import ProviderCallOutcome
 import collectors.tushare.provider_native_ingest as native_ingest
+import provider_ingest_contract as ingest_contract_module
 from dataset_registry import (
     DatasetDefinition,
     DatasetField,
@@ -1583,6 +1584,114 @@ def test_response_completeness_contract_changes_the_ingest_config_hash() -> None
     assert native_ingest._config_hash(  # noqa: SLF001
         dataset, binding
     ) != native_ingest._config_hash(dataset, changed_binding)  # noqa: SLF001
+
+
+def test_transport_profile_changes_the_ingest_config_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _registry()
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    original = ingest_contract_module.provider_ingest_config_hash(dataset, binding)
+
+    monkeypatch.setattr(
+        ingest_contract_module,
+        "provider_transport_profile",
+        lambda provider: {
+            "data_provider": provider,
+            "endpoint": "https://api.quicksync.cn",
+            "profile_id": "quicksync-tushare-compatible.changed-test",
+            "profile_sha256": "f" * 64,
+            "redirects_allowed": False,
+            "tls_minimum": "TLSv1.3",
+            "tls_maximum": "TLSv1.3",
+            "transport_service": "quicksync",
+        },
+    )
+
+    assert ingest_contract_module.provider_ingest_config_hash(
+        dataset, binding
+    ) != original
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "request_shape",
+        "request_variants",
+        "fanout",
+        "pagination",
+        "as_of_format",
+        "empty_data_policy",
+        "read_discriminator_value",
+        "target_tables",
+        "read_model_adapter",
+    ),
+)
+def test_every_provider_native_request_and_admission_field_changes_config_hash(
+    case: str,
+) -> None:
+    registry = _registry()
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    changed_dataset = dataset
+    changed_binding = binding
+
+    if case == "request_shape":
+        changed_binding = replace(binding, request_shape="entity_fanout")
+    elif case == "request_variants":
+        changed_binding = replace(
+            binding,
+            request_variants=(MappingProxyType({"exchange": "SSE"}),),
+        )
+    elif case == "fanout":
+        changed_binding = replace(
+            binding,
+            fanout=FanoutPolicy(
+                strategy="registry_entities",
+                parameter="ts_code",
+                source_dataset_id="cn.synthetic.source",
+                source_field="ts_code",
+                batch_size=10,
+            ),
+        )
+    elif case == "pagination":
+        changed_binding = replace(
+            binding,
+            pagination=PaginationPolicy(
+                strategy="offset",
+                limit_parameter="limit",
+                offset_parameter="offset",
+                page_size=100,
+                max_pages=2,
+            ),
+        )
+    elif case == "as_of_format":
+        changed_dataset = replace(dataset, as_of_format="iso_datetime")
+    elif case == "empty_data_policy":
+        changed_dataset = replace(dataset, empty_data_policy="allowed")
+    elif case == "read_discriminator_value":
+        changed_binding = replace(
+            binding,
+            read_discriminator_value="synthetic_runner_v2",
+        )
+    elif case == "target_tables":
+        changed_binding = replace(binding, target_tables=("other_table",))
+    elif case == "read_model_adapter":
+        changed_dataset = replace(
+            dataset,
+            read_model_adapter=replace(
+                dataset.read_model_adapter,
+                row_key_strategy="payload_hash",
+            ),
+        )
+    else:  # pragma: no cover - the parametrization is exhaustive.
+        raise AssertionError(case)
+
+    assert ingest_contract_module.provider_ingest_config_hash(
+        changed_dataset,
+        changed_binding,
+    ) != ingest_contract_module.provider_ingest_config_hash(dataset, binding)
 
 
 @pytest.mark.parametrize(

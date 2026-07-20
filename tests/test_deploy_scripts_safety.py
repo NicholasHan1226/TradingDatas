@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 
 def test_deploy_tree_contains_only_the_internal_v1_service_surface() -> None:
@@ -56,15 +57,24 @@ def test_deploy_tree_has_one_provider_neutral_scheduler_surface() -> None:
     assert service.count("ExecStart=") == 1
     assert "tools/run_provider_native_schedule.py" in service
     assert "--execute" in service
-    assert "https://api.tushare.pro" in service
-    assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token" in service
+    assert "https://api.quicksync.cn" in service
+    assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token" in service
     assert "TUSHARE_TOKEN=" not in service
-    assert "QUICKSYNC" not in service
+    assert "QUICKSYNC_TOKEN=" not in service
     assert "dataset_id" not in service.lower()
     assert "api_name" not in service.lower()
     assert "OnCalendar=*-*-* *:0/5:00" in timer
     assert "Unit=tradingdatas-provider-native-collect.service" in timer
     assert "WantedBy=timers.target" in timer
+
+
+def test_env_example_uses_only_file_backed_quicksync_credentials() -> None:
+    source = ENV_EXAMPLE.read_text(encoding="utf-8")
+
+    assert "TUSHARE_API_URL=https://api.quicksync.cn" in source
+    assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token" in source
+    assert "TUSHARE_TOKEN=" not in source
+    assert "QUICKSYNC_TOKEN=" not in source
 
 
 def _check_runtime_paths(env: dict[str, str]) -> subprocess.CompletedProcess[str]:

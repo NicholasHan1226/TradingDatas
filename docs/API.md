@@ -5,7 +5,7 @@
 返回当前账户可见的数据集、schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
-`entitlement` 仅表示 provider 侧真实观测到的权限状态。对 Tushare，它可能来自积分门槛或单独权限；Token 存在、静态目录可见或 HTTP 200 都不能单独证明权限、频控或数据可用性。
+`entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
 
 ## POST /v1/query
 
@@ -57,6 +57,7 @@ catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取
       "authority": "sqlite_ingest_receipts",
       "dataset_id": "cn.equity.daily",
       "providers": ["tushare"],
+      "transport_service": "quicksync",
       "receipt_watermark": "..."
     },
     "receipt_id": "...",
@@ -73,6 +74,8 @@ catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取
 `paused`、`failed`、`stale`。`metadata.state` 是面向读取方的可用状态：新鲜且
 完整的 `success` 映射为 `ready`，其它状态保持不变。HTTP 200 不得掩盖 dataset
 级 degraded 状态；消费者必须逐数据集读取 metadata，不能只看 HTTP 状态码。
+
+`lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
 ## 禁止接口
 

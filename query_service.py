@@ -16,6 +16,12 @@ from types import MappingProxyType
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from catalog_service import inspect_dataset_queryability, is_initial_release_eligible
+from provider_ingest_contract import provider_ingest_config_hash
+from provider_transport import (
+    TUSHARE_DATA_PROVIDER,
+    TUSHARE_TRANSPORT_SERVICE,
+    provider_transport_profile,
+)
 from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
 from query_contract import (
     QueryAccessContext,
@@ -1337,25 +1343,64 @@ def _runtime_metadata(
         receipt_id = None
 
     providers: set[str] = set()
+    provider_config_hashes: set[tuple[str, str]] = set()
     if current_complete:
         providers.update(evidence.current_providers)
+        provider_config_hashes.update(evidence.current_provider_config_hashes)
     if allow_rows and prior_complete:
         providers.update(evidence.last_success_providers)
+        provider_config_hashes.update(evidence.last_success_provider_config_hashes)
     if not lineage_complete:
         providers.clear()
+        provider_config_hashes.clear()
+    transport_profile = provider_transport_profile(TUSHARE_DATA_PROVIDER)
+    expected_provider_config_hashes = {
+        (
+            binding.provider,
+            provider_ingest_config_hash(dataset, binding),
+        )
+        for binding in dataset.provider_bindings
+        if binding.provider in providers
+    }
+    transport_profile_proven = (
+        providers == {TUSHARE_DATA_PROVIDER}
+        and provider_config_hashes == expected_provider_config_hashes
+    )
+    transport_profile_unverified = (
+        providers == {TUSHARE_DATA_PROVIDER} and not transport_profile_proven
+    )
+    if transport_profile_unverified:
+        lineage_complete = False
+        allow_rows = False
+        reasons = sorted(set([*reasons, "transport_profile_unverified"]))
+    transport_service = (
+        TUSHARE_TRANSPORT_SERVICE
+        if transport_profile_proven
+        else None
+    )
+    effective_degraded = projection.degraded or transport_profile_unverified
+    effective_state = "failed" if transport_profile_unverified else state
 
     metadata = {
-        "state": "ready" if state == "success" and not projection.degraded else state,
+        "state": (
+            "ready"
+            if effective_state == "success" and not effective_degraded
+            else effective_state
+        ),
         "runtime_state": state,
-        "degraded": projection.degraded,
+        "degraded": effective_degraded,
         "freshness": {
-            "state": "fresh" if state == "success" else state,
+            "state": "fresh" if effective_state == "success" else effective_state,
             "stale": state == "stale",
             "sla_seconds": dataset.freshness_sla_seconds,
         },
         "quality": {
-            "state": "valid" if state in {"success", "empty"} else "degraded",
-            "valid": state in {"success", "empty"},
+            "state": (
+                "valid"
+                if effective_state in {"success", "empty"}
+                else "degraded"
+            ),
+            "valid": effective_state in {"success", "empty"},
             "evidence": reasons,
         },
         "lineage": {
@@ -1365,6 +1410,17 @@ def _runtime_metadata(
             "authority": "sqlite_ingest_receipts",
             "dataset_id": dataset.dataset_id,
             "providers": sorted(providers),
+            "transport_service": transport_service,
+            "transport_profile_id": (
+                transport_profile["profile_id"]
+                if transport_service is not None
+                else None
+            ),
+            "transport_profile_sha256": (
+                transport_profile["profile_sha256"]
+                if transport_service is not None
+                else None
+            ),
             "receipt_watermark": watermark,
         },
         "receipt_id": receipt_id,

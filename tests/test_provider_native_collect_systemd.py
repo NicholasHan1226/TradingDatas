@@ -33,15 +33,17 @@ def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
         assert argument in source
 
 
-def test_collector_unit_requires_private_file_backed_official_credentials() -> None:
+def test_collector_unit_requires_private_file_backed_quicksync_credentials() -> None:
     source = SERVICE.read_text(encoding="utf-8")
 
-    assert "ConditionPathExists=/etc/tradingdatas/tushare.token" in source
-    assert 'Environment="TUSHARE_API_URL=https://api.tushare.pro"' in source
-    assert 'Environment="TUSHARE_TOKEN_FILE=/etc/tradingdatas/tushare.token"' in source
+    assert "ConditionPathExists=/etc/tradingdatas/quicksync.token" in source
+    assert 'Environment="TUSHARE_API_URL=https://api.quicksync.cn"' in source
+    assert (
+        'Environment="TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token"' in source
+    )
     for forbidden in (
         "TUSHARE_TOKEN=",
-        "QUICKSYNC",
+        "QUICKSYNC_TOKEN=",
         "EnvironmentFile=/etc/sharedsignals",
         "SHAREDSIGNALS",
     ):

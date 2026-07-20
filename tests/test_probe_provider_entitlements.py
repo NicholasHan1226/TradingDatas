@@ -75,6 +75,7 @@ def test_policy_covers_each_official_contract_once_and_only_reviewed_specs_execu
         == 135
     )
     assert policy.max_selected_datasets == 5
+    assert policy.locked_provider_codes == frozenset({"-2001", "40203"})
     assert policy.request_profiles["cn.dataset.pledge_stat"] == (
         False,
         "requires_fresh_stock_anchor",
@@ -432,6 +433,37 @@ def test_execute_is_one_shot_redacted_and_self_hashing():
     unsigned = dict(evidence)
     del unsigned["evidence_self_sha256"]
     assert self_hash == probe.canonical_sha256(unsigned)
+
+
+def test_execute_classifies_quicksync_permission_code_as_locked():
+    policy = _load_policy()
+    first = policy.executable_probes[0]
+
+    def permission_denied(
+        *_args,
+        response_observer,
+        **_kwargs,
+    ):
+        response_observer(21, hashlib.sha256(b"permission-denied").hexdigest())
+        return ProviderCallOutcome(
+            state="failed",
+            rows=(),
+            provider_code=40203,
+            error_code="permission_denied",
+            error_message="permission denied",
+        )
+
+    evidence = probe.execute_probe(
+        policy,
+        token="private-token",
+        observed_at="2026-07-20T10:00:00Z",
+        code_commit="a" * 40,
+        provider_call=permission_denied,
+        selected_dataset_ids=(first.dataset_id,),
+    )
+
+    assert evidence["results"][0]["decision"] == "locked"
+    assert evidence["results"][0]["reasons"] == ["strict_permission_denial"]
 
 
 def test_execute_resolves_five_profiles_once_without_retry():

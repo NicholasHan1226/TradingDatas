@@ -480,7 +480,7 @@ def load_probe_policy(
     locked_codes = frozenset(
         str(value) for value in raw_codes if type(value) in (int, str)
     )
-    if locked_codes != frozenset({"-2001"}):
+    if locked_codes != frozenset({"-2001", "40203"}):
         raise ValueError("permission provider codes do not match the strict allowlist")
 
     return ProbePolicy(

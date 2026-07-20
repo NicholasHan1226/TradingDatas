@@ -2,9 +2,9 @@
 
 ## 最终目标
 
-所有属于首期境内只读范围、且当前 Tushare 账号由积分或单独权限实际允许调用的数据集，都能：
+所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，都能：
 
-1. 从统一 provider transport 获取；
+1. 从 `provider=tushare`、`transport_service=quicksync` 的统一 provider-level adapter 获取；
 2. 按注册频率与修订窗口自动运行；
 3. 无损写入通用 SQLite facts；
 4. 在同一事务提交 success receipt；
@@ -27,8 +27,9 @@
 
 - 固定官方能力目录版本；
 - 批量读取官方接口文档的输入/输出表，生成字段与请求合同；禁止逐接口手写 Python；
+- 把 Tushare 官方文档限定为 dataset/schema/cadence 参考，把 QuickSync 文档与有界真实观测限定为 endpoint/auth/permission/error/rate/concurrency 事实源；
 - 对每个 API 标记 scope、entitlement、activation 和 successor；
-- 对每个 API 记录积分门槛或单独权限口径，以及官方/实测的分钟、每日和并发预算；Token 存在本身不得视为权限证明；
+- 对每个 API 记录 QuickSync 真实观测的权限状态；账号级/API 级分钟、每日和并发预算未知时保持 unknown，不能用官方直连积分频次替代；凭证存在本身不得视为权限证明；
 - 批量生成 provider-neutral dataset registry；
 - 一次实现四种 request shape：
   - `snapshot_or_date_range`
@@ -46,7 +47,7 @@
   - `event`
   - `on_demand`
 
-退出条件：所有首期 API 均有明确分类；所有已授权 in-scope API 都有可执行合同或明确 blocked 原因；普通 dataset onboarding 不修改 Python。
+退出条件：所有首期 API 均有明确分类；所有已授权 in-scope API 都有可执行合同或明确 blocked 原因；普通 dataset onboarding 不修改 Python；QuickSync transport profile、权限码和有界 budget 证据已冻结，production timer 在此之前保持 disabled。
 
 ## Phase 2 — 内部服务
 
@@ -72,4 +73,4 @@
 
 ## Phase 4 — 后续扩源与外部 Beta
 
-内部稳定后才增加外部账户治理。新增 provider 继续复用固定 API；只有 transport/auth/pagination 不同才增加 provider adapter。
+内部稳定后才增加外部账户治理。新增 provider 继续复用固定 API；只有 transport/auth/pagination 不同才增加 provider adapter。QuickSync/Tushare 的缓存、再分发和对外服务条款未经书面核验前，受邀外部账户 Beta 不开放真实数据面。

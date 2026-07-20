@@ -24,6 +24,7 @@ from dataset_registry import (
     ProviderBinding,
     RequestScalar,
 )
+from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
@@ -613,79 +614,7 @@ def _execute_provider_requests(
 
 
 def _config_hash(dataset: DatasetDefinition, binding: ProviderBinding) -> str:
-    payload = {
-        "dataset_id": dataset.dataset_id,
-        "schema_version": dataset.schema_version,
-        "fields": [
-            {
-                "filterable": field.filterable,
-                "logical_type": field.logical_type,
-                "name": field.name,
-                "nullable": field.nullable,
-                "selectable": field.selectable,
-                "sortable": field.sortable,
-            }
-            for field in dataset.fields
-        ],
-        "primary_key": list(dataset.primary_key),
-        "as_of_field": dataset.as_of_field,
-        "partition_field": dataset.partition_field,
-        "point_in_time": dataset.point_in_time,
-        "storage_kind": dataset.read_model_adapter.storage_kind,
-        "row_key_strategy": dataset.read_model_adapter.row_key_strategy,
-        "provider": binding.provider,
-        "api_name": binding.api_name,
-        "adapter_version": binding.adapter_version,
-        "entitlement_state": binding.entitlement_state,
-        "activation_state": binding.activation_state,
-        "request_template": dict(binding.request_template),
-        "request_window_policy": (
-            None
-            if binding.request_window_policy is None
-            else {
-                "required_keys": list(binding.request_window_policy.required_keys),
-                "formats": dict(binding.request_window_policy.formats),
-                "range_start_key": binding.request_window_policy.range_start_key,
-                "range_end_key": binding.request_window_policy.range_end_key,
-                "max_span_days": binding.request_window_policy.max_span_days,
-            }
-        ),
-        "response_completeness": (
-            None
-            if binding.response_completeness is None
-            else {
-                "strategy": binding.response_completeness.strategy,
-                "date_field": binding.response_completeness.date_field,
-                "request_start_key": (binding.response_completeness.request_start_key),
-                "request_end_key": binding.response_completeness.request_end_key,
-                "partition_field": binding.response_completeness.partition_field,
-                "request_partition_key": (
-                    binding.response_completeness.request_partition_key
-                ),
-                "fixed_field_matches": dict(
-                    binding.response_completeness.fixed_field_matches
-                ),
-                "reject_at_row_limit": (
-                    binding.response_completeness.reject_at_row_limit
-                ),
-            }
-        ),
-        "requested_fields": list(binding.requested_fields),
-        "budgets": {
-            "max_batch_bytes": binding.max_batch_bytes,
-            "max_nesting_depth": binding.max_nesting_depth,
-            "max_payload_bytes_per_row": binding.max_payload_bytes_per_row,
-            "max_rows_per_attempt": binding.max_rows_per_attempt,
-        },
-    }
-    canonical = json.dumps(
-        payload,
-        ensure_ascii=False,
-        allow_nan=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return provider_ingest_config_hash(dataset, binding)
 
 
 def _matching_values(

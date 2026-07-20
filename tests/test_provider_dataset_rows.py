@@ -765,11 +765,11 @@ class _RawEnvelopeCollector:
             patch.object(
                 tushare_common,
                 "get_api_url",
-                return_value="https://fixture.invalid",
+                return_value="https://api.quicksync.cn",
             ),
             patch.object(
-                tushare_common.urllib.request,
-                "urlopen",
+                tushare_common,
+                "_provider_urlopen",
                 return_value=response,
             ),
         ):

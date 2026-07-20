@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import ssl
 import urllib.error
 import urllib.parse
 from dataclasses import FrozenInstanceError
@@ -37,7 +38,7 @@ class _RawResponse:
 def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
     requests: list[dict] = []
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, *, timeout):
         requests.append(
             {
                 "payload": json.loads(request.data.decode("utf-8")),
@@ -46,25 +47,67 @@ def _stub_outcome_response(monkeypatch, payload: dict) -> list[dict]:
         )
         return _Response(payload)
 
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        tushare_common,
+        "get_api_url",
+        lambda: "https://api.quicksync.cn",
+    )
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", fake_urlopen)
     return requests
 
 
-def test_config_reads_only_api_url_and_current_euid_owned_token_file(tmp_path):
+@pytest.mark.parametrize(
+    "api_url",
+    ["https://api.quicksync.cn", "https://api.quicksync.cn:443"],
+)
+def test_config_reads_only_canonical_quicksync_url_and_current_euid_owned_token_file(
+    tmp_path,
+    api_url,
+):
     token_file = tmp_path / "tushare-token"
     token_file.write_text("test-token\n", encoding="utf-8")
     token_file.chmod(0o600)
 
     assert tushare_common.read_tushare_config(
         {
-            "TUSHARE_API_URL": "https://api.tushare.pro",
+            "TUSHARE_API_URL": api_url,
             "TUSHARE_TOKEN_FILE": str(token_file),
         }
     ) == {
-        "api_url": "https://api.tushare.pro",
+        "api_url": "https://api.quicksync.cn",
         "token": "test-token",
     }
+
+
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        pytest.param("http://api.quicksync.cn", id="http"),
+        pytest.param("https://api.tushare.pro", id="official-host-is-not-runtime"),
+        pytest.param("https://example.test", id="wrong-host"),
+        pytest.param("https://user@api.quicksync.cn", id="userinfo"),
+        pytest.param("https://api.quicksync.cn/", id="trailing-slash"),
+        pytest.param("https://api.quicksync.cn/v1", id="path"),
+        pytest.param("https://api.quicksync.cn?mode=test", id="query"),
+        pytest.param("https://api.quicksync.cn#fragment", id="fragment"),
+        pytest.param("https://api.quicksync.cn:444", id="wrong-port"),
+    ],
+)
+def test_config_rejects_every_noncanonical_quicksync_transport_url(
+    tmp_path,
+    api_url,
+):
+    token_file = tmp_path / "quicksync-token"
+    token_file.write_text("test-token\n", encoding="utf-8")
+    token_file.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="TUSHARE_API_URL"):
+        tushare_common.read_tushare_config(
+            {
+                "TUSHARE_API_URL": api_url,
+                "TUSHARE_TOKEN_FILE": str(token_file),
+            }
+        )
 
 
 def test_config_rejects_env_tokens_fallbacks_and_non_euid_token_file(
@@ -85,7 +128,7 @@ def test_config_rejects_env_tokens_fallbacks_and_non_euid_token_file(
     with pytest.raises(RuntimeError, match="ownership or mode"):
         tushare_common.read_tushare_config(
             {
-                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_API_URL": "https://api.quicksync.cn",
                 "TUSHARE_TOKEN_FILE": str(token_file),
                 "TUSHARE_TOKEN": "must-not-be-read",
                 "QUICKSYNC_TOKEN": "must-not-be-read",
@@ -94,7 +137,7 @@ def test_config_rejects_env_tokens_fallbacks_and_non_euid_token_file(
     with pytest.raises(RuntimeError, match="TUSHARE_TOKEN_FILE"):
         tushare_common.read_tushare_config(
             {
-                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_API_URL": "https://api.quicksync.cn",
                 "TUSHARE_TOKEN": "must-not-be-read",
             }
         )
@@ -109,7 +152,7 @@ def test_config_rejects_token_file_without_exact_0600_mode(tmp_path, mode):
     with pytest.raises(RuntimeError, match="ownership or mode"):
         tushare_common.read_tushare_config(
             {
-                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_API_URL": "https://api.quicksync.cn",
                 "TUSHARE_TOKEN_FILE": str(token_file),
             }
         )
@@ -125,46 +168,93 @@ def test_config_rejects_symlink_token_file(tmp_path):
     with pytest.raises(RuntimeError, match="TUSHARE_TOKEN_FILE is unavailable"):
         tushare_common.read_tushare_config(
             {
-                "TUSHARE_API_URL": "https://api.tushare.pro",
+                "TUSHARE_API_URL": "https://api.quicksync.cn",
                 "TUSHARE_TOKEN_FILE": str(token_link),
             }
         )
 
 
-def test_non_quicksync_transport_keeps_default_verified_urlopen(monkeypatch):
+def test_quicksync_transport_uses_verified_tls13_and_rejects_redirects(monkeypatch):
+    class FakeTlsContext:
+        minimum_version = None
+        maximum_version = None
+        check_hostname = True
+        verify_mode = ssl.CERT_REQUIRED
+
+    context = FakeTlsContext()
     observed: dict[str, object] = {}
 
-    def fake_urlopen(request, timeout, **kwargs):
-        observed.update(
-            {
-                "kwargs": kwargs,
-                "timeout": timeout,
-                "url": request.full_url,
-            }
-        )
-        return _Response(
-            {
-                "code": 0,
-                "msg": None,
-                "data": {"fields": ["value"], "items": [[1]]},
-            }
-        )
+    class FakeOpener:
+        def open(self, request, *, timeout):
+            observed["request"] = request
+            observed["timeout"] = timeout
+            return _Response(
+                {
+                    "code": 0,
+                    "msg": None,
+                    "data": {"fields": ["value"], "items": [[1]]},
+                }
+            )
 
+    def fake_build_opener(*handlers):
+        observed["handlers"] = handlers
+        return FakeOpener()
+
+    monkeypatch.setattr(tushare_common.ssl, "create_default_context", lambda: context)
     monkeypatch.setattr(
-        tushare_common,
-        "get_api_url",
-        lambda: "https://api.tushare.pro",
+        tushare_common.urllib.request,
+        "build_opener",
+        fake_build_opener,
     )
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
 
-    outcome = tushare_common.tushare_rows_outcome("trade_cal", "stub-token")
+    request = tushare_common.urllib.request.Request(
+        "https://api.quicksync.cn",
+        data=b"{}",
+        method="POST",
+    )
+    response = tushare_common._provider_urlopen(request, timeout=30)
 
-    assert observed == {
-        "kwargs": {},
-        "timeout": 30,
-        "url": "https://api.tushare.pro",
-    }
-    assert outcome.state == "success"
+    assert response.read() != b""
+    assert context.minimum_version is ssl.TLSVersion.TLSv1_3
+    assert context.maximum_version is ssl.TLSVersion.TLSv1_3
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert observed["timeout"] == 30
+    assert observed["request"] is request
+
+    handlers = observed["handlers"]
+    https_handlers = [
+        handler
+        for handler in handlers
+        if isinstance(handler, tushare_common.urllib.request.HTTPSHandler)
+    ]
+    assert len(https_handlers) == 1
+    assert https_handlers[0]._context is context
+
+    redirect_handlers = [
+        handler
+        for handler in handlers
+        if isinstance(handler, tushare_common.urllib.request.HTTPRedirectHandler)
+    ]
+    assert len(redirect_handlers) == 1
+    redirected = tushare_common.urllib.request.Request(
+        "https://api.quicksync.cn",
+        data=b"{}",
+        method="POST",
+    )
+    try:
+        result = redirect_handlers[0].redirect_request(
+            redirected,
+            None,
+            302,
+            "Found",
+            {},
+            "https://redirected.example/",
+        )
+    except urllib.error.HTTPError:
+        pass
+    else:
+        assert result is None
 
 
 def test_tushare_rows_outcome_reads_only_budget_plus_one_before_json_parse(
@@ -172,10 +262,12 @@ def test_tushare_rows_outcome_reads_only_budget_plus_one_before_json_parse(
 ):
     raw = _RawResponse('{"code":0,"data":{"fields":["x"],"items":[[1]]}}')
     observed: list[tuple[int, str | None]] = []
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: raw,
     )
 
@@ -207,8 +299,10 @@ def test_tushare_rows_outcome_rejects_invalid_response_budget_without_call(
         called = True
         raise AssertionError("provider must not be called")
 
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", fake_urlopen)
 
     outcome = tushare_common.tushare_rows_outcome(
         "daily",
@@ -231,10 +325,12 @@ def test_tushare_rows_outcome_observer_gets_only_safe_size_and_digest(monkeypatc
         }
     )
     observed: list[tuple[int, str | None]] = []
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: response,
     )
 
@@ -262,10 +358,12 @@ def test_tushare_rows_outcome_observer_never_hashes_credential_response(monkeypa
             "token": "stub-token",
         }
     )
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: response,
     )
 
@@ -396,10 +494,12 @@ def test_tushare_rows_outcome_rejects_non_finite_raw_json_constants(
     raw_payload,
     constant,
 ):
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: _RawResponse(raw_payload),
     )
 
@@ -429,10 +529,12 @@ def test_tushare_rows_outcome_rejects_duplicate_json_keys_at_any_depth(
     monkeypatch,
     raw_payload,
 ):
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: _RawResponse(raw_payload),
     )
 
@@ -450,10 +552,12 @@ def test_tushare_rows_outcome_rejects_finite_overflow_outside_data(monkeypatch):
         '{"code": 0, "msg": null, "data": '
         '{"fields": ["value"], "items": [[1]]}, "meta": {"sentinel": 1e400}}'
     )
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: _RawResponse(raw_payload),
     )
 
@@ -520,17 +624,27 @@ def test_tushare_rows_outcome_keeps_unknown_provider_error_failed(monkeypatch):
     )
 
 
-def test_tushare_rows_outcome_classifies_entitlement_denial(monkeypatch):
+@pytest.mark.parametrize(
+    "provider_code",
+    [
+        pytest.param(-2001, id="official-tushare"),
+        pytest.param(40203, id="quicksync-gateway"),
+    ],
+)
+def test_tushare_rows_outcome_classifies_entitlement_denial(
+    monkeypatch,
+    provider_code,
+):
     message = "抱歉，您没有访问该接口的权限"
     _stub_outcome_response(
         monkeypatch,
-        {"code": -2001, "msg": message, "data": None},
+        {"code": provider_code, "msg": message, "data": None},
     )
 
     outcome = tushare_common.tushare_rows_outcome("income", "stub-token")
 
     assert outcome.state == "failed"
-    assert outcome.provider_code == -2001
+    assert outcome.provider_code == provider_code
     assert outcome.error_code == "permission_denied"
     assert outcome.error_message == message
 
@@ -1111,10 +1225,12 @@ def test_tushare_rows_outcome_redacts_provider_error_before_return(monkeypatch):
 
 
 def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             urllib.error.URLError("offline")
         ),
@@ -1130,10 +1246,12 @@ def test_tushare_rows_outcome_keeps_transport_exception_failed(monkeypatch):
 
 
 def test_tushare_rows_outcome_redacts_transport_error_before_return(monkeypatch):
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             urllib.error.URLError("offline token=S3CR3T-DO-NOT-LOG")
         ),
@@ -1299,11 +1417,13 @@ def test_strict_provider_return_is_safe_for_delimited_secret(
 ):
     secret = "DUMMY-STRICT-TRAIL"
     message = f"Authorization: Bearer DUMMY-STRICT-LEAD,{secret} status=401"
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
     if failure_mode == "provider":
         monkeypatch.setattr(
-            tushare_common.urllib.request,
-            "urlopen",
+            tushare_common,
+            "_provider_urlopen",
             lambda *_args, **_kwargs: _Response(
                 {"code": -2001, "msg": message, "data": None}
             ),
@@ -1314,8 +1434,8 @@ def test_strict_provider_return_is_safe_for_delimited_secret(
             raise RuntimeError(message)
 
         monkeypatch.setattr(
-            tushare_common.urllib.request,
-            "urlopen",
+            tushare_common,
+            "_provider_urlopen",
             raise_transport,
         )
 
@@ -1414,10 +1534,12 @@ def test_provider_boundary_replaces_percent_decoded_token(monkeypatch):
 
 def test_transport_summary_does_not_retain_arbitrary_exception_text(monkeypatch):
     secret = "innocent-looking-private-diagnostic"
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://example.test")
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError(secret)),
     )
 

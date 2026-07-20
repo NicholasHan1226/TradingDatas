@@ -5,9 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 import urllib.error
-from threading import Lock
 from typing import Any, Callable
 
 from .tushare_common import (
@@ -67,10 +65,6 @@ class TushareCollector:
 
     name = "tushare"
     provider = "tushare"
-    _rate_window_sec = 60
-    _rate_limit_per_window = 200
-    _rate_calls: list[float] = []
-    _rate_lock = Lock()
 
     def __init__(
         self,
@@ -99,25 +93,6 @@ class TushareCollector:
         self.collect_call_count = 0
         self.collect_failure_count = 0
 
-    @classmethod
-    def _rate_limit(cls, api_name: str) -> None:
-        """Enforce one provider-account window across every dataset/API call."""
-
-        del api_name
-        while True:
-            now = time.monotonic()
-            window_start = now - cls._rate_window_sec
-            with cls._rate_lock:
-                cls._rate_calls[:] = [
-                    stamp for stamp in cls._rate_calls if stamp > window_start
-                ]
-                if len(cls._rate_calls) < cls._rate_limit_per_window:
-                    cls._rate_calls.append(now)
-                    return
-                sleep_for = cls._rate_calls[0] + cls._rate_window_sec - now + 0.01
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-
     def collect_outcome(
         self,
         api_name: str,
@@ -135,7 +110,6 @@ class TushareCollector:
         try:
             if self._request_gate is not None:
                 self._request_gate(api_name)
-            self._rate_limit(api_name)
             logger.info(
                 "collect %s with params=%s",
                 api_name,

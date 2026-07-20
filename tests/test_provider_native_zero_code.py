@@ -291,8 +291,8 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity
     observed_requested_fields: list[str | None] = []
 
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common,
+        "_provider_urlopen",
         lambda _request, timeout: (
             _Response(
                 {
@@ -305,7 +305,9 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity
             else pytest.fail("unexpected provider timeout")
         ),
     )
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
 
     def provider_call(
         api_name: str,
@@ -324,7 +326,6 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity
         )
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
-    TushareCollector._rate_calls.clear()
 
     result = collect_provider_native_dataset(
         database,
@@ -385,7 +386,6 @@ def test_registry_scan_budget_hard_cap_fails_before_provider_call(
         pytest.fail("provider must not be called for an excessive scan budget")
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
-    TushareCollector._rate_calls.clear()
 
     with pytest.raises(ValueError, match="scan node budget exceeds"):
         collect_provider_native_dataset(
@@ -428,7 +428,6 @@ def test_legacy_collect_outcome_keeps_three_argument_default(
         )
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", legacy_call)
-    TushareCollector._rate_calls.clear()
 
     outcome = TushareCollector().collect_outcome("daily", {}, None)
 
@@ -455,8 +454,8 @@ def test_registry_scan_budget_rejects_provider_token_at_any_row_position(
     _create_database(database)
 
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common,
+        "_provider_urlopen",
         lambda _request, timeout: (
             _Response(
                 {
@@ -469,7 +468,9 @@ def test_registry_scan_budget_rejects_provider_token_at_any_row_position(
             else pytest.fail("unexpected provider timeout")
         ),
     )
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
 
     def provider_call(
         api_name: str,
@@ -486,7 +487,6 @@ def test_registry_scan_budget_rejects_provider_token_at_any_row_position(
         )
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
-    TushareCollector._rate_calls.clear()
 
     result = collect_provider_native_dataset(
         database,
@@ -531,8 +531,8 @@ def test_provider_native_row_overflow_writes_failed_receipt_without_facts(
     _create_database(database)
 
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common,
+        "_provider_urlopen",
         lambda _request, timeout: (
             _Response(
                 {
@@ -545,7 +545,9 @@ def test_provider_native_row_overflow_writes_failed_receipt_without_facts(
             else pytest.fail("unexpected provider timeout")
         ),
     )
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
 
     def provider_call(
         api_name: str,
@@ -562,7 +564,6 @@ def test_provider_native_row_overflow_writes_failed_receipt_without_facts(
         )
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
-    TushareCollector._rate_calls.clear()
 
     result = collect_provider_native_dataset(
         database,
@@ -672,8 +673,10 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
             }
         )
 
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", urlopen)
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
@@ -687,7 +690,6 @@ def test_registry_only_dataset_reaches_real_v1_query_losslessly(
             )
         ),
     )
-    TushareCollector._rate_calls.clear()
 
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: frozen_now.isoformat())
     started_at = frozen_now.isoformat()
@@ -863,8 +865,10 @@ def test_target_contract_requests_all_declared_fields_and_complete_response_is_v
             }
         )
 
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", urlopen)
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
@@ -878,7 +882,6 @@ def test_target_contract_requests_all_declared_fields_and_complete_response_is_v
             )
         ),
     )
-    TushareCollector._rate_calls.clear()
 
     result = collect_provider_native_dataset(
         database,
@@ -960,8 +963,10 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
             }
         )
 
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", urlopen)
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
@@ -975,7 +980,6 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
             )
         ),
     )
-    TushareCollector._rate_calls.clear()
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: frozen_now.isoformat())
 
     result = collect_provider_native_dataset(
@@ -1022,8 +1026,8 @@ def test_target_contracts_reach_local_v1_query_with_lossless_degraded_payload(
         cursor_codec=SignedCursorCodec(SIGNING_KEY),
     )
     monkeypatch.setattr(
-        tushare_common.urllib.request,
-        "urlopen",
+        tushare_common,
+        "_provider_urlopen",
         lambda *_args, **_kwargs: pytest.fail("V1 query must not call the provider"),
     )
     monkeypatch.setattr(
@@ -1113,8 +1117,10 @@ def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
         captured_request.update(json.loads(raw_data.decode("utf-8")))
         return _Response(response)
 
-    monkeypatch.setattr(tushare_common.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(tushare_common, "get_api_url", lambda: "https://invalid.test")
+    monkeypatch.setattr(tushare_common, "_provider_urlopen", urlopen)
+    monkeypatch.setattr(
+        tushare_common, "get_api_url", lambda: "https://api.quicksync.cn"
+    )
     monkeypatch.setattr(
         collector_module,
         "_TUSHARE_CALL",
@@ -1128,7 +1134,6 @@ def test_daily_target_contract_preserves_empty_and_failed_receipt_truth(
             )
         ),
     )
-    TushareCollector._rate_calls.clear()
 
     result = collect_provider_native_dataset(
         database,

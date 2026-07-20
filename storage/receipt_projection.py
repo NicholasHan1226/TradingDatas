@@ -191,6 +191,8 @@ class DatasetRuntimeEvidence:
     last_success_receipt_id: str | None
     last_success_providers: tuple[str, ...]
     last_success_data_through: str | None
+    current_provider_config_hashes: tuple[tuple[str, str], ...] = ()
+    last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.projection, DatasetRuntimeProjection):
@@ -228,6 +230,29 @@ class DatasetRuntimeEvidence:
             or not self.last_success_data_through
         ):
             raise ValueError("last_success_data_through is invalid")
+        for name, pairs, providers in (
+            (
+                "current_provider_config_hashes",
+                self.current_provider_config_hashes,
+                self.current_providers,
+            ),
+            (
+                "last_success_provider_config_hashes",
+                self.last_success_provider_config_hashes,
+                self.last_success_providers,
+            ),
+        ):
+            if type(pairs) is not tuple or any(
+                type(pair) is not tuple
+                or len(pair) != 2
+                or type(pair[0]) is not str
+                or pair[0] not in providers
+                or not _is_sha256(pair[1])
+                for pair in pairs
+            ):
+                raise TypeError(f"{name} must contain provider/hash pairs")
+            if pairs != tuple(sorted(set(pairs))):
+                raise ValueError(f"{name} must be sorted and unique")
 
 
 @dataclass(frozen=True)
@@ -250,6 +275,7 @@ class _Receipt:
     finished_at: str
     status: str
     provider: str
+    config_hash: str | None
     data_through: str | None
     request_window: Mapping[str, str]
     transaction_index: int
@@ -894,6 +920,7 @@ def _validate_receipt_row(
         finished_at=finished_at,
         status=status,
         provider=binding.provider,
+        config_hash=context.config_hash,
         data_through=data_through,
         request_window=MappingProxyType(dict(sorted(request_window.items()))),
         transaction_index=transaction_index,
@@ -1599,27 +1626,43 @@ def project_dataset_runtime_evidence(
 
     current_status: str | None = None
     current_providers: tuple[str, ...] = ()
+    current_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     if not invalid and projection.state not in {"paused", "unobserved"} and receipts:
         latest = _latest_attempt_receipt(receipts)
         current_status = latest.status
-        current_providers = tuple(
+        current_execution = tuple(
+            receipt
+            for receipt in receipts
+            if receipt.execution_id == latest.execution_id
+        )
+        current_providers = tuple(sorted({receipt.provider for receipt in current_execution}))
+        current_provider_config_hashes = tuple(
             sorted(
                 {
-                    receipt.provider
-                    for receipt in receipts
-                    if receipt.execution_id == latest.execution_id
+                    (receipt.provider, receipt.config_hash)
+                    for receipt in current_execution
+                    if type(receipt.config_hash) is str
                 }
             )
         )
 
     last_success_providers: tuple[str, ...] = ()
+    last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     if last_success is not None:
+        last_success_execution = tuple(
+            receipt
+            for receipt in successful
+            if receipt.execution_id == last_success.execution_id
+        )
         last_success_providers = tuple(
+            sorted({receipt.provider for receipt in last_success_execution})
+        )
+        last_success_provider_config_hashes = tuple(
             sorted(
                 {
-                    receipt.provider
-                    for receipt in successful
-                    if receipt.execution_id == last_success.execution_id
+                    (receipt.provider, receipt.config_hash)
+                    for receipt in last_success_execution
+                    if type(receipt.config_hash) is str
                 }
             )
         )
@@ -1634,6 +1677,8 @@ def project_dataset_runtime_evidence(
         last_success_data_through=(
             None if last_success is None else last_success.data_through
         ),
+        current_provider_config_hashes=current_provider_config_hashes,
+        last_success_provider_config_hashes=last_success_provider_config_hashes,
     )
 
 

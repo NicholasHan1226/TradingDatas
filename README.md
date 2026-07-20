@@ -2,7 +2,9 @@
 
 TradingDatas 是一个类似 Tushare 的、provider-neutral 的金融数据服务。
 
-当前目标只有一条：把属于首期范围、且当前 Tushare 账号由积分或单独权限实际允许调用的只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。
+当前目标只有一条：把属于首期范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。
+
+当前接入必须区分两个身份：`provider=tushare` 定义数据集与 provider-native payload，`transport_service=quicksync` 定义服务器实际连接、认证、权限返回、错误码和流控。Tushare 官方文档只作为 dataset/schema/cadence 参考；生产不能再按 `api.tushare.pro` 官方直连假设运行。
 
 ## 唯一数据链
 
@@ -31,9 +33,11 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 
 不得为普通数据集增加专用 collector、业务表、scheduler 分支、query 分支或公共 route。只有 transport、auth 或 pagination 协议真正不同，才增加 provider-level adapter。
 
-## Tushare 权限模型
+## Tushare 数据合同与 QuickSync 运行权限
 
-Tushare Token 只用于识别账号。接口能否调用、分钟/每日频控和可安全使用的并发预算，要结合账号积分、接口单独权限、官方接口说明与真实受控探测确定。部分接口依积分开放，积分越高频次越高；部分接口需要单独权限且与积分无关。代码中的 `entitlement_state` 仅表示真实观测到的 provider 权限状态，不表示购买或按接口计费。参见 [Tushare 平台积分与频次说明](https://tushare.pro/document/1) 与 [权限中心](https://tushare.pro/weborder/#/permission)。
+Tushare 官方接口文档用于生成普通数据集的请求、字段、schema 和 cadence 参考；它不证明当前 QuickSync 账号的接口权限、分钟/每日额度或并发能力。代码中的 `entitlement_state` 仅表示经 QuickSync 真实有界调用观测到的 provider 权限状态，不表示购买、按接口计费或订阅。
+
+QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。未知 budget 不猜：采集保持串行，production timer 保持 disabled，先做 1–5 个数据集、每个最多一次且零重试的人工 canary，再由真实返回决定 activation。Tushare 官方说明仍可作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
 
 ## 固定内部 API
 
@@ -77,6 +81,8 @@ uv run --python 3.12 --with-requirements requirements.txt \
 证据的接口会成为 `active`；其余接口仍可在 catalog 中发现，但固定为
 `entitlement_state=unknown`、`activation_state=paused`，不会被 scheduler 调用。
 
+这些官方合同保持可复用，不需要迁库或逐接口重写采集器；修正发生在 provider-level transport/auth/error/rate 边界。
+
 ## Entitlement 探测
 
 默认命令只校验冻结合同并输出计划，不读取 Token、不调用 provider：
@@ -96,7 +102,7 @@ resolver 只接受冻结的 `literal`，或从显式 UTC `observed_at` 按
 不会进入 resolver。探测不是采集：它不写 facts、ingest receipts 或 activation，
 也不会启用 scheduler。
 
-执行模式只用于正式 Token 已按运行手册安装后的人工 one-shot。它要求显式传入
+执行模式只用于正式 QuickSync 凭证文件已按运行手册安装后的人工 one-shot。它要求显式传入
 1–5 个属于上述 135 个 runtime-executable profile 的 `--dataset-id`、不可变 release
 commit 和精确 UTC 秒。缺失、重复、未知、超过 5 个或任何 plan-only 选择都会在
 读取凭证前整体拒绝。每个已选择数据集最多调用一次、零重试，每个响应在 JSON
@@ -112,6 +118,8 @@ git diff --check
 ```
 
 测试通过只证明当前候选。local main、GitHub、生产文件、生产 runtime、真实采集、内部 API readback 和消费者调用必须分别验证。
+
+外部受邀账户 Beta 只有在内部服务稳定且 QuickSync/Tushare 的再分发、缓存和对外服务条款完成书面核验后才进入下一阶段；当前实现与生产验收不把上游可调用误当成可对外再分发授权。
 
 ## 仓库
 
