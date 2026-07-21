@@ -10,13 +10,20 @@ import yaml
 
 import tools.compile_tushare_capability_catalog as compiler
 from tools.compile_tushare_capability_catalog import (
+    compile_v2_from_paths,
     load_capability_catalog,
+    load_mcp_snapshot,
     load_scope_document,
+    load_scope_v2_document,
     parse_official_index,
     render_catalog,
+    render_catalog_v2,
     resolve_official_rows,
     validate_catalog_document,
+    validate_catalog_v2_document,
+    validate_mcp_snapshot_document,
     validate_scope_document,
+    validate_scope_v2_document,
 )
 
 
@@ -24,6 +31,65 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "compile_tushare_capability_catalog.py"
 SCOPE_PATH = ROOT / "config" / "tushare_capability_scope.v1.yaml"
 CATALOG_PATH = ROOT / "config" / "tushare_capability_catalog.v1.yaml"
+MCP_SNAPSHOT_PATH = ROOT / "config" / "tushare_mcp_capability_snapshot.v1.yaml"
+SCOPE_V2_PATH = ROOT / "config" / "tushare_capability_scope.v2.yaml"
+
+MCP_DOMESTIC_ADDITIONS = {
+    "bo_cinema",
+    "bo_daily",
+    "bo_monthly",
+    "bo_weekly",
+    "cls_index",
+    "cls_market_shock",
+    "cls_member",
+    "cls_stock_shock",
+    "concept",
+    "concept_detail",
+    "film_record",
+    "ft_tick",
+    "fund_sales_vol",
+    "hs_const",
+    "index_member",
+    "jygs_stock_shock",
+    "kpl_concept",
+    "limit_list",
+    "margin_target",
+    "ncov_num",
+    "stock_mx",
+    "stock_vx",
+    "suspend",
+    "teleplay_record",
+}
+V2_DENOMINATOR_ADDITIONS = MCP_DOMESTIC_ADDITIONS | {
+    "dc_hot",
+    "idx_anns",
+    "ths_hot",
+    "slb_len_mm",
+    "slb_sec_detail",
+    "slb_sec",
+    "stk_account",
+    "stk_account_old",
+}
+MCP_ABSENT_DOMESTIC = {
+    "etf_mins",
+    "etf_sh_cons",
+    "etf_sz_cons",
+    "fut_index_daily",
+    "fut_trade_cal",
+    "monetary_policy",
+    "rt_etf_min",
+    "rt_etf_min_daily",
+    "sw_mins",
+}
+V2_RETIRED = {
+    "slb_len_mm",
+    "slb_sec_detail",
+    "slb_sec",
+    "stk_account",
+    "stk_account_old",
+    "margin_target",
+    "suspend",
+}
 
 
 def _index(*rows: str, header: str | None = None, suffix: str = "") -> bytes:
@@ -69,6 +135,24 @@ def _scope_classification_names(scope: dict[str, object]) -> dict[str, set[str]]
         assert isinstance(state, str)
         assert isinstance(names, list)
         result.setdefault(state, set()).update(names)
+    return result
+
+
+def _scope_v2_dimension_names(
+    scope: dict[str, object], dimension: str
+) -> dict[str, set[str]]:
+    dimensions = scope["dimensions"]
+    assert isinstance(dimensions, dict)
+    groups = dimensions[dimension]
+    assert isinstance(groups, list)
+    result: dict[str, set[str]] = {}
+    for entry in groups:
+        assert isinstance(entry, dict)
+        value = entry["value"]
+        names = entry["api_names"]
+        assert isinstance(value, str)
+        assert isinstance(names, list)
+        result[value] = set(names)
     return result
 
 
@@ -449,3 +533,226 @@ def test_pinned_offline_checkout_rebuilds_checked_in_catalog_when_supplied() -> 
     )
 
     assert render_catalog(rebuilt) == CATALOG_PATH.read_bytes()
+
+
+def test_mcp_snapshot_is_metadata_only_and_has_258_unique_tools() -> None:
+    snapshot = load_mcp_snapshot(MCP_SNAPSHOT_PATH)
+    tools = snapshot["tools"]
+    assert isinstance(tools, list)
+    names = [item["name"] for item in tools]
+
+    assert set(snapshot) == {
+        "version",
+        "snapshot_id",
+        "source",
+        "entitlement_asserted",
+        "tools",
+    }
+    assert snapshot["entitlement_asserted"] is False
+    assert names == sorted(names)
+    assert len(names) == len(set(names)) == 258
+    assert all(set(item) == {"name", "parameter_schema_sha256"} for item in tools)
+    assert all(
+        len(item["parameter_schema_sha256"]) == 64
+        and set(item["parameter_schema_sha256"]) <= set("0123456789abcdef")
+        for item in tools
+    )
+    serialized = MCP_SNAPSHOT_PATH.read_text(encoding="utf-8")
+    for forbidden in (
+        "description:",
+        "runtime_result",
+        "response:",
+        "secret:",
+        "token:",
+        "credential:",
+    ):
+        assert forbidden not in serialized
+
+
+def test_scope_v2_freezes_the_268_name_union_and_required_boundaries() -> None:
+    official = load_capability_catalog(CATALOG_PATH)
+    snapshot = load_mcp_snapshot(MCP_SNAPSHOT_PATH)
+    scope = load_scope_v2_document(SCOPE_V2_PATH)
+    official_names = {item["api_name"] for item in official["capabilities"]}
+    mcp_names = {item["name"] for item in snapshot["tools"]}
+    union_names = official_names | mcp_names
+
+    assert len(official_names) == 239
+    assert len(mcp_names) == 258
+    assert len(union_names) == 268
+    assert scope["expected_counts"] == {
+        "official_unique_api_names": 239,
+        "mcp_unique_tool_names": 258,
+        "union_unique_names": 268,
+        "domestic_read_dataset": 222,
+        "excluded_overseas": 41,
+        "account_operation": 4,
+        "helper": 1,
+        "denominator_additions": 32,
+        "mcp_absent_domestic_datasets": 9,
+    }
+    product = _scope_v2_dimension_names(scope, "product_scope")
+    assert {value: len(names) for value, names in product.items()} == {
+        "domestic_read_dataset": 222,
+        "excluded_overseas": 41,
+        "account_operation": 4,
+        "helper": 1,
+    }
+    assert set().union(*product.values()) == union_names
+    assert product["account_operation"] == {"p_save", "p_delete", "p_list", "p_get"}
+    assert product["helper"] == {"pro_bar"}
+    assert product["excluded_overseas"] - official_names == {
+        "ggt_monthly",
+        "ncov_global",
+        "rt_hk_tick",
+        "tmt_twincome",
+        "tmt_twincomedetail",
+    }
+
+    baseline = scope["baseline"]
+    assert isinstance(baseline, dict)
+    additions = baseline["denominator_additions"]
+    absent = baseline["mcp_absent_domestic_datasets"]
+    assert isinstance(additions, dict)
+    assert isinstance(absent, dict)
+    assert set(additions["api_names"]) == V2_DENOMINATOR_ADDITIONS
+    assert len(V2_DENOMINATOR_ADDITIONS) == 32
+    assert set(absent["api_names"]) == MCP_ABSENT_DOMESTIC
+    assert len(MCP_ABSENT_DOMESTIC) == 9
+
+    lifecycle = _scope_v2_dimension_names(scope, "lifecycle")
+    contracts = _scope_v2_dimension_names(scope, "contract_state")
+    visibility = _scope_v2_dimension_names(scope, "mcp_visibility")
+    entitlement = _scope_v2_dimension_names(scope, "entitlement")
+    activation = _scope_v2_dimension_names(scope, "activation")
+    assert lifecycle["retired"] == V2_RETIRED
+    assert contracts["review_required"] == {"idx_anns", "dc_hot", "ths_hot"}
+    assert contracts["missing_official_contract"] == mcp_names - official_names
+    assert visibility["visible"] == mcp_names
+    assert visibility["absent"] == union_names - mcp_names
+    assert entitlement["unobserved"] == union_names
+    assert activation["paused"] == product["domestic_read_dataset"]
+    assert (
+        activation["not_applicable"] == union_names - product["domestic_read_dataset"]
+    )
+
+
+def test_v2_compiler_outputs_only_222_paused_domestic_datasets() -> None:
+    catalog = compile_v2_from_paths(
+        official_catalog_path=CATALOG_PATH,
+        mcp_snapshot_path=MCP_SNAPSHOT_PATH,
+        scope_path=SCOPE_V2_PATH,
+    )
+    datasets = catalog["datasets"]
+    assert isinstance(datasets, list)
+    by_name = {item["name"]: item for item in datasets}
+
+    assert len(datasets) == len(by_name) == 222
+    assert [item["name"] for item in datasets] == sorted(by_name)
+    assert catalog["counts"] == {
+        "official_unique_api_names": 239,
+        "mcp_unique_tool_names": 258,
+        "union_unique_names": 268,
+        "domestic_read_dataset": 222,
+        "excluded_overseas": 41,
+        "account_operation": 4,
+        "helper": 1,
+        "denominator_additions": 32,
+        "mcp_absent_domestic_datasets": 9,
+    }
+    assert all(
+        set(item["dimensions"])
+        == {
+            "product_scope",
+            "lifecycle",
+            "contract_state",
+            "mcp_visibility",
+            "entitlement",
+            "activation",
+        }
+        for item in datasets
+    )
+    assert all(item["dimensions"]["entitlement"] == "unobserved" for item in datasets)
+    assert all(item["dimensions"]["activation"] == "paused" for item in datasets)
+    for name in MCP_DOMESTIC_ADDITIONS:
+        item = by_name[name]
+        assert item["official_doc_url"] is None
+        assert item["dimensions"]["contract_state"] == "missing_official_contract"
+        assert item["dimensions"]["mcp_visibility"] == "visible"
+    for name in MCP_ABSENT_DOMESTIC:
+        item = by_name[name]
+        assert item["official_doc_url"] is not None
+        assert item["mcp_parameter_schema_sha256"] is None
+        assert item["dimensions"]["mcp_visibility"] == "absent"
+    for name in V2_RETIRED:
+        assert by_name[name]["dimensions"]["lifecycle"] == "retired"
+        assert by_name[name]["dimensions"]["activation"] == "paused"
+    assert {"p_save", "p_delete", "p_list", "p_get", "pro_bar"}.isdisjoint(by_name)
+
+    rendered = render_catalog_v2(catalog)
+    assert render_catalog_v2(deepcopy(catalog)) == rendered
+    assert validate_catalog_v2_document(yaml.safe_load(rendered)) == catalog
+    rendered_text = rendered.decode("utf-8")
+    assert "/v1/catalog" not in rendered_text
+    assert "/v1/query" not in rendered_text
+    structural_keys: set[str] = set()
+
+    def collect_keys(value: object) -> None:
+        if isinstance(value, dict):
+            structural_keys.update(str(key) for key in value)
+            for nested in value.values():
+                collect_keys(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                collect_keys(nested)
+
+    collect_keys(catalog)
+    assert structural_keys.isdisjoint(
+        {
+            "strategy",
+            "signal",
+            "position",
+            "risk",
+            "order",
+            "execution",
+            "route",
+            "public_route",
+        }
+    )
+
+
+def test_scope_v2_inputs_fail_closed_on_entitlement_alias_and_source_drift() -> None:
+    snapshot = yaml.safe_load(MCP_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    snapshot["entitlement_asserted"] = True
+    with pytest.raises(ValueError, match="cannot assert entitlement"):
+        validate_mcp_snapshot_document(snapshot)
+
+    snapshot = yaml.safe_load(MCP_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    snapshot["tools"][0]["description"] = "must not be retained"
+    with pytest.raises(ValueError, match="unknown key"):
+        validate_mcp_snapshot_document(snapshot)
+
+    scope = yaml.safe_load(SCOPE_V2_PATH.read_text(encoding="utf-8"))
+    scope["dimensions"]["mcp_visibility"][1]["aliases"] = {}
+    with pytest.raises(ValueError, match="unknown key"):
+        validate_scope_v2_document(scope)
+
+    scope = yaml.safe_load(SCOPE_V2_PATH.read_text(encoding="utf-8"))
+    scope["sources"]["mcp_snapshot"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        compiler.compile_capability_catalog_v2(
+            official_catalog_document=yaml.safe_load(
+                CATALOG_PATH.read_text(encoding="utf-8")
+            ),
+            official_catalog_sha256=hashlib.sha256(
+                CATALOG_PATH.read_bytes()
+            ).hexdigest(),
+            mcp_snapshot_document=yaml.safe_load(
+                MCP_SNAPSHOT_PATH.read_text(encoding="utf-8")
+            ),
+            mcp_snapshot_sha256=hashlib.sha256(
+                MCP_SNAPSHOT_PATH.read_bytes()
+            ).hexdigest(),
+            scope_document=scope,
+            scope_sha256=hashlib.sha256(SCOPE_V2_PATH.read_bytes()).hexdigest(),
+        )

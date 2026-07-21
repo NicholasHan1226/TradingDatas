@@ -1,0 +1,527 @@
+version: 1
+snapshot_id: tushare-mcp-capability-snapshot.v1
+source:
+  metadata: current_session.ALL_TOOLS
+  tool_prefix: mcp__tushareMcp__
+  observed_at: '2026-07-21T17:54:18.914Z'
+  parameter_schema_hash:
+    algorithm: sha256
+    canonicalization: typescript_args_without_line_comments_or_whitespace.v1
+entitlement_asserted: false
+tools:
+  - name: adj_factor
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: anns_d
+    parameter_schema_sha256: 71e5263adfe0a1bb8f4e510c2f8f00785d50a57d90dcdfded961a58e98aa5f40
+  - name: bak_basic
+    parameter_schema_sha256: 3889134920922d30436628dad7b91e7dac63a3603483ea108857db021f99c42d
+  - name: bak_daily
+    parameter_schema_sha256: 79447ba1f30aa91169da849ba4649dbae0e6e79dde5eca102fc27500257dbb54
+  - name: balancesheet
+    parameter_schema_sha256: 3afe1bd47e9afa239d367ee985ac771be3397aad8e162fc1b3b77c08417451b5
+  - name: bc_bestotcqt
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: bc_otcqt
+    parameter_schema_sha256: 0ed6253d1cf083e6ad66d4bec1f35f106d42b58e05bd526765c991ccb22235e3
+  - name: block_trade
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: bo_cinema
+    parameter_schema_sha256: 558a873002ad275dd7a1ac3532c4adbbdc86b29bffe8a1c0fe5e1b2e8e51fa59
+  - name: bo_daily
+    parameter_schema_sha256: 558a873002ad275dd7a1ac3532c4adbbdc86b29bffe8a1c0fe5e1b2e8e51fa59
+  - name: bo_monthly
+    parameter_schema_sha256: 558a873002ad275dd7a1ac3532c4adbbdc86b29bffe8a1c0fe5e1b2e8e51fa59
+  - name: bo_weekly
+    parameter_schema_sha256: 558a873002ad275dd7a1ac3532c4adbbdc86b29bffe8a1c0fe5e1b2e8e51fa59
+  - name: bond_blk
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: bond_blk_detail
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: broker_recommend
+    parameter_schema_sha256: 58aade1c1f8e95ffb9d2a0ab45027d5d4723b1397fdc1b0d34b293b2a6987cbe
+  - name: bse_mapping
+    parameter_schema_sha256: 13936d83276d00cfbc1b1c90288068dabc0d55bbbead0242203021badb7fc2a3
+  - name: cashflow
+    parameter_schema_sha256: 5acf33f68fabcc9e51b12da523e19fa98940dfad5fdbee6894b8935d1dc7d9bd
+  - name: cb_basic
+    parameter_schema_sha256: 842660c236962f4b9849f5aca53efe6b51b34a572ae69f8baf047adf8103324d
+  - name: cb_call
+    parameter_schema_sha256: 71e5263adfe0a1bb8f4e510c2f8f00785d50a57d90dcdfded961a58e98aa5f40
+  - name: cb_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: cb_factor_pro
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: cb_issue
+    parameter_schema_sha256: 71e5263adfe0a1bb8f4e510c2f8f00785d50a57d90dcdfded961a58e98aa5f40
+  - name: cb_price_chg
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: cb_rate
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: cb_rating
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: cb_share
+    parameter_schema_sha256: 36ae7820cd1c82e369f0fa35893bdaf740f2b849b6d90f864ae45180597f96f2
+  - name: ccass_hold
+    parameter_schema_sha256: 32d1d18bd20a9682751eb6eff5bfa650001f13515d5fff3f92031c1800a904b5
+  - name: ccass_hold_detail
+    parameter_schema_sha256: 32d1d18bd20a9682751eb6eff5bfa650001f13515d5fff3f92031c1800a904b5
+  - name: cctv_news
+    parameter_schema_sha256: 558a873002ad275dd7a1ac3532c4adbbdc86b29bffe8a1c0fe5e1b2e8e51fa59
+  - name: ci_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: ci_index_member
+    parameter_schema_sha256: 82846c3688430f8e06e8347aee1be3936a06ec97496e1e7b50484026dc913129
+  - name: cls_index
+    parameter_schema_sha256: 14a82fa70d13a7719d63662a89057b6752240e496ceb7045986d82973f4a9577
+  - name: cls_market_shock
+    parameter_schema_sha256: 3889134920922d30436628dad7b91e7dac63a3603483ea108857db021f99c42d
+  - name: cls_member
+    parameter_schema_sha256: b3477638af6473443d82ba2a53dfd793300747c594c371cc27d4ff1b84097357
+  - name: cls_stock_shock
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: cn_cpi
+    parameter_schema_sha256: 3e30c86d7ad740e57bc6716b6407f20afc7221d4e4277ef665ee1f76d75e2d18
+  - name: cn_gdp
+    parameter_schema_sha256: f5f5dfa976a0ccfbb1342526bd814bb783fc38f4e060f2286c9acc7e0ed807bc
+  - name: cn_m
+    parameter_schema_sha256: 3e30c86d7ad740e57bc6716b6407f20afc7221d4e4277ef665ee1f76d75e2d18
+  - name: cn_pmi
+    parameter_schema_sha256: 3e30c86d7ad740e57bc6716b6407f20afc7221d4e4277ef665ee1f76d75e2d18
+  - name: cn_ppi
+    parameter_schema_sha256: 3e30c86d7ad740e57bc6716b6407f20afc7221d4e4277ef665ee1f76d75e2d18
+  - name: cn_schedule
+    parameter_schema_sha256: cb1661368347d83c54668da488560e8ae2d3679709fc2a210d7bb6546542218c
+  - name: concept
+    parameter_schema_sha256: a7ff4e4cfa7367a6b635e4c0c806221850cca56fd91484a3ff07521c1c9d7f4f
+  - name: concept_detail
+    parameter_schema_sha256: 010ddd647c52955e1c0a0493041b80edeec3d92b815dd4741b8c6dc34c87c5dd
+  - name: cyq_chips
+    parameter_schema_sha256: df0a87cb16786bc7259d78366b65cf88bac1153b80a042816af087746eb24da3
+  - name: cyq_perf
+    parameter_schema_sha256: df0a87cb16786bc7259d78366b65cf88bac1153b80a042816af087746eb24da3
+  - name: daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: daily_basic
+    parameter_schema_sha256: df0a87cb16786bc7259d78366b65cf88bac1153b80a042816af087746eb24da3
+  - name: daily_info
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: dc_concept
+    parameter_schema_sha256: 8c7c436b3d9a6f32e514c30b396e22aa383beecb7b1de4a479c89dd85e012699
+  - name: dc_concept_cons
+    parameter_schema_sha256: e299f8422c32385f661e576d3ce05fb02bc52f462d01c22911af45c62425fe72
+  - name: dc_daily
+    parameter_schema_sha256: 2a692ee6d79c03a10d47f8e4752e58f40fa3d7102413da35479d31ed87cea049
+  - name: dc_hot
+    parameter_schema_sha256: c96cd3401d6b4252a6e71af027ef4c4edf1d7d3bcd249faef65ead21141942fe
+  - name: dc_index
+    parameter_schema_sha256: a2ca823b90e8cd6f126395b82b2a8970fa0b416ebb4692487bf20fd10e03e1d4
+  - name: dc_member
+    parameter_schema_sha256: 3ce3a075f08e149a8e3e75f06a90ae232fd4d8c08b1a862d9b12b40a3c0b3a82
+  - name: disclosure_date
+    parameter_schema_sha256: b1ec2435cf55e84477c22c6fa192ebbe2b6f1adc603c35f7ebace78aa98ef477
+  - name: dividend
+    parameter_schema_sha256: 63dc77b651ce0b3b747122c6d5ca5f06e32ecd86e3301b7b8aae1a3af7b2dca3
+  - name: eco_cal
+    parameter_schema_sha256: d83187bc09a57aeab650f5392cbcab5fa9a08ff9c836d012fd72fc38ad591df4
+  - name: etf_basic
+    parameter_schema_sha256: b7ee7c2dcb9def804235b1995e1d819dd7d83951429613e6531e2b2ed53b0775
+  - name: etf_index
+    parameter_schema_sha256: 0734e6eb837306defb10d573dd9e07ff9eee34a980f7404aed47045a299737a1
+  - name: etf_share_size
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: express
+    parameter_schema_sha256: abf64baca2e705d1616828fd4ff918e83864b3164a043ceac8c4e1fe52608d44
+  - name: film_record
+    parameter_schema_sha256: c53ba9dbe4901f33d14cde399349a2f2e5146f2a1aa4e204bbfd1eb6c6aa5a76
+  - name: fina_audit
+    parameter_schema_sha256: abf64baca2e705d1616828fd4ff918e83864b3164a043ceac8c4e1fe52608d44
+  - name: fina_indicator
+    parameter_schema_sha256: abf64baca2e705d1616828fd4ff918e83864b3164a043ceac8c4e1fe52608d44
+  - name: fina_mainbz
+    parameter_schema_sha256: d746bb05a89735768d3a0011237686d856dba9bafa23d9c9ac4ab769ce2260bc
+  - name: forecast
+    parameter_schema_sha256: 748c1f5f3c336d206a7639cc2a0d5738504d1e5e9ce70bf7d042e087f3a3ed05
+  - name: ft_limit
+    parameter_schema_sha256: de2a5c4a232646ae22367bd4e4d255d198d5c5a98f5c4cffee5489e1ec932994
+  - name: ft_mins
+    parameter_schema_sha256: 6e37fbf483b28c9fa119c2da72dd84dfc7f0d506d9bfc7669660698313a45bb3
+  - name: ft_tick
+    parameter_schema_sha256: f95eba8444b17cd0d632d235dff2b50d145ca399ebaedc67c156b8fa8cb3620c
+  - name: fund_adj
+    parameter_schema_sha256: 79447ba1f30aa91169da849ba4649dbae0e6e79dde5eca102fc27500257dbb54
+  - name: fund_basic
+    parameter_schema_sha256: 6684728b7741e454e33508ee90e2fc60ae24288a0875572ef7b5b443c98deb85
+  - name: fund_company
+    parameter_schema_sha256: 42c47753628061be74a7dbe9fe53023d269c16165cc97e46b9713d8d2408f9f2
+  - name: fund_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: fund_div
+    parameter_schema_sha256: 29aeb8dae1731981977b8b952dba82f6eaade7dc419784a9681f54317724725d
+  - name: fund_factor_pro
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: fund_manager
+    parameter_schema_sha256: e7e2f835284fd47eb1165919a08d38073d758ac9d54da46bc47cd0581ef898f9
+  - name: fund_nav
+    parameter_schema_sha256: b5001423c06bb563b1ad16e3329920d5e1f1f35b5c90cba0c69ff984bf385d9a
+  - name: fund_portfolio
+    parameter_schema_sha256: bf7c9b878b7990b6dcc5884693ebf2c9b141d0049e5dcb5ab347a1f5592510b7
+  - name: fund_sales_vol
+    parameter_schema_sha256: 683e6d0978c8741c73b9637de33b61095218bb9aff190068e917f821f8cea7d0
+  - name: fund_share
+    parameter_schema_sha256: e76a4aaec3761efbab8550d7dfcf1bb85ef9db2e15d300cfb5122e67e5f409c7
+  - name: fut_basic
+    parameter_schema_sha256: bf1b48165ff016295a92c84511aea6626a7e5d7a5f486488443aae4e0a685fb7
+  - name: fut_daily
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: fut_holding
+    parameter_schema_sha256: 1a19d4d9e26ce5cd3e045ac1b5be7441deb36080d93e9aa363a8e036bf61a836
+  - name: fut_mapping
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: fut_settle
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: fut_weekly_detail
+    parameter_schema_sha256: 3fd733fb5f3797906c8880ddff909a7d564208c8ff461641ee8b9ee4ea6f9a87
+  - name: fut_weekly_monthly
+    parameter_schema_sha256: c9d56b90f91a04c35aed0031c1744eb9711f2510afb8d9ae7cfb5d4a7351edea
+  - name: fut_wsr
+    parameter_schema_sha256: 1a19d4d9e26ce5cd3e045ac1b5be7441deb36080d93e9aa363a8e036bf61a836
+  - name: fx_daily
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: fx_obasic
+    parameter_schema_sha256: 34d0aa78fa1f0f43a13eb1cb541eac89e02e4afa38ffd03d8165fa5c0c3dde97
+  - name: ggt_daily
+    parameter_schema_sha256: f496ffac623d24267402ff6d7399473bdebf3bbbed70dd993d367a8fc43a43dc
+  - name: ggt_monthly
+    parameter_schema_sha256: 2ff4e188e3ee996c75190eb265219887c2d0eccb2dc698ec22b9de59918b67f8
+  - name: ggt_top10
+    parameter_schema_sha256: 2f7da409f36e2e3e5d1904dbb79ecdcde70b3a2e2b86489ed752b73ee28e6ac8
+  - name: gz_index
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: hibor
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: hk_adjfactor
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: hk_balancesheet
+    parameter_schema_sha256: 5d0c5a8e3295dd494bec9891f47c1959483abe20ee8e1b8553f9c3e1950fbafb
+  - name: hk_basic
+    parameter_schema_sha256: 029e23bc3226f8636a38b03833a58f3cc421c7ffff1eaa3ce9d17012274a103a
+  - name: hk_cashflow
+    parameter_schema_sha256: 5d0c5a8e3295dd494bec9891f47c1959483abe20ee8e1b8553f9c3e1950fbafb
+  - name: hk_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: hk_daily_adj
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: hk_fina_indicator
+    parameter_schema_sha256: 1ccd5a1736d00bb0bcb5083871f3764b2753c30e912a3f8375996738155b6ae7
+  - name: hk_hold
+    parameter_schema_sha256: 4e08567565907eb8d5b564c09dc3cb5876751bb01e2319b8d7cb2389cef19e2c
+  - name: hk_income
+    parameter_schema_sha256: 5d0c5a8e3295dd494bec9891f47c1959483abe20ee8e1b8553f9c3e1950fbafb
+  - name: hk_mins
+    parameter_schema_sha256: 6e37fbf483b28c9fa119c2da72dd84dfc7f0d506d9bfc7669660698313a45bb3
+  - name: hk_tradecal
+    parameter_schema_sha256: dfc891c80539b87018deb8b09454c07da098ff64ae9a518feac175d30685dd54
+  - name: hm_detail
+    parameter_schema_sha256: de294154f8218cdcc79c5b00170bf3d4aa4acbc2f031a2ba00dadf5db94c4ffb
+  - name: hm_list
+    parameter_schema_sha256: 900b5f446674faa91ea31bd3debf179de35d967ec5e74813f57c12a63411da83
+  - name: hs_const
+    parameter_schema_sha256: 4ca004ead8ee16c6e7264b3ead808984aebcadac07739eb90ef23478db688848
+  - name: hsgt_top10
+    parameter_schema_sha256: 2f7da409f36e2e3e5d1904dbb79ecdcde70b3a2e2b86489ed752b73ee28e6ac8
+  - name: idx_anns
+    parameter_schema_sha256: 70e95857483fd7c7109192a4c85a7c83865684a052384909cf0d71cc779497b1
+  - name: idx_factor_pro
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: idx_mins
+    parameter_schema_sha256: 6e37fbf483b28c9fa119c2da72dd84dfc7f0d506d9bfc7669660698313a45bb3
+  - name: income
+    parameter_schema_sha256: 176d90bbcff27e9246b91d86a0e6b15b87efe9a5b5c17d9f7f5c092219ae3ee4
+  - name: index_basic
+    parameter_schema_sha256: c05fd8537c6eb14671a2f9b305c9e290ecc42ddd4a66f8cb0e9165853f8735ee
+  - name: index_classify
+    parameter_schema_sha256: 6485fe58ba771e6c993f731d72b0dfbfa237e104c11528df9dff0b7773772bcc
+  - name: index_daily
+    parameter_schema_sha256: df0a87cb16786bc7259d78366b65cf88bac1153b80a042816af087746eb24da3
+  - name: index_dailybasic
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: index_global
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: index_member
+    parameter_schema_sha256: 2b7b3dadf00f12f8003ae22626dd521c8f84331da24bc2f33fc716d5726646af
+  - name: index_member_all
+    parameter_schema_sha256: 82846c3688430f8e06e8347aee1be3936a06ec97496e1e7b50484026dc913129
+  - name: index_monthly
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: index_weekly
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: index_weight
+    parameter_schema_sha256: eadeac2d0aa33d0a15a52119ec761c5682e12269ae1f8a437d7839598c94f380
+  - name: irm_qa_sh
+    parameter_schema_sha256: f94f875edcba83bd01dea3bdc29b79a835400a19299565f0a42c0bc68fbdac80
+  - name: irm_qa_sz
+    parameter_schema_sha256: f94f875edcba83bd01dea3bdc29b79a835400a19299565f0a42c0bc68fbdac80
+  - name: jygs_stock_shock
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: kpl_concept
+    parameter_schema_sha256: 0f3f9a01c7f444cb5340c5a2bf6edef7e0da577639203262728ad3aa1544ca0a
+  - name: kpl_concept_cons
+    parameter_schema_sha256: db02e642e526747ac56254e6f5b5c364cf27bf922cc0a7fda27172a046303b00
+  - name: kpl_list
+    parameter_schema_sha256: 2a02df5cb0d314edaeea975c63a4ce0ce9d9850949ee0e085e777afca7306b27
+  - name: libor
+    parameter_schema_sha256: 012b3439cc3c0dc52821f167bd058dafe53af39e55ff9c318c2d3427b6ddd1c2
+  - name: limit_cpt_list
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: limit_list
+    parameter_schema_sha256: 401bdf4f6423a638f7cde387d97236bcec713d7a1847dacf3144378385aebd2e
+  - name: limit_list_d
+    parameter_schema_sha256: 1384d7615e03c3c270bf33891a7279514c3c511d0d27767f737f6196f4255559
+  - name: limit_list_ths
+    parameter_schema_sha256: 0efddb28ccda7d9b79a6c4937cc9b7736e66ee3b510ef368dd86d910873bf2ad
+  - name: limit_step
+    parameter_schema_sha256: 3f6c8136e22b7b56f0f85d69b7ab6d84dbe29d2d010bea8ebe2c396a52cef6de
+  - name: major_news
+    parameter_schema_sha256: f2ff3922ef05bcc8676bce92246926091225cef76ce19c931b5ae6208661960e
+  - name: margin
+    parameter_schema_sha256: 8641eef8c561f95a301e37bab76f9d9097902b6dda1579d03d0567ac4bb36328
+  - name: margin_detail
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: margin_secs
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: margin_target
+    parameter_schema_sha256: eb0b8cbd855708bed561c94b0225e28b71de3fb6cf825a80657df7f7623993f1
+  - name: mkt_idx_bmk
+    parameter_schema_sha256: 4cd61e230c55cf0b4ba8612bd2960fb052f6ff3024f41418cad023c41ec0864c
+  - name: moneyflow
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: moneyflow_cnt_ths
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: moneyflow_dc
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: moneyflow_hsgt
+    parameter_schema_sha256: f496ffac623d24267402ff6d7399473bdebf3bbbed70dd993d367a8fc43a43dc
+  - name: moneyflow_ind_dc
+    parameter_schema_sha256: a279becfd8ceaa88bd97cf054f6f4e95d028ecc5ff76f4305db013be2c6eae48
+  - name: moneyflow_ind_ths
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: moneyflow_mkt_dc
+    parameter_schema_sha256: f496ffac623d24267402ff6d7399473bdebf3bbbed70dd993d367a8fc43a43dc
+  - name: moneyflow_ths
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: monthly
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: namechange
+    parameter_schema_sha256: a0c8c3cfe59832033414da8e6b1dffbafad27528888119b309517224e88966d2
+  - name: ncov_global
+    parameter_schema_sha256: 23e5103b9fa4b4f88b0c9ae5ecf446708b0bd302fec713ee5057204c941eeedf
+  - name: ncov_num
+    parameter_schema_sha256: 5057c0567208ebb18c159189f93c92548e8ef5485dab86d6356e9450bb29f03a
+  - name: new_share
+    parameter_schema_sha256: 72a617d6546a50dda4a4c169ad36908c0c3075956c63f2fd9967499db96fb4fd
+  - name: news
+    parameter_schema_sha256: c0d3cf0027dcaac918ef94de6de39d412363bbd48315ce78444c3cf28741c8e8
+  - name: npr
+    parameter_schema_sha256: 296ca3da5b94228ca0f7ca92e2a2a42ac8c537c3501c2950c2c5c4d5a341547d
+  - name: opt_basic
+    parameter_schema_sha256: dd82888f0df00553af89aacb0dabc2d2bdc3395309939625ede59cfd47ad4956
+  - name: opt_daily
+    parameter_schema_sha256: 3dce3174ec95e4615464666347c58b7e3154fd1bee739e5d3c0b9f14eb9e31c7
+  - name: opt_mins
+    parameter_schema_sha256: 6e37fbf483b28c9fa119c2da72dd84dfc7f0d506d9bfc7669660698313a45bb3
+  - name: p_delete
+    parameter_schema_sha256: 1c6f3e94a80fd1fda8ad0a9876950e429e3e7378d91763a060d631b473a70ae5
+  - name: p_get
+    parameter_schema_sha256: 4da2945822d3f64adbfa49ba1a94929ee5836ec7ec45d87061c97e84db6a8fad
+  - name: p_list
+    parameter_schema_sha256: 900b5f446674faa91ea31bd3debf179de35d967ec5e74813f57c12a63411da83
+  - name: p_save
+    parameter_schema_sha256: d152e67510ba6e5833ae800ce88b836b7af492cdf229c81b98a66f1cb95e1fcb
+  - name: pledge_detail
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: pledge_stat
+    parameter_schema_sha256: 6eeccf6d5f29517666f1af0be7681646cf6f1c171c0f5b8514441302b066d74b
+  - name: repo_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: report_rc
+    parameter_schema_sha256: e1e4774242cbf2b1f911a3997b1a77444c4d908a97774cd49b4fff35b8b2702f
+  - name: repurchase
+    parameter_schema_sha256: c53ba9dbe4901f33d14cde399349a2f2e5146f2a1aa4e204bbfd1eb6c6aa5a76
+  - name: research_report
+    parameter_schema_sha256: 9a4cbdea53d688e2b64a5226736cd91231aa0f335f4278520d18d1f8222ea1e6
+  - name: rt_etf_k
+    parameter_schema_sha256: e9193ce5fa47dc0004daa6c8e8fb761ec6da6cf988d0a253d39d0b699469ac3e
+  - name: rt_etf_sz_iopv
+    parameter_schema_sha256: 0c9df7145be61963bc7e94697cb3dca080c9962051574ae9712b687da22ffb39
+  - name: rt_fut_min
+    parameter_schema_sha256: 35bf44889675520c825803e285b2541f670644e9776f5ff7c50ff55eeb3de8fe
+  - name: rt_hk_k
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: rt_hk_tick
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: rt_idx_k
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: rt_idx_min
+    parameter_schema_sha256: 35bf44889675520c825803e285b2541f670644e9776f5ff7c50ff55eeb3de8fe
+  - name: rt_k
+    parameter_schema_sha256: 43ebd38bc450ad01a927446df54100487765154410b399fa9f82c0333f08e094
+  - name: rt_min
+    parameter_schema_sha256: 35bf44889675520c825803e285b2541f670644e9776f5ff7c50ff55eeb3de8fe
+  - name: rt_min_daily
+    parameter_schema_sha256: 35bf44889675520c825803e285b2541f670644e9776f5ff7c50ff55eeb3de8fe
+  - name: rt_sw_k
+    parameter_schema_sha256: 0c9df7145be61963bc7e94697cb3dca080c9962051574ae9712b687da22ffb39
+  - name: sf_month
+    parameter_schema_sha256: 3e30c86d7ad740e57bc6716b6407f20afc7221d4e4277ef665ee1f76d75e2d18
+  - name: sge_basic
+    parameter_schema_sha256: 0c9df7145be61963bc7e94697cb3dca080c9962051574ae9712b687da22ffb39
+  - name: sge_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: share_float
+    parameter_schema_sha256: e6d945db20b4f1c7090787b9a42755b495c664d08ee783f0a43c6eaedc0a1a7b
+  - name: shibor
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: shibor_lpr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: shibor_quote
+    parameter_schema_sha256: 64f71aa470c92444103f0e6d99a8f6d7610d30722212799f92fa8f06229f8d80
+  - name: slb_len
+    parameter_schema_sha256: f496ffac623d24267402ff6d7399473bdebf3bbbed70dd993d367a8fc43a43dc
+  - name: slb_len_mm
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: slb_sec
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: slb_sec_detail
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: st
+    parameter_schema_sha256: 8b745c06dd77297cae82df5baf4add982c11af35b5701f872c48b4158e0da420
+  - name: stk_account
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: stk_account_old
+    parameter_schema_sha256: 72a617d6546a50dda4a4c169ad36908c0c3075956c63f2fd9967499db96fb4fd
+  - name: stk_ah_comparison
+    parameter_schema_sha256: 32d1d18bd20a9682751eb6eff5bfa650001f13515d5fff3f92031c1800a904b5
+  - name: stk_alert
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_auction
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_auction_c
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_auction_o
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_factor
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_factor_pro
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_high_shock
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_holdernumber
+    parameter_schema_sha256: 4547bdda18af813e6885db92cf80730f1fe0e016044252c4d9e3d2d5a1976549
+  - name: stk_holdertrade
+    parameter_schema_sha256: 1cbd043e8ecd6dfb773790ee282928ca8aabc886dfb5cff2d3b8ee895fc48c54
+  - name: stk_limit
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_managers
+    parameter_schema_sha256: 71e5263adfe0a1bb8f4e510c2f8f00785d50a57d90dcdfded961a58e98aa5f40
+  - name: stk_mins
+    parameter_schema_sha256: 6e37fbf483b28c9fa119c2da72dd84dfc7f0d506d9bfc7669660698313a45bb3
+  - name: stk_nineturn
+    parameter_schema_sha256: 27ca51a47b3efef87953960ddc3df94a0c09c639a563dd9b76a21709b2c0154d
+  - name: stk_premarket
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_rewards
+    parameter_schema_sha256: 95b443c688e35c57093521e802eadd1341becb8918cea1fd7551b47c47382478
+  - name: stk_shock
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_surv
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stk_week_month_adj
+    parameter_schema_sha256: c40f4b39dcbbc01a8be65d6cb767fbf8026ed9abdaccd781da301f7214a921f7
+  - name: stk_weekly_monthly
+    parameter_schema_sha256: c40f4b39dcbbc01a8be65d6cb767fbf8026ed9abdaccd781da301f7214a921f7
+  - name: stock_basic
+    parameter_schema_sha256: 2f269379979a177929b7389b2a8b6f3c30b7b20553df57cc5676422f6f326d3e
+  - name: stock_company
+    parameter_schema_sha256: 54a253adcb305d00cb4a86d8277030e3cf9ebaf6f39b6071dc127d37b6bc3f48
+  - name: stock_hsgt
+    parameter_schema_sha256: 9d12b1c4556b997d4f68284a2260308034d89b6b7565592a03fbdd481f7225ad
+  - name: stock_mx
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stock_st
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: stock_vx
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: suspend
+    parameter_schema_sha256: fad6a938db636adbfbe646751cafa14de6070292a0a59b1b32470dd1b29f33d8
+  - name: suspend_d
+    parameter_schema_sha256: 3d6724b389d28f67b73d043e4fcee8c0436da0c05f0f7f217cc65b14c8396c6c
+  - name: sw_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: sz_daily_info
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: tdx_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: tdx_index
+    parameter_schema_sha256: dd2c865d6478eecb54a0f9e01a6e2f8885179b0d1c072e63fe01cc5a0eb727d8
+  - name: tdx_member
+    parameter_schema_sha256: 3ce3a075f08e149a8e3e75f06a90ae232fd4d8c08b1a862d9b12b40a3c0b3a82
+  - name: teleplay_record
+    parameter_schema_sha256: 4c2de6fedda604338e419c063e496e49f503f914ee894be809d371bfeef10398
+  - name: ths_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: ths_hot
+    parameter_schema_sha256: 805e93a07462fa9f8e0850b292b6e6ece62f604b6c05202375530cabe031bd24
+  - name: ths_index
+    parameter_schema_sha256: 1628c48c9149d135bd28b122d97175f227c8190b8af46b816a81e681f45612cf
+  - name: ths_member
+    parameter_schema_sha256: e8a1c532529f37fe2f7da691c14ed70fe7598f837fd7711eac9d507583b8c502
+  - name: tmt_twincome
+    parameter_schema_sha256: faba9cbdb4f04fd4831a978246ef815b0cffdd7303ec0afaa10d839748ebabae
+  - name: tmt_twincomedetail
+    parameter_schema_sha256: ebc0059202bfa593ae94312b8d34ad0154f7b88d0dcd9bde7c7d91d726c7649d
+  - name: top10_cb_holders
+    parameter_schema_sha256: f17268621beab2defbcfd5bad9d24026a8555cb7f783f406146453622d5d6d01
+  - name: top10_floatholders
+    parameter_schema_sha256: abf64baca2e705d1616828fd4ff918e83864b3164a043ceac8c4e1fe52608d44
+  - name: top10_holders
+    parameter_schema_sha256: abf64baca2e705d1616828fd4ff918e83864b3164a043ceac8c4e1fe52608d44
+  - name: top_inst
+    parameter_schema_sha256: 68013c54836b5b9f2a08daf09539ad508da90b3f9a5603fc8b5db4abcba1c60d
+  - name: top_list
+    parameter_schema_sha256: 68013c54836b5b9f2a08daf09539ad508da90b3f9a5603fc8b5db4abcba1c60d
+  - name: trade_cal
+    parameter_schema_sha256: e0591b8b1c1528395ca7f56675666088a756c045222828f8ba5bccba3d4920d8
+  - name: us_adjfactor
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: us_balancesheet
+    parameter_schema_sha256: 93f38ed09c2a3dd285c5fe72e8bf131b5c1715d849c1625b268908719e70a94d
+  - name: us_basic
+    parameter_schema_sha256: 73b6ccbd98f20429dec82562c3c1e3841207fa38585c3e28482b9b0b2c36f0b2
+  - name: us_cashflow
+    parameter_schema_sha256: 93f38ed09c2a3dd285c5fe72e8bf131b5c1715d849c1625b268908719e70a94d
+  - name: us_daily
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: us_daily_adj
+    parameter_schema_sha256: 9fbdac4a5ba530a1993ee84d2d0264fd9cd6538bff6d42b18c0e83a999a756dd
+  - name: us_fina_indicator
+    parameter_schema_sha256: 1ccd5a1736d00bb0bcb5083871f3764b2753c30e912a3f8375996738155b6ae7
+  - name: us_income
+    parameter_schema_sha256: 93f38ed09c2a3dd285c5fe72e8bf131b5c1715d849c1625b268908719e70a94d
+  - name: us_tbr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: us_tltr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: us_tradecal
+    parameter_schema_sha256: dfc891c80539b87018deb8b09454c07da098ff64ae9a518feac175d30685dd54
+  - name: us_trltr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: us_trycr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: us_tycr
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: weekly
+    parameter_schema_sha256: 7ef6e4f89aa6002282e222ddfc80e73ae101099adc22080688cf5b61e70c9b66
+  - name: wz_index
+    parameter_schema_sha256: d1228f7871f15fa48d0a7f17360b6c911389fc22965789911d010b05f75c8ccf
+  - name: yc_cb
+    parameter_schema_sha256: 6c9be3fd31db02ba71b61ca3402b2f7a4b1281d66c578c86ba1c99304be54c62

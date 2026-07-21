@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Compile the pinned official Tushare interface index into an offline catalog.
+"""Compile provider-neutral Tushare capability catalogs from offline snapshots.
 
-The official Markdown index is capability authority. Scope classification and the
-one reviewed duplicate-document resolution live in a separate versioned config
-file. This module has no provider/network path and emits no runtime activation or
-legacy-system migration data.
+Version 1 preserves the pinned official Markdown index compiler. Version 2 merges
+that checked-in official catalog with a metadata-only MCP capability snapshot and
+keeps product scope, lifecycle, contract state, MCP visibility, entitlement, and
+activation independent. This module has no provider, network, database, public
+route, or runtime execution path.
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ import yaml
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCOPE_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_scope.v1.yaml"
 DEFAULT_CATALOG_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_catalog.v1.yaml"
+DEFAULT_SCOPE_V2_PATH = REPOSITORY_ROOT / "config" / "tushare_capability_scope.v2.yaml"
+DEFAULT_MCP_SNAPSHOT_PATH = (
+    REPOSITORY_ROOT / "config" / "tushare_mcp_capability_snapshot.v1.yaml"
+)
 
 PINNED_REPOSITORY_URL = "https://github.com/waditu-tushare/skills.git"
 PINNED_SOURCE_COMMIT = "5e12b31d09123e262c5fb38564e80c26d05cb830"
@@ -48,6 +53,64 @@ EXPECTED_SCOPE_COUNTS = {
 }
 SCOPE_STATES = tuple(EXPECTED_SCOPE_COUNTS)
 
+EXPECTED_V2_COUNTS = {
+    "official_unique_api_names": 239,
+    "mcp_unique_tool_names": 258,
+    "union_unique_names": 268,
+    "domestic_read_dataset": 222,
+    "excluded_overseas": 41,
+    "account_operation": 4,
+    "helper": 1,
+    "denominator_additions": 32,
+    "mcp_absent_domestic_datasets": 9,
+}
+V2_DIMENSION_VALUES = {
+    "product_scope": (
+        "domestic_read_dataset",
+        "excluded_overseas",
+        "account_operation",
+        "helper",
+    ),
+    "lifecycle": ("current", "retired"),
+    "contract_state": (
+        "official_cataloged",
+        "review_required",
+        "missing_official_contract",
+    ),
+    "mcp_visibility": ("visible", "absent"),
+    "entitlement": ("unobserved",),
+    "activation": ("paused", "not_applicable"),
+}
+EXPECTED_V2_DIMENSION_COUNTS = {
+    "product_scope": {
+        "domestic_read_dataset": 222,
+        "excluded_overseas": 41,
+        "account_operation": 4,
+        "helper": 1,
+    },
+    "lifecycle": {"current": 261, "retired": 7},
+    "contract_state": {
+        "official_cataloged": 236,
+        "review_required": 3,
+        "missing_official_contract": 29,
+    },
+    "mcp_visibility": {"visible": 258, "absent": 10},
+    "entitlement": {"unobserved": 268},
+    "activation": {"paused": 222, "not_applicable": 46},
+}
+EXPECTED_V2_DATASET_DIMENSION_COUNTS = {
+    "product_scope": {"domestic_read_dataset": 222},
+    "lifecycle": {"current": 215, "retired": 7},
+    "contract_state": {
+        "official_cataloged": 195,
+        "review_required": 3,
+        "missing_official_contract": 24,
+    },
+    "mcp_visibility": {"visible": 213, "absent": 9},
+    "entitlement": {"unobserved": 222},
+    "activation": {"paused": 222},
+}
+
 _EXPECTED_PREAMBLE = (
     "",
     "",
@@ -63,6 +126,10 @@ _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 _ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9.-]*")
 _SEPARATOR_PATTERN = re.compile(r":?-{3,}:?")
+_UTC_TIMESTAMP_PATTERN = re.compile(
+    r"20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:"
+    r"[0-5][0-9](?:\.[0-9]+)?Z"
+)
 
 _SCOPE_ROOT_KEYS = frozenset(
     {
@@ -116,6 +183,54 @@ _SOURCE_ROW_KEYS = frozenset(
         "title",
         "category",
         "description",
+    }
+)
+
+_MCP_SNAPSHOT_ROOT_KEYS = frozenset(
+    {"version", "snapshot_id", "source", "entitlement_asserted", "tools"}
+)
+_MCP_SOURCE_KEYS = frozenset(
+    {"metadata", "tool_prefix", "observed_at", "parameter_schema_hash"}
+)
+_MCP_HASH_SPEC_KEYS = frozenset({"algorithm", "canonicalization"})
+_MCP_TOOL_KEYS = frozenset({"name", "parameter_schema_sha256"})
+_SCOPE_V2_ROOT_KEYS = frozenset(
+    {
+        "version",
+        "scope_id",
+        "catalog_id",
+        "provider",
+        "sources",
+        "expected_counts",
+        "baseline",
+        "dimensions",
+    }
+)
+_SCOPE_V2_SOURCES_KEYS = frozenset({"official_catalog", "mcp_snapshot"})
+_SCOPE_V2_OFFICIAL_SOURCE_KEYS = frozenset({"path", "catalog_id", "sha256"})
+_SCOPE_V2_MCP_SOURCE_KEYS = frozenset({"path", "snapshot_id", "sha256"})
+_SCOPE_V2_BASELINE_KEYS = frozenset(
+    {
+        "scope_id",
+        "domestic_read_dataset_count",
+        "denominator_additions",
+        "mcp_absent_domestic_datasets",
+    }
+)
+_SCOPE_V2_REVIEW_SET_KEYS = frozenset({"reason", "api_names"})
+_SCOPE_V2_DIMENSION_GROUP_KEYS = frozenset({"value", "reason", "api_names"})
+_CATALOG_V2_ROOT_KEYS = frozenset(
+    {"version", "catalog_id", "provider", "provenance", "scope", "counts", "datasets"}
+)
+_CATALOG_V2_PROVENANCE_KEYS = frozenset({"official_catalog", "mcp_snapshot"})
+_CATALOG_V2_SOURCE_KEYS = frozenset({"id", "sha256"})
+_CATALOG_V2_SCOPE_KEYS = frozenset({"scope_id", "sha256"})
+_CATALOG_V2_DATASET_KEYS = frozenset(
+    {
+        "name",
+        "official_doc_url",
+        "mcp_parameter_schema_sha256",
+        "dimensions",
     }
 )
 
@@ -228,6 +343,231 @@ def _validate_exact_counts(
     if normalized != dict(expected):
         raise ValueError(f"{label} does not match the frozen expected counts")
     return normalized
+
+
+def _sorted_unique_api_names(value: object, label: str) -> list[str]:
+    names = [
+        _validate_api_name(raw_name, f"{label}[{index}]")
+        for index, raw_name in enumerate(_sequence(value, label))
+    ]
+    if names != sorted(names):
+        raise ValueError(f"{label} must be sorted")
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
+    if duplicates:
+        raise ValueError(f"{label} contains duplicate name(s): {', '.join(duplicates)}")
+    return names
+
+
+def validate_mcp_snapshot_document(document: object) -> dict[str, Any]:
+    """Validate the metadata-only MCP snapshot without claiming entitlement."""
+
+    root = _mapping(document, "MCP capability snapshot")
+    _reject_unknown_keys(root, _MCP_SNAPSHOT_ROOT_KEYS, "MCP capability snapshot")
+    if type(root["version"]) is not int or root["version"] != 1:
+        raise ValueError("MCP capability snapshot.version must be integer 1")
+    if root["snapshot_id"] != "tushare-mcp-capability-snapshot.v1":
+        raise ValueError("MCP capability snapshot.snapshot_id is invalid")
+    if root["entitlement_asserted"] is not False:
+        raise ValueError("MCP capability snapshot cannot assert entitlement")
+
+    source = _mapping(root["source"], "MCP capability snapshot.source")
+    _reject_unknown_keys(source, _MCP_SOURCE_KEYS, "MCP capability snapshot.source")
+    if source["metadata"] != "current_session.ALL_TOOLS":
+        raise ValueError("MCP capability snapshot.source.metadata is invalid")
+    if source["tool_prefix"] != "mcp__tushareMcp__":
+        raise ValueError("MCP capability snapshot.source.tool_prefix is invalid")
+    observed_at = _required_text(
+        source["observed_at"], "MCP capability snapshot.source.observed_at"
+    )
+    if _UTC_TIMESTAMP_PATTERN.fullmatch(observed_at) is None:
+        raise ValueError("MCP capability snapshot.source.observed_at must be UTC")
+    hash_spec = _mapping(
+        source["parameter_schema_hash"],
+        "MCP capability snapshot.source.parameter_schema_hash",
+    )
+    _reject_unknown_keys(
+        hash_spec,
+        _MCP_HASH_SPEC_KEYS,
+        "MCP capability snapshot.source.parameter_schema_hash",
+    )
+    if hash_spec != {
+        "algorithm": "sha256",
+        "canonicalization": ("typescript_args_without_line_comments_or_whitespace.v1"),
+    }:
+        raise ValueError("MCP capability snapshot schema hash specification is invalid")
+
+    tools = _sequence(root["tools"], "MCP capability snapshot.tools")
+    names: list[str] = []
+    for index, raw_tool in enumerate(tools):
+        label = f"MCP capability snapshot.tools[{index}]"
+        tool = _mapping(raw_tool, label)
+        _reject_unknown_keys(tool, _MCP_TOOL_KEYS, label)
+        names.append(_validate_api_name(tool["name"], f"{label}.name"))
+        _validate_hash(
+            tool["parameter_schema_sha256"],
+            f"{label}.parameter_schema_sha256",
+        )
+    if names != sorted(names):
+        raise ValueError("MCP capability snapshot tool names must be sorted")
+    if len(names) != len(set(names)):
+        raise ValueError("MCP capability snapshot tool names must be unique")
+    if len(names) != EXPECTED_V2_COUNTS["mcp_unique_tool_names"]:
+        raise ValueError("MCP capability snapshot must contain exactly 258 tools")
+    return root
+
+
+def load_mcp_snapshot(
+    path: Path = DEFAULT_MCP_SNAPSHOT_PATH,
+) -> dict[str, Any]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return validate_mcp_snapshot_document(payload)
+
+
+def _validate_scope_v2_review_set(
+    value: object,
+    label: str,
+    *,
+    expected_count: int,
+) -> set[str]:
+    review_set = _mapping(value, label)
+    _reject_unknown_keys(review_set, _SCOPE_V2_REVIEW_SET_KEYS, label)
+    _required_text(review_set["reason"], f"{label}.reason")
+    names = _sorted_unique_api_names(review_set["api_names"], f"{label}.api_names")
+    if len(names) != expected_count:
+        raise ValueError(f"{label} must contain exactly {expected_count} names")
+    return set(names)
+
+
+def _validate_scope_v2_dimensions(
+    value: object,
+) -> tuple[dict[str, dict[str, str]], set[str]]:
+    dimensions = _mapping(value, "scope v2.dimensions")
+    _reject_unknown_keys(
+        dimensions,
+        frozenset(V2_DIMENSION_VALUES),
+        "scope v2.dimensions",
+    )
+    indexes: dict[str, dict[str, str]] = {}
+    universe: set[str] | None = None
+    for dimension, expected_values in V2_DIMENSION_VALUES.items():
+        groups = _sequence(dimensions[dimension], f"scope v2.dimensions.{dimension}")
+        observed_values: list[str] = []
+        index: dict[str, str] = {}
+        counts: Counter[str] = Counter()
+        for group_index, raw_group in enumerate(groups):
+            label = f"scope v2.dimensions.{dimension}[{group_index}]"
+            group = _mapping(raw_group, label)
+            _reject_unknown_keys(group, _SCOPE_V2_DIMENSION_GROUP_KEYS, label)
+            group_value = _required_text(group["value"], f"{label}.value")
+            observed_values.append(group_value)
+            _required_text(group["reason"], f"{label}.reason")
+            names = _sorted_unique_api_names(group["api_names"], f"{label}.api_names")
+            for name in names:
+                if name in index:
+                    raise ValueError(
+                        f"scope v2 dimension {dimension} classifies {name} twice"
+                    )
+                index[name] = group_value
+            counts[group_value] = len(names)
+        if tuple(observed_values) != expected_values:
+            raise ValueError(
+                f"scope v2 dimension {dimension} values do not match the frozen order"
+            )
+        if dict(counts) != EXPECTED_V2_DIMENSION_COUNTS[dimension]:
+            raise ValueError(
+                f"scope v2 dimension {dimension} counts do not match the frozen review"
+            )
+        current_universe = set(index)
+        if universe is None:
+            universe = current_universe
+        elif current_universe != universe:
+            raise ValueError("scope v2 dimensions do not classify the same union")
+        indexes[dimension] = index
+    if universe is None or len(universe) != EXPECTED_V2_COUNTS["union_unique_names"]:
+        raise ValueError("scope v2 dimensions must classify exactly 268 names")
+    return indexes, universe
+
+
+def validate_scope_v2_document(document: object) -> dict[str, Any]:
+    """Validate exhaustive, dimension-separated scope-v2 review data."""
+
+    root = _mapping(document, "scope v2")
+    _reject_unknown_keys(root, _SCOPE_V2_ROOT_KEYS, "scope v2")
+    if type(root["version"]) is not int or root["version"] != 2:
+        raise ValueError("scope v2.version must be integer 2")
+    if root["scope_id"] != "tushare-capability-scope.v2":
+        raise ValueError("scope v2.scope_id is invalid")
+    if root["catalog_id"] != "tushare-domestic-read-capabilities.v2":
+        raise ValueError("scope v2.catalog_id is invalid")
+    if root["provider"] != "tushare":
+        raise ValueError("scope v2.provider must be tushare")
+
+    sources = _mapping(root["sources"], "scope v2.sources")
+    _reject_unknown_keys(sources, _SCOPE_V2_SOURCES_KEYS, "scope v2.sources")
+    official_source = _mapping(
+        sources["official_catalog"], "scope v2.sources.official_catalog"
+    )
+    _reject_unknown_keys(
+        official_source,
+        _SCOPE_V2_OFFICIAL_SOURCE_KEYS,
+        "scope v2.sources.official_catalog",
+    )
+    if official_source["path"] != "config/tushare_capability_catalog.v1.yaml":
+        raise ValueError("scope v2 official catalog path is invalid")
+    if official_source["catalog_id"] != "tushare-official-capabilities.v1":
+        raise ValueError("scope v2 official catalog id is invalid")
+    _validate_hash(official_source["sha256"], "scope v2 official catalog sha256")
+    mcp_source = _mapping(sources["mcp_snapshot"], "scope v2.sources.mcp_snapshot")
+    _reject_unknown_keys(
+        mcp_source,
+        _SCOPE_V2_MCP_SOURCE_KEYS,
+        "scope v2.sources.mcp_snapshot",
+    )
+    if mcp_source["path"] != "config/tushare_mcp_capability_snapshot.v1.yaml":
+        raise ValueError("scope v2 MCP snapshot path is invalid")
+    if mcp_source["snapshot_id"] != "tushare-mcp-capability-snapshot.v1":
+        raise ValueError("scope v2 MCP snapshot id is invalid")
+    _validate_hash(mcp_source["sha256"], "scope v2 MCP snapshot sha256")
+    _validate_exact_counts(
+        root["expected_counts"], EXPECTED_V2_COUNTS, "scope v2.expected_counts"
+    )
+
+    baseline = _mapping(root["baseline"], "scope v2.baseline")
+    _reject_unknown_keys(baseline, _SCOPE_V2_BASELINE_KEYS, "scope v2.baseline")
+    if baseline["scope_id"] != "tushare-capability-scope.v1":
+        raise ValueError("scope v2 baseline.scope_id is invalid")
+    if baseline["domestic_read_dataset_count"] != 190:
+        raise ValueError("scope v2 baseline count must be 190")
+    additions = _validate_scope_v2_review_set(
+        baseline["denominator_additions"],
+        "scope v2.baseline.denominator_additions",
+        expected_count=EXPECTED_V2_COUNTS["denominator_additions"],
+    )
+    absent = _validate_scope_v2_review_set(
+        baseline["mcp_absent_domestic_datasets"],
+        "scope v2.baseline.mcp_absent_domestic_datasets",
+        expected_count=EXPECTED_V2_COUNTS["mcp_absent_domestic_datasets"],
+    )
+    indexes, _ = _validate_scope_v2_dimensions(root["dimensions"])
+    domestic = {
+        name
+        for name, state in indexes["product_scope"].items()
+        if state == "domestic_read_dataset"
+    }
+    if not additions <= domestic:
+        raise ValueError("scope v2 denominator additions must be domestic datasets")
+    if not absent <= domestic:
+        raise ValueError("scope v2 MCP-absent review set must be domestic datasets")
+    if any(indexes["mcp_visibility"][name] != "absent" for name in absent):
+        raise ValueError("scope v2 MCP-absent review set contradicts visibility")
+    return root
+
+
+def load_scope_v2_document(
+    path: Path = DEFAULT_SCOPE_V2_PATH,
+) -> dict[str, Any]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return validate_scope_v2_document(payload)
 
 
 def validate_scope_document(document: object) -> dict[str, Any]:
@@ -762,6 +1102,312 @@ def load_capability_catalog(path: Path = DEFAULT_CATALOG_PATH) -> dict[str, Any]
     return validate_catalog_document(payload)
 
 
+def _scope_v2_indexes(scope: Mapping[str, object]) -> dict[str, dict[str, str]]:
+    indexes, _ = _validate_scope_v2_dimensions(scope["dimensions"])
+    return indexes
+
+
+def compile_capability_catalog_v2(
+    *,
+    official_catalog_document: object,
+    official_catalog_sha256: str,
+    mcp_snapshot_document: object,
+    mcp_snapshot_sha256: str,
+    scope_document: object,
+    scope_sha256: str,
+) -> dict[str, object]:
+    """Merge the frozen official catalog and current metadata-only MCP snapshot."""
+
+    official = validate_catalog_document(official_catalog_document)
+    mcp = validate_mcp_snapshot_document(mcp_snapshot_document)
+    scope = validate_scope_v2_document(scope_document)
+    for value, label in (
+        (official_catalog_sha256, "official_catalog_sha256"),
+        (mcp_snapshot_sha256, "mcp_snapshot_sha256"),
+        (scope_sha256, "scope_sha256"),
+    ):
+        _validate_hash(value, label)
+    sources = _mapping(scope["sources"], "scope v2.sources")
+    official_source = _mapping(
+        sources["official_catalog"], "scope v2.sources.official_catalog"
+    )
+    mcp_source = _mapping(sources["mcp_snapshot"], "scope v2.sources.mcp_snapshot")
+    if official_source["sha256"] != official_catalog_sha256:
+        raise ValueError("scope v2 official catalog SHA-256 mismatch")
+    if mcp_source["sha256"] != mcp_snapshot_sha256:
+        raise ValueError("scope v2 MCP snapshot SHA-256 mismatch")
+    if official_source["catalog_id"] != official["catalog_id"]:
+        raise ValueError("scope v2 official catalog identity mismatch")
+    if mcp_source["snapshot_id"] != mcp["snapshot_id"]:
+        raise ValueError("scope v2 MCP snapshot identity mismatch")
+
+    official_rows = _sequence(official["capabilities"], "official capabilities")
+    official_by_name = {str(row["api_name"]): row for row in official_rows}
+    mcp_rows = _sequence(mcp["tools"], "MCP tools")
+    mcp_by_name = {str(row["name"]): row for row in mcp_rows}
+    official_names = set(official_by_name)
+    mcp_names = set(mcp_by_name)
+    union_names = official_names | mcp_names
+    if len(official_names) != EXPECTED_V2_COUNTS["official_unique_api_names"]:
+        raise ValueError("scope v2 official source must contain 239 names")
+    if len(mcp_names) != EXPECTED_V2_COUNTS["mcp_unique_tool_names"]:
+        raise ValueError("scope v2 MCP source must contain 258 names")
+    if len(union_names) != EXPECTED_V2_COUNTS["union_unique_names"]:
+        raise ValueError("scope v2 source union must contain 268 names")
+
+    indexes = _scope_v2_indexes(scope)
+    if set(indexes["product_scope"]) != union_names:
+        raise ValueError("scope v2 dimensions do not match the source union")
+    product_scope = indexes["product_scope"]
+    domestic = {
+        name
+        for name, state in product_scope.items()
+        if state == "domestic_read_dataset"
+    }
+    excluded = {
+        name for name, state in product_scope.items() if state == "excluded_overseas"
+    }
+    operations = {
+        name for name, state in product_scope.items() if state == "account_operation"
+    }
+    helpers = {name for name, state in product_scope.items() if state == "helper"}
+
+    official_by_old_state: dict[str, set[str]] = defaultdict(set)
+    for name, row in official_by_name.items():
+        official_by_old_state[str(row["scope_state"])].add(name)
+    baseline = official_by_old_state["in_scope"]
+    if len(baseline) != 190 or not baseline <= domestic:
+        raise ValueError("scope v2 does not preserve the 190-name domestic baseline")
+    if official_by_old_state["excluded"] != excluded & official_names:
+        raise ValueError("scope v2 official overseas exclusion drift")
+    if official_by_old_state["non_data_operation"] != operations:
+        raise ValueError("scope v2 account-operation classification drift")
+    if not official_by_old_state["retired"] <= domestic:
+        raise ValueError("scope v2 must retain retired official datasets")
+    if len(helpers) != 1 or helpers != official_by_old_state["unknown"] - domestic:
+        raise ValueError("scope v2 helper classification drift")
+
+    baseline_config = _mapping(scope["baseline"], "scope v2.baseline")
+    additions_config = _mapping(
+        baseline_config["denominator_additions"],
+        "scope v2.baseline.denominator_additions",
+    )
+    additions = set(_sequence(additions_config["api_names"], "denominator additions"))
+    if additions != domestic - baseline:
+        raise ValueError("scope v2 denominator additions do not equal 222 minus 190")
+    absent_config = _mapping(
+        baseline_config["mcp_absent_domestic_datasets"],
+        "scope v2.baseline.mcp_absent_domestic_datasets",
+    )
+    absent = set(_sequence(absent_config["api_names"], "MCP-absent domestic datasets"))
+    if absent != domestic - mcp_names:
+        raise ValueError("scope v2 MCP-absent domestic review set is stale")
+
+    if {
+        name
+        for name, state in indexes["contract_state"].items()
+        if state == "missing_official_contract"
+    } != mcp_names - official_names:
+        raise ValueError("scope v2 missing-contract classification drift")
+    expected_review = official_by_old_state["unknown"] & domestic
+    if {
+        name
+        for name, state in indexes["contract_state"].items()
+        if state == "review_required"
+    } != expected_review:
+        raise ValueError("scope v2 contract-review classification drift")
+    if {
+        name for name, state in indexes["mcp_visibility"].items() if state == "visible"
+    } != mcp_names:
+        raise ValueError("scope v2 MCP visibility does not match the snapshot")
+    if any(state != "unobserved" for state in indexes["entitlement"].values()):
+        raise ValueError("scope v2 cannot infer entitlement from metadata")
+    paused = {
+        name for name, state in indexes["activation"].items() if state == "paused"
+    }
+    if paused != domestic:
+        raise ValueError("scope v2 domestic datasets must all remain paused")
+    retired = {
+        name for name, state in indexes["lifecycle"].items() if state == "retired"
+    }
+    if not official_by_old_state["retired"] <= retired <= domestic:
+        raise ValueError("scope v2 retired datasets must be discoverable and paused")
+
+    datasets: list[dict[str, object]] = []
+    for name in sorted(domestic):
+        official_row = official_by_name.get(name)
+        mcp_row = mcp_by_name.get(name)
+        datasets.append(
+            {
+                "name": name,
+                "official_doc_url": (
+                    official_row["doc_url"] if official_row is not None else None
+                ),
+                "mcp_parameter_schema_sha256": (
+                    mcp_row["parameter_schema_sha256"] if mcp_row is not None else None
+                ),
+                "dimensions": {
+                    dimension: indexes[dimension][name]
+                    for dimension in V2_DIMENSION_VALUES
+                },
+            }
+        )
+    catalog: dict[str, object] = {
+        "version": 2,
+        "catalog_id": scope["catalog_id"],
+        "provider": "tushare",
+        "provenance": {
+            "official_catalog": {
+                "id": official["catalog_id"],
+                "sha256": official_catalog_sha256,
+            },
+            "mcp_snapshot": {
+                "id": mcp["snapshot_id"],
+                "sha256": mcp_snapshot_sha256,
+            },
+        },
+        "scope": {"scope_id": scope["scope_id"], "sha256": scope_sha256},
+        "counts": dict(EXPECTED_V2_COUNTS),
+        "datasets": datasets,
+    }
+    return validate_catalog_v2_document(catalog)
+
+
+def validate_catalog_v2_document(document: object) -> dict[str, Any]:
+    """Validate the 222-item domestic read catalog with a closed schema."""
+
+    root = _mapping(document, "capability catalog v2")
+    _reject_unknown_keys(root, _CATALOG_V2_ROOT_KEYS, "capability catalog v2")
+    if type(root["version"]) is not int or root["version"] != 2:
+        raise ValueError("capability catalog v2.version must be integer 2")
+    if root["catalog_id"] != "tushare-domestic-read-capabilities.v2":
+        raise ValueError("capability catalog v2.catalog_id is invalid")
+    if root["provider"] != "tushare":
+        raise ValueError("capability catalog v2.provider must be tushare")
+
+    provenance = _mapping(root["provenance"], "capability catalog v2.provenance")
+    _reject_unknown_keys(
+        provenance, _CATALOG_V2_PROVENANCE_KEYS, "capability catalog v2.provenance"
+    )
+    expected_source_ids = {
+        "official_catalog": "tushare-official-capabilities.v1",
+        "mcp_snapshot": "tushare-mcp-capability-snapshot.v1",
+    }
+    for source_name, expected_id in expected_source_ids.items():
+        label = f"capability catalog v2.provenance.{source_name}"
+        source = _mapping(provenance[source_name], label)
+        _reject_unknown_keys(source, _CATALOG_V2_SOURCE_KEYS, label)
+        if source["id"] != expected_id:
+            raise ValueError(f"{label}.id is invalid")
+        _validate_hash(source["sha256"], f"{label}.sha256")
+    scope = _mapping(root["scope"], "capability catalog v2.scope")
+    _reject_unknown_keys(scope, _CATALOG_V2_SCOPE_KEYS, "capability catalog v2.scope")
+    if scope["scope_id"] != "tushare-capability-scope.v2":
+        raise ValueError("capability catalog v2 scope identity is invalid")
+    _validate_hash(scope["sha256"], "capability catalog v2.scope.sha256")
+    _validate_exact_counts(
+        root["counts"], EXPECTED_V2_COUNTS, "capability catalog v2.counts"
+    )
+
+    datasets = _sequence(root["datasets"], "capability catalog v2.datasets")
+    names: list[str] = []
+    dimension_counts: dict[str, Counter[str]] = {
+        dimension: Counter() for dimension in V2_DIMENSION_VALUES
+    }
+    for index, raw_dataset in enumerate(datasets):
+        label = f"capability catalog v2.datasets[{index}]"
+        dataset = _mapping(raw_dataset, label)
+        _reject_unknown_keys(dataset, _CATALOG_V2_DATASET_KEYS, label)
+        name = _validate_api_name(dataset["name"], f"{label}.name")
+        names.append(name)
+        doc_url = dataset["official_doc_url"]
+        if doc_url is not None:
+            _validate_doc_url(doc_url, f"{label}.official_doc_url")
+        mcp_hash = dataset["mcp_parameter_schema_sha256"]
+        if mcp_hash is not None:
+            _validate_hash(mcp_hash, f"{label}.mcp_parameter_schema_sha256")
+        dimensions = _mapping(dataset["dimensions"], f"{label}.dimensions")
+        _reject_unknown_keys(
+            dimensions,
+            frozenset(V2_DIMENSION_VALUES),
+            f"{label}.dimensions",
+        )
+        for dimension, allowed_values in V2_DIMENSION_VALUES.items():
+            value = _required_text(
+                dimensions[dimension], f"{label}.dimensions.{dimension}"
+            )
+            if value not in allowed_values:
+                raise ValueError(f"{label}.dimensions.{dimension} is invalid")
+            dimension_counts[dimension][value] += 1
+        if dimensions["product_scope"] != "domestic_read_dataset":
+            raise ValueError(f"{label} is not a domestic read dataset")
+        if dimensions["entitlement"] != "unobserved":
+            raise ValueError(f"{label} improperly asserts entitlement")
+        if dimensions["activation"] != "paused":
+            raise ValueError(f"{label} must remain paused")
+        if dimensions["contract_state"] == "missing_official_contract":
+            if doc_url is not None:
+                raise ValueError(f"{label} synthesizes an official doc URL")
+        elif doc_url is None:
+            raise ValueError(f"{label} lacks its frozen official doc URL")
+        if dimensions["mcp_visibility"] == "visible":
+            if mcp_hash is None:
+                raise ValueError(f"{label} lacks its MCP parameter schema hash")
+        elif mcp_hash is not None:
+            raise ValueError(f"{label} has an MCP hash while marked absent")
+    if names != sorted(names):
+        raise ValueError("capability catalog v2 dataset names must be sorted")
+    if len(names) != len(set(names)):
+        raise ValueError("capability catalog v2 dataset names must be unique")
+    if len(names) != EXPECTED_V2_COUNTS["domestic_read_dataset"]:
+        raise ValueError("capability catalog v2 must contain exactly 222 datasets")
+    normalized_counts = {
+        dimension: dict(counts) for dimension, counts in dimension_counts.items()
+    }
+    if normalized_counts != EXPECTED_V2_DATASET_DIMENSION_COUNTS:
+        raise ValueError("capability catalog v2 dataset dimension counts drifted")
+    return root
+
+
+def compile_v2_from_paths(
+    *,
+    official_catalog_path: Path = DEFAULT_CATALOG_PATH,
+    mcp_snapshot_path: Path = DEFAULT_MCP_SNAPSHOT_PATH,
+    scope_path: Path = DEFAULT_SCOPE_V2_PATH,
+) -> dict[str, object]:
+    """Compile v2 strictly from checked-in local snapshots and reviewed scope."""
+
+    official_bytes = official_catalog_path.read_bytes()
+    mcp_bytes = mcp_snapshot_path.read_bytes()
+    scope_bytes = scope_path.read_bytes()
+    try:
+        official_payload = yaml.safe_load(official_bytes.decode("utf-8"))
+        mcp_payload = yaml.safe_load(mcp_bytes.decode("utf-8"))
+        scope_payload = yaml.safe_load(scope_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError("capability v2 inputs must be valid UTF-8 YAML") from exc
+    return compile_capability_catalog_v2(
+        official_catalog_document=official_payload,
+        official_catalog_sha256=_sha256_bytes(official_bytes),
+        mcp_snapshot_document=mcp_payload,
+        mcp_snapshot_sha256=_sha256_bytes(mcp_bytes),
+        scope_document=scope_payload,
+        scope_sha256=_sha256_bytes(scope_bytes),
+    )
+
+
+def render_catalog_v2(document: object) -> bytes:
+    validated = validate_catalog_v2_document(document)
+    rendered = yaml.safe_dump(
+        validated,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=1_000,
+    )
+    return rendered.encode("utf-8")
+
+
 def render_catalog(document: object) -> bytes:
     validated = validate_catalog_document(document)
     rendered = yaml.safe_dump(
@@ -797,12 +1443,28 @@ def _atomic_write(path: Path, payload: bytes) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--v2",
+        action="store_true",
+        help="merge the checked-in official catalog and MCP metadata snapshot",
+    )
+    parser.add_argument(
         "--source-root",
         type=Path,
-        required=True,
-        help="local offline checkout at the frozen Git commit",
+        help="v1-only local offline checkout at the frozen Git commit",
     )
-    parser.add_argument("--scope", type=Path, default=DEFAULT_SCOPE_PATH)
+    parser.add_argument("--scope", type=Path)
+    parser.add_argument(
+        "--official-catalog",
+        type=Path,
+        default=DEFAULT_CATALOG_PATH,
+        help="v2 pinned official catalog snapshot",
+    )
+    parser.add_argument(
+        "--mcp-snapshot",
+        type=Path,
+        default=DEFAULT_MCP_SNAPSHOT_PATH,
+        help="v2 metadata-only MCP capability snapshot",
+    )
     parser.add_argument(
         "--catalog-path",
         type=Path,
@@ -818,11 +1480,26 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        catalog = compile_from_paths(
-            source_root=args.source_root,
-            scope_path=args.scope,
-        )
-        rendered = render_catalog(catalog)
+        if args.v2:
+            catalog = compile_v2_from_paths(
+                official_catalog_path=args.official_catalog,
+                mcp_snapshot_path=args.mcp_snapshot,
+                scope_path=args.scope or DEFAULT_SCOPE_V2_PATH,
+            )
+            rendered = render_catalog_v2(catalog)
+            summary = (
+                "official=239 mcp=258 union=268 catalog=222 "
+                "excluded=41 operations=4 helper=1"
+            )
+        else:
+            if args.source_root is None:
+                raise ValueError("--source-root is required unless --v2 is selected")
+            catalog = compile_from_paths(
+                source_root=args.source_root,
+                scope_path=args.scope or DEFAULT_SCOPE_PATH,
+            )
+            rendered = render_catalog(catalog)
+            summary = "official=239 in_scope=190"
         if args.check:
             if args.catalog_path.read_bytes() != rendered:
                 print("checked-in capability catalog is stale", file=sys.stderr)
@@ -831,10 +1508,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _atomic_write(args.output, rendered)
         else:
             sys.stdout.buffer.write(rendered)
-        print(
-            "official=239 in_scope=190",
-            file=sys.stderr,
-        )
+        print(summary, file=sys.stderr)
         return 0
     except (OSError, ValueError, yaml.YAMLError) as exc:
         print(f"capability catalog compilation failed: {exc}", file=sys.stderr)
