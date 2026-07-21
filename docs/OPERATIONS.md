@@ -5,6 +5,7 @@
 ```text
 /opt/investment/releases/tradingdatas/<immutable-release>
 /opt/investment/releases/tradingdatas/current
+/opt/investment/releases/tradingdatas/manifests/<immutable-release>.json
 /opt/investment-data/tradingdatas/read_model/provider_native.sqlite
 /etc/tradingdatas/internal-api.env
 ```
@@ -24,6 +25,50 @@ planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab
 Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在生产启用采集 timer。
+
+## Release 与回滚身份
+
+`tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、
+不读取凭证、不打开 SQLite、不调用 provider，也不启停服务或 timer。manifest 由 clean
+Git HEAD 的 commit、tree 和全部 tracked blob 生成，保存在 release 目录之外；release
+必须是以完整 commit 命名的直接子目录，且只包含 manifest 声明的文件。目录固定
+`0555`，普通文件 `0444`，Git executable 为 `0555`，无链接、额外文件、`.git` 或
+`__pycache__`。验证器从 commit object 重算 commit/tree 关系，从 manifest entries 重算
+Git tree，并从 release 实际字节重算每个 Git blob 与 SHA256；manifest 本身也必须匹配
+`--expected-uid/--expected-gid` 且不可被 group/world 写入。
+
+本地从 clean checkout 生成确定性 manifest。构建、服务器验证和切换必须使用已审查的
+trusted verifier，不能从尚未验证的 target release 执行 `release_manifest.py`；常规升级
+使用当前已验证 release 中的 verifier，首次 bootstrap 则先把本地已审查 verifier 作为
+独立文件传入并核对其 SHA256 后再运行：
+
+```bash
+python3 tools/release_manifest.py build \
+  --source-root /absolute/path/to/TradingDatas \
+  --output /private/tmp/<commit>.release.json
+```
+
+服务器 staging 完成且尚未切换 `current` 时，以 root owner 身份只读验证：
+
+```bash
+/opt/tradingdatas/venv/bin/python3 \
+  /opt/investment/releases/tradingdatas/current/tools/release_manifest.py verify \
+  --release-root /opt/investment/releases/tradingdatas/<commit> \
+  --manifest /opt/investment/releases/tradingdatas/manifests/<commit>.json \
+  --expected-uid 0 --expected-gid 0
+```
+
+`switch-current` 只允许从已验证的 rollback manifest 切到已验证的 target manifest；
+在 releases 根目录加排他锁，以相对 40 位 commit symlink、`os.replace` 和目录 fsync
+完成原子切换，post-switch 失败时恢复旧 pointer。执行前必须由外部 safe-release
+preflight 证明 API/collector 均 inactive、timer disabled、18082 切换方案与旧服务回滚
+已冻结。重复验证使用 `verify-current`；它持共享锁覆盖 pointer 读取、release 验证和
+pointer 重读，不能与协作切换交错产生伪 readback。manifest 不记录 secret 内容或 SQLite hash；
+回滚不覆盖 SQLite，也不恢复旧 official-direct collector。
+
+systemd 仅从 `current` 启动入口脚本。入口立即解析到同一物理 immutable release，
+registry 与 schedule 不接受 `/current/config/...` 环境覆盖；execute 模式也拒绝非本物理
+release 的 `--schedule-config`，避免代码/配置跨版本混配。
 
 当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。2026-07-21 CST（证据时间 2026-07-20Z）的健康单一 HTTPS 节点小响应实测为并发 4、210/210 request starts 在一分钟内成功；当前 `main` 代码采用更保守的保护门禁 200 次/60 秒、并发 4。它不代表供应商合同额度或已部署 production 配置；混合大响应、每日额度和 DNS failover 仍未知，timer 保持 disabled，不因单个接口成功自动扩权。
 

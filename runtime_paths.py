@@ -53,15 +53,6 @@ def _require_within(child: Path, parent: Path, *, child_name: str) -> None:
     )
 
 
-def tradingdatas_root() -> Path:
-    """Return the immutable/current TradingDatas code root."""
-
-    return _canonical_env_path(
-        "TRADINGDATAS_ROOT",
-        "/opt/investment/releases/tradingdatas/current",
-    )
-
-
 def data_mount() -> Path:
     """Return the physical mount that contains mutable TradingDatas data."""
 

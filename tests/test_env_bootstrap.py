@@ -46,34 +46,6 @@ sys.exit(1 if added or changed else 0)
     assert result.returncode == 0, payload
 
 
-def test_runtime_paths_resolve_environment_lazily_after_import() -> None:
-    root = Path(__file__).resolve().parents[1]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{root}{os.pathsep}{env.get('PYTHONPATH', '')}"
-    env.pop("TRADINGDATAS_ROOT", None)
-    script = """
-import json
-import os
-import warnings
-
-warnings.simplefilter("ignore", FutureWarning)
-import runtime_paths
-
-os.environ["TRADINGDATAS_ROOT"] = "/private/tmp/tradingdatas-lazy-check"
-print(json.dumps({"root": str(runtime_paths.tradingdatas_root())}, sort_keys=True))
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=root,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    payload = json.loads(result.stdout)
-    assert payload["root"] == "/private/tmp/tradingdatas-lazy-check"
-
-
 def test_parse_env_file_empty_values_comments_and_export(tmp_path: Path) -> None:
     env_path = tmp_path / ".env"
     env_path.write_text(
@@ -158,7 +130,7 @@ def test_typed_env_helpers_fall_back_on_malformed_values(monkeypatch) -> None:
         "/tmp/tradingdatas/../escape",
         "/tmp/tradingdatas//root",
         "/tmp/tradingdatas/./root",
-        "/tmp/tradingdatas-root/",
+        "/tmp/tradingdatas-data/",
     ],
 )
 def test_python_runtime_paths_reject_noncanonical_lexical_values(
@@ -167,10 +139,11 @@ def test_python_runtime_paths_reject_noncanonical_lexical_values(
 ) -> None:
     import runtime_paths
 
-    monkeypatch.setenv("TRADINGDATAS_ROOT", raw_path)
+    monkeypatch.setenv("TRADINGDATAS_DATA_ROOT", raw_path)
+    monkeypatch.setenv("TRADINGDATAS_DATA_MOUNT", "/tmp")
 
     with pytest.raises(runtime_paths.RuntimePathError, match="canonical"):
-        runtime_paths.tradingdatas_root()
+        runtime_paths.data_root()
 
 
 def test_python_runtime_paths_reject_symlinked_parents_and_physical_escape(
@@ -178,15 +151,6 @@ def test_python_runtime_paths_reject_symlinked_parents_and_physical_escape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import runtime_paths
-
-    physical = tmp_path / "physical"
-    physical.mkdir()
-    linked = tmp_path / "linked"
-    linked.symlink_to(physical, target_is_directory=True)
-    monkeypatch.setenv("TRADINGDATAS_ROOT", str(linked / "release"))
-
-    with pytest.raises(runtime_paths.RuntimePathError, match="symlink"):
-        runtime_paths.tradingdatas_root()
 
     data_root = tmp_path / "data"
     data_root.mkdir()

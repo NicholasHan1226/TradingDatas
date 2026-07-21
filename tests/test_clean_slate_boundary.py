@@ -25,6 +25,7 @@ def test_retired_subsystems_are_not_present() -> None:
         "crontab.txt",
         "deploy.sh",
         "rollback.sh",
+        "deploy/runtime_paths.sh",
         "storage/duckdb_schema.py",
         "config/dataset_registry.yaml",
         "config/api_module_catalog.yaml",

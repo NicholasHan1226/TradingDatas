@@ -71,6 +71,9 @@ onboarding 不修改 Python；QuickSync transport profile、权限码和有界 b
 - 在 `/opt/investment/releases/tradingdatas/<immutable-release>` 发布不可变代码，使用
   `/opt/investment/releases/tradingdatas/current` 原子指向当前版本，并把 SQLite 放在独立的
   `/opt/investment-data/tradingdatas/` 数据目录；
+- 每个 target 与 rollback release 都必须有外置、确定性的 Git tree/file manifest，
+  `current` 只在两端 release 均通过验证且所有 TradingDatas unit inactive、timer disabled
+  时原子切换；release 回滚不得覆盖 SQLite；
 - systemd service/timer 观察至少一个完整运行周期；
 - 验证频率、积压、失败重试、资源预算、备份和回滚；
 - 切换消费者；

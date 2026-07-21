@@ -47,12 +47,7 @@ from tools.provider_native_cadence_planner import (  # noqa: E402
 )
 
 
-DEFAULT_SCHEDULE_CONFIG = Path(
-    os.environ.get(
-        "TRADINGDATAS_SCHEDULE_PATH",
-        ROOT / "config" / "provider_native_schedule.yaml",
-    )
-)
+DEFAULT_SCHEDULE_CONFIG = ROOT / "config" / "provider_native_schedule.yaml"
 DEFAULT_LOCK_PATH = Path(
     os.environ.get(
         "TRADINGDATAS_COLLECT_LOCK",
@@ -313,7 +308,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if args.execute and args.now is not None:
+    if args.execute and (
+        args.now is not None or args.schedule_config != DEFAULT_SCHEDULE_CONFIG
+    ):
         print('{"mode":"execute","state":"validation"}')
         return 2
     try:

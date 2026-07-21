@@ -42,6 +42,11 @@ runtime registry 仍为 190 项，其中仅 3 项 `active+active` 可进入 SQLi
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
+生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
+绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
+systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 `current` 即使在另一次
+受控发布中切换，已启动进程也不会混用两个 release 的代码与配置。
+
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
 
 请求合同的输入权威也必须按原始文件字节绑定，不能只信任调用方传入的已解析对象。runtime compiler 固定核对 official document、request observation、transport observation 和 reviewed contract 四类输入；HTTPS probe plan 固定核对 official document、request observation、transport observation 和 registered runtime contract 四类输入。任一文件内容与其冻结 SHA 不一致时，在生成请求或调用 provider 前失败。dataset-field seed 只有在 fresh success receipt 存在且 producer schema 与 registry 精确相等时才可使用；migration hint、旧 schema 或未来 schema 都不能替代生产者合同。

@@ -667,10 +667,45 @@ def test_scheduler_has_only_tradingdatas_runtime_paths_and_in_process_execution(
     source = Path(scheduler.__file__).read_text(encoding="utf-8")
 
     assert scheduler.DEFAULT_LOCK_PATH == Path("/run/lock/tradingdatas-collect.lock")
-    assert "TRADINGDATAS_SCHEDULE_PATH" in source
+    assert "TRADINGDATAS_SCHEDULE_PATH" not in source
     assert "TRADINGDATAS_COLLECT_LOCK" in source
     assert not hasattr(scheduler, "_pin_runtime_registry_to_release")
     assert not hasattr(scheduler, "_subprocess_executor")
+
+
+def test_execute_rejects_schedule_override_before_credentials_or_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    override = tmp_path / "provider_native_schedule.yaml"
+    override.write_text(SCHEDULE_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(
+        scheduler,
+        "_validated_collector_credentials",
+        lambda: pytest.fail("schedule override must fail before credential access"),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtime_dataset_registry",
+        lambda: pytest.fail("schedule override must fail before registry access"),
+    )
+
+    code = scheduler.main(
+        [
+            "--execute",
+            "--schedule-config",
+            str(override),
+            "--lock-path",
+            str(tmp_path / "schedule.lock"),
+        ]
+    )
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out) == {
+        "mode": "execute",
+        "state": "validation",
+    }
 
 
 @pytest.mark.parametrize(

@@ -25,12 +25,17 @@ def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
     ) in source
     for argument in (
         "--db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite",
-        "--schedule-config /opt/investment/releases/tradingdatas/current/"
-        "config/provider_native_schedule.yaml",
         "--lock-path /run/tradingdatas/collect.lock",
         "--execute",
     ):
         assert argument in source
+    for forbidden in (
+        "TRADINGDATAS_ROOT",
+        "TRADINGDATAS_REGISTRY_PATH",
+        "TRADINGDATAS_SCHEDULE_PATH",
+        "--schedule-config",
+    ):
+        assert forbidden not in source
 
 
 def test_collector_unit_requires_private_file_backed_quicksync_credentials() -> None:
