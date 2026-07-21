@@ -34,6 +34,12 @@ entitlement、runtime activation。当前 scope v2 将 239 个官方名称与 25
 官方文档合同，新增 32 个在合同或 HTTPS 证据缺失时仅可发现、不可执行。MCP
 visibility 不能自动生成文档 URL、权限或 scheduler 激活。
 
+`config/tushare_capability_catalog.v2.yaml` 是上述 222 项的离线、可重建产品能力发现
+artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
+`DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
+它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
+runtime registry 仍为 190 项，其中仅 3 项 `active+active` 可进入 SQLite 读侧检查。
+
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。

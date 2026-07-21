@@ -2,10 +2,15 @@
 
 ## GET /v1/catalog
 
-返回首期产品范围内可发现的数据集、schema、字段、查询能力、cadence、SLA、
-entitlement 和 runtime state。目录可发现性与查询/运行资格是两个独立事实：
-`excluded`、`retired` 或其它未激活项仍应在 catalog 中如实展示其状态，但
-`POST /v1/query` 必须继续在 SQLite 或 provider 访问前 fail closed。
+返回首期产品范围内、已经具备 provider-neutral runtime contract 的可发现数据集、
+schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。当前运行目录
+为 190 项；另有 32 项只存在于 222 项产品能力发现 artifact 中，在 dataset identity、
+schema 和请求合同冻结前不进入 runtime registry、SQLite、scheduler 或查询 API。
+
+目录可发现性与查询/运行资格是两个独立事实：`excluded`、`retired` 或其它未激活项
+仍应在 catalog 中如实展示其状态，但只有同一 provider binding 同时满足
+`entitlement=active` 与 `activation=active` 才可进入 SQLite 读侧检查；其余查询必须
+在 SQLite 或 provider 访问前 fail closed。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
 `entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
