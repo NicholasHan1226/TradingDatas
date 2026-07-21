@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,23 @@ QUERY_DEFAULTS = {
     "cursor_ttl_seconds": 900,
     "sqlite_progress_steps": 1_000_000,
 }
+
+
+def test_in_memory_provider_binding_keeps_ready_compatibility_defaults() -> None:
+    binding = registry_module.ProviderBinding(
+        provider="tushare",
+        api_name="synthetic",
+        adapter_version="tushare-provider-native.v1",
+        read_discriminator_value="synthetic",
+        entitlement_state="active",
+        activation_state="active",
+        target_tables=("provider_dataset_rows",),
+    )
+
+    assert binding.probe_state == "executable"
+    assert binding.probe_block_reasons == ()
+    assert binding.ingest_contract_state == "ready"
+    assert binding.ingest_contract_block_reasons == ()
 
 
 def _field(
@@ -82,7 +100,28 @@ def generic_dataset(**overrides: object) -> dict[str, object]:
                 "read_discriminator_value": "tushare_synthetic_native",
                 "entitlement_state": "active",
                 "activation_state": "active",
+                "probe_state": "executable",
+                "probe_block_reasons": [],
+                "ingest_contract_state": "ready",
+                "ingest_contract_block_reasons": [],
                 "target_tables": ["provider_dataset_rows"],
+                "input_fields": [
+                    {
+                        "name": "start_date",
+                        "declared_source_type": "str",
+                        "required": False,
+                    },
+                    {
+                        "name": "end_date",
+                        "declared_source_type": "str",
+                        "required": False,
+                    },
+                    {
+                        "name": "exchange",
+                        "declared_source_type": "str",
+                        "required": None,
+                    },
+                ],
                 "request_shape": "snapshot_or_date_range",
                 "request_template": {
                     "start_date": "${window.start_date}",
@@ -212,8 +251,81 @@ def test_generic_registry_materializes_frozen_storage_and_request_contract(
     assert binding.max_payload_bytes_per_row == 65_536
     assert binding.max_batch_bytes == 4_194_304
     assert binding.max_nesting_depth == 16
+    assert binding.input_fields == (
+        registry_module.ProviderInputField(
+            name="start_date",
+            declared_source_type="str",
+            required=False,
+        ),
+        registry_module.ProviderInputField(
+            name="end_date",
+            declared_source_type="str",
+            required=False,
+        ),
+        registry_module.ProviderInputField(
+            name="exchange",
+            declared_source_type="str",
+            required=None,
+        ),
+    )
     with pytest.raises(TypeError):
         binding.request_template["end_date"] = "mutated"  # type: ignore[index]
+    with pytest.raises(FrozenInstanceError):
+        binding.input_fields[0].name = "mutated"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda binding: binding.pop("input_fields"),
+            "missing key.*input_fields",
+        ),
+        (
+            lambda binding: binding.update(input_fields=[]),
+            "input_fields.*must not be empty",
+        ),
+        (
+            lambda binding: binding["input_fields"].append(  # type: ignore[index,union-attr]
+                deepcopy(binding["input_fields"][0])  # type: ignore[index]
+            ),
+            "input_fields.*duplicate",
+        ),
+        (
+            lambda binding: binding["input_fields"][0].update(extra=True),  # type: ignore[index,union-attr]
+            "unknown key.*input_fields",
+        ),
+        (
+            lambda binding: binding["input_fields"][0].pop("required"),  # type: ignore[index,union-attr]
+            "missing key.*required",
+        ),
+        (
+            lambda binding: binding["input_fields"][0].update(  # type: ignore[index,union-attr]
+                declared_source_type="string"
+            ),
+            "declared_source_type.*one of",
+        ),
+        (
+            lambda binding: binding["input_fields"][0].update(required="N"),  # type: ignore[index,union-attr]
+            "required.*boolean or null",
+        ),
+        (
+            lambda binding: binding["input_fields"][0].update(required=1),  # type: ignore[index,union-attr]
+            "required.*boolean or null",
+        ),
+    ],
+)
+def test_registry_input_field_contracts_fail_closed(
+    mutator: object,
+    message: str,
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    mutator(binding)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_dataset_registry(write_registry(tmp_path, dataset))
 
 
 def test_registry_accepts_numeric_leading_payload_field_but_not_parameter(

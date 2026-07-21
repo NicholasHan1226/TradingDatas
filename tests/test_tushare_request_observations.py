@@ -1,0 +1,830 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
+from pathlib import Path
+
+import pytest
+import yaml
+
+from dataset_registry import load_dataset_registry
+from tools.compile_provider_native_registry import compile_provider_native_registry
+from tools.compile_tushare_runtime_contracts import (
+    RuntimeContractCompilationError,
+    compile_https_probe_plan,
+    compile_runtime_contract_bundle,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
+REVIEWED = ROOT / "config" / "tushare_reviewed_contracts.v1.yaml"
+POLICY = ROOT / "config" / "tushare_runtime_contract_policy.v1.yaml"
+REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
+TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+UPSTREAM_CONTRACTS = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
+
+
+def _bytes(path: Path) -> bytes:
+    return path.read_bytes()
+
+
+def _yaml(path: Path) -> dict[str, object]:
+    document = yaml.safe_load(_bytes(path))
+    assert isinstance(document, dict)
+    return document
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(_bytes(path)).hexdigest()
+
+
+def _yaml_bytes(document: dict[str, object]) -> bytes:
+    return yaml.safe_dump(
+        document,
+        allow_unicode=True,
+        sort_keys=False,
+    ).encode("utf-8")
+
+
+def _compile(
+    *,
+    documents: dict[str, object] | None = None,
+    request_observations: dict[str, object] | None = None,
+    transport_observations: dict[str, object] | None = None,
+) -> dict[str, object]:
+    document_bytes = (
+        _bytes(DOCUMENTS)
+        if documents is None or documents == _yaml(DOCUMENTS)
+        else _yaml_bytes(documents)
+    )
+    transport_bytes = (
+        _bytes(TRANSPORT_OBSERVATIONS)
+        if transport_observations is None
+        or transport_observations == _yaml(TRANSPORT_OBSERVATIONS)
+        else _yaml_bytes(transport_observations)
+    )
+    request_document = (
+        _yaml(REQUEST_OBSERVATIONS)
+        if request_observations is None
+        else deepcopy(request_observations)
+    )
+    if request_observations is None and documents is not None:
+        request_document["provenance"]["official_contracts"]["sha256"] = hashlib.sha256(
+            document_bytes
+        ).hexdigest()
+    if request_observations is None and transport_observations is not None:
+        request_document["provenance"]["quicksync_interface_observations"]["sha256"] = (
+            hashlib.sha256(transport_bytes).hexdigest()
+        )
+    request_bytes = (
+        _bytes(REQUEST_OBSERVATIONS)
+        if request_observations is None
+        and documents is None
+        and transport_observations is None
+        else _yaml_bytes(request_document)
+    )
+    return compile_runtime_contract_bundle(
+        document_bytes,
+        _bytes(REVIEWED),
+        _bytes(POLICY),
+        request_observations=request_bytes,
+        transport_observations=transport_bytes,
+        official_contract_sha256=hashlib.sha256(document_bytes).hexdigest(),
+        transport_observations_sha256=hashlib.sha256(transport_bytes).hexdigest(),
+        request_observations_sha256=hashlib.sha256(request_bytes).hexdigest(),
+    )
+
+
+def _compile_plan(
+    *,
+    request_observations: dict[str, object] | None = None,
+    dataset_field_values: list[dict[str, object]] | None = None,
+    registered_contract_bundle: dict[str, object] | None = None,
+) -> dict[str, object]:
+    request_bytes = (
+        _bytes(REQUEST_OBSERVATIONS)
+        if request_observations is None
+        else _yaml_bytes(request_observations)
+    )
+    registered_bytes = (
+        _bytes(UPSTREAM_CONTRACTS)
+        if registered_contract_bundle is None
+        else _yaml_bytes(registered_contract_bundle)
+    )
+    return compile_https_probe_plan(
+        _bytes(DOCUMENTS),
+        request_bytes,
+        _bytes(TRANSPORT_OBSERVATIONS),
+        registered_contract_bundle=registered_bytes,
+        official_contract_sha256=_sha(DOCUMENTS),
+        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+        request_observations_sha256=hashlib.sha256(request_bytes).hexdigest(),
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
+        dataset_field_values=dataset_field_values,
+    )
+
+
+def _entry(document: dict[str, object], api_name: str) -> dict[str, object]:
+    entries = document["entries"]
+    assert isinstance(entries, list)
+    return next(entry for entry in entries if entry["api_name"] == api_name)
+
+
+def _contract(bundle: dict[str, object], api_name: str) -> dict[str, object]:
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    return next(item for item in contracts if item["api_name"] == api_name)
+
+
+def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activation() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    entries = observations["entries"]
+    assert isinstance(entries, list)
+    api_names = [entry["api_name"] for entry in entries]
+
+    assert len(api_names) == 190
+    assert api_names == sorted(api_names)
+    assert len(set(api_names)) == 190
+    assert observations["counts"] == {
+        "interfaces": 190,
+        "probe_executable": 139,
+        "probe_blocked": 51,
+        "ingest_contract_ready": 124,
+        "ingest_contract_blocked": 66,
+        "row_limit_ingest_contract_blocked": 15,
+    }
+    assert observations["counts"] == {
+        "interfaces": len(entries),
+        "probe_executable": sum(
+            entry["probe_state"] == "executable" for entry in entries
+        ),
+        "probe_blocked": sum(entry["probe_state"] == "blocked" for entry in entries),
+        "ingest_contract_ready": sum(
+            entry["ingest_contract_state"] == "ready" for entry in entries
+        ),
+        "ingest_contract_blocked": sum(
+            entry["ingest_contract_state"] == "blocked" for entry in entries
+        ),
+        "row_limit_ingest_contract_blocked": sum(
+            entry["row_limit_observation"] is not None for entry in entries
+        ),
+    }
+
+    seed_apis = {
+        "cb_basic",
+        "etf_basic",
+        "fut_basic",
+        "index_basic",
+        "index_classify",
+        "opt_basic",
+        "stock_basic",
+    }
+    assert all(
+        _entry(observations, api_name)["probe_state"] == "executable"
+        for api_name in seed_apis
+    )
+
+    fund_nav = _entry(observations, "fund_nav")
+    assert fund_nav["probe_state"] == "executable"
+    assert fund_nav["probe_block_reasons"] == []
+    assert fund_nav["ingest_contract_state"] == "blocked"
+    assert fund_nav["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
+
+    news = _entry(observations, "news")
+    assert news["probe_state"] == "blocked"
+    assert news["unresolved_parameter_keys"] == ["src"]
+    assert "src" not in news["parameters"]
+
+
+def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+
+    assert _entry(observations, "daily")["parameters"] == {
+        "trade_date": {
+            "source": "scheduled_partition",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        }
+    }
+    assert _entry(observations, "stock_basic")["parameters"] == {
+        "list_status": {"source": "literal", "value": "L"}
+    }
+    assert _entry(observations, "stock_basic")["request_variants"] == [
+        {"list_status": "L"},
+        {"list_status": "D"},
+        {"list_status": "P"},
+    ]
+    assert _entry(observations, "trade_cal")["parameters"] == {
+        "end_date": {
+            "source": "scheduled_partition",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        },
+        "exchange": {"source": "literal", "value": "SSE"},
+        "start_date": {
+            "source": "scheduled_partition",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        },
+    }
+
+    bundle = _compile()
+    assert _contract(bundle, "daily")["request_template"] == {
+        "trade_date": "${window.trade_date}"
+    }
+    assert _contract(bundle, "stock_basic")["request_variants"] == [
+        {"list_status": "L"},
+        {"list_status": "D"},
+        {"list_status": "P"},
+    ]
+    assert _contract(bundle, "trade_cal")["request_template"] == {
+        "end_date": "${window.end_date}",
+        "exchange": "SSE",
+        "start_date": "${window.start_date}",
+    }
+
+
+def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() -> None:
+    bundle = _compile()
+    adj_factor = _contract(bundle, "adj_factor")
+    assert adj_factor["probe_state"] == "executable"
+    assert adj_factor["ingest_contract_state"] == "ready"
+    assert adj_factor["request_shape"] == "snapshot_or_date_range"
+    assert adj_factor["request_template"] == {"trade_date": "${window.trade_date}"}
+    assert adj_factor["request_window_policy"] == {
+        "required_keys": ["trade_date"],
+        "formats": {"trade_date": "yyyymmdd"},
+        "range_start_key": "trade_date",
+        "range_end_key": "trade_date",
+        "max_span_days": 1,
+    }
+
+    fund_nav = _contract(bundle, "fund_nav")
+    assert fund_nav["probe_state"] == "executable"
+    assert fund_nav["ingest_contract_state"] == "blocked"
+    assert fund_nav["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
+
+    news = _contract(bundle, "news")
+    assert news["probe_state"] == "blocked"
+    assert news["request_template"] == {}
+    assert news["request_variants"] == [{}]
+
+
+def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_params() -> (
+    None
+):
+    plan = compile_https_probe_plan(
+        _bytes(DOCUMENTS),
+        _bytes(REQUEST_OBSERVATIONS),
+        _bytes(TRANSPORT_OBSERVATIONS),
+        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+        official_contract_sha256=_sha(DOCUMENTS),
+        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
+    )
+    entries = plan["entries"]
+    assert isinstance(entries, list)
+    assert len(entries) == 190
+    assert set(plan) == {
+        "schema_version",
+        "production_ready",
+        "provenance",
+        "counts",
+        "entries",
+    }
+    assert set(entries[0]) == {
+        "api_name",
+        "scope_labels",
+        "probe_state",
+        "probe_block_reasons",
+        "ingest_contract_state",
+        "ingest_contract_block_reasons",
+        "params",
+        "fields",
+    }
+    assert set(plan["provenance"]) == {
+        "expected_commit",
+        "official_contract_sha256",
+        "transport_observations_sha256",
+        "request_observations_sha256",
+        "api_names_sha256",
+        "scheduled_partition",
+        "run_clock",
+        "seed_authorities",
+    }
+    assert plan["counts"] == {
+        "planned": 190,
+        "executable": 139,
+        "blocked": 51,
+        "ingest_contract_ready": 124,
+        "ingest_contract_blocked": 66,
+    }
+
+    daily = _entry(plan, "daily")
+    assert daily["params"] == {"trade_date": "20260718"}
+    assert daily["probe_state"] == "executable"
+    assert daily["fields"]
+
+    news = _entry(plan, "news")
+    assert news["params"] == {}
+    assert news["probe_state"] == "blocked"
+    assert news["probe_block_reasons"]
+    assert news["scope_labels"] == ["all", "gaps"]
+    assert all(
+        entry["params"] == {} for entry in entries if entry["probe_state"] == "blocked"
+    )
+
+    daily_basic = _entry(plan, "daily_basic")
+    assert daily_basic["probe_state"] == "blocked"
+    assert daily_basic["probe_block_reasons"] == ["dependency_seed_receipt_unresolved"]
+    assert daily_basic["params"] == {}
+
+
+def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -> None:
+    seed = {
+        "dataset_id": "cn.equity.security_master",
+        "field": "ts_code",
+        "value": "600000.SH",
+        "receipt_id": "receipt-stock-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "2.0.0",
+        "fresh": True,
+    }
+    plan = compile_https_probe_plan(
+        _bytes(DOCUMENTS),
+        _bytes(REQUEST_OBSERVATIONS),
+        _bytes(TRANSPORT_OBSERVATIONS),
+        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+        official_contract_sha256=_sha(DOCUMENTS),
+        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
+        dataset_field_values=[seed],
+    )
+    assert plan["counts"] == {
+        "planned": 190,
+        "executable": 157,
+        "blocked": 33,
+        "ingest_contract_ready": 142,
+        "ingest_contract_blocked": 48,
+    }
+    daily_basic = _entry(plan, "daily_basic")
+    assert daily_basic["probe_state"] == "executable"
+    assert daily_basic["probe_block_reasons"] == []
+    assert daily_basic["params"]["ts_code"] == "600000.SH"
+    assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
+    assert plan["provenance"]["seed_authorities"] == [
+        {
+            "dataset_id": "cn.equity.security_master",
+            "field": "ts_code",
+            "receipt_id": "receipt-stock-basic-20260718",
+            "data_through": "20260718",
+            "schema_version": "2.0.0",
+        }
+    ]
+    assert set(plan["provenance"]["seed_authorities"][0]) == {
+        "dataset_id",
+        "field",
+        "receipt_id",
+        "data_through",
+        "schema_version",
+    }
+    assert "value" not in plan["provenance"]["seed_authorities"][0]
+
+    cb_seed = {
+        "dataset_id": "cn.dataset.cb_basic",
+        "field": "ts_code",
+        "value": "110000.SH",
+        "receipt_id": "receipt-cb-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    multi_seed_plan = compile_https_probe_plan(
+        _bytes(DOCUMENTS),
+        _bytes(REQUEST_OBSERVATIONS),
+        _bytes(TRANSPORT_OBSERVATIONS),
+        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+        official_contract_sha256=_sha(DOCUMENTS),
+        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
+        dataset_field_values=[seed, cb_seed],
+    )
+    seed_authorities = multi_seed_plan["provenance"]["seed_authorities"]
+    assert [
+        (authority["dataset_id"], authority["field"]) for authority in seed_authorities
+    ] == sorted(
+        (authority["dataset_id"], authority["field"]) for authority in seed_authorities
+    )
+    assert all("value" not in authority for authority in seed_authorities)
+
+    with pytest.raises(RuntimeContractCompilationError, match="duplicate trusted seed"):
+        compile_https_probe_plan(
+            _bytes(DOCUMENTS),
+            _bytes(REQUEST_OBSERVATIONS),
+            _bytes(TRANSPORT_OBSERVATIONS),
+            registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+            official_contract_sha256=_sha(DOCUMENTS),
+            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+            expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+            run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+            scheduled_partition="20260718",
+            dataset_field_values=[seed, deepcopy(seed)],
+        )
+
+    stale = deepcopy(seed)
+    stale["fresh"] = False
+    with pytest.raises(RuntimeContractCompilationError, match="fresh success receipt"):
+        compile_https_probe_plan(
+            _bytes(DOCUMENTS),
+            _bytes(REQUEST_OBSERVATIONS),
+            _bytes(TRANSPORT_OBSERVATIONS),
+            registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+            official_contract_sha256=_sha(DOCUMENTS),
+            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+            expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+            run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+            scheduled_partition="20260718",
+            dataset_field_values=[stale],
+        )
+
+
+@pytest.mark.parametrize(
+    ("dataset_id", "field", "message"),
+    [
+        (
+            "cn.dataset.nonexistent",
+            "ts_code",
+            "references unknown seed dataset",
+        ),
+        (
+            "cn.equity.security_master",
+            "nonexistent_field",
+            "references unknown seed field",
+        ),
+    ],
+)
+def test_probe_plan_rejects_unregistered_seed_declarations_before_generation(
+    dataset_id: str,
+    field: str,
+    message: str,
+) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    daily_basic = _entry(observations, "daily_basic")
+    declaration = daily_basic["parameters"]["ts_code"]
+    declaration["dataset_id"] = dataset_id
+    declaration["field"] = field
+    seed = {
+        "dataset_id": dataset_id,
+        "field": field,
+        "value": "600000.SH",
+        "receipt_id": "receipt-stock-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        _compile_plan(
+            request_observations=observations,
+            dataset_field_values=[seed],
+        )
+
+
+def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
+    seed = {
+        "dataset_id": "cn.equity.security_master",
+        "field": "ts_code",
+        "value": "600000.SH",
+        "receipt_id": "receipt-stock-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "v1",
+        "fresh": True,
+    }
+    with pytest.raises(RuntimeContractCompilationError, match="schema_version"):
+        _compile_plan(dataset_field_values=[seed])
+
+    seed["schema_version"] = "9.9.9"
+    with pytest.raises(
+        RuntimeContractCompilationError,
+        match="schema_version does not match registered producer",
+    ):
+        _compile_plan(dataset_field_values=[seed])
+
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    producer = _entry(observations, "stock_basic")
+    producer["probe_state"] = "blocked"
+    producer["probe_block_reasons"] = ["request_anchor_unresolved"]
+    observations["counts"]["probe_executable"] = 138
+    observations["counts"]["probe_blocked"] = 52
+    seed["schema_version"] = "2.0.0"
+    with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
+        _compile_plan(
+            request_observations=observations,
+            dataset_field_values=[seed],
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("invalid_request_shape", "request_shape is unsupported"),
+        ("unsafe_variant_placeholder", "concrete finite JSON scalar"),
+        ("unsafe_variant_nested", "concrete finite JSON scalar"),
+        ("provenance_extra", "provenance keys invalid"),
+        ("provenance_source_extra", "official_contracts keys invalid"),
+        ("normalization_extra", "normalization_policy keys invalid"),
+        ("normalization_drift", "normalization_policy does not match"),
+    ],
+)
+def test_runtime_and_plan_share_closed_request_observation_front_door(
+    mutation: str,
+    message: str,
+) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    if mutation == "invalid_request_shape":
+        _entry(observations, "daily")["request_shape"] = "custom"
+    elif mutation == "unsafe_variant_placeholder":
+        _entry(observations, "stock_basic")["request_variants"][0]["list_status"] = (
+            "${window.list_status}"
+        )
+    elif mutation == "unsafe_variant_nested":
+        _entry(observations, "stock_basic")["request_variants"][0]["list_status"] = {
+            "nested": "L"
+        }
+    elif mutation == "provenance_extra":
+        observations["provenance"]["unexpected"] = "not-authority"
+    elif mutation == "provenance_source_extra":
+        observations["provenance"]["official_contracts"]["unexpected"] = True
+    elif mutation == "normalization_extra":
+        observations["normalization_policy"]["unexpected"] = True
+    else:
+        observations["normalization_policy"]["max_abs_offset_seconds"] = 1
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        _compile(request_observations=observations)
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        _compile_plan(request_observations=observations)
+
+
+def test_probe_plan_is_pure_and_does_not_require_migration_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    observations["provenance"].pop("migration_request_profiles")
+    observation_bytes = _yaml_bytes(observations)
+    document_bytes = _bytes(DOCUMENTS)
+    transport_bytes = _bytes(TRANSPORT_OBSERVATIONS)
+    registered_bytes = _bytes(UPSTREAM_CONTRACTS)
+    official_sha = _sha(DOCUMENTS)
+    transport_sha = _sha(TRANSPORT_OBSERVATIONS)
+    request_sha = hashlib.sha256(observation_bytes).hexdigest()
+
+    def _forbid_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("compile_https_probe_plan must not read files")
+
+    monkeypatch.setattr(Path, "open", _forbid_io)
+    monkeypatch.setattr(Path, "read_bytes", _forbid_io)
+    monkeypatch.setattr(Path, "read_text", _forbid_io)
+
+    plan = compile_https_probe_plan(
+        document_bytes,
+        observation_bytes,
+        transport_bytes,
+        registered_contract_bundle=registered_bytes,
+        official_contract_sha256=official_sha,
+        transport_observations_sha256=transport_sha,
+        request_observations_sha256=request_sha,
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
+    )
+    assert plan["counts"]["planned"] == 190
+
+
+@pytest.mark.parametrize(
+    ("authority", "message"),
+    [
+        ("official", "official contract bytes do not match"),
+        ("request", "request observations bytes do not match"),
+        ("transport", "transport observations bytes do not match"),
+        ("registered", "registered contract bundle bytes do not match"),
+    ],
+)
+def test_probe_plan_rejects_content_drift_behind_frozen_authority_sha(
+    authority: str,
+    message: str,
+) -> None:
+    document_bytes = _bytes(DOCUMENTS)
+    request_bytes = _bytes(REQUEST_OBSERVATIONS)
+    transport_bytes = _bytes(TRANSPORT_OBSERVATIONS)
+    registered_bytes = _bytes(UPSTREAM_CONTRACTS)
+
+    if authority == "official":
+        document = _yaml(DOCUMENTS)
+        document["provider"] = "tampered"
+        document_bytes = _yaml_bytes(document)
+    elif authority == "request":
+        request = _yaml(REQUEST_OBSERVATIONS)
+        _entry(request, "daily")["parameters"]["trade_date"]["offset_seconds"] = 86400
+        request_bytes = _yaml_bytes(request)
+    elif authority == "transport":
+        transport = _yaml(TRANSPORT_OBSERVATIONS)
+        transport["provider"] = "tampered"
+        transport_bytes = _yaml_bytes(transport)
+    else:
+        registered = _yaml(UPSTREAM_CONTRACTS)
+        registered["contracts"][0]["domain"] = "tampered"
+        registered_bytes = _yaml_bytes(registered)
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        compile_https_probe_plan(
+            document_bytes,
+            request_bytes,
+            transport_bytes,
+            registered_contract_bundle=registered_bytes,
+            official_contract_sha256=_sha(DOCUMENTS),
+            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+            expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+            run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+            scheduled_partition="20260718",
+        )
+
+
+@pytest.mark.parametrize(
+    ("authority", "message"),
+    [
+        ("official", "official contract bytes do not match"),
+        ("request", "request observations bytes do not match"),
+        ("transport", "transport observations bytes do not match"),
+        ("reviewed", "reviewed contract bundle bytes do not match"),
+    ],
+)
+def test_runtime_compiler_rejects_content_drift_behind_frozen_authority_sha(
+    authority: str,
+    message: str,
+) -> None:
+    document_bytes = _bytes(DOCUMENTS)
+    reviewed_bytes = _bytes(REVIEWED)
+    request_bytes = _bytes(REQUEST_OBSERVATIONS)
+    transport_bytes = _bytes(TRANSPORT_OBSERVATIONS)
+
+    if authority == "official":
+        document = _yaml(DOCUMENTS)
+        document["provider"] = "tampered"
+        document_bytes = _yaml_bytes(document)
+    elif authority == "request":
+        request = _yaml(REQUEST_OBSERVATIONS)
+        _entry(request, "bak_daily")["parameters"]["limit"]["value"] = 2
+        request_bytes = _yaml_bytes(request)
+    elif authority == "transport":
+        transport = _yaml(TRANSPORT_OBSERVATIONS)
+        transport["provider"] = "tampered"
+        transport_bytes = _yaml_bytes(transport)
+    else:
+        reviewed = _yaml(REVIEWED)
+        reviewed["contracts"][0]["domain"] = "tampered"
+        reviewed_bytes = _yaml_bytes(reviewed)
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        compile_runtime_contract_bundle(
+            document_bytes,
+            reviewed_bytes,
+            _bytes(POLICY),
+            request_observations=request_bytes,
+            transport_observations=transport_bytes,
+            official_contract_sha256=_sha(DOCUMENTS),
+            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("unknown_source", "parameter source"),
+        ("unknown_transform", "parameter transform"),
+        ("required_true_unmapped", "required provider parameter"),
+        ("required_unknown_executable", "unknown official requiredness"),
+        ("executable_with_reason", "probe_state=executable"),
+        ("blocked_without_reason", "probe_state=blocked"),
+        ("unsorted_reasons", "probe_block_reasons must be sorted"),
+    ],
+)
+def test_request_observation_contract_fails_closed(
+    mutation: str,
+    message: str,
+) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    if mutation == "unknown_source":
+        _entry(observations, "daily")["parameters"]["trade_date"]["source"] = "today"
+    elif mutation == "unknown_transform":
+        _entry(observations, "daily")["parameters"]["trade_date"]["transform"] = "date"
+    elif mutation == "required_true_unmapped":
+        _entry(observations, "fut_basic")["parameters"] = {}
+    elif mutation == "required_unknown_executable":
+        item = _entry(observations, "fund_company")
+        item["probe_state"] = "executable"
+        item["probe_block_reasons"] = []
+    elif mutation == "executable_with_reason":
+        _entry(observations, "daily")["probe_block_reasons"] = [
+            "request_anchor_unresolved"
+        ]
+    elif mutation == "blocked_without_reason":
+        _entry(observations, "news")["probe_block_reasons"] = []
+    else:
+        _entry(observations, "news")["probe_block_reasons"] = [
+            "required_parameter_unresolved",
+            "required_enum_unresolved",
+        ]
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        _compile(request_observations=observations)
+
+
+def test_request_observation_source_bytes_and_api_set_are_bound() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    observations["provenance"]["official_contracts"]["sha256"] = "f" * 64
+    with pytest.raises(
+        RuntimeContractCompilationError, match="official contract bytes"
+    ):
+        _compile(request_observations=observations)
+
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    observations["entries"].pop()
+    observations["counts"]["interfaces"] = 189
+    with pytest.raises(RuntimeContractCompilationError, match="exactly 190"):
+        _compile(request_observations=observations)
+
+
+def test_non_yyyymmdd_request_formats_are_declarative_only_while_paused(
+    tmp_path: Path,
+) -> None:
+    bundle = _compile()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=_yaml(TRANSPORT_OBSERVATIONS),
+    )
+    path = tmp_path / "registry.yaml"
+    path.write_text(yaml.safe_dump(registry, sort_keys=False), encoding="utf-8")
+    loaded = load_dataset_registry(path)
+    monthly = loaded.provider_binding("cn.dataset.cn_cpi", "tushare")
+    assert monthly.activation_state == "paused"
+    assert monthly.request_window_policy is not None
+    assert monthly.request_window_policy.formats["m"] == "yyyymm"
+
+    item = next(
+        dataset
+        for dataset in registry["datasets"]
+        if dataset["dataset_id"] == "cn.dataset.cn_cpi"
+    )
+    binding = item["provider_bindings"][0]
+    binding["entitlement_state"] = "active"
+    binding["activation_state"] = "active"
+    path.write_text(yaml.safe_dump(registry, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="active.*yyyymmdd"):
+        load_dataset_registry(path)
+
+
+def test_runtime_compiler_does_not_mutate_any_authority_input() -> None:
+    documents = _yaml(DOCUMENTS)
+    request_observations = _yaml(REQUEST_OBSERVATIONS)
+    transport_observations = _yaml(TRANSPORT_OBSERVATIONS)
+    before = (
+        deepcopy(documents),
+        deepcopy(request_observations),
+        deepcopy(transport_observations),
+    )
+
+    _compile(
+        documents=documents,
+        request_observations=request_observations,
+        transport_observations=transport_observations,
+    )
+
+    assert (documents, request_observations, transport_observations) == before

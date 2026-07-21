@@ -129,7 +129,28 @@ def _registry_document() -> dict[str, object]:
                         "read_discriminator_value": "tushare_synthetic_zero_code",
                         "entitlement_state": "active",
                         "activation_state": "active",
+                        "probe_state": "executable",
+                        "probe_block_reasons": [],
+                        "ingest_contract_state": "ready",
+                        "ingest_contract_block_reasons": [],
                         "target_tables": ["provider_dataset_rows"],
+                        "input_fields": [
+                            {
+                                "name": "start_date",
+                                "declared_source_type": "str",
+                                "required": False,
+                            },
+                            {
+                                "name": "end_date",
+                                "declared_source_type": "str",
+                                "required": False,
+                            },
+                            {
+                                "name": "exchange",
+                                "declared_source_type": "str",
+                                "required": False,
+                            },
+                        ],
                         "request_shape": "snapshot_or_date_range",
                         "request_template": {
                             "start_date": "${window.start_date}",
@@ -176,7 +197,15 @@ def test_observations_compile_without_dataset_specific_runtime():
     assert len(paused_apis) == 187
     assert all(bindings[api]["activation_state"] == "active" for api in active_apis)
     assert all(bindings[api]["activation_state"] == "paused" for api in paused_apis)
-    assert all(bindings[api]["request_template"] == {} for api in paused_apis)
+    executable_paused_apis = {
+        api for api in paused_apis if bindings[api]["probe_state"] == "executable"
+    }
+    assert any(
+        bindings[api]["request_template"] != {} for api in executable_paused_apis
+    )
+    assert all(
+        bindings[api]["activation_state"] == "paused" for api in executable_paused_apis
+    )
     classifications = observations["classifications"]
     active_entitlement = (
         set(classifications["validated_contract_match"])

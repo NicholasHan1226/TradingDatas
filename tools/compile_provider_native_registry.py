@@ -84,6 +84,7 @@ _CONTRACT_KEYS = frozenset(
         "source_document_url",
         "source_document_sha256",
         "schema_version",
+        "input_fields",
         "fields",
         "primary_key",
         "default_projection",
@@ -109,6 +110,10 @@ _CONTRACT_KEYS = frozenset(
         "requested_fields",
         "budgets",
         "reviewed_type_overrides",
+        "probe_state",
+        "probe_block_reasons",
+        "ingest_contract_state",
+        "ingest_contract_block_reasons",
     }
 )
 _CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {"request_window_policy"}
@@ -122,6 +127,10 @@ _FIELD_KEYS = frozenset(
         "filterable",
         "sortable",
     }
+)
+_INPUT_FIELD_KEYS = frozenset({"name", "declared_source_type", "required"})
+_INPUT_DECLARED_SOURCE_TYPES = frozenset(
+    {"None", "datetime", "float", "int", "intint", "str"}
 )
 _OBSERVATION_ROOT_KEYS = frozenset(
     {
@@ -161,6 +170,31 @@ _CLASSIFICATION_KEYS = frozenset(
 )
 _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
 _ACTIVATION_STATES = frozenset({"active", "paused"})
+_PROBE_STATES = frozenset({"executable", "blocked"})
+_INGEST_CONTRACT_STATES = frozenset({"ready", "blocked"})
+_PROBE_BLOCK_REASONS = frozenset(
+    {
+        "dependency_seed_receipt_unresolved",
+        "official_requiredness_unknown",
+        "request_anchor_unresolved",
+        "required_enum_unresolved",
+        "required_parameter_unresolved",
+    }
+)
+_INGEST_CONTRACT_BLOCK_REASONS = _PROBE_BLOCK_REASONS | {
+    "response_completeness_unresolved_at_observed_limit"
+}
+_REQUEST_WINDOW_FORMATS = frozenset(
+    {
+        "identity",
+        "local_datetime_seconds",
+        "rfc3339",
+        "yyyy_qn",
+        "yyyymm",
+        "yyyymmdd",
+        "yyyyww",
+    }
+)
 _REQUEST_SHAPES = frozenset(
     {
         "snapshot_or_date_range",
@@ -283,6 +317,44 @@ def _string_list(value: object, label: str, *, allow_empty: bool = False) -> lis
         raise ValueError(f"{label} must not be empty")
     if len(normalized) != len(set(normalized)):
         raise ValueError(f"{label} must not contain duplicates")
+    return normalized
+
+
+def _input_fields(value: object, label: str) -> list[dict[str, Any]]:
+    fields = _sequence(value, label)
+    if not fields:
+        raise ValueError(f"{label} must not be empty")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw_field in enumerate(fields):
+        field_label = f"{label}[{index}]"
+        field = _mapping(raw_field, field_label)
+        _reject_keys(field, _INPUT_FIELD_KEYS, field_label)
+        name = _required_text(field["name"], f"{field_label}.name")
+        if _SAFE_PARAMETER_NAME.fullmatch(name) is None:
+            raise ValueError(f"{field_label}.name must use provider parameter grammar")
+        if name in seen:
+            raise ValueError(f"{label} contains duplicate name: {name}")
+        seen.add(name)
+        declared_source_type = _required_text(
+            field["declared_source_type"],
+            f"{field_label}.declared_source_type",
+        )
+        if declared_source_type not in _INPUT_DECLARED_SOURCE_TYPES:
+            choices = ", ".join(sorted(_INPUT_DECLARED_SOURCE_TYPES))
+            raise ValueError(
+                f"{field_label}.declared_source_type must be one of: {choices}"
+            )
+        required = field["required"]
+        if required is not None and type(required) is not bool:
+            raise ValueError(f"{field_label}.required must be a boolean or null")
+        normalized.append(
+            {
+                "name": name,
+                "declared_source_type": declared_source_type,
+                "required": required,
+            }
+        )
     return normalized
 
 
@@ -715,7 +787,7 @@ def _window_policy(
         key: _required_text(formats[key], f"{label}.formats.{key}")
         for key in sorted(formats)
     }
-    if any(item not in {"yyyymmdd", "rfc3339"} for item in normalized_formats.values()):
+    if any(item not in _REQUEST_WINDOW_FORMATS for item in normalized_formats.values()):
         raise ValueError(f"{label}.formats contains unsupported format")
     start = _required_text(value["range_start_key"], f"{label}.range_start_key")
     end = _required_text(value["range_end_key"], f"{label}.range_end_key")
@@ -817,10 +889,28 @@ def _completeness(
     return result
 
 
-def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str, Any]:
+def _normalized_contract(
+    raw: object,
+    *,
+    index: int,
+    provider: str,
+    require_input_fields: bool,
+) -> dict[str, Any]:
     label = f"upstream contracts[{index}]"
     value = _mapping(raw, label)
-    _reject_keys(value, _CONTRACT_KEYS, label, required=_CONTRACT_REQUIRED_KEYS)
+    required_keys = (
+        _CONTRACT_REQUIRED_KEYS
+        if require_input_fields
+        else _CONTRACT_REQUIRED_KEYS
+        - {
+            "input_fields",
+            "probe_state",
+            "probe_block_reasons",
+            "ingest_contract_state",
+            "ingest_contract_block_reasons",
+        }
+    )
+    _reject_keys(value, _CONTRACT_KEYS, label, required=required_keys)
     contract_provider = _required_text(value["provider"], f"{label}.provider")
     if contract_provider != provider:
         raise ValueError(f"{label}.provider must match bundle provider")
@@ -835,6 +925,11 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
     schema_version = _required_text(value["schema_version"], f"{label}.schema_version")
     if _SCHEMA_VERSION_PATTERN.fullmatch(schema_version) is None:
         raise ValueError(f"{label}.schema_version must use MAJOR.MINOR.PATCH")
+    input_fields = (
+        _input_fields(value["input_fields"], f"{label}.input_fields")
+        if require_input_fields
+        else None
+    )
     fields = _fields(value["fields"], label)
     fields_by_name = {field["name"]: field for field in fields}
     primary_key = _string_list(
@@ -1005,6 +1100,44 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
             raise ValueError(
                 f"{label}.fields {field['name']} changes declared type without reviewed override"
             )
+    request_contract: dict[str, Any] = {}
+    if require_input_fields:
+        probe_state = _required_text(value["probe_state"], f"{label}.probe_state")
+        if probe_state not in _PROBE_STATES:
+            raise ValueError(f"{label}.probe_state is unsupported")
+        probe_reasons = _string_list(
+            value["probe_block_reasons"],
+            f"{label}.probe_block_reasons",
+            allow_empty=True,
+        )
+        if probe_reasons != sorted(probe_reasons) or not set(probe_reasons).issubset(
+            _PROBE_BLOCK_REASONS
+        ):
+            raise ValueError(f"{label}.probe_block_reasons is invalid")
+        if (probe_state == "executable") != (not probe_reasons):
+            raise ValueError(f"{label}.probe_state has inconsistent reasons")
+        ingest_state = _required_text(
+            value["ingest_contract_state"], f"{label}.ingest_contract_state"
+        )
+        if ingest_state not in _INGEST_CONTRACT_STATES:
+            raise ValueError(f"{label}.ingest_contract_state is unsupported")
+        ingest_reasons = _string_list(
+            value["ingest_contract_block_reasons"],
+            f"{label}.ingest_contract_block_reasons",
+            allow_empty=True,
+        )
+        if ingest_reasons != sorted(ingest_reasons) or not set(ingest_reasons).issubset(
+            _INGEST_CONTRACT_BLOCK_REASONS
+        ):
+            raise ValueError(f"{label}.ingest_contract_block_reasons is invalid")
+        if (ingest_state == "ready") != (not ingest_reasons):
+            raise ValueError(f"{label}.ingest_contract_state has inconsistent reasons")
+        request_contract = {
+            "probe_state": probe_state,
+            "probe_block_reasons": probe_reasons,
+            "ingest_contract_state": ingest_state,
+            "ingest_contract_block_reasons": ingest_reasons,
+        }
     cadence = _required_text(value["cadence_class"], f"{label}.cadence_class")
     if cadence not in _CADENCE_CLASSES:
         raise ValueError(f"{label}.cadence_class is unsupported")
@@ -1029,6 +1162,7 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         ),
         "source_document_sha256": source_hash,
         "schema_version": schema_version,
+        **({"input_fields": input_fields} if input_fields is not None else {}),
         "fields": fields,
         "primary_key": primary_key,
         "default_projection": default_projection,
@@ -1058,6 +1192,7 @@ def _normalized_contract(raw: object, *, index: int, provider: str) -> dict[str,
         "requested_fields": requested_fields,
         "budgets": budgets,
         "reviewed_type_overrides": overrides,
+        **request_contract,
     }
 
 
@@ -1083,11 +1218,29 @@ def load_upstream_contract_bundle(document: Mapping[str, Any]) -> dict[str, Any]
         raise ValueError("upstream contract bundle provenance commit must be a git SHA")
     if _HASH_PATTERN.fullmatch(normalized_provenance["index_sha256"]) is None:
         raise ValueError("upstream contract bundle provenance index must be SHA-256")
-    contracts = [
-        _normalized_contract(item, index=index, provider=provider)
-        for index, item in enumerate(
-            _sequence(root["contracts"], "upstream contract bundle.contracts")
+    raw_contracts = _sequence(root["contracts"], "upstream contract bundle.contracts")
+    contract_values = [
+        _mapping(item, f"upstream contracts[{index}]")
+        for index, item in enumerate(raw_contracts)
+    ]
+    # The phase-1 compiler reuses this normalizer before it attaches official
+    # input declarations. Preserve that all-or-none pre-attachment path without
+    # synthesizing defaults; the downstream compiler below still rejects it.
+    input_field_presence = ["input_fields" in item for item in contract_values]
+    if any(input_field_presence) and not all(input_field_presence):
+        missing_index = input_field_presence.index(False)
+        raise ValueError(
+            f"upstream contracts[{missing_index}] is missing key(s): input_fields"
         )
+    require_input_fields = bool(contract_values) and all(input_field_presence)
+    contracts = [
+        _normalized_contract(
+            item,
+            index=index,
+            provider=provider,
+            require_input_fields=require_input_fields,
+        )
+        for index, item in enumerate(contract_values)
     ]
     by_dataset: dict[str, dict[str, Any]] = {}
     by_api: dict[str, str] = {}
@@ -1192,6 +1345,15 @@ def _apply_observed_schema_subset(
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
+    if activation is not None and activation["activation_state"] == "active":
+        if contract["probe_state"] != "executable":
+            raise ValueError(
+                f"{contract['api_name']} cannot activate while probe_state is blocked"
+            )
+        if contract["ingest_contract_state"] != "ready":
+            raise ValueError(
+                f"{contract['api_name']} cannot activate while ingest contract is blocked"
+            )
     binding = {
         "provider": contract["provider"],
         "api_name": contract["api_name"],
@@ -1203,7 +1365,14 @@ def _compiled_dataset(
         "activation_state": "paused"
         if activation is None
         else activation["activation_state"],
+        "probe_state": contract["probe_state"],
+        "probe_block_reasons": list(contract["probe_block_reasons"]),
+        "ingest_contract_state": contract["ingest_contract_state"],
+        "ingest_contract_block_reasons": list(
+            contract["ingest_contract_block_reasons"]
+        ),
         "target_tables": [PROVIDER_NATIVE_TABLE],
+        "input_fields": deepcopy(contract["input_fields"]),
         "request_shape": contract["request_shape"],
         "request_template": deepcopy(contract["request_template"]),
         "request_variants": deepcopy(contract["request_variants"]),
@@ -1273,6 +1442,16 @@ def compile_provider_native_registry(
     """Return the deterministic single-authority registry document."""
 
     bundle = load_upstream_contract_bundle(upstream_contracts)
+    missing_input_contracts = [
+        contract["api_name"]
+        for contract in bundle["contracts"]
+        if "input_fields" not in contract
+    ]
+    if missing_input_contracts:
+        raise ValueError(
+            "upstream contract bundle is missing input_fields for API: "
+            f"{missing_input_contracts[0]}"
+        )
     observations = _observation_index(observations_document, bundle["contracts"])
     return {
         "version": 1,

@@ -105,6 +105,27 @@ def test_contract_bundle_is_the_only_dataset_authority_and_inputs_are_immutable(
         assert binding.target_tables == ("provider_dataset_rows",)
 
 
+def test_compiler_projects_all_input_fields_byte_for_byte() -> None:
+    bundle = _bundle()
+    registry = compile_provider_native_registry(bundle)
+    contracts = {contract["api_name"]: contract for contract in bundle["contracts"]}
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+
+    assert len(contracts) == 190
+    assert set(bindings) == set(contracts)
+    for api_name, contract in contracts.items():
+        input_fields = contract["input_fields"]
+        assert input_fields
+        assert bindings[api_name]["input_fields"] == input_fields
+        assert all(
+            set(input_field) == {"name", "declared_source_type", "required"}
+            for input_field in input_fields
+        )
+
+
 def test_numeric_leading_provider_fields_compile_without_per_api_code() -> None:
     registry = compile_provider_native_registry(_bundle())
     by_api = {
@@ -242,6 +263,63 @@ def test_bundle_contracts_fail_closed(
         load_upstream_contract_bundle(bundle)
 
 
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda item: item.pop("input_fields"),
+            "missing key.*input_fields",
+        ),
+        (
+            lambda item: item["input_fields"].append(  # type: ignore[index,union-attr]
+                deepcopy(item["input_fields"][0])  # type: ignore[index]
+            ),
+            "input_fields.*duplicate",
+        ),
+        (
+            lambda item: item["input_fields"][0].update(extra=True),  # type: ignore[index,union-attr]
+            "input_fields.*unknown key",
+        ),
+        (
+            lambda item: item["input_fields"][0].pop("required"),  # type: ignore[index,union-attr]
+            "missing key.*required",
+        ),
+        (
+            lambda item: item["input_fields"][0].update(  # type: ignore[index,union-attr]
+                declared_source_type="string"
+            ),
+            "declared_source_type.*one of",
+        ),
+        (
+            lambda item: item["input_fields"][0].update(required="N"),  # type: ignore[index,union-attr]
+            "required.*boolean or null",
+        ),
+        (
+            lambda item: item.update(input_fields=[]),
+            "input_fields.*must not be empty",
+        ),
+    ],
+)
+def test_input_field_contracts_fail_closed(
+    mutator: object,
+    message: str,
+) -> None:
+    bundle = _bundle()
+    mutator(_trade_calendar(bundle))  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_upstream_contract_bundle(bundle)
+
+
+def test_downstream_compiler_rejects_fully_legacy_bundle_without_input_fields() -> None:
+    bundle = _bundle()
+    for contract in bundle["contracts"]:
+        contract.pop("input_fields")
+
+    with pytest.raises(ValueError, match="missing input_fields"):
+        compile_provider_native_registry(bundle)
+
+
 def test_catalog_only_append_only_contract_can_defer_unverified_primary_key() -> None:
     bundle = _bundle()
     contract = _trade_calendar(bundle)
@@ -312,9 +390,10 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
     loaded = load_dataset_registry(TARGET_PATH)
     active_dataset_ids: set[str] = set()
     paused_dataset_ids: set[str] = set()
+    request_shapes: set[str] = set()
     for dataset in loaded.datasets:
         binding = dataset.provider_bindings[0]
-        assert binding.request_shape == "snapshot_or_date_range"
+        request_shapes.add(binding.request_shape)
         assert binding.fanout is not None
         assert binding.pagination is not None
         if binding.activation_state == "active":
@@ -329,6 +408,19 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         "cn.market.trade_calendar",
     }
     assert len(paused_dataset_ids) == 187
+    assert request_shapes == {
+        "snapshot_or_date_range",
+        "entity_fanout",
+        "event_or_intraday_window",
+    }
+    assert request_shapes.issubset(
+        {
+            "snapshot_or_date_range",
+            "entity_fanout",
+            "dimension_fanout",
+            "event_or_intraday_window",
+        }
+    )
 
 
 def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(

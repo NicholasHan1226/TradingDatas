@@ -117,7 +117,12 @@ _BINDING_KEYS = frozenset(
         "read_discriminator_value",
         "entitlement_state",
         "activation_state",
+        "probe_state",
+        "probe_block_reasons",
+        "ingest_contract_state",
+        "ingest_contract_block_reasons",
         "target_tables",
+        "input_fields",
         "request_shape",
         "request_template",
         "request_variants",
@@ -173,9 +178,15 @@ _BINDING_REQUIRED_KEYS = frozenset(
         "read_discriminator_value",
         "entitlement_state",
         "activation_state",
+        "probe_state",
+        "probe_block_reasons",
+        "ingest_contract_state",
+        "ingest_contract_block_reasons",
         "target_tables",
+        "input_fields",
     }
 )
+_INPUT_FIELD_KEYS = frozenset({"name", "declared_source_type", "required"})
 _READ_MODEL_ADAPTER_KEYS = frozenset(
     {
         "adapter_version",
@@ -197,6 +208,9 @@ _READ_MODEL_ADAPTER_REQUIRED_KEYS = frozenset(
 _FIXED_FILTER_KEYS = frozenset({"field", "allowed_values"})
 
 _LOGICAL_TYPES = frozenset({"text", "float", "integer"})
+_INPUT_DECLARED_SOURCE_TYPES = frozenset(
+    {"None", "datetime", "float", "int", "intint", "str"}
+)
 _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
 _ACTIVATION_STATES = frozenset({"active", "paused"})
 _POINT_IN_TIME_MODES = frozenset({"append_only", "current_snapshot", "unsupported"})
@@ -205,7 +219,31 @@ _EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
 _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
 _AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
-_REQUEST_WINDOW_FORMATS = frozenset({"yyyymmdd"})
+_REQUEST_WINDOW_FORMATS = frozenset(
+    {
+        "identity",
+        "local_datetime_seconds",
+        "rfc3339",
+        "yyyy_qn",
+        "yyyymm",
+        "yyyymmdd",
+        "yyyyww",
+    }
+)
+_PROBE_STATES = frozenset({"executable", "blocked"})
+_INGEST_CONTRACT_STATES = frozenset({"ready", "blocked"})
+_PROBE_BLOCK_REASONS = frozenset(
+    {
+        "dependency_seed_receipt_unresolved",
+        "official_requiredness_unknown",
+        "request_anchor_unresolved",
+        "required_enum_unresolved",
+        "required_parameter_unresolved",
+    }
+)
+_INGEST_CONTRACT_BLOCK_REASONS = _PROBE_BLOCK_REASONS | {
+    "response_completeness_unresolved_at_observed_limit"
+}
 _REQUEST_SHAPES = frozenset(
     {
         "snapshot_or_date_range",
@@ -344,6 +382,15 @@ class PaginationPolicy:
 
 
 @dataclass(frozen=True)
+class ProviderInputField:
+    """One immutable provider request-input declaration."""
+
+    name: str
+    declared_source_type: str
+    required: bool | None
+
+
+@dataclass(frozen=True)
 class ProviderBinding:
     """One provider ingest binding; public reads use ``ReadModelAdapter``."""
 
@@ -354,6 +401,11 @@ class ProviderBinding:
     entitlement_state: str
     activation_state: str
     target_tables: tuple[str, ...]
+    probe_state: str = "executable"
+    probe_block_reasons: tuple[str, ...] = ()
+    ingest_contract_state: str = "ready"
+    ingest_contract_block_reasons: tuple[str, ...] = ()
+    input_fields: tuple[ProviderInputField, ...] = ()
     request_shape: str | None = None
     request_template: Mapping[str, str] = dataclass_field(
         default_factory=lambda: MappingProxyType({})
@@ -679,6 +731,39 @@ def _provider_parameter_name(value: Any, path: str) -> str:
     return name
 
 
+def _provider_input_fields(raw: Any, path: str) -> tuple[ProviderInputField, ...]:
+    if not isinstance(raw, list):
+        raise ValueError(f"{path} must be a list")
+    if not raw:
+        raise ValueError(f"{path} must not be empty")
+    normalized: list[ProviderInputField] = []
+    seen: set[str] = set()
+    for index, raw_field in enumerate(raw):
+        field_path = f"{path}[{index}]"
+        value = _mapping(raw_field, field_path)
+        _reject_unknown_keys(value, _INPUT_FIELD_KEYS, field_path)
+        name = _provider_parameter_name(value["name"], f"{field_path}.name")
+        if name in seen:
+            raise ValueError(f"{path} contains duplicate name: {name}")
+        seen.add(name)
+        declared_source_type = _choice(
+            value["declared_source_type"],
+            _INPUT_DECLARED_SOURCE_TYPES,
+            f"{field_path}.declared_source_type",
+        )
+        required = value["required"]
+        if required is not None and type(required) is not bool:
+            raise ValueError(f"{field_path}.required must be a boolean or null")
+        normalized.append(
+            ProviderInputField(
+                name=name,
+                declared_source_type=declared_source_type,
+                required=required,
+            )
+        )
+    return tuple(normalized)
+
+
 def _request_template(raw: Any, path: str) -> Mapping[str, str]:
     value = _mapping(raw, path)
     normalized: dict[str, str] = {}
@@ -783,9 +868,7 @@ def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
     _reject_unknown_keys(value, _FANOUT_KEYS, path, required=_FANOUT_KEYS)
     return FanoutPolicy(
         strategy="dataset_field",
-        parameter=_provider_parameter_name(
-            value["parameter"], f"{path}.parameter"
-        ),
+        parameter=_provider_parameter_name(value["parameter"], f"{path}.parameter"),
         source_dataset_id=_non_empty_string(
             value["source_dataset_id"], f"{path}.source_dataset_id"
         ),
@@ -1145,8 +1228,42 @@ def _load_binding(
         _ACTIVATION_STATES,
         f"{path}.activation_state",
     )
+    probe_state = _choice(value["probe_state"], _PROBE_STATES, f"{path}.probe_state")
+    probe_block_reasons = _string_tuple(
+        value["probe_block_reasons"],
+        f"{path}.probe_block_reasons",
+        allow_empty=True,
+    )
+    if (
+        list(probe_block_reasons) != sorted(probe_block_reasons)
+        or not set(probe_block_reasons).issubset(_PROBE_BLOCK_REASONS)
+        or (probe_state == "executable") != (not probe_block_reasons)
+    ):
+        raise ValueError(f"{path}.probe_state/reasons are inconsistent")
+    ingest_contract_state = _choice(
+        value["ingest_contract_state"],
+        _INGEST_CONTRACT_STATES,
+        f"{path}.ingest_contract_state",
+    )
+    ingest_contract_block_reasons = _string_tuple(
+        value["ingest_contract_block_reasons"],
+        f"{path}.ingest_contract_block_reasons",
+        allow_empty=True,
+    )
+    if (
+        list(ingest_contract_block_reasons) != sorted(ingest_contract_block_reasons)
+        or not set(ingest_contract_block_reasons).issubset(
+            _INGEST_CONTRACT_BLOCK_REASONS
+        )
+        or (ingest_contract_state == "ready") != (not ingest_contract_block_reasons)
+    ):
+        raise ValueError(f"{path}.ingest_contract_state/reasons are inconsistent")
     target_tables = _string_tuple(value["target_tables"], f"{path}.target_tables")
     _reject_duplicate_strings(target_tables, f"{path}.target_tables")
+    input_fields = _provider_input_fields(
+        value["input_fields"],
+        f"{path}.input_fields",
+    )
     request_shape = (
         None
         if "request_shape" not in value
@@ -1209,6 +1326,17 @@ def _load_binding(
             raise ValueError(
                 f"{path} activation_state=active requires entitlement_state=active"
             )
+        if probe_state != "executable" or ingest_contract_state != "ready":
+            raise ValueError(
+                f"{path} activation_state=active requires executable/ready request contract"
+            )
+        if request_window_policy is not None and any(
+            format_name != "yyyymmdd"
+            for format_name in request_window_policy.formats.values()
+        ):
+            raise ValueError(
+                f"{path} activation_state=active requires yyyymmdd request windows"
+            )
     return ProviderBinding(
         provider=provider,
         api_name=api_name,
@@ -1216,7 +1344,12 @@ def _load_binding(
         read_discriminator_value=read_discriminator_value,
         entitlement_state=entitlement_state,
         activation_state=activation_state,
+        probe_state=probe_state,
+        probe_block_reasons=probe_block_reasons,
+        ingest_contract_state=ingest_contract_state,
+        ingest_contract_block_reasons=ingest_contract_block_reasons,
         target_tables=target_tables,
+        input_fields=input_fields,
         request_shape=request_shape,
         request_template=request_template,
         request_variants=request_variants,

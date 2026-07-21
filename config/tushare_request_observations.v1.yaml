@@ -1,0 +1,3702 @@
+version: 1
+contract_id: tushare-request-observations.v1
+provider: tushare
+transport_service: quicksync
+authority_scope: request_mapping_only
+production_ready: false
+provenance:
+  official_contracts:
+    path: config/tushare_document_contracts.v1.yaml
+    sha256: 2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da
+  quicksync_interface_observations:
+    path: config/quicksync_interface_observations.v1.yaml
+    sha256: cfe936c6f97cd69ee6a94f4628c2c4eebed13c4b516d9e6c27c953ded73d4afa
+  reviewed_contract_bundle:
+    path: config/tushare_reviewed_contracts.v1.yaml
+    sha256: 117369d0a1c097c7a2492acfc42c6d1520856bb3ba3fd864de3799feb75fed13
+  registered_contract_bundle:
+    path: config/tushare_upstream_contracts.v1.yaml
+    sha256: c9ba89a5938cc4ce7339d25e853e02986dbc4d75f97cb013803315c561f62bae
+  migration_request_profiles:
+    path: config/tushare_request_profiles.v1.yaml
+    sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
+    authority: false
+    role: reviewed_mapping_hint_only
+  matrix_evidence:
+    schema_version: tradingdatas.quicksync.final_interface_matrix.v2
+    sha256: ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1
+    observed_at: '2026-07-20T17:27:05.973228+00:00'
+    api_names_sha256: 5662a3b76827ac153086c37c0da74e1dbc675c13c67c9f68485a8002cd6e7de0
+    interface_count: 190
+    interface_probe_scheme: http
+    production_ready: false
+  api_names_sha256: 5662a3b76827ac153086c37c0da74e1dbc675c13c67c9f68485a8002cd6e7de0
+  interface_count: 190
+normalization_policy:
+  allowed_parameter_sources:
+  - dataset_field
+  - literal
+  - run_clock
+  - scheduled_partition
+  allowed_transforms:
+  - identity
+  - local_datetime_seconds
+  - rfc3339
+  - yyyy_qn
+  - yyyymm
+  - yyyymmdd
+  - yyyyww
+  max_abs_offset_seconds: 31622400
+  required_true_must_be_mapped_or_probe_blocked: true
+  required_unknown_must_be_probe_blocked: true
+  blocked_plan_params_must_be_empty: true
+  ingest_contract_is_independent_from_probe: true
+reason_codes:
+  probe:
+  - dependency_seed_receipt_unresolved
+  - official_requiredness_unknown
+  - request_anchor_unresolved
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  ingest_contract:
+  - dependency_seed_receipt_unresolved
+  - official_requiredness_unknown
+  - request_anchor_unresolved
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  - response_completeness_unresolved_at_observed_limit
+counts:
+  interfaces: 190
+  probe_executable: 139
+  probe_blocked: 51
+  ingest_contract_ready: 124
+  ingest_contract_blocked: 66
+  row_limit_ingest_contract_blocked: 15
+entries:
+- api_name: adj_factor
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: anns_d
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bak_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bak_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    limit:
+      source: literal
+      value: 1
+    offset:
+      source: literal
+      value: 0
+  row_limit_observation: null
+- api_name: balancesheet
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: bc_bestotcqt
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bc_otcqt
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 5000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: block_trade
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bond_blk
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bond_blk_detail
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: broker_recommend
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    month:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: bse_mapping
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: cashflow
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cb_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: cb_call
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cb_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cb_factor_pro
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cb_issue
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cb_price_chg
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.cb_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cb_rate
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.cb_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cb_rating
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.cb_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cb_share
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.cb_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cctv_news
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ci_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ci_index_member
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation:
+    observed_count: 5000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: cn_cpi
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cn_gdp
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    q:
+      source: run_clock
+      transform: yyyy_qn
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cn_m
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cn_pmi
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cn_ppi
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cn_schedule
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: cyq_chips
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: cyq_perf
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: scheduled_partition
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: daily_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: daily_info
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: dc_concept
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: dc_concept_cons
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 3000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: dc_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: dc_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    idx_type:
+      source: literal
+      value: 行业板块
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: dc_member
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 5000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: disclosure_date
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: dividend
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: etf_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: etf_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    pub_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: etf_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: etf_sh_cons
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: unsupported
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: etf_share_size
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: etf_sz_cons
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 3000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: express
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: fina_audit
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: fina_indicator
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: fina_mainbz
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+    type:
+      source: literal
+      value: P
+  row_limit_observation: null
+- api_name: forecast
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ft_limit
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ft_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.fut_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: fund_adj
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    limit:
+      source: literal
+      value: 1
+    offset:
+      source: literal
+      value: 0
+  row_limit_observation: null
+- api_name: fund_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: fund_company
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: quality_anomaly
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - official_requiredness_unknown
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - official_requiredness_unknown
+  unresolved_parameter_keys:
+  - address
+  - chairman
+  - city
+  - credit_code
+  - employees
+  - end_date
+  - main_business
+  - manager
+  - name
+  - office
+  - org_code
+  - phone
+  - province
+  - reg_capital
+  - setup_date
+  - short_enname
+  - shortname
+  - website
+  parameters:
+    setup_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fund_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 2000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: fund_div
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fund_factor_pro
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fund_manager
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    limit:
+      source: literal
+      value: 1
+    offset:
+      source: literal
+      value: 0
+  row_limit_observation: null
+- api_name: fund_nav
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    nav_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 6000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: fund_portfolio
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fund_share
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    exchange:
+      source: literal
+      value: CFFEX
+  request_variants:
+  - exchange: CFFEX
+  - exchange: DCE
+  - exchange: CZCE
+  - exchange: SHFE
+  - exchange: INE
+  - exchange: GFEX
+  row_limit_observation: null
+- api_name: fut_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_holding
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 2000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: fut_index_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_mapping
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_settle
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_trade_cal
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: unsupported
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_weekly_detail
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: credential_rejected
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    week:
+      source: run_clock
+      transform: yyyyww
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_weekly_monthly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: week
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: fut_wsr
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 1000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: gz_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: hk_hold
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: hm_detail
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: hm_list
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: hsgt_top10
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: idx_factor_pro
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: idx_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: income
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: index_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation:
+    observed_count: 6000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: index_classify
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: index_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: index_dailybasic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: index_member_all
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation:
+    observed_count: 2000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: index_monthly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: index_weekly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 1000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: index_weight
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    index_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: irm_qa_sh
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: irm_qa_sz
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: kpl_concept_cons
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 3000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: kpl_list
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: limit_cpt_list
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: limit_list_d
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: limit_list_ths
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: limit_step
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: major_news
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: event_or_intraday_window
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+  row_limit_observation: null
+- api_name: margin
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: margin_detail
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: margin_secs
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: mkt_idx_bmk
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: monetary_policy
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: unsupported
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_cnt_ths
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_dc
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_hsgt
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_ind_dc
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_ind_ths
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_mkt_dc
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: moneyflow_ths
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: monthly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: namechange
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: new_share
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: news
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: event_or_intraday_window
+  probe_state: blocked
+  probe_block_reasons:
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  unresolved_parameter_keys:
+  - src
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+  row_limit_observation: null
+- api_name: npr
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: event_or_intraday_window
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+  row_limit_observation: null
+- api_name: opt_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: opt_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation:
+    observed_count: 15000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: opt_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.opt_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: pledge_detail
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: pledge_stat
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: repo_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: report_rc
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    report_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: repurchase
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: research_report
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: rt_etf_k
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    topic:
+      source: literal
+      value: HQ_FND_TICK
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_etf_min
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: unsupported
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_etf_min_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: unsupported
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_etf_sz_iopv
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: rt_fut_min
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.fut_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_idx_k
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_idx_min
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_k
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_min
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_min_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: empty
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: 1MIN
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: rt_sw_k
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: sf_month
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    m:
+      source: run_clock
+      transform: yyyymm
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: sge_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: sge_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: share_float
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: shibor
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: numeric_field_repaired
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: shibor_lpr
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: numeric_field_repaired
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: shibor_quote
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: numeric_field_repaired
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: slb_len
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: st
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    pub_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_alert
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: empty
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_auction
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_auction_c
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_auction_o
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_factor
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_factor_pro
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_high_shock
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: empty
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_holdernumber
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_holdertrade
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_limit
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_managers
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: stk_nineturn
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: event_or_intraday_window
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_premarket
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_rewards
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: stk_shock
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_surv
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_week_month_adj
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: week
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stk_weekly_monthly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    freq:
+      source: literal
+      value: week
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stock_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    list_status:
+      source: literal
+      value: L
+  row_limit_observation: null
+  request_variants:
+  - list_status: L
+  - list_status: D
+  - list_status: P
+- api_name: stock_company
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - official_requiredness_unknown
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - official_requiredness_unknown
+  - request_anchor_unresolved
+  unresolved_parameter_keys:
+  - exchange
+  - ts_code
+  parameters: {}
+  row_limit_observation: null
+- api_name: stock_hsgt
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - required_enum_unresolved
+  - required_parameter_unresolved
+  unresolved_parameter_keys:
+  - type
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: stock_st
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: suspend_d
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: sw_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: sw_mins
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: 0
+    freq:
+      source: literal
+      value: 1min
+    start_date:
+      source: run_clock
+      transform: local_datetime_seconds
+      offset_seconds: -60
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_classify
+      field: index_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: sz_daily_info
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: tdx_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: numeric_field_repaired
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: tdx_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: tdx_member
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ths_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: ths_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: ths_member
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: blocked
+  probe_block_reasons:
+  - request_anchor_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - request_anchor_unresolved
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation:
+    observed_count: 6000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
+- api_name: top10_cb_holders
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: schema_subset
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.cb_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: top10_floatholders
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: top10_holders
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  unresolved_parameter_keys: []
+  parameters:
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+  row_limit_observation: null
+- api_name: top_inst
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: top_list
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: trade_cal
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    end_date:
+      source: scheduled_partition
+      transform: yyyymmdd
+      offset_seconds: 0
+    exchange:
+      source: literal
+      value: SSE
+    start_date:
+      source: scheduled_partition
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: weekly
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: wz_index
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
+- api_name: yc_cb
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: permission_denied
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+  row_limit_observation: null
