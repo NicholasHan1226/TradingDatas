@@ -824,6 +824,20 @@ def _redact_sensitive_text(
     return safe_message
 
 
+_PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+
+
+def _validated_response_fields(value: Any) -> tuple[str, ...]:
+    if type(value) is not tuple or any(
+        type(field) is not str or _PROVIDER_FIELD_NAME.fullmatch(field) is None
+        for field in value
+    ):
+        raise ValueError("provider outcome response fields are invalid")
+    if len(set(value)) != len(value):
+        raise ValueError("provider outcome response fields must be unique")
+    return value
+
+
 @dataclass(frozen=True)
 class ProviderCallOutcome:
     """Provider truth preserved through provider-neutral row normalization."""
@@ -833,6 +847,7 @@ class ProviderCallOutcome:
     provider_code: int | str | None
     error_code: str | None
     error_message: str | None
+    response_fields: tuple[str, ...] = ()
     sensitive_values: InitVar[Any] = ()
     scan_budget: InitVar[SensitiveScanBudget | None] = None
     _validation_scan_budget: SensitiveScanBudget = field(
@@ -910,6 +925,11 @@ class ProviderCallOutcome:
         object.__setattr__(self, "provider_code", provider_code)
         object.__setattr__(self, "error_code", error_code)
         object.__setattr__(self, "error_message", error_message)
+        object.__setattr__(
+            self,
+            "response_fields",
+            _validated_response_fields(self.response_fields),
+        )
         self.validate_invariants()
 
     def validate_invariants(self) -> None:
@@ -919,6 +939,15 @@ class ProviderCallOutcome:
             raise ValueError("provider outcome success requires non-empty rows")
         if self.state in ("empty", "failed") and self.rows:
             raise ValueError(f"provider outcome {self.state} must not contain rows")
+        response_fields = _validated_response_fields(self.response_fields)
+        if self.state == "failed" and response_fields:
+            raise ValueError("provider outcome failed must not contain response fields")
+        if (
+            self.state == "success"
+            and response_fields
+            and any(tuple(row) != response_fields for row in self.rows)
+        ):
+            raise ValueError("provider outcome response fields do not match rows")
         try:
             budget = object.__getattribute__(self, "_validation_scan_budget")
             if type(self.rows) is not tuple or any(
@@ -1193,7 +1222,6 @@ _PERMISSION_DENIED_PATTERNS = (
         rf"{_CHINESE_RETRY_SUFFIX}"
     ),
 )
-_PROVIDER_FIELD_NAME = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 
 
 def _provider_error_code(provider_code: int | str | None, message: str) -> str:
@@ -1252,7 +1280,9 @@ def _loads_provider_json(payload: str) -> Any:
     return body
 
 
-def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
+def _strict_provider_response(
+    data: Any,
+) -> tuple[tuple[str, ...], tuple[dict[str, Any], ...]]:
     if not isinstance(data, dict):
         raise _ProviderResponseValidationError(
             "Tushare response data must be a mapping"
@@ -1297,7 +1327,11 @@ def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
                 f"{len(fields)} values"
             )
         rows.append(dict(zip(fields, row)))
-    return tuple(rows)
+    return tuple(fields), tuple(rows)
+
+
+def _strict_provider_rows(data: Any) -> tuple[dict[str, Any], ...]:
+    return _strict_provider_response(data)[1]
 
 
 def _provider_response_metadata(body: Mapping[str, Any]) -> dict[str, Any]:
@@ -1601,7 +1635,9 @@ class _QuickSyncNodeState:
 
     def record_pre_send_failure(self, node: _QuickSyncNode) -> None:
         with self._lock:
-            self._cooldowns[node.key] = time.monotonic() + _QUICKSYNC_NODE_COOLDOWN_SECONDS
+            self._cooldowns[node.key] = (
+                time.monotonic() + _QUICKSYNC_NODE_COOLDOWN_SECONDS
+            )
             if self._last_known_good == node.key:
                 self._last_known_good = None
 
@@ -1768,9 +1804,7 @@ def _provider_urlopen(
         parsed = urllib.parse.urlsplit(request.full_url)
         target = parsed.path or "/"
         headers = {
-            key: value
-            for key, value in request.header_items()
-            if key.lower() != "host"
+            key: value for key, value in request.header_items() if key.lower() != "host"
         }
         headers["Host"] = _QUICKSYNC_TUSHARE_HOST
         last_error: Exception | None = None
@@ -1993,7 +2027,7 @@ def tushare_rows_outcome(
             raise _ProviderResponseValidationError(_redacted_diagnostic_summary())
         if "data" not in body:
             raise _ProviderResponseValidationError("Tushare response must contain data")
-        rows = _strict_provider_rows(body["data"])
+        response_fields, rows = _strict_provider_response(body["data"])
         return ProviderCallOutcome(
             state="success" if rows else "empty",
             rows=rows,
@@ -2004,6 +2038,7 @@ def tushare_rows_outcome(
             ),
             error_code=None,
             error_message=None,
+            response_fields=response_fields,
             sensitive_values=sensitive_values,
             scan_budget=scan_budget,
         )

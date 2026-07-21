@@ -114,6 +114,48 @@ _PERMISSION_DENIED_MESSAGES = (
     re.compile(r"(?:抱歉[，,]\s*)?(?:您|你|用户|账户)没有访问该接口的权限[。.!]?"),
     re.compile(r"(?:该|此)?接口权限(?:不足|被拒绝|未开通)[。.!]?"),
 )
+_UNSUPPORTED_MESSAGES = (
+    re.compile(r"(?:api|endpoint|interface)\s+is\s+unsupported[.!]?"),
+    re.compile(r"unsupported\s+(?:api|endpoint|interface)[.!]?"),
+    re.compile(r"(?:api|接口|端点)(?:不受支持|不支持)[。.!]?"),
+)
+_NOT_MAPPED_MESSAGES = (
+    re.compile(r"(?:api|endpoint|interface)\s+is\s+not\s+mapped[.!]?"),
+    re.compile(r"no\s+mapping\s+(?:exists\s+)?for\s+(?:api|endpoint|interface)[.!]?"),
+    re.compile(r"(?:api|接口|端点)(?:未映射|未注册|未实现)[。.!]?"),
+)
+_PARAMETER_ERROR_MESSAGES = (
+    re.compile(r"(?:invalid|missing)\s+(?:request\s+)?parameters?[.!]?"),
+    re.compile(r"parameter\s+error[.!]?"),
+    re.compile(r"required\s+parameter\s+is\s+missing[.!]?"),
+    re.compile(r"(?:请求)?参数(?:错误|无效|缺失|不正确)[。.!]?"),
+)
+_PROVIDER_FAILURE_MESSAGES = (
+    ("credential_rejected", _CREDENTIAL_REJECTED_MESSAGES),
+    ("permission_denied", _PERMISSION_DENIED_MESSAGES),
+    ("unsupported", _UNSUPPORTED_MESSAGES),
+    ("not_mapped", _NOT_MAPPED_MESSAGES),
+    ("parameter_error", _PARAMETER_ERROR_MESSAGES),
+)
+_PROVIDER_FAILURE_CLASSES = frozenset(
+    {
+        "permission_denied",
+        "credential_rejected",
+        "unsupported",
+        "not_mapped",
+        "parameter_error",
+        "provider_failed_unclassified",
+    }
+)
+_RESULT_STATES = _PROVIDER_FAILURE_CLASSES | {
+    "success",
+    "valid_empty",
+    "field_contract_mismatch",
+}
+_RESULT_PROVIDER_CLASSES = _PROVIDER_FAILURE_CLASSES | {
+    "ok",
+    "field_contract_mismatch",
+}
 
 
 class ProbeValidationError(RuntimeError):
@@ -1024,11 +1066,9 @@ def _provider_class(outcome: ProviderCallOutcome) -> tuple[str, str]:
     if outcome.state in {"success", "empty"}:
         if outcome.provider_code not in {0, "0"} or outcome.error_code is not None:
             raise ProbeExecutionError("provider success envelope is inconsistent")
-        return outcome.state, "ok"
+        return ("success" if outcome.state == "success" else "valid_empty"), "ok"
     if outcome.state != "failed":
         raise ProbeExecutionError("provider outcome state is invalid")
-    if outcome.error_code == "permission_denied":
-        return "permission_denied", "permission_denied"
     if outcome.error_code == "rate_limited":
         raise ProbeExecutionError("provider rate limit was reached")
     if outcome.error_code == "resource_budget":
@@ -1036,15 +1076,24 @@ def _provider_class(outcome: ProviderCallOutcome) -> tuple[str, str]:
     if outcome.error_code == "transport_error":
         raise ProbeExecutionError("provider transport failed")
     if type(outcome.error_message) is not str or "[REDACTED]" in outcome.error_message:
-        return "provider_failed", "provider_failed"
-    if outcome.error_code != "provider_error":
-        return "provider_failed", "provider_failed"
+        return "provider_failed_unclassified", "provider_failed_unclassified"
+    if outcome.error_code not in {"provider_error", "permission_denied"}:
+        return "provider_failed_unclassified", "provider_failed_unclassified"
     normalized = " ".join(outcome.error_message.casefold().split())
-    if any(pattern.fullmatch(normalized) for pattern in _CREDENTIAL_REJECTED_MESSAGES):
-        return "credential_rejected", "credential_rejected"
-    if any(pattern.fullmatch(normalized) for pattern in _PERMISSION_DENIED_MESSAGES):
-        return "permission_denied", "permission_denied"
-    return "provider_failed", "provider_failed"
+    matches = [
+        classification
+        for classification, patterns in _PROVIDER_FAILURE_MESSAGES
+        if any(pattern.fullmatch(normalized) for pattern in patterns)
+    ]
+    if len(matches) != 1:
+        return "provider_failed_unclassified", "provider_failed_unclassified"
+    classification = matches[0]
+    if (
+        outcome.error_code == "permission_denied"
+        and classification != "permission_denied"
+    ):
+        return "provider_failed_unclassified", "provider_failed_unclassified"
+    return classification, classification
 
 
 def _call_entry(
@@ -1084,6 +1133,13 @@ def _call_entry(
     except Exception as exc:
         raise ProbeExecutionError("provider outcome invariants failed") from exc
     state, provider_class = _provider_class(outcome)
+    if state in {"success", "valid_empty"} and not set(entry.fields).issubset(
+        outcome.response_fields
+    ):
+        state = "field_contract_mismatch"
+        provider_class = "field_contract_mismatch"
+    if state not in _RESULT_STATES or provider_class not in _RESULT_PROVIDER_CLASSES:
+        raise ProbeExecutionError("provider evidence classification is invalid")
 
     if len(observed) != 1:
         raise ProbeExecutionError("provider response observation is incomplete")
@@ -1097,19 +1153,16 @@ def _call_entry(
     ):
         raise ProbeExecutionError("provider response evidence is invalid")
 
-    returned_fields: set[str] = set()
-    for row in outcome.rows:
-        for field in row:
-            if type(field) is not str or _FIELD_NAME.fullmatch(field) is None:
-                raise ProbeExecutionError("provider returned an invalid field name")
-            returned_fields.add(field)
+    for field in outcome.response_fields:
+        if type(field) is not str or _FIELD_NAME.fullmatch(field) is None:
+            raise ProbeExecutionError("provider returned an invalid field name")
 
     return (
         {
             "api_name": entry.api_name,
             "state": state,
             "provider_class": provider_class,
-            "fields": sorted(returned_fields),
+            "fields": list(outcome.response_fields),
             "row_count": len(outcome.rows),
             "response_bytes": response_bytes,
             "response_sha256": response_sha256,

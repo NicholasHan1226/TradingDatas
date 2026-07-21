@@ -162,6 +162,7 @@ def _bind_authority_files(
 def _success_outcome(
     *,
     rows: tuple[dict[str, object], ...] = ({"code": "000001", "value": 1},),
+    response_fields: tuple[str, ...] = ("code", "value"),
 ) -> ProviderCallOutcome:
     return ProviderCallOutcome(
         state="success",
@@ -169,6 +170,20 @@ def _success_outcome(
         provider_code=0,
         error_code=None,
         error_message=None,
+        response_fields=response_fields,
+    )
+
+
+def _empty_outcome(
+    *, response_fields: tuple[str, ...] = ("code", "value")
+) -> ProviderCallOutcome:
+    return ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+        response_fields=response_fields,
     )
 
 
@@ -1025,8 +1040,8 @@ def test_permission_and_other_provider_errors_are_recorded_without_numeric_guess
     assert [
         (item["state"], item["provider_class"]) for item in evidence["results"]
     ] == [
-        ("permission_denied", "permission_denied"),
-        ("provider_failed", "provider_failed"),
+        ("provider_failed_unclassified", "provider_failed_unclassified"),
+        ("unsupported", "unsupported"),
     ]
     assert all("ingest" not in item for item in evidence["results"])
     assert evidence["production_ready"] is False
@@ -1099,9 +1114,110 @@ def test_unclassified_per_interface_failure_is_recorded_and_run_continues(
     )
 
     assert [item["state"] for item in evidence["results"]] == [
-        "provider_failed",
+        "provider_failed_unclassified",
         "success",
     ]
+
+
+def test_provider_failure_output_is_a_safe_whitelist_without_raw_messages(
+    tmp_path: Path,
+) -> None:
+    document = _plan_document(gap_count=7)
+    plan = probe.load_probe_plan(_write_plan(tmp_path, document))
+    messages = (
+        "authentication failed",
+        "permission denied.",
+        "interface is unsupported",
+        "interface is not mapped",
+        "invalid parameter.",
+        "provider request failed",
+        "provider diagnostic [REDACTED]",
+    )
+    evidence = _execute_probe(
+        plan,
+        scope="gaps",
+        token="private-token",
+        concurrency=1,
+        call=_call_with(
+            {
+                f"api_{index:03d}": _failed_outcome(
+                    40102,
+                    error_message=message,
+                )
+                for index, message in enumerate(messages)
+            }
+        ),
+    )
+
+    expected = [
+        "credential_rejected",
+        "permission_denied",
+        "unsupported",
+        "not_mapped",
+        "parameter_error",
+        "provider_failed_unclassified",
+        "provider_failed_unclassified",
+    ]
+    assert [item["state"] for item in evidence["results"]] == expected
+    assert [item["provider_class"] for item in evidence["results"]] == expected
+    serialized = json.dumps(evidence, ensure_ascii=False)
+    assert all(message not in serialized for message in messages)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        pytest.param(
+            _success_outcome(
+                rows=({"code": "000001"},),
+                response_fields=("code",),
+            ),
+            id="success-missing-requested-field",
+        ),
+        pytest.param(
+            _empty_outcome(response_fields=("code",)),
+            id="empty-missing-requested-field",
+        ),
+    ],
+)
+def test_success_and_empty_fail_closed_on_response_field_contract_mismatch(
+    tmp_path: Path,
+    outcome: ProviderCallOutcome,
+) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path))
+    evidence = _execute_probe(
+        plan,
+        scope="gaps",
+        token="private-token",
+        concurrency=1,
+        call=_call_with({"api_000": outcome}),
+    )
+
+    assert evidence["results"][0]["state"] == "field_contract_mismatch"
+    assert evidence["results"][0]["provider_class"] == "field_contract_mismatch"
+    assert evidence["results"][0]["fields"] == ["code"]
+
+
+def test_empty_is_valid_only_with_all_requested_response_fields(tmp_path: Path) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path))
+    evidence = _execute_probe(
+        plan,
+        scope="gaps",
+        token="private-token",
+        concurrency=1,
+        call=_call_with(
+            {
+                "api_000": _empty_outcome(
+                    response_fields=("value", "code", "provider_extra")
+                )
+            }
+        ),
+    )
+
+    result = evidence["results"][0]
+    assert result["state"] == "valid_empty"
+    assert result["provider_class"] == "ok"
+    assert result["fields"] == ["value", "code", "provider_extra"]
 
 
 @pytest.mark.parametrize(
@@ -1134,7 +1250,7 @@ def test_rate_transport_and_resource_fail_closed_without_evidence(
     assert [item["api_name"] for item in calls] == ["api_000"]
 
 
-def test_redacted_provider_diagnostic_is_only_recorded_as_provider_failed(
+def test_redacted_provider_diagnostic_is_only_recorded_as_unclassified_failure(
     tmp_path: Path,
 ) -> None:
     plan = probe.load_probe_plan(_write_plan(tmp_path))
@@ -1152,7 +1268,7 @@ def test_redacted_provider_diagnostic_is_only_recorded_as_provider_failed(
         concurrency=1,
         call=_call_with({"api_000": outcome}),
     )
-    assert evidence["results"][0]["state"] == "provider_failed"
+    assert evidence["results"][0]["state"] == "provider_failed_unclassified"
 
 
 def test_total_response_budget_stops_before_an_unbudgeted_call(tmp_path: Path) -> None:

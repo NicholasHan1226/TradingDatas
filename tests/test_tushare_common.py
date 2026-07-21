@@ -341,8 +341,9 @@ def test_direct_connection_uses_dns_snapshot_but_canonical_sni(
     monkeypatch.setattr(
         tushare_common.socket,
         "socket",
-        lambda family, socktype: observed.update({"family": family, "socktype": socktype})
-        or FakeSocket(),
+        lambda family, socktype: (
+            observed.update({"family": family, "socktype": socktype}) or FakeSocket()
+        ),
     )
 
     connection = tushare_common._QuickSyncHTTPSConnection(  # noqa: SLF001
@@ -900,6 +901,7 @@ def test_tushare_rows_outcome_preserves_success_rows_and_is_frozen(monkeypatch):
         provider_code=0,
         error_code=None,
         error_message=None,
+        response_fields=("ts_code", "close"),
     )
     assert requests == [
         {
@@ -963,7 +965,42 @@ def test_tushare_rows_outcome_marks_valid_zero_rows_empty(monkeypatch):
         provider_code=0,
         error_code=None,
         error_message=None,
+        response_fields=("ts_code",),
     )
+
+
+@pytest.mark.parametrize(
+    "response_fields",
+    [
+        pytest.param(["ts_code"], id="not-tuple"),
+        pytest.param(("ts_code", "ts_code"), id="duplicate"),
+        pytest.param(("bad field",), id="invalid-name"),
+    ],
+)
+def test_provider_call_outcome_strictly_validates_response_fields(
+    response_fields,
+) -> None:
+    with pytest.raises(ValueError, match="response fields"):
+        tushare_common.ProviderCallOutcome(
+            state="empty",
+            rows=(),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            response_fields=response_fields,
+        )
+
+
+def test_provider_call_outcome_rejects_response_fields_inconsistent_with_rows() -> None:
+    with pytest.raises(ValueError, match="response fields"):
+        tushare_common.ProviderCallOutcome(
+            state="success",
+            rows=({"ts_code": "000001.SZ"},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            response_fields=("ts_code", "close"),
+        )
 
 
 @pytest.mark.parametrize(
@@ -1088,9 +1125,7 @@ def test_strict_provider_rows_preserves_numeric_leading_field_names() -> None:
 
 def test_strict_provider_rows_rejects_field_names_longer_than_64_characters() -> None:
     with pytest.raises(ValueError, match="valid field names"):
-        tushare_common._strict_provider_rows(
-            {"fields": ["a" * 65], "items": [[1.0]]}
-        )
+        tushare_common._strict_provider_rows({"fields": ["a" * 65], "items": [[1.0]]})
 
 
 @pytest.mark.parametrize(
