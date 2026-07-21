@@ -26,6 +26,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -33,15 +34,20 @@ from types import MappingProxyType
 
 import yaml
 
-from collectors.tushare.tushare_common import (
+
+ENTRY_ROOT = Path(__file__).parents[1]
+ROOT = ENTRY_ROOT
+IMPORT_ROOT = ENTRY_ROOT.resolve()
+if str(IMPORT_ROOT) not in sys.path:
+    sys.path.insert(0, str(IMPORT_ROOT))
+
+from collectors.tushare.tushare_common import (  # noqa: E402
     ProviderCallOutcome,
     get_tushare_config,
     tushare_rows_outcome,
 )
 
 
-ENTRY_ROOT = Path(__file__).parents[1]
-ROOT = ENTRY_ROOT
 IMMUTABLE_RELEASES_ROOT = Path("/opt/investment/releases/tradingdatas")
 IMMUTABLE_RELEASE_OWNER_UID = 0
 REQUEST_OBSERVATIONS_PATH = ROOT / "config" / "tushare_request_observations.v1.yaml"

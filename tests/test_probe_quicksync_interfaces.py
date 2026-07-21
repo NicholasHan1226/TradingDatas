@@ -243,6 +243,65 @@ def _execute_probe(plan: probe.ProbePlan, **kwargs):
     )
 
 
+def test_absolute_script_entrypoint_bootstraps_repository_imports(
+    tmp_path: Path,
+) -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    completed = subprocess.run(
+        [sys.executable, str(Path(probe.__file__).resolve()), "--help"],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout
+
+
+def test_symlinked_script_entrypoint_preserves_release_identity_gate(
+    tmp_path: Path,
+) -> None:
+    alias = tmp_path / "current"
+    alias.symlink_to(
+        Path(probe.__file__).resolve().parents[1], target_is_directory=True
+    )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    script = """
+import runpy
+import sys
+
+module = runpy.run_path(sys.argv[1], run_name="probe_alias")
+try:
+    module["_current_commit"]()
+except module["ProbeValidationError"] as exc:
+    if "may not traverse a symlink" in str(exc):
+        raise SystemExit(0)
+    raise
+raise SystemExit(3)
+"""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(alias / "tools/probe_quicksync_interfaces.py"),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_plan_accepts_current_190_unique_sorted_entries_and_matching_api_hash(
     tmp_path: Path,
 ) -> None:
