@@ -10,6 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "deploy" / "tradingdatas_internal.env"
 UNIT = ROOT / "deploy" / "systemd" / "tradingdatas-v1-internal.service"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 
 def _profile_values() -> dict[str, str]:
@@ -43,6 +44,22 @@ def test_git_owned_internal_profile_is_loopback_only_and_secret_free() -> None:
         "TUSHARE_",
     ):
         assert forbidden not in upper
+
+
+def test_runtime_example_cannot_redirect_release_owned_contracts() -> None:
+    source = ENV_EXAMPLE.read_text(encoding="utf-8")
+
+    for forbidden in (
+        "TRADINGDATAS_ROOT=",
+        "TRADINGDATAS_REGISTRY_PATH=",
+        "TRADINGDATAS_SCHEDULE_PATH=",
+    ):
+        assert forbidden not in source
+    assert (
+        "TRADINGDATAS_DB_PATH=/opt/investment-data/tradingdatas/"
+        "read_model/provider_native.sqlite" in source
+    )
+    assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token" in source
 
 
 def test_internal_unit_is_authenticated_loopback_only_and_read_only() -> None:
