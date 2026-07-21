@@ -625,24 +625,58 @@ def test_catalog_filters_accept_valid_unicode_without_normalizing() -> None:
 
 def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() -> None:
     base = _dataset()
-    locked = replace(
-        base.provider_bindings[0],
+    active = base.provider_bindings[0]
+    locked_paused = replace(
+        active,
         entitlement_state="locked",
         activation_state="paused",
     )
-    excluded = replace(locked, entitlement_state="excluded")
-    retired = replace(locked, entitlement_state="retired")
+    active_paused = replace(
+        active,
+        entitlement_state="active",
+        activation_state="paused",
+    )
+    locked_active = replace(
+        active,
+        entitlement_state="locked",
+        activation_state="active",
+    )
+    cross_match_active = replace(
+        locked_active,
+        provider="cross_match_provider",
+        api_name="cross_match_api",
+        read_discriminator_value="cross_match_lane",
+    )
 
-    locked_dataset = replace(base, provider_bindings=(locked,))
-    excluded_dataset = replace(base, provider_bindings=(excluded, retired))
-    foreign_dataset = replace(base, market="US")
+    active_dataset = replace(base, provider_bindings=(active,))
+    locked_paused_dataset = replace(base, provider_bindings=(locked_paused,))
+    active_paused_dataset = replace(base, provider_bindings=(active_paused,))
+    locked_active_dataset = replace(base, provider_bindings=(locked_active,))
+    cross_match_dataset = replace(
+        base,
+        provider_bindings=(active_paused, cross_match_active),
+    )
+    foreign_dataset = replace(base, market="US", provider_bindings=(active,))
 
-    assert is_catalog_discoverable(locked_dataset)
-    assert is_catalog_discoverable(excluded_dataset)
+    for dataset in (
+        active_dataset,
+        locked_paused_dataset,
+        active_paused_dataset,
+        locked_active_dataset,
+        cross_match_dataset,
+    ):
+        assert is_catalog_discoverable(dataset)
     assert not is_catalog_discoverable(foreign_dataset)
-    assert is_initial_release_eligible(locked_dataset)
-    assert not is_initial_release_eligible(excluded_dataset)
-    assert not is_initial_release_eligible(foreign_dataset)
+
+    assert is_initial_release_eligible(active_dataset)
+    for dataset in (
+        locked_paused_dataset,
+        active_paused_dataset,
+        locked_active_dataset,
+        cross_match_dataset,
+        foreign_dataset,
+    ):
+        assert not is_initial_release_eligible(dataset)
 
 
 def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(

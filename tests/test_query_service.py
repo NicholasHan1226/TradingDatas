@@ -9,7 +9,7 @@ import sqlite3
 import pytest
 
 import collectors.tushare.tushare_common as tushare_common
-from catalog_service import DatasetQueryability
+from catalog_service import DatasetQueryability, is_initial_release_eligible
 from dataset_registry import DatasetRegistry, load_dataset_registry
 from provider_ingest_contract import provider_ingest_config_hash
 from provider_transport import provider_transport_profile
@@ -176,14 +176,134 @@ def test_query_service_constructor_keeps_only_frozen_injected_dependencies(
     assert service._cursor_codec is codec
 
 
-def test_excluded_target_datasets_fail_closed_before_storage_or_provider(
+@pytest.mark.parametrize(
+    ("primary_states", "secondary_states", "market"),
+    (
+        pytest.param(("locked", "paused"), None, "CN", id="locked-paused"),
+        pytest.param(("active", "paused"), None, "CN", id="active-paused"),
+        pytest.param(("locked", "active"), None, "CN", id="locked-active"),
+        pytest.param(
+            ("active", "paused"),
+            ("locked", "active"),
+            "CN",
+            id="multi-binding-cross-match",
+        ),
+        pytest.param(("active", "active"), None, "US", id="foreign"),
+    ),
+)
+def test_ineligible_binding_combinations_fail_before_storage_or_provider(
+    primary_states: tuple[str, str],
+    secondary_states: tuple[str, str] | None,
+    market: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = load_dataset_registry()
+    base = source.resolve("cn.equity.daily")
+    primary = replace(
+        base.provider_bindings[0],
+        entitlement_state=primary_states[0],
+        activation_state=primary_states[1],
+    )
+    bindings = (primary,)
+    if secondary_states is not None:
+        bindings += (
+            replace(
+                primary,
+                provider="cross_match_provider",
+                api_name="cross_match_api",
+                read_discriminator_value="cross_match_lane",
+                entitlement_state=secondary_states[0],
+                activation_state=secondary_states[1],
+            ),
+        )
+    dataset = replace(base, market=market, provider_bindings=bindings)
+    registry = DatasetRegistry((dataset,), query_defaults=source.query_defaults)
+    db_path = (tmp_path / "must-not-open.sqlite").absolute()
+
+    assert not is_initial_release_eligible(dataset)
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ineligible V1 query must not call the provider"
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "_query_snapshot",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ineligible V1 query must fail before opening SQLite"
+        ),
+    )
+    service = QueryService(
+        db_path=db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    access = QueryAccessContext.from_grants(
+        tenant_id="ineligible-binding-audit",
+        scopes=(dataset.required_scope,),
+        allowed_dataset_ids=(),
+    )
+
+    with pytest.raises(QueryDatasetNotFound, match="dataset is not available"):
+        service.execute(
+            request,
+            access=access,
+            now=NOW,
+            request_id="ineligible-binding-combination",
+        )
+    assert not db_path.exists()
+
+
+def test_all_187_non_active_target_datasets_fail_before_storage_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = load_dataset_registry()
-    excluded = tuple(
+    bindings = tuple(
+        binding
+        for dataset in registry.datasets
+        for binding in dataset.provider_bindings
+    )
+    assert len(registry.datasets) == len(bindings) == 190
+    assert {
+        state: sum(binding.entitlement_state == state for binding in bindings)
+        for state in ("active", "locked", "excluded", "unknown")
+    } == {"active": 170, "locked": 14, "excluded": 5, "unknown": 1}
+    assert {
+        state: sum(binding.activation_state == state for binding in bindings)
+        for state in ("active", "paused")
+    } == {"active": 3, "paused": 187}
+
+    active = tuple(
+        dataset for dataset in registry.datasets if is_initial_release_eligible(dataset)
+    )
+    non_active = tuple(
         dataset
         for dataset in registry.datasets
+        if not is_initial_release_eligible(dataset)
+    )
+    assert {dataset.dataset_id for dataset in active} == {
+        "cn.equity.daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
+    }
+    assert len(non_active) == 187
+    excluded = tuple(
+        dataset
+        for dataset in non_active
         if {binding.entitlement_state for binding in dataset.provider_bindings}
         == {"excluded"}
     )
@@ -198,23 +318,24 @@ def test_excluded_target_datasets_fail_closed_before_storage_or_provider(
         tushare_common,
         "_provider_urlopen",
         lambda *_args, **_kwargs: pytest.fail(
-            "excluded V1 query must not call the provider"
+            "non-active V1 query must not call the provider"
         ),
     )
     monkeypatch.setattr(
         query_module,
         "_query_snapshot",
         lambda *_args, **_kwargs: pytest.fail(
-            "excluded V1 query must fail before opening SQLite"
+            "non-active V1 query must fail before opening SQLite"
         ),
     )
+    db_path = (tmp_path / "unopened.sqlite").absolute()
     service = QueryService(
-        db_path=(tmp_path / "unopened.sqlite").absolute(),
+        db_path=db_path,
         registry=registry,
         cursor_codec=SignedCursorCodec(SIGNING_KEY),
     )
 
-    for dataset in excluded:
+    for dataset in non_active:
         request = QueryRequest(
             dataset_id=dataset.dataset_id,
             schema_major=dataset.schema_major,
@@ -226,7 +347,7 @@ def test_excluded_target_datasets_fail_closed_before_storage_or_provider(
             cursor=None,
         )
         access = QueryAccessContext.from_grants(
-            tenant_id="excluded-query-audit",
+            tenant_id="non-active-query-audit",
             scopes=(dataset.required_scope,),
             allowed_dataset_ids=(),
         )
@@ -235,8 +356,9 @@ def test_excluded_target_datasets_fail_closed_before_storage_or_provider(
                 request,
                 access=access,
                 now=NOW,
-                request_id=f"excluded-{dataset.dataset_id}",
+                request_id=f"non-active-{dataset.dataset_id}",
             )
+    assert not db_path.exists()
 
 
 def test_query_service_rejects_arbitrary_table_before_any_sql(

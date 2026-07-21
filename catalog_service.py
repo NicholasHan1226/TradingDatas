@@ -145,7 +145,7 @@ def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
     return is_catalog_discoverable(dataset) and any(
-        binding.entitlement_state not in {"excluded", "retired"}
+        binding.entitlement_state == "active" and binding.activation_state == "active"
         for binding in dataset.provider_bindings
     )
 
