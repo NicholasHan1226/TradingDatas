@@ -8,6 +8,7 @@ import sqlite3
 
 import pytest
 
+import collectors.tushare.tushare_common as tushare_common
 from catalog_service import DatasetQueryability
 from dataset_registry import DatasetRegistry, load_dataset_registry
 from provider_ingest_contract import provider_ingest_config_hash
@@ -15,7 +16,7 @@ from provider_transport import provider_transport_profile
 from query_contract import QueryAccessContext, QueryExecutionOptions, QueryRequest
 from query_cursor import SignedCursorCodec
 import query_service as query_module
-from query_service import QueryService, QueryServiceUnavailable
+from query_service import QueryDatasetNotFound, QueryService, QueryServiceUnavailable
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     DatasetRuntimeProjection,
@@ -173,6 +174,69 @@ def test_query_service_constructor_keeps_only_frozen_injected_dependencies(
     assert service._db_path == db_path
     assert service._registry is registry
     assert service._cursor_codec is codec
+
+
+def test_excluded_target_datasets_fail_closed_before_storage_or_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = load_dataset_registry()
+    excluded = tuple(
+        dataset
+        for dataset in registry.datasets
+        if {binding.entitlement_state for binding in dataset.provider_bindings}
+        == {"excluded"}
+    )
+    assert {dataset.dataset_id for dataset in excluded} == {
+        "cn.dataset.etf_sh_cons",
+        "cn.dataset.fut_trade_cal",
+        "cn.dataset.monetary_policy",
+        "cn.dataset.rt_etf_min",
+        "cn.dataset.rt_etf_min_daily",
+    }
+    monkeypatch.setattr(
+        tushare_common,
+        "_provider_urlopen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "excluded V1 query must not call the provider"
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "_query_snapshot",
+        lambda *_args, **_kwargs: pytest.fail(
+            "excluded V1 query must fail before opening SQLite"
+        ),
+    )
+    service = QueryService(
+        db_path=(tmp_path / "unopened.sqlite").absolute(),
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+
+    for dataset in excluded:
+        request = QueryRequest(
+            dataset_id=dataset.dataset_id,
+            schema_major=dataset.schema_major,
+            fields=(),
+            filters={},
+            as_of=None,
+            order=None,
+            limit=1,
+            cursor=None,
+        )
+        access = QueryAccessContext.from_grants(
+            tenant_id="excluded-query-audit",
+            scopes=(dataset.required_scope,),
+            allowed_dataset_ids=(),
+        )
+        with pytest.raises(QueryDatasetNotFound, match="dataset is not available"):
+            service.execute(
+                request,
+                access=access,
+                now=NOW,
+                request_id=f"excluded-{dataset.dataset_id}",
+            )
 
 
 def test_query_service_rejects_arbitrary_table_before_any_sql(

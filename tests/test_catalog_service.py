@@ -17,6 +17,7 @@ from catalog_service import (
     CatalogFilters,
     DatasetQueryability,
     inspect_dataset_queryability,
+    is_catalog_discoverable,
     is_initial_release_eligible,
 )
 from dataset_registry import (
@@ -434,12 +435,14 @@ def real_catalog_harness(
         _catalog_dataset(
             "cn.runtime.g_excluded",
             entitlement_state="excluded",
+            activation_state="paused",
         )
     )
     retired = _receipt_dataset(
         _catalog_dataset(
             "cn.runtime.h_retired",
             entitlement_state="retired",
+            activation_state="paused",
         )
     )
     foreign = _receipt_dataset(_catalog_dataset("us.runtime.i_foreign", market="US"))
@@ -620,7 +623,7 @@ def test_catalog_filters_accept_valid_unicode_without_normalizing() -> None:
     assert filters.q == "Straße😀"
 
 
-def test_initial_release_eligibility_is_cn_and_binding_based_only() -> None:
+def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() -> None:
     base = _dataset()
     locked = replace(
         base.provider_bindings[0],
@@ -630,11 +633,118 @@ def test_initial_release_eligibility_is_cn_and_binding_based_only() -> None:
     excluded = replace(locked, entitlement_state="excluded")
     retired = replace(locked, entitlement_state="retired")
 
-    assert is_initial_release_eligible(replace(base, provider_bindings=(locked,)))
-    assert not is_initial_release_eligible(replace(base, market="US"))
-    assert not is_initial_release_eligible(
-        replace(base, provider_bindings=(excluded, retired))
+    locked_dataset = replace(base, provider_bindings=(locked,))
+    excluded_dataset = replace(base, provider_bindings=(excluded, retired))
+    foreign_dataset = replace(base, market="US")
+
+    assert is_catalog_discoverable(locked_dataset)
+    assert is_catalog_discoverable(excluded_dataset)
+    assert not is_catalog_discoverable(foreign_dataset)
+    assert is_initial_release_eligible(locked_dataset)
+    assert not is_initial_release_eligible(excluded_dataset)
+    assert not is_initial_release_eligible(foreign_dataset)
+
+
+def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = load_dataset_registry()
+    assert len(registry.datasets) == 190
+    excluded_ids = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if {binding.entitlement_state for binding in dataset.provider_bindings}
+        == {"excluded"}
+    }
+    assert excluded_ids == {
+        "cn.dataset.etf_sh_cons",
+        "cn.dataset.fut_trade_cal",
+        "cn.dataset.monetary_policy",
+        "cn.dataset.rt_etf_min",
+        "cn.dataset.rt_etf_min_daily",
+    }
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    db_path = (tmp_path / "target-registry-catalog.sqlite").absolute()
+    runtime = {
+        dataset.dataset_id: _runtime(
+            dataset.dataset_id,
+            (
+                "paused"
+                if all(
+                    binding.activation_state == "paused"
+                    for binding in dataset.provider_bindings
+                )
+                else "unobserved"
+            ),
+        )
+        for dataset in registry.datasets
+    }
+
+    @contextmanager
+    def snapshot(path: Path):
+        assert path == db_path
+        yield conn
+
+    def project(
+        snapshot_conn: sqlite3.Connection,
+        projected_registry: DatasetRegistry,
+        *,
+        now: datetime,
+    ) -> dict[str, object]:
+        assert snapshot_conn is conn
+        assert projected_registry is registry
+        assert now == NOW
+        return {"datasets": runtime}
+
+    monkeypatch.setattr(catalog_module, "open_verified_read_model_snapshot", snapshot)
+    monkeypatch.setattr(catalog_module, "project_registry_runtime", project)
+    service = CatalogService(
+        registry=registry,
+        db_path=db_path,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
     )
+    access = QueryAccessContext.from_grants(
+        tenant_id="target-registry-audit",
+        scopes=("*",),
+        allowed_dataset_ids=(),
+    )
+
+    rows: list[dict[str, object]] = []
+    cursor: str | None = None
+    for page_number in range(1, 20):
+        response = service.list_datasets(
+            access=access,
+            filters=CatalogFilters(),
+            limit=37,
+            cursor=cursor,
+            now=NOW,
+            request_id=f"target-registry-page-{page_number}",
+        )
+        rows.extend(response["data"])
+        cursor = response["next_cursor"]
+        if cursor is None:
+            break
+    else:
+        pytest.fail("catalog pagination did not terminate")
+    conn.close()
+
+    ids = [row["dataset_id"] for row in rows]
+    assert len(ids) == 190
+    assert len(set(ids)) == 190
+    assert ids == sorted(ids)
+    excluded_rows = {
+        row["dataset_id"]: row for row in rows if row["dataset_id"] in excluded_ids
+    }
+    assert set(excluded_rows) == excluded_ids
+    for row in excluded_rows.values():
+        assert row["availability"] == {
+            "entitlement_states": ["excluded"],
+            "activation_states": ["paused"],
+        }
+        assert row["runtime"]["state"] == "paused"
 
 
 def test_queryability_rejects_arbitrary_table_without_inspecting_it() -> None:
@@ -784,7 +894,12 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
     )
     ids = [row["dataset_id"] for row in first["data"] + second["data"]]
 
-    assert ids == ["cn.catalog.alpha", "cn.catalog.beta", "cn.catalog.gamma"]
+    assert ids == [
+        "cn.catalog.alpha",
+        "cn.catalog.beta",
+        "cn.catalog.excluded",
+        "cn.catalog.gamma",
+    ]
     assert first["data"][1]["runtime"]["state"] == "paused"
     assert first["data"][1]["availability"] == {
         "entitlement_states": ["unknown"],
@@ -794,6 +909,16 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
         "queryable": True,
         "reasons": [],
     }
+    excluded_row = next(
+        row
+        for row in first["data"] + second["data"]
+        if row["dataset_id"] == "cn.catalog.excluded"
+    )
+    assert excluded_row["availability"] == {
+        "entitlement_states": ["excluded"],
+        "activation_states": ["active"],
+    }
+    assert excluded_row["runtime"]["state"] == "stale"
 
     allowed_only = QueryAccessContext.from_grants(
         tenant_id="tenant-a",
@@ -814,12 +939,24 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
         access=aggregate,
         cursor=aggregate_first["next_cursor"],
     )
+    aggregate_third = _list(
+        service,
+        catalog_harness,
+        access=aggregate,
+        cursor=aggregate_second["next_cursor"],
+    )
     aggregate_ids = [
-        row["dataset_id"] for row in aggregate_first["data"] + aggregate_second["data"]
+        row["dataset_id"]
+        for row in (
+            aggregate_first["data"]
+            + aggregate_second["data"]
+            + aggregate_third["data"]
+        )
     ]
     assert aggregate_ids == [
         "cn.catalog.alpha",
         "cn.catalog.beta",
+        "cn.catalog.excluded",
         "cn.catalog.gamma",
         "cn.catalog.hidden_scope",
     ]
@@ -844,7 +981,12 @@ def test_pagination_has_no_gaps_and_binds_exact_query_policy_and_watermark(
     first = _list(service, catalog_harness, limit=2)
     assert first["next_cursor"] is not None
 
-    visible_ids = ["cn.catalog.alpha", "cn.catalog.beta", "cn.catalog.gamma"]
+    visible_ids = [
+        "cn.catalog.alpha",
+        "cn.catalog.beta",
+        "cn.catalog.excluded",
+        "cn.catalog.gamma",
+    ]
     watermark_rows = [
         [
             dataset_id,
@@ -1154,7 +1296,12 @@ def test_malformed_tampered_expired_and_bad_shape_cursors_are_invalid(
         )
 
     filters = CatalogFilters()
-    visible = ["cn.catalog.alpha", "cn.catalog.beta", "cn.catalog.gamma"]
+    visible = [
+        "cn.catalog.alpha",
+        "cn.catalog.beta",
+        "cn.catalog.excluded",
+        "cn.catalog.gamma",
+    ]
     watermark = hashlib.sha256(
         _canonical_json(
             [
@@ -1234,6 +1381,8 @@ def test_real_receipt_snapshot_preserves_all_six_projected_states(
         "cn.runtime.d_paused",
         "cn.runtime.e_failed",
         "cn.runtime.f_stale",
+        "cn.runtime.g_excluded",
+        "cn.runtime.h_retired",
     }
     assert {
         dataset_id: row["runtime"]["state"] for dataset_id, row in rows.items()
@@ -1244,6 +1393,8 @@ def test_real_receipt_snapshot_preserves_all_six_projected_states(
         "cn.runtime.d_paused": "paused",
         "cn.runtime.e_failed": "failed",
         "cn.runtime.f_stale": "stale",
+        "cn.runtime.g_excluded": "paused",
+        "cn.runtime.h_retired": "paused",
     }
     assert rows["cn.runtime.a_success"]["availability"] == {
         "entitlement_states": ["locked"],
@@ -1252,6 +1403,14 @@ def test_real_receipt_snapshot_preserves_all_six_projected_states(
     assert rows["cn.runtime.c_unobserved"]["availability"] == {
         "entitlement_states": ["unknown"],
         "activation_states": ["active"],
+    }
+    assert rows["cn.runtime.g_excluded"]["availability"] == {
+        "entitlement_states": ["excluded"],
+        "activation_states": ["paused"],
+    }
+    assert rows["cn.runtime.h_retired"]["availability"] == {
+        "entitlement_states": ["retired"],
+        "activation_states": ["paused"],
     }
     assert rows["cn.runtime.f_stale"]["queryability"] == {
         "queryable": False,
@@ -1361,14 +1520,13 @@ def test_public_catalog_version_drift_invalidates_existing_cursor(
         )
 
 
-def test_ineligible_runtime_rows_are_not_required_or_watermarked(
+def test_out_of_product_scope_runtime_rows_are_not_required_or_watermarked(
     catalog_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_fake_snapshot(monkeypatch, catalog_harness)
     service = _service(catalog_harness)
     first = _list(service, catalog_harness, limit=1)
-    catalog_harness["runtime"].pop("cn.catalog.excluded")
     catalog_harness["runtime"].pop("us.catalog.hidden_market")
 
     second = _list(

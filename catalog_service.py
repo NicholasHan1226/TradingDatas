@@ -131,12 +131,20 @@ class DatasetQueryability:
             raise ValueError("queryable must agree with reasons")
 
 
-def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:
-    """Return the frozen structural discovery gate for the initial CN release."""
+def is_catalog_discoverable(dataset: DatasetDefinition) -> bool:
+    """Return the frozen product-scope gate for initial catalog discovery."""
 
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
-    return dataset.market == "CN" and any(
+    return dataset.market == "CN"
+
+
+def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:
+    """Return the frozen query/runtime eligibility gate for the initial release."""
+
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    return is_catalog_discoverable(dataset) and any(
         binding.entitlement_state not in {"excluded", "retired"}
         for binding in dataset.provider_bindings
     )
@@ -471,7 +479,7 @@ class CatalogService:
                 self._registry.datasets,
                 key=lambda item: item.dataset_id,
             ):
-                if not is_initial_release_eligible(dataset):
+                if not is_catalog_discoverable(dataset):
                     continue
                 if not _has_catalog_scope(access, dataset):
                     continue
