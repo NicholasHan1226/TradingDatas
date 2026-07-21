@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sqlite3
 from types import MappingProxyType
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -24,10 +25,27 @@ from dataset_registry import (
     ResponseCompletenessPolicy,
 )
 from storage.ingest_receipts import IngestResult
+import storage.ingest_receipts as ingest_receipts
 from storage.receipt_projection import load_dataset_runtime_projection
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 import tools.collect_provider_dataset as runner
+
+
+SHANGHAI_TEST_NOW = datetime(
+    2026,
+    7,
+    20,
+    16,
+    0,
+    tzinfo=ZoneInfo("Asia/Shanghai"),
+)
+SHANGHAI_TEST_DATA_DATE = SHANGHAI_TEST_NOW.strftime("%Y%m%d")
+SHANGHAI_TEST_NOW_UTC_TEXT = (
+    SHANGHAI_TEST_NOW.astimezone(timezone.utc)
+    .isoformat(timespec="microseconds")
+    .replace("+00:00", "Z")
+)
 
 
 def _registry(
@@ -614,6 +632,8 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
     failed_call_index: int,
     recovery_state: str,
 ) -> None:
+    monkeypatch.setattr(ingest_receipts, "_utc_now", lambda: SHANGHAI_TEST_NOW_UTC_TEXT)
+
     class SequenceCollector:
         def __init__(self, outcomes: tuple[ProviderCallOutcome, ...]) -> None:
             self.outcomes = iter(outcomes)
@@ -635,7 +655,7 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
             rows=(
                 {
                     "ts_code": f"{600000 + index:06d}.SH",
-                    "trade_date": "20260720",
+                    "trade_date": SHANGHAI_TEST_DATA_DATE,
                     "close": 10.0 + index,
                 },
             ),
@@ -671,7 +691,7 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
         "ingest_provider_native_rows",
         fail_selected_storage_call,
     )
-    started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+    started_at = SHANGHAI_TEST_NOW - timedelta(minutes=2)
     result = native_ingest.collect_provider_native_dataset(
         db_path,
         registry=registry,
@@ -710,7 +730,7 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
         db_path,
         dataset,
         registry=registry,
-        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+        now=SHANGHAI_TEST_NOW + timedelta(seconds=1),
     )
     assert projection.state == "failed"
     assert projection.degraded is True
@@ -737,7 +757,7 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
         db_path,
         dataset,
         registry=registry,
-        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+        now=SHANGHAI_TEST_NOW + timedelta(seconds=1),
     )
     assert recovered_projection.state == recovery_state
     assert recovered_projection.receipt_id in recovered.receipt_ids
@@ -745,7 +765,10 @@ def test_execution_projection_keeps_storage_failure_over_later_empty_terminator(
 
 def test_retry_group_uses_numeric_terminal_retry_before_execution_projection(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(ingest_receipts, "_utc_now", lambda: SHANGHAI_TEST_NOW_UTC_TEXT)
+
     class SequenceCollector:
         def __init__(self) -> None:
             self.outcomes = iter(
@@ -762,7 +785,7 @@ def test_retry_group_uses_numeric_terminal_retry_before_execution_projection(
                         rows=(
                             {
                                 "ts_code": "600000.SH",
-                                "trade_date": "20260720",
+                                "trade_date": SHANGHAI_TEST_DATA_DATE,
                                 "close": 12.5,
                             },
                         ),
@@ -795,7 +818,7 @@ def test_retry_group_uses_numeric_terminal_retry_before_execution_projection(
     dataset = registry.resolve("cn.synthetic.runner")
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
-    started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    started_at = SHANGHAI_TEST_NOW - timedelta(minutes=1)
     result = native_ingest.collect_provider_native_dataset(
         db_path,
         registry=registry,
@@ -835,7 +858,7 @@ def test_retry_group_uses_numeric_terminal_retry_before_execution_projection(
         db_path,
         dataset,
         registry=registry,
-        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+        now=SHANGHAI_TEST_NOW + timedelta(seconds=1),
     )
     assert projection.state == "success"
     assert projection.degraded is False
@@ -1609,9 +1632,9 @@ def test_transport_profile_changes_the_ingest_config_hash(
         },
     )
 
-    assert ingest_contract_module.provider_ingest_config_hash(
-        dataset, binding
-    ) != original
+    assert (
+        ingest_contract_module.provider_ingest_config_hash(dataset, binding) != original
+    )
 
 
 @pytest.mark.parametrize(

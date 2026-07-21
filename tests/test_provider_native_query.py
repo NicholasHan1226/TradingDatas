@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -13,8 +14,10 @@ import pytest
 import query_service as query_module
 from catalog_service import inspect_dataset_queryability
 from dataset_registry import (
+    DatasetDefinition,
     DatasetField,
     DatasetRegistry,
+    ProviderBinding,
     load_dataset_registry,
 )
 from query_contract import QueryAccessContext, QueryExecutionOptions, QueryRequest
@@ -25,6 +28,50 @@ from storage.receipt_projection import DatasetRuntimeEvidence, DatasetRuntimePro
 
 NOW = datetime(2026, 7, 17, 4, 0, tzinfo=timezone.utc)
 SIGNING_KEY = b"provider-native-query-signing-key"
+
+
+def _synthetic_transport_profile(provider: str) -> dict[str, object]:
+    """Return a credential-free profile that cannot be mistaken for QuickSync."""
+
+    payload: dict[str, object] = {
+        "data_provider": provider,
+        "endpoint": "memory://provider-native-query-fixture",
+        "profile_id": f"synthetic-provider-native-query.{provider}.v1",
+        "transport_service": "synthetic-test-harness",
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return {
+        **payload,
+        "profile_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
+
+
+def _synthetic_ingest_config_hash(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+) -> str:
+    payload = {
+        "api_name": binding.api_name,
+        "dataset_id": dataset.dataset_id,
+        "provider": binding.provider,
+        "read_discriminator_value": binding.read_discriminator_value,
+        "schema_version": dataset.schema_version,
+        "transport_profile": _synthetic_transport_profile(binding.provider),
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def test_numeric_leading_provider_field_uses_safe_json_path() -> None:
@@ -262,6 +309,16 @@ def native_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     def project(*_args: object, **_kwargs: object) -> DatasetRuntimeEvidence:
         return evidence
 
+    monkeypatch.setattr(
+        query_module,
+        "provider_transport_profile",
+        _synthetic_transport_profile,
+    )
+    monkeypatch.setattr(
+        query_module,
+        "provider_ingest_config_hash",
+        _synthetic_ingest_config_hash,
+    )
     monkeypatch.setattr(query_module, "open_verified_read_model_snapshot", snapshot)
     monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", project)
     yield {
@@ -370,6 +427,9 @@ def test_native_query_python_projection_preserves_missing_null_and_large_integer
     assert response["metadata"]["state"] == "success"
     assert response["metadata"]["degraded"] is True
     assert response["metadata"]["quality"]["state"] == "degraded"
+    assert response["metadata"]["lineage"]["transport_service"] is None
+    assert response["metadata"]["lineage"]["transport_profile_id"] is None
+    assert response["metadata"]["lineage"]["transport_profile_sha256"] is None
     assert "integer_out_of_int64:big" in response["metadata"]["quality"]["evidence"]
 
 
