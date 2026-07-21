@@ -31,8 +31,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "compile_tushare_capability_catalog.py"
 SCOPE_PATH = ROOT / "config" / "tushare_capability_scope.v1.yaml"
 CATALOG_PATH = ROOT / "config" / "tushare_capability_catalog.v1.yaml"
+CATALOG_V2_PATH = ROOT / "config" / "tushare_capability_catalog.v2.yaml"
 MCP_SNAPSHOT_PATH = ROOT / "config" / "tushare_mcp_capability_snapshot.v1.yaml"
 SCOPE_V2_PATH = ROOT / "config" / "tushare_capability_scope.v2.yaml"
+OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 
 MCP_DOMESTIC_ADDITIONS = {
     "bo_cinema",
@@ -89,6 +91,31 @@ V2_RETIRED = {
     "stk_account_old",
     "margin_target",
     "suspend",
+}
+V2_REVIEW_REQUIRED = {"dc_hot", "idx_anns", "ths_hot"}
+RUNTIME_EXCLUDED = {
+    "etf_sh_cons",
+    "fut_trade_cal",
+    "monetary_policy",
+    "rt_etf_min",
+    "rt_etf_min_daily",
+}
+RUNTIME_CONTRACT_KEYS = {
+    "dataset_id",
+    "schema",
+    "schema_version",
+    "fields",
+    "primary_key",
+    "partition_key",
+    "date_field",
+    "cadence",
+    "cadence_class",
+    "request_template",
+    "request_variants",
+    "fanout",
+    "pagination",
+    "entitlement_state",
+    "activation_state",
 }
 
 
@@ -718,6 +745,93 @@ def test_v2_compiler_outputs_only_222_paused_domestic_datasets() -> None:
             "route",
             "public_route",
         }
+    )
+
+
+def test_checked_in_v2_catalog_is_exact_regeneration_with_closed_hashes() -> None:
+    catalog = yaml.safe_load(CATALOG_V2_PATH.read_text(encoding="utf-8"))
+    rebuilt = compile_v2_from_paths(
+        official_catalog_path=CATALOG_PATH,
+        mcp_snapshot_path=MCP_SNAPSHOT_PATH,
+        scope_path=SCOPE_V2_PATH,
+    )
+
+    assert validate_catalog_v2_document(catalog) == rebuilt
+    assert render_catalog_v2(rebuilt) == CATALOG_V2_PATH.read_bytes()
+    assert catalog["provenance"] == {
+        "official_catalog": {
+            "id": "tushare-official-capabilities.v1",
+            "sha256": hashlib.sha256(CATALOG_PATH.read_bytes()).hexdigest(),
+        },
+        "mcp_snapshot": {
+            "id": "tushare-mcp-capability-snapshot.v1",
+            "sha256": hashlib.sha256(MCP_SNAPSHOT_PATH.read_bytes()).hexdigest(),
+        },
+    }
+    assert catalog["scope"] == {
+        "scope_id": "tushare-capability-scope.v2",
+        "sha256": hashlib.sha256(SCOPE_V2_PATH.read_bytes()).hexdigest(),
+    }
+
+
+def test_checked_in_v2_catalog_is_exactly_the_190_plus_32_discovery_set() -> None:
+    official = load_capability_catalog(CATALOG_PATH)
+    baseline = {
+        item["api_name"]
+        for item in official["capabilities"]
+        if item["scope_state"] == "in_scope"
+    }
+    catalog = yaml.safe_load(CATALOG_V2_PATH.read_text(encoding="utf-8"))
+    names = {item["name"] for item in catalog["datasets"]}
+
+    assert len(baseline) == 190
+    assert len(V2_DENOMINATOR_ADDITIONS) == 32
+    assert baseline.isdisjoint(V2_DENOMINATOR_ADDITIONS)
+    assert names - baseline == V2_DENOMINATOR_ADDITIONS
+    assert names == baseline | V2_DENOMINATOR_ADDITIONS
+    assert len(names) == 190 + 32 == 222
+
+
+def test_v2_discovery_artifact_does_not_synthesize_runtime_contracts() -> None:
+    catalog = yaml.safe_load(CATALOG_V2_PATH.read_text(encoding="utf-8"))
+    datasets = catalog["datasets"]
+    by_name = {item["name"]: item for item in datasets}
+    observations = yaml.safe_load(OBSERVATIONS_PATH.read_text(encoding="utf-8"))
+    runtime_excluded = set(observations["classifications"]["unsupported"])
+    retired = {
+        name
+        for name, item in by_name.items()
+        if item["dimensions"]["lifecycle"] == "retired"
+    }
+    review_required = {
+        name
+        for name, item in by_name.items()
+        if item["dimensions"]["contract_state"] == "review_required"
+    }
+    mcp_only = {
+        name
+        for name, item in by_name.items()
+        if item["dimensions"]["contract_state"] == "missing_official_contract"
+    }
+
+    assert retired == V2_RETIRED
+    assert len(retired) == 7
+    assert review_required == V2_REVIEW_REQUIRED
+    assert len(review_required) == 3
+    assert mcp_only == MCP_DOMESTIC_ADDITIONS
+    assert len(mcp_only) == 24
+    assert runtime_excluded == RUNTIME_EXCLUDED
+    assert len(runtime_excluded) == 5
+    assert runtime_excluded <= set(by_name)
+    assert all(set(item).isdisjoint(RUNTIME_CONTRACT_KEYS) for item in datasets)
+    assert all(
+        item["dimensions"]["entitlement"] == "unobserved" for item in datasets
+    )
+    assert all(item["dimensions"]["activation"] == "paused" for item in datasets)
+    assert all(by_name[name]["official_doc_url"] is None for name in mcp_only)
+    assert all(
+        by_name[name]["dimensions"]["activation"] == "paused"
+        for name in retired | review_required | mcp_only | runtime_excluded
     )
 
 
