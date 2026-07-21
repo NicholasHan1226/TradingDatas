@@ -28,6 +28,12 @@ api_name + params + fields -> fields/items
 
 Tushare 官方目录和接口文档只生成 dataset/schema/cadence 参考，不能证明 QuickSync 账号的 runtime 权限或调用预算。QuickSync 只在 provider-level transport adapter 中出现；普通 dataset 不因 transport 修正而增加 collector、业务表、公共 route 或 scheduler 分支。
 
+能力目录还必须区分四个事实层：官方目录、transport/tool 可见性、账号真实
+entitlement、runtime activation。当前 scope v2 将 239 个官方名称与 258 个 MCP 工具
+合并为 268 个唯一能力名，首期产品目录为 222 个境内只读 dataset；其中 190 个已有
+官方文档合同，新增 32 个在合同或 HTTPS 证据缺失时仅可发现、不可执行。MCP
+visibility 不能自动生成文档 URL、权限或 scheduler 激活。
+
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。

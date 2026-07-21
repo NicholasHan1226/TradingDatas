@@ -77,13 +77,21 @@ uv run --python 3.12 --with-requirements requirements.txt \
   python tools/compile_provider_native_registry.py
 ```
 
-编译器当前注册 190 个首期官方接口，并只从
-`config/quicksync_interface_observations.v1.yaml` 读取 QuickSync 权限与兼容性观测。
-该配置绑定脱敏接口矩阵及 API 集合 SHA，完整覆盖 190 个接口且分类零重叠；矩阵明确来自
-HTTP compatibility 探测、`production_ready=false`，不能替代正式 HTTPS
-provider -> SQLite -> receipt -> API readback。
+当前能力范围分为两层，不能再把旧的 190 当作全部能力：
 
-当前 registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`
+- `config/tushare_capability_scope.v2.yaml` 将官方固定目录 239 个名称与当前 MCP
+  可见的 258 个工具合并为 268 个唯一能力名，并按首期边界冻结 222 个境内只读
+  dataset；其余为 41 个海外项、4 个账号操作和 1 个 helper。
+- 其中 190 个已有官方文档合同和历史 QuickSync HTTP compatibility 观测；新增 32
+  个只进入可发现目录，缺正式合同或 HTTPS 权限证据时一律保持
+  `unobserved/paused`，MCP 可见性不能推导 entitlement 或 activation。
+
+当前 runtime registry 仍是上述 190 个合同子集，并只从
+`config/quicksync_interface_observations.v1.yaml` 读取其 QuickSync 权限与兼容性观测。
+该历史矩阵绑定脱敏证据及 API 集合 SHA、`production_ready=false`，不能替代正式
+HTTPS provider -> SQLite -> receipt -> API readback，也不能代表新增 32 项已可调用。
+
+当前 190 项 runtime registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`
 三个 active dataset，其余 187 个全部 paused。validated match 与已修复数字字段只表示
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。

@@ -26,6 +26,10 @@
 ## Phase 1 — 全量 Tushare 合同与采集
 
 - 固定官方能力目录版本；
+- 合并官方目录与当前 transport/tool 能力快照，冻结首期境内只读产品分母；当前
+  scope v2 为 222 个 dataset，其中已有合同子集 190 个、新增待合同/权限证明 32 个；
+- 能力可见性、正式合同、账号 entitlement 和 runtime activation 分开记录；新增项先
+  `unobserved/paused`，不得为了凑“全量”伪造文档、请求参数或 success；
 - 批量读取官方接口文档的输入/输出表，生成字段与请求合同；禁止逐接口手写 Python；
 - 把 Tushare 官方文档限定为 dataset/schema/cadence 参考，把 QuickSync 文档与有界真实观测限定为 endpoint/auth/permission/error/rate/concurrency 事实源；
 - 对每个 API 标记 scope、entitlement、activation 和 successor；
@@ -47,7 +51,10 @@
   - `event`
   - `on_demand`
 
-退出条件：所有首期 API 均有明确分类；所有已授权 in-scope API 都有可执行合同或明确 blocked 原因；普通 dataset onboarding 不修改 Python；QuickSync transport profile、权限码和有界 budget 证据已冻结，production timer 在此之前保持 disabled。
+退出条件：222 个首期 dataset 均有明确分类；所有已授权项都有可执行合同或明确
+blocked 原因；190 个历史合同子集与新增 32 项的证据层不混淆；普通 dataset
+onboarding 不修改 Python；QuickSync transport profile、权限码和有界 budget 证据已
+冻结，production timer 在此之前保持 disabled。
 
 ## Phase 2 — 内部服务
 

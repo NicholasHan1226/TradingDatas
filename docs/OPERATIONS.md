@@ -57,8 +57,11 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
      /opt/investment/releases/tradingdatas/current/tools/compile_provider_native_registry.py
    ```
 
-   编译必须从 `quicksync_interface_observations.v1.yaml` 得到 190 个 dataset、
-   3 active / 187 paused，且输出与 checked-in registry 逐字节一致。观测配置必须保持
+   当前生产候选仍必须从 `quicksync_interface_observations.v1.yaml` 得到历史合同子集
+   190 个 dataset、3 active / 187 paused，且输出与 checked-in registry 逐字节一致。
+   scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
+   runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
+   采集计划。观测配置必须保持
    `interface_probe_scheme=http`、`production_ready=false` 和生产 transport
    blocked；它不读取 Token，也不是正式 HTTPS 采集证明。旧 manual entitlement probe
    与 policy 已退役；request-profile 配置与 resolver 仅作官方输入映射迁移资料，既不是
@@ -73,7 +76,7 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
 
-旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、200 次/60 秒账号门禁、并发 4、单一 deadline、仅 pre-send DNS failover 和 impaired API readback。190 接口本机矩阵或分钟吞吐证明都不能替代服务器 provider -> SQLite -> receipt -> API readback；每日额度未知时仍不启用自动历史回填。
+旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、200 次/60 秒账号门禁、并发 4、单一 deadline、仅 pre-send DNS failover 和 impaired API readback。历史 190 接口本机矩阵、222 静态能力目录或分钟吞吐证明都不能替代服务器 provider -> SQLite -> receipt -> API readback；每日额度未知时仍不启用自动历史回填。
 
 ## 旧系统退役
 
@@ -84,6 +87,21 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 3. 保留可验证回滚快照；
 4. 删除旧服务、cron、代码、文档和依赖；
 5. 数据删除另走单独保留策略，不与代码退役混在一起。
+
+2026-07-21 已验证的旧运行面清单如下，不得用模糊的“旧 cron”概括后一次性删除：
+
+- root crontab：`opening_gate.sh` 的 preopen、morning_first_sample、afternoon_resume、close_check 四个时点，以及 `external_api_probe.sh`；
+- `marketgraph` crontab：`SharedSignals/cron/` 下的 Tushare collectors、CNFutures、Crypto、事件、低频、patrol、proxy health、watchdog、SLA、governance、capability scan 和 PM 采集任务；
+- systemd override：`/etc/systemd/system/tradingagent-front-api.service.d/sharedsignals.conf`，其 `SHAREDSIGNALS_API_URL` 仍指向 `127.0.0.1:8082`；
+- 旧 `8082` 服务、旧 SharedSignals 代码与数据路径。
+
+退役必须分项执行并保留证据：
+
+1. 新 TradingDatas 完成真实 provider -> SQLite facts/receipts -> `catalog/query` readback；
+2. TradingAgent 及其它批准消费者只读新 API，完成 same-as-of、impaired 状态和无 legacy fallback parity；
+3. 记录旧/新采集边界及最后成功 receipt，证明无数据窗口；
+4. 冻结 root 与 `marketgraph` crontab、systemd override、旧服务和数据快照，生成可逐项回滚的 manifest；
+5. 先禁用旧 writer/probe 并观察无旧调用，再删除 cron/override/service/code/docs；数据库与历史数据仍需独立批准。
 
 ## 回滚
 
