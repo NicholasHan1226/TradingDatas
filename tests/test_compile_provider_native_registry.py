@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import hashlib
 import inspect
 from pathlib import Path
 import subprocess
@@ -24,16 +23,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 TARGET_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
+OPERATIONS_PATH = ROOT / "docs" / "OPERATIONS.md"
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(document, dict)
     return document
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _bundle() -> dict[str, object]:
@@ -423,10 +419,11 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
     )
 
 
-def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(
+def test_cli_writes_external_registry_and_preserves_release_files(
     tmp_path: Path,
 ) -> None:
-    before = {path: _sha256(path) for path in (CONTRACT_PATH, OBSERVATIONS_PATH)}
+    protected_release_paths = (CONTRACT_PATH, OBSERVATIONS_PATH, TARGET_PATH)
+    before = {path: path.read_bytes() for path in protected_release_paths}
     output = tmp_path / "registry.yaml"
     completed = subprocess.run(
         [
@@ -447,8 +444,25 @@ def test_cli_reads_only_declarations_writes_one_registry_and_preserves_inputs(
 
     assert completed.stdout == ""
     assert completed.stderr == ""
-    assert output.read_text(encoding="utf-8") == TARGET_PATH.read_text(encoding="utf-8")
-    assert before == {path: _sha256(path) for path in before}
+    assert output.read_bytes() == before[TARGET_PATH]
+    assert before == {path: path.read_bytes() for path in protected_release_paths}
+
+
+def test_operations_registry_verification_cannot_write_or_follow_current() -> None:
+    source = OPERATIONS_PATH.read_text(encoding="utf-8")
+    section = source.split("## 运行顺序", 1)[1].split("## 发布门禁", 1)[0]
+
+    assert 'FINAL="/opt/investment/releases/tradingdatas/$TARGET_COMMIT"' in section
+    assert 'test ! -L "$FINAL"' in section
+    assert (
+        'REGISTRY_VERIFY="$(umask 077 && mktemp '
+        '/tmp/tradingdatas-registry.verify.XXXXXX)"' in section
+    )
+    assert '"$FINAL/tools/compile_provider_native_registry.py"' in section
+    assert '--output "$REGISTRY_VERIFY"' in section
+    assert "cmp --silent" in section
+    assert "trap 'rm -f -- \"$REGISTRY_VERIFY\"' EXIT" in section
+    assert "/current/tools/compile_provider_native_registry.py" not in section
 
 
 def test_cli_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:

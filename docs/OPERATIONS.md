@@ -95,14 +95,43 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
-4. 在不读取凭证、不调用 provider 的情况下重新编译 registry：
+4. 在不读取凭证、不调用 provider 的情况下，从目标 immutable release 的物理
+   `FINAL` 路径重新编译 registry。`FINAL` 必须是以完整 commit 命名的直接目录，不得是
+   `/current`、其它 symlink 或可写 checkout。compiler 的 `--output` 必须指向 release 之外
+   由 `mktemp` 创建的私有临时文件，不得使用会改写 checked-in registry 的默认输出：
 
    ```bash
-   /opt/tradingdatas/venv/bin/python3 \
-     /opt/investment/releases/tradingdatas/current/tools/compile_provider_native_registry.py
+   (
+     set -eu
+     TARGET_COMMIT="<40-character-commit>"
+     test "${#TARGET_COMMIT}" -eq 40
+     case "$TARGET_COMMIT" in *[!0-9a-f]*) exit 1 ;; esac
+     FINAL="/opt/investment/releases/tradingdatas/$TARGET_COMMIT"
+     test -d "$FINAL"
+     test ! -L "$FINAL"
+     REGISTRY_VERIFY="$(umask 077 && mktemp /tmp/tradingdatas-registry.verify.XXXXXX)"
+     trap 'rm -f -- "$REGISTRY_VERIFY"' EXIT
+     trap 'exit 1' HUP INT TERM
+
+     PYTHONDONTWRITEBYTECODE=1 \
+       /opt/tradingdatas/venv/bin/python3 \
+       "$FINAL/tools/compile_provider_native_registry.py" \
+       --upstream-contracts "$FINAL/config/tushare_upstream_contracts.v1.yaml" \
+       --observations "$FINAL/config/quicksync_interface_observations.v1.yaml" \
+       --output "$REGISTRY_VERIFY"
+     cmp --silent \
+       "$REGISTRY_VERIFY" \
+       "$FINAL/config/provider_native_dataset_registry.yaml"
+
+     rm -f -- "$REGISTRY_VERIFY"
+     trap - EXIT HUP INT TERM
+   )
    ```
 
-   当前生产候选仍必须从 `quicksync_interface_observations.v1.yaml` 得到历史合同子集
+   `cmp --silent` 成功才证明重建结果与该 release 内 checked-in registry 逐字节一致；
+   无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
+   也不得改写 release 内任何文件。当前生产候选仍必须从
+   `quicksync_interface_observations.v1.yaml` 得到历史合同子集
    190 个 dataset、3 active / 187 paused，且输出与 checked-in registry 逐字节一致。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
