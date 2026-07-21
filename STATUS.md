@@ -15,6 +15,12 @@
   同步 local/origin/GitHub。它采用账号级 200 次/滚动 60 秒、并发 4、零重试和每次
   provider call 前的持久 start 授权；fresh review 为 P0/P1/P2=0，主线组合回归
   484 passed / 1 skipped。该工具尚未在正式服务器执行，不是 entitlement 或生产证明。
+- 2026-07-22 已把 catalog 可发现性与 query/runtime eligibility 分离：当前 190 项
+  runtime registry 现在可全 cursor 发现 190/190；此前被 entitlement 过滤隐藏的 5 项
+  `excluded` dataset 仍显示 `activation=paused`、`runtime=paused`，且查询继续在 SQLite
+  和 provider 前 fail closed。fresh 独立验收为 P0/P1/P2=0，定向 2 项与 catalog/query
+  58 项通过。全仓 18 项失败已在 clean base 精确复现为既有时钟与 synthetic transport
+  profile 问题，不能把本次候选或全仓误报为全绿。222 项 runtime catalog 仍未完成。
 - 2026-07-21 CST（证据时间 2026-07-20Z）已通过文档指定的 HTTP compatibility endpoint 对首期 190/190 个 API 做真实有界调用并形成唯一接口矩阵，缺失 0、额外 0：167 `success`、3 `empty`、14 `permission_denied`、1 `credential_rejected`、5 `unsupported_api`。该矩阵确认 145 个通过 contract-match 候选门禁；通用数字字段修复又在代码层补回 4 个接口的 29 个字段，形成 149 个候选，但它们都不因此自动 activation：新增 4 个仍待 fresh HTTPS provider -> SQLite -> receipt -> API 纵向 readback。17 个 schema drift、1 个质量异常和其余 impaired 接口继续 paused。矩阵 SHA-256 为 `ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1`，明确 `production_ready=false`；它不是正式 HTTPS server readback。
 - 频率实测只证明健康单一 HTTPS 节点的小响应 request-start 能力至少 200 次/分钟：并发 4 下 210/210 成功，全部 request start 在 59.714 秒内，零限频、零 transport error、零重试；脱敏证据 SHA-256 为 `660c5ef6f1567b9be4673822f891d7ca3b388a6aad37224b2e62fdaa0b1cb935`。当前 `main` 代码设置保护门禁 200 次/60 秒、并发 4，但这不是 QuickSync 合同额度或已部署 production 配置；混合大响应、每日额度与 DNS failover 仍待验收。
 - observations 代码提交 `c4fc5a1872b2fcae76b9e20a82911bdc88615b67` 已经 local main、origin/main 与 live GitHub 三方读回一致；其基线 `7ce02ea` 包含通用 transport commit `7bf7f71`、数字字段 commit `c92b001` 与证据文档 commit `7ce02ea`。通用 transport 在一个共享 monotonic deadline 内完成 DNS snapshot direct-connect、TLS 1.3、仅 pre-send 节点切换、send 后零 replay及 `rate_limited` 诚实分类；数字字段修复一次扩展 provider output field grammar，并保留 API/参数/window 的严格 grammar。observations 精确 17 路径经双路 fresh review 确认 P0/P1=0，主线定向回归 58 项通过，Ruff/compile/diff-check 通过；服务器、production 与真实 HTTPS 全接口 readback 仍尚未完成。

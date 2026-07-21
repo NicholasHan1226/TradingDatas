@@ -2,7 +2,10 @@
 
 ## GET /v1/catalog
 
-返回当前账户可见的数据集、schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。
+返回首期产品范围内可发现的数据集、schema、字段、查询能力、cadence、SLA、
+entitlement 和 runtime state。目录可发现性与查询/运行资格是两个独立事实：
+`excluded`、`retired` 或其它未激活项仍应在 catalog 中如实展示其状态，但
+`POST /v1/query` 必须继续在 SQLite 或 provider 访问前 fail closed。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
 `entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
