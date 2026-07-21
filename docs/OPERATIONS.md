@@ -66,6 +66,9 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
    blocked；它不读取 Token，也不是正式 HTTPS 采集证明。旧 manual entitlement probe
    与 policy 已退役；request-profile 配置与 resolver 仅作官方输入映射迁移资料，既不是
    entitlement/activation authority，也不得接入 collector、scheduler 或生产命令；
+   runtime contract compiler 与 HTTPS probe plan 还必须分别从磁盘重新读取并核对其
+   official/request/transport/reviewed 或 registered 四类冻结输入；调用方传入的映射不能
+   绕过原始字节 SHA。seed receipt 的 producer schema 必须与 registry 精确一致；
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
