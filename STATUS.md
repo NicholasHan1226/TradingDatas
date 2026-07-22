@@ -5,7 +5,7 @@
 ## 结论
 
 - 2026-07-20 transport 假设已纠正：当前真实上游通道不是官方 `api.tushare.pro` 直连，而是 Tushare-compatible QuickSync。身份固定为 `provider=tushare`、`transport_service=quicksync`；官方 Tushare 文档继续作为 dataset/schema/cadence 参考，QuickSync 文档与有界真实观测才是 endpoint/auth/permission/error/rate/concurrency 的运行事实源。
-- 因此，现有 registry、通用 executor、SQLite facts/receipts 与固定 catalog/query API 可以继续复用，不需要迁库或逐接口重写；旧 official-direct release 与服务器 transport readback 对生产采集结论作废，整体仍为 NO-GO。该旧证据只证明代码层、发布布局和 fail-closed impaired 投影。
+- 因此，现有 registry、通用 executor、SQLite facts/receipts 与固定 catalog/query API 可以继续复用，不需要迁库或逐接口重写。旧 official-direct release 与服务器 transport readback 对生产采集结论作废，该旧证据只证明代码层、发布布局和 fail-closed impaired 投影。2026-07-22 新链路已完成 5 个激活数据集的正式内部 API GO；全接口自动 cadence、现役 TA front 切换与旧链退役仍为 NO-GO，不得合并成一个“整体已完成”。
 - 2026-07-22 已修正能力分母：官方固定目录 239 个名称与当前 MCP 258 个工具的
   并集为 268；首期境内只读产品 catalog 为 222。旧 190 只代表已有官方文档合同与
   历史 transport observation 的子集；新增 32 项在合同或 HTTPS 权限证据缺失时均为
@@ -133,6 +133,23 @@
   payload 的 `PAYLOADS.sha256` 摘要为
   `9e5837b988befbcad3e42c6e1759b7f54d2084ff15aa33917445875dc2dda6b5`，9/9 payload
   与独立 root sidecar 均已通过 `sha256sum -c`。
+- 2026-07-22 20:20-20:25 CST，TradingAgent Bearer/no-fallback 消费候选已通过独立复核、
+  GitHub CI 并以 merge commit `303176e9658d72351e991db1fcc0a2c96d8311a9` 同步其
+  local/origin/GitHub `main`。发布侧随后在服务器生成独立 `tradingagent` read token：
+  API registry 只保存 PBKDF2 hash，明文仅保存在 root-owned `0600` 持久源和
+  `marketgraph:marketgraph`、`0600`、单链接的
+  `/run/secrets/tradingagent/tradingdatas-read.token`；`systemd-tmpfiles` 负责重启后从
+  持久源重建，不复用 bootstrap token。b395 shadow 重启后，直接 API 与上述 TA 客户端均对
+  5 个冻结 dataset 做了有界 catalog/query readback，全部为
+  `ready/non-degraded/fresh/valid`、receipt/lineage 完整且无 cursor；same-as-of 一致，错 token
+  为 401，旧 `/tushare`、`/source_status` 为 404。
+- 同轮按已冻结回滚顺序停止并禁用了旧 `sharedsignals-v1-internal.service`，在 18082 释放后
+  启动新 `tradingdatas-v1-internal.service`；正式 18082 重跑直接 API 与真实 TA 客户端均
+  通过后，新服务已 `active/enabled`，旧服务保持 `inactive/disabled`，18085 shadow 已停止。
+  active runtime 以 `tradingdatas:tradingdatas` 运行，读取 b395 `current` 与同一正式 SQLite；
+  release verifier 为 109 files verified，SQLite `quick_check=ok`，facts/receipt 数量未漂移。
+  因此固定内部 catalog/query 数据面已达到 formal GO；采集 timer、全接口 cadence、TA 研究
+  snapshot 以及旧 8082/cron 退役仍是彼此独立的未完成层。
 - 当前已知查询预算边界也被保留：`daily` 无筛选跨 7 个分区读取时第一页成功、第二页因
   SQLite 100 万 VM-step 预算 fail closed 为 503；按单个 `trade_date` 查询可完整读取
   5,526 行 / 12 页。它不影响已验证的 latest/current 内部切片，但意味着消费者必须使用
@@ -140,9 +157,9 @@
 - 两个无反向依赖、无配置引用、无当前连接的旧 TradingDatas transient canary
   （18083/18084）已在冻结 unit 与全目录文件哈希后停止；确认目录不含数据库或真实凭证后，
   对应的两个旧代码目录已物理删除，停用/重建证据与 `/etc` 凭证回滚面继续保留。旧
-  SharedSignals 8082/18082、relay、root 5 条与 `marketgraph` 22 条 active cron、
-  TA 8082 override 仍在真实使用，不能删除。TA Bearer token-file 候选仍未 fresh PASS、
-  合入 main 或发布，因此 formal 18082 切换与消费者 no-fallback parity 仍为当前停止线。
+  SharedSignals 18082 已停止并禁用；旧 8082、relay、root 5 条与 `marketgraph` 22 条 active
+  cron 及 TA 8082 override 仍在真实使用，不能删除。正式 18082 与 TA Bearer 有界消费 parity
+  已完成，但它不证明现役 TA front 已从 8082 切换，也不授权删除旧 writer 或历史数据。
   停用证据的原 `SHA256SUMS` 同样因包含自身而不可作为通过清单，已原样保留；相邻
   `legacy-canaries-stop-20260722T113932Z-manifest-fix-20260722T115450Z` 中的 9-payload
   清单摘要为 `23e2e4f05889aa5ed69a6dea8afc67c7981404873277b134bb40c6aafc4b13ab`，
@@ -151,7 +168,8 @@
 - GitHub 仓库已从 `NicholasHan1226/SharedSignals` 重命名为 `NicholasHan1226/TradingDatas`。
 - 本地新目录为 `/Users/nicholashan/Projects/Finance/TradingDatas`。
 - 历史提交 `9fa5838451c07fc8a328e37dd70db33976a733d2` 曾实现 request-profile 解析器。当前 profile/resolver 仅以 deprecated migration-only 形式保留官方输入映射，不是 activation authority，也不得进入 collector、scheduler 或生产命令；待映射迁入 provider-native runtime contracts 后删除。
-- GitHub 集成和生产文件预置不等于生产 runtime；真实全量采集、正式 API readback 与消费者切换仍未完成。
+- GitHub 集成和生产文件预置不等于生产 runtime；正式 18082 API 与有界 TA 客户端 readback
+  已完成，但全接口自动 cadence、现役 TA front 的 8082 退役和完整调度周期仍未完成。
 - 历史隔离 pilot 已证明 `trade_cal`、`stock_basic`、`daily` 三个数据集的真实 Tushare -> SQLite -> receipt -> catalog/query 纵向切片；它不能替代当前服务器新 runtime 的 fresh 真实采集验收。
 - 官方固定能力快照包含 239 个唯一 API 名称；scope v2 的首期境内只读产品目录为
   222 个 dataset。其 190 个已有官方文档合同子集与新增 32 个待合同/权限项必须分层
@@ -167,45 +185,44 @@
 - 服务器已从 GitHub commit `b4a6aac9a346519b9e6d744fe6521f0a9510c381` 建立隔离 18083 transient canary：独立 `tradingdatas` 用户、新 SQLite 与新认证材料；未认证 catalog 为 401，认证 catalog/query 为 200，catalog 投影 190 个数据集（3 active / 187 paused），旧 `/tushare` 与 `/source_status` 均为 404。首次空库查询如实返回 `unobserved`；随后把 QuickSync 凭证错误发送到官方 Tushare endpoint 得到 provider code `40101`。这个结果证明旧 transport 假设错误和 API impaired 投影可用，不是 QuickSync 权限或数据采集证据。
 - 本机保留的 2026-07-16 QuickSync capability report 记录 258 个工具，并在 20 个受控读调用中观测到 15 个 success/data-or-empty 与 5 个 permission denied `40203`。它证明 QuickSync 具备 Tushare-compatible 能力及独立权限语义，但不证明服务器正式凭证、全量 entitlement、正确 cadence、频率或并发。
 - 正式 `current` 已指向 `b395b9017643c61a7f076f02985e9c457cc8d069`，collector unit
-  已是 QuickSync 通用 runner，正式 SQLite 已有上述两轮受控采集及 API 影子回读证据；
-  collector 仍按 one-shot 运行且 timer 保持 `disabled/inactive`，formal API unit 仍
-  `disabled/inactive`。历史 `9fa5838...`、`28a5029...` 及旧 canary release 只保留回滚
+  已是 QuickSync 通用 runner，正式 SQLite 已有上述两轮受控采集及正式 API 回读证据；
+  collector 仍按 one-shot 运行且 timer 保持 `disabled/inactive`，formal API unit 已
+  `active/enabled`。历史 `9fa5838...`、`28a5029...` 及旧 canary release 只保留回滚
   证据，不得恢复 official-direct collector 或 deprecated request-profile 运行耦合。
 - 旧生产 `8082`、旧数据库、旧 cron 和旧文档不属于 TradingDatas 目标架构；在新生产与消费者切换前仅作为短期回滚源。
 - 2026-07-21 只读复核确认旧生产依赖仍在运行：root crontab 仍有 4 条 `SharedSignals/cron/opening_gate.sh` 和 1 条 `external_api_probe.sh`；`marketgraph` crontab 仍有旧 collectors、CNFutures、Crypto、事件、patrol/watchdog/health 等 SharedSignals 任务；`tradingagent-front-api.service.d/sharedsignals.conf` 仍指向 `http://127.0.0.1:8082`，现役 TradingAgent front service 仍为 active。这些项目已进入精确退役清单，但在 TradingDatas 真实采集、`catalog/query` API、消费者 parity、数据连续性和回滚证明通过前不得停用或删除。
 
 ## 当前停止线
 
-TradingDatas 的五数据集内部影子数据面已经可读，但尚未达到 formal 18082 切换与旧系统
-删除停止线，原因：
+TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收窄为自动 cadence、TA
+研究 snapshot 与旧 8082/cron 退役：
 
 1. scope v2 与离线 artifact 已冻结 222 个产品能力；runtime registry 当前有 190 个合同项，
    仅 5 个完成 entitlement/activation 与正式 SQLite 纵向证明，其余 185 个保持 paused，
    新增 32 项保持 discovery-only。不得把静态目录或历史 HTTP 矩阵误报为全量采集；
-2. b395 正式 SQLite 与 18085 影子 API 已完成五项 latest/current readback，但 daily 的
+2. b395 正式 SQLite 与正式 18082 API 已完成五项 latest/current readback，但 daily 的
    无界跨分区读取会触发 SQLite 查询预算；当前内部消费者必须按日期/范围有界查询；
-3. formal 18082 仍由旧 SharedSignals 占用。TradingAgent 的 Bearer token-file 候选尚未
-   fresh PASS、合入 main 或发布，生产仍保留 8082 override，因此 base URL、独立 token
-   与 no-legacy-fallback parity 尚未完成；
+3. TradingAgent Bearer transport 与五项有界 query 已在 formal 18082 通过，但其完整
+   integration probe 仍错误假设 provider-native 每行都携带 ISO PIT/receipt 字段并对所有
+   dataset 强制同一 `as_of`；该消费者研究层合同需在 TA 内修正，不得要求 TradingDatas
+   伪造行证据或新增交易语义；
 4. QuickSync 双 DNS 节点仍有一个 TLS 不一致节点，混合大响应和每日额度未知；timer 必须
    保持 disabled，历史回填只能继续人工 bounded one-shot，不能自动恢复；
-5. 旧 8082/18082、relay、27 条 active SharedSignals cron 及 90GB 代码/数据面仍有真实
-   runtime 依赖。两个旧 TD canary 的无依赖代码目录已经删除，但广义旧系统必须等消费者 parity 与
+5. 旧 18082 已停用；旧 8082、relay、27 条 active SharedSignals cron 及 90GB 代码/数据面仍有真实
+   runtime 依赖。两个旧 TD canary 的无依赖代码目录已经删除，但广义旧系统必须等现役消费者切换与
    回滚门禁后分批禁用、观察、删除，数据保留另行批准。
 
 ## 当前执行顺序
 
-1. 保持 b395、正式 SQLite、18085 影子 API 和 disabled timer 不漂移；只继续有界 one-shot，
+1. 保持 b395、正式 SQLite、formal 18082 API 和 disabled timer 不漂移；只继续有界 one-shot，
    每轮先 dry-plan 并核对 facts/receipt/API；
-2. TradingAgent 完成 Bearer token-file 候选的 fresh review、main 合入和 sim-only 发布，使用
-   五个冻结 dataset ID 对 18085 做有界、无旧 fallback parity；
-3. 冻结 formal 18082 切换和旧 18082 回滚包，停止旧 18082 后启动
-   `tradingdatas-v1-internal.service`，立即重跑认证 catalog/query、same-as-of 和 impaired
-   负例；失败就恢复旧服务，不覆盖 SQLite；
-4. 先禁用并观察旧 8082 override、relay 与 SharedSignals writer/cron；跨完整调度周期无旧
+2. TradingAgent 在自身仓修正 provider-native row/envelope 消费合同并完成 sim-only full
+   integration probe；TradingDatas 不新增 TA 专用字段、route 或表；
+3. 部署现役 TA consumer，移除 8082 override 后先禁用并观察旧 8082、relay 与 SharedSignals
+   writer/cron；跨完整调度周期无旧
    调用且数据窗口守恒后，才分批删除 unit、cron、代码和旧文档。历史 DB/90GB 数据不随
    代码退役删除；
-5. 另行解决 DNS/每日额度并观察完整 cadence 后再启用 timer；随后后台 bounded backfill，
+4. 另行解决 DNS/每日额度并观察完整 cadence 后再启用 timer；随后后台 bounded backfill，
    其余 dataset 继续按 entitlement、schema 和真实 readback 分批激活。
 
 ## 已验证与未验证
@@ -239,7 +256,15 @@ TradingDatas 的五数据集内部影子数据面已经可读，但尚未达到 
 - commit `b395b9017643c61a7f076f02985e9c457cc8d069` 的 local/origin/GitHub、服务器
   immutable release 与相对 `current` readback；正式 SQLite 的两轮 one-shot、23 条
   receipts、48,857 行五数据集 facts 的数据库守恒，以及同库 18085 authenticated
-  catalog/query/same-as-of/401/404 证据；timer 未启用、formal 18082 未切换。
+  catalog/query/same-as-of/401/404 证据；该次影子验收当时 timer 未启用、formal 18082 未切换。
+- 2026-07-22 正式 18082 切换后的 fresh production readback：
+  `tradingdatas-v1-internal.service=active/enabled`、
+  `sharedsignals-v1-internal.service=inactive/disabled`、18085 无影子服务，b395
+  `verify-current` 为 109 files verified，SQLite `quick_check=ok`、23 条 receipt 与
+  48,857 行 facts 未漂移。独立 TradingAgent read token 下，catalog 为 190 项，
+  5 个冻结 dataset 的有界 query 均为
+  `ready/non-degraded/fresh/valid/lineage-complete`且无 cursor；错 token 为 401，
+  旧 route 为 404。
 
 未验证：
 
@@ -247,9 +272,8 @@ TradingDatas 的五数据集内部影子数据面已经可读，但尚未达到 
 - 新增 32 个产品 dataset 的正式合同/安全请求映射及 222 项 runtime catalog/API 投影；
 - QuickSync 每日额度及双 DNS 节点 failover 的 production runtime 证明；
 - 所有首期接口的真实采集与正确频率；
-- 正式 18082 TradingDatas production runtime；
 - 后续激活项在正式 production SQLite 的 Tushare facts/receipts/catalog/query readback；
-- 内部消费者切换；
+- 现役 TradingAgent front 从旧 8082 override 切到 18082 的完整运行验收；
 - 旧生产系统删除。
 
 任何后续“完成”必须分别给出 local、GitHub、production files、production runtime、真实 receipts、API readback 和消费者证据。

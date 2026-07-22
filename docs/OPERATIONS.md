@@ -135,6 +135,18 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    其他账号持有的 token。采集 runner 与 API service 都使用独立 `tradingdatas` 账号，使采集写入
    和 API 只读访问协作于同一 SQLite 权限模型，不以 root 运行采集器。内部
    loopback 调用同样必须携带显式 token 或 JWT；没有 localhost 免认证路径；
+
+   TradingAgent 使用独立的只读 token，不能复用 bootstrap 或 QuickSync 凭证。token 明文的
+   持久源固定为 root-owned、`0600`、单链接普通文件
+   `/etc/tradingagent/tradingdatas-read.token`；API registry 只保存带
+   `/etc/tradingdatas/token_salt` 的 PBKDF2 hash、`tenant_id=tradingagent`、`scopes=[read]`
+   和有界并发。运行时文件固定为
+   `/run/secrets/tradingagent/tradingdatas-read.token`，必须是
+   `marketgraph:marketgraph`、`0600`、单链接普通文件，父路径不得含 symlink。生产使用
+   `/etc/tmpfiles.d/tradingagent-secrets.conf` 的 `d` + `C` 规则在启动时从持久源重建 tmpfs
+   文件；配置、日志、evidence、任务消息和环境变量均不得包含 token 值。轮换时先备份 hash
+   registry、生成新持久源与新 hash、原子替换运行时文件并重启 API 使 registry 生效，再做
+   401/正向 readback；任一步失败就恢复旧 registry 与旧运行时文件，不改 SQLite。
 4. 在不读取凭证、不调用 provider 的情况下，从目标 immutable release 的物理
    `FINAL` 路径重新编译 registry。`FINAL` 必须是以完整 commit 命名的直接目录，不得是
    `/current`、其它 symlink 或可写 checkout。compiler 的 `--output` 必须指向 release 之外
