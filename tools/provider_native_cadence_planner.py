@@ -128,8 +128,8 @@ class ScheduledRun:
     cadence_class: str
     request_window: Mapping[str, str]
     priority: str = "current"
-    request_variant: Mapping[str, RequestScalar] = field(
-        default_factory=lambda: MappingProxyType({})
+    request_variants: tuple[Mapping[str, RequestScalar], ...] = field(
+        default_factory=lambda: (MappingProxyType({}),)
     )
     rate_budget_class: str = "standard"
     retry: RetryPolicy = RetryPolicy(1, 0, 0, 0)
@@ -154,6 +154,17 @@ class _Fact:
 class _DatasetState:
     receipts: tuple[ValidatedReceiptHistoryEntry, ...] = ()
     facts: tuple[_Fact, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ReceiptCohort:
+    execution_id: str
+    status: str
+    started_at: datetime
+    finished_at: datetime
+    request_window: Mapping[str, str]
+    receipt_ids: frozenset[str]
+    success_receipt_ids: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -453,7 +464,7 @@ def load_planner_state(
                 success_ids = {
                     item.receipt_id
                     for item in receipts[key]
-                    if item.status == "success"
+                    if item.status == "success" and item.cohort_status == "success"
                 }
                 for partition_value, payload_json, receipt_id in conn.execute(
                     "SELECT partition_value, payload_json, receipt_id FROM provider_dataset_rows "
@@ -582,14 +593,39 @@ def _window_dates(
 def _latest(
     receipts: Sequence[ValidatedReceiptHistoryEntry],
     window: Mapping[str, str] | None = None,
-) -> ValidatedReceiptHistoryEntry | None:
-    items = [
-        item
-        for item in receipts
-        if window is None or dict(item.request_window) == dict(window)
-    ]
+) -> _ReceiptCohort | None:
+    grouped: dict[str, list[ValidatedReceiptHistoryEntry]] = defaultdict(list)
+    for receipt in receipts:
+        if window is None or dict(receipt.request_window) == dict(window):
+            grouped[receipt.execution_id].append(receipt)
+    items: list[_ReceiptCohort] = []
+    for execution_id, members in grouped.items():
+        statuses = {member.cohort_status for member in members}
+        windows = {
+            _canonical_json(dict(member.request_window)) for member in members
+        }
+        started = {member.started_at for member in members}
+        if len(statuses) != 1 or len(windows) != 1 or len(started) != 1:
+            raise RuntimeError("provider-native receipt cohort is inconsistent")
+        items.append(
+            _ReceiptCohort(
+                execution_id=execution_id,
+                status=next(iter(statuses)),
+                started_at=next(iter(started)),
+                finished_at=max(member.finished_at for member in members),
+                request_window=members[0].request_window,
+                receipt_ids=frozenset(member.receipt_id for member in members),
+                success_receipt_ids=frozenset(
+                    member.receipt_id
+                    for member in members
+                    if member.status == "success"
+                ),
+            )
+        )
     return max(
-        items, key=lambda item: (item.finished_at, item.receipt_id), default=None
+        items,
+        key=lambda item: (item.started_at, item.execution_id, item.finished_at),
+        default=None,
     )
 
 
@@ -632,38 +668,35 @@ def _runs(
     window: Mapping[str, str],
     priority: str,
 ) -> tuple[ScheduledRun, ...]:
-    result: list[ScheduledRun] = []
-    for variant in binding.request_variants:
-        identity = _canonical_json(
-            {
-                "dataset_id": dataset.dataset_id,
-                "provider": binding.provider,
-                "provider_api": binding.api_name,
-                "window": dict(window),
-                "variant": dict(variant),
-            }
-        )
-        jitter = (
-            0
-            if policy.retry.jitter_seconds == 0
-            else int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big")
-            % (policy.retry.jitter_seconds + 1)
-        )
-        result.append(
-            ScheduledRun(
-                dataset.dataset_id,
-                binding.provider,
-                binding.api_name,
-                dataset.cadence_class,
-                window,
-                priority,
-                variant,
-                policy.rate_budget_class,
-                policy.retry,
-                jitter,
-            )
-        )
-    return tuple(result)
+    identity = _canonical_json(
+        {
+            "dataset_id": dataset.dataset_id,
+            "provider": binding.provider,
+            "provider_api": binding.api_name,
+            "variants": [dict(variant) for variant in binding.request_variants],
+            "window": dict(window),
+        }
+    )
+    jitter = (
+        0
+        if policy.retry.jitter_seconds == 0
+        else int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big")
+        % (policy.retry.jitter_seconds + 1)
+    )
+    return (
+        ScheduledRun(
+            dataset_id=dataset.dataset_id,
+            provider=binding.provider,
+            provider_api=binding.api_name,
+            cadence_class=dataset.cadence_class,
+            request_window=window,
+            priority=priority,
+            request_variants=tuple(binding.request_variants),
+            rate_budget_class=policy.rate_budget_class,
+            retry=policy.retry,
+            retry_jitter_seconds=jitter,
+        ),
+    )
 
 
 def _dataset_plans(
@@ -681,7 +714,8 @@ def _dataset_plans(
         if latest is not None:
             age = (now_utc - latest.finished_at).total_seconds()
             healthy = latest.status == "empty" or any(
-                fact.receipt_id == latest.receipt_id for fact in current.facts
+                fact.receipt_id in latest.success_receipt_ids
+                for fact in current.facts
             )
             if (latest.status == "failed" and age < policy.failure_retry_seconds) or (
                 latest.status != "failed"
@@ -709,9 +743,16 @@ def _dataset_plans(
         for fact in current.facts
         if fact.partition_value is not None
     }
-    for receipt in current.receipts:
-        if receipt.status == "empty":
-            covered.update(_window_dates(binding, receipt.request_window))
+    execution_ids = {receipt.execution_id for receipt in current.receipts}
+    for execution_id in execution_ids:
+        members = tuple(
+            receipt
+            for receipt in current.receipts
+            if receipt.execution_id == execution_id
+        )
+        cohort = _latest(members)
+        if cohort is not None and cohort.status == "empty":
+            covered.update(_window_dates(binding, cohort.request_window))
     missing = set(desired) - covered
     overlap: set[date] = (
         set(desired[-policy.correction_overlap_bars :])

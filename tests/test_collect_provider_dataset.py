@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import json
@@ -26,7 +27,10 @@ from dataset_registry import (
 )
 from storage.ingest_receipts import IngestResult
 import storage.ingest_receipts as ingest_receipts
-from storage.receipt_projection import load_dataset_runtime_projection
+from storage.receipt_projection import (
+    load_dataset_runtime_projection,
+    project_dataset_runtime_evidence,
+)
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 import tools.collect_provider_dataset as runner
@@ -229,6 +233,22 @@ def _paginated_strategy_registry(*, max_pages: int = 12) -> DatasetRegistry:
     return DatasetRegistry((replace(dataset, provider_bindings=(binding,)),))
 
 
+def _variant_cohort_registry(*, empty_data_policy: str = "forbidden") -> DatasetRegistry:
+    base = _strategy_registry(
+        "unique_primary_key_snapshot",
+        empty_data_policy=empty_data_policy,
+        max_rows_per_attempt=10,
+    )
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        request_variants=tuple(
+            MappingProxyType({"list_status": status}) for status in ("L", "D", "P")
+        ),
+    )
+    return DatasetRegistry((replace(dataset, provider_bindings=(binding,)),))
+
+
 def _database(path: Path) -> None:
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
@@ -260,6 +280,61 @@ class _FakeCollector:
             raise self.error
         assert self.outcome is not None
         return self.outcome
+
+
+class _VariantOutcomeCollector:
+    def __init__(self, outcomes: Mapping[str, ProviderCallOutcome]) -> None:
+        self.outcomes = outcomes
+        self.calls: list[str] = []
+
+    def collect_outcome(
+        self,
+        _api_name: str,
+        params: dict[str, str],
+        _fields: str | None = None,
+        *,
+        scan_budget: object | None = None,
+    ) -> ProviderCallOutcome:
+        assert scan_budget is not None
+        status = params["list_status"]
+        self.calls.append(status)
+        return self.outcomes[status]
+
+
+def _variant_success(symbol: str) -> ProviderCallOutcome:
+    return ProviderCallOutcome(
+        state="success",
+        rows=(
+            {
+                "ts_code": symbol,
+                "trade_date": "20260720",
+                "close": 12.5,
+            },
+        ),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+
+def _variant_empty() -> ProviderCallOutcome:
+    return ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+
+def _variant_failed() -> ProviderCallOutcome:
+    return ProviderCallOutcome(
+        state="failed",
+        rows=(),
+        provider_code=-2001,
+        error_code="permission_denied",
+        error_message="permission denied",
+    )
 
 
 def _run(
@@ -1879,6 +1954,226 @@ def test_request_window_is_strict_and_fails_before_provider_or_database(
     assert output["state"] == "validation"
     assert fake.calls == []
     assert not db_path.exists()
+
+
+def test_complete_variant_cohort_accepts_success_success_and_legal_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-20T08:01:00+00:00",
+    )
+    collector = _VariantOutcomeCollector(
+        MappingProxyType(
+            {
+                "L": _variant_success("600001.SH"),
+                "D": _variant_success("600002.SH"),
+                "P": _variant_empty(),
+            }
+        )
+    )
+    registry = _variant_cohort_registry(empty_data_policy="forbidden")
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="variant-cohort-root",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+
+    assert result.status == "success"
+    assert result.errors == ()
+    assert collector.calls == ["L", "D", "P"]
+    assert provider_fact_count(db_path) == 2
+    with sqlite3.connect(db_path) as conn:
+        payloads = [
+            json.loads(notes)
+            for (notes,) in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY run_id"
+            )
+        ]
+    assert {payload["status"] for payload in payloads} == {"success", "empty"}
+    assert {
+        payload["request_identity"]["request_variant"]["list_status"]
+        for payload in payloads
+    } == {"L", "D", "P"}
+    assert {
+        payload["attempt_id"].split(":provider-call:", 1)[0]
+        for payload in payloads
+    } == {"variant-cohort-root"}
+    projection = load_dataset_runtime_projection(
+        db_path,
+        registry.resolve("cn.synthetic.runner"),
+        registry=registry,
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+    assert projection.state == "success"
+    assert projection.degraded is False
+
+
+def test_one_shot_execute_runs_the_complete_registry_variant_cohort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry = _variant_cohort_registry(empty_data_policy="forbidden")
+    collector = _VariantOutcomeCollector(
+        MappingProxyType(
+            {
+                "L": _variant_success("600001.SH"),
+                "D": _variant_success("600002.SH"),
+                "P": _variant_empty(),
+            }
+        )
+    )
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: registry)
+    monkeypatch.setattr(runner, "TushareCollector", lambda: collector)
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-20T08:01:00+00:00",
+    )
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    code = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.synthetic.runner",
+            "--request-window-json",
+            "{}",
+            "--attempt-id",
+            "11111111-1111-4111-8111-111111111111",
+            "--started-at",
+            "2026-07-20T08:00:00+00:00",
+            "--execute",
+        ]
+    )
+
+    assert code == runner.EXIT_SUCCESS
+    assert json.loads(capsys.readouterr().out)["state"] == "success"
+    assert collector.calls == ["L", "D", "P"]
+
+
+def test_complete_all_empty_variant_cohort_applies_forbidden_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-20T08:01:00+00:00",
+    )
+    registry = _variant_cohort_registry(empty_data_policy="forbidden")
+    collector = _VariantOutcomeCollector(
+        MappingProxyType({status: _variant_empty() for status in ("L", "D", "P")})
+    )
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="all-empty-variant-cohort",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+
+    assert collector.calls == ["L", "D", "P"]
+    assert result.status == "failed"
+    assert result.errors == ("validation_failed",)
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT status, COUNT(*) FROM market_ingest_runs GROUP BY status"
+        ).fetchall() == [("empty", 3)]
+    projection = load_dataset_runtime_projection(
+        db_path,
+        registry.resolve("cn.synthetic.runner"),
+        registry=registry,
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+    assert projection.state == "failed"
+    assert projection.reasons == ("validation_failed",)
+
+
+@pytest.mark.parametrize(
+    ("p_outcome", "expected_reason"),
+    [
+        (None, "variant_cohort_incomplete"),
+        (_variant_failed(), "permission_denied"),
+    ],
+    ids=("missing-p", "failed-p"),
+)
+def test_incomplete_or_failed_variant_cohort_projects_failed(
+    tmp_path: Path,
+    p_outcome: ProviderCallOutcome | None,
+    expected_reason: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-20T08:01:00+00:00",
+    )
+    registry = _variant_cohort_registry(empty_data_policy="forbidden")
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    started_at = "2026-07-20T08:00:00+00:00"
+    outcomes = {
+        "L": _variant_success("600001.SH"),
+        "D": _variant_success("600002.SH"),
+    }
+    if p_outcome is not None:
+        outcomes["P"] = p_outcome
+    def collect() -> IngestResult:
+        return native_ingest.collect_provider_native_dataset(
+            db_path,
+            registry=registry,
+            collector=_VariantOutcomeCollector(MappingProxyType(outcomes)),
+            dataset_id="cn.synthetic.runner",
+            request_window={},
+            attempt_id="11111111-1111-4111-8111-111111111111",
+            started_at=started_at,
+        )
+    if p_outcome is None:
+        with pytest.raises(KeyError, match="P"):
+            collect()
+    else:
+        result = collect()
+        assert result.status == "failed"
+        assert result.counts.committed == 2
+
+    projection = load_dataset_runtime_projection(
+        db_path,
+        registry.resolve("cn.synthetic.runner"),
+        registry=registry,
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through is None
+    assert projection.reasons == (expected_reason,)
+    with sqlite3.connect(db_path) as conn:
+        evidence = project_dataset_runtime_evidence(
+            conn,
+            registry.resolve("cn.synthetic.runner"),
+            registry=registry,
+            now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+        )
+    assert evidence.last_success_receipt_id is None
+    assert evidence.last_success_receipt_ids == ()
 
 
 def test_unexpected_provider_exception_cannot_leak_secret_material(

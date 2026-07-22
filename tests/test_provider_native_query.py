@@ -614,6 +614,95 @@ def test_native_query_returns_current_rows_for_exact_invalid_data_through_failur
     assert response["metadata"]["reasons"] == ["invalid_data_through"]
 
 
+def test_failed_current_cohort_hides_prior_and_partial_facts(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    conn.execute("DELETE FROM provider_dataset_rows")
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="prior-success-row",
+        payload={"symbol": "PRIOR", "trade_date": "20260716", "big": 1},
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="partial-current-row",
+        payload={"symbol": "PARTIAL", "trade_date": "20260717", "big": 2},
+    )
+    conn.commit()
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=native_harness["dataset"].dataset_id,
+            state="failed",
+            degraded=True,
+            data_through=None,
+            observed_at="2026-07-17T03:00:00+00:00",
+            receipt_id="receipt-current-failed",
+            reasons=("variant_cohort_incomplete",),
+        ),
+        current_receipt_status="failed",
+        current_providers=("provider-a",),
+        last_success_receipt_id="receipt-prior-success",
+        last_success_providers=("provider-a",),
+        last_success_data_through="20260716",
+        current_receipt_ids=("receipt-current-failed",),
+        last_success_receipt_ids=("receipt-prior-success",),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: evidence,
+    )
+
+    response = _execute(native_harness, _request(fields=("symbol",)))
+
+    assert response["data"] == []
+    assert response["next_cursor"] is None
+    assert response["metadata"]["state"] == "failed"
+    assert response["metadata"]["runtime_state"] == "failed"
+    assert response["metadata"]["degraded"] is True
+    assert response["metadata"]["quality"]["valid"] is False
+    assert response["metadata"]["reasons"] == ["variant_cohort_incomplete"]
+
+
+def test_receipt_watermark_changes_when_cohort_membership_changes() -> None:
+    dataset = _native_dataset()
+    base = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="failed",
+            degraded=True,
+            data_through=None,
+            observed_at="2026-07-17T03:00:00+00:00",
+            receipt_id="receipt-current-a",
+            reasons=("variant_cohort_incomplete",),
+        ),
+        current_receipt_status="failed",
+        current_providers=("provider-a",),
+        last_success_receipt_id="receipt-prior-a",
+        last_success_providers=("provider-a",),
+        last_success_data_through="20260716",
+        current_receipt_ids=("receipt-current-a",),
+        last_success_receipt_ids=("receipt-prior-a",),
+    )
+
+    current_member_changed = replace(
+        base,
+        current_receipt_ids=("receipt-current-a", "receipt-current-b"),
+    )
+    last_success_member_changed = replace(
+        base,
+        last_success_receipt_ids=("receipt-prior-a", "receipt-prior-b"),
+    )
+
+    watermark = query_module._receipt_watermark(dataset, base)
+    assert query_module._receipt_watermark(dataset, current_member_changed) != watermark
+    assert query_module._receipt_watermark(dataset, last_success_member_changed) != watermark
+
+
 @pytest.mark.parametrize(
     "evidence",
     [

@@ -54,7 +54,7 @@ class _CollectionPlan:
     dataset: DatasetDefinition
     binding: ProviderBinding
     request_window: Mapping[str, str]
-    request_variant: Mapping[str, RequestScalar]
+    request_variants: tuple[Mapping[str, RequestScalar], ...]
     parameter_keys: tuple[str, ...]
 
 
@@ -132,7 +132,6 @@ def _build_plan(
         binding,
         request_window,
     )
-    request_variant = binding.request_variants[0]
 
     # Reuse the receipt boundary's public-text and timestamp validation in plan
     # mode without touching SQLite or the provider.
@@ -151,7 +150,7 @@ def _build_plan(
         dataset=dataset,
         binding=binding,
         request_window=MappingProxyType(normalized_window),
-        request_variant=MappingProxyType(dict(request_variant)),
+        request_variants=tuple(binding.request_variants),
         parameter_keys=tuple(sorted(params)),
     )
 
@@ -285,7 +284,6 @@ def main(argv: list[str] | None = None) -> int:
             request_window=plan.request_window,
             attempt_id=attempt_id,
             started_at=started_at,
-            request_variant=plan.request_variant,
         )
         exit_code, summary = _result_summary(plan, result)
     except Exception:

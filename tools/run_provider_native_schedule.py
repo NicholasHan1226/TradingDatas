@@ -38,6 +38,7 @@ from collectors.tushare.provider_native_ingest import (  # noqa: E402
 )
 from collectors.tushare.tushare_common import read_tushare_config  # noqa: E402
 from runtime_paths import provider_native_sqlite_path  # noqa: E402
+from storage.ingest_receipts import make_schedule_plan_attempt_id  # noqa: E402
 from tools.provider_native_cadence_planner import (  # noqa: E402
     Schedule,
     ScheduledRun,
@@ -180,6 +181,7 @@ def _in_process_executor(
     registry: DatasetRegistry,
     db_path: Path,
     started_at: str,
+    attempt_id: str,
     rate_ledger: RuntimeRateBudgetLedger,
 ) -> DatasetResult:
     """Execute one plan while sharing the runner's actual-call budget ledger."""
@@ -193,8 +195,7 @@ def _in_process_executor(
         collector=collector,
         dataset_id=plan.dataset_id,
         request_window=plan.request_window,
-        request_variant=plan.request_variant,
-        attempt_id=str(uuid.uuid4()),
+        attempt_id=attempt_id,
         started_at=started_at,
         retry=RetrySettings(
             max_attempts=plan.retry.max_attempts,
@@ -240,19 +241,25 @@ def run_schedule(
         return ScheduleResult(0, "plan", planned, skipped, plans)
     started_at = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     rate_ledger = RuntimeRateBudgetLedger(schedule)
-    execute_one = executor or (
-        lambda plan: _in_process_executor(
-            plan,
-            registry=registry,
-            db_path=db_path,
-            started_at=started_at,
-            rate_ledger=rate_ledger,
-        )
-    )
+    run_attempt_id = str(uuid.uuid4())
     results: list[DatasetResult] = []
-    for plan in plans:
+    for plan_index, plan in enumerate(plans):
         try:
-            result = execute_one(plan)
+            result = (
+                executor(plan)
+                if executor is not None
+                else _in_process_executor(
+                    plan,
+                    registry=registry,
+                    db_path=db_path,
+                    started_at=started_at,
+                    attempt_id=make_schedule_plan_attempt_id(
+                        run_attempt_id,
+                        plan_index=plan_index,
+                    ),
+                    rate_ledger=rate_ledger,
+                )
+            )
         except Exception:
             result = DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
         if (

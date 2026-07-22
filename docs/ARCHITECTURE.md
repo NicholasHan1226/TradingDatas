@@ -42,6 +42,8 @@ runtime registry 仍为 190 项，其中仅 3 项 `active+active` 可进入 SQLi
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
+同一 `dataset + provider + request_window` 的 request variants 是一个不可拆分的采集 cohort：一次 execution 必须覆盖 registry 中的 exact variant set，并让所有真实调用继续各自写入 `request_identity` receipt。任一 variant 缺失或真实失败时 cohort failed；至少一个 variant success 且其余合法 empty 时 cohort success；只有全部 variants empty 时才应用 dataset 的 `empty_data_policy`。scheduler 用显式 run root 派生每个 window 的 plan root，不以时间戳或随机 UUID 排序拼接独立 execution。
+
 生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
 绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
 systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 `current` 即使在另一次
@@ -71,6 +73,8 @@ Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。
 
 empty、failed、permission denied、rate limited、validation failed 和 storage failed 必须分开记录。未知字段保留并标记 schema drift，不能静默删除。
+
+runtime 投影把“最新可信 scheduler run 的当前状态”和“全部完整 success cohort 的最大 `data_through`”分开计算。旧 backfill 后采不能让 dataset watermark 回退；同一 scheduler run 有多个 window 时，任一 window failed/incomplete 使 run failed，否则由目标 window 最大的 cohort 决定当前状态。watermark lineage 绑定该 cohort 的完整 member receipt IDs，不能由一个 sibling receipt 代表整个 cohort。
 
 ## 数据服务
 

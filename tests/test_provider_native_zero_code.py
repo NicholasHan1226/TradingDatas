@@ -304,7 +304,7 @@ class _Response:
         return self._payload if size < 0 else self._payload[:size]
 
 
-def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity(
+def test_registry_scan_budget_accepts_approved_6000_by_17_for_complete_cohort(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -369,6 +369,14 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity
     ) -> tushare_common.ProviderCallOutcome:
         observed_scan_budgets.append(scan_budget)
         observed_requested_fields.append(requested_fields)
+        if params.get("list_status") != "L":
+            return tushare_common.ProviderCallOutcome(
+                state="empty",
+                rows=(),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+            )
         return tushare_common.tushare_rows_outcome(
             api_name,
             "synthetic-provider-token",
@@ -391,26 +399,34 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_with_singular_identity
 
     assert result.status == "success"
     assert result.counts.committed == 6000
-    assert observed_requested_fields == [",".join(fields)]
-    assert len(observed_scan_budgets) == 1
-    assert isinstance(
-        observed_scan_budgets[0],
-        tushare_common.SensitiveScanBudget,
+    assert observed_requested_fields == [",".join(fields)] * 3
+    assert len(observed_scan_budgets) == 3
+    assert all(
+        isinstance(scan_budget, tushare_common.SensitiveScanBudget)
+        and scan_budget.max_nodes > 210_001
+        for scan_budget in observed_scan_budgets
     )
-    assert observed_scan_budgets[0].max_nodes > 210_001
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM provider_dataset_rows"
         ).fetchone() == (6000,)
-        receipt = connection.execute(
-            "SELECT status, rows_written, notes FROM market_ingest_runs"
-        ).fetchone()
-    assert receipt is not None
-    assert receipt[:2] == ("success", 6000)
-    receipt_payload = json.loads(receipt[2])
-    assert receipt_payload["errors"] == []
-    assert receipt_payload["request_identity"]["request_variant"] == {
-        "list_status": "L"
+        receipts = connection.execute(
+            "SELECT status, rows_written, notes FROM market_ingest_runs "
+            "ORDER BY run_id"
+        ).fetchall()
+    assert len(receipts) == 3
+    by_variant = {
+        json.loads(receipt[2])["request_identity"]["request_variant"]["list_status"]: (
+            receipt[0],
+            receipt[1],
+            json.loads(receipt[2])["errors"],
+        )
+        for receipt in receipts
+    }
+    assert by_variant == {
+        "L": ("success", 6000, []),
+        "D": ("empty", 0, []),
+        "P": ("empty", 0, []),
     }
 
 

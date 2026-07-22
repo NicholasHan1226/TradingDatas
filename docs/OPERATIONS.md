@@ -26,6 +26,8 @@ Tushare API 增加 service/timer。所有真实采集频率、失败重试与回
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在生产启用采集 timer。
 
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、

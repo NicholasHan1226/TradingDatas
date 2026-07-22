@@ -1078,6 +1078,7 @@ def _receipt_watermark(
             "reasons": sorted(set(projection.reasons)),
             "current": {
                 "receipt_id": projection.receipt_id,
+                "receipt_ids": list(evidence.current_receipt_ids),
                 "data_through": projection.data_through,
                 "observed_at": projection.observed_at,
                 "status": evidence.current_receipt_status,
@@ -1085,6 +1086,7 @@ def _receipt_watermark(
             },
             "last_success": {
                 "receipt_id": evidence.last_success_receipt_id,
+                "receipt_ids": list(evidence.last_success_receipt_ids),
                 "data_through": evidence.last_success_data_through,
                 "providers": list(evidence.last_success_providers),
             },
@@ -1307,7 +1309,7 @@ def _runtime_metadata(
         else:
             if evidence.current_receipt_status not in {None, "failed"}:
                 raise QueryServiceUnavailable("query service is unavailable")
-            allow_rows = prior_complete
+            allow_rows = False
             lineage_complete = current_complete or prior_complete
     else:
         if evidence.current_receipt_status not in {"success", "empty"}:

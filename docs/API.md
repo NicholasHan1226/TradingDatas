@@ -83,6 +83,8 @@ catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取
 完整的 `success` 映射为 `ready`，其它状态保持不变。HTTP 200 不得掩盖 dataset
 级 degraded 状态；消费者必须逐数据集读取 metadata，不能只看 HTTP 状态码。
 
+`metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低 `data_through`。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort 的完整 member receipt IDs；variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前 success rows。
+
 `lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
 ## 禁止接口

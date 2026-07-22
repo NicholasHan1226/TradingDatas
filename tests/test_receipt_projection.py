@@ -22,6 +22,7 @@ from storage.ingest_receipts import (
     IngestCounts,
     ProviderRequestIdentity,
     insert_ingest_receipt,
+    make_schedule_plan_attempt_id,
 )
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
@@ -76,6 +77,7 @@ def _insert_receipt(
     data_through: str | None,
     transaction_index: int = 0,
     request_identity: ProviderRequestIdentity | None = None,
+    request_window: dict[str, str] | None = None,
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
     binding = _dataset().provider_bindings[0]
@@ -84,7 +86,7 @@ def _insert_receipt(
         dataset_id="cn.equity.daily",
         provider="tushare",
         provider_api="daily",
-        request_window={"trade_date": "20260715"},
+        request_window=request_window or {"trade_date": "20260715"},
         config_hash=CONFIG_HASH,
         adapter_version=binding.adapter_version,
         started_at=started_at,
@@ -382,7 +384,9 @@ def test_projector_accepts_recognized_success_and_empty_receipts(
 
     assert projection.state == status
     assert projection.degraded is expected_degraded
-    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.data_through == (
+        "2026-07-15T08:00:00+08:00" if status == "success" else None
+    )
     assert projection.observed_at == "2026-07-15T00:01:00+00:00"
     assert projection.receipt_id == receipt_id
     assert projection.reasons == expected_reason
@@ -393,7 +397,7 @@ def test_projector_binds_complete_singular_provider_request_identity(
 ) -> None:
     conn = _memory_db()
     request_identity = ProviderRequestIdentity(
-        request_variant={"adjustment": "qfq", "include_suspended": False},
+        request_variant={},
         fanout_parameter="ts_code",
         fanout_values=("000001.SZ",),
         page_offset=100,
@@ -522,7 +526,7 @@ def test_terminal_failure_overrides_higher_index_success_chunks_in_same_attempt(
 
     assert projection.state == "failed"
     assert projection.degraded is True
-    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.data_through is None
     assert projection.observed_at == "2026-07-15T00:03:00+00:00"
     assert projection.receipt_id == failed_receipt_id
     assert projection.reasons == ("provider_error",)
@@ -636,6 +640,84 @@ def test_latest_failed_receipt_degrades_but_preserves_last_success_data_through(
     assert projection.observed_at == "2026-07-15T01:01:00+00:00"
     assert projection.receipt_id == failed_receipt_id
     assert projection.reasons == ("provider_error",)
+
+
+def test_later_backfill_success_cannot_regress_dataset_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    current_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-current-partition",
+        started_at="2026-07-20T08:00:00+00:00",
+        finished_at="2026-07-20T08:01:00+00:00",
+        data_through="20260720",
+        request_window={"trade_date": "20260720"},
+    )
+    backfill_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-older-backfill",
+        started_at="2026-07-20T08:10:00+00:00",
+        finished_at="2026-07-20T08:11:00+00:00",
+        data_through="20260701",
+        request_window={"trade_date": "20260701"},
+    )
+
+    evidence = project_dataset_runtime_evidence(
+        conn,
+        _dataset(freshness_sla_seconds=86_400),
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+
+    assert evidence.projection.state == "success"
+    assert evidence.projection.data_through == "20260720"
+    assert evidence.projection.receipt_id == backfill_receipt_id
+    assert evidence.projection.observed_at == "2026-07-20T08:11:00+00:00"
+    assert evidence.last_success_receipt_id == current_receipt_id
+    assert evidence.last_success_data_through == "20260720"
+
+
+def test_scheduler_run_uses_max_target_window_for_current_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    run_root = "11111111-1111-4111-8111-111111111111"
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=make_schedule_plan_attempt_id(run_root, plan_index=1),
+        started_at="2026-07-20T08:00:00+00:00",
+        finished_at="2026-07-20T08:02:00+00:00",
+        data_through="20260701",
+        request_window={"trade_date": "20260701"},
+    )
+    current_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id=make_schedule_plan_attempt_id(run_root, plan_index=0),
+        started_at="2026-07-20T08:00:00+00:00",
+        finished_at="2026-07-20T08:01:00+00:00",
+        data_through=None,
+        request_window={"trade_date": "20260720"},
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(freshness_sla_seconds=30 * 86_400),
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "empty"
+    assert projection.degraded is False
+    assert projection.data_through == "20260701"
+    assert projection.receipt_id == current_receipt_id
+    assert projection.reasons == ("provider_returned_no_rows",)
 
 
 def test_unassignable_malformed_receipt_like_row_cannot_hide_terminal_failure(
@@ -1501,7 +1583,7 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
     assert stale.reasons == ("freshness_sla_exceeded",)
 
 
-def test_empty_receipt_also_transitions_to_stale_after_the_sla_boundary(
+def test_empty_receipt_without_success_watermark_does_not_invent_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = _memory_db()
@@ -1518,7 +1600,7 @@ def test_empty_receipt_also_transitions_to_stale_after_the_sla_boundary(
     boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
-    stale = project_dataset_runtime(
+    after_boundary = project_dataset_runtime(
         conn,
         dataset,
         now=boundary + timedelta(microseconds=1),
@@ -1526,12 +1608,10 @@ def test_empty_receipt_also_transitions_to_stale_after_the_sla_boundary(
 
     assert exact.state == "empty"
     assert exact.degraded is False
-    assert stale.state == "stale"
-    assert stale.degraded is True
-    assert stale.reasons == (
-        "freshness_sla_exceeded",
-        "latest_receipt_empty",
-    )
+    assert after_boundary.state == "empty"
+    assert after_boundary.degraded is False
+    assert after_boundary.data_through is None
+    assert after_boundary.reasons == ("provider_returned_no_rows",)
 
 
 def test_receipt_like_unknown_schema_fails_closed() -> None:

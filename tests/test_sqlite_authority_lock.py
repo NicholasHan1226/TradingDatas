@@ -216,7 +216,7 @@ def test_generic_write_and_projection_share_one_clean_slate_authority(
     dataset = registry.resolve("tushare.daily")
     binding = dataset.provider_bindings[0]
     request_identity = ProviderRequestIdentity(
-        request_variant={"adjustment": "none"},
+        request_variant=dict(binding.request_variants[0]),
         fanout_parameter=None,
         fanout_values=(),
         page_offset=None,

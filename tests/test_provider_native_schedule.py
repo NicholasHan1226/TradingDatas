@@ -16,7 +16,10 @@ import storage.ingest_receipts as receipt_module
 from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
+    ProviderRequestIdentity,
     insert_ingest_receipt,
+    make_provider_call_attempt_id,
+    parse_schedule_plan_attempt_id,
 )
 from storage.schema import SCHEMA_SQL
 from storage.sqlite_authority_lock import sqlite_authority_lock_path
@@ -59,6 +62,8 @@ def _canonical_receipt(
     finished_at: str,
     request_window: dict[str, str] | None = None,
     row_count: int = 1,
+    attempt_id: str | None = None,
+    request_variant: dict[str, str] | None = None,
 ) -> str:
     dataset = _active_registry().resolve(dataset_id)
     binding = dataset.provider_bindings[0]
@@ -76,6 +81,19 @@ def _canonical_receipt(
         )
         target_table: str | None = "provider_dataset_rows"
         errors: tuple[str, ...] = ()
+    elif status == "empty":
+        counts = IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics="terminal_no_data_transaction",
+        )
+        target_table = None
+        errors = ()
     else:
         counts = IngestCounts(
             returned=0,
@@ -93,7 +111,8 @@ def _canonical_receipt(
     receipt_id = insert_ingest_receipt(
         conn,
         context=IngestContext(
-            attempt_id=f"attempt-{dataset_id}-{status}-{hashlib.sha256(json.dumps(window, sort_keys=True).encode()).hexdigest()[:12]}-{finished_at}",
+            attempt_id=attempt_id
+            or f"attempt-{dataset_id}-{status}-{hashlib.sha256(json.dumps(window, sort_keys=True).encode()).hexdigest()[:12]}-{finished_at}",
             dataset_id=dataset_id,
             provider=binding.provider,
             provider_api=binding.api_name,
@@ -102,6 +121,13 @@ def _canonical_receipt(
             adapter_version=binding.adapter_version,
             started_at=started_at,
             data_through="20260720",
+            request_identity=ProviderRequestIdentity(
+                request_variant=request_variant or {},
+                fanout_parameter=None,
+                fanout_values=(),
+                page_offset=None,
+                page_index=0,
+            ),
         ),
         target_table=target_table,
         transaction_index=0,
@@ -233,15 +259,14 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
     }
     assert dict(current["cn.equity.daily"].request_window) == {"trade_date": "20260720"}
     assert dict(current["cn.equity.security_master"].request_window) == {}
-    assert {
-        tuple(plan.request_variant.items())
-        for plan in result.plans
-        if plan.dataset_id == "cn.equity.security_master"
-    } == {
-        (("list_status", "L"),),
-        (("list_status", "D"),),
-        (("list_status", "P"),),
-    }
+    assert [
+        dict(variant)
+        for variant in current["cn.equity.security_master"].request_variants
+    ] == [
+        {"list_status": "L"},
+        {"list_status": "D"},
+        {"list_status": "P"},
+    ]
     calendar = current["cn.market.trade_calendar"].request_window
     assert calendar["start_date"] == "20260720"
     assert calendar["end_date"] == "20270720"
@@ -274,6 +299,46 @@ def test_runtime_rate_budget_counts_actual_calls_across_datasets_and_apis() -> N
     )
     with pytest.raises(scheduler.RequestBudgetExceeded):
         ledger.consume(overflow, overflow.provider_api)
+
+
+def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    fixed_run = "11111111-1111-4111-8111-111111111111"
+    monkeypatch.setattr(scheduler.uuid, "uuid4", lambda: fixed_run)
+    captured: list[str] = []
+
+    def execute(
+        plan: scheduler.ScheduledRun,
+        **kwargs: object,
+    ) -> scheduler.DatasetResult:
+        attempt_id = kwargs["attempt_id"]
+        assert isinstance(attempt_id, str)
+        captured.append(attempt_id)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    monkeypatch.setattr(scheduler, "_in_process_executor", execute)
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+    )
+
+    assert result.exit_code == 0
+    identities = [parse_schedule_plan_attempt_id(value) for value in captured]
+    assert all(identity is not None for identity in identities)
+    assert {identity.run_attempt_id for identity in identities if identity} == {
+        fixed_run
+    }
+    assert [identity.plan_index for identity in identities if identity] == list(
+        range(len(captured))
+    )
 
 
 def test_paused_and_locked_bindings_never_reach_executor(tmp_path: Path) -> None:
@@ -348,6 +413,115 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
+
+
+def test_single_recent_variant_receipt_cannot_suppress_complete_cohort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.equity.security_master",
+            status="success",
+            started_at="2026-07-20T08:00:00Z",
+            finished_at="2026-07-20T08:30:00Z",
+            attempt_id=make_provider_call_attempt_id(
+                "incomplete-security-master-cohort",
+                call_index=0,
+                retry_index=0,
+            ),
+            request_variant={"list_status": "L"},
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.equity.security_master",
+            receipt,
+            "20260720",
+            {"list_status": "L", "ts_code": "000001.SZ"},
+        )
+        conn.commit()
+
+    state = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    dataset = registry.resolve("cn.equity.security_master")
+    assert state.get(dataset, dataset.provider_bindings[0]).facts == ()
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+
+    plans = [
+        plan
+        for plan in result.plans
+        if plan.dataset_id == "cn.equity.security_master"
+    ]
+    assert len(plans) == 1
+    assert [dict(variant) for variant in plans[0].request_variants] == [
+        {"list_status": "L"},
+        {"list_status": "D"},
+        {"list_status": "P"},
+    ]
+
+
+def test_complete_recent_variant_cohort_is_not_due(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    root = "11111111-1111-4111-8111-111111111111"
+    with sqlite3.connect(db_path) as conn:
+        receipt_ids: dict[str, str] = {}
+        for call_index, (status, terminal_status) in enumerate(
+            (("L", "success"), ("D", "success"), ("P", "empty"))
+        ):
+            receipt_ids[status] = _canonical_receipt(
+                monkeypatch,
+                conn,
+                dataset_id="cn.equity.security_master",
+                status=terminal_status,
+                started_at="2026-07-20T08:00:00Z",
+                finished_at="2026-07-20T08:30:00Z",
+                attempt_id=make_provider_call_attempt_id(
+                    root,
+                    call_index=call_index,
+                    retry_index=0,
+                ),
+                request_variant={"list_status": status},
+            )
+        _fact(
+            conn,
+            registry,
+            "cn.equity.security_master",
+            receipt_ids["L"],
+            "20260720",
+            {"list_status": "L", "ts_code": "000001.SZ"},
+        )
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+
+    skipped = {item.dataset_id: item.state for item in result.skipped}
+    assert skipped["cn.equity.security_master"] == "not_due"
 
 
 def test_tampered_success_receipt_fails_planner_closed(
@@ -1051,6 +1225,7 @@ def test_binding_variants_do_not_leak_between_same_key_datasets(
     synthetic_plans = [
         plan for plan in result.plans if plan.dataset_id == synthetic.dataset_id
     ]
-    assert [dict(plan.request_variant) for plan in synthetic_plans] == [
-        {"list_status": "X"}
-    ]
+    assert [
+        [dict(variant) for variant in plan.request_variants]
+        for plan in synthetic_plans
+    ] == [[{"list_status": "X"}]]

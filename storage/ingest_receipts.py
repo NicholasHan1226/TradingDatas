@@ -64,6 +64,10 @@ _PROVIDER_CALL_ATTEMPT_PATTERN = re.compile(
     rf"(?P<call>[0-9]{{{_PROVIDER_CALL_ORDINAL_WIDTH}}}):"
     rf"retry:(?P<retry>[0-9]{{{_PROVIDER_CALL_ORDINAL_WIDTH}}})"
 )
+_SCHEDULE_PLAN_ATTEMPT_PATTERN = re.compile(
+    rf"(?P<root>.+):schedule-plan:"
+    rf"(?P<plan>[0-9]{{{_PROVIDER_CALL_ORDINAL_WIDTH}}})"
+)
 _SECRET_MATERIAL_PATTERN = re.compile(
     r"(?:\bbearer\s+\S+|"
     r"\b(?:access|refresh)?[_-]?token\s*[:=]|"
@@ -189,6 +193,65 @@ class ProviderCallAttemptIdentity:
             raise ValueError("provider call ordinal exceeds the deterministic bound")
         if retry_index > call_index:
             raise ValueError("retry_index cannot exceed call_index")
+
+
+@dataclass(frozen=True)
+class SchedulePlanAttemptIdentity:
+    """One scheduler-owned plan identity derived from a shared run root."""
+
+    run_attempt_id: str
+    plan_index: int
+
+    def __post_init__(self) -> None:
+        root = _require_public_text(self.run_attempt_id, "run_attempt_id")
+        if ":schedule-plan:" in root or ":provider-call:" in root:
+            raise ValueError("run_attempt_id contains a reserved attempt marker")
+        index = _require_nonnegative_int(self.plan_index, "plan_index")
+        if index >= _PROVIDER_CALL_ORDINAL_LIMIT:
+            raise ValueError("schedule plan ordinal exceeds the deterministic bound")
+
+
+def make_schedule_plan_attempt_id(
+    run_attempt_id: object,
+    *,
+    plan_index: object,
+) -> str:
+    """Return one canonical plan root for a scheduler run."""
+
+    identity = SchedulePlanAttemptIdentity(
+        run_attempt_id=_require_public_text(run_attempt_id, "run_attempt_id"),
+        plan_index=_require_nonnegative_int(plan_index, "plan_index"),
+    )
+    return (
+        f"{identity.run_attempt_id}:schedule-plan:"
+        f"{identity.plan_index:0{_PROVIDER_CALL_ORDINAL_WIDTH}d}"
+    )
+
+
+def parse_schedule_plan_attempt_id(
+    attempt_id: object,
+) -> SchedulePlanAttemptIdentity | None:
+    """Parse a scheduler plan root; ordinary one-shot roots return ``None``."""
+
+    text = _require_public_text(attempt_id, "attempt_id")
+    match = _SCHEDULE_PLAN_ATTEMPT_PATTERN.fullmatch(text)
+    if match is None:
+        if ":schedule-plan:" in text:
+            raise ValueError("schedule plan attempt identity is not canonical")
+        return None
+    identity = SchedulePlanAttemptIdentity(
+        run_attempt_id=match.group("root"),
+        plan_index=int(match.group("plan")),
+    )
+    if (
+        make_schedule_plan_attempt_id(
+            identity.run_attempt_id,
+            plan_index=identity.plan_index,
+        )
+        != text
+    ):
+        raise ValueError("schedule plan attempt identity is not canonical")
+    return identity
 
 
 def make_provider_call_attempt_id(

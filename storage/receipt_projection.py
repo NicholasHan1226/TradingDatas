@@ -29,6 +29,7 @@ from storage.ingest_receipts import (
     make_unmapped_tushare_dataset_id,
     make_receipt_id,
     parse_provider_call_attempt_id,
+    parse_schedule_plan_attempt_id,
 )
 from storage.schema_contract import (
     PROVIDER_DATASET_ROWS_COLUMNS,
@@ -193,6 +194,8 @@ class DatasetRuntimeEvidence:
     last_success_data_through: str | None
     current_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
+    current_receipt_ids: tuple[str, ...] = ()
+    last_success_receipt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.projection, DatasetRuntimeProjection):
@@ -230,6 +233,17 @@ class DatasetRuntimeEvidence:
             or not self.last_success_data_through
         ):
             raise ValueError("last_success_data_through is invalid")
+        for name, receipt_ids in (
+            ("current_receipt_ids", self.current_receipt_ids),
+            ("last_success_receipt_ids", self.last_success_receipt_ids),
+        ):
+            if type(receipt_ids) is not tuple or any(
+                type(receipt_id) is not str or not receipt_id
+                for receipt_id in receipt_ids
+            ):
+                raise TypeError(f"{name} must contain receipt IDs")
+            if receipt_ids != tuple(sorted(set(receipt_ids))):
+                raise ValueError(f"{name} must be sorted and unique")
         for name, pairs, providers in (
             (
                 "current_provider_config_hashes",
@@ -263,8 +277,12 @@ class ValidatedReceiptHistoryEntry:
     provider: str
     receipt_id: str
     status: Literal["success", "empty", "failed"]
+    cohort_status: Literal["success", "empty", "failed"]
+    started_at: datetime
     finished_at: datetime
     request_window: Mapping[str, str]
+    request_variant: Mapping[str, object]
+    execution_id: str
 
 
 @dataclass(frozen=True)
@@ -284,10 +302,21 @@ class _Receipt:
     finished_sort: datetime
     attempt_context: str
     execution_id: str
+    run_id: str
+    schedule_plan_index: int | None
     physical_call_index: int | None
     retry_index: int | None
+    request_variant: Mapping[str, object]
     request_identity_context: str
     execution_context: str
+
+
+@dataclass(frozen=True)
+class _CohortTerminal:
+    status: Literal["success", "empty", "failed"]
+    representative: _Receipt
+    errors: tuple[str, ...]
+    receipts: tuple[_Receipt, ...]
 
 
 @dataclass(frozen=True)
@@ -897,6 +926,10 @@ def _validate_receipt_row(
     assert type(finished_at) is str
     try:
         physical_attempt = parse_provider_call_attempt_id(attempt_id)
+        execution_id = (
+            attempt_id if physical_attempt is None else physical_attempt.root_attempt_id
+        )
+        schedule_attempt = parse_schedule_plan_attempt_id(execution_id)
     except (TypeError, ValueError):
         return _InvalidReceipt("receipt_identity_mismatch", receipt_id, observed_at)
     request_identity_context = _canonical_json(
@@ -939,14 +972,23 @@ def _validate_receipt_row(
                 "started_at": context.started_at,
             }
         ),
-        execution_id=(
-            attempt_id if physical_attempt is None else physical_attempt.root_attempt_id
+        execution_id=execution_id,
+        run_id=(
+            execution_id
+            if schedule_attempt is None
+            else schedule_attempt.run_attempt_id
+        ),
+        schedule_plan_index=(
+            None if schedule_attempt is None else schedule_attempt.plan_index
         ),
         physical_call_index=(
             None if physical_attempt is None else physical_attempt.call_index
         ),
         retry_index=(
             None if physical_attempt is None else physical_attempt.retry_index
+        ),
+        request_variant=MappingProxyType(
+            dict(context.request_identity.request_variant)
         ),
         request_identity_context=request_identity_context,
         execution_context=execution_context,
@@ -1050,18 +1092,219 @@ def _provider_execution_terminal(receipts: list[_Receipt]) -> _Receipt:
     raise ValueError("provider execution has no terminal receipt")
 
 
-def _latest_attempt_receipt(receipts: list[_Receipt]) -> _Receipt:
-    """Choose one logical execution terminal before considering older runs."""
+def _terminal_sort_key(receipt: _Receipt) -> tuple[datetime, int, int, str]:
+    return (
+        receipt.finished_sort,
+        -1 if receipt.schedule_plan_index is None else receipt.schedule_plan_index,
+        -1 if receipt.physical_call_index is None else receipt.physical_call_index,
+        receipt.receipt_id,
+    )
 
-    latest_execution = max(receipts, key=_execution_sort_key)
-    execution_receipts = [
-        receipt
-        for receipt in receipts
-        if receipt.execution_id == latest_execution.execution_id
+
+def _terminal_across_executions(receipts: list[_Receipt]) -> _Receipt:
+    executions: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        executions.setdefault(receipt.execution_id, []).append(receipt)
+    terminals: list[_Receipt] = []
+    for execution_receipts in executions.values():
+        physical = {
+            receipt.physical_call_index is not None for receipt in execution_receipts
+        }
+        if physical == {True}:
+            terminals.append(_provider_execution_terminal(execution_receipts))
+        else:
+            terminals.append(_terminal_receipt_for_attempt(execution_receipts))
+    for status in ("failed", "success", "empty"):
+        matching = [receipt for receipt in terminals if receipt.status == status]
+        if matching:
+            return max(matching, key=_terminal_sort_key)
+    raise ValueError("receipt cohort has no terminal")
+
+
+def _variant_key(variant: Mapping[str, object]) -> str:
+    return _canonical_json({"request_variant": dict(variant)})
+
+
+def _binding_for_provider(
+    dataset: DatasetDefinition,
+    provider: str,
+) -> ProviderBinding:
+    matches = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.provider == provider
+    )
+    if len(matches) != 1:
+        raise ValueError("receipt provider binding is ambiguous")
+    return matches[0]
+
+
+def _variant_cohort_terminal(
+    dataset: DatasetDefinition,
+    receipts: list[_Receipt],
+) -> _CohortTerminal:
+    if not receipts:
+        raise ValueError("variant cohort is empty")
+    execution_ids = {receipt.execution_id for receipt in receipts}
+    providers = {receipt.provider for receipt in receipts}
+    windows = {
+        _canonical_json(dict(receipt.request_window)) for receipt in receipts
+    }
+    if len(execution_ids) != 1 or len(providers) != 1 or len(windows) != 1:
+        raise ValueError("variant cohort identity is inconsistent")
+    binding = _binding_for_provider(dataset, receipts[0].provider)
+    expected = {_variant_key(variant) for variant in binding.request_variants}
+    by_variant: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        by_variant.setdefault(_variant_key(receipt.request_variant), []).append(receipt)
+    representative = max(receipts, key=_terminal_sort_key)
+    if set(by_variant) != expected:
+        return _CohortTerminal(
+            status="failed",
+            representative=representative,
+            errors=("variant_cohort_incomplete",),
+            receipts=tuple(receipts),
+        )
+
+    terminals = [
+        _terminal_across_executions(by_variant[variant])
+        for variant in sorted(expected)
     ]
-    if latest_execution.physical_call_index is not None:
-        return _provider_execution_terminal(execution_receipts)
-    return _terminal_receipt_for_attempt(execution_receipts)
+    failed = [receipt for receipt in terminals if receipt.status == "failed"]
+    if failed:
+        failure = max(failed, key=_terminal_sort_key)
+        return _CohortTerminal(
+            status="failed",
+            representative=failure,
+            errors=failure.errors,
+            receipts=tuple(receipts),
+        )
+    if any(receipt.status == "success" for receipt in terminals):
+        return _CohortTerminal(
+            status="success",
+            representative=representative,
+            errors=(),
+            receipts=tuple(receipts),
+        )
+    if dataset.empty_data_policy == "forbidden":
+        return _CohortTerminal(
+            status="failed",
+            representative=representative,
+            errors=("validation_failed",),
+            receipts=tuple(receipts),
+        )
+    return _CohortTerminal(
+        status="empty",
+        representative=representative,
+        errors=(),
+        receipts=tuple(receipts),
+    )
+
+
+def _run_terminal(
+    dataset: DatasetDefinition,
+    receipts: list[_Receipt],
+) -> _CohortTerminal:
+    executions: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        executions.setdefault(receipt.execution_id, []).append(receipt)
+    cohorts = [
+        _variant_cohort_terminal(dataset, execution_receipts)
+        for execution_receipts in executions.values()
+    ]
+    failed = [cohort for cohort in cohorts if cohort.status == "failed"]
+    if failed:
+        representative = max(
+            failed,
+            key=lambda cohort: _terminal_sort_key(cohort.representative),
+        )
+        return _CohortTerminal(
+            status="failed",
+            representative=representative.representative,
+            errors=tuple(
+                dict.fromkeys(error for cohort in failed for error in cohort.errors)
+            ),
+            receipts=tuple(receipts),
+        )
+    def target_key(cohort: _CohortTerminal) -> tuple[str, int, str]:
+        receipt = cohort.representative
+        binding = _binding_for_provider(dataset, receipt.provider)
+        policy = binding.request_window_policy
+        target = (
+            ""
+            if policy is None
+            else receipt.request_window[policy.range_end_key]
+        )
+        return (
+            target,
+            -1
+            if receipt.schedule_plan_index is None
+            else receipt.schedule_plan_index,
+            receipt.execution_id,
+        )
+
+    current = max(cohorts, key=target_key)
+    return _CohortTerminal(
+        status=current.status,
+        representative=current.representative,
+        errors=(),
+        receipts=tuple(receipts),
+    )
+
+
+def _latest_run_terminal(
+    dataset: DatasetDefinition,
+    receipts: list[_Receipt],
+) -> _CohortTerminal:
+    runs: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        runs.setdefault(receipt.run_id, []).append(receipt)
+    latest = max(
+        runs.values(),
+        key=lambda values: (
+            max(receipt.started_sort for receipt in values),
+            values[0].run_id,
+        ),
+    )
+    return _run_terminal(dataset, latest)
+
+
+def _complete_success_receipts(
+    receipts: list[_Receipt],
+    dataset: DatasetDefinition,
+) -> tuple[_Receipt, ...]:
+    executions: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        executions.setdefault(receipt.execution_id, []).append(receipt)
+    return tuple(
+        receipt
+        for members in executions.values()
+        if _variant_cohort_terminal(dataset, members).status == "success"
+        for receipt in members
+        if receipt.status == "success"
+    )
+
+
+def _success_watermark_receipt(
+    receipts: list[_Receipt],
+    dataset: DatasetDefinition,
+) -> _Receipt | None:
+    complete_successes = _complete_success_receipts(receipts, dataset)
+    candidates: list[tuple[datetime, _Receipt]] = []
+    for receipt in complete_successes:
+        if receipt.data_through is None:
+            continue
+        try:
+            watermark = _data_through_in_utc(receipt.data_through, dataset.timezone)
+        except ValueError:
+            continue
+        candidates.append((watermark, receipt))
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda item: (item[0], _success_sort_key(item[1])),
+    )[1]
 
 
 def _attempt_context_failures(
@@ -1284,8 +1527,12 @@ def _project_dataset_runtime(
     invalid.extend(_attempt_context_failures(receipts))
     invalid.extend(_execution_context_failures(receipts))
 
-    successful = [receipt for receipt in receipts if receipt.status == "success"]
-    last_success = max(successful, key=_success_sort_key, default=None)
+    successful = list(_complete_success_receipts(receipts, dataset))
+    last_success = _success_watermark_receipt(receipts, dataset) or max(
+        successful,
+        key=_success_sort_key,
+        default=None,
+    )
     if invalid:
         failure = max(invalid, key=_invalid_receipt_sort_key)
         return DatasetRuntimeProjection(
@@ -1318,18 +1565,17 @@ def _project_dataset_runtime(
             reasons=("no_recognized_receipt",),
         )
 
-    latest = _latest_attempt_receipt(receipts)
-    data_through = latest.data_through
-    if data_through is None and last_success is not None:
-        data_through = last_success.data_through
+    latest = _latest_run_terminal(dataset, receipts)
+    representative = latest.representative
+    data_through = None if last_success is None else last_success.data_through
     if latest.status == "failed":
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,
             state="failed",
             degraded=True,
-            data_through=last_success.data_through if last_success else None,
-            observed_at=latest.finished_at,
-            receipt_id=latest.receipt_id,
+            data_through=data_through,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
             reasons=latest.errors,
         )
     if data_through is None:
@@ -1339,8 +1585,8 @@ def _project_dataset_runtime(
                 state="empty",
                 degraded=False,
                 data_through=None,
-                observed_at=latest.finished_at,
-                receipt_id=latest.receipt_id,
+                observed_at=representative.finished_at,
+                receipt_id=representative.receipt_id,
                 reasons=("provider_returned_no_rows",),
             )
         return DatasetRuntimeProjection(
@@ -1348,8 +1594,8 @@ def _project_dataset_runtime(
             state="failed",
             degraded=True,
             data_through=None,
-            observed_at=latest.finished_at,
-            receipt_id=latest.receipt_id,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
             reasons=("invalid_data_through",),
         )
     try:
@@ -1360,8 +1606,8 @@ def _project_dataset_runtime(
             state="failed",
             degraded=True,
             data_through=data_through,
-            observed_at=latest.finished_at,
-            receipt_id=latest.receipt_id,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
             reasons=(str(exc),),
         )
 
@@ -1377,8 +1623,8 @@ def _project_dataset_runtime(
             state="stale",
             degraded=True,
             data_through=data_through,
-            observed_at=latest.finished_at,
-            receipt_id=latest.receipt_id,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
             reasons=reasons,
         )
     if latest.status == "empty":
@@ -1387,8 +1633,8 @@ def _project_dataset_runtime(
             state="empty",
             degraded=False,
             data_through=data_through,
-            observed_at=latest.finished_at,
-            receipt_id=latest.receipt_id,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
             reasons=("provider_returned_no_rows",),
         )
     return DatasetRuntimeProjection(
@@ -1396,8 +1642,8 @@ def _project_dataset_runtime(
         state="success",
         degraded=False,
         data_through=data_through,
-        observed_at=latest.finished_at,
-        receipt_id=latest.receipt_id,
+        observed_at=representative.finished_at,
+        receipt_id=representative.receipt_id,
         reasons=(),
     )
 
@@ -1518,14 +1764,25 @@ def validated_receipt_history(
             expected_binding=None,
         )
         invalid.extend(rejected)
+        by_execution: dict[str, list[_Receipt]] = {}
+        for receipt in receipts:
+            by_execution.setdefault(receipt.execution_id, []).append(receipt)
+        cohort_statuses = {
+            execution_id: _variant_cohort_terminal(dataset, members).status
+            for execution_id, members in by_execution.items()
+        }
         entries.extend(
             ValidatedReceiptHistoryEntry(
                 dataset_id=dataset.dataset_id,
                 provider=receipt.provider,
                 receipt_id=receipt.receipt_id,
                 status=receipt.status,  # type: ignore[arg-type]
+                cohort_status=cohort_statuses[receipt.execution_id],
+                started_at=receipt.started_sort,
                 finished_at=receipt.finished_sort,
                 request_window=receipt.request_window,
+                request_variant=receipt.request_variant,
+                execution_id=receipt.execution_id,
             )
             for receipt in receipts
         )
@@ -1579,7 +1836,8 @@ def validated_success_receipt_ids(
     if invalid:
         raise RuntimeProjectionError("receipt authority contains invalid evidence")
     return frozenset(
-        receipt.receipt_id for receipt in receipts if receipt.status == "success"
+        receipt.receipt_id
+        for receipt in _complete_success_receipts(receipts, dataset)
     )
 
 
@@ -1621,21 +1879,25 @@ def project_dataset_runtime_evidence(
         rows=rows,
         expected_binding=provider_binding,
     )
-    successful = [receipt for receipt in receipts if receipt.status == "success"]
-    last_success = max(successful, key=_success_sort_key, default=None)
+    successful = list(_complete_success_receipts(receipts, dataset))
+    last_success = _success_watermark_receipt(receipts, dataset) or max(
+        successful,
+        key=_success_sort_key,
+        default=None,
+    )
 
     current_status: str | None = None
     current_providers: tuple[str, ...] = ()
     current_provider_config_hashes: tuple[tuple[str, str], ...] = ()
+    current_receipt_ids: tuple[str, ...] = ()
     if not invalid and projection.state not in {"paused", "unobserved"} and receipts:
-        latest = _latest_attempt_receipt(receipts)
+        latest = _latest_run_terminal(dataset, receipts)
         current_status = latest.status
-        current_execution = tuple(
-            receipt
-            for receipt in receipts
-            if receipt.execution_id == latest.execution_id
-        )
+        current_execution = latest.receipts
         current_providers = tuple(sorted({receipt.provider for receipt in current_execution}))
+        current_receipt_ids = tuple(
+            sorted({receipt.receipt_id for receipt in current_execution})
+        )
         current_provider_config_hashes = tuple(
             sorted(
                 {
@@ -1648,10 +1910,11 @@ def project_dataset_runtime_evidence(
 
     last_success_providers: tuple[str, ...] = ()
     last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
+    last_success_receipt_ids: tuple[str, ...] = ()
     if last_success is not None:
         last_success_execution = tuple(
             receipt
-            for receipt in successful
+            for receipt in receipts
             if receipt.execution_id == last_success.execution_id
         )
         last_success_providers = tuple(
@@ -1666,6 +1929,9 @@ def project_dataset_runtime_evidence(
                 }
             )
         )
+        last_success_receipt_ids = tuple(
+            sorted({receipt.receipt_id for receipt in last_success_execution})
+        )
     return DatasetRuntimeEvidence(
         projection=projection,
         current_receipt_status=current_status,
@@ -1679,6 +1945,8 @@ def project_dataset_runtime_evidence(
         ),
         current_provider_config_hashes=current_provider_config_hashes,
         last_success_provider_config_hashes=last_success_provider_config_hashes,
+        current_receipt_ids=current_receipt_ids,
+        last_success_receipt_ids=last_success_receipt_ids,
     )
 
 

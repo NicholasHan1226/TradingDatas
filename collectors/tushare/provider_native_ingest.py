@@ -526,6 +526,7 @@ def _execute_provider_requests(
     requested_fields: str | None,
     scan_budget: SensitiveScanBudget,
     retry: RetrySettings,
+    first_call_index: int = 0,
     sleep: Callable[[float], None] = time.sleep,
 ) -> ProviderExecution:
     """Execute generic variant/fanout/pagination requests without row rewriting."""
@@ -571,7 +572,7 @@ def _execute_provider_requests(
                 retry=retry,
                 sleep=sleep,
                 identity=identity,
-                first_call_index=len(calls),
+                first_call_index=first_call_index + len(calls),
             )
             calls.extend(attempt_calls)
             outcome = attempt_calls[-1].outcome
@@ -1076,6 +1077,7 @@ def _persist_provider_execution(
     attempt_id: str,
     started_at: str,
     terminal_context: IngestContext,
+    enforce_empty_policy: bool = True,
 ) -> IngestResult:
     """Persist one independent terminal transaction for every real call."""
 
@@ -1093,7 +1095,7 @@ def _persist_provider_execution(
             terminal_context=terminal_context,
         )
     if execution.outcome.state == "empty":
-        if dataset.empty_data_policy == "forbidden":
+        if enforce_empty_policy and dataset.empty_data_policy == "forbidden":
             return _persist_failed_execution(
                 db_path,
                 dataset=dataset,
@@ -1189,6 +1191,64 @@ def _persist_provider_execution(
     return _aggregate_success_results(results)
 
 
+def _aggregate_variant_results(
+    dataset: DatasetDefinition,
+    results: Sequence[IngestResult],
+) -> IngestResult:
+    """Aggregate one complete registry variant cohort without rewriting receipts."""
+
+    if len(results) == 1:
+        return results[0]
+    receipt_ids = tuple(
+        receipt_id for result in results for receipt_id in result.receipt_ids
+    )
+    failed = tuple(result for result in results if result.status == "failed")
+    if failed:
+        committed = tuple(
+            result for result in results if result.counts.committed > 0
+        )
+        return IngestResult(
+            status="failed",
+            counts=(
+                _aggregate_counts(
+                    committed,
+                    count_semantics="aggregate_partial_physical_call_transactions",
+                )
+                if committed
+                else _zero_counts()
+            ),
+            receipt_ids=receipt_ids,
+            errors=tuple(
+                dict.fromkeys(error for result in failed for error in result.errors)
+            )
+            or ("storage_failed",),
+        )
+    successful = tuple(result for result in results if result.status == "success")
+    if successful:
+        return IngestResult(
+            status="success",
+            counts=_aggregate_counts(
+                results,
+                count_semantics="aggregate_variant_physical_call_transactions",
+            ),
+            receipt_ids=receipt_ids,
+            errors=(),
+        )
+    if dataset.empty_data_policy == "forbidden":
+        return IngestResult(
+            status="failed",
+            counts=_zero_counts(),
+            receipt_ids=receipt_ids,
+            errors=("validation_failed",),
+        )
+    return IngestResult(
+        status="empty",
+        counts=_zero_counts(),
+        receipt_ids=receipt_ids,
+        errors=(),
+    )
+
+
 def collect_provider_native_dataset(
     db_path: Path,
     *,
@@ -1218,13 +1278,16 @@ def collect_provider_native_dataset(
     if binding.entitlement_state != "active" or binding.activation_state != "active":
         raise ValueError("dataset binding is not entitled and active")
     scan_budget = _provider_scan_budget(dataset, binding)
-    normalized_window, params = _resolved_request(
+    variants = (
+        binding.request_variants
+        if request_variant is None
+        else (dict(request_variant),)
+    )
+    defer_empty_policy = request_variant is None and len(variants) > 1
+    normalized_window, _ = _resolved_request(
         binding,
         request_window,
-        request_variant=request_variant,
-    )
-    selected_variant = (
-        binding.request_variants[0] if request_variant is None else request_variant
+        request_variant=variants[0],
     )
 
     # Validate caller-owned attempt identity and start time before any provider call.
@@ -1255,24 +1318,40 @@ def collect_provider_native_dataset(
     requested_fields = (
         ",".join(binding.requested_fields) if binding.requested_fields else None
     )
-    execution = _execute_provider_requests(
-        collector=collector,
-        binding=binding,
-        base_params=params,
-        request_variant=selected_variant,
-        fanout_batches=fanout_batches,
-        requested_fields=requested_fields,
-        scan_budget=scan_budget,
-        retry=retry,
-    )
-    return _persist_provider_execution(
-        db_path,
-        dataset=dataset,
-        binding=binding,
-        execution=execution,
-        normalized_window=normalized_window,
-        resolved_params=params,
-        attempt_id=attempt_id,
-        started_at=started_at,
-        terminal_context=terminal_context,
-    )
+    results: list[IngestResult] = []
+    next_call_index = 0
+    for variant in variants:
+        variant_window, params = _resolved_request(
+            binding,
+            request_window,
+            request_variant=variant,
+        )
+        if variant_window != normalized_window:
+            raise ValueError("request variants must share one normalized window")
+        execution = _execute_provider_requests(
+            collector=collector,
+            binding=binding,
+            base_params=params,
+            request_variant=variant,
+            fanout_batches=fanout_batches,
+            requested_fields=requested_fields,
+            scan_budget=scan_budget,
+            retry=retry,
+            first_call_index=next_call_index,
+        )
+        next_call_index += len(execution.calls)
+        results.append(
+            _persist_provider_execution(
+                db_path,
+                dataset=dataset,
+                binding=binding,
+                execution=execution,
+                normalized_window=normalized_window,
+                resolved_params=params,
+                attempt_id=attempt_id,
+                started_at=started_at,
+                terminal_context=terminal_context,
+                enforce_empty_policy=not defer_empty_policy,
+            )
+        )
+    return _aggregate_variant_results(dataset, results)
