@@ -73,6 +73,12 @@ _SENSITIVE_EVIDENCE_PATTERN = re.compile(
     r"(?:secret|token|password|authorization|bearer|credential|api[_-]?key)",
     re.IGNORECASE,
 )
+_PROVIDER_SCAN_FIELD_HEADROOM = 16
+_PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
+_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 256
+_PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
+_PROVIDER_SCAN_ENVELOPE_DEPTH = 4
+_PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64
 _ROOT_KEYS = frozenset({"version", "bundle_id", "provider", "provenance", "contracts"})
 _PROVENANCE_KEYS = frozenset(
     {"repository_url", "pinned_commit", "index_path", "index_sha256"}
@@ -2107,6 +2113,36 @@ def _compiled_dataset(
             raise ValueError(
                 f"{contract['api_name']} cannot activate while ingest contract is blocked"
             )
+    activation_state = (
+        "paused" if activation is None else activation["activation_state"]
+    )
+    budgets = deepcopy(contract["budgets"])
+    if activation_state == "active":
+        declared_fields = max(
+            len(contract["fields"]), len(contract["requested_fields"])
+        )
+        field_budget = declared_fields + _PROVIDER_SCAN_FIELD_HEADROOM
+        max_depth = budgets["max_nesting_depth"] + _PROVIDER_SCAN_ENVELOPE_DEPTH
+        if (
+            field_budget > _PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS
+            or max_depth > _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH
+        ):
+            activation_state = "paused"
+        else:
+            safe_row_limit = (
+                _PROVIDER_SCAN_ABSOLUTE_MAX_NODES
+                - _PROVIDER_SCAN_FIXED_NODE_HEADROOM
+                - 1
+            ) // (1 + 2 * field_budget)
+            window = contract["request_window_policy"]
+            if safe_row_limit < 1 or (
+                window is not None and safe_row_limit < window["max_span_days"]
+            ):
+                activation_state = "paused"
+            else:
+                budgets["max_rows_per_attempt"] = min(
+                    budgets["max_rows_per_attempt"], safe_row_limit
+                )
     binding = {
         "provider": contract["provider"],
         "api_name": contract["api_name"],
@@ -2115,9 +2151,7 @@ def _compiled_dataset(
         "entitlement_state": "unknown"
         if activation is None
         else activation["entitlement_state"],
-        "activation_state": "paused"
-        if activation is None
-        else activation["activation_state"],
+        "activation_state": activation_state,
         "probe_state": probe_state,
         "probe_block_reasons": probe_block_reasons,
         "ingest_contract_state": ingest_contract_state,
@@ -2132,7 +2166,7 @@ def _compiled_dataset(
         "request_window_policy": deepcopy(contract["request_window_policy"]),
         "response_completeness": deepcopy(contract["response_completeness"]),
         "requested_fields": list(contract["requested_fields"]),
-        **deepcopy(contract["budgets"]),
+        **budgets,
     }
     return {
         "dataset_id": contract["dataset_id"],

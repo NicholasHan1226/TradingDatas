@@ -9,6 +9,7 @@ import sys
 import pytest
 import yaml
 
+from collectors.tushare.provider_native_ingest import _provider_scan_budget
 from dataset_registry import load_dataset_registry
 import tools.compile_provider_native_registry as compiler_module
 from tools.compile_provider_native_registry import (
@@ -193,6 +194,64 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
         "trade_cal",
     }
     assert all(bindings[api_name]["entitlement_state"] == "active" for api_name in active)
+
+
+@pytest.mark.parametrize(
+    "api_name",
+    ("cb_factor_pro", "fund_factor_pro", "idx_factor_pro"),
+)
+def test_candidate_compiler_caps_active_row_budget_to_runtime_scan_limit(
+    api_name: str,
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle()
+    observations = _observations()
+    registry_document = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name=api_name,
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    output = tmp_path / "registry.yaml"
+    output.write_text(render_registry(registry_document), encoding="utf-8")
+    registry = load_dataset_registry(output)
+    dataset = next(
+        item
+        for item in registry.datasets
+        if registry.provider_binding(item.dataset_id, "tushare").api_name == api_name
+    )
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+
+    assert binding.activation_state == "active"
+    assert binding.max_rows_per_attempt == 9_459
+    _provider_scan_budget(dataset, binding)
+
+
+def test_candidate_compiler_keeps_field_budget_incompatible_contract_paused() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="stk_factor_pro",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    binding = next(
+        item["provider_bindings"][0]
+        for item in registry["datasets"]
+        if item["provider_bindings"][0]["api_name"] == "stk_factor_pro"
+    )
+
+    assert binding["entitlement_state"] == "active"
+    assert binding["activation_state"] == "paused"
 
 
 def test_formal_mode_never_promotes_preactivation_evidence() -> None:

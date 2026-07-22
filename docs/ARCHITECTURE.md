@@ -52,6 +52,8 @@ systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 
 
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`config/tushare_cadence_policy.v1.yaml` 是 190 个已有正式文档合同的唯一 cadence authority，按排序 `api_name` 精确覆盖、逐项绑定官方文档 SHA，并只允许八个通用 cadence class、正 freshness SLA 和固定安全闭集内且与 cadence 语义一致的 reason code；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。更具体的 reviewed contract cadence/SLA 优先于该通用政策，`reviewed_contract_exact` 只能用于 reviewed bundle 中 cadence/SLA 精确一致的合同。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
 
+activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。
+
 请求合同的输入权威也必须按原始文件字节绑定，不能只信任调用方传入的已解析对象。runtime compiler 固定核对 official document、request observation、transport observation 和 reviewed contract 四类输入；HTTPS probe plan 固定核对 official document、request observation、transport observation 和 registered runtime contract 四类输入。任一文件内容与其冻结 SHA 不一致时，在生成请求或调用 provider 前失败。dataset-field seed 只有在 fresh success receipt 存在且 producer schema 与 registry 精确相等时才可使用；migration hint、旧 schema 或未来 schema 都不能替代生产者合同。
 
 四种 request shape：
