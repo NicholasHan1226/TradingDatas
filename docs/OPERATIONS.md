@@ -213,7 +213,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
    也不得改写 release 内任何文件。当前生产候选仍必须从
    `quicksync_interface_observations.v1.yaml` 得到历史合同子集
-   190 个 dataset、9 active / 181 paused，且输出与 checked-in registry 逐字节一致。
+   190 个 dataset、12 active / 178 paused，且输出与 checked-in registry 逐字节一致。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
    采集计划。观测配置必须保持
@@ -230,7 +230,9 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。当前正式编译不传 activation evidence，固定生成
-   9 active / 181 paused；生产运行时在安全发布前可仍停留于上一版 5 / 185，必须以
+   12 active / 178 paused；当前 production release 为
+   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc`，回滚 release
+   `486e42a655481bbe0df359a97b8167f4611e6bcd` 为 9 / 181；任何时刻都必须以
    release readback 而不是仓库文本判定。用当前 main compiler 重编 2026-07-22
    观测 sidecar 得到的 119 active / 71 paused 仅属于 SHA-256
    `cebbff13971b4d6465b986089a152feb056dc8e56e0bc0d4992a63175d20268c` 的仓外 sidecar
