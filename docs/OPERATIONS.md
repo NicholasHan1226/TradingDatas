@@ -180,8 +180,11 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    同时注册并重启 API，证明旧/新都可读而 canonical source 与 runtime 完全不变；只有消费者
    明确给出 freeze-window GO 后，才原子提升持久源、父目录和 runtime leaf。消费者 metadata
    与 bounded parity 通过后再删除旧 hash、重启 API，并证明旧 credential 为 401、新
-   credential 为 200。任一步失败就恢复旧 registry、source/runtime 与 tmpfiles 合同，不改
-   SQLite，也不临时放宽权限。
+   credential 为 200。consumer 尚未暂停且 legacy front 尚未隔离时，阶段 A 失败可以恢复
+   旧 registry、source/runtime 与 tmpfiles 合同；一旦 TradingAgent 已暂停 recurring job、
+   隔离 legacy front 并进入 publisher freeze，后续失败必须保持 consumer unavailable、freeze
+   和零 holder，只能保存证据并受控前滚，禁止恢复旧 credential、旧 runtime leaf、旧 front、
+   8082 fallback 或旧 tmpfiles owner。两种阶段都不得改 SQLite 或临时放宽权限。
 4. 在不读取凭证、不调用 provider 的情况下，从目标 immutable release 的物理
    `FINAL` 路径重新编译 registry。`FINAL` 必须是以完整 commit 命名的直接目录，不得是
    `/current`、其它 symlink 或可写 checkout。compiler 的 `--output` 必须指向 release 之外
