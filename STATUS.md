@@ -86,6 +86,27 @@
   18082、正式 SQLite、collector/timer、旧 8082 与旧回滚面均未改变。因此该证据
   完成两个新增 dataset 的隔离 provider -> SQLite -> receipt -> API 停止线，但不等于
   正式 runtime、消费者切换或 production ready。
+- 2026-07-22 11:22-11:49 CST，文档同步提交
+  `d9d480a37700e6936180cea19f276dfed2cf9c22` 已建立同名 immutable release；target
+  与 rollback `9fa5838451c07fc8a328e37dd70db33976a733d2` 均由 trusted verifier
+  fresh 验证通过。组合 canary 的首轮窗口错误包含未来日期 `20260727`，API 正确以
+  `data_through_in_future` 返回 failed/degraded；失败 run 保留且没有作为成功证据复用。
+  修正 run 仅复用 `77e8181...` 已验证且 registry 字节一致的 `index_classify`/
+  `sw_daily` 隔离 SQLite，再对 `trade_calendar`、`security_master`、`daily` 各执行
+  一次 fresh QuickSync HTTPS 采集，因此不表述为五项均重新调用 provider。最终隔离库
+  分别包含 8、5,948、5,525、511、439 行 valid facts，7 条 receipt 为 6 success +
+  1 honest empty；`security_master` 的 L=5,608、D=340、P=0 三 variant 保持完整。
+  `GET /v1/catalog` 返回 190 项；五项 `POST /v1/query` 全分页回读为
+  `ready/success/non-degraded/fresh/valid`，SQLite、receipt 与 API 行数/主键/lineage
+  守恒，same-as-of 哈希稳定；401、paused 404 及旧 `/tushare`、`/source_status` 404
+  负例通过。证据位于
+  `/opt/investment-data/tradingdatas-preactivation/d9d480a37700e6936180cea19f276dfed2cf9c22/run-20260722T033023Z`，
+  80 项 evidence manifest SHA-256 为
+  `0260a96a95b4b1b54fda9b0f4bb66f25df0599e0ce0bc8ab66f0327263161bcf`；fresh reviewer
+  判定 P0/P1/P2=0。临时 18085 已停止。正式 `current` 仍是 `9fa5838...`，18082
+  仍由旧 SharedSignals 占用；已安装 collector unit 仍是 official-direct 旧内容，正式
+  TradingDatas API/timer inactive，消费者 parity 未证明。因此该结论仍只是隔离五数据集
+  链路 PASS，不是内部稳定服务上线或 production ready。
 
 - GitHub 仓库已从 `NicholasHan1226/SharedSignals` 重命名为 `NicholasHan1226/TradingDatas`。
 - 本地新目录为 `/Users/nicholashan/Projects/Finance/TradingDatas`。
@@ -120,7 +141,11 @@ TradingDatas 尚未达到内部可接入停止线，原因：
    隔离 HTTPS provider -> SQLite -> receipt -> API readback，但其余接口的正式 HTTPS
    runtime readback 和真实 cadence 仍未完成；
 2. 新 canary 凭证、三个历史 API 纵向切片及 `77e8181...` 的两个新增完整纵向切片已验证。健康单节点小响应 request-start 吞吐下限已冻结；正式 `/etc/tradingdatas/quicksync.token` 已按单链接/owner/mode 门禁安装，但混合响应和双 DNS 节点的安全 failover 还没有经过正式 runtime readback，每日额度也未知；因此正式 timer 继续 disabled，历史回填尚未开始；
-3. 18084 已是可认证、可查询真实数据的历史隔离服务，但正式 18082 service 尚未切到最新 release，TradingAgent/MarketGraph 也尚未完成 base URL 与 token 的消费者 readback；
+3. `d9d480a...` 已把当前 5 active dataset 在一个隔离 SQLite 与同一 catalog/query API
+   中完成组合 readback；但正式 18082 仍被旧 SharedSignals 占用，安装中的 collector
+   unit 仍指向 official-direct `api.tushare.pro`/旧 token，TradingDatas 正式 API 与 timer
+   均未运行，TradingAgent/MarketGraph 也尚未完成 base URL、scope token 与
+   no-legacy-fallback 消费者 parity；
 4. 首轮无 seed 的计划可执行 139 项、阻塞 51 项；seed 解锁后的下一轮当前仍会重复
    首轮已执行项，必须先实现与首轮 evidence/plan 绑定的 deterministic delta，第二轮
    只允许执行新解锁项，不能浪费账号预算或把重复调用当重试；
@@ -164,6 +189,10 @@ TradingDatas 尚未达到内部可接入停止线，原因：
   `index_classify`/`sw_daily` 独立 SQLite 真实 QuickSync 采集、authenticated
   catalog/query、401/404、paused/legacy fail-closed 和 same-as-of readback；临时
   18085 已停止，正式 `current`、18082、timer 与正式 SQLite 未改变。
+- commit `d9d480a37700e6936180cea19f276dfed2cf9c22` 的 immutable target/rollback
+  verifier，以及单一隔离 SQLite 中 5 active dataset 的 facts/receipts 与全分页
+  catalog/query 组合回读；80 项证据 fresh review 为 P0/P1/P2=0。该验证没有切换
+  正式 `current`、18082、正式 SQLite、timer 或消费者。
 
 未验证：
 
@@ -173,7 +202,7 @@ TradingDatas 尚未达到内部可接入停止线，原因：
 - 所有首期接口的真实采集与正确频率；
 - 正式 18082 TradingDatas production runtime；
 - 正式 production SQLite 中 5 个 active dataset 及后续激活项的 Tushare
-  facts/receipts catalog/query readback；
+  facts/receipts catalog/query readback；隔离五项 PASS 不能替代这一层；
 - 内部消费者切换；
 - 旧生产系统删除。
 
