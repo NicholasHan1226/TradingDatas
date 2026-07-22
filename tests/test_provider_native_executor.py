@@ -159,6 +159,46 @@ def test_fanout_values_are_typed_stably_deduplicated_and_batched() -> None:
     )
 
 
+def test_executor_sends_one_fanout_batch_as_one_comma_parameter() -> None:
+    codes = tuple(f"0000{index:02d}.SZ" for index in range(1, 11))
+    binding = _binding(
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="ts_code",
+            source_dataset_id="cn.equity.security_master",
+            source_field="ts_code",
+            batch_size=10,
+        )
+    )
+    batches = _stable_fanout_batches(
+        codes,
+        parameter="ts_code",
+        batch_size=binding.fanout.batch_size or 0,
+    )
+    collector = _SequenceCollector([_success({"ts_code": codes[0]})])
+    _, params = _resolved_request(
+        binding,
+        {"trade_date": "20260720"},
+        request_variant={"exchange": "SZSE", "limit": 100},
+    )
+
+    execution = _execute_provider_requests(
+        collector=collector,
+        binding=binding,
+        base_params=params,
+        request_variant={"exchange": "SZSE", "limit": 100},
+        fanout_batches=batches,
+        requested_fields=None,
+        scan_budget=SensitiveScanBudget(max_depth=16, max_nodes=10_000),
+        retry=RetrySettings(),
+        sleep=lambda _seconds: None,
+    )
+
+    assert len(collector.calls) == 1
+    assert collector.calls[0][1]["ts_code"] == ",".join(codes)
+    assert execution.calls[0].identity.fanout_values == codes
+
+
 def test_offset_pagination_stops_on_short_page_and_preserves_rows() -> None:
     binding = _binding(
         pagination=PaginationPolicy(

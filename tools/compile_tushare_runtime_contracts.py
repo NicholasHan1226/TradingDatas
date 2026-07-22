@@ -721,12 +721,14 @@ def _request_parameter(
             raise RuntimeContractCompilationError(f"{label}.value must not be blank")
         return {"source": source, "value": literal}
     if source == "dataset_field":
-        _exact_keys(
+        required_keys = frozenset(
+            {"source", "dataset_id", "field", "requires_fresh_success_receipt"}
+        )
+        _reject_unknown_and_missing_keys(
             value,
-            frozenset(
-                {"source", "dataset_id", "field", "requires_fresh_success_receipt"}
-            ),
-            label,
+            allowed=required_keys | {"batch_size"},
+            required=required_keys,
+            label=label,
         )
         if value["requires_fresh_success_receipt"] is not True:
             raise RuntimeContractCompilationError(
@@ -737,6 +739,9 @@ def _request_parameter(
             "dataset_id": _text(value["dataset_id"], f"{label}.dataset_id"),
             "field": _text(value["field"], f"{label}.field"),
             "requires_fresh_success_receipt": True,
+            "batch_size": _positive_int(
+                value.get("batch_size", 1), f"{label}.batch_size"
+            ),
         }
     _exact_keys(value, frozenset({"source", "transform", "offset_seconds"}), label)
     transform = _text(value["transform"], f"{label}.transform")
@@ -1346,7 +1351,7 @@ def _request_execution_contract(
             "parameter": parameter,
             "source_dataset_id": declaration["dataset_id"],
             "source_field": declaration["field"],
-            "batch_size": 1,
+            "batch_size": declaration["batch_size"],
         }
     else:
         fanout = {"strategy": "none"}
@@ -1715,7 +1720,7 @@ def _registered_seed_requirements(
             "parameter": parameter,
             "source_dataset_id": declaration["dataset_id"],
             "source_field": declaration["field"],
-            "batch_size": 1,
+            "batch_size": declaration["batch_size"],
         }
         if fanout != expected_fanout:
             raise RuntimeContractCompilationError(

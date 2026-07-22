@@ -16,7 +16,7 @@ provenance:
     sha256: d1b7c9447e1351a1ae194352630d00cc6fcb0a9a96c941b13a26398f54b4eeaf
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 34c355c233b3f1313161e181e138ad1047be11ff9777be390f8a570ebc38fe94
+    sha256: dc6aab13dd5ab6e5ace272a103e059e74bf730ff45382f2dc6737ff01320c5ec
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -171,6 +171,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: bc_bestotcqt
   scope_labels:
@@ -320,6 +321,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: cb_basic
   scope_labels:
@@ -664,6 +666,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: cyq_perf
   scope_labels:
@@ -688,6 +691,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: daily
   scope_labels:
@@ -729,6 +733,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: daily_info
   scope_labels:
@@ -1020,6 +1025,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: fina_audit
   scope_labels:
@@ -1048,6 +1054,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: fina_indicator
   scope_labels:
@@ -1076,6 +1083,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: fina_mainbz
   scope_labels:
@@ -1104,6 +1112,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
     type:
       source: literal
       value: P
@@ -1724,6 +1733,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: index_basic
   scope_labels:
@@ -2475,6 +2485,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: repo_daily
   scope_labels:
@@ -2759,6 +2770,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: rt_sw_k
   scope_labels:
@@ -3197,6 +3209,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: stk_shock
   scope_labels:
@@ -3573,6 +3586,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: top10_holders
   scope_labels:
@@ -3593,6 +3607,7 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 10
   row_limit_observation: null
 - api_name: top_inst
   scope_labels:

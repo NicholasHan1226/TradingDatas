@@ -26,6 +26,24 @@ REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
 TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 UPSTREAM_CONTRACTS = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 
+TEN_CODE_FANOUT_APIS = {
+    "balancesheet",
+    "cashflow",
+    "cyq_chips",
+    "cyq_perf",
+    "daily_basic",
+    "express",
+    "fina_audit",
+    "fina_indicator",
+    "fina_mainbz",
+    "income",
+    "pledge_stat",
+    "rt_min_daily",
+    "stk_rewards",
+    "top10_floatholders",
+    "top10_holders",
+}
+
 
 def _bytes(path: Path) -> bytes:
     return path.read_bytes()
@@ -280,6 +298,63 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
     assert news["probe_state"] == "blocked"
     assert news["request_template"] == {}
     assert news["request_variants"] == [{}]
+
+
+def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    bundle = _compile()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=_yaml(TRANSPORT_OBSERVATIONS),
+    )
+    runtime_bindings = {
+        binding["api_name"]: binding
+        for dataset in registry["datasets"]
+        for binding in dataset["provider_bindings"]
+    }
+
+    for api_name in TEN_CODE_FANOUT_APIS:
+        declaration = _entry(observations, api_name)["parameters"]["ts_code"]
+        assert declaration["batch_size"] == 10
+        assert _contract(bundle, api_name)["fanout"]["batch_size"] == 10
+        assert runtime_bindings[api_name]["fanout"]["batch_size"] == 10
+
+    default_observations = deepcopy(observations)
+    _entry(default_observations, "daily_basic")["parameters"]["ts_code"].pop(
+        "batch_size"
+    )
+    default_bundle = _compile(request_observations=default_observations)
+    assert _contract(default_bundle, "daily_basic")["fanout"]["batch_size"] == 1
+
+    generic_observations = deepcopy(observations)
+    _entry(generic_observations, "cb_price_chg")["parameters"]["ts_code"][
+        "batch_size"
+    ] = 7
+    generic_bundle = _compile(request_observations=generic_observations)
+    assert _contract(generic_bundle, "cb_price_chg")["fanout"]["batch_size"] == 7
+
+
+@pytest.mark.parametrize("batch_size", [0, -1, True])
+def test_dataset_field_batch_size_must_be_a_positive_integer(batch_size: object) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    _entry(observations, "daily_basic")["parameters"]["ts_code"]["batch_size"] = (
+        batch_size
+    )
+
+    with pytest.raises(RuntimeContractCompilationError, match="positive integer"):
+        _compile(request_observations=observations)
+
+
+def test_dataset_field_declaration_rejects_extra_keys() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    _entry(observations, "daily_basic")["parameters"]["ts_code"]["unexpected"] = (
+        "dataset-specific-override"
+    )
+
+    with pytest.raises(RuntimeContractCompilationError, match="unknown=unexpected"):
+        _compile(request_observations=observations)
 
 
 def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_params() -> (
