@@ -318,9 +318,12 @@ active_evidence:
   index_classify: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
   limit_list_ths: server-evidence/20260722TQkgWsk-1def337-provider-native
   moneyflow_ind_ths: server-evidence/20260722TQkgWsk-1def337-provider-native
+  repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native
+  research_report: server-evidence/20260722TQkgWsk-1def337-provider-native
   stk_auction: server-evidence/20260722TQkgWsk-1def337-provider-native
   stk_limit: server-evidence/20260722TQkgWsk-1def337-provider-native
   stock_basic: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
   suspend_d: server-evidence/20260722TQkgWsk-1def337-provider-native
   sw_daily: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
+  top_list: server-evidence/20260722TQkgWsk-1def337-provider-native
   trade_cal: server-evidence/20260718T123044-4088a2d

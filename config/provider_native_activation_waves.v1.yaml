@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "f1e35c7d3e3a2c7e969d64141fa8483e4640ef517cf42ba279067a6c0794adb0"
+  runtime_registry_sha256: "6c1d6ec0fe574b4d676133f609e9fcb48aaad61d7efbaef0bd2ab809ca21879d"
   schedule_sha256: "749c2a1d46131921c3bf2db62ac710b790727c3ee65289826cd1b44204583dd1"
 waves:
   direct_wave_1:
@@ -14,6 +14,11 @@ waves:
     - cn.dataset.hsgt_top10
     - cn.dataset.limit_list_ths
     - cn.dataset.moneyflow_ind_ths
+  direct_wave_3:
+    dataset_ids:
+    - cn.dataset.repurchase
+    - cn.dataset.research_report
+    - cn.dataset.top_list
   pilot_existing:
     dataset_ids:
     - cn.dataset.index_classify

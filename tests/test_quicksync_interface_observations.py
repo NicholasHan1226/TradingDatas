@@ -91,9 +91,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 12
-    assert activation_projection["active_count"] == 12
-    assert activation_projection["paused_count"] == 178
+    assert activation_projection["candidate_count"] == 15
+    assert activation_projection["active_count"] == 15
+    assert activation_projection["paused_count"] == 175
 
     _compiled_with_activation(document)
 
@@ -184,18 +184,21 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
         "index_classify",
         "limit_list_ths",
         "moneyflow_ind_ths",
+        "repurchase",
+        "research_report",
         "stk_auction",
         "stk_limit",
         "stock_basic",
         "suspend_d",
         "sw_daily",
+        "top_list",
         "trade_cal",
     }
     assert len(bindings) == 190
     assert sum(
         dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
         for dataset in bindings.values()
-    ) == 178
+    ) == 175
 
     expected_direct_wave_ref = (
         "server-evidence/20260722TQkgWsk-1def337-provider-native"
@@ -209,18 +212,24 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
             "hsgt_top10",
             "limit_list_ths",
             "moneyflow_ind_ths",
+            "repurchase",
+            "research_report",
             "stk_auction",
             "stk_limit",
             "suspend_d",
+            "top_list",
         )
     } == {
         "adj_factor": expected_direct_wave_ref,
         "hsgt_top10": expected_direct_wave_ref,
         "limit_list_ths": expected_direct_wave_ref,
         "moneyflow_ind_ths": expected_direct_wave_ref,
+        "repurchase": expected_direct_wave_ref,
+        "research_report": expected_direct_wave_ref,
         "stk_auction": expected_direct_wave_ref,
         "stk_limit": expected_direct_wave_ref,
         "suspend_d": expected_direct_wave_ref,
+        "top_list": expected_direct_wave_ref,
     }
 
     observations = _observations()["classifications"]

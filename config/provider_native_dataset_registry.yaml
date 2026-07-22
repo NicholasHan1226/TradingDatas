@@ -24797,7 +24797,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_repurchase
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -24935,7 +24935,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_research_report
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -34826,7 +34826,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_top_list
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
