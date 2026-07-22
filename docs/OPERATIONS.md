@@ -68,6 +68,31 @@ preflight 证明 API/collector 均 inactive、timer disabled、18082 切换方�
 pointer 重读，不能与协作切换交错产生伪 readback。manifest 不记录 secret 内容或 SQLite hash；
 回滚不覆盖 SQLite，也不恢复旧 official-direct collector。
 
+早期 bootstrap 可能遗留一个绝对 `current` pointer。普通 `verify-current` 与
+`switch-current` 继续只接受相对 40 位 commit，不兼容或跟随该遗留形式。只允许在
+API/collector 均 inactive、timer disabled，且 rollback release 与外置 rollback
+manifest 已独立验证后，使用已审查并核对 SHA256 的 trusted verifier 执行一次：
+
+```bash
+/opt/tradingdatas/venv/bin/python3 \
+  /path/to/reviewed/trusted-release_manifest.py normalize-current \
+  --releases-root /opt/investment/releases/tradingdatas \
+  --rollback-manifest /opt/investment/releases/tradingdatas/manifests/<rollback-commit>.json \
+  --expected-uid 0 --expected-gid 0
+```
+
+该命令只接受原始 pointer 逐字等于 canonical absolute
+`/opt/investment/releases/tradingdatas/<rollback-commit>` 的单一遗留情形，在同一排他锁
+内验证 rollback release 后原子改写为相对 `<rollback-commit>`，目录 fsync 并读回。
+任意其它绝对路径、不同 rollback、已经相对的 pointer、链接链或不安全 releases root
+都必须拒绝。相对 pointer 完成 `replace`、目录 fsync 和 post-readback 后即为提交点；
+提交点之前的改写失败会恢复原绝对 pointer，恢复失败必须高声失败并停止发布。提交点
+之后的 unlock/close 只是 cleanup，不得反向覆盖已提交 pointer 或把成功伪报为失败；
+关闭前必须先解绑本地 descriptor 状态，不能因 close-after-close 异常误关复用的 FD。
+成功后立即用同一 rollback manifest 运行 `verify-current`，再进入常规
+`switch-current`。该 normalization 不安装 unit、不启停服务、不读取凭证、不打开或
+覆盖 SQLite，也不能用作第二种常驻 pointer 格式。
+
 systemd 仅从 `current` 启动入口脚本。入口立即解析到同一物理 immutable release，
 registry 与 schedule 不接受 `/current/config/...` 环境覆盖；execute 模式也拒绝非本物理
 release 的 `--schedule-config`，避免代码/配置跨版本混配。

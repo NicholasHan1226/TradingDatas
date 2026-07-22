@@ -15,6 +15,7 @@ from tools.release_manifest import (
     build_manifest,
     canonical_manifest_bytes,
     load_manifest,
+    normalize_current,
     switch_current,
     verify_release,
     verify_current,
@@ -247,6 +248,336 @@ def test_verify_current_rejects_invalid_manifest_and_unsafe_releases_root(
     with pytest.raises(ReleaseManifestError, match="non-group/world-writable"):
         verify_current(release.parent, manifest)
     release.parent.chmod(0o755)
+
+
+def test_normalize_current_rewrites_only_exact_legacy_absolute_pointer(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+    database = tmp_path / "provider_native.sqlite"
+    database.write_bytes(b"sqlite-authority")
+    before = (database.stat().st_dev, database.stat().st_ino, database.read_bytes())
+
+    result = normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert result == {
+        "product": "TradingDatas",
+        "commit": rollback_manifest["commit"],
+        "previous_target": legacy_target,
+        "current_target": rollback_manifest["commit"],
+        "normalized": True,
+    }
+    assert os.readlink(current) == rollback_manifest["commit"]
+    assert verify_current(rollback_release.parent, rollback_manifest)["verified"] is True
+    assert (
+        database.stat().st_dev,
+        database.stat().st_ino,
+        database.read_bytes(),
+    ) == before
+
+
+def test_normalize_current_rejects_nonmatching_or_relative_legacy_pointer(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+
+    current.symlink_to(str(rollback_manifest["commit"]))
+    with pytest.raises(ReleaseManifestError, match="legacy absolute"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+    assert os.readlink(current) == rollback_manifest["commit"]
+
+    current.unlink()
+    arbitrary = rollback_release.parent / ("f" * 40)
+    current.symlink_to(arbitrary)
+    with pytest.raises(ReleaseManifestError, match="rollback manifest"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+    assert os.readlink(current) == str(arbitrary)
+
+    current.unlink()
+    alias = rollback_release.parent / "legacy-release"
+    alias.symlink_to(rollback_release)
+    current.symlink_to(alias)
+    with pytest.raises(ReleaseManifestError, match="rollback manifest"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+    assert os.readlink(current) == str(alias)
+
+
+def test_normalize_current_rejects_wrong_manifest_drift_and_unsafe_root(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    target_manifest = _next_manifest(repo)
+    _release(tmp_path, repo, target_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+
+    with pytest.raises(ReleaseManifestError, match="rollback manifest"):
+        normalize_current(rollback_release.parent, target_manifest)
+    assert os.readlink(current) == legacy_target
+
+    rollback_release.chmod(0o755)
+    rollback_file = rollback_release / "README.md"
+    rollback_file.chmod(0o644)
+    rollback_file.write_text("drift\n", encoding="utf-8")
+    rollback_file.chmod(0o444)
+    rollback_release.chmod(0o555)
+    with pytest.raises(ReleaseManifestError, match="content"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+    assert os.readlink(current) == legacy_target
+
+    rollback_release.parent.chmod(0o777)
+    with pytest.raises(ReleaseManifestError, match="non-group/world-writable"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+    assert os.readlink(current) == legacy_target
+    rollback_release.parent.chmod(0o755)
+
+
+def test_normalize_current_rejects_release_symlink_chain(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    releases_root = rollback_release.parent
+    current = releases_root / "current"
+    legacy_target = str(rollback_release)
+    alternate_parent = tmp_path / "alternate"
+    alternate_parent.mkdir()
+    alternate_release = alternate_parent / rollback_release.name
+    rollback_release.chmod(0o755)
+    rollback_release.rename(alternate_release)
+    alternate_release.chmod(0o555)
+    rollback_release.symlink_to(alternate_release, target_is_directory=True)
+    current.symlink_to(legacy_target)
+
+    with pytest.raises(ReleaseManifestError, match="symlink"):
+        normalize_current(releases_root, rollback_manifest)
+
+    assert os.readlink(current) == legacy_target
+
+
+def test_normalize_current_restores_absolute_pointer_after_post_replace_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+    original = release_manifest._replace_current_at
+
+    def fail_after_relative_replace(descriptor: int, target: str) -> bool:
+        original(descriptor, target)
+        raise ReleaseManifestError("injected normalize post-replace failure")
+
+    monkeypatch.setattr(
+        release_manifest,
+        "_replace_current_at",
+        fail_after_relative_replace,
+    )
+
+    with pytest.raises(ReleaseManifestError, match="injected normalize"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert os.readlink(current) == legacy_target
+
+
+def test_normalize_current_fails_loudly_when_absolute_restoration_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    current.symlink_to(str(rollback_release))
+    original = release_manifest._replace_current_at
+
+    def fail_after_relative_replace(descriptor: int, target: str) -> bool:
+        original(descriptor, target)
+        raise ReleaseManifestError("injected normalize post-replace failure")
+
+    def fail_legacy_restore(descriptor: int, target: str) -> bool:
+        raise OSError("injected legacy restore failure")
+
+    monkeypatch.setattr(
+        release_manifest,
+        "_replace_current_at",
+        fail_after_relative_replace,
+    )
+    monkeypatch.setattr(
+        release_manifest,
+        "_restore_legacy_current_at",
+        fail_legacy_restore,
+    )
+
+    with pytest.raises(ReleaseManifestError, match="restoration failed"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert os.readlink(current) == rollback_manifest["commit"]
+
+
+def test_normalize_current_keeps_committed_pointer_after_unlock_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+    original_flock = release_manifest.fcntl.flock
+    failed = False
+
+    def fail_first_unlock(descriptor: int, operation: int) -> None:
+        nonlocal failed
+        if operation == release_manifest.fcntl.LOCK_UN and not failed:
+            failed = True
+            raise OSError("injected unlock failure")
+        original_flock(descriptor, operation)
+
+    monkeypatch.setattr(release_manifest.fcntl, "flock", fail_first_unlock)
+
+    result = normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert result["normalized"] is True
+    assert os.readlink(current) == rollback_manifest["commit"]
+
+
+def test_normalize_current_helper_readback_is_the_only_commit_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    current.symlink_to(str(rollback_release))
+
+    def reject_redundant_outer_readback(descriptor: int) -> str:
+        raise OSError("outer post-commit readback must not run")
+
+    monkeypatch.setattr(
+        release_manifest,
+        "_read_current_target_at",
+        reject_redundant_outer_readback,
+    )
+
+    result = normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert result["normalized"] is True
+    assert os.readlink(current) == rollback_manifest["commit"]
+
+
+def test_normalize_current_detaches_fd_and_keeps_commit_after_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+    original_close = release_manifest.os.close
+    failed = False
+    recycled_descriptor: int | None = None
+    guard = tmp_path / "recycled-fd-guard"
+    guard.write_bytes(b"guard")
+
+    def close_then_fail_once(descriptor: int) -> None:
+        nonlocal failed, recycled_descriptor
+        if not failed:
+            failed = True
+            original_close(descriptor)
+            recycled_descriptor = os.open(guard, os.O_RDONLY)
+            assert recycled_descriptor == descriptor
+            raise OSError("injected close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(release_manifest.os, "close", close_then_fail_once)
+
+    result = normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert result["normalized"] is True
+    assert os.readlink(current) == rollback_manifest["commit"]
+    assert recycled_descriptor is not None
+    assert os.fstat(recycled_descriptor).st_size == len(b"guard")
+    original_close(recycled_descriptor)
+
+
+def test_normalize_current_cleanup_failure_does_not_mask_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    legacy_target = str(rollback_release)
+    current.symlink_to(legacy_target)
+    original_flock = release_manifest.fcntl.flock
+
+    def fail_before_replace(descriptor: int, target: str) -> bool:
+        raise ReleaseManifestError("primary normalization failure")
+
+    def fail_unlock(descriptor: int, operation: int) -> None:
+        if operation == release_manifest.fcntl.LOCK_UN:
+            raise OSError("secondary cleanup failure")
+        original_flock(descriptor, operation)
+
+    monkeypatch.setattr(release_manifest, "_replace_current_at", fail_before_replace)
+    monkeypatch.setattr(release_manifest.fcntl, "flock", fail_unlock)
+
+    with pytest.raises(ReleaseManifestError, match="primary normalization failure"):
+        normalize_current(rollback_release.parent, rollback_manifest)
+
+    assert os.readlink(current) == legacy_target
+
+
+def test_normalize_current_cli_loads_verified_rollback_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    rollback_manifest = build_manifest(repo)
+    rollback_release = _release(tmp_path, repo, rollback_manifest)
+    current = rollback_release.parent / "current"
+    current.symlink_to(str(rollback_release))
+    manifest_path = tmp_path / "manifests" / "rollback.json"
+    write_manifest(manifest_path, rollback_manifest)
+
+    return_code = release_manifest.main(
+        [
+            "normalize-current",
+            "--releases-root",
+            str(rollback_release.parent),
+            "--rollback-manifest",
+            str(manifest_path),
+            "--expected-uid",
+            str(os.getuid()),
+            "--expected-gid",
+            str(os.getgid()),
+        ]
+    )
+
+    assert return_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["normalized"] is True
+    assert output["current_target"] == rollback_manifest["commit"]
+    assert os.readlink(current) == rollback_manifest["commit"]
 
 
 def test_switch_current_is_atomic_and_preserves_data(tmp_path: Path) -> None:

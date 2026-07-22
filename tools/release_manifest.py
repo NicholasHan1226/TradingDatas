@@ -506,12 +506,18 @@ def _validated_releases_root(
     return releases_root
 
 
-def _read_current_target_at(directory_descriptor: int) -> str:
+def _read_raw_current_target_at(directory_descriptor: int) -> str:
     try:
-        target = os.readlink("current", dir_fd=directory_descriptor)
+        return os.readlink("current", dir_fd=directory_descriptor)
     except OSError as exc:
         raise ReleaseManifestError("current must be a readable symlink") from exc
-    return _validate_hex(target, name="current target")
+
+
+def _read_current_target_at(directory_descriptor: int) -> str:
+    return _validate_hex(
+        _read_raw_current_target_at(directory_descriptor),
+        name="current target",
+    )
 
 
 def verify_current(
@@ -554,8 +560,7 @@ def verify_current(
             os.close(descriptor)
 
 
-def _replace_current_at(directory_descriptor: int, target: str) -> bool:
-    target = _validate_hex(target, name="target commit")
+def _replace_current_pointer_at(directory_descriptor: int, target: str) -> bool:
     temporary = f".current.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     replaced = False
     try:
@@ -569,7 +574,7 @@ def _replace_current_at(directory_descriptor: int, target: str) -> bool:
         )
         replaced = True
         os.fsync(directory_descriptor)
-        if _read_current_target_at(directory_descriptor) != target:
+        if _read_raw_current_target_at(directory_descriptor) != target:
             raise ReleaseManifestError("current post-switch identity is invalid")
         return replaced
     finally:
@@ -577,6 +582,121 @@ def _replace_current_at(directory_descriptor: int, target: str) -> bool:
             os.unlink(temporary, dir_fd=directory_descriptor)
         except FileNotFoundError:
             pass
+
+
+def _replace_current_at(directory_descriptor: int, target: str) -> bool:
+    target = _validate_hex(target, name="target commit")
+    return _replace_current_pointer_at(directory_descriptor, target)
+
+
+def _restore_legacy_current_at(directory_descriptor: int, target: str) -> bool:
+    target_path = _canonical_absolute_path(target, name="legacy current target")
+    return _replace_current_pointer_at(directory_descriptor, os.fspath(target_path))
+
+
+def normalize_current(
+    releases_root: Path,
+    rollback_manifest: dict[str, object],
+    *,
+    expected_uid: int | None = None,
+    expected_gid: int | None = None,
+) -> dict[str, object]:
+    """Replace one exact legacy absolute rollback pointer with its commit name."""
+
+    rollback_manifest = validate_manifest(rollback_manifest)
+    releases_root = _validated_releases_root(
+        releases_root,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+    )
+    rollback = str(rollback_manifest["commit"])
+    legacy_target = os.fspath(releases_root / rollback)
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(releases_root, flags)
+    locked = False
+    committed = False
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        locked = True
+        observed = _read_raw_current_target_at(descriptor)
+        try:
+            canonical_observed = os.fspath(
+                _canonical_absolute_path(observed, name="legacy current target")
+            )
+        except ReleaseManifestError as exc:
+            raise ReleaseManifestError(
+                "current must be the exact legacy absolute rollback pointer"
+            ) from exc
+        if canonical_observed != legacy_target or observed != legacy_target:
+            raise ReleaseManifestError(
+                "current legacy absolute target does not match rollback manifest"
+            )
+
+        verify_release(
+            releases_root / rollback,
+            rollback_manifest,
+            expected_uid=expected_uid,
+            expected_gid=expected_gid,
+        )
+        if _read_raw_current_target_at(descriptor) != legacy_target:
+            raise ReleaseManifestError(
+                "current legacy absolute target changed during verification"
+            )
+
+        replaced = False
+        try:
+            replaced = _replace_current_at(descriptor, rollback)
+        except BaseException as exc:
+            needs_restore = replaced
+            if not needs_restore:
+                try:
+                    needs_restore = (
+                        _read_raw_current_target_at(descriptor) != legacy_target
+                    )
+                except BaseException:
+                    needs_restore = True
+            if needs_restore:
+                try:
+                    _restore_legacy_current_at(descriptor, legacy_target)
+                except BaseException as restore_exc:
+                    raise ReleaseManifestError(
+                        "current normalization failed and legacy pointer restoration failed"
+                    ) from restore_exc
+            if isinstance(exc, ReleaseManifestError):
+                raise
+            raise ReleaseManifestError("current normalization failed") from exc
+
+        committed = True
+        return {
+            "product": PRODUCT,
+            "commit": rollback,
+            "previous_target": legacy_target,
+            "current_target": rollback,
+            "normalized": True,
+        }
+    finally:
+        primary_failure = sys.exc_info()[1]
+        cleanup_failure: BaseException | None = None
+        cleanup_descriptor = descriptor
+        descriptor = -1
+        try:
+            if locked:
+                fcntl.flock(cleanup_descriptor, fcntl.LOCK_UN)
+                locked = False
+        except BaseException as exc:
+            cleanup_failure = exc
+        try:
+            os.close(cleanup_descriptor)
+        except BaseException as exc:
+            if cleanup_failure is None:
+                cleanup_failure = exc
+        if cleanup_failure is not None and not committed and primary_failure is None:
+            raise ReleaseManifestError("current normalization cleanup failed") from (
+                cleanup_failure
+            )
 
 
 def switch_current(
@@ -699,6 +819,14 @@ def _parser() -> argparse.ArgumentParser:
     current.add_argument("--manifest", type=Path, required=True)
     current.add_argument("--expected-uid", type=int, required=True)
     current.add_argument("--expected-gid", type=int, required=True)
+    normalize = subparsers.add_parser(
+        "normalize-current",
+        help="normalize one verified legacy absolute current pointer",
+    )
+    normalize.add_argument("--releases-root", type=Path, required=True)
+    normalize.add_argument("--rollback-manifest", type=Path, required=True)
+    normalize.add_argument("--expected-uid", type=int, required=True)
+    normalize.add_argument("--expected-gid", type=int, required=True)
     switch = subparsers.add_parser("switch-current", help="atomically switch current")
     switch.add_argument("--releases-root", type=Path, required=True)
     switch.add_argument("--target-manifest", type=Path, required=True)
@@ -743,6 +871,18 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_current(
                 arguments.releases_root,
                 manifest,
+                expected_uid=arguments.expected_uid,
+                expected_gid=arguments.expected_gid,
+            )
+        elif arguments.command == "normalize-current":
+            rollback_manifest = load_manifest(
+                arguments.rollback_manifest,
+                expected_uid=arguments.expected_uid,
+                expected_gid=arguments.expected_gid,
+            )
+            result = normalize_current(
+                arguments.releases_root,
+                rollback_manifest,
                 expected_uid=arguments.expected_uid,
                 expected_gid=arguments.expected_gid,
             )
