@@ -206,6 +206,20 @@
   `production_ready=false`。没有 `response_completeness` 策略的数据集只能作为降级 canary，
   不能表述为 exact-complete。每个 dataset 的正式 promotion 仍需独立 SQLite 中真实
   receipt、transient catalog/query readback、same-as-of 与失败负例，且 timer 保持 disabled。
+- 2026-07-23 使用干净候选提交 `1def337683d809d431b624d4fd2ab62888e52ad3`
+  与仓外 candidate registry SHA-256
+  `44a3f28df5b469c67576092c8f64fa7be3a40ea11e155b8082d66a5e3e8738e1`
+  完成首个新增数据集隔离 canary。五项 dry-plan 均未调用 provider 或创建数据库；初始化独立
+  SQLite 后，`adj_factor`、`block_trade`、`cctv_news`、`etf_basic` 分别写入
+  5,543、112、13、3,363 行，并各有一条 success receipt。`daily_basic` 因空隔离库缺少其
+  registry 声明的 `security_master` fanout authority，写入一条 failed receipt、零事实行，
+  继续 paused，不增加专用 collector 或绕过依赖。临时 `127.0.0.1:18085` catalog 为
+  190 total / 120 preactivation active / 70 paused；四项成功数据集均可完整分页，连续两次
+  读取的行数与数据哈希一致，但因 `response_completeness` 尚未冻结而如实返回
+  `partial/degraded`，不是 ready。无认证请求为 401，`/tushare` 与 `/source_status` 为
+  404。隔离库 `quick_check=ok`，临时 API 已停止；正式 `current=b395b901...`、18082、
+  正式 SQLite 与 disabled timer 均未改变。证据目录为
+  `/opt/investment-data/tradingdatas-preactivation/1def337683d809d431b624d4fd2ab62888e52ad3/run-20260722TQkgWsk`。
 
 ## 当前停止线
 
