@@ -28,6 +28,12 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
 
+生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
+`RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用
+`/run/tradingdatas/collect.lock`；这种调用绕过 systemd，运行账号无权创建 `/run` 子目录。
+隔离验证如需直接运行，只能使用该隔离目录内的私有 lock path，不能借此启用 timer、改变
+正式 cadence 或新增第二套调度入口。
+
 ## Activation wave
 
 `config/provider_native_activation_waves.v1.yaml` 是 repository-owned 的受审波次
