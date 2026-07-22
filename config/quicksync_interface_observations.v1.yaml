@@ -314,7 +314,10 @@ classifications:
 active_evidence:
   adj_factor: server-evidence/20260722TQkgWsk-1def337-provider-native
   daily: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+  hsgt_top10: server-evidence/20260722TQkgWsk-1def337-provider-native
   index_classify: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
+  limit_list_ths: server-evidence/20260722TQkgWsk-1def337-provider-native
+  moneyflow_ind_ths: server-evidence/20260722TQkgWsk-1def337-provider-native
   stk_auction: server-evidence/20260722TQkgWsk-1def337-provider-native
   stk_limit: server-evidence/20260722TQkgWsk-1def337-provider-native
   stock_basic: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3

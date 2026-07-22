@@ -570,7 +570,10 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     assert skipped["cn.equity.daily"] == "not_due"
     assert {item.dataset_id for item in result.executed} == {
         "cn.dataset.adj_factor",
+        "cn.dataset.hsgt_top10",
         "cn.dataset.index_classify",
+        "cn.dataset.limit_list_ths",
+        "cn.dataset.moneyflow_ind_ths",
         "cn.dataset.stk_auction",
         "cn.dataset.stk_limit",
         "cn.dataset.sw_daily",
@@ -1697,6 +1700,80 @@ def test_formal_direct_wave_1_dry_run_plans_every_selected_dataset(
         item.dataset_id
         for item in result.skipped
         if item.dataset_id in expected and item.state == "on_demand"
+    }
+
+
+def test_formal_direct_wave_2_is_hash_bound_and_disjoint_from_existing_waves() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    direct = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "direct_wave_2",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+    direct_wave_1 = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "direct_wave_1",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+    pilot = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "pilot_existing",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert direct.dataset_ids == frozenset(
+        {
+            "cn.dataset.hsgt_top10",
+            "cn.dataset.limit_list_ths",
+            "cn.dataset.moneyflow_ind_ths",
+        }
+    )
+    assert direct.dataset_ids.isdisjoint(direct_wave_1.dataset_ids)
+    assert direct.dataset_ids.isdisjoint(pilot.dataset_ids)
+
+
+def test_formal_direct_wave_2_dry_run_plans_every_selected_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+    expected = {
+        "cn.dataset.hsgt_top10",
+        "cn.dataset.limit_list_ths",
+        "cn.dataset.moneyflow_ind_ths",
+    }
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="direct_wave_2",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == expected
+    assert not {
+        item.dataset_id
+        for item in result.skipped
+        if item.dataset_id in expected
     }
 
 

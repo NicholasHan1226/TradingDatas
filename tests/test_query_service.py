@@ -501,7 +501,7 @@ def test_ineligible_binding_combinations_fail_before_storage_or_provider(
     assert not db_path.exists()
 
 
-def test_all_181_non_active_target_datasets_fail_before_storage_or_provider(
+def test_all_178_non_active_target_datasets_fail_before_storage_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -519,7 +519,7 @@ def test_all_181_non_active_target_datasets_fail_before_storage_or_provider(
     assert {
         state: sum(binding.activation_state == state for binding in bindings)
         for state in ("active", "paused")
-    } == {"active": 9, "paused": 181}
+    } == {"active": 12, "paused": 178}
 
     active = tuple(
         dataset for dataset in registry.datasets if is_initial_release_eligible(dataset)
@@ -531,7 +531,10 @@ def test_all_181_non_active_target_datasets_fail_before_storage_or_provider(
     )
     assert {dataset.dataset_id for dataset in active} == {
         "cn.dataset.adj_factor",
+        "cn.dataset.hsgt_top10",
         "cn.dataset.index_classify",
+        "cn.dataset.limit_list_ths",
+        "cn.dataset.moneyflow_ind_ths",
         "cn.dataset.sw_daily",
         "cn.dataset.stk_auction",
         "cn.dataset.stk_limit",
@@ -540,7 +543,7 @@ def test_all_181_non_active_target_datasets_fail_before_storage_or_provider(
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
-    assert len(non_active) == 181
+    assert len(non_active) == 178
     excluded = tuple(
         dataset
         for dataset in non_active

@@ -187,8 +187,11 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
 
     assert active == {
         "adj_factor",
+        "hsgt_top10",
         "daily",
         "index_classify",
+        "limit_list_ths",
+        "moneyflow_ind_ths",
         "stk_auction",
         "stk_limit",
         "stock_basic",
@@ -276,8 +279,11 @@ def test_formal_mode_never_promotes_preactivation_evidence() -> None:
 
     assert active == {
         "adj_factor",
+        "hsgt_top10",
         "daily",
         "index_classify",
+        "limit_list_ths",
+        "moneyflow_ind_ths",
         "stk_auction",
         "stk_limit",
         "stock_basic",
@@ -301,8 +307,11 @@ def test_formal_mode_does_not_validate_or_depend_on_activation_evidence() -> Non
 
     assert active == {
         "adj_factor",
+        "hsgt_top10",
         "daily",
         "index_classify",
+        "limit_list_ths",
+        "moneyflow_ind_ths",
         "stk_auction",
         "stk_limit",
         "stock_basic",
@@ -568,8 +577,8 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         else:
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
-    assert len(active_dataset_ids) == 9
-    assert len(paused_dataset_ids) == 181
+    assert len(active_dataset_ids) == 12
+    assert len(paused_dataset_ids) == 178
     assert request_shapes == {
         "snapshot_or_date_range",
         "entity_fanout",
@@ -635,7 +644,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert sum(
         dataset.provider_bindings[0].activation_state == "active"
         for dataset in loaded.datasets
-    ) == 10
+    ) == 13
     assert output.read_bytes() != before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
 

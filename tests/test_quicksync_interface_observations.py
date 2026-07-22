@@ -91,9 +91,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 9
-    assert activation_projection["active_count"] == 9
-    assert activation_projection["paused_count"] == 181
+    assert activation_projection["candidate_count"] == 12
+    assert activation_projection["active_count"] == 12
+    assert activation_projection["paused_count"] == 178
 
     _compiled_with_activation(document)
 
@@ -179,8 +179,11 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     }
     assert active == {
         "adj_factor",
+        "hsgt_top10",
         "daily",
         "index_classify",
+        "limit_list_ths",
+        "moneyflow_ind_ths",
         "stk_auction",
         "stk_limit",
         "stock_basic",
@@ -192,7 +195,7 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     assert sum(
         dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
         for dataset in bindings.values()
-    ) == 181
+    ) == 178
 
     expected_direct_wave_ref = (
         "server-evidence/20260722TQkgWsk-1def337-provider-native"
@@ -201,9 +204,20 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     assert isinstance(active_evidence, dict)
     assert {
         api_name: active_evidence[api_name]
-        for api_name in ("adj_factor", "stk_auction", "stk_limit", "suspend_d")
+        for api_name in (
+            "adj_factor",
+            "hsgt_top10",
+            "limit_list_ths",
+            "moneyflow_ind_ths",
+            "stk_auction",
+            "stk_limit",
+            "suspend_d",
+        )
     } == {
         "adj_factor": expected_direct_wave_ref,
+        "hsgt_top10": expected_direct_wave_ref,
+        "limit_list_ths": expected_direct_wave_ref,
+        "moneyflow_ind_ths": expected_direct_wave_ref,
         "stk_auction": expected_direct_wave_ref,
         "stk_limit": expected_direct_wave_ref,
         "suspend_d": expected_direct_wave_ref,

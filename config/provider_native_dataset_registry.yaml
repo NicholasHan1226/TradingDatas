@@ -16536,7 +16536,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_hsgt_top10
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -20416,7 +20416,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_list_ths
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -22396,7 +22396,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_ind_ths
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
