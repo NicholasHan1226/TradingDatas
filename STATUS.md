@@ -220,6 +220,19 @@
   404。隔离库 `quick_check=ok`，临时 API 已停止；正式 `current=b395b901...`、18082、
   正式 SQLite 与 disabled timer 均未改变。证据目录为
   `/opt/investment-data/tradingdatas-preactivation/1def337683d809d431b624d4fd2ab62888e52ad3/run-20260722TQkgWsk`。
+- 2026-07-23 在同一隔离 release、同一通用 `collect_provider_dataset.py` 和同一 SQLite 上继续完成
+  Wave 2-7；没有新增 dataset-specific Python、route、表或 scheduler 分支。120 个
+  preactivation active 合同现在形成互斥矩阵：5 个 formal ready、96 个隔离 canary 终态、
+  19 个仍阻塞。96 个 canary 终态为 70 `success`、26 `empty`，共 99,051 行 facts；所有
+  96 项均完成 authenticated catalog/query 分页读回和重复读取哈希一致性检查，并保留 receipt、
+  完整 lineage 与 `transport_service=quicksync`。由于这些新增合同尚无
+  `response_completeness`，API 仍正确返回 `partial/degraded`，没有借 canary 提升为 ready。
+  剩余 19 项为 15 个 `dataset_field` fanout 和 4 个无 fanout 宽表扫描预算阻塞；其中
+  `daily_basic` 的最新 receipt 仍为 failed。隔离库 `quick_check=ok`、当前 SHA-256 为
+  `cc2faf9eb8805e0e9cfbf3e889c3b02093a2715d0bf4ff6c471d6aecda2f10c0`；正式 SQLite
+  SHA-256 仍为 `e0d567d5a04546fd8fa0e2117f1a2e3ff8e7ffcaa6bbff0d23fbc77b1b5e4b20`。
+  所有临时 18085 API 均已停止，production timer 未启用；失败与误配置 receipt 均保留，
+  没有删除或改写历史证据。
 
 ## 当前停止线
 
@@ -243,8 +256,9 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
 
 ## 当前执行顺序
 
-1. 保持 b395、正式 SQLite、formal 18082 API 和 disabled timer 不漂移；只继续有界 one-shot，
-   每轮先 dry-plan 并核对 facts/receipt/API；
+1. 保持 b395、正式 SQLite、formal 18082 API 和 disabled timer 不漂移；92 个无 fanout、
+   scan-budget 可执行候选已完成隔离 one-shot，下一步只处理通用 scan-budget 编译门禁、
+   completeness 合同和 fanout 拓扑，不重复逐接口采集开发；
 2. TradingAgent 在自身仓修正 provider-native row/envelope 消费合同并完成 sim-only full
    integration probe；TradingDatas 不新增 TA 专用字段、route 或表；
 3. 部署现役 TA consumer，移除 8082 override 后先禁用并观察旧 8082、relay 与 SharedSignals
