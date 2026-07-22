@@ -172,10 +172,16 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    和有界并发。运行时文件固定为
    `/run/secrets/tradingagent/tradingdatas-read.token`，必须是
    `tradingagent:tradingagent`、`0600`、单链接普通文件，父路径不得含 symlink。生产使用
-   `/etc/tmpfiles.d/tradingagent-secrets.conf` 的 `d` + `C` 规则在启动时从持久源重建 tmpfs
-   文件；配置、日志、evidence、任务消息和环境变量均不得包含 token 值。轮换时先备份 hash
-   registry、生成新持久源与新 hash、原子替换运行时文件并重启 API 使 registry 生效，再做
-   401/正向 readback；任一步失败就恢复旧 registry 与旧运行时文件，不改 SQLite。
+   最终切换后，TradingAgent release 提供的 `/etc/tmpfiles.d/tradingagent-runtime.conf` 只拥有
+   `root:tradingagent 0710` runtime 父目录合同；TradingDatas credential publisher 的
+   `/etc/tmpfiles.d/tradingagent-secrets.conf` 只拥有从持久源重建 leaf 的 `C` 规则。两个文件
+   不得重复定义 parent。配置、日志、evidence、任务消息和环境变量均不得包含 token 值。
+   轮换分为两个有回滚的阶段：先在 root-only staging 生成新 credential，把新旧两个 hash
+   同时注册并重启 API，证明旧/新都可读而 canonical source 与 runtime 完全不变；只有消费者
+   明确给出 freeze-window GO 后，才原子提升持久源、父目录和 runtime leaf。消费者 metadata
+   与 bounded parity 通过后再删除旧 hash、重启 API，并证明旧 credential 为 401、新
+   credential 为 200。任一步失败就恢复旧 registry、source/runtime 与 tmpfiles 合同，不改
+   SQLite，也不临时放宽权限。
 4. 在不读取凭证、不调用 provider 的情况下，从目标 immutable release 的物理
    `FINAL` 路径重新编译 registry。`FINAL` 必须是以完整 commit 命名的直接目录，不得是
    `/current`、其它 symlink 或可写 checkout。compiler 的 `--output` 必须指向 release 之外

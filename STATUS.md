@@ -329,6 +329,12 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   immutable release、trusted verifier、SQLite online backup、systemd-contained Wave 2
   one-shot、三项 facts/receipts 增量守恒和 12 项 authenticated catalog/query readback；
   permanent collector/timer 文件未改变，timer 保持 disabled。
+- TradingAgent 专用 credential 已完成阶段 A dual registration：non-secret reference 为
+  `ta-read-20260722T223457Z-0907cd`，旧/新 credential 均在服务器 loopback 对 catalog
+  `v1-fcc1aaa39c20743e` 返回 200（190 total / 12 active）。canonical source、runtime
+  parent/leaf、tmpfiles、8082、TA front 均未改变，collector timer 仍 inactive/disabled；
+  runtime cutover 继续等待 TradingAgent 明确的 freeze-window GO。token 与 token hash
+  从未进入消息、日志或 evidence。
 
 未验证：
 
