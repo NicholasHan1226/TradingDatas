@@ -100,16 +100,20 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
 五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
 
-当前 190 项 runtime registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`、
-`index_classify`、`sw_daily` 五个 active dataset，其余 185 个全部 paused。validated match 与已修复数字字段只表示
+当前 190 项 runtime registry 仅保留有纵向证据的 9 个 active dataset：原有
+`trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
+`direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`；
+其余 181 个全部 paused。新四项在 response completeness 未冻结前仍必须诚实返回
+`partial/degraded`。validated match 与已修复数字字段只表示
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
 `--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
-当前正式 registry 仍为 5 active / 185 paused；已观测的 120 active / 70 paused 只来自
-仓外 sidecar 候选，不能由 CI fixture、仓内文件或 formal 编译重建。
+当前仓库正式 registry 为 9 active / 181 paused；用当前 main compiler 重编仓外
+sidecar 得到的 119 active / 71 paused 只属于候选，不能由 CI fixture、仓内文件或
+formal 编译重建。
 
 旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
 官方输入参数迁移资料保留：它们不是 entitlement/activation authority，不得被 collector、

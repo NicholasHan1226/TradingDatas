@@ -179,7 +179,7 @@
 - clean-slate capability catalog 已移除旧 114 接口计划、`legacy_coverage` 和 `in_legacy_inventory`，现在只由固定官方索引与范围分类生成；catalog SHA-256 为 `5bb4a2aae746e31b72ae610bdfe6a3feec469d6f4b8de769ce7e5395c20d3ea1`。
 - `tools/snapshot_tushare_contracts.py` 已重新生成 `config/tushare_document_contracts.v1.yaml`：190 个合同、0 个解析错误，文件 SHA-256 为 `2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da`，且绑定上述 catalog SHA。合同只证明文档解析完整，不代表账号 entitlement、activation 或真实采集已通过。
 - `config/quicksync_interface_observations.v1.yaml` 已取代旧 manual entitlement probe/policy，成为唯一 QuickSync 权限、兼容性观测与 activation 输入。它绑定矩阵 SHA `ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1` 与 190 API 集合 SHA，并互斥分类为 145 contract match、4 个数字字段修复、17 schema subset、1 quality anomaly、3 empty、14 permission denied、1 credential rejected、5 unsupported。deprecated request-profile/resolver 只保留官方输入映射迁移信息，不参与上述权威链。
-- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry；当前 active 为 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，其余 185 个全部 paused。HTTP compatibility 矩阵明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
+- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry；当前仓库 formal registry 为 9 active / 181 paused：原五项 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，加 `direct_wave_1` 的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`。生产 runtime 在安全发布前仍是 5 / 185；HTTP compatibility 矩阵继续明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
 - 通用 executor 已实现 typed variants、fanout、offset pagination、资源预算、受限重试和进程级调用预算。每个真实 provider call 都有独立 transaction receipt；数据行与 success receipt 同 SQLite 事务提交；失败调用不会被后续 empty 终止页洗白，后续独立执行可以恢复状态。
 - clean-slate 候选已删除 204 个旧系统路径并保留 86 个目标路径。旧 probe 测试数量只作为历史提交证据；request-profile 测试只证明迁移资料与官方文档/registry/observations 自洽，均不代表 runtime activation。当前候选必须以 observations -> compiled registry 的 fresh 回归重新验收。
 - 服务器已从 GitHub commit `b4a6aac9a346519b9e6d744fe6521f0a9510c381` 建立隔离 18083 transient canary：独立 `tradingdatas` 用户、新 SQLite 与新认证材料；未认证 catalog 为 401，认证 catalog/query 为 200，catalog 投影 190 个数据集（3 active / 187 paused），旧 `/tushare` 与 `/source_status` 均为 404。首次空库查询如实返回 `unobserved`；随后把 QuickSync 凭证错误发送到官方 Tushare endpoint 得到 provider code `40101`。这个结果证明旧 transport 假设错误和 API impaired 投影可用，不是 QuickSync 权限或数据采集证据。
@@ -239,9 +239,10 @@
 TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收窄为自动 cadence、TA
 研究 snapshot 与旧 8082/cron 退役：
 
-1. scope v2 与离线 artifact 已冻结 222 个产品能力；runtime registry 当前有 190 个合同项，
-   仅 5 个完成 entitlement/activation 与正式 SQLite 纵向证明，其余 185 个保持 paused，
-   新增 32 项保持 discovery-only。不得把静态目录或历史 HTTP 矩阵误报为全量采集；
+1. scope v2 与离线 artifact 已冻结 222 个产品能力；仓库 formal runtime registry 当前有
+   190 个合同项、9 active / 181 paused，其中新增四项有隔离 SQLite 纵向证据但尚未发布；
+   生产 runtime 仍为 5 / 185，新增 32 项保持 discovery-only。不得把静态目录或历史 HTTP
+   矩阵误报为全量采集；
 2. b395 正式 SQLite 与正式 18082 API 已完成五项 latest/current readback，但 daily 的
    无界跨分区读取会触发 SQLite 查询预算；当前内部消费者必须按日期/范围有界查询；
 3. TradingAgent Bearer transport 与五项有界 query 已在 formal 18082 通过，但其完整
@@ -256,9 +257,9 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
 
 ## 当前执行顺序
 
-1. 保持 b395、正式 SQLite、formal 18082 API 和 disabled timer 不漂移；92 个无 fanout、
-   scan-budget 可执行候选已完成隔离 one-shot，下一步只处理通用 scan-budget 编译门禁、
-   completeness 合同和 fanout 拓扑，不重复逐接口采集开发；
+1. 从当前 main 构建 immutable release，先在隔离 SQLite 对 `direct_wave_1` 四项完成 fresh
+   provider -> receipt -> catalog/query canary；通过后才安全发布并把生产 readback 从
+   5 / 185 提升为 9 / 181。timer 继续 disabled，不重复逐接口采集开发；
 2. TradingAgent 在自身仓修正 provider-native row/envelope 消费合同并完成 sim-only full
    integration probe；TradingDatas 不新增 TA 专用字段、route 或表；
 3. 部署现役 TA consumer，移除 8082 override 后先禁用并观察旧 8082、relay 与 SharedSignals

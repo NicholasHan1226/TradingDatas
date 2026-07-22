@@ -193,14 +193,18 @@ def test_observations_compile_without_dataset_specific_runtime():
 
     assert len(bindings) == 190
     active_apis = {
+        "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
     }
     paused_apis = set(bindings) - active_apis
-    assert len(paused_apis) == 185
+    assert len(paused_apis) == 181
     assert all(bindings[api]["activation_state"] == "active" for api in active_apis)
     assert all(bindings[api]["activation_state"] == "paused" for api in paused_apis)
     executable_paused_apis = {

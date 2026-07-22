@@ -45,9 +45,13 @@ def _load_catalog() -> RequestProfileCatalog:
 
     active_apis = sorted(observations["active_evidence"])
     assert active_apis == [
+        "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
     ]
