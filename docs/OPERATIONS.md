@@ -28,6 +28,12 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
 
+`daily_reference` 不假设上游提前提供下一自然年的完整交易日历，range 数据集的
+current window 只推进到本次可用日；历史覆盖由 bounded backfill 逐段补齐。不得为了
+预取未来日历把固定未来天数当成 provider 能力事实，否则合法的 future-empty 响应会
+被完整性合同误判为运行失败。未来日期只有在 transport 真实观测、registry 合同和
+独立回归共同证明后才能受控启用。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、

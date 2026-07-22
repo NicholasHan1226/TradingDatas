@@ -87,7 +87,7 @@ cadences:
     backfill_lookback_days: 731
     backfill_start_date: null
     backfill_chunk_span_days: 366
-    future_horizon_days: 365
+    future_horizon_days: 0
     max_backfill_chunks_per_run: 2
     rate_budget_class: standard
     retry:

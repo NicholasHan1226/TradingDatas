@@ -267,9 +267,11 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
         {"list_status": "D"},
         {"list_status": "P"},
     ]
-    calendar = current["cn.market.trade_calendar"].request_window
-    assert calendar["start_date"] == "20260720"
-    assert calendar["end_date"] == "20270720"
+    assert "cn.market.trade_calendar" not in current
+    assert any(
+        item.dataset_id == "cn.market.trade_calendar" and item.priority == "backfill"
+        for item in result.plans
+    )
     assert all(plan.provider for plan in result.plans)
 
 
@@ -952,7 +954,7 @@ def test_schedule_config_has_no_dataset_or_provider_api_lists() -> None:
     )
     assert schedule.cadences["postclose_daily"].calendar is not None
     assert schedule.cadences["postclose_daily"].backfill_chunk_span_days == 1
-    assert schedule.cadences["daily_reference"].future_horizon_days == 365
+    assert schedule.cadences["daily_reference"].future_horizon_days == 0
     assert schedule.cadences["on_demand"].automatic is False
 
 
@@ -1041,7 +1043,7 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
     )
 
 
-def test_trade_calendar_uses_bounded_chunks_and_future_horizon(tmp_path: Path) -> None:
+def test_trade_calendar_uses_bounded_chunks_through_current_day(tmp_path: Path) -> None:
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -1057,9 +1059,11 @@ def test_trade_calendar_uses_bounded_chunks_and_future_horizon(tmp_path: Path) -
         plan for plan in result.plans if plan.dataset_id == "cn.market.trade_calendar"
     ]
     assert plans[0].priority == "current"
-    assert max(
-        _date(plan.request_window["end_date"]) for plan in plans
-    ) >= today + timedelta(days=365)
+    assert plans[0].request_window == {
+        "start_date": "20260720",
+        "end_date": "20260720",
+    }
+    assert max(_date(plan.request_window["end_date"]) for plan in plans) == today
     assert all(
         1
         <= (
