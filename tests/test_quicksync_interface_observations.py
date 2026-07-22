@@ -91,9 +91,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 6
-    assert activation_projection["active_count"] == 6
-    assert activation_projection["paused_count"] == 184
+    assert activation_projection["candidate_count"] == 9
+    assert activation_projection["active_count"] == 9
+    assert activation_projection["paused_count"] == 181
 
     _compiled_with_activation(document)
 
@@ -169,7 +169,7 @@ def test_frozen_matrix_identity_and_classifications_cover_190_once() -> None:
     )
 
 
-def test_only_five_e2e_datasets_are_active_and_candidates_remain_paused() -> None:
+def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused() -> None:
     registry = _compiled()
     bindings = _bindings(registry)
     active = {
@@ -178,11 +178,35 @@ def test_only_five_e2e_datasets_are_active_and_candidates_remain_paused() -> Non
         if dataset["provider_bindings"][0]["activation_state"] == "active"  # type: ignore[index]
     }
     assert active == {
+        "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
+    }
+    assert len(bindings) == 190
+    assert sum(
+        dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
+        for dataset in bindings.values()
+    ) == 181
+
+    expected_direct_wave_ref = (
+        "server-evidence/20260722TQkgWsk-1def337-provider-native"
+    )
+    active_evidence = _observations()["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    assert {
+        api_name: active_evidence[api_name]
+        for api_name in ("adj_factor", "stk_auction", "stk_limit", "suspend_d")
+    } == {
+        "adj_factor": expected_direct_wave_ref,
+        "stk_auction": expected_direct_wave_ref,
+        "stk_limit": expected_direct_wave_ref,
+        "suspend_d": expected_direct_wave_ref,
     }
 
     observations = _observations()["classifications"]

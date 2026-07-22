@@ -158,7 +158,7 @@ def test_observation_declaration_is_the_only_entitlement_and_activation_authorit
     assert bindings["cn.equity.daily"]["entitlement_state"] == "active"
     assert bindings["cn.equity.daily"]["activation_state"] == "active"
     assert bindings["cn.dataset.adj_factor"]["entitlement_state"] == "active"
-    assert bindings["cn.dataset.adj_factor"]["activation_state"] == "paused"
+    assert bindings["cn.dataset.adj_factor"]["activation_state"] == "active"
     assert bindings["cn.dataset.cb_price_chg"]["entitlement_state"] == "locked"
     assert bindings["cn.dataset.etf_sh_cons"]["entitlement_state"] == "excluded"
 
@@ -189,7 +189,10 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
         "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
     }
@@ -272,9 +275,13 @@ def test_formal_mode_never_promotes_preactivation_evidence() -> None:
     }
 
     assert active == {
+        "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
     }
@@ -293,9 +300,13 @@ def test_formal_mode_does_not_validate_or_depend_on_activation_evidence() -> Non
     }
 
     assert active == {
+        "adj_factor",
         "daily",
         "index_classify",
+        "stk_auction",
+        "stk_limit",
         "stock_basic",
+        "suspend_d",
         "sw_daily",
         "trade_cal",
     }
@@ -557,8 +568,8 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         else:
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
-    assert len(active_dataset_ids) == 5
-    assert len(paused_dataset_ids) == 185
+    assert len(active_dataset_ids) == 9
+    assert len(paused_dataset_ids) == 181
     assert request_shapes == {
         "snapshot_or_date_range",
         "entity_fanout",
@@ -580,7 +591,11 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     activation_evidence_path = tmp_path / "synthetic-activation-evidence.yaml"
     activation_evidence_path.write_text(
         yaml.safe_dump(
-            build_synthetic_activation_evidence(_bundle(), _observations()),
+            build_synthetic_activation_evidence(
+                _bundle(),
+                _observations(),
+                promoted_api_name="moneyflow",
+            ),
             sort_keys=False,
         ),
         encoding="utf-8",
@@ -620,7 +635,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert sum(
         dataset.provider_bindings[0].activation_state == "active"
         for dataset in loaded.datasets
-    ) == 6
+    ) == 10
     assert output.read_bytes() != before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
 

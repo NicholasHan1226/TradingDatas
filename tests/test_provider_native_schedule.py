@@ -34,6 +34,7 @@ import tools.provider_native_cadence_planner as cadence_planner
 ROOT = Path(__file__).resolve().parents[1]
 TARGET_REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
 SCHEDULE_CONFIG = ROOT / "config" / "provider_native_schedule.yaml"
+ACTIVATION_WAVES = ROOT / "config" / "provider_native_activation_waves.v1.yaml"
 CONFIG_HASH = "a" * 64
 PAYLOAD_FINGERPRINT = "b" * 64
 
@@ -568,8 +569,12 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "not_due"
     assert {item.dataset_id for item in result.executed} == {
+        "cn.dataset.adj_factor",
         "cn.dataset.index_classify",
+        "cn.dataset.stk_auction",
+        "cn.dataset.stk_limit",
         "cn.dataset.sw_daily",
+        "cn.dataset.suspend_d",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
@@ -847,7 +852,11 @@ def test_missing_calendar_skips_postclose_without_guessing_market_holidays(
     assert skipped["cn.equity.daily"] == "calendar_unavailable"
     assert skipped["cn.dataset.sw_daily"] == "calendar_unavailable"
     assert {item.dataset_id for item in result.executed} == {
+        "cn.dataset.adj_factor",
         "cn.dataset.index_classify",
+        "cn.dataset.stk_auction",
+        "cn.dataset.stk_limit",
+        "cn.dataset.suspend_d",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
@@ -884,7 +893,13 @@ def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> 
         executor=execute,
     )
 
-    assert calls == sorted(calls)
+    priority_rank = {"current": 0, "backfill": 1, "correction": 2}
+    planner_order = [
+        (priority_rank[plan.priority], plan.dataset_id, index)
+        for index, plan in enumerate(result.plans)
+    ]
+    assert planner_order == sorted(planner_order)
+    assert calls == [plan.dataset_id for plan in result.plans]
     assert len(result.executed) == len(result.plans)
     assert [item.state for item in result.executed] == ["failed"] + ["success"] * (
         len(result.executed) - 1
@@ -1611,6 +1626,78 @@ def test_activation_wave_option_is_exposed_by_the_cli() -> None:
     args = scheduler.parse_args(["--activation-wave", "pilot_existing"])
 
     assert args.activation_wave == "pilot_existing"
+
+
+def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    direct = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "direct_wave_1",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+    pilot = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "pilot_existing",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert direct.dataset_ids == frozenset(
+        {
+            "cn.dataset.adj_factor",
+            "cn.dataset.stk_auction",
+            "cn.dataset.stk_limit",
+            "cn.dataset.suspend_d",
+        }
+    )
+    assert pilot.dataset_ids == frozenset(
+        {
+            "cn.dataset.index_classify",
+            "cn.dataset.sw_daily",
+            "cn.equity.daily",
+            "cn.equity.security_master",
+            "cn.market.trade_calendar",
+        }
+    )
+    assert direct.dataset_ids.isdisjoint(pilot.dataset_ids)
+
+
+def test_formal_direct_wave_1_dry_run_plans_every_selected_dataset(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    expected = {
+        "cn.dataset.adj_factor",
+        "cn.dataset.stk_auction",
+        "cn.dataset.stk_limit",
+        "cn.dataset.suspend_d",
+    }
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="direct_wave_1",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == expected
+    assert not {
+        item.dataset_id
+        for item in result.skipped
+        if item.dataset_id in expected and item.state == "on_demand"
+    }
 
 
 def test_activation_wave_uses_hashed_input_bytes_not_detached_objects(

@@ -1,8 +1,14 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "8349e28a6db98a85c7764f54e57a5317de6b4173be7471e4adbb0663208bd883"
+  runtime_registry_sha256: "d0034aa28192dd76516b563fecaf6a564f4b7e3ff870587321a72b631a6fc252"
   schedule_sha256: "749c2a1d46131921c3bf2db62ac710b790727c3ee65289826cd1b44204583dd1"
 waves:
+  direct_wave_1:
+    dataset_ids:
+    - cn.dataset.adj_factor
+    - cn.dataset.stk_auction
+    - cn.dataset.stk_limit
+    - cn.dataset.suspend_d
   pilot_existing:
     dataset_ids:
     - cn.dataset.index_classify
