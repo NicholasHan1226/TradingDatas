@@ -80,8 +80,21 @@ catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取
 
 `metadata.runtime_state` 必须如实区分 `success`、`empty`、`unobserved`、
 `paused`、`failed`、`stale`。`metadata.state` 是面向读取方的可用状态：新鲜且
-完整的 `success` 映射为 `ready`，其它状态保持不变。HTTP 200 不得掩盖 dataset
-级 degraded 状态；消费者必须逐数据集读取 metadata，不能只看 HTTP 状态码。
+完整的 `success` 映射为 `ready`，合同未验证时可叠加为 `partial`，但客观状态仍保留在
+`runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
+metadata，不能只看 HTTP 状态码。
+
+`runtime_state=success` 或 `runtime_state=empty` 只有在所有 active provider binding 都声明
+`response_completeness` 时才可被视为完整。任一 active binding 缺该合同时，success
+仍可返回已有 rows，empty 仍保持 `data=[]`；两者都保留可信 receipt lineage，但公共 metadata 必须为
+`state=partial`、`degraded=true`、`quality.state=degraded`、
+`quality.valid=false`，并在 `reasons` 与 `quality.evidence` 中包含固定 reason code
+`response_completeness_unverified`。若该数据集同时存在 `request_window_policy`，且
+dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则 receipt 的
+运行时间或 `data_through` 不能充当业务水位；公共 `data_through` 必须为 `null`、
+`freshness.state=unknown`，并追加固定 reason code
+`freshness_watermark_unverified`。该完整性叠加层不改写客观 `runtime_state`；已具备
+完整性合同的数据集继续使用既有 `ready` / `empty`、freshness 与 valid 语义。
 
 `metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低 `data_through`。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort 的完整 member receipt IDs；variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前 success rows。
 

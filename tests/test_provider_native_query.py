@@ -433,6 +433,66 @@ def test_native_query_python_projection_preserves_missing_null_and_large_integer
     assert "integer_out_of_int64:big" in response["metadata"]["quality"]["evidence"]
 
 
+def test_partial_query_without_business_watermark_returns_rows_as_unknown_freshness(
+    native_harness: dict[str, object],
+) -> None:
+    conn = native_harness["conn"]
+    conn.execute("DELETE FROM provider_dataset_rows WHERE quality_state = 'degraded'")
+    conn.commit()
+    base = native_harness["dataset"]
+    dataset = replace(
+        base,
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+        provider_bindings=tuple(
+            replace(binding, response_completeness=None)
+            for binding in base.provider_bindings
+        ),
+    )
+    registry = DatasetRegistry(
+        (dataset,),
+        query_defaults=native_harness["registry"].query_defaults,
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+
+    response = service.execute(
+        _request(fields=("symbol",)),
+        access=native_harness["access"],
+        now=NOW,
+        request_id="request-partial-without-business-watermark",
+    )
+
+    assert response["data"] == [{"symbol": "BBB"}, {"symbol": "BBB"}]
+    assert response["metadata"]["state"] == "partial"
+    assert response["metadata"]["runtime_state"] == "success"
+    assert response["metadata"]["degraded"] is True
+    assert response["metadata"]["freshness"] == {
+        "state": "unknown",
+        "stale": False,
+        "sla_seconds": dataset.freshness_sla_seconds,
+    }
+    assert response["metadata"]["quality"] == {
+        "state": "degraded",
+        "valid": False,
+        "evidence": [
+            "freshness_watermark_unverified",
+            "response_completeness_unverified",
+        ],
+    }
+    assert response["metadata"]["data_through"] is None
+    assert response["metadata"]["reasons"] == [
+        "freshness_watermark_unverified",
+        "response_completeness_unverified",
+    ]
+    assert response["metadata"]["lineage"]["complete"] is True
+
+
 def test_native_query_omitted_fields_returns_complete_provider_payload(
     native_harness: dict[str, object],
 ) -> None:

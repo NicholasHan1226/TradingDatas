@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile all official in-scope Tushare documents into one runtime bundle.
 
-Three separately reviewed contracts keep their stronger request, identity and
+Five separately reviewed contracts keep their stronger request, identity and
 cadence declarations. Every other official contract is catalog-visible but
 conservatively append-only and remains paused because it has no activation
 entry. This keeps capability discovery complete without guessing entitlement,
@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 DEFAULT_REVIEWED = ROOT / "config" / "tushare_reviewed_contracts.v1.yaml"
 DEFAULT_POLICY = ROOT / "config" / "tushare_runtime_contract_policy.v1.yaml"
+DEFAULT_CADENCE_POLICY = ROOT / "config" / "tushare_cadence_policy.v1.yaml"
 DEFAULT_REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
 DEFAULT_TRANSPORT_OBSERVATIONS = (
     ROOT / "config" / "quicksync_interface_observations.v1.yaml"
@@ -45,6 +46,7 @@ _SAFE_FIELD_NAME = re.compile(r"[A-Za-z0-9_]{1,64}\Z")
 _SAFE_PARAMETER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 _SAFE_SEED_FIELD = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 _SAFE_DATASET_ID = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,15}\Z")
+_SAFE_REASON_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _PUBLIC_EVIDENCE_TEXT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+/\-TZ]{0,255}\Z")
 _CREDENTIAL_TEXT = re.compile(
     r"(?:access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer|api[_-]?key|"
@@ -80,6 +82,49 @@ _POLICY_KEYS = frozenset(
         "catalog_only_defaults",
     }
 )
+_CADENCE_POLICY_KEYS = frozenset(
+    {
+        "version",
+        "policy_id",
+        "provider",
+        "source_snapshot_id",
+        "source_snapshot_canonical_sha256",
+        "entries",
+    }
+)
+_CADENCE_POLICY_ENTRY_KEYS = frozenset(
+    {
+        "api_name",
+        "cadence_class",
+        "freshness_sla_seconds",
+        "source_document_sha256",
+        "reason_code",
+    }
+)
+_CADENCE_CLASSES = frozenset(
+    {
+        "session_minute",
+        "postclose_daily",
+        "daily_reference",
+        "weekly",
+        "monthly",
+        "quarterly_reporting",
+        "event",
+        "on_demand",
+    }
+)
+_CADENCE_REASON_CLASSES: Mapping[str, frozenset[str]] = {
+    "doc_explicit_session_minute": frozenset({"session_minute"}),
+    "doc_explicit_postclose_daily": frozenset({"postclose_daily"}),
+    "doc_explicit_daily_reference": frozenset({"daily_reference"}),
+    "doc_explicit_weekly": frozenset({"weekly"}),
+    "doc_explicit_monthly": frozenset({"monthly"}),
+    "doc_explicit_quarterly_reporting": frozenset({"quarterly_reporting"}),
+    "doc_explicit_event": frozenset({"event"}),
+    "ambiguous_insufficient_document_frequency": frozenset({"on_demand"}),
+    "no_document_frequency_evidence": frozenset({"on_demand"}),
+    "reviewed_contract_exact": _CADENCE_CLASSES,
+}
 _DEFAULT_KEYS = frozenset(
     {
         "dataset_id_prefix",
@@ -979,6 +1024,119 @@ def _normalized_policy(raw: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     return provider, defaults
 
 
+def _normalized_cadence_policy(
+    raw: Mapping[str, Any],
+    *,
+    documents: Mapping[str, Any],
+    documents_by_api: Mapping[str, Mapping[str, Any]],
+    provider: str,
+) -> dict[str, dict[str, object]]:
+    """Validate the one-entry-per-official-document cadence authority."""
+
+    policy = _mapping(deepcopy(raw), "cadence policy")
+    _exact_keys(policy, _CADENCE_POLICY_KEYS, "cadence policy")
+    if policy["version"] != 1:
+        raise RuntimeContractCompilationError("cadence policy.version must be 1")
+    if policy["policy_id"] != "tushare-cadence-policy.v1":
+        raise RuntimeContractCompilationError("cadence policy_id is invalid")
+    if _text(policy["provider"], "cadence policy.provider") != provider:
+        raise RuntimeContractCompilationError(
+            "cadence policy provider does not match runtime policy"
+        )
+    if policy["source_snapshot_id"] != documents.get("snapshot_id"):
+        raise RuntimeContractCompilationError(
+            "cadence policy document snapshot id does not match official documents"
+        )
+    expected_sha = _sha256_text(
+        policy["source_snapshot_canonical_sha256"],
+        "cadence policy.source_snapshot_canonical_sha256",
+    )
+    if _canonical_sha256(documents) != expected_sha:
+        raise RuntimeContractCompilationError(
+            "cadence policy document snapshot SHA does not match official documents"
+        )
+
+    entries = _list(policy["entries"], "cadence policy.entries")
+    by_api: dict[str, dict[str, object]] = {}
+    ordered_api_names: list[str] = []
+    for index, raw_entry in enumerate(entries):
+        entry = _mapping(raw_entry, f"cadence policy.entries[{index}]")
+        _exact_keys(entry, _CADENCE_POLICY_ENTRY_KEYS, f"cadence policy.entries[{index}]")
+        api_name = _text(entry["api_name"], f"cadence policy.entries[{index}].api_name")
+        if _SAFE_API_NAME.fullmatch(api_name) is None:
+            raise RuntimeContractCompilationError(
+                f"cadence policy API name is invalid: {api_name}"
+            )
+        if api_name in by_api:
+            raise RuntimeContractCompilationError(
+                f"duplicate cadence policy API: {api_name}"
+            )
+        cadence_class = _text(
+            entry["cadence_class"],
+            f"cadence policy.entries[{index}].cadence_class",
+        )
+        if cadence_class not in _CADENCE_CLASSES:
+            raise RuntimeContractCompilationError(
+                f"cadence policy.entries[{index}].cadence_class is unsupported"
+            )
+        freshness_sla_seconds = _positive_int(
+            entry["freshness_sla_seconds"],
+            f"cadence policy.entries[{index}].freshness_sla_seconds",
+        )
+        source_document_sha256 = _sha256_text(
+            entry["source_document_sha256"],
+            f"cadence policy.entries[{index}].source_document_sha256",
+        )
+        reason_code = _text(
+            entry["reason_code"], f"cadence policy.entries[{index}].reason_code"
+        )
+        if _SAFE_REASON_CODE.fullmatch(reason_code) is None:
+            raise RuntimeContractCompilationError(
+                f"cadence policy.entries[{index}].reason_code is invalid"
+            )
+        allowed_cadence_classes = _CADENCE_REASON_CLASSES.get(reason_code)
+        if allowed_cadence_classes is None:
+            raise RuntimeContractCompilationError(
+                f"cadence policy.entries[{index}].reason_code is unsupported"
+            )
+        if cadence_class not in allowed_cadence_classes:
+            raise RuntimeContractCompilationError(
+                f"cadence policy reason_code {reason_code} does not allow "
+                f"cadence_class {cadence_class}"
+            )
+        ordered_api_names.append(api_name)
+        by_api[api_name] = {
+            "cadence_class": cadence_class,
+            "freshness_sla_seconds": freshness_sla_seconds,
+            "source_document_sha256": source_document_sha256,
+            "reason_code": reason_code,
+        }
+    if ordered_api_names != sorted(ordered_api_names):
+        raise RuntimeContractCompilationError("cadence policy APIs must be sorted")
+    if len(by_api) != _EXPECTED_IN_SCOPE_CONTRACTS:
+        raise RuntimeContractCompilationError(
+            "cadence policy must contain exactly 190 official APIs"
+        )
+    unknown = sorted(set(by_api) - set(documents_by_api))
+    if unknown:
+        raise RuntimeContractCompilationError(
+            f"cadence policy contains unknown API(s): {','.join(unknown)}"
+        )
+    missing = sorted(set(documents_by_api) - set(by_api))
+    if missing:
+        raise RuntimeContractCompilationError(
+            f"cadence policy is missing official API(s): {','.join(missing)}"
+        )
+    for api_name, entry in by_api.items():
+        if entry["source_document_sha256"] != documents_by_api[api_name].get(
+            "doc_sha256"
+        ):
+            raise RuntimeContractCompilationError(
+                f"cadence policy {api_name} source document SHA does not match official document"
+            )
+    return by_api
+
+
 def _field_contracts(document: Mapping[str, Any]) -> list[dict[str, object]]:
     api_name = _text(document.get("api_name"), "document.api_name")
     fields: list[dict[str, object]] = []
@@ -1084,6 +1242,7 @@ def _catalog_only_contract(
     *,
     provider: str,
     defaults: Mapping[str, Any],
+    cadence: Mapping[str, object],
 ) -> dict[str, object]:
     api_name = _text(document.get("api_name"), "document.api_name")
     if _SAFE_API_NAME.fullmatch(api_name) is None:
@@ -1111,9 +1270,9 @@ def _catalog_only_contract(
         "as_of_format": None,
         "range_field": None,
         "partition_field": None,
-        "cadence_class": defaults["cadence_class"],
+        "cadence_class": cadence["cadence_class"],
         "timezone": defaults["timezone"],
-        "freshness_sla_seconds": defaults["freshness_sla_seconds"],
+        "freshness_sla_seconds": cadence["freshness_sla_seconds"],
         "point_in_time": defaults["point_in_time"],
         "backfill_policy": defaults["backfill_policy"],
         "empty_data_policy": defaults["empty_data_policy"],
@@ -1284,6 +1443,7 @@ def compile_runtime_contract_bundle(
     document_snapshot: bytes,
     reviewed_bundle: bytes,
     policy_document: bytes,
+    cadence_policy: bytes,
     *,
     request_observations: bytes,
     transport_observations: bytes,
@@ -1299,6 +1459,9 @@ def compile_runtime_contract_bundle(
         label="official contract",
     )
     policy = _yaml_mapping_from_bytes(policy_document, label="runtime policy")
+    cadence_document = _yaml_mapping_from_bytes(
+        cadence_policy, label="cadence policy"
+    )
     request_document, _request_sha = _bound_yaml_mapping(
         request_observations,
         request_observations_sha256,
@@ -1346,6 +1509,12 @@ def compile_runtime_contract_bundle(
         raise RuntimeContractCompilationError(
             "document snapshot must contain exactly 190 in-scope APIs"
         )
+    cadence_by_api = _normalized_cadence_policy(
+        cadence_document,
+        documents=documents,
+        documents_by_api=by_api,
+        provider=provider,
+    )
     request_by_api = _request_observation_index(
         request_document,
         documents_by_api=by_api,
@@ -1388,11 +1557,41 @@ def compile_runtime_contract_bundle(
             )
         reviewed_by_api[api_name] = contract
 
+    for api_name, cadence in cadence_by_api.items():
+        reviewed_contract = reviewed_by_api.get(api_name)
+        reason_code = cadence["reason_code"]
+        if reviewed_contract is None:
+            if reason_code == "reviewed_contract_exact":
+                raise RuntimeContractCompilationError(
+                    f"cadence policy {api_name} uses reviewed_contract_exact "
+                    "without a reviewed contract"
+                )
+            continue
+        if reason_code != "reviewed_contract_exact":
+            raise RuntimeContractCompilationError(
+                f"cadence policy reviewed API {api_name} reason_code must be "
+                "reviewed_contract_exact"
+            )
+        if cadence["cadence_class"] != reviewed_contract["cadence_class"]:
+            raise RuntimeContractCompilationError(
+                f"cadence policy {api_name} does not match reviewed contract cadence"
+            )
+        if (
+            cadence["freshness_sla_seconds"]
+            != reviewed_contract["freshness_sla_seconds"]
+        ):
+            raise RuntimeContractCompilationError(
+                f"cadence policy {api_name} does not match reviewed contract freshness"
+            )
+
     contracts = [
         deepcopy(reviewed_by_api[api_name])
         if api_name in reviewed_by_api
         else _catalog_only_contract(
-            by_api[api_name], provider=provider, defaults=defaults
+            by_api[api_name],
+            provider=provider,
+            defaults=defaults,
+            cadence=cadence_by_api[api_name],
         )
         for api_name in sorted(by_api)
     ]
@@ -1866,6 +2065,7 @@ def main() -> int:
     parser.add_argument("--documents", type=Path, default=DEFAULT_DOCUMENTS)
     parser.add_argument("--reviewed", type=Path, default=DEFAULT_REVIEWED)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
+    parser.add_argument("--cadence-policy", type=Path, default=DEFAULT_CADENCE_POLICY)
     parser.add_argument(
         "--request-observations", type=Path, default=DEFAULT_REQUEST_OBSERVATIONS
     )
@@ -1878,6 +2078,7 @@ def main() -> int:
         args.documents.resolve(),
         args.reviewed.resolve(),
         args.policy.resolve(),
+        args.cadence_policy.resolve(),
         args.request_observations.resolve(),
         args.transport_observations.resolve(),
     }
@@ -1886,6 +2087,9 @@ def main() -> int:
     document_bytes = _read_authority_bytes(args.documents, "document snapshot")
     reviewed_bytes = _read_authority_bytes(args.reviewed, "reviewed bundle")
     policy_bytes = _read_authority_bytes(args.policy, "runtime policy")
+    cadence_policy_bytes = _read_authority_bytes(
+        args.cadence_policy, "cadence policy"
+    )
     request_bytes = _read_authority_bytes(
         args.request_observations, "request observations"
     )
@@ -1896,6 +2100,7 @@ def main() -> int:
         document_bytes,
         reviewed_bytes,
         policy_bytes,
+        cadence_policy_bytes,
         request_observations=request_bytes,
         transport_observations=transport_bytes,
         official_contract_sha256=hashlib.sha256(document_bytes).hexdigest(),

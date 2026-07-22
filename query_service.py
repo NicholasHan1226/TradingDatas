@@ -75,6 +75,8 @@ _EVIDENCE_ISO_TIMESTAMP_RE = re.compile(
     r"(?P<second>[0-5][0-9])(?:\.(?P<fraction>[0-9]{1,6}))?"
     r"(?P<zone>Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?\Z"
 )
+_RESPONSE_COMPLETENESS_UNVERIFIED = "response_completeness_unverified"
+_FRESHNESS_WATERMARK_UNVERIFIED = "freshness_watermark_unverified"
 
 
 @dataclass(frozen=True)
@@ -1272,6 +1274,30 @@ def _runtime_metadata(
     )
 
     state = projection.state
+    active_bindings = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    response_completeness_unverified = bool(
+        state in {"success", "empty"}
+        and any(
+            binding.response_completeness is None for binding in active_bindings
+        )
+    )
+    freshness_watermark_unverified = bool(
+        response_completeness_unverified
+        and any(
+            binding.request_window_policy is not None for binding in active_bindings
+        )
+        and dataset.as_of_field is None
+        and dataset.range_field is None
+        and dataset.partition_field is None
+    )
+    if response_completeness_unverified:
+        reasons = sorted(set([*reasons, _RESPONSE_COMPLETENESS_UNVERIFIED]))
+    if freshness_watermark_unverified:
+        reasons = sorted(set([*reasons, _FRESHNESS_WATERMARK_UNVERIFIED]))
     allow_invalid_time_current_rows = False
     if state == "success":
         if (
@@ -1333,6 +1359,8 @@ def _runtime_metadata(
         except QueryServiceUnavailable:
             data_through = None
             reasons = sorted(set([*reasons, "invalid_data_through"]))
+    if freshness_watermark_unverified:
+        data_through = None
 
     if current_complete:
         try:
@@ -1380,8 +1408,25 @@ def _runtime_metadata(
         if transport_profile_proven
         else None
     )
-    effective_degraded = projection.degraded or transport_profile_unverified
-    effective_state = "failed" if transport_profile_unverified else state
+    effective_degraded = bool(
+        projection.degraded
+        or transport_profile_unverified
+        or response_completeness_unverified
+    )
+    effective_state = (
+        "failed"
+        if transport_profile_unverified
+        else "partial"
+        if response_completeness_unverified
+        else state
+    )
+    freshness_state = (
+        "unknown"
+        if freshness_watermark_unverified
+        else "fresh"
+        if state == "success" and not transport_profile_unverified
+        else effective_state
+    )
 
     metadata = {
         "state": (
@@ -1392,7 +1437,7 @@ def _runtime_metadata(
         "runtime_state": state,
         "degraded": effective_degraded,
         "freshness": {
-            "state": "fresh" if effective_state == "success" else effective_state,
+            "state": freshness_state,
             "stale": state == "stale",
             "sla_seconds": dataset.freshness_sla_seconds,
         },

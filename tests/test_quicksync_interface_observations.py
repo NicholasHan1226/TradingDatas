@@ -11,6 +11,7 @@ from tools.compile_provider_native_registry import (
     compile_provider_native_registry,
     render_registry,
 )
+from tests.synthetic_activation_evidence import build_synthetic_activation_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,10 @@ def _observations() -> dict[str, object]:
     return deepcopy(_yaml(OBSERVATIONS_PATH))
 
 
+def _synthetic_activation_evidence() -> dict[str, object]:
+    return build_synthetic_activation_evidence(_contracts(), _observations())
+
+
 def _compiled(
     observations: dict[str, object] | None = None,
 ) -> dict[str, object]:
@@ -45,6 +50,66 @@ def _compiled(
         _contracts(),
         observations_document=_observations() if observations is None else observations,
     )
+
+
+def _compiled_with_activation(
+    activation_evidence: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return compile_provider_native_registry(
+        _contracts(),
+        observations_document=_observations(),
+        activation_evidence_document=(
+            _synthetic_activation_evidence()
+            if activation_evidence is None
+            else activation_evidence
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+
+
+def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() -> None:
+    document = _synthetic_activation_evidence()
+    evidence = document["evidence"]
+    results = document["results"]
+    assert isinstance(evidence, dict)
+    assert isinstance(results, list)
+
+    assert evidence["promotion_stage"] == "preactivation_candidate"
+    assert evidence["transport"] == {
+        "endpoint_host": "api.quicksync.cn",
+        "scheme": "https",
+    }
+    assert evidence["retries"] == 0
+    assert evidence["production_ready"] is False
+    assert evidence["raw_data_persisted"] is False
+    assert evidence["credential_persisted"] is False
+    assert evidence["request_values_persisted"] is False
+    assert len(results) == evidence["interface_count"]
+    assert [item["api_name"] for item in results] == sorted(
+        item["api_name"] for item in results
+    )
+    assert len({item["api_name"] for item in results}) == len(results)
+    activation_projection = document["activation_projection"]
+    assert isinstance(activation_projection, dict)
+    assert activation_projection["candidate_count"] == 6
+    assert activation_projection["active_count"] == 6
+    assert activation_projection["paused_count"] == 184
+
+    _compiled_with_activation(document)
+
+    serialized = yaml.safe_dump(document, sort_keys=False).lower()
+    for forbidden in ("token:", "params:", "raw_rows:", "raw_payload:"):
+        assert forbidden not in serialized
+
+
+def test_https_activation_evidence_plan_binding_drift_fails_closed() -> None:
+    activation = _synthetic_activation_evidence()
+    evidence = activation["evidence"]
+    assert isinstance(evidence, dict)
+    evidence["request_plan_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="bindings_sha256"):
+        _compiled_with_activation(activation)
 
 
 def _bindings(registry: dict[str, object]) -> dict[str, dict[str, object]]:

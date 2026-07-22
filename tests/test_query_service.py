@@ -158,6 +158,240 @@ def test_runtime_lineage_fails_closed_for_unbound_tushare_config_hash() -> None:
     assert metadata["lineage"]["transport_service"] is None
 
 
+def test_success_without_response_completeness_is_partial_but_keeps_rows() -> None:
+    source = load_dataset_registry()
+    base = source.resolve("cn.equity.daily")
+    binding = replace(base.provider_bindings[0], response_completeness=None)
+    dataset = replace(base, provider_bindings=(binding,))
+    registry = DatasetRegistry((dataset,), query_defaults=source.query_defaults)
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="20260719",
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id="receipt-without-completeness-contract",
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("tushare",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=(
+            ("tushare", provider_ingest_config_hash(dataset, binding)),
+        ),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "watermark-without-completeness-contract",
+    )
+
+    assert allow_rows is True
+    assert metadata["state"] == "partial"
+    assert metadata["runtime_state"] == "success"
+    assert metadata["degraded"] is True
+    assert metadata["freshness"] == {
+        "state": "fresh",
+        "stale": False,
+        "sla_seconds": dataset.freshness_sla_seconds,
+    }
+    assert metadata["quality"] == {
+        "state": "degraded",
+        "valid": False,
+        "evidence": ["response_completeness_unverified"],
+    }
+    assert metadata["data_through"] == "2026-07-19T00:00:00+08:00"
+    assert metadata["reasons"] == ["response_completeness_unverified"]
+    assert metadata["lineage"]["complete"] is True
+    assert metadata["lineage"]["transport_service"] == "quicksync"
+
+
+def test_empty_without_response_completeness_is_partial_and_keeps_lineage() -> None:
+    source = load_dataset_registry()
+    base = source.resolve("cn.equity.daily")
+    binding = replace(base.provider_bindings[0], response_completeness=None)
+    assert binding.request_window_policy is not None
+    dataset = replace(
+        base,
+        provider_bindings=(binding,),
+        as_of_field=None,
+        range_field=None,
+        partition_field=None,
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=source.query_defaults)
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    receipt_id = "receipt-empty-without-completeness-contract"
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="empty",
+            degraded=False,
+            data_through=None,
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id=receipt_id,
+            reasons=(),
+        ),
+        current_receipt_status="empty",
+        current_providers=("tushare",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=(
+            ("tushare", provider_ingest_config_hash(dataset, binding)),
+        ),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "watermark-empty-without-completeness-contract",
+    )
+
+    expected_reasons = [
+        "freshness_watermark_unverified",
+        "response_completeness_unverified",
+    ]
+    assert allow_rows is False
+    assert metadata["state"] == "partial"
+    assert metadata["runtime_state"] == "empty"
+    assert metadata["degraded"] is True
+    assert metadata["freshness"] == {
+        "state": "unknown",
+        "stale": False,
+        "sla_seconds": dataset.freshness_sla_seconds,
+    }
+    assert metadata["quality"] == {
+        "state": "degraded",
+        "valid": False,
+        "evidence": expected_reasons,
+    }
+    assert metadata["receipt_id"] == receipt_id
+    assert metadata["observed_at"] == "2026-07-20T03:00:00+00:00"
+    assert metadata["lineage"]["complete"] is True
+    assert metadata["lineage"]["providers"] == ["tushare"]
+    assert metadata["lineage"]["transport_service"] == "quicksync"
+    assert metadata["reasons"] == expected_reasons
+
+
+@pytest.mark.parametrize(
+    "dataset_id",
+    (
+        "cn.dataset.index_classify",
+        "cn.dataset.sw_daily",
+        "cn.equity.daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
+    ),
+)
+def test_reviewed_active_completeness_contracts_stay_ready_fresh_and_valid(
+    dataset_id: str,
+) -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve(dataset_id)
+    active_bindings = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    assert len(active_bindings) == 1
+    binding = active_bindings[0]
+    assert binding.response_completeness is not None
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="20260719",
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id=f"receipt-reviewed-{dataset.dataset_id}",
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("tushare",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=(
+            ("tushare", provider_ingest_config_hash(dataset, binding)),
+        ),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        f"watermark-reviewed-{dataset.dataset_id}",
+    )
+
+    assert allow_rows is True
+    assert metadata["state"] == "ready"
+    assert metadata["runtime_state"] == "success"
+    assert metadata["degraded"] is False
+    assert metadata["freshness"]["state"] == "fresh"
+    assert metadata["quality"] == {
+        "state": "valid",
+        "valid": True,
+        "evidence": [],
+    }
+    assert metadata["reasons"] == []
+
+
 def test_query_service_constructor_keeps_only_frozen_injected_dependencies(
     tmp_path: Path,
 ) -> None:

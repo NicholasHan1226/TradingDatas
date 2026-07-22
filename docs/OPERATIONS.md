@@ -28,6 +28,29 @@ registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport bud
 
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
 
+## Activation wave
+
+`config/provider_native_activation_waves.v1.yaml` 是 repository-owned 的受审波次
+清单。它只记录 canonical `dataset_id` 与 runtime registry、schedule 的输入 SHA-256；
+不得放入 provider 参数、字段、token、request values 或任何 dataset-specific 行为。选择
+`--activation-wave <wave_id>` 时，runner 会在打开 SQLite、执行 provider 调用或产生写入前
+一次读取 registry 与 schedule 原始字节，先核对输入 hash，再从同一份字节解析实际用于
+active 检查、规划和执行的对象，避免路径复读或外部对象造成合同脱绑定。清单内所有 wave
+都会在选择前验证 exact keys、canonical ID、排序、全局去重与 active/entitled 状态；未知
+wave、布尔版本、别名、额外字段、非 active/entitled 项或任一输入 hash 漂移均 fail
+closed。波次外的 active dataset 以
+`not_selected` 记录，global flock、planner/runtime budgets、retry、receipt 和公开输出
+redaction 均不变。
+
+省略 `--activation-wave` 时保持完整 scheduler 行为。当前 `pilot_existing` 只包含已有
+五个生产验证 dataset；它不是新增 entitlement、fresh probe 或启用 timer 的证据。fresh
+probe 审核完成前，不得把其它候选加入该清单。只读 plan 可按以下方式检查：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/run_provider_native_schedule.py --activation-wave pilot_existing
+```
+
 `daily_reference` 不假设上游提前提供下一自然年的完整交易日历，range 数据集的
 current window 只推进到本次可用日；历史覆盖由 bounded backfill 逐段补齐。不得为了
 预取未来日历把固定未来天数当成 provider 能力事实，否则合法的 future-empty 响应会
@@ -195,6 +218,15 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    runtime contract compiler 与 HTTPS probe plan 还必须分别从磁盘重新读取并核对其
    official/request/transport/reviewed 或 registered 四类冻结输入；调用方传入的映射不能
    绕过原始字节 SHA。seed receipt 的 producer schema 必须与 registry 精确一致；
+
+   HTTPS activation evidence 必须保存在仓外，由调用方先核对 sidecar SHA-256，再通过
+   显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
+   formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
+   `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
+   compiler 才会生成 canary registry。当前正式编译不传 activation evidence，仍固定为
+   5 active / 185 paused；2026-07-22 观测到的 120 active / 70 paused 仅属于 SHA-256
+   `cebbff13971b4d6465b986089a152feb056dc8e56e0bc0d4992a63175d20268c` 的仓外 sidecar
+   候选，不是 CI 期望值、checked registry 或 production activation。
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；

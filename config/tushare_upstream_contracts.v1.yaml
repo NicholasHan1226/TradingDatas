@@ -63,7 +63,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -2849,9 +2849,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: monthly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 2419200
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -7030,9 +7030,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: monthly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 2419200
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -7993,9 +7993,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 900
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -8094,7 +8094,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8257,7 +8257,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8484,7 +8484,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8839,7 +8839,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8969,7 +8969,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -10347,7 +10347,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -10483,7 +10483,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -10643,7 +10643,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -13845,7 +13845,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -15265,9 +15265,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: quarterly_reporting
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 7776000
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -16642,9 +16642,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: weekly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 604800
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -17706,7 +17706,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -20414,9 +20414,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: monthly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 2419200
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -20673,9 +20673,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: monthly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 2419200
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -21947,7 +21947,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -22293,7 +22293,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -22450,7 +22450,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -22554,7 +22554,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -22781,9 +22781,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: quarterly_reporting
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 7776000
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -23367,7 +23367,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -23705,7 +23705,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -23870,7 +23870,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -24056,7 +24056,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -24229,7 +24229,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -26163,7 +26163,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -26752,9 +26752,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -26878,9 +26878,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -27170,9 +27170,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -27434,9 +27434,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -27738,9 +27738,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -27872,9 +27872,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: session_minute
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 300
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -28111,9 +28111,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: monthly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 2419200
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -29513,7 +29513,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -29654,7 +29654,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -29795,7 +29795,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -32361,9 +32361,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 900
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -32649,7 +32649,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -33133,7 +33133,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -33258,7 +33258,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -34583,9 +34583,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 900
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -36978,9 +36978,9 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: weekly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 604800
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 REVIEWED = ROOT / "config" / "tushare_reviewed_contracts.v1.yaml"
 POLICY = ROOT / "config" / "tushare_runtime_contract_policy.v1.yaml"
+CADENCE_POLICY = ROOT / "config" / "tushare_cadence_policy.v1.yaml"
 REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
 TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 UPSTREAM_CONTRACTS = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
@@ -89,6 +90,7 @@ def _compile(
         document_bytes,
         _bytes(REVIEWED),
         _bytes(POLICY),
+        _bytes(CADENCE_POLICY),
         request_observations=request_bytes,
         transport_observations=transport_bytes,
         official_contract_sha256=hashlib.sha256(document_bytes).hexdigest(),
@@ -103,15 +105,15 @@ def _compile_plan(
     dataset_field_values: list[dict[str, object]] | None = None,
     registered_contract_bundle: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    request_bytes = (
-        _bytes(REQUEST_OBSERVATIONS)
-        if request_observations is None
-        else _yaml_bytes(request_observations)
-    )
     registered_bytes = (
         _bytes(UPSTREAM_CONTRACTS)
         if registered_contract_bundle is None
         else _yaml_bytes(registered_contract_bundle)
+    )
+    request_bytes = (
+        _bytes(REQUEST_OBSERVATIONS)
+        if request_observations is None
+        else _yaml_bytes(request_observations)
     )
     return compile_https_probe_plan(
         _bytes(DOCUMENTS),
@@ -283,18 +285,7 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
 def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_params() -> (
     None
 ):
-    plan = compile_https_probe_plan(
-        _bytes(DOCUMENTS),
-        _bytes(REQUEST_OBSERVATIONS),
-        _bytes(TRANSPORT_OBSERVATIONS),
-        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
-        official_contract_sha256=_sha(DOCUMENTS),
-        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
-        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
-        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
-        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
-        scheduled_partition="20260718",
-    )
+    plan = _compile_plan()
     entries = plan["entries"]
     assert isinstance(entries, list)
     assert len(entries) == 190
@@ -353,6 +344,19 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     assert daily_basic["params"] == {}
 
 
+def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
+    assert (
+        _yaml(REQUEST_OBSERVATIONS)["provenance"]["registered_contract_bundle"][
+            "sha256"
+        ]
+        == _sha(UPSTREAM_CONTRACTS)
+    )
+    plan = _compile_plan()
+    assert plan["provenance"]["request_observations_sha256"] == _sha(
+        REQUEST_OBSERVATIONS
+    )
+
+
 def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -> None:
     seed = {
         "dataset_id": "cn.equity.security_master",
@@ -364,19 +368,7 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "schema_version": "2.0.0",
         "fresh": True,
     }
-    plan = compile_https_probe_plan(
-        _bytes(DOCUMENTS),
-        _bytes(REQUEST_OBSERVATIONS),
-        _bytes(TRANSPORT_OBSERVATIONS),
-        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
-        official_contract_sha256=_sha(DOCUMENTS),
-        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
-        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
-        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
-        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
-        scheduled_partition="20260718",
-        dataset_field_values=[seed],
-    )
+    plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
         "executable": 157,
@@ -417,19 +409,7 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "schema_version": "1.0.0",
         "fresh": True,
     }
-    multi_seed_plan = compile_https_probe_plan(
-        _bytes(DOCUMENTS),
-        _bytes(REQUEST_OBSERVATIONS),
-        _bytes(TRANSPORT_OBSERVATIONS),
-        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
-        official_contract_sha256=_sha(DOCUMENTS),
-        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
-        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
-        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
-        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
-        scheduled_partition="20260718",
-        dataset_field_values=[seed, cb_seed],
-    )
+    multi_seed_plan = _compile_plan(dataset_field_values=[seed, cb_seed])
     seed_authorities = multi_seed_plan["provenance"]["seed_authorities"]
     assert [
         (authority["dataset_id"], authority["field"]) for authority in seed_authorities
@@ -439,36 +419,12 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     assert all("value" not in authority for authority in seed_authorities)
 
     with pytest.raises(RuntimeContractCompilationError, match="duplicate trusted seed"):
-        compile_https_probe_plan(
-            _bytes(DOCUMENTS),
-            _bytes(REQUEST_OBSERVATIONS),
-            _bytes(TRANSPORT_OBSERVATIONS),
-            registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
-            official_contract_sha256=_sha(DOCUMENTS),
-            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
-            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
-            expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
-            run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
-            scheduled_partition="20260718",
-            dataset_field_values=[seed, deepcopy(seed)],
-        )
+        _compile_plan(dataset_field_values=[seed, deepcopy(seed)])
 
     stale = deepcopy(seed)
     stale["fresh"] = False
     with pytest.raises(RuntimeContractCompilationError, match="fresh success receipt"):
-        compile_https_probe_plan(
-            _bytes(DOCUMENTS),
-            _bytes(REQUEST_OBSERVATIONS),
-            _bytes(TRANSPORT_OBSERVATIONS),
-            registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
-            official_contract_sha256=_sha(DOCUMENTS),
-            transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
-            request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
-            expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
-            run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
-            scheduled_partition="20260718",
-            dataset_field_values=[stale],
-        )
+        _compile_plan(dataset_field_values=[stale])
 
 
 @pytest.mark.parametrize(
@@ -716,6 +672,7 @@ def test_runtime_compiler_rejects_content_drift_behind_frozen_authority_sha(
             document_bytes,
             reviewed_bytes,
             _bytes(POLICY),
+            _bytes(CADENCE_POLICY),
             request_observations=request_bytes,
             transport_observations=transport_bytes,
             official_contract_sha256=_sha(DOCUMENTS),
@@ -782,7 +739,7 @@ def test_request_observation_source_bytes_and_api_set_are_bound() -> None:
         _compile(request_observations=observations)
 
 
-def test_non_yyyymmdd_request_formats_are_declarative_only_while_paused(
+def test_active_loader_accepts_runtime_request_window_formats_and_rejects_others(
     tmp_path: Path,
 ) -> None:
     bundle = _compile()
@@ -798,17 +755,51 @@ def test_non_yyyymmdd_request_formats_are_declarative_only_while_paused(
     assert monthly.request_window_policy is not None
     assert monthly.request_window_policy.formats["m"] == "yyyymm"
 
-    item = next(
-        dataset
-        for dataset in registry["datasets"]
-        if dataset["dataset_id"] == "cn.dataset.cn_cpi"
-    )
-    binding = item["provider_bindings"][0]
-    binding["entitlement_state"] = "active"
-    binding["activation_state"] = "active"
-    path.write_text(yaml.safe_dump(registry, sort_keys=False), encoding="utf-8")
-    with pytest.raises(ValueError, match="active.*yyyymmdd"):
-        load_dataset_registry(path)
+    supported = {
+        "cn.dataset.adj_factor": "yyyymmdd",
+        "cn.dataset.broker_recommend": "yyyymm",
+        "cn.dataset.cn_gdp": "yyyy_qn",
+        "cn.dataset.fut_weekly_detail": "yyyyww",
+        "cn.dataset.stk_nineturn": "local_datetime_seconds",
+    }
+    for dataset_id, expected_format in supported.items():
+        candidate = deepcopy(registry)
+        item = next(
+            dataset
+            for dataset in candidate["datasets"]
+            if dataset["dataset_id"] == dataset_id
+        )
+        binding = item["provider_bindings"][0]
+        binding["entitlement_state"] = "active"
+        binding["activation_state"] = "active"
+        binding["probe_state"] = "executable"
+        binding["probe_block_reasons"] = []
+        binding["ingest_contract_state"] = "ready"
+        binding["ingest_contract_block_reasons"] = []
+        path.write_text(yaml.safe_dump(candidate, sort_keys=False), encoding="utf-8")
+        loaded_binding = load_dataset_registry(path).provider_binding(
+            dataset_id, "tushare"
+        )
+        assert loaded_binding.request_window_policy is not None
+        assert set(loaded_binding.request_window_policy.formats.values()) == {
+            expected_format
+        }
+
+    for unsupported_format in ("identity", "rfc3339"):
+        candidate = deepcopy(registry)
+        item = next(
+            dataset
+            for dataset in candidate["datasets"]
+            if dataset["dataset_id"] == "cn.dataset.adj_factor"
+        )
+        binding = item["provider_bindings"][0]
+        binding["activation_state"] = "active"
+        binding["request_window_policy"]["formats"]["trade_date"] = (
+            unsupported_format
+        )
+        path.write_text(yaml.safe_dump(candidate, sort_keys=False), encoding="utf-8")
+        with pytest.raises(ValueError, match="active.*runtime request_window format"):
+            load_dataset_registry(path)
 
 
 def test_runtime_compiler_does_not_mutate_any_authority_input() -> None:

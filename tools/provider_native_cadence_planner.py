@@ -8,6 +8,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 from types import MappingProxyType
 from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -19,6 +20,9 @@ from dataset_registry import (
     DatasetRegistry,
     ProviderBinding,
     RequestScalar,
+    encode_request_window_value,
+    normalize_request_window,
+    request_window_covered_dates,
 )
 from storage.receipt_projection import (
     RuntimeProjectionError,
@@ -66,6 +70,12 @@ _CADENCE_KEYS = frozenset(
     }
 )
 _PRIORITY = {"current": 0, "backfill": 1, "correction": 2}
+_ACTIVATION_WAVE_ROOT_KEYS = frozenset({"version", "input_hashes", "waves"})
+_ACTIVATION_WAVE_HASH_KEYS = frozenset(
+    {"runtime_registry_sha256", "schedule_sha256"}
+)
+_ACTIVATION_WAVE_KEYS = frozenset({"dataset_ids"})
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True)
@@ -144,6 +154,11 @@ class PlannerSkip:
 
 
 @dataclass(frozen=True)
+class ActivationWave:
+    dataset_ids: frozenset[str]
+
+
+@dataclass(frozen=True)
 class _Fact:
     partition_value: str | None
     payload: Mapping[str, object]
@@ -212,6 +227,89 @@ def _text(value: object, label: str) -> str:
     return value
 
 
+def _sha256(value: object, label: str) -> str:
+    text = _text(value, label)
+    if _SHA256.fullmatch(text) is None:
+        raise ValueError(f"{label} must be SHA-256")
+    return text
+
+
+def load_activation_wave(
+    path: Path,
+    wave_id: str,
+    *,
+    registry: DatasetRegistry,
+    registry_payload: bytes,
+    schedule_payload: bytes,
+) -> ActivationWave:
+    """Load one fail-closed, hash-bound canonical dataset selection."""
+
+    root = _mapping(
+        yaml.load(Path(path).read_text(encoding="utf-8"), Loader=_UniqueLoader),
+        "activation wave manifest",
+    )
+    if (
+        set(root) != _ACTIVATION_WAVE_ROOT_KEYS
+        or type(root["version"]) is not int
+        or root["version"] != 1
+    ):
+        raise ValueError("activation wave manifest contract is invalid")
+    hashes = _mapping(root["input_hashes"], "activation wave input hashes")
+    if set(hashes) != _ACTIVATION_WAVE_HASH_KEYS:
+        raise ValueError("activation wave input hashes are invalid")
+    expected_registry_hash = _sha256(
+        hashes["runtime_registry_sha256"], "runtime registry SHA-256"
+    )
+    expected_schedule_hash = _sha256(hashes["schedule_sha256"], "schedule SHA-256")
+    if hashlib.sha256(registry_payload).hexdigest() != expected_registry_hash:
+        raise ValueError("runtime registry SHA-256 does not match activation wave")
+    if hashlib.sha256(schedule_payload).hexdigest() != expected_schedule_hash:
+        raise ValueError("schedule SHA-256 does not match activation wave")
+    waves = _mapping(root["waves"], "activation waves")
+    if not waves:
+        raise ValueError("activation waves must be non-empty")
+    wave_names = tuple(_text(item, "activation wave id") for item in waves)
+    if wave_names != tuple(sorted(wave_names)):
+        raise ValueError("activation wave ids must be sorted")
+    validated: dict[str, frozenset[str]] = {}
+    seen_dataset_ids: set[str] = set()
+    for name, value in waves.items():
+        raw_wave = _mapping(value, f"activation wave {name}")
+        if set(raw_wave) != _ACTIVATION_WAVE_KEYS:
+            raise ValueError("activation wave keys are invalid")
+        raw_ids = raw_wave["dataset_ids"]
+        if type(raw_ids) is not list or not raw_ids:
+            raise ValueError("activation wave dataset_ids must be non-empty")
+        dataset_ids = tuple(
+            _text(item, "activation wave dataset_id") for item in raw_ids
+        )
+        if tuple(sorted(dataset_ids)) != dataset_ids:
+            raise ValueError("activation wave dataset_ids must be sorted")
+        if len(set(dataset_ids)) != len(dataset_ids):
+            raise ValueError("activation wave contains duplicate dataset_id")
+        for dataset_id in dataset_ids:
+            if dataset_id in seen_dataset_ids:
+                raise ValueError("activation wave contains duplicate dataset_id")
+            seen_dataset_ids.add(dataset_id)
+            try:
+                dataset = registry.resolve(dataset_id)
+            except KeyError as exc:
+                raise ValueError("activation wave dataset_id is unknown") from exc
+            if dataset.dataset_id != dataset_id:
+                raise ValueError("activation wave must use canonical dataset_id")
+            try:
+                _active_binding(dataset)
+            except ValueError as exc:
+                raise ValueError(
+                    "activation wave dataset must be active and entitled"
+                ) from exc
+        validated[name] = frozenset(dataset_ids)
+    name = _text(wave_id, "activation wave id")
+    if name not in validated:
+        raise ValueError("unknown activation wave")
+    return ActivationWave(validated[name])
+
+
 def _integer(value: object, label: str, *, positive: bool = False) -> int:
     if type(value) is not int or value < (1 if positive else 0):
         raise ValueError(
@@ -238,9 +336,9 @@ def _day(value: object, label: str) -> date | None:
         raise ValueError(f"{label} must use YYYYMMDD") from exc
 
 
-def load_schedule(path: Path) -> Schedule:
+def load_schedule_bytes(payload: bytes) -> Schedule:
     root = _mapping(
-        yaml.load(Path(path).read_text(encoding="utf-8"), Loader=_UniqueLoader),
+        yaml.load(payload.decode("utf-8"), Loader=_UniqueLoader),
         "schedule",
     )
     if (
@@ -393,6 +491,10 @@ def load_schedule(path: Path) -> Schedule:
         MappingProxyType(dict(sorted(budgets.items()))),
         MappingProxyType(dict(sorted(cadences.items()))),
     )
+
+
+def load_schedule(path: Path) -> Schedule:
+    return load_schedule_bytes(Path(path).read_bytes())
 
 
 class _DuplicateKey(ValueError):
@@ -579,15 +681,9 @@ def _window_dates(
     if policy is None or set(window) != set(policy.required_keys):
         return ()
     try:
-        start, end = (
-            _partition(window[policy.range_start_key]),
-            _partition(window[policy.range_end_key]),
-        )
-    except (KeyError, ValueError):
+        return request_window_covered_dates(policy, window)
+    except (KeyError, TypeError, ValueError):
         return ()
-    if end < start or (end - start).days + 1 > policy.max_span_days:
-        return ()
-    return tuple(start + timedelta(days=i) for i in range((end - start).days + 1))
 
 
 def _latest(
@@ -647,18 +743,30 @@ def _window(binding: ProviderBinding, start: date, end: date) -> Mapping[str, st
     policy = binding.request_window_policy
     if policy is None:
         return MappingProxyType({})
+    if end < start:
+        raise ValueError("request range start must not exceed range end")
     if policy.range_start_key == policy.range_end_key:
         if start != end:
             raise ValueError("single-partition request cannot span dates")
-        return MappingProxyType({policy.range_start_key: start.strftime("%Y%m%d")})
+        key = policy.range_start_key
+        window = {
+            key: encode_request_window_value(start, policy.formats[key]),
+        }
+        return MappingProxyType(normalize_request_window(policy, window))
     if (end - start).days + 1 > policy.max_span_days:
         raise ValueError("request exceeds registry span")
-    return MappingProxyType(
-        {
-            policy.range_start_key: start.strftime("%Y%m%d"),
-            policy.range_end_key: end.strftime("%Y%m%d"),
-        }
-    )
+    start_format = policy.formats[policy.range_start_key]
+    if start_format == "local_datetime_seconds":
+        raise ValueError(
+            "automatic local_datetime_seconds ranges require an explicit window"
+        )
+    window = {
+        policy.range_start_key: encode_request_window_value(start, start_format),
+        policy.range_end_key: encode_request_window_value(
+            end, policy.formats[policy.range_end_key]
+        ),
+    }
+    return MappingProxyType(normalize_request_window(policy, window))
 
 
 def _runs(
@@ -805,8 +913,15 @@ def _dataset_plans(
 
 
 def plan_runs(
-    *, registry: DatasetRegistry, schedule: Schedule, state: PlannerState, now: datetime
+    *,
+    registry: DatasetRegistry,
+    schedule: Schedule,
+    state: PlannerState,
+    now: datetime,
+    selected_dataset_ids: frozenset[str] | None = None,
 ) -> tuple[tuple[ScheduledRun, ...], tuple[PlannerSkip, ...]]:
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
     candidates: list[ScheduledRun] = []
     skips: list[PlannerSkip] = []
     for dataset in sorted(registry.datasets, key=lambda item: item.dataset_id):
@@ -825,6 +940,14 @@ def plan_runs(
                         else "not_entitled",
                     )
                 )
+            continue
+        if (
+            selected_dataset_ids is not None
+            and dataset.dataset_id not in selected_dataset_ids
+        ):
+            skips.append(
+                PlannerSkip(dataset.dataset_id, binding.provider, "not_selected")
+            )
             continue
         try:
             policy = schedule.cadences[dataset.cadence_class]

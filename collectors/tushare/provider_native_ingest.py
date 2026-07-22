@@ -23,6 +23,7 @@ from dataset_registry import (
     PaginationPolicy,
     ProviderBinding,
     RequestScalar,
+    normalize_request_window,
 )
 from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
@@ -207,32 +208,7 @@ def _resolved_request(
         )
     policy = binding.request_window_policy
     if policy is not None:
-        if tuple(window) != tuple(sorted(window)):
-            window = dict(sorted(window.items()))
-        if set(window) != set(policy.required_keys):
-            raise ValueError(
-                "request_window keys must exactly match the registry window policy"
-            )
-        parsed_dates: dict[str, datetime] = {}
-        for key in policy.required_keys:
-            value = window[key]
-            if policy.formats[key] != "yyyymmdd":
-                raise ValueError("unsupported registry request_window format")
-            if re.fullmatch(r"[0-9]{8}", value) is None:
-                raise ValueError("request_window date must use exact YYYYMMDD format")
-            try:
-                parsed = datetime.strptime(value, "%Y%m%d")
-            except ValueError as exc:
-                raise ValueError("request_window date is invalid") from exc
-            if parsed.strftime("%Y%m%d") != value:
-                raise ValueError("request_window date must use exact YYYYMMDD format")
-            parsed_dates[key] = parsed
-        start = parsed_dates[policy.range_start_key]
-        end = parsed_dates[policy.range_end_key]
-        if start > end:
-            raise ValueError("request_window range start must not exceed range end")
-        if (end - start).days + 1 > policy.max_span_days:
-            raise ValueError("request_window range exceeds max_span_days")
+        window = normalize_request_window(policy, window)
     params: dict[str, RequestScalar] = {
         key: (
             window[match.group(1)]

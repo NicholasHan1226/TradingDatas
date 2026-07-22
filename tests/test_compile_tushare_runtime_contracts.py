@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
 REVIEWED = ROOT / "config" / "tushare_reviewed_contracts.v1.yaml"
 POLICY = ROOT / "config" / "tushare_runtime_contract_policy.v1.yaml"
+CADENCE_POLICY = ROOT / "config" / "tushare_cadence_policy.v1.yaml"
 OUTPUT = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
 TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
@@ -42,6 +43,7 @@ def compile_runtime_contract_bundle(
     documents: dict[str, object],
     reviewed: dict[str, object],
     policy: dict[str, object],
+    cadence_policy: dict[str, object] | None = None,
 ) -> dict[str, object]:
     original_document_bytes = DOCUMENTS.read_bytes()
     original_reviewed_bytes = REVIEWED.read_bytes()
@@ -57,6 +59,11 @@ def compile_runtime_contract_bundle(
     )
     policy_bytes = (
         POLICY.read_bytes() if policy == _yaml(POLICY) else _yaml_bytes(policy)
+    )
+    cadence_bytes = (
+        CADENCE_POLICY.read_bytes()
+        if cadence_policy is None or cadence_policy == _yaml(CADENCE_POLICY)
+        else _yaml_bytes(cadence_policy)
     )
     request_observations = _yaml(REQUEST_OBSERVATIONS)
     request_observations["provenance"]["official_contracts"]["sha256"] = hashlib.sha256(
@@ -76,12 +83,135 @@ def compile_runtime_contract_bundle(
         document_bytes,
         reviewed_bytes,
         policy_bytes,
+        cadence_bytes,
         request_observations=request_bytes,
         transport_observations=transport_bytes,
         official_contract_sha256=hashlib.sha256(document_bytes).hexdigest(),
         transport_observations_sha256=hashlib.sha256(transport_bytes).hexdigest(),
         request_observations_sha256=hashlib.sha256(request_bytes).hexdigest(),
     )
+
+
+def test_cadence_policy_has_exact_sorted_coverage_and_projects_each_contract() -> None:
+    documents = _yaml(DOCUMENTS)
+    reviewed = _yaml(REVIEWED)
+    cadence_policy = _yaml(CADENCE_POLICY)
+    entries = cadence_policy["entries"]
+    assert isinstance(entries, list)
+
+    api_names = [entry["api_name"] for entry in entries]
+    assert len(entries) == 190
+    assert api_names == sorted(api_names)
+    assert len(api_names) == len(set(api_names))
+    assert set(api_names) == {item["api_name"] for item in documents["contracts"]}
+    assert {entry["cadence_class"] for entry in entries} == {
+        "session_minute",
+        "postclose_daily",
+        "daily_reference",
+        "weekly",
+        "monthly",
+        "quarterly_reporting",
+        "event",
+        "on_demand",
+    }
+    assert all(entry["freshness_sla_seconds"] > 0 for entry in entries)
+
+    compiled = compile_runtime_contract_bundle(documents, reviewed, _yaml(POLICY))
+    compiled_by_api = {item["api_name"]: item for item in compiled["contracts"]}
+    policy_by_api = {entry["api_name"]: entry for entry in entries}
+    document_by_api = {item["api_name"]: item for item in documents["contracts"]}
+    reviewed_by_api = {item["api_name"]: item for item in reviewed["contracts"]}
+    for api_name, entry in policy_by_api.items():
+        assert entry["source_document_sha256"] == document_by_api[api_name]["doc_sha256"]
+        contract = compiled_by_api[api_name]
+        if api_name in reviewed_by_api:
+            assert contract["cadence_class"] == reviewed_by_api[api_name]["cadence_class"]
+            assert (
+                contract["freshness_sla_seconds"]
+                == reviewed_by_api[api_name]["freshness_sla_seconds"]
+            )
+        else:
+            assert contract["cadence_class"] == entry["cadence_class"]
+            assert contract["freshness_sla_seconds"] == entry["freshness_sla_seconds"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "exactly 190"),
+        ("duplicate", "duplicate cadence policy API"),
+        ("unknown", "unknown API"),
+        ("invalid_cadence", "cadence_class"),
+        ("zero_freshness", "freshness_sla_seconds"),
+        ("source_hash_drift", "source document SHA"),
+        ("free_form_reason", "reason_code"),
+        ("unknown_reason", "reason_code"),
+        ("reason_cadence_mismatch", "does not allow cadence_class"),
+        ("false_reviewed_exact", "reviewed_contract_exact"),
+        ("reviewed_exact_cadence_drift", "reviewed contract cadence"),
+        ("reviewed_exact_freshness_drift", "reviewed contract freshness"),
+        ("reviewed_reason_missing", "reviewed API.*reason_code"),
+    ],
+)
+def test_compiler_rejects_invalid_cadence_policy(
+    mutation: str, message: str
+) -> None:
+    cadence_policy = _yaml(CADENCE_POLICY)
+    entries = cadence_policy["entries"]
+    assert isinstance(entries, list)
+    if mutation == "missing":
+        entries.pop()
+    elif mutation == "duplicate":
+        entries.insert(1, deepcopy(entries[0]))
+    elif mutation == "unknown":
+        entries[-1]["api_name"] = "zzz_unknown"
+    elif mutation == "invalid_cadence":
+        entries[0]["cadence_class"] = "daily"
+    elif mutation == "zero_freshness":
+        entries[0]["freshness_sla_seconds"] = 0
+    elif mutation == "source_hash_drift":
+        entries[0]["source_document_sha256"] = "0" * 64
+    elif mutation == "free_form_reason":
+        entries[0]["reason_code"] = "arbitrary prose reason"
+    elif mutation == "unknown_reason":
+        entries[0]["reason_code"] = "unknown_cadence_reason"
+    elif mutation == "reason_cadence_mismatch":
+        entries[0]["reason_code"] = "doc_explicit_weekly"
+    elif mutation == "false_reviewed_exact":
+        reviewed_api_names = {
+            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
+        }
+        unreviewed_entry = next(
+            entry for entry in entries if entry["api_name"] not in reviewed_api_names
+        )
+        unreviewed_entry["reason_code"] = "reviewed_contract_exact"
+    elif mutation in {"reviewed_exact_cadence_drift", "reviewed_exact_freshness_drift"}:
+        reviewed_api_names = {
+            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
+        }
+        reviewed_entry = next(
+            entry for entry in entries if entry["api_name"] in reviewed_api_names
+        )
+        if mutation == "reviewed_exact_cadence_drift":
+            reviewed_entry["cadence_class"] = "session_minute"
+        else:
+            reviewed_entry["freshness_sla_seconds"] += 1
+    else:
+        reviewed_api_names = {
+            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
+        }
+        reviewed_entry = next(
+            entry for entry in entries if entry["api_name"] in reviewed_api_names
+        )
+        reviewed_entry["reason_code"] = f"doc_explicit_{reviewed_entry['cadence_class']}"
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        compile_runtime_contract_bundle(
+            _yaml(DOCUMENTS),
+            _yaml(REVIEWED),
+            _yaml(POLICY),
+            cadence_policy,
+        )
 
 
 def _canonical_sha256(value: object) -> str:
@@ -191,7 +321,8 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     assert unreviewed["point_in_time"] == "append_only"
     assert unreviewed["primary_key"] == []
     assert unreviewed["response_completeness"] is None
-    assert unreviewed["cadence_class"] == "on_demand"
+    assert unreviewed["cadence_class"] == "daily_reference"
+    assert unreviewed["freshness_sla_seconds"] == 86400
     assert unreviewed["request_template"] == {"trade_date": "${window.trade_date}"}
     assert unreviewed["request_variants"] == [{}]
     assert unreviewed["requested_fields"] == []

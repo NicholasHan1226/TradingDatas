@@ -212,6 +212,31 @@ def _strategy_registry(
     return DatasetRegistry((dataset,))
 
 
+def _request_window_binding(
+    format_name: str,
+    *,
+    ranged: bool = False,
+    max_span_days: int = 1,
+) -> ProviderBinding:
+    base = _registry()
+    binding = base.provider_binding("cn.synthetic.runner", "tushare")
+    keys = ("start", "end") if ranged else ("period",)
+    return replace(
+        binding,
+        request_template=MappingProxyType(
+            {f"provider_{key}": f"${{window.{key}}}" for key in keys}
+        ),
+        request_window_policy=RequestWindowPolicy(
+            required_keys=keys,
+            formats=MappingProxyType({key: format_name for key in keys}),
+            range_start_key=keys[0],
+            range_end_key=keys[-1],
+            max_span_days=max_span_days,
+        ),
+        response_completeness=None,
+    )
+
+
 def _paginated_strategy_registry(*, max_pages: int = 12) -> DatasetRegistry:
     base = _strategy_registry(
         "unique_primary_key_snapshot",
@@ -1954,6 +1979,89 @@ def test_request_window_is_strict_and_fails_before_provider_or_database(
     assert output["state"] == "validation"
     assert fake.calls == []
     assert not db_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("format_name", "window"),
+    [
+        ("yyyymmdd", {"start": "20240229", "end": "20240229"}),
+        ("yyyymm", {"period": "202602"}),
+        ("yyyy_qn", {"period": "2026Q4"}),
+        ("yyyyww", {"period": "202653"}),
+        (
+            "local_datetime_seconds",
+            {
+                "start": "2026-07-20 00:00:00",
+                "end": "2026-07-20 23:59:59",
+            },
+        ),
+    ],
+)
+def test_request_window_codec_accepts_each_runtime_format_canonically(
+    format_name: str,
+    window: dict[str, str],
+) -> None:
+    binding = _request_window_binding(format_name, ranged=len(window) == 2)
+
+    normalized, params = native_ingest._resolved_request(binding, window)
+
+    assert normalized == dict(sorted(window.items()))
+    assert params == {
+        f"provider_{key}": value for key, value in sorted(window.items())
+    }
+
+
+@pytest.mark.parametrize("format_name", ["identity", "rfc3339"])
+def test_request_window_codec_keeps_unused_formats_fail_closed(
+    format_name: str,
+) -> None:
+    binding = _request_window_binding(format_name)
+
+    with pytest.raises(ValueError, match="runtime request_window format"):
+        native_ingest._resolved_request(binding, {"period": "20260720"})
+
+
+@pytest.mark.parametrize(
+    ("format_name", "value"),
+    [
+        ("yyyymmdd", "20230229"),
+        ("yyyymm", "202613"),
+        ("yyyy_qn", "2026Q0"),
+        ("yyyyww", "202654"),
+    ],
+)
+def test_request_window_codec_rejects_noncanonical_calendar_values(
+    format_name: str,
+    value: str,
+) -> None:
+    binding = _request_window_binding(format_name)
+
+    with pytest.raises(ValueError, match="request_window.*invalid"):
+        native_ingest._resolved_request(binding, {"period": value})
+
+
+def test_local_datetime_window_rejects_invalid_order_and_span() -> None:
+    binding = _request_window_binding(
+        "local_datetime_seconds", ranged=True, max_span_days=1
+    )
+    invalid = (
+        (
+            {"start": "2026-07-20T00:00:00", "end": "2026-07-20 00:00:00"},
+            "request_window.*invalid",
+        ),
+        (
+            {"start": "2026-07-20 00:00:01", "end": "2026-07-20 00:00:00"},
+            "range start",
+        ),
+        (
+            {"start": "2026-07-20 23:59:59", "end": "2026-07-21 00:00:00"},
+            "max_span_days",
+        ),
+    )
+
+    for window, message in invalid:
+        with pytest.raises(ValueError, match=message):
+            native_ingest._resolved_request(binding, window)
 
 
 def test_complete_variant_cohort_accepts_success_success_and_legal_empty(

@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-22。
+最后更新：2026-07-23。
 
 ## 结论
 
@@ -191,6 +191,21 @@
   证据，不得恢复 official-direct collector 或 deprecated request-profile 运行耦合。
 - 旧生产 `8082`、旧数据库、旧 cron 和旧文档不属于 TradingDatas 目标架构；在新生产与消费者切换前仅作为短期回滚源。
 - 2026-07-21 只读复核确认旧生产依赖仍在运行：root crontab 仍有 4 条 `SharedSignals/cron/opening_gate.sh` 和 1 条 `external_api_probe.sh`；`marketgraph` crontab 仍有旧 collectors、CNFutures、Crypto、事件、patrol/watchdog/health 等 SharedSignals 任务；`tradingagent-front-api.service.d/sharedsignals.conf` 仍指向 `http://127.0.0.1:8082`，现役 TradingAgent front service 仍为 active。这些项目已进入精确退役清单，但在 TradingDatas 真实采集、`catalog/query` API、消费者 parity、数据连续性和回滚证明通过前不得停用或删除。
+- 2026-07-22 fresh HTTPS gap probe 形成新的 **preactivation candidate**，不是生产
+  activation：190 个 runtime contract 中 158 个实际执行，结果为 97 `success`、
+  50 `valid_empty`、10 `provider_failed_unclassified`、1 `field_contract_mismatch`，另有
+  32 个在请求计划阶段 blocked。fresh result 与 plan ingest-ready 的交集为 132；其中
+  12 个合同使用 codec 已支持、但尚未通过 activation gate 的 `yyyymm`、`yyyy_qn`、
+  `yyyyww` 或 `local_datetime_seconds` window，继续 paused；`cn_schedule` 的月窗重复仅记为
+  激活前门禁，本轮不实现去重或新结构。因此只有显式 `preactivation_candidate` 模式加
+  `--activation-evidence /outside/repository/path`，才能从仓外 hash-bound sidecar 生成
+  120 active / 70 paused 的 loader-readable canary registry；当前 sidecar artifact
+  SHA-256 为 `cebbff13971b4d6465b986089a152feb056dc8e56e0bc0d4992a63175d20268c`，
+  不在 Git/CI 内。该模式拒绝覆盖 checked canonical registry。checked 与
+  production registry 均继续保持 **5 active / 185 paused**，且证据明确
+  `production_ready=false`。没有 `response_completeness` 策略的数据集只能作为降级 canary，
+  不能表述为 exact-complete。每个 dataset 的正式 promotion 仍需独立 SQLite 中真实
+  receipt、transient catalog/query readback、same-as-of 与失败负例，且 timer 保持 disabled。
 
 ## 当前停止线
 

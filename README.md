@@ -91,10 +91,25 @@ uv run --python 3.12 --with-requirements requirements.txt \
 该历史矩阵绑定脱敏证据及 API 集合 SHA、`production_ready=false`，不能替代正式
 HTTPS provider -> SQLite -> receipt -> API readback，也不能代表新增 32 项已可调用。
 
+190 个正式合同的 cadence authority 是
+`config/tushare_cadence_policy.v1.yaml`。它按 `api_name` 精确覆盖每个官方文档合同，
+逐项绑定 `source_document_sha256`，并只声明八种通用 cadence class、正 freshness SLA
+和可审计 reason code。运行合同编译器拒绝缺失、重复、未知、未排序或文档哈希漂移的策略项；
+reason code 还必须属于固定安全闭集，并与声明的 cadence class 语义一致；自由文本、未知码和
+伪造的 reviewed-exact 绑定一律 fail closed。
+这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
+五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
+
 当前 190 项 runtime registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`、
 `index_classify`、`sw_daily` 五个 active dataset，其余 185 个全部 paused。validated match 与已修复数字字段只表示
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
+
+HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
+也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
+`--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
+当前正式 registry 仍为 5 active / 185 paused；已观测的 120 active / 70 paused 只来自
+仓外 sidecar 候选，不能由 CI fixture、仓内文件或 formal 编译重建。
 
 旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
 官方输入参数迁移资料保留：它们不是 entitlement/activation authority，不得被 collector、

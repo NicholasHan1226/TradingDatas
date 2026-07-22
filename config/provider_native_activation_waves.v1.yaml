@@ -1,0 +1,12 @@
+version: 1
+input_hashes:
+  runtime_registry_sha256: "8a437089a7e738ddf0270fbc37dacfcc195b9916ce0b3fb2c5110eb93f7ad6e3"
+  schedule_sha256: "749c2a1d46131921c3bf2db62ac710b790727c3ee65289826cd1b44204583dd1"
+waves:
+  pilot_existing:
+    dataset_ids:
+    - cn.dataset.index_classify
+    - cn.dataset.sw_daily
+    - cn.equity.daily
+    - cn.equity.security_master
+    - cn.market.trade_calendar

@@ -11,7 +11,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from dataset_registry import DatasetRegistry, load_dataset_registry
+from dataset_registry import (
+    DatasetRegistry,
+    RequestWindowPolicy,
+    load_dataset_registry,
+)
 import storage.ingest_receipts as receipt_module
 from storage.ingest_receipts import (
     IngestContext,
@@ -24,6 +28,7 @@ from storage.ingest_receipts import (
 from storage.schema import SCHEMA_SQL
 from storage.sqlite_authority_lock import sqlite_authority_lock_path
 import tools.run_provider_native_schedule as scheduler
+import tools.provider_native_cadence_planner as cadence_planner
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,16 +39,68 @@ PAYLOAD_FINGERPRINT = "b" * 64
 
 
 def _active_registry() -> DatasetRegistry:
-    registry = load_dataset_registry(TARGET_REGISTRY)
-    datasets = []
-    for dataset in registry.datasets:
-        binding = replace(
-            dataset.provider_bindings[0],
-            entitlement_state="active",
-            activation_state="active",
-        )
-        datasets.append(replace(dataset, provider_bindings=(binding,)))
-    return DatasetRegistry(tuple(datasets), query_defaults=registry.query_defaults)
+    return load_dataset_registry(TARGET_REGISTRY)
+
+
+def _window_registry(
+    format_name: str,
+    cadence_class: str,
+    *,
+    ranged: bool = False,
+) -> DatasetRegistry:
+    base = _active_registry()
+    template = base.resolve("cn.equity.daily")
+    keys = ("start", "end") if ranged else ("period",)
+    binding = replace(
+        template.provider_bindings[0],
+        api_name=f"synthetic_{format_name}",
+        read_discriminator_value=f"synthetic_{format_name}",
+        request_template=MappingProxyType(
+            {f"provider_{key}": f"${{window.{key}}}" for key in keys}
+        ),
+        request_window_policy=RequestWindowPolicy(
+            required_keys=keys,
+            formats=MappingProxyType({key: format_name for key in keys}),
+            range_start_key=keys[0],
+            range_end_key=keys[-1],
+            max_span_days=2 if ranged else 1,
+        ),
+        response_completeness=None,
+    )
+    dataset = replace(
+        template,
+        dataset_id=f"cn.synthetic.window_{format_name}",
+        aliases=(),
+        cadence_class=cadence_class,
+        provider_bindings=(binding,),
+    )
+    return DatasetRegistry((dataset,), query_defaults=base.query_defaults)
+
+
+def _single_partition_schedule(
+    cadence_class: str,
+    partition_frequency: str,
+) -> cadence_planner.Schedule:
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    policy = replace(
+        schedule.cadences[cadence_class],
+        calendar=None,
+        partition_frequency=partition_frequency,
+        backfill_start_policy="fixed_date",
+        backfill_start_date=date(2026, 7, 20),
+        backfill_lookback_days=0,
+        backfill_chunk_span_days=1,
+        future_horizon_days=0,
+        correction_overlap_days=0,
+        correction_overlap_bars=0,
+        max_backfill_chunks_per_run=1,
+    )
+    return replace(
+        schedule,
+        cadences=MappingProxyType(
+            {**schedule.cadences, cadence_class: policy}
+        ),
+    )
 
 
 def _database(path: Path) -> None:
@@ -273,6 +330,105 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
         for item in result.plans
     )
     assert all(plan.provider for plan in result.plans)
+
+
+@pytest.mark.parametrize(
+    ("format_name", "cadence_class", "partition_frequency", "expected"),
+    [
+        ("yyyymmdd", "daily_reference", "day", "20260720"),
+        ("yyyymm", "monthly", "month", "202607"),
+        ("yyyy_qn", "quarterly_reporting", "quarter", "2026Q3"),
+        ("yyyyww", "weekly", "week", "202630"),
+        (
+            "local_datetime_seconds",
+            "postclose_daily",
+            "day",
+            "2026-07-20 00:00:00",
+        ),
+    ],
+)
+def test_planner_renders_each_runtime_window_from_partition_frequency(
+    format_name: str,
+    cadence_class: str,
+    partition_frequency: str,
+    expected: str,
+) -> None:
+    registry = _window_registry(format_name, cadence_class)
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=_single_partition_schedule(cadence_class, partition_frequency),
+        state=cadence_planner.PlannerState(MappingProxyType({})),
+        now=datetime(2026, 7, 20, 21, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert skips == ()
+    assert len(plans) == 1
+    assert dict(plans[0].request_window) == {"period": expected}
+
+
+@pytest.mark.parametrize(
+    ("format_name", "window", "first", "last", "count"),
+    [
+        ("yyyymmdd", {"period": "20260228"}, date(2026, 2, 28), date(2026, 2, 28), 1),
+        ("yyyymm", {"period": "202602"}, date(2026, 2, 1), date(2026, 2, 28), 28),
+        ("yyyy_qn", {"period": "2026Q1"}, date(2026, 1, 1), date(2026, 3, 31), 90),
+        ("yyyyww", {"period": "202653"}, date(2026, 12, 28), date(2027, 1, 3), 7),
+        (
+            "local_datetime_seconds",
+            {"start": "2026-07-20 23:59:59", "end": "2026-07-21 00:00:00"},
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+            2,
+        ),
+    ],
+)
+def test_planner_parses_windows_back_to_covered_calendar_dates(
+    format_name: str,
+    window: dict[str, str],
+    first: date,
+    last: date,
+    count: int,
+) -> None:
+    registry = _window_registry(
+        format_name,
+        "daily_reference",
+        ranged=len(window) == 2,
+    )
+    binding = registry.datasets[0].provider_bindings[0]
+
+    dates = cadence_planner._window_dates(binding, window)
+
+    assert dates[0] == first
+    assert dates[-1] == last
+    assert len(dates) == count
+
+
+def test_active_on_demand_window_is_never_automatically_planned() -> None:
+    registry = _window_registry("yyyymm", "on_demand")
+
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=cadence_planner.PlannerState(MappingProxyType({})),
+        now=datetime(2026, 7, 20, 21, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert plans == ()
+    assert [(item.dataset_id, item.state) for item in skips] == [
+        (registry.datasets[0].dataset_id, "on_demand")
+    ]
+
+
+def test_planner_rejects_naive_run_clock_before_window_generation() -> None:
+    registry = _window_registry("yyyymmdd", "daily_reference")
+
+    with pytest.raises(ValueError, match="now must be timezone-aware"):
+        cadence_planner.plan_runs(
+            registry=registry,
+            schedule=_single_partition_schedule("daily_reference", "day"),
+            state=cadence_planner.PlannerState(MappingProxyType({})),
+            now=datetime(2026, 7, 20, 21, 0),
+        )
 
 
 def test_runtime_rate_budget_counts_actual_calls_across_datasets_and_apis() -> None:
@@ -1237,3 +1393,402 @@ def test_binding_variants_do_not_leak_between_same_key_datasets(
         [dict(variant) for variant in plan.request_variants]
         for plan in synthetic_plans
     ] == [[{"list_status": "X"}]]
+
+
+def _activation_wave_manifest(
+    tmp_path: Path,
+    *,
+    dataset_ids: list[str],
+    wave_id: str = "pilot",
+    registry_hash: str | None = None,
+    schedule_hash: str | None = None,
+) -> Path:
+    manifest = tmp_path / "activation-waves.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "input_hashes:",
+                '  runtime_registry_sha256: "'
+                + (registry_hash or hashlib.sha256(TARGET_REGISTRY.read_bytes()).hexdigest())
+                + '"',
+                '  schedule_sha256: "'
+                + (schedule_hash or hashlib.sha256(SCHEDULE_CONFIG.read_bytes()).hexdigest())
+                + '"',
+                "waves:",
+                f"  {wave_id}:",
+                "    dataset_ids:",
+                *[f"    - {dataset_id}" for dataset_id in dataset_ids],
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def test_activation_wave_rejects_an_unknown_wave_before_planner_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    manifest = _activation_wave_manifest(
+        tmp_path, dataset_ids=["cn.equity.daily"]
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_planner_state",
+        lambda *args, **kwargs: pytest.fail("unknown wave must fail before database access"),
+    )
+
+    with pytest.raises(ValueError, match="unknown activation wave"):
+        scheduler.run_schedule(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=True,
+            activation_wave="missing",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_wave_rejects_duplicate_dataset_ids(tmp_path: Path) -> None:
+    manifest = _activation_wave_manifest(
+        tmp_path, dataset_ids=["cn.equity.daily", "cn.equity.daily"]
+    )
+
+    with pytest.raises(ValueError, match="duplicate dataset_id"):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_wave_rejects_alias_instead_of_canonical_dataset_id(
+    tmp_path: Path,
+) -> None:
+    manifest = _activation_wave_manifest(tmp_path, dataset_ids=["tushare.daily"])
+
+    with pytest.raises(ValueError, match="canonical dataset_id"):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_wave_rejects_non_active_or_non_entitled_dataset(
+    tmp_path: Path,
+) -> None:
+    registry_bytes = TARGET_REGISTRY.read_bytes()
+    active_fragment = (
+        b"    api_name: daily\n"
+        b"    adapter_version: tushare-provider-native.v1\n"
+        b"    read_discriminator_value: tushare_daily\n"
+        b"    entitlement_state: active\n"
+        b"    activation_state: active\n"
+    )
+    inactive_fragment = (
+        active_fragment.replace(
+            b"entitlement_state: active", b"entitlement_state: locked"
+        ).replace(b"activation_state: active", b"activation_state: paused")
+    )
+    assert registry_bytes.count(active_fragment) == 1
+    inactive_registry_bytes = registry_bytes.replace(
+        active_fragment, inactive_fragment, 1
+    )
+    inactive_registry = tmp_path / "inactive-registry.yaml"
+    inactive_registry.write_bytes(inactive_registry_bytes)
+    manifest = _activation_wave_manifest(
+        tmp_path,
+        dataset_ids=["cn.equity.daily"],
+        registry_hash=hashlib.sha256(inactive_registry_bytes).hexdigest(),
+    )
+
+    with pytest.raises(ValueError, match="active and entitled"):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=inactive_registry,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_wave_rejects_authority_hash_drift_before_planner_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _activation_wave_manifest(
+        tmp_path,
+        dataset_ids=["cn.equity.daily"],
+        registry_hash="0" * 64,
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_planner_state",
+        lambda *args, **kwargs: pytest.fail("hash drift must fail before database access"),
+    )
+
+    with pytest.raises(ValueError, match="registry SHA-256 does not match"):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=True,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_wave_selects_mixed_rate_classes_before_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+    manifest = _activation_wave_manifest(
+        tmp_path,
+        dataset_ids=["cn.dataset.index_classify", "cn.equity.daily"],
+    )
+    executed: list[str] = []
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=lambda plan: (
+            executed.append(plan.dataset_id)
+            or scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+        ),
+        activation_wave="pilot",
+        activation_wave_manifest=manifest,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.rate_budget_class for plan in result.plans} == {
+        "standard",
+        "low_frequency",
+    }
+    assert executed == [item.dataset_id for item in result.plans]
+    assert {
+        "cn.dataset.sw_daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
+    } <= {item.dataset_id for item in result.skipped if item.state == "not_selected"}
+
+
+def test_activation_wave_option_is_exposed_by_the_cli() -> None:
+    args = scheduler.parse_args(["--activation-wave", "pilot_existing"])
+
+    assert args.activation_wave == "pilot_existing"
+
+
+def test_activation_wave_uses_hashed_input_bytes_not_detached_objects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_registry = _active_registry()
+    daily = source_registry.resolve("cn.equity.daily")
+    detached_daily = replace(
+        daily,
+        provider_bindings=(replace(daily.provider_bindings[0], api_name="detached_api"),),
+    )
+    detached_registry = DatasetRegistry(
+        (
+            detached_daily,
+            *[
+                item
+                for item in source_registry.datasets
+                if item.dataset_id != daily.dataset_id
+            ],
+        ),
+        query_defaults=source_registry.query_defaults,
+    )
+    source_schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    detached_schedule = replace(
+        source_schedule,
+        cadences={
+            **source_schedule.cadences,
+            "postclose_daily": replace(
+                source_schedule.cadences["postclose_daily"], automatic=False
+            ),
+        },
+    )
+    bound_registry_path = tmp_path / "bound-registry.yaml"
+    bound_registry_bytes = TARGET_REGISTRY.read_bytes().replace(
+        b"    api_name: daily\n",
+        b"    api_name: byte_bound_api\n",
+        1,
+    )
+    assert bound_registry_bytes != TARGET_REGISTRY.read_bytes()
+    bound_registry_path.write_bytes(bound_registry_bytes)
+    manifest = _activation_wave_manifest(
+        tmp_path,
+        dataset_ids=["cn.equity.daily"],
+        registry_hash=hashlib.sha256(bound_registry_bytes).hexdigest(),
+    )
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            source_registry,
+            {date(2026, 7, 20): True},
+        )
+
+    result = scheduler.run_schedule(
+        registry=detached_registry,
+        schedule=detached_schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="pilot",
+        activation_wave_manifest=manifest,
+        registry_source_path=bound_registry_path,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    daily_plans = [
+        plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"
+    ]
+    assert daily_plans
+    assert {plan.provider_api for plan in daily_plans} == {"byte_bound_api"}
+
+
+@pytest.mark.parametrize(
+    ("hidden_wave", "message"),
+    [
+        (
+            "  zzz_hidden_alias:\n"
+            "    dataset_ids:\n"
+            "    - tushare.daily\n",
+            "canonical dataset_id",
+        ),
+        (
+            "  zzz_hidden_token:\n"
+            "    dataset_ids:\n"
+            "    - cn.equity.security_master\n"
+            "    token: must-not-be-accepted\n",
+            "activation wave keys are invalid",
+        ),
+    ],
+)
+def test_activation_manifest_validates_every_wave_before_selection(
+    hidden_wave: str,
+    message: str,
+    tmp_path: Path,
+) -> None:
+    manifest = _activation_wave_manifest(
+        tmp_path, dataset_ids=["cn.equity.daily"]
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + hidden_wave,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_activation_manifest_rejects_boolean_version(tmp_path: Path) -> None:
+    manifest = _activation_wave_manifest(
+        tmp_path, dataset_ids=["cn.equity.daily"]
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "version: 1", "version: true", 1
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="manifest contract is invalid"):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave="pilot",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+
+
+def test_main_wave_defers_registry_and_schedule_parsing_to_bound_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtime_dataset_registry",
+        lambda: pytest.fail("wave main must not preparse a detached registry"),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_schedule",
+        lambda *args, **kwargs: pytest.fail(
+            "wave main must not preparse a detached schedule"
+        ),
+    )
+
+    def run(**kwargs: object) -> scheduler.ScheduleResult:
+        assert kwargs["registry"] is None
+        assert kwargs["schedule"] is None
+        return scheduler.ScheduleResult(0, "plan", (), ())
+
+    monkeypatch.setattr(scheduler, "run_schedule", run)
+
+    code = scheduler.main(
+        [
+            "--activation-wave",
+            "pilot_existing",
+            "--lock-path",
+            str(tmp_path / "schedule.lock"),
+        ]
+    )
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["mode"] == "plan"

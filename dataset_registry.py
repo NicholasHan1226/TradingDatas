@@ -7,7 +7,9 @@ receipts and is deliberately rejected from this YAML authority.
 
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass, field as dataclass_field
+from datetime import date, datetime, time, timedelta
 import math
 import os
 from pathlib import Path
@@ -230,6 +232,17 @@ _REQUEST_WINDOW_FORMATS = frozenset(
         "yyyyww",
     }
 )
+_RUNTIME_REQUEST_WINDOW_FORMATS = frozenset(
+    {
+        "local_datetime_seconds",
+        "yyyy_qn",
+        "yyyymm",
+        "yyyymmdd",
+        "yyyyww",
+    }
+)
+_MAX_REQUEST_WINDOW_VALUE_BYTES = 1024
+_SAFE_REQUEST_WINDOW_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 _PROBE_STATES = frozenset({"executable", "blocked"})
 _INGEST_CONTRACT_STATES = frozenset({"ready", "blocked"})
 _PROBE_BLOCK_REASONS = frozenset(
@@ -433,6 +446,178 @@ class RequestWindowPolicy:
     range_start_key: str
     range_end_key: str
     max_span_days: int
+
+
+@dataclass(frozen=True)
+class DecodedRequestWindowValue:
+    """Canonical comparable anchor and covered interval for one window value."""
+
+    anchor: datetime
+    interval_start: datetime
+    interval_end: datetime
+
+
+def _request_window_value_error(format_name: str) -> ValueError:
+    return ValueError(f"request_window {format_name} value is invalid")
+
+
+def decode_request_window_value(
+    value: object,
+    format_name: str,
+) -> DecodedRequestWindowValue:
+    """Decode one formally supported provider-neutral request-window value."""
+
+    if format_name not in _RUNTIME_REQUEST_WINDOW_FORMATS:
+        raise ValueError(
+            f"runtime request_window format is unsupported: {format_name}"
+        )
+    if type(value) is not str:
+        raise _request_window_value_error(format_name)
+    try:
+        if format_name == "yyyymmdd":
+            if re.fullmatch(r"[0-9]{8}", value) is None:
+                raise _request_window_value_error(format_name)
+            start = datetime.strptime(value, "%Y%m%d")
+            if start.strftime("%Y%m%d") != value:
+                raise _request_window_value_error(format_name)
+            end = start + timedelta(days=1, seconds=-1)
+        elif format_name == "yyyymm":
+            if re.fullmatch(r"[0-9]{6}", value) is None:
+                raise _request_window_value_error(format_name)
+            start = datetime.strptime(value, "%Y%m")
+            if start.strftime("%Y%m") != value:
+                raise _request_window_value_error(format_name)
+            end = datetime(
+                start.year,
+                start.month,
+                monthrange(start.year, start.month)[1],
+                23,
+                59,
+                59,
+            )
+        elif format_name == "yyyy_qn":
+            match = re.fullmatch(r"([0-9]{4})Q([1-4])", value)
+            if match is None:
+                raise _request_window_value_error(format_name)
+            year, quarter = (int(item) for item in match.groups())
+            start = datetime(year, 1 + (quarter - 1) * 3, 1)
+            end_month = quarter * 3
+            end = datetime(
+                year,
+                end_month,
+                monthrange(year, end_month)[1],
+                23,
+                59,
+                59,
+            )
+        elif format_name == "yyyyww":
+            match = re.fullmatch(r"([0-9]{4})([0-9]{2})", value)
+            if match is None:
+                raise _request_window_value_error(format_name)
+            iso_year, iso_week = (int(item) for item in match.groups())
+            first = date.fromisocalendar(iso_year, iso_week, 1)
+            start = datetime.combine(first, time.min)
+            if start.strftime("%G%V") != value:
+                raise _request_window_value_error(format_name)
+            end = start + timedelta(days=7, seconds=-1)
+        else:
+            if re.fullmatch(
+                r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",
+                value,
+            ) is None:
+                raise _request_window_value_error(format_name)
+            start = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            if start.strftime("%Y-%m-%d %H:%M:%S") != value:
+                raise _request_window_value_error(format_name)
+            end = start
+    except (OverflowError, ValueError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith("request_window "):
+            raise
+        raise _request_window_value_error(format_name) from exc
+    return DecodedRequestWindowValue(start, start, end)
+
+
+def encode_request_window_value(
+    value: date | datetime,
+    format_name: str,
+) -> str:
+    """Encode a trusted partition anchor using a runtime window format."""
+
+    if format_name not in _RUNTIME_REQUEST_WINDOW_FORMATS:
+        raise ValueError(
+            f"runtime request_window format is unsupported: {format_name}"
+        )
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("request_window datetime anchor must be timezone-aware")
+        anchor = value
+    elif type(value) is date:
+        anchor = datetime.combine(value, time.min)
+    else:
+        raise TypeError("request_window anchor must be a date or datetime")
+    if format_name == "yyyymmdd":
+        return anchor.strftime("%Y%m%d")
+    if format_name == "yyyymm":
+        return anchor.strftime("%Y%m")
+    if format_name == "yyyy_qn":
+        return f"{anchor.year:04d}Q{((anchor.month - 1) // 3) + 1}"
+    if format_name == "yyyyww":
+        return anchor.strftime("%G%V")
+    return anchor.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalize_request_window(
+    policy: RequestWindowPolicy,
+    request_window: Mapping[object, object],
+) -> dict[str, str]:
+    """Strictly validate and canonicalize one complete request window."""
+
+    if not isinstance(policy, RequestWindowPolicy):
+        raise TypeError("request_window policy is invalid")
+    if not isinstance(request_window, Mapping):
+        raise TypeError("request_window must be a mapping")
+    window: dict[str, str] = {}
+    for key, value in request_window.items():
+        if type(key) is not str or _SAFE_REQUEST_WINDOW_KEY.fullmatch(key) is None:
+            raise ValueError("request_window keys must use the safe identifier grammar")
+        if type(value) is not str or not value:
+            raise ValueError("request_window values must be non-empty strings")
+        if len(value.encode("utf-8")) > _MAX_REQUEST_WINDOW_VALUE_BYTES:
+            raise ValueError("request_window value exceeds the public string budget")
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("request_window values must not contain control characters")
+        window[key] = value
+    if set(window) != set(policy.required_keys):
+        raise ValueError(
+            "request_window keys must exactly match the registry window policy"
+        )
+    decoded = {
+        key: decode_request_window_value(window[key], policy.formats[key])
+        for key in policy.required_keys
+    }
+    start = decoded[policy.range_start_key].anchor
+    end = decoded[policy.range_end_key].anchor
+    if start > end:
+        raise ValueError("request_window range start must not exceed range end")
+    if (end.date() - start.date()).days + 1 > policy.max_span_days:
+        raise ValueError("request_window range exceeds max_span_days")
+    return dict(sorted(window.items()))
+
+
+def request_window_covered_dates(
+    policy: RequestWindowPolicy,
+    request_window: Mapping[object, object],
+) -> tuple[date, ...]:
+    """Return every calendar date covered by one canonical request window."""
+
+    window = normalize_request_window(policy, request_window)
+    start = decode_request_window_value(
+        window[policy.range_start_key], policy.formats[policy.range_start_key]
+    ).interval_start.date()
+    end = decode_request_window_value(
+        window[policy.range_end_key], policy.formats[policy.range_end_key]
+    ).interval_end.date()
+    return tuple(start + timedelta(days=index) for index in range((end - start).days + 1))
 
 
 @dataclass(frozen=True)
@@ -1331,11 +1516,11 @@ def _load_binding(
                 f"{path} activation_state=active requires executable/ready request contract"
             )
         if request_window_policy is not None and any(
-            format_name != "yyyymmdd"
+            format_name not in _RUNTIME_REQUEST_WINDOW_FORMATS
             for format_name in request_window_policy.formats.values()
         ):
             raise ValueError(
-                f"{path} activation_state=active requires yyyymmdd request windows"
+                f"{path} activation_state=active requires a runtime request_window format"
             )
     return ProviderBinding(
         provider=provider,

@@ -15,6 +15,7 @@ import argparse
 from copy import deepcopy
 from datetime import datetime
 import hashlib
+import json
 import math
 import os
 from pathlib import Path, PurePosixPath
@@ -34,6 +35,11 @@ DEFAULT_UPSTREAM_CONTRACTS_PATH = (
 )
 DEFAULT_OBSERVATIONS_PATH = (
     REPOSITORY_ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+)
+FORMAL_COMPILATION_MODE = "formal"
+PREACTIVATION_COMPILATION_MODE = "preactivation_candidate"
+COMPILATION_MODES = frozenset(
+    {FORMAL_COMPILATION_MODE, PREACTIVATION_COMPILATION_MODE}
 )
 
 PROVIDER = "tushare"
@@ -170,6 +176,11 @@ _CLASSIFICATION_KEYS = frozenset(
 )
 _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "retired"})
 _ACTIVATION_STATES = frozenset({"active", "paused"})
+_FRESH_ACTIVATION_STATES = frozenset({"success", "valid_empty"})
+_PROBE_RESULT_STATES = _FRESH_ACTIVATION_STATES | {
+    "provider_failed_unclassified",
+    "field_contract_mismatch",
+}
 _PROBE_STATES = frozenset({"executable", "blocked"})
 _INGEST_CONTRACT_STATES = frozenset({"ready", "blocked"})
 _PROBE_BLOCK_REASONS = frozenset(
@@ -261,6 +272,103 @@ _OVERRIDE_KEYS = frozenset(
         "evidence",
     }
 )
+_ACTIVATION_EVIDENCE_ROOT_KEYS = frozenset(
+    {
+        "version",
+        "provider",
+        "transport_service",
+        "evidence",
+        "seed_authorities",
+        "plan_projection",
+        "activation_projection",
+        "results",
+    }
+)
+_ACTIVATION_EVIDENCE_KEYS = frozenset(
+    {
+        "schema_version",
+        "source_sha256",
+        "bindings_sha256",
+        "promotion_stage",
+        "release_commit",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "request_observations_sha256",
+        "transport_observations_sha256",
+        "planned_api_names_sha256",
+        "executed_api_names_sha256",
+        "results_sha256",
+        "started_at",
+        "finished_at",
+        "run_clock",
+        "scheduled_partition",
+        "scope",
+        "interface_count",
+        "coverage",
+        "summary",
+        "transport",
+        "concurrency",
+        "rate_budget",
+        "response_budget",
+        "retries",
+        "production_ready",
+        "raw_data_persisted",
+        "credential_persisted",
+        "request_values_persisted",
+    }
+)
+_PROBE_RESULT_KEYS = frozenset(
+    {
+        "api_name",
+        "state",
+        "provider_class",
+        "row_count",
+        "response_bytes",
+        "response_sha256",
+        "fields",
+        "elapsed_ms",
+        "result_sha256",
+    }
+)
+_SEED_AUTHORITY_KEYS = frozenset(
+    {"dataset_id", "field", "schema_version", "receipt_id", "data_through"}
+)
+_COUNT_HASH_KEYS = frozenset(
+    {"ingest_ready_count", "ingest_ready_api_names_sha256"}
+)
+_ACTIVATION_PROJECTION_KEYS = frozenset(
+    {
+        "candidate_count",
+        "candidate_api_names_sha256",
+        "active_count",
+        "active_api_names_sha256",
+        "paused_count",
+        "paused_api_names_sha256",
+    }
+)
+_COVERAGE_KEYS = frozenset(
+    {"blocked", "executable", "executed", "planned", "selected"}
+)
+_PROBE_SUMMARY_KEYS = frozenset(
+    {"success", "valid_empty", "provider_failed_unclassified", "field_contract_mismatch"}
+)
+_TRANSPORT_KEYS = frozenset({"endpoint_host", "scheme"})
+_RATE_BUDGET_KEYS = frozenset(
+    {"authorizations", "max_requests", "window_seconds"}
+)
+_AUTHORIZATION_KEYS = frozenset(
+    {
+        "active_after_last",
+        "active_before_first",
+        "authorized",
+        "first_authorized_at_epoch",
+        "last_authorized_at_epoch",
+    }
+)
+_RESPONSE_BUDGET_KEYS = frozenset(
+    {"observed_bytes", "per_call_bytes", "per_run_bytes"}
+)
+_RECEIPT_ID_PATTERN = re.compile(r"receipt:[0-9a-f]{64}")
 
 
 def _mapping(value: object, label: str) -> dict[str, Any]:
@@ -306,6 +414,54 @@ def _required_positive_int(value: object, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{label} must be a positive integer")
     return value
+
+
+def _required_non_negative_int(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative integer")
+    return value
+
+
+def _required_finite_number(value: object, label: str) -> int | float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a finite number")
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number")
+    return value
+
+
+def _required_sha256(value: object, label: str) -> str:
+    digest = _required_text(value, label)
+    if _HASH_PATTERN.fullmatch(digest) is None:
+        raise ValueError(f"{label} must be SHA-256")
+    return digest
+
+
+def _required_rfc3339(value: object, label: str) -> tuple[str, datetime]:
+    text = _required_text(value, label)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be RFC3339") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must include timezone")
+    return text, parsed
+
+
+def _api_names_sha256(api_names: Sequence[str] | set[str]) -> str:
+    return hashlib.sha256(
+        ("\n".join(sorted(api_names)) + "\n").encode("utf-8")
+    ).hexdigest()
+
+
+def _canonical_json_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _string_list(value: object, label: str, *, allow_empty: bool = False) -> list[str]:
@@ -607,6 +763,572 @@ def _observation_index(
             "schema_missing_fields": list(schema_fields.get(api_name, [])),
         }
     return result
+
+
+def _activation_evidence_index(
+    document: Mapping[str, Any] | None,
+    contracts: Sequence[Mapping[str, Any]],
+    observations_document: Mapping[str, Any] | None,
+    observations: Mapping[tuple[str, str], Mapping[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    if document is None:
+        return {}
+    if observations_document is None or not observations:
+        raise ValueError("HTTPS activation evidence requires QuickSync observations")
+
+    root = _mapping(deepcopy(document), "HTTPS activation evidence")
+    _reject_keys(
+        root,
+        _ACTIVATION_EVIDENCE_ROOT_KEYS,
+        "HTTPS activation evidence",
+    )
+    if type(root["version"]) is not int or root["version"] != 1:
+        raise ValueError("HTTPS activation evidence.version must be integer 1")
+    if _required_text(root["provider"], "HTTPS activation evidence.provider") != PROVIDER:
+        raise ValueError(f"HTTPS activation evidence.provider must be {PROVIDER}")
+    if (
+        _required_text(
+            root["transport_service"],
+            "HTTPS activation evidence.transport_service",
+        )
+        != "quicksync"
+    ):
+        raise ValueError(
+            "HTTPS activation evidence.transport_service must be quicksync"
+        )
+
+    evidence = _mapping(root["evidence"], "HTTPS activation evidence.evidence")
+    _reject_keys(
+        evidence,
+        _ACTIVATION_EVIDENCE_KEYS,
+        "HTTPS activation evidence.evidence",
+    )
+    if (
+        _required_text(
+            evidence["schema_version"],
+            "HTTPS activation evidence.evidence.schema_version",
+        )
+        != "tradingdatas.quicksync.https_probe_evidence.v1"
+    ):
+        raise ValueError("HTTPS activation evidence has unsupported source schema")
+    if (
+        _required_text(
+            evidence["promotion_stage"],
+            "HTTPS activation evidence.evidence.promotion_stage",
+        )
+        != "preactivation_candidate"
+    ):
+        raise ValueError(
+            "HTTPS activation evidence must remain a preactivation candidate"
+        )
+    for key in (
+        "source_sha256",
+        "bindings_sha256",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "request_observations_sha256",
+        "transport_observations_sha256",
+        "planned_api_names_sha256",
+        "executed_api_names_sha256",
+        "results_sha256",
+    ):
+        _required_sha256(
+            evidence[key], f"HTTPS activation evidence.evidence.{key}"
+        )
+    release_commit = _required_text(
+        evidence["release_commit"],
+        "HTTPS activation evidence.evidence.release_commit",
+    )
+    if _COMMIT_PATTERN.fullmatch(release_commit) is None:
+        raise ValueError(
+            "HTTPS activation evidence.evidence.release_commit must be a commit"
+        )
+
+    started_at, started = _required_rfc3339(
+        evidence["started_at"], "HTTPS activation evidence.evidence.started_at"
+    )
+    finished_at, finished = _required_rfc3339(
+        evidence["finished_at"], "HTTPS activation evidence.evidence.finished_at"
+    )
+    run_clock, run_at = _required_rfc3339(
+        evidence["run_clock"], "HTTPS activation evidence.evidence.run_clock"
+    )
+    if not run_at <= started <= finished:
+        raise ValueError("HTTPS activation evidence timestamps are not monotonic")
+    scheduled_partition = _required_text(
+        evidence["scheduled_partition"],
+        "HTTPS activation evidence.evidence.scheduled_partition",
+    )
+    if (
+        re.fullmatch(r"[0-9]{8}", scheduled_partition) is None
+        or scheduled_partition != run_at.strftime("%Y%m%d")
+    ):
+        raise ValueError(
+            "HTTPS activation evidence scheduled_partition must match run_clock"
+        )
+    binding_keys = (
+        "source_sha256",
+        "release_commit",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "request_observations_sha256",
+        "transport_observations_sha256",
+        "planned_api_names_sha256",
+        "executed_api_names_sha256",
+        "run_clock",
+        "scheduled_partition",
+        "promotion_stage",
+    )
+    if evidence["bindings_sha256"] != _canonical_json_sha256(
+        {key: evidence[key] for key in binding_keys}
+    ):
+        raise ValueError("HTTPS activation evidence bindings_sha256 drifted")
+    if _required_text(evidence["scope"], "HTTPS activation evidence.evidence.scope") != "gaps":
+        raise ValueError("HTTPS activation evidence.evidence.scope must be gaps")
+
+    by_api = {contract["api_name"]: contract for contract in contracts}
+    by_dataset = {contract["dataset_id"]: contract for contract in contracts}
+    planned_api_names = set(by_api)
+    if evidence["planned_api_names_sha256"] != _api_names_sha256(planned_api_names):
+        raise ValueError("HTTPS activation evidence planned API set does not match")
+    stable_observations = yaml.safe_dump(
+        dict(observations_document),
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=100,
+    ).encode("utf-8")
+    if evidence["transport_observations_sha256"] != hashlib.sha256(
+        stable_observations
+    ).hexdigest():
+        raise ValueError("HTTPS activation evidence transport observations drifted")
+
+    interface_count = _required_positive_int(
+        evidence["interface_count"],
+        "HTTPS activation evidence.evidence.interface_count",
+    )
+    coverage = _mapping(
+        evidence["coverage"], "HTTPS activation evidence.evidence.coverage"
+    )
+    _reject_keys(
+        coverage,
+        _COVERAGE_KEYS,
+        "HTTPS activation evidence.evidence.coverage",
+    )
+    coverage_counts = {
+        key: _required_non_negative_int(
+            coverage[key], f"HTTPS activation evidence.evidence.coverage.{key}"
+        )
+        for key in _COVERAGE_KEYS
+    }
+    if (
+        coverage_counts["planned"] != len(contracts)
+        or coverage_counts["executable"] != interface_count
+        or coverage_counts["selected"] != interface_count
+        or coverage_counts["executed"] != interface_count
+        or coverage_counts["blocked"] != len(contracts) - interface_count
+    ):
+        raise ValueError("HTTPS activation evidence coverage is inconsistent")
+
+    summary = _mapping(
+        evidence["summary"], "HTTPS activation evidence.evidence.summary"
+    )
+    _reject_keys(
+        summary,
+        _PROBE_SUMMARY_KEYS,
+        "HTTPS activation evidence.evidence.summary",
+    )
+    expected_summary = {
+        key: _required_non_negative_int(
+            summary[key], f"HTTPS activation evidence.evidence.summary.{key}"
+        )
+        for key in _PROBE_SUMMARY_KEYS
+    }
+    if sum(expected_summary.values()) != interface_count:
+        raise ValueError("HTTPS activation evidence summary is inconsistent")
+
+    transport = _mapping(
+        evidence["transport"], "HTTPS activation evidence.evidence.transport"
+    )
+    _reject_keys(
+        transport,
+        _TRANSPORT_KEYS,
+        "HTTPS activation evidence.evidence.transport",
+    )
+    if (
+        _required_text(
+            transport["scheme"],
+            "HTTPS activation evidence.evidence.transport.scheme",
+        )
+        != "https"
+    ):
+        raise ValueError("HTTPS activation evidence requires HTTPS transport")
+    if (
+        _required_text(
+            transport["endpoint_host"],
+            "HTTPS activation evidence.evidence.transport.endpoint_host",
+        )
+        != "api.quicksync.cn"
+    ):
+        raise ValueError("HTTPS activation evidence endpoint host is not QuickSync")
+    _required_positive_int(
+        evidence["concurrency"],
+        "HTTPS activation evidence.evidence.concurrency",
+    )
+    if _required_non_negative_int(
+        evidence["retries"], "HTTPS activation evidence.evidence.retries"
+    ) != 0:
+        raise ValueError("HTTPS activation evidence retries must be zero")
+    for key in (
+        "production_ready",
+        "raw_data_persisted",
+        "credential_persisted",
+        "request_values_persisted",
+    ):
+        if _required_bool(
+            evidence[key], f"HTTPS activation evidence.evidence.{key}"
+        ):
+            raise ValueError(
+                f"HTTPS activation evidence.evidence.{key} must be false"
+            )
+
+    rate_budget = _mapping(
+        evidence["rate_budget"],
+        "HTTPS activation evidence.evidence.rate_budget",
+    )
+    _reject_keys(
+        rate_budget,
+        _RATE_BUDGET_KEYS,
+        "HTTPS activation evidence.evidence.rate_budget",
+    )
+    max_requests = _required_positive_int(
+        rate_budget["max_requests"],
+        "HTTPS activation evidence.evidence.rate_budget.max_requests",
+    )
+    _required_positive_int(
+        rate_budget["window_seconds"],
+        "HTTPS activation evidence.evidence.rate_budget.window_seconds",
+    )
+    authorizations = _mapping(
+        rate_budget["authorizations"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations",
+    )
+    _reject_keys(
+        authorizations,
+        _AUTHORIZATION_KEYS,
+        "HTTPS activation evidence.evidence.rate_budget.authorizations",
+    )
+    active_before = _required_non_negative_int(
+        authorizations["active_before_first"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations.active_before_first",
+    )
+    active_after = _required_non_negative_int(
+        authorizations["active_after_last"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations.active_after_last",
+    )
+    authorized = _required_non_negative_int(
+        authorizations["authorized"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations.authorized",
+    )
+    first_authorized = _required_finite_number(
+        authorizations["first_authorized_at_epoch"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations.first_authorized_at_epoch",
+    )
+    last_authorized = _required_finite_number(
+        authorizations["last_authorized_at_epoch"],
+        "HTTPS activation evidence.evidence.rate_budget.authorizations.last_authorized_at_epoch",
+    )
+    if (
+        authorized != interface_count
+        or active_before > max_requests
+        or active_after > max_requests
+        or first_authorized > last_authorized
+    ):
+        raise ValueError("HTTPS activation evidence rate budget is inconsistent")
+
+    response_budget = _mapping(
+        evidence["response_budget"],
+        "HTTPS activation evidence.evidence.response_budget",
+    )
+    _reject_keys(
+        response_budget,
+        _RESPONSE_BUDGET_KEYS,
+        "HTTPS activation evidence.evidence.response_budget",
+    )
+    observed_bytes = _required_non_negative_int(
+        response_budget["observed_bytes"],
+        "HTTPS activation evidence.evidence.response_budget.observed_bytes",
+    )
+    per_call_bytes = _required_positive_int(
+        response_budget["per_call_bytes"],
+        "HTTPS activation evidence.evidence.response_budget.per_call_bytes",
+    )
+    per_run_bytes = _required_positive_int(
+        response_budget["per_run_bytes"],
+        "HTTPS activation evidence.evidence.response_budget.per_run_bytes",
+    )
+    if observed_bytes > per_run_bytes:
+        raise ValueError("HTTPS activation evidence exceeded response run budget")
+
+    raw_results = _sequence(root["results"], "HTTPS activation evidence.results")
+    if len(raw_results) != interface_count:
+        raise ValueError("HTTPS activation evidence result count is inconsistent")
+    result_entries: list[dict[str, Any]] = []
+    result_by_api: dict[str, dict[str, Any]] = {}
+    for index, raw_result in enumerate(raw_results):
+        label = f"HTTPS activation evidence.results[{index}]"
+        result = _mapping(raw_result, label)
+        _reject_keys(result, _PROBE_RESULT_KEYS, label)
+        api_name = _required_text(result["api_name"], f"{label}.api_name")
+        if api_name not in by_api:
+            raise ValueError(f"{label}.api_name is not in the contract bundle")
+        if api_name in result_by_api:
+            raise ValueError("HTTPS activation evidence results contain duplicate API")
+        state = _required_text(result["state"], f"{label}.state")
+        if state not in _PROBE_RESULT_STATES:
+            raise ValueError(f"{label}.state is unsupported")
+        source_result = {
+            "api_name": api_name,
+            "state": state,
+            "provider_class": _required_text(
+                result["provider_class"], f"{label}.provider_class"
+            ),
+            "row_count": _required_non_negative_int(
+                result["row_count"], f"{label}.row_count"
+            ),
+            "response_bytes": _required_non_negative_int(
+                result["response_bytes"], f"{label}.response_bytes"
+            ),
+            "response_sha256": _required_sha256(
+                result["response_sha256"], f"{label}.response_sha256"
+            ),
+            "fields": _string_list(
+                result["fields"], f"{label}.fields", allow_empty=True
+            ),
+            "elapsed_ms": _required_finite_number(
+                result["elapsed_ms"], f"{label}.elapsed_ms"
+            ),
+        }
+        if source_result["elapsed_ms"] < 0:
+            raise ValueError(f"{label}.elapsed_ms must be non-negative")
+        if source_result["response_bytes"] > per_call_bytes:
+            raise ValueError(f"{label} exceeded response call budget")
+        if (
+            _required_sha256(result["result_sha256"], f"{label}.result_sha256")
+            != _canonical_json_sha256(source_result)
+        ):
+            raise ValueError(f"{label}.result_sha256 does not match result")
+        result_entries.append(source_result)
+        result_by_api[api_name] = source_result
+    result_api_names = list(result_by_api)
+    if result_api_names != sorted(result_api_names):
+        raise ValueError("HTTPS activation evidence results must be sorted")
+    if evidence["executed_api_names_sha256"] != _api_names_sha256(result_api_names):
+        raise ValueError("HTTPS activation evidence executed API set drifted")
+    if evidence["results_sha256"] != _canonical_json_sha256(result_entries):
+        raise ValueError("HTTPS activation evidence results projection drifted")
+    actual_summary = {state: 0 for state in _PROBE_RESULT_STATES}
+    for result in result_entries:
+        actual_summary[result["state"]] += 1
+    if actual_summary != expected_summary:
+        raise ValueError("HTTPS activation evidence result states do not match summary")
+    if sum(result["response_bytes"] for result in result_entries) != observed_bytes:
+        raise ValueError("HTTPS activation evidence response bytes do not match budget")
+
+    raw_seed_authorities = _sequence(
+        root["seed_authorities"], "HTTPS activation evidence.seed_authorities"
+    )
+    seed_keys: set[tuple[str, str, str]] = set()
+    seed_order: list[tuple[str, str]] = []
+    for index, raw_seed in enumerate(raw_seed_authorities):
+        label = f"HTTPS activation evidence.seed_authorities[{index}]"
+        seed = _mapping(raw_seed, label)
+        _reject_keys(seed, _SEED_AUTHORITY_KEYS, label)
+        dataset_id = _required_text(seed["dataset_id"], f"{label}.dataset_id")
+        field = _required_text(seed["field"], f"{label}.field")
+        schema_version = _required_text(
+            seed["schema_version"], f"{label}.schema_version"
+        )
+        source = by_dataset.get(dataset_id)
+        if source is None:
+            raise ValueError(f"{label}.dataset_id is not in the contract bundle")
+        if schema_version != source["schema_version"]:
+            raise ValueError(f"{label}.schema_version does not match source dataset")
+        if field not in {item["name"] for item in source["fields"]}:
+            raise ValueError(f"{label}.field does not match source dataset")
+        receipt_id = _required_text(seed["receipt_id"], f"{label}.receipt_id")
+        if _RECEIPT_ID_PATTERN.fullmatch(receipt_id) is None:
+            raise ValueError(f"{label}.receipt_id is invalid")
+        _, data_through = _required_rfc3339(
+            seed["data_through"], f"{label}.data_through"
+        )
+        if data_through > run_at:
+            raise ValueError(f"{label}.data_through is in the future")
+        seed_key = (dataset_id, field, schema_version)
+        if seed_key in seed_keys:
+            raise ValueError("HTTPS activation evidence seed authorities duplicate")
+        seed_keys.add(seed_key)
+        seed_order.append((dataset_id, field))
+    if seed_order != sorted(seed_order):
+        raise ValueError("HTTPS activation evidence seed authorities must be sorted")
+
+    dependency_resolved: set[str] = set()
+    for api_name, contract in by_api.items():
+        if set(contract["probe_block_reasons"]) != {
+            "dependency_seed_receipt_unresolved"
+        } or set(contract["ingest_contract_block_reasons"]) != {
+            "dependency_seed_receipt_unresolved"
+        }:
+            continue
+        fanout = contract["fanout"]
+        if fanout["strategy"] != "dataset_field":
+            continue
+        source = by_dataset.get(fanout["source_dataset_id"])
+        if source is None:
+            continue
+        seed_key = (
+            fanout["source_dataset_id"],
+            fanout["source_field"],
+            source["schema_version"],
+        )
+        if seed_key in seed_keys:
+            source_result = result_by_api.get(source["api_name"])
+            if source_result is None or source_result["state"] not in _FRESH_ACTIVATION_STATES:
+                raise ValueError(
+                    "HTTPS activation evidence seed producer is not fresh eligible"
+                )
+            dependency_resolved.add(api_name)
+
+    executable_api_names = {
+        contract["api_name"]
+        for contract in contracts
+        if contract["probe_state"] == "executable"
+    } | dependency_resolved
+    if set(result_by_api) != executable_api_names:
+        raise ValueError("HTTPS activation evidence executable API set is not closed")
+    ingest_ready_api_names = {
+        api_name
+        for api_name in result_by_api
+        if by_api[api_name]["ingest_contract_state"] == "ready"
+        or api_name in dependency_resolved
+    }
+    plan_projection = _mapping(
+        root["plan_projection"], "HTTPS activation evidence.plan_projection"
+    )
+    _reject_keys(
+        plan_projection,
+        _COUNT_HASH_KEYS,
+        "HTTPS activation evidence.plan_projection",
+    )
+    if _required_non_negative_int(
+        plan_projection["ingest_ready_count"],
+        "HTTPS activation evidence.plan_projection.ingest_ready_count",
+    ) != len(ingest_ready_api_names):
+        raise ValueError("HTTPS activation evidence ingest-ready count drifted")
+    if _required_sha256(
+        plan_projection["ingest_ready_api_names_sha256"],
+        "HTTPS activation evidence.plan_projection.ingest_ready_api_names_sha256",
+    ) != _api_names_sha256(ingest_ready_api_names):
+        raise ValueError("HTTPS activation evidence ingest-ready API set drifted")
+
+    fresh_api_names = {
+        api_name
+        for api_name, result in result_by_api.items()
+        if result["state"] in _FRESH_ACTIVATION_STATES
+    }
+    candidate_api_names = fresh_api_names & ingest_ready_api_names
+    active_api_names = {
+        api_name
+        for api_name in candidate_api_names
+        if (
+            by_api[api_name]["request_window_policy"] is None
+            or set(by_api[api_name]["request_window_policy"]["formats"].values())
+            <= {"yyyymmdd"}
+        )
+    }
+    paused_api_names = planned_api_names - active_api_names
+    activation_projection = _mapping(
+        root["activation_projection"],
+        "HTTPS activation evidence.activation_projection",
+    )
+    _reject_keys(
+        activation_projection,
+        _ACTIVATION_PROJECTION_KEYS,
+        "HTTPS activation evidence.activation_projection",
+    )
+    if (
+        _required_non_negative_int(
+            activation_projection["candidate_count"],
+            "HTTPS activation evidence.activation_projection.candidate_count",
+        )
+        != len(candidate_api_names)
+        or _required_sha256(
+            activation_projection["candidate_api_names_sha256"],
+            "HTTPS activation evidence.activation_projection.candidate_api_names_sha256",
+        )
+        != _api_names_sha256(candidate_api_names)
+        or
+        _required_non_negative_int(
+            activation_projection["active_count"],
+            "HTTPS activation evidence.activation_projection.active_count",
+        )
+        != len(active_api_names)
+        or _required_non_negative_int(
+            activation_projection["paused_count"],
+            "HTTPS activation evidence.activation_projection.paused_count",
+        )
+        != len(paused_api_names)
+        or _required_sha256(
+            activation_projection["active_api_names_sha256"],
+            "HTTPS activation evidence.activation_projection.active_api_names_sha256",
+        )
+        != _api_names_sha256(active_api_names)
+        or _required_sha256(
+            activation_projection["paused_api_names_sha256"],
+            "HTTPS activation evidence.activation_projection.paused_api_names_sha256",
+        )
+        != _api_names_sha256(paused_api_names)
+    ):
+        raise ValueError("HTTPS activation evidence activation projection drifted")
+
+    previous_active = {
+        contract["api_name"]
+        for contract in contracts
+        if observations[(contract["dataset_id"], contract["provider"])][
+            "activation_state"
+        ]
+        == "active"
+    }
+    if not previous_active <= active_api_names:
+        raise ValueError("HTTPS activation evidence does not preserve fresh prior active set")
+
+    projected: dict[tuple[str, str], dict[str, Any]] = {}
+    for contract in contracts:
+        api_name = contract["api_name"]
+        key = (contract["dataset_id"], contract["provider"])
+        baseline = observations[key]
+        resolved = api_name in dependency_resolved
+        projected[key] = {
+            **baseline,
+            "entitlement_state": (
+                "active" if api_name in active_api_names else baseline["entitlement_state"]
+            ),
+            "activation_state": "active" if api_name in active_api_names else "paused",
+            "effective_probe_state": (
+                "executable" if resolved else contract["probe_state"]
+            ),
+            "effective_probe_block_reasons": (
+                [] if resolved else list(contract["probe_block_reasons"])
+            ),
+            "effective_ingest_contract_state": (
+                "ready" if resolved else contract["ingest_contract_state"]
+            ),
+            "effective_ingest_contract_block_reasons": (
+                [] if resolved else list(contract["ingest_contract_block_reasons"])
+            ),
+        }
+    del started_at, finished_at, run_clock
+    return projected
 
 
 def _fields(raw: object, label: str) -> list[dict[str, Any]]:
@@ -1345,12 +2067,43 @@ def _apply_observed_schema_subset(
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
+    probe_state = (
+        contract["probe_state"]
+        if activation is None
+        else activation.get("effective_probe_state", contract["probe_state"])
+    )
+    probe_block_reasons = (
+        list(contract["probe_block_reasons"])
+        if activation is None
+        else list(
+            activation.get(
+                "effective_probe_block_reasons", contract["probe_block_reasons"]
+            )
+        )
+    )
+    ingest_contract_state = (
+        contract["ingest_contract_state"]
+        if activation is None
+        else activation.get(
+            "effective_ingest_contract_state", contract["ingest_contract_state"]
+        )
+    )
+    ingest_contract_block_reasons = (
+        list(contract["ingest_contract_block_reasons"])
+        if activation is None
+        else list(
+            activation.get(
+                "effective_ingest_contract_block_reasons",
+                contract["ingest_contract_block_reasons"],
+            )
+        )
+    )
     if activation is not None and activation["activation_state"] == "active":
-        if contract["probe_state"] != "executable":
+        if probe_state != "executable":
             raise ValueError(
                 f"{contract['api_name']} cannot activate while probe_state is blocked"
             )
-        if contract["ingest_contract_state"] != "ready":
+        if ingest_contract_state != "ready":
             raise ValueError(
                 f"{contract['api_name']} cannot activate while ingest contract is blocked"
             )
@@ -1365,12 +2118,10 @@ def _compiled_dataset(
         "activation_state": "paused"
         if activation is None
         else activation["activation_state"],
-        "probe_state": contract["probe_state"],
-        "probe_block_reasons": list(contract["probe_block_reasons"]),
-        "ingest_contract_state": contract["ingest_contract_state"],
-        "ingest_contract_block_reasons": list(
-            contract["ingest_contract_block_reasons"]
-        ),
+        "probe_state": probe_state,
+        "probe_block_reasons": probe_block_reasons,
+        "ingest_contract_state": ingest_contract_state,
+        "ingest_contract_block_reasons": ingest_contract_block_reasons,
         "target_tables": [PROVIDER_NATIVE_TABLE],
         "input_fields": deepcopy(contract["input_fields"]),
         "request_shape": contract["request_shape"],
@@ -1437,9 +2188,19 @@ def compile_provider_native_registry(
     upstream_contracts: Mapping[str, Any],
     *,
     observations_document: Mapping[str, Any] | None = None,
+    activation_evidence_document: Mapping[str, Any] | None = None,
     query_defaults: Mapping[str, Any] | None = None,
+    compilation_mode: str = FORMAL_COMPILATION_MODE,
 ) -> dict[str, Any]:
     """Return the deterministic single-authority registry document."""
+
+    if compilation_mode not in COMPILATION_MODES:
+        raise ValueError(f"unsupported compilation mode: {compilation_mode!r}")
+    if (
+        compilation_mode == PREACTIVATION_COMPILATION_MODE
+        and activation_evidence_document is None
+    ):
+        raise ValueError("preactivation candidate mode requires activation evidence")
 
     bundle = load_upstream_contract_bundle(upstream_contracts)
     missing_input_contracts = [
@@ -1453,6 +2214,21 @@ def compile_provider_native_registry(
             f"{missing_input_contracts[0]}"
         )
     observations = _observation_index(observations_document, bundle["contracts"])
+    activation_evidence = (
+        _activation_evidence_index(
+            activation_evidence_document,
+            bundle["contracts"],
+            observations_document,
+            observations,
+        )
+        if compilation_mode == PREACTIVATION_COMPILATION_MODE
+        else {}
+    )
+    activation_index = (
+        activation_evidence
+        if compilation_mode == PREACTIVATION_COMPILATION_MODE
+        else observations
+    )
     return {
         "version": 1,
         "query_defaults": _query_defaults(query_defaults),
@@ -1462,7 +2238,10 @@ def compile_provider_native_registry(
                     contract,
                     observations.get((contract["dataset_id"], contract["provider"])),
                 ),
-                observations.get((contract["dataset_id"], contract["provider"])),
+                activation_index.get(
+                    (contract["dataset_id"], contract["provider"]),
+                    observations.get((contract["dataset_id"], contract["provider"])),
+                ),
             )
             for contract in bundle["contracts"]
         ],
@@ -1536,6 +2315,16 @@ def _parser() -> argparse.ArgumentParser:
         "--upstream-contracts", type=Path, default=DEFAULT_UPSTREAM_CONTRACTS_PATH
     )
     parser.add_argument("--observations", type=Path, default=DEFAULT_OBSERVATIONS_PATH)
+    parser.add_argument(
+        "--activation-evidence",
+        type=Path,
+        default=None,
+    )
+    parser.add_argument(
+        "--compilation-mode",
+        choices=sorted(COMPILATION_MODES),
+        default=FORMAL_COMPILATION_MODE,
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     return parser
 
@@ -1543,16 +2332,53 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    for path in (args.upstream_contracts, args.observations):
+    required_inputs = [args.upstream_contracts, args.observations]
+    if args.compilation_mode == PREACTIVATION_COMPILATION_MODE:
+        required_inputs.append(args.activation_evidence)
+    for path in required_inputs:
+        if path is None:
+            continue
         if not path.is_file():
             parser.error(f"input file does not exist: {path}")
+    if (
+        args.compilation_mode == PREACTIVATION_COMPILATION_MODE
+        and args.activation_evidence is None
+    ):
+        parser.error("preactivation candidate mode requires --activation-evidence")
+    if args.compilation_mode == PREACTIVATION_COMPILATION_MODE:
+        activation_evidence = args.activation_evidence.resolve()
+        repository_root = REPOSITORY_ROOT.resolve()
+        if (
+            activation_evidence == repository_root
+            or repository_root in activation_evidence.parents
+        ):
+            parser.error("activation evidence must be outside the repository")
     output = args.output.resolve(strict=False)
-    if output in {args.upstream_contracts.resolve(), args.observations.resolve()}:
+    protected_inputs = {
+        args.upstream_contracts.resolve(),
+        args.observations.resolve(),
+    }
+    if args.compilation_mode == PREACTIVATION_COMPILATION_MODE:
+        protected_inputs.add(args.activation_evidence.resolve())
+    if output in protected_inputs:
         parser.error("refusing to overwrite an input file")
+    if args.compilation_mode == PREACTIVATION_COMPILATION_MODE and (
+        output == DEFAULT_OUTPUT_PATH.resolve()
+        or REPOSITORY_ROOT.resolve() in output.parents
+    ):
+        parser.error(
+            "preactivation candidate cannot overwrite the checked registry or write inside the repository"
+        )
     registry = compile_provider_native_registry(
         _load_yaml(args.upstream_contracts, "upstream contract bundle"),
         observations_document=_load_yaml(args.observations, "QuickSync observations"),
+        activation_evidence_document=(
+            None
+            if args.compilation_mode != PREACTIVATION_COMPILATION_MODE
+            else _load_yaml(args.activation_evidence, "HTTPS activation evidence")
+        ),
         query_defaults=DEFAULT_QUERY_DEFAULTS,
+        compilation_mode=args.compilation_mode,
     )
     if not registry["datasets"]:
         parser.error("refusing to write a registry with zero contracts")

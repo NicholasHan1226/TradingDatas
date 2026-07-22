@@ -17,6 +17,7 @@ from tools.compile_provider_native_registry import (
     load_upstream_contract_bundle,
     render_registry,
 )
+from tests.synthetic_activation_evidence import build_synthetic_activation_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,11 @@ CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 TARGET_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
 OPERATIONS_PATH = ROOT / "docs" / "OPERATIONS.md"
+
+
+def test_runtime_activation_evidence_is_not_repository_owned() -> None:
+    assert not (ROOT / "config" / "quicksync_https_activation_evidence.v1.yaml").exists()
+    assert not hasattr(compiler_module, "DEFAULT_ACTIVATION_EVIDENCE_PATH")
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
@@ -57,7 +63,9 @@ def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     assert tuple(parameters) == (
         "upstream_contracts",
         "observations_document",
+        "activation_evidence_document",
         "query_defaults",
+        "compilation_mode",
     )
     source = inspect.getsource(compiler_module)
     for forbidden in (
@@ -152,6 +160,98 @@ def test_observation_declaration_is_the_only_entitlement_and_activation_authorit
     assert bindings["cn.dataset.adj_factor"]["activation_state"] == "paused"
     assert bindings["cn.dataset.cb_price_chg"]["entitlement_state"] == "locked"
     assert bindings["cn.dataset.etf_sh_cons"]["entitlement_state"] == "excluded"
+
+
+def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    active = {
+        api_name
+        for api_name, binding in bindings.items()
+        if binding["activation_state"] == "active"
+    }
+
+    assert active == {
+        "adj_factor",
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    }
+    assert all(bindings[api_name]["entitlement_state"] == "active" for api_name in active)
+
+
+def test_formal_mode_never_promotes_preactivation_evidence() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+        ),
+    )
+    active = {
+        dataset["provider_bindings"][0]["api_name"]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["activation_state"] == "active"
+    }
+
+    assert active == {
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    }
+
+
+def test_formal_mode_does_not_validate_or_depend_on_activation_evidence() -> None:
+    registry = compile_provider_native_registry(
+        _bundle(),
+        observations_document=_observations(),
+        activation_evidence_document={"runtime_artifact": "must_be_ignored"},
+    )
+    active = {
+        dataset["provider_bindings"][0]["api_name"]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["activation_state"] == "active"
+    }
+
+    assert active == {
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    }
+
+
+def test_preactivation_mode_requires_explicit_activation_evidence() -> None:
+    with pytest.raises(
+        ValueError,
+        match="preactivation candidate mode requires activation evidence",
+    ):
+        compile_provider_native_registry(
+            _bundle(),
+            observations_document=_observations(),
+            compilation_mode="preactivation_candidate",
+        )
 
 
 def test_compiler_preserves_typed_variants_request_shape_fanout_pagination_and_budgets() -> (
@@ -398,13 +498,7 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         else:
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
-    assert active_dataset_ids == {
-        "cn.dataset.index_classify",
-        "cn.dataset.sw_daily",
-        "cn.equity.daily",
-        "cn.equity.security_master",
-        "cn.market.trade_calendar",
-    }
+    assert len(active_dataset_ids) == 5
     assert len(paused_dataset_ids) == 185
     assert request_shapes == {
         "snapshot_or_date_range",
@@ -424,7 +518,20 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
 def test_cli_writes_external_registry_and_preserves_release_files(
     tmp_path: Path,
 ) -> None:
-    protected_release_paths = (CONTRACT_PATH, OBSERVATIONS_PATH, TARGET_PATH)
+    activation_evidence_path = tmp_path / "synthetic-activation-evidence.yaml"
+    activation_evidence_path.write_text(
+        yaml.safe_dump(
+            build_synthetic_activation_evidence(_bundle(), _observations()),
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    protected_release_paths = (
+        CONTRACT_PATH,
+        OBSERVATIONS_PATH,
+        activation_evidence_path,
+        TARGET_PATH,
+    )
     before = {path: path.read_bytes() for path in protected_release_paths}
     output = tmp_path / "registry.yaml"
     completed = subprocess.run(
@@ -435,6 +542,10 @@ def test_cli_writes_external_registry_and_preserves_release_files(
             str(CONTRACT_PATH),
             "--observations",
             str(OBSERVATIONS_PATH),
+            "--activation-evidence",
+            str(activation_evidence_path),
+            "--compilation-mode",
+            "preactivation_candidate",
             "--output",
             str(output),
         ],
@@ -446,8 +557,81 @@ def test_cli_writes_external_registry_and_preserves_release_files(
 
     assert completed.stdout == ""
     assert completed.stderr == ""
-    assert output.read_bytes() == before[TARGET_PATH]
+    loaded = load_dataset_registry(output)
+    assert sum(
+        dataset.provider_bindings[0].activation_state == "active"
+        for dataset in loaded.datasets
+    ) == 6
+    assert output.read_bytes() != before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
+
+
+def test_cli_refuses_repository_owned_activation_evidence(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "compile_provider_native_registry.py"),
+            "--upstream-contracts",
+            str(CONTRACT_PATH),
+            "--observations",
+            str(OBSERVATIONS_PATH),
+            "--activation-evidence",
+            str(CONTRACT_PATH),
+            "--compilation-mode",
+            "preactivation_candidate",
+            "--output",
+            str(tmp_path / "candidate-registry.yaml"),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "activation evidence must be outside the repository" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    "output",
+    (TARGET_PATH, ROOT / "preactivation-candidate.registry.yaml"),
+)
+def test_cli_refuses_candidate_mode_inside_repository(
+    output: Path,
+    tmp_path: Path,
+) -> None:
+    activation_evidence_path = tmp_path / "synthetic-activation-evidence.yaml"
+    activation_evidence_path.write_text(
+        yaml.safe_dump(
+            build_synthetic_activation_evidence(_bundle(), _observations()),
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "compile_provider_native_registry.py"),
+            "--upstream-contracts",
+            str(CONTRACT_PATH),
+            "--observations",
+            str(OBSERVATIONS_PATH),
+            "--activation-evidence",
+            str(activation_evidence_path),
+            "--compilation-mode",
+            "preactivation_candidate",
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "preactivation candidate cannot overwrite the checked registry" in completed.stderr
+    assert output == TARGET_PATH or not output.exists()
 
 
 def test_operations_registry_verification_cannot_write_or_follow_current() -> None:

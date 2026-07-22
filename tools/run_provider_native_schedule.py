@@ -22,11 +22,14 @@ import sys
 from typing import Callable, Iterator
 import uuid
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import dataset_registry as _dataset_registry  # noqa: E402
 from dataset_registry import DatasetRegistry, load_runtime_dataset_registry  # noqa: E402
 from collectors.tushare.collector import (  # noqa: E402
     RequestBudgetExceeded,
@@ -42,13 +45,19 @@ from storage.ingest_receipts import make_schedule_plan_attempt_id  # noqa: E402
 from tools.provider_native_cadence_planner import (  # noqa: E402
     Schedule,
     ScheduledRun,
+    load_activation_wave,
     load_planner_state,
     load_schedule as _load_schedule,
+    load_schedule_bytes,
     plan_runs as _plan_runs,
 )
 
 
 DEFAULT_SCHEDULE_CONFIG = ROOT / "config" / "provider_native_schedule.yaml"
+DEFAULT_RUNTIME_REGISTRY_CONFIG = ROOT / "config" / "provider_native_dataset_registry.yaml"
+DEFAULT_ACTIVATION_WAVE_CONFIG = (
+    ROOT / "config" / "provider_native_activation_waves.v1.yaml"
+)
 DEFAULT_LOCK_PATH = Path(
     os.environ.get(
         "TRADINGDATAS_COLLECT_LOCK",
@@ -59,6 +68,39 @@ DEFAULT_LOCK_PATH = Path(
 
 def load_schedule(path: Path = DEFAULT_SCHEDULE_CONFIG) -> Schedule:
     return _load_schedule(path)
+
+
+def _load_dataset_registry_bytes(payload: bytes) -> DatasetRegistry:
+    root = _dataset_registry._mapping(  # noqa: SLF001
+        yaml.safe_load(payload.decode("utf-8")), "registry"
+    )
+    _dataset_registry._reject_unknown_keys(  # noqa: SLF001
+        root,
+        _dataset_registry._ROOT_KEYS,  # noqa: SLF001
+        "registry",
+        required=_dataset_registry._ROOT_REQUIRED_KEYS,  # noqa: SLF001
+    )
+    version = root["version"]
+    if type(version) is not int or version != 1:
+        raise ValueError("registry.version must be integer 1")
+    raw_datasets = root["datasets"]
+    if type(raw_datasets) is not list or not raw_datasets:
+        raise ValueError("registry.datasets must be a non-empty list")
+    query_defaults = _dataset_registry._load_query_defaults(  # noqa: SLF001
+        root["query_defaults"]
+    )
+    schema_profiles = _dataset_registry._load_schema_profiles(  # noqa: SLF001
+        root.get("schema_profiles"), query_defaults=query_defaults
+    )
+    return DatasetRegistry(
+        tuple(
+            _dataset_registry._load_dataset(  # noqa: SLF001
+                dataset, index, schema_profiles, query_defaults
+            )
+            for index, dataset in enumerate(raw_datasets)
+        ),
+        query_defaults=query_defaults,
+    )
 
 
 _SUCCESS_STATES = frozenset({"success", "empty"})
@@ -215,19 +257,39 @@ def _in_process_executor(
 
 def run_schedule(
     *,
-    registry: DatasetRegistry,
-    schedule: Schedule,
+    registry: DatasetRegistry | None,
+    schedule: Schedule | None,
     db_path: Path,
     now: datetime,
     execute: bool,
     executor: Callable[[ScheduledRun], DatasetResult] | None = None,
+    activation_wave: str | None = None,
+    activation_wave_manifest: Path = DEFAULT_ACTIVATION_WAVE_CONFIG,
+    registry_source_path: Path = DEFAULT_RUNTIME_REGISTRY_CONFIG,
+    schedule_source_path: Path = DEFAULT_SCHEDULE_CONFIG,
 ) -> ScheduleResult:
+    selected_dataset_ids = None
+    if activation_wave is not None:
+        registry_payload = Path(registry_source_path).read_bytes()
+        schedule_payload = Path(schedule_source_path).read_bytes()
+        registry = _load_dataset_registry_bytes(registry_payload)
+        schedule = load_schedule_bytes(schedule_payload)
+        selected_dataset_ids = load_activation_wave(
+            activation_wave_manifest,
+            activation_wave,
+            registry=registry,
+            registry_payload=registry_payload,
+            schedule_payload=schedule_payload,
+        ).dataset_ids
+    elif registry is None or schedule is None:
+        raise ValueError("default schedule inputs are required")
     state = load_planner_state(db_path, registry, now=now)
     plans, planner_skips = _plan_runs(
         registry=registry,
         schedule=schedule,
         state=state,
         now=now,
+        selected_dataset_ids=selected_dataset_ids,
     )
     skipped = tuple(
         SkippedResult(item.dataset_id, item.provider, item.state)
@@ -308,6 +370,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db-path", type=Path, default=provider_native_sqlite_path())
     parser.add_argument("--schedule-config", type=Path, default=DEFAULT_SCHEDULE_CONFIG)
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK_PATH)
+    parser.add_argument("--activation-wave")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--now", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
@@ -325,11 +388,21 @@ def main(argv: list[str] | None = None) -> int:
             _validated_collector_credentials()
         with exclusive_schedule_lock(args.lock_path):
             result = run_schedule(
-                registry=load_runtime_dataset_registry(),
-                schedule=load_schedule(args.schedule_config),
+                registry=(
+                    None
+                    if args.activation_wave is not None
+                    else load_runtime_dataset_registry()
+                ),
+                schedule=(
+                    None
+                    if args.activation_wave is not None
+                    else load_schedule(args.schedule_config)
+                ),
                 db_path=args.db_path,
                 now=_now(args.now),
                 execute=args.execute,
+                activation_wave=args.activation_wave,
+                schedule_source_path=args.schedule_config,
             )
     except ScheduleBusyError:
         print('{"mode":"execute","state":"busy"}')
