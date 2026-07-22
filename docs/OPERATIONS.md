@@ -45,6 +45,13 @@ Git HEAD 的 commit、tree 和全部 tracked blob 生成，保存在 release 目
 Git tree，并从 release 实际字节重算每个 Git blob 与 SHA256；manifest 本身也必须匹配
 `--expected-uid/--expected-gid` 且不可被 group/world 写入。
 
+生产 release 内的任何 Python 诊断都必须同时设置
+`PYTHONDONTWRITEBYTECODE=1` 并使用 `python3 -B`；只读诊断也不能在 immutable release
+生成 `__pycache__` 或 `.pyc`。诊断前后都要运行 trusted `verify-current`，并检查 release
+内不存在 manifest 外文件。若误生成缓存，只能先冻结精确路径、字节数和 SHA-256，确认
+全部为 manifest 外缓存且声明文件零漂移后，再删除精确缓存目录并重新验证；不得借此做
+广义目录清理。
+
 本地从 clean checkout 生成确定性 manifest。构建、服务器验证和切换必须使用已审查的
 trusted verifier，不能从尚未验证的 target release 执行 `release_manifest.py`；常规升级
 使用当前已验证 release 中的 verifier，首次 bootstrap 则先把本地已审查 verifier 作为
@@ -181,6 +188,19 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
+
+`POST /v1/query` 的稳定性证明必须符合数据集粒度。对于 `daily`、`sw_daily` 等按
+`trade_date` 分区的数据集，latest/current readback 使用显式 `eq` 或有界日期范围并完整
+翻页；不得用无筛选第一页成功代替完整查询证明。无界跨多分区读取仍受 SQLite VM-step
+预算约束，消费者应缩小日期范围，不能通过无限重试或旧 route fallback 绕过。非分区
+snapshot（如 security master）及有界 calendar 可按 registry 默认排序完整翻页。
+
+运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
+`PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
+`sha256sum -c PAYLOADS.sha256` 和 sidecar 校验。若已生成自引用或不自洽清单，保留原件
+作为事故证据，在相邻只读目录新增修正版；若修正版使用相对 payload 路径，必须从原
+payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
+sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 
 ## 发布门禁
 
