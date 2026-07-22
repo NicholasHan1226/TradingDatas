@@ -174,7 +174,13 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     documents_by_api = {
         item["api_name"]: item for item in _yaml(DOCUMENTS)["contracts"]
     }
-    for api_name in ("daily", "stock_basic", "trade_cal"):
+    for api_name in (
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    ):
         assert by_api[api_name]["input_fields"] == _expected_input_fields(
             documents_by_api[api_name]
         )

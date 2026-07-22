@@ -38,7 +38,8 @@ visibility 不能自动生成文档 URL、权限或 scheduler 激活。
 artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
 `DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
 它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
-runtime registry 仍为 190 项，其中仅 3 项 `active+active` 可进入 SQLite 读侧检查。
+runtime registry 仍为 190 项，其中仅 5 项 `active+active` 可进入 SQLite 读侧检查：
+`trade_cal`、`stock_basic`、`daily`、`index_classify` 和 `sw_daily`。
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 

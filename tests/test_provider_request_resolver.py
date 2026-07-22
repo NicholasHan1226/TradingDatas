@@ -44,13 +44,22 @@ def _load_catalog() -> RequestProfileCatalog:
             classification_by_api[api_name] = classification
 
     active_apis = sorted(observations["active_evidence"])
-    assert len(active_apis) == 3
+    assert active_apis == [
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    ]
+    request_profiles = yaml.safe_load(REQUEST_PROFILES.read_text(encoding="utf-8"))
+    migration_only_exclusions = request_profiles["excluded_existing_activations"]
+    assert set(migration_only_exclusions).issubset(active_apis)
     return load_request_profile_catalog(
-        yaml.safe_load(REQUEST_PROFILES.read_text(encoding="utf-8")),
+        request_profiles,
         document_by_api=document_by_api,
         dataset_by_api=dataset_by_api,
         classification_by_api=classification_by_api,
-        existing_activations=active_apis,
+        existing_activations=migration_only_exclusions,
         expected_document_sha=hashlib.sha256(DOCUMENTS.read_bytes()).hexdigest(),
     )
 

@@ -313,5 +313,7 @@ classifications:
   - rt_etf_min_daily
 active_evidence:
   daily: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+  index_classify: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
   stock_basic: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+  sw_daily: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
   trade_cal: server-evidence/20260718T123044-4088a2d

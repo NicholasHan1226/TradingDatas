@@ -104,7 +104,7 @@ def test_frozen_matrix_identity_and_classifications_cover_190_once() -> None:
     )
 
 
-def test_only_three_e2e_datasets_are_active_and_candidates_remain_paused() -> None:
+def test_only_five_e2e_datasets_are_active_and_candidates_remain_paused() -> None:
     registry = _compiled()
     bindings = _bindings(registry)
     active = {
@@ -112,7 +112,13 @@ def test_only_three_e2e_datasets_are_active_and_candidates_remain_paused() -> No
         for api_name, dataset in bindings.items()
         if dataset["provider_bindings"][0]["activation_state"] == "active"  # type: ignore[index]
     }
-    assert active == {"daily", "stock_basic", "trade_cal"}
+    assert active == {
+        "daily",
+        "index_classify",
+        "stock_basic",
+        "sw_daily",
+        "trade_cal",
+    }
 
     observations = _observations()["classifications"]
     assert isinstance(observations, dict)

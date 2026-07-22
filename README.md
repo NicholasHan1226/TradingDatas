@@ -91,8 +91,8 @@ uv run --python 3.12 --with-requirements requirements.txt \
 该历史矩阵绑定脱敏证据及 API 集合 SHA、`production_ready=false`，不能替代正式
 HTTPS provider -> SQLite -> receipt -> API readback，也不能代表新增 32 项已可调用。
 
-当前 190 项 runtime registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`
-三个 active dataset，其余 187 个全部 paused。validated match 与已修复数字字段只表示
+当前 190 项 runtime registry 仅保留已有纵向证据的 `trade_cal`、`stock_basic`、`daily`、
+`index_classify`、`sw_daily` 五个 active dataset，其余 185 个全部 paused。validated match 与已修复数字字段只表示
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
 

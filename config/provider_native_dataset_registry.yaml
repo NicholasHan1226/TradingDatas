@@ -18391,17 +18391,17 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
-  cadence_class: on_demand
+  schema_version: 2.0.0
+  cadence_class: weekly
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 604800
   provider_bindings:
   - provider: tushare
     api_name: index_classify
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_classify
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -18422,7 +18422,8 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: snapshot_or_date_range
-    request_template: {}
+    request_template:
+      src: SW2021
     request_variants:
     - {}
     fanout:
@@ -18430,28 +18431,39 @@ datasets:
     pagination:
       strategy: none
     request_window_policy: null
-    response_completeness: null
-    requested_fields: []
-    max_batch_bytes: 67108864
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        src: src
+      reject_at_row_limit: true
+    requested_fields:
+    - index_code
+    - industry_name
+    - parent_code
+    - level
+    - industry_code
+    - is_pub
+    - src
+    max_batch_bytes: 4194304
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 1000
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: index_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: industry_name
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -18463,7 +18475,7 @@ datasets:
     sortable: true
   - name: level
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -18481,11 +18493,12 @@ datasets:
     sortable: true
   - name: src
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - index_code
   default_projection:
   - index_code
   - industry_name
@@ -18498,9 +18511,9 @@ datasets:
   as_of_format: null
   range_field: null
   partition_field: null
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
-  empty_data_policy: allowed
+  empty_data_policy: forbidden
   required_scope: market_data
   quota_class: beta_standard
 - dataset_id: cn.dataset.index_daily
@@ -32782,17 +32795,17 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
-  cadence_class: on_demand
+  schema_version: 2.0.0
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 86400
+  freshness_sla_seconds: 259200
   provider_bindings:
   - provider: tushare
     api_name: sw_daily
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sw_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -32829,9 +32842,29 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
-    max_batch_bytes: 67108864
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - name
+    - open
+    - low
+    - high
+    - close
+    - change
+    - pct_change
+    - vol
+    - amount
+    - pe
+    - pb
+    - float_mv
+    - total_mv
+    max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
@@ -32840,17 +32873,17 @@ datasets:
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -32932,7 +32965,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
@@ -32949,11 +32984,11 @@ datasets:
   - pb
   - float_mv
   - total_mv
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
-  point_in_time: append_only
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: allowed
   required_scope: market_data

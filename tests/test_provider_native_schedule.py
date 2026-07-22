@@ -410,6 +410,8 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "not_due"
     assert {item.dataset_id for item in result.executed} == {
+        "cn.dataset.index_classify",
+        "cn.dataset.sw_daily",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
@@ -685,7 +687,9 @@ def test_missing_calendar_skips_postclose_without_guessing_market_holidays(
 
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "calendar_unavailable"
+    assert skipped["cn.dataset.sw_daily"] == "calendar_unavailable"
     assert {item.dataset_id for item in result.executed} == {
+        "cn.dataset.index_classify",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }

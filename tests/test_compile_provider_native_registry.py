@@ -399,11 +399,13 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
     assert active_dataset_ids == {
+        "cn.dataset.index_classify",
+        "cn.dataset.sw_daily",
         "cn.equity.daily",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
-    assert len(paused_dataset_ids) == 187
+    assert len(paused_dataset_ids) == 185
     assert request_shapes == {
         "snapshot_or_date_range",
         "entity_fanout",

@@ -20,8 +20,8 @@
   并以 commit `84d8ad4` 进入 main，其中新增 32 项不伪造成 runtime contract，尚未进入
   API。query 门禁的 current-main 审计同时发现旧实现错误放行 185 项进入 SQLite；
   commit `7d25cc8` 已把资格收紧为同一 binding `entitlement=active` 且
-  `activation=active`。fresh review 为 P0/P1=0：仅 3 项可进入 SQLite，其余 187 项
-  在 SQLite/provider 前 fail closed；main 组合回归 94 passed / 1 skipped。
+  `activation=active`。该提交当时的 fresh review 为 P0/P1=0：仅 3 项可进入 SQLite，
+  其余 187 项在 SQLite/provider 前 fail closed；main 组合回归 94 passed / 1 skipped。
 - 2026-07-22 请求合同 R5 已通过 fresh clean-overlay review 并以 commit `3b74b45`
   进入 main：runtime compiler 对 official/request/transport/reviewed 四类原始输入做
   内容与冻结 SHA 双重绑定，HTTPS probe plan 对 official/request/transport/registered
@@ -57,6 +57,15 @@
   P0/P1=0，定向回归分别为 33 项与 529 项通过。这些结果只证明各自候选；最终 release
   必须另有 exact-byte 全仓测试、clean commit、GitHub readback 与服务器 trusted-verifier
   证据，不得由本条自动推断。上述证据截点内没有 provider 调用。
+- 2026-07-22 10:19 CST 已在服务器隔离目录完成 `index_classify` 与 `sw_daily` 的
+  provider-native 纵向采集证明：前者以 `src=SW2021` 返回并提交 511 行，后者以
+  `trade_date=20260721` 返回并提交 439 行；950 行质量均为 valid，两个 success receipt
+  的 returned/validated/inserted/committed 数量守恒，SQLite `quick_check=ok`。隔离结果位于
+  `/opt/investment-data/tradingdatas-preactivation/815cbcfba99f555023b170d7a3cc5a86e3c4172b/run-20260722T021932Z`，
+  结果 SHA-256 为 `e1e49b500429b72d9cfe340d7c9ee7fd43888d90b8bdd972745331d1eaf56695`，
+  SQLite SHA-256 为 `fb6c0c742dfb70aa619e142d8ad2b7a4e495433a0ebb22a1e5f788229be9e4b1`。
+  该证明没有写正式 registry、没有启动 scheduler、没有切换 `current`，也尚未完成固定
+  `catalog/query` API 回读；因此只支持把本地候选编译为 5 active / 185 paused，不等于生产 ready。
 
 - GitHub 仓库已从 `NicholasHan1226/SharedSignals` 重命名为 `NicholasHan1226/TradingDatas`。
 - 本地新目录为 `/Users/nicholashan/Projects/Finance/TradingDatas`。
@@ -71,7 +80,7 @@
 - clean-slate capability catalog 已移除旧 114 接口计划、`legacy_coverage` 和 `in_legacy_inventory`，现在只由固定官方索引与范围分类生成；catalog SHA-256 为 `5bb4a2aae746e31b72ae610bdfe6a3feec469d6f4b8de769ce7e5395c20d3ea1`。
 - `tools/snapshot_tushare_contracts.py` 已重新生成 `config/tushare_document_contracts.v1.yaml`：190 个合同、0 个解析错误，文件 SHA-256 为 `2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da`，且绑定上述 catalog SHA。合同只证明文档解析完整，不代表账号 entitlement、activation 或真实采集已通过。
 - `config/quicksync_interface_observations.v1.yaml` 已取代旧 manual entitlement probe/policy，成为唯一 QuickSync 权限、兼容性观测与 activation 输入。它绑定矩阵 SHA `ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1` 与 190 API 集合 SHA，并互斥分类为 145 contract match、4 个数字字段修复、17 schema subset、1 quality anomaly、3 empty、14 permission denied、1 credential rejected、5 unsupported。deprecated request-profile/resolver 只保留官方输入映射迁移信息，不参与上述权威链。
-- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry；仅 `trade_cal`、`stock_basic`、`daily` 保持已有 active 证据，其余 187 个全部 paused。HTTP compatibility 矩阵明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
+- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry；当前 active 为 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，其余 185 个全部 paused。HTTP compatibility 矩阵明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
 - 通用 executor 已实现 typed variants、fanout、offset pagination、资源预算、受限重试和进程级调用预算。每个真实 provider call 都有独立 transaction receipt；数据行与 success receipt 同 SQLite 事务提交；失败调用不会被后续 empty 终止页洗白，后续独立执行可以恢复状态。
 - clean-slate 候选已删除 204 个旧系统路径并保留 86 个目标路径。旧 probe 测试数量只作为历史提交证据；request-profile 测试只证明迁移资料与官方文档/registry/observations 自洽，均不代表 runtime activation。当前候选必须以 observations -> compiled registry 的 fresh 回归重新验收。
 - 服务器已从 GitHub commit `b4a6aac9a346519b9e6d744fe6521f0a9510c381` 建立隔离 18083 transient canary：独立 `tradingdatas` 用户、新 SQLite 与新认证材料；未认证 catalog 为 401，认证 catalog/query 为 200，catalog 投影 190 个数据集（3 active / 187 paused），旧 `/tushare` 与 `/source_status` 均为 404。首次空库查询如实返回 `unobserved`；随后把 QuickSync 凭证错误发送到官方 Tushare endpoint 得到 provider code `40101`。这个结果证明旧 transport 假设错误和 API impaired 投影可用，不是 QuickSync 权限或数据采集证据。
@@ -85,11 +94,11 @@
 TradingDatas 尚未达到内部可接入停止线，原因：
 
 1. scope v2 与离线 artifact 已冻结 222 个产品能力，但 provider-native runtime registry
-   仍只有 190 个已有合同项（3 active / 187 paused）；新增 32 项保持 discovery-only，
+   仍只有 190 个已有合同项（5 active / 185 paused）；新增 32 项保持 discovery-only，
    不进入 runtime registry、SQLite、scheduler 或 query API，
    现有 190 项的请求合同已完成 fresh review 与 main 集成，但正式 HTTPS provider ->
    SQLite -> receipt -> API readback 和真实 cadence 均未完成；
-2. 新 canary 凭证与三个真实数据集已验证，健康单节点小响应 request-start 吞吐下限已冻结；正式 `/etc/tradingdatas/quicksync.token` 已按单链接/owner/mode 门禁安装，但混合响应和双 DNS 节点的安全 failover 还没有经过新 release 的服务器 readback，每日额度也未知；因此正式 timer 继续 disabled，历史回填尚未开始；
+2. 新 canary 凭证与三个历史 API 纵向切片、两个新增 provider/SQLite 纵向切片已验证；新增两项尚缺固定 `catalog/query` API readback。健康单节点小响应 request-start 吞吐下限已冻结；正式 `/etc/tradingdatas/quicksync.token` 已按单链接/owner/mode 门禁安装，但混合响应和双 DNS 节点的安全 failover 还没有经过新 release 的服务器 readback，每日额度也未知；因此正式 timer 继续 disabled，历史回填尚未开始；
 3. 18084 已是可认证、可查询真实数据的历史隔离服务，但正式 18082 service 尚未切到最新 release，TradingAgent/MarketGraph 也尚未完成 base URL 与 token 的消费者 readback；
 4. 首轮无 seed 的计划可执行 139 项、阻塞 51 项；seed 解锁后的下一轮当前仍会重复
    首轮已执行项，必须先实现与首轮 evidence/plan 绑定的 deterministic delta，第二轮

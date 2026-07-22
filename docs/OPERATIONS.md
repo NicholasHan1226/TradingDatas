@@ -134,7 +134,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
    也不得改写 release 内任何文件。当前生产候选仍必须从
    `quicksync_interface_observations.v1.yaml` 得到历史合同子集
-   190 个 dataset、3 active / 187 paused，且输出与 checked-in registry 逐字节一致。
+   190 个 dataset、5 active / 185 paused，且输出与 checked-in registry 逐字节一致。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
    采集计划。观测配置必须保持
