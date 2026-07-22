@@ -217,9 +217,9 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 
    `cmp --silent` 成功才证明重建结果与该 release 内 checked-in registry 逐字节一致；
    无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
-   也不得改写 release 内任何文件。当前生产候选仍必须从
+   也不得改写 release 内任何文件。当前 `main` 的 release 候选仍必须从
    `quicksync_interface_observations.v1.yaml` 得到历史合同子集
-   190 个 dataset、12 active / 178 paused，且输出与 checked-in registry 逐字节一致。
+   190 个 dataset、15 active / 175 paused，且输出与 checked-in registry 逐字节一致。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
    采集计划。观测配置必须保持
@@ -235,9 +235,9 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
-   compiler 才会生成 canary registry。当前正式编译不传 activation evidence，固定生成
-   12 active / 178 paused；当前 production release 为
-   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc`，回滚 release
+   compiler 才会生成 canary registry。当前 `main` 的正式编译不传 activation evidence，
+   固定生成 15 active / 175 paused；当前已部署 production release 仍为
+   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 的 12 / 178，回滚 release
    `486e42a655481bbe0df359a97b8167f4611e6bcd` 为 9 / 181；任何时刻都必须以
    release readback 而不是仓库文本判定。用当前 main compiler 重编 2026-07-22
    观测 sidecar 得到的 119 active / 71 paused 仅属于 SHA-256
@@ -246,6 +246,13 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
+
+   当前 permanent collector 不能作为“仅当天数据”的 cadence pilot 直接启动：unit 未声明
+   activation wave，runner 也没有 current-only/backfill-off 入口。2026-07-23 的 production
+   no-write plan 会同时生成 current、backfill 与 correction；七个 completeness 未冻结的
+   active dataset 还会因 partitionless success receipt 无法覆盖窗口而重复规划。修复并证明
+   current-only 计划为 0 backfill / 0 correction 前，timer 必须继续 disabled；Wave 1/2 仅
+   manual one-shot，`direct_wave_3` 永远按 `on_demand` 跳过 scheduler。
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 
