@@ -179,7 +179,7 @@
 - clean-slate capability catalog 已移除旧 114 接口计划、`legacy_coverage` 和 `in_legacy_inventory`，现在只由固定官方索引与范围分类生成；catalog SHA-256 为 `5bb4a2aae746e31b72ae610bdfe6a3feec469d6f4b8de769ce7e5395c20d3ea1`。
 - `tools/snapshot_tushare_contracts.py` 已重新生成 `config/tushare_document_contracts.v1.yaml`：190 个合同、0 个解析错误，文件 SHA-256 为 `2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da`，且绑定上述 catalog SHA。合同只证明文档解析完整，不代表账号 entitlement、activation 或真实采集已通过。
 - `config/quicksync_interface_observations.v1.yaml` 已取代旧 manual entitlement probe/policy，成为唯一 QuickSync 权限、兼容性观测与 activation 输入。它绑定矩阵 SHA `ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1` 与 190 API 集合 SHA，并互斥分类为 145 contract match、4 个数字字段修复、17 schema subset、1 quality anomaly、3 empty、14 permission denied、1 credential rejected、5 unsupported。deprecated request-profile/resolver 只保留官方输入映射迁移信息，不参与上述权威链。
-- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry。当前 GitHub `main=52d199e8b1c1ce02f9204d0b6bd1c42b4f78e82f` 为 15 active / 175 paused：原五项 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，加 `direct_wave_1` 的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，`direct_wave_2` 的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及仅按需调用的 `direct_wave_3`：`repurchase`、`research_report`、`top_list`。正式 production 仍为 `c3232d0...` 的 12 / 178，Wave 3 尚未部署。HTTP compatibility 矩阵继续明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
+- `tools/compile_tushare_runtime_contracts.py` 与 `tools/compile_provider_native_registry.py` 把 190/190 个官方合同和上述观测编译进单一 provider-neutral registry。当前 GitHub `main=8bdc43b84d37d29cba317ac9823877ab3b8ad769` 为 26 active / 164 paused：原五项 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，加 `direct_wave_1` 的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，`direct_wave_2` 的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，仅按需调用的 `direct_wave_3`：`repurchase`、`research_report`、`top_list`，以及 11 项仅按需调用的 `direct_wave_4`。正式 production 仍为 `c3232d0...` 的 12 / 178，Wave 3/4 均尚未部署。HTTP compatibility 矩阵继续明确 `production_ready=false`，不得用候选分类自动启用 scheduler。
 - 通用 executor 已实现 typed variants、fanout、offset pagination、资源预算、受限重试和进程级调用预算。每个真实 provider call 都有独立 transaction receipt；数据行与 success receipt 同 SQLite 事务提交；失败调用不会被后续 empty 终止页洗白，后续独立执行可以恢复状态。
 - clean-slate 候选已删除 204 个旧系统路径并保留 86 个目标路径。旧 probe 测试数量只作为历史提交证据；request-profile 测试只证明迁移资料与官方文档/registry/observations 自洽，均不代表 runtime activation。当前候选必须以 observations -> compiled registry 的 fresh 回归重新验收。
 - 服务器已从 GitHub commit `b4a6aac9a346519b9e6d744fe6521f0a9510c381` 建立隔离 18083 transient canary：独立 `tradingdatas` 用户、新 SQLite 与新认证材料；未认证 catalog 为 401，认证 catalog/query 为 200，catalog 投影 190 个数据集（3 active / 187 paused），旧 `/tushare` 与 `/source_status` 均为 404。首次空库查询如实返回 `unobserved`；随后把 QuickSync 凭证错误发送到官方 Tushare endpoint 得到 provider code `40101`。这个结果证明旧 transport 假设错误和 API impaired 投影可用，不是 QuickSync 权限或数据采集证据。
@@ -264,7 +264,7 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
 研究 snapshot 与旧 8082/cron 退役：
 
 1. scope v2 与离线 artifact 已冻结 222 个产品能力；仓库与 production formal runtime
-   registry 均有 190 个合同项，但 GitHub `main` 为 15 active / 175 paused、production
+   registry 均有 190 个合同项，但 GitHub `main` 为 26 active / 164 paused、production
    仍为 12 active / 178 paused；新增 32 项保持
    discovery-only。不得把静态目录或历史 HTTP 矩阵误报为全量采集；
 2. `c3232d0...` 正式 SQLite 与正式 18082 API 已完成十二项 latest/current readback，但 daily 的
@@ -340,6 +340,12 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   exact 8-file Wave 3 配置与测试、fresh clean-overlay review（P0/P1/P2=0）、145 项组合
   和 8 项关键门禁；`repurchase`、`research_report`、`top_list` 均保持 `on_demand`，
   不进入自动 scheduler。该提交尚未部署，production catalog 与 TA 当前 handoff 继续为
+  12 active。
+- commit `8bdc43b84d37d29cba317ac9823877ab3b8ad769` 的 local/origin/live GitHub、
+  exact 8-file Wave 4 配置与测试、fresh clean-overlay review（P0/P1=0）、真实 main
+  关键 25 项和全量 `1700 passed / 1 skipped / 0 failed`；11 项均保持 `on_demand`，
+  显式或默认 scheduler 都是 `0 planned / 11 skipped`，成功 receipt 的 query 仍诚实为
+  `partial/degraded`。该提交尚未部署，production catalog 与 TA 当前 handoff 继续为
   12 active。
 - TradingAgent 专用 credential 已完成阶段 A dual registration：non-secret reference 为
   `ta-read-20260722T223457Z-0907cd`，旧/新 credential 均在服务器 loopback 对 catalog
