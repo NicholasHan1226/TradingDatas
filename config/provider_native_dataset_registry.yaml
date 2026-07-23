@@ -4933,7 +4933,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_issue
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -7967,7 +7967,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_daily_info
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -8891,7 +8891,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_disclosure_date
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -12956,7 +12956,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_div
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -18694,7 +18694,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_dailybasic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -20065,7 +20065,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_cpt_list
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -20668,7 +20668,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_limit_step
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -22065,7 +22065,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_moneyflow_hsgt
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -27066,7 +27066,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_share_float
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -30883,7 +30883,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_managers
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -33154,7 +33154,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sz_daily_info
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

@@ -584,8 +584,19 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     assert {
         skipped[dataset_id]
         for dataset_id in (
+            "cn.dataset.cb_issue",
+            "cn.dataset.daily_info",
+            "cn.dataset.disclosure_date",
+            "cn.dataset.fund_div",
+            "cn.dataset.index_dailybasic",
+            "cn.dataset.limit_cpt_list",
+            "cn.dataset.limit_step",
+            "cn.dataset.moneyflow_hsgt",
             "cn.dataset.repurchase",
             "cn.dataset.research_report",
+            "cn.dataset.share_float",
+            "cn.dataset.stk_managers",
+            "cn.dataset.sz_daily_info",
             "cn.dataset.top_list",
         )
     } == {"on_demand"}
@@ -1865,6 +1876,110 @@ def test_formal_direct_wave_3_dry_run_preserves_on_demand_only_contract(
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
         execute=False,
         activation_wave="direct_wave_3",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert not {plan.dataset_id for plan in result.plans} & expected
+    assert {
+        (item.dataset_id, item.state)
+        for item in result.skipped
+        if item.dataset_id in expected
+    } == {(dataset_id, "on_demand") for dataset_id in expected}
+
+
+def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    direct = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "direct_wave_4",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+    existing_waves = tuple(
+        scheduler.load_activation_wave(
+            ACTIVATION_WAVES,
+            wave_id,
+            registry=registry,
+            registry_payload=registry_payload,
+            schedule_payload=schedule_payload,
+        )
+        for wave_id in (
+            "direct_wave_1",
+            "direct_wave_2",
+            "direct_wave_3",
+            "pilot_existing",
+        )
+    )
+
+    assert direct.dataset_ids == frozenset(
+        {
+            "cn.dataset.cb_issue",
+            "cn.dataset.daily_info",
+            "cn.dataset.disclosure_date",
+            "cn.dataset.fund_div",
+            "cn.dataset.index_dailybasic",
+            "cn.dataset.limit_cpt_list",
+            "cn.dataset.limit_step",
+            "cn.dataset.moneyflow_hsgt",
+            "cn.dataset.share_float",
+            "cn.dataset.stk_managers",
+            "cn.dataset.sz_daily_info",
+        }
+    )
+    assert all(
+        direct.dataset_ids.isdisjoint(existing.dataset_ids)
+        for existing in existing_waves
+    )
+    for dataset_id in direct.dataset_ids:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "on_demand"
+        assert binding.fanout is not None
+        assert binding.fanout.strategy == "none"
+        assert binding.pagination is not None
+        assert binding.pagination.strategy == "none"
+        assert binding.request_window_policy is not None
+        assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
+        assert binding.response_completeness is None
+
+
+def test_formal_direct_wave_4_explicit_dry_run_skips_all_as_on_demand(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+    expected = {
+        "cn.dataset.cb_issue",
+        "cn.dataset.daily_info",
+        "cn.dataset.disclosure_date",
+        "cn.dataset.fund_div",
+        "cn.dataset.index_dailybasic",
+        "cn.dataset.limit_cpt_list",
+        "cn.dataset.limit_step",
+        "cn.dataset.moneyflow_hsgt",
+        "cn.dataset.share_float",
+        "cn.dataset.stk_managers",
+        "cn.dataset.sz_daily_info",
+    }
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="direct_wave_4",
         activation_wave_manifest=ACTIVATION_WAVES,
         registry_source_path=TARGET_REGISTRY,
         schedule_source_path=SCHEDULE_CONFIG,

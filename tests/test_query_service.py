@@ -228,6 +228,96 @@ def test_success_without_response_completeness_is_partial_but_keeps_rows() -> No
     assert metadata["lineage"]["transport_service"] == "quicksync"
 
 
+@pytest.mark.parametrize(
+    "dataset_id",
+    (
+        "cn.dataset.cb_issue",
+        "cn.dataset.daily_info",
+        "cn.dataset.disclosure_date",
+        "cn.dataset.fund_div",
+        "cn.dataset.index_dailybasic",
+        "cn.dataset.limit_cpt_list",
+        "cn.dataset.limit_step",
+        "cn.dataset.moneyflow_hsgt",
+        "cn.dataset.share_float",
+        "cn.dataset.stk_managers",
+        "cn.dataset.sz_daily_info",
+    ),
+)
+def test_direct_wave_4_success_stays_partial_and_degraded_without_completeness(
+    dataset_id: str,
+) -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve(dataset_id)
+    binding = dataset.provider_bindings[0]
+    assert binding.activation_state == "active"
+    assert binding.response_completeness is None
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="20260719",
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id=f"receipt-wave-4-{dataset.dataset_id}",
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("tushare",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_provider_config_hashes=(
+            ("tushare", provider_ingest_config_hash(dataset, binding)),
+        ),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        f"watermark-wave-4-{dataset.dataset_id}",
+    )
+
+    assert allow_rows is True
+    assert metadata["state"] == "partial"
+    assert metadata["runtime_state"] == "success"
+    assert metadata["degraded"] is True
+    expected_reasons = [
+        "freshness_watermark_unverified",
+        "response_completeness_unverified",
+    ]
+    assert metadata["freshness"] == {
+        "state": "unknown",
+        "stale": False,
+        "sla_seconds": dataset.freshness_sla_seconds,
+    }
+    assert metadata["quality"] == {
+        "state": "degraded",
+        "valid": False,
+        "evidence": expected_reasons,
+    }
+    assert metadata["data_through"] is None
+    assert metadata["reasons"] == expected_reasons
+
+
 def test_empty_without_response_completeness_is_partial_and_keeps_lineage() -> None:
     source = load_dataset_registry()
     base = source.resolve("cn.equity.daily")
@@ -501,7 +591,7 @@ def test_ineligible_binding_combinations_fail_before_storage_or_provider(
     assert not db_path.exists()
 
 
-def test_all_175_non_active_target_datasets_fail_before_storage_or_provider(
+def test_all_164_non_active_target_datasets_fail_before_storage_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -519,7 +609,7 @@ def test_all_175_non_active_target_datasets_fail_before_storage_or_provider(
     assert {
         state: sum(binding.activation_state == state for binding in bindings)
         for state in ("active", "paused")
-    } == {"active": 15, "paused": 175}
+    } == {"active": 26, "paused": 164}
 
     active = tuple(
         dataset for dataset in registry.datasets if is_initial_release_eligible(dataset)
@@ -531,22 +621,33 @@ def test_all_175_non_active_target_datasets_fail_before_storage_or_provider(
     )
     assert {dataset.dataset_id for dataset in active} == {
         "cn.dataset.adj_factor",
+        "cn.dataset.cb_issue",
+        "cn.dataset.daily_info",
+        "cn.dataset.disclosure_date",
+        "cn.dataset.fund_div",
         "cn.dataset.hsgt_top10",
         "cn.dataset.index_classify",
+        "cn.dataset.index_dailybasic",
+        "cn.dataset.limit_cpt_list",
         "cn.dataset.limit_list_ths",
+        "cn.dataset.limit_step",
+        "cn.dataset.moneyflow_hsgt",
         "cn.dataset.moneyflow_ind_ths",
         "cn.dataset.repurchase",
         "cn.dataset.research_report",
+        "cn.dataset.share_float",
         "cn.dataset.sw_daily",
         "cn.dataset.stk_auction",
         "cn.dataset.stk_limit",
+        "cn.dataset.stk_managers",
         "cn.dataset.suspend_d",
+        "cn.dataset.sz_daily_info",
         "cn.dataset.top_list",
         "cn.equity.daily",
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
-    assert len(non_active) == 175
+    assert len(non_active) == 164
     excluded = tuple(
         dataset
         for dataset in non_active

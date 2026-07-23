@@ -17,6 +17,7 @@ from tests.synthetic_activation_evidence import build_synthetic_activation_evide
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+REQUEST_OBSERVATIONS_PATH = ROOT / "config" / "tushare_request_observations.v1.yaml"
 EXPECTED_MATRIX_SHA256 = (
     "ea102cd7b189e1c7d8d0c208c303b308ebf3a07bd4c9b682c8b10ada9ccfb1e1"
 )
@@ -91,9 +92,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 15
-    assert activation_projection["active_count"] == 15
-    assert activation_projection["paused_count"] == 175
+    assert activation_projection["candidate_count"] == 26
+    assert activation_projection["active_count"] == 26
+    assert activation_projection["paused_count"] == 164
 
     _compiled_with_activation(document)
 
@@ -169,6 +170,18 @@ def test_frozen_matrix_identity_and_classifications_cover_190_once() -> None:
     )
 
 
+def test_request_observations_pin_current_quicksync_observation_bytes() -> None:
+    request_observations = _yaml(REQUEST_OBSERVATIONS_PATH)
+    provenance = request_observations["provenance"]
+    assert isinstance(provenance, dict)
+    quicksync = provenance["quicksync_interface_observations"]
+    assert isinstance(quicksync, dict)
+    assert quicksync == {
+        "path": "config/quicksync_interface_observations.v1.yaml",
+        "sha256": hashlib.sha256(OBSERVATIONS_PATH.read_bytes()).hexdigest(),
+    }
+
+
 def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused() -> None:
     registry = _compiled()
     bindings = _bindings(registry)
@@ -179,18 +192,29 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     }
     assert active == {
         "adj_factor",
+        "cb_issue",
         "hsgt_top10",
         "daily",
+        "daily_info",
+        "disclosure_date",
+        "fund_div",
         "index_classify",
+        "index_dailybasic",
+        "limit_cpt_list",
         "limit_list_ths",
+        "limit_step",
+        "moneyflow_hsgt",
         "moneyflow_ind_ths",
         "repurchase",
         "research_report",
+        "share_float",
         "stk_auction",
         "stk_limit",
+        "stk_managers",
         "stock_basic",
         "suspend_d",
         "sw_daily",
+        "sz_daily_info",
         "top_list",
         "trade_cal",
     }
@@ -198,39 +222,39 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     assert sum(
         dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
         for dataset in bindings.values()
-    ) == 175
+    ) == 164
 
     expected_direct_wave_ref = (
         "server-evidence/20260722TQkgWsk-1def337-provider-native"
     )
     active_evidence = _observations()["active_evidence"]
     assert isinstance(active_evidence, dict)
+    direct_api_names = (
+        "adj_factor",
+        "cb_issue",
+        "daily_info",
+        "disclosure_date",
+        "fund_div",
+        "hsgt_top10",
+        "index_dailybasic",
+        "limit_cpt_list",
+        "limit_list_ths",
+        "limit_step",
+        "moneyflow_hsgt",
+        "moneyflow_ind_ths",
+        "repurchase",
+        "research_report",
+        "share_float",
+        "stk_auction",
+        "stk_limit",
+        "stk_managers",
+        "suspend_d",
+        "sz_daily_info",
+        "top_list",
+    )
     assert {
-        api_name: active_evidence[api_name]
-        for api_name in (
-            "adj_factor",
-            "hsgt_top10",
-            "limit_list_ths",
-            "moneyflow_ind_ths",
-            "repurchase",
-            "research_report",
-            "stk_auction",
-            "stk_limit",
-            "suspend_d",
-            "top_list",
-        )
-    } == {
-        "adj_factor": expected_direct_wave_ref,
-        "hsgt_top10": expected_direct_wave_ref,
-        "limit_list_ths": expected_direct_wave_ref,
-        "moneyflow_ind_ths": expected_direct_wave_ref,
-        "repurchase": expected_direct_wave_ref,
-        "research_report": expected_direct_wave_ref,
-        "stk_auction": expected_direct_wave_ref,
-        "stk_limit": expected_direct_wave_ref,
-        "suspend_d": expected_direct_wave_ref,
-        "top_list": expected_direct_wave_ref,
-    }
+        api_name: active_evidence[api_name] for api_name in direct_api_names
+    } == {api_name: expected_direct_wave_ref for api_name in direct_api_names}
 
     observations = _observations()["classifications"]
     assert isinstance(observations, dict)
