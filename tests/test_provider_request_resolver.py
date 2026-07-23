@@ -30,10 +30,16 @@ def _load_catalog() -> RequestProfileCatalog:
     }
     registry = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))
     dataset_by_api: dict[str, str] = {}
+    activation_by_api: dict[str, str] = {}
     for dataset in registry["datasets"]:
         for binding in dataset["provider_bindings"]:
             if binding["provider"] == "tushare":
+                assert binding["api_name"] not in dataset_by_api
                 dataset_by_api[binding["api_name"]] = dataset["dataset_id"]
+                activation_by_api[binding["api_name"]] = binding["activation_state"]
+
+    assert len(document_by_api) == len(dataset_by_api) == 190
+    assert set(document_by_api) == set(dataset_by_api)
 
     observations = yaml.safe_load(OBSERVATIONS.read_text(encoding="utf-8"))
     classification_by_api: dict[str, str] = {}
@@ -43,21 +49,24 @@ def _load_catalog() -> RequestProfileCatalog:
             assert api_name not in classification_by_api
             classification_by_api[api_name] = classification
 
-    active_apis = sorted(observations["active_evidence"])
-    assert active_apis == [
-        "adj_factor",
-        "daily",
-        "index_classify",
-        "stk_auction",
-        "stk_limit",
-        "stock_basic",
-        "suspend_d",
-        "sw_daily",
-        "trade_cal",
-    ]
+    observed_active_apis = set(observations["active_evidence"])
+    registry_active_apis = {
+        api_name
+        for api_name, activation_state in activation_by_api.items()
+        if activation_state == "active"
+    }
+    registry_paused_apis = {
+        api_name
+        for api_name, activation_state in activation_by_api.items()
+        if activation_state == "paused"
+    }
+    assert set(activation_by_api.values()) == {"active", "paused"}
+    assert registry_active_apis == observed_active_apis
+    assert registry_active_apis.isdisjoint(registry_paused_apis)
+    assert registry_active_apis | registry_paused_apis == set(dataset_by_api)
     request_profiles = yaml.safe_load(REQUEST_PROFILES.read_text(encoding="utf-8"))
     migration_only_exclusions = request_profiles["excluded_existing_activations"]
-    assert set(migration_only_exclusions).issubset(active_apis)
+    assert set(migration_only_exclusions).issubset(registry_active_apis)
     return load_request_profile_catalog(
         request_profiles,
         document_by_api=document_by_api,

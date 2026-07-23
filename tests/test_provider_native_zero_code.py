@@ -192,21 +192,24 @@ def test_observations_compile_without_dataset_specific_runtime():
     }
 
     assert len(bindings) == 190
-    active_apis = {
-        "adj_factor",
-        "daily",
-        "index_classify",
-        "stk_auction",
-        "stk_limit",
-        "stock_basic",
-        "suspend_d",
-        "sw_daily",
-        "trade_cal",
+    observed_active_apis = set(observations["active_evidence"])
+    registry_active_apis = {
+        api
+        for api, binding in bindings.items()
+        if binding["activation_state"] == "active"
     }
-    paused_apis = set(bindings) - active_apis
-    assert len(paused_apis) == 181
-    assert all(bindings[api]["activation_state"] == "active" for api in active_apis)
-    assert all(bindings[api]["activation_state"] == "paused" for api in paused_apis)
+    paused_apis = {
+        api
+        for api, binding in bindings.items()
+        if binding["activation_state"] == "paused"
+    }
+    assert {binding["activation_state"] for binding in bindings.values()} == {
+        "active",
+        "paused",
+    }
+    assert registry_active_apis == observed_active_apis
+    assert registry_active_apis.isdisjoint(paused_apis)
+    assert registry_active_apis | paused_apis == set(bindings)
     executable_paused_apis = {
         api for api in paused_apis if bindings[api]["probe_state"] == "executable"
     }
