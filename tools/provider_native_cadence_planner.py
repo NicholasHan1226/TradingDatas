@@ -814,6 +814,7 @@ def _dataset_plans(
     policy: CadencePolicy,
     state: PlannerState,
     now: datetime,
+    current_only: bool,
 ) -> tuple[tuple[ScheduledRun, ...], str]:
     current = state.get(dataset, binding)
     now_utc = now.astimezone(timezone.utc)
@@ -884,10 +885,12 @@ def _dataset_plans(
     window_policy = binding.request_window_policy
     span = min(policy.backfill_chunk_span_days, window_policy.max_span_days, 366)
     current_chunks = _chunks(tuple(current_days), span)
-    deferred = (
-        [("backfill", *chunk) for chunk in _chunks(tuple(backfill_days), span)]
-        + [("correction", *chunk) for chunk in _chunks(tuple(correction_days), span)]
-    )[: policy.max_backfill_chunks_per_run]
+    deferred = []
+    if not current_only:
+        deferred = (
+            [("backfill", *chunk) for chunk in _chunks(tuple(backfill_days), span)]
+            + [("correction", *chunk) for chunk in _chunks(tuple(correction_days), span)]
+        )[: policy.max_backfill_chunks_per_run]
     demands = [("current", *chunk) for chunk in current_chunks] + deferred
     plans: list[ScheduledRun] = []
     suppressed = False
@@ -919,6 +922,7 @@ def plan_runs(
     state: PlannerState,
     now: datetime,
     selected_dataset_ids: frozenset[str] | None = None,
+    current_only: bool = False,
 ) -> tuple[tuple[ScheduledRun, ...], tuple[PlannerSkip, ...]]:
     if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
@@ -956,7 +960,15 @@ def plan_runs(
         if not policy.automatic:
             skips.append(PlannerSkip(dataset.dataset_id, binding.provider, "on_demand"))
             continue
-        plans, status = _dataset_plans(registry, dataset, binding, policy, state, now)
+        plans, status = _dataset_plans(
+            registry,
+            dataset,
+            binding,
+            policy,
+            state,
+            now,
+            current_only,
+        )
         if plans:
             candidates.extend(plans)
         else:

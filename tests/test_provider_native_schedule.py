@@ -1082,6 +1082,50 @@ def test_execute_rejects_schedule_override_before_credentials_or_provider(
 
 
 @pytest.mark.parametrize(
+    "activation_args",
+    [[], ["--activation-wave", "direct_wave_1"]],
+)
+def test_execute_current_only_requires_pilot_wave_before_credentials_provider_or_database(
+    activation_args: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "_validated_collector_credentials",
+        lambda: pytest.fail("missing wave must fail before credential access"),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtime_dataset_registry",
+        lambda: pytest.fail("missing wave must fail before registry access"),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "exclusive_schedule_lock",
+        lambda *args, **kwargs: pytest.fail("missing wave must fail before lock or database"),
+    )
+
+    code = scheduler.main(
+        [
+            "--execute",
+            "--current-only",
+            *activation_args,
+            "--lock-path",
+            str(tmp_path / "must-not-create.lock"),
+        ]
+    )
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().out) == {
+        "mode": "execute",
+        "state": "validation",
+    }
+    assert not (tmp_path / "must-not-create.lock").exists()
+
+
+@pytest.mark.parametrize(
     "environment",
     [
         {"QUICKSYNC_API_URL": "https://api.quicksync.cn"},
@@ -1333,6 +1377,106 @@ def test_correction_overlap_and_api_budget_are_bounded(
     )
 
 
+def test_current_only_wave_emits_zero_backfill_and_zero_correction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    sessions = {
+        date(2026, 7, 13) + timedelta(days=offset): (
+            date(2026, 7, 13) + timedelta(days=offset)
+        ).weekday()
+        < 5
+        for offset in range(8)
+    }
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, sessions)
+        for day, opened in sessions.items():
+            if opened and day != date(2026, 7, 13):
+                _seed_daily(
+                    monkeypatch, conn, registry, day, finished_at="2026-07-18T09:00:00Z"
+                )
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+
+    default_result = scheduler.run_schedule(
+        registry=registry,
+        schedule=schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="pilot_existing",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+    current_result = scheduler.run_schedule(
+        registry=registry,
+        schedule=schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="pilot_existing",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+        current_only=True,
+    )
+
+    default_daily = [
+        plan.priority
+        for plan in default_result.plans
+        if plan.dataset_id == "cn.equity.daily"
+    ]
+    assert default_daily == ["current", "backfill", "correction"]
+    assert current_result.plans
+    assert {plan.priority for plan in current_result.plans} == {"current"}
+    assert schedule.cadences["postclose_daily"].max_backfill_chunks_per_run == 3
+
+
+def test_current_only_dry_run_never_calls_provider_or_writes_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    before_bytes = db_path.read_bytes()
+    before_stat = db_path.stat()
+    monkeypatch.setattr(
+        scheduler,
+        "_validated_collector_credentials",
+        lambda: pytest.fail("dry-run must not read provider credentials"),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_in_process_executor",
+        lambda *args, **kwargs: pytest.fail("dry-run must not call provider"),
+    )
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="pilot_existing",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+        current_only=True,
+    )
+
+    after_stat = db_path.stat()
+    assert result.mode == "plan"
+    assert result.plans
+    assert db_path.read_bytes() == before_bytes
+    assert after_stat.st_size == before_stat.st_size
+    assert after_stat.st_mtime_ns == before_stat.st_mtime_ns
+    assert not Path(f"{db_path}-wal").exists()
+    assert not Path(f"{db_path}-shm").exists()
+
+
 def test_synthetic_dataset_and_plan_mode_remain_generic_and_read_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1462,6 +1606,86 @@ def _activation_wave_manifest(
         encoding="utf-8",
     )
     return manifest
+
+
+@pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
+def test_current_only_requires_pilot_wave_before_database_access(
+    activation_wave: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        scheduler,
+        "load_planner_state",
+        lambda *args, **kwargs: pytest.fail(
+            "missing activation wave must fail before database access"
+        ),
+    )
+
+    with pytest.raises(
+        ValueError, match="current-only requires pilot_existing activation wave"
+    ):
+        scheduler.run_schedule(
+            registry=_active_registry(),
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=tmp_path / "must-not-open.sqlite",
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+            activation_wave=activation_wave,
+            current_only=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("dataset_id", "priority"),
+    [
+        ("cn.synthetic.other_wave", "current"),
+        ("cn.equity.daily", "backfill"),
+    ],
+)
+def test_current_only_execute_revalidates_selected_current_plans_before_executor(
+    dataset_id: str,
+    priority: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    manifest = _activation_wave_manifest(
+        tmp_path,
+        dataset_ids=["cn.equity.daily"],
+        wave_id="pilot_existing",
+    )
+    rogue = scheduler.ScheduledRun(
+        dataset_id=dataset_id,
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+        priority=priority,
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_plan_runs",
+        lambda **kwargs: ((rogue,), ()),
+    )
+
+    with pytest.raises(ValueError, match="current-only plan escaped selection"):
+        scheduler.run_schedule(
+            registry=None,
+            schedule=None,
+            db_path=db_path,
+            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=True,
+            executor=lambda plan: pytest.fail(
+                "invalid current-only plan must fail before executor"
+            ),
+            activation_wave="pilot_existing",
+            activation_wave_manifest=manifest,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+            current_only=True,
+        )
 
 
 def test_activation_wave_rejects_an_unknown_wave_before_planner_access(
@@ -1645,9 +1869,12 @@ def test_activation_wave_selects_mixed_rate_classes_before_execution(
 
 
 def test_activation_wave_option_is_exposed_by_the_cli() -> None:
-    args = scheduler.parse_args(["--activation-wave", "pilot_existing"])
+    args = scheduler.parse_args(
+        ["--activation-wave", "pilot_existing", "--current-only"]
+    )
 
     assert args.activation_wave == "pilot_existing"
+    assert args.current_only is True
 
 
 def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
@@ -2157,6 +2384,7 @@ def test_main_wave_defers_registry_and_schedule_parsing_to_bound_run(
     def run(**kwargs: object) -> scheduler.ScheduleResult:
         assert kwargs["registry"] is None
         assert kwargs["schedule"] is None
+        assert kwargs["current_only"] is True
         return scheduler.ScheduleResult(0, "plan", (), ())
 
     monkeypatch.setattr(scheduler, "run_schedule", run)
@@ -2165,6 +2393,7 @@ def test_main_wave_defers_registry_and_schedule_parsing_to_bound_run(
         [
             "--activation-wave",
             "pilot_existing",
+            "--current-only",
             "--lock-path",
             str(tmp_path / "schedule.lock"),
         ]

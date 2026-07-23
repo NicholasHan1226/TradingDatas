@@ -119,6 +119,7 @@ _FORBIDDEN_COLLECTOR_CREDENTIALS = frozenset(
         "TUSHARE_TOKEN",
     }
 )
+_CURRENT_ONLY_ACTIVATION_WAVE = "pilot_existing"
 
 
 class ScheduleBusyError(RuntimeError):
@@ -267,7 +268,10 @@ def run_schedule(
     activation_wave_manifest: Path = DEFAULT_ACTIVATION_WAVE_CONFIG,
     registry_source_path: Path = DEFAULT_RUNTIME_REGISTRY_CONFIG,
     schedule_source_path: Path = DEFAULT_SCHEDULE_CONFIG,
+    current_only: bool = False,
 ) -> ScheduleResult:
+    if current_only and activation_wave != _CURRENT_ONLY_ACTIVATION_WAVE:
+        raise ValueError("current-only requires pilot_existing activation wave")
     selected_dataset_ids = None
     if activation_wave is not None:
         registry_payload = Path(registry_source_path).read_bytes()
@@ -290,7 +294,16 @@ def run_schedule(
         state=state,
         now=now,
         selected_dataset_ids=selected_dataset_ids,
+        current_only=current_only,
     )
+    if current_only and (
+        selected_dataset_ids is None
+        or any(
+            plan.dataset_id not in selected_dataset_ids or plan.priority != "current"
+            for plan in plans
+        )
+    ):
+        raise ValueError("current-only plan escaped selection")
     skipped = tuple(
         SkippedResult(item.dataset_id, item.provider, item.state)
         for item in planner_skips
@@ -371,6 +384,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--schedule-config", type=Path, default=DEFAULT_SCHEDULE_CONFIG)
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK_PATH)
     parser.add_argument("--activation-wave")
+    parser.add_argument("--current-only", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--now", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
@@ -378,10 +392,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if args.execute and (
-        args.now is not None or args.schedule_config != DEFAULT_SCHEDULE_CONFIG
+    if (
+        args.execute
+        and (args.now is not None or args.schedule_config != DEFAULT_SCHEDULE_CONFIG)
+    ) or (
+        args.current_only
+        and args.activation_wave != _CURRENT_ONLY_ACTIVATION_WAVE
     ):
-        print('{"mode":"execute","state":"validation"}')
+        print(
+            json.dumps(
+                {
+                    "mode": "execute" if args.execute else "plan",
+                    "state": "validation",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
         return 2
     try:
         if args.execute:
@@ -403,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
                 execute=args.execute,
                 activation_wave=args.activation_wave,
                 schedule_source_path=args.schedule_config,
+                current_only=args.current_only,
             )
     except ScheduleBusyError:
         print('{"mode":"execute","state":"busy"}')
