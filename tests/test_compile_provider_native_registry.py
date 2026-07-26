@@ -187,15 +187,12 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
 
     assert active == {
         "adj_factor",
-        "anns_d",
         "cb_issue",
         "hsgt_top10",
         "daily",
         "daily_info",
         "disclosure_date",
-        "etf_basic",
         "fund_div",
-        "fut_basic",
         "index_classify",
         "index_dailybasic",
         "limit_cpt_list",
@@ -296,15 +293,12 @@ def test_formal_mode_never_promotes_preactivation_evidence() -> None:
 
     assert active == {
         "adj_factor",
-        "anns_d",
         "cb_issue",
         "hsgt_top10",
         "daily",
         "daily_info",
         "disclosure_date",
-        "etf_basic",
         "fund_div",
-        "fut_basic",
         "index_classify",
         "index_dailybasic",
         "limit_cpt_list",
@@ -341,15 +335,12 @@ def test_formal_mode_does_not_validate_or_depend_on_activation_evidence() -> Non
 
     assert active == {
         "adj_factor",
-        "anns_d",
         "cb_issue",
         "hsgt_top10",
         "daily",
         "daily_info",
         "disclosure_date",
-        "etf_basic",
         "fund_div",
-        "fut_basic",
         "index_classify",
         "index_dailybasic",
         "limit_cpt_list",
@@ -628,8 +619,8 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         else:
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
-    assert len(active_dataset_ids) == 29
-    assert len(paused_dataset_ids) == 161
+    assert len(active_dataset_ids) == 26
+    assert len(paused_dataset_ids) == 164
     assert request_shapes == {
         "snapshot_or_date_range",
         "entity_fanout",
@@ -695,7 +686,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert sum(
         dataset.provider_bindings[0].activation_state == "active"
         for dataset in loaded.datasets
-    ) == 30
+    ) == 27
     assert output.read_bytes() != before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
 

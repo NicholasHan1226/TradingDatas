@@ -313,14 +313,11 @@ classifications:
   - rt_etf_min_daily
 active_evidence:
   adj_factor: server-evidence/20260722TQkgWsk-1def337-provider-native
-  anns_d: server-evidence/20260726T123931Z-quicksync-renewal-matrix
   cb_issue: server-evidence/20260722TQkgWsk-1def337-provider-native
   daily: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
   daily_info: server-evidence/20260722TQkgWsk-1def337-provider-native
   disclosure_date: server-evidence/20260722TQkgWsk-1def337-provider-native
-  etf_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
-  fut_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
   hsgt_top10: server-evidence/20260722TQkgWsk-1def337-provider-native
   index_classify: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
   index_dailybasic: server-evidence/20260722TQkgWsk-1def337-provider-native
