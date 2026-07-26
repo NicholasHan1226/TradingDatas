@@ -4,6 +4,23 @@
 
 ## 结论
 
+- **2026-07-26 生产 current 已切换至 `8332439be3d09e81ce5724dc76fe09a16b8f92e9`。**
+  该 release 的 immutable manifest 已按 commit/tree/blob/owner/mode 验证；18082
+  API 已恢复为 active，collector inactive、timer disabled。没有启用 cron、没有删除
+  旧数据或回滚 release。
+- **当前 26 个 active dataset 已完成一次真实受控 latest batch。** 同一通用
+  `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
+  collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入
+  `success` receipt；`security_master` 本轮是合法 `empty`，既有完整 snapshot 保留。
+  所有 26 项均已以 TradingAgent 专用只读身份经 `POST /v1/query` 回读为 HTTP 200：5 项
+  `ready`，21 项为 `partial/degraded`。后者表示 response-completeness/覆盖口径尚未
+  冻结，不能表述为完整或自动调度就绪；它们的 provider receipt 仍为 `success`。
+  token 仅在服务器受控进程内用于认证，未输出、传输或记录到证据。
+- **这不是全部 Tushare 接口已经稳定采集。** 当前 runtime contract 仍为 190 项，其中
+  26 active、164 paused；首期产品 catalog 的另 32 项尚缺正式 runtime contract 或
+  QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
+  provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
+  collector、route、cron 或 timer。
 - **最新生产事实优先。** 2026-07-26 续费后的服务器受控复测，使用正式 QuickSync
   transport、同一冻结计划的 139 个安全可执行请求，全部完成且无重复：17 `success`
   （非空响应）、115 `valid_empty`、3 `permission_denied`（`npr`、`stk_premarket`、
