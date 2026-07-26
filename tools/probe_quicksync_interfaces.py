@@ -1149,12 +1149,24 @@ def _call_entry(
     if len(observed) != 1:
         raise ProbeExecutionError("provider response observation is incomplete")
     response_bytes, response_sha256 = observed[0]
+    redacted_provider_failure = (
+        response_sha256 is None
+        and state in _PROVIDER_FAILURE_CLASSES
+        and outcome.state == "failed"
+        and not outcome.rows
+        and not outcome.response_fields
+    )
     if (
         type(response_bytes) is not int
         or response_bytes <= 0
         or response_bytes > max_response_bytes
-        or type(response_sha256) is not str
-        or _HASH.fullmatch(response_sha256) is None
+        or (
+            not redacted_provider_failure
+            and (
+                type(response_sha256) is not str
+                or _HASH.fullmatch(response_sha256) is None
+            )
+        )
     ):
         raise ProbeExecutionError("provider response evidence is invalid")
 
@@ -1171,6 +1183,7 @@ def _call_entry(
             "row_count": len(outcome.rows),
             "response_bytes": response_bytes,
             "response_sha256": response_sha256,
+            "response_redacted": redacted_provider_failure,
             "elapsed_ms": elapsed_ms,
         },
         response_bytes,

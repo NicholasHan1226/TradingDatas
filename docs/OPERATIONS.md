@@ -239,6 +239,10 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    activation 或 scheduler。它用于一次批量复验安全请求形状；`all` 仍在任一 blocked 条目
    存在时 fail closed。
 
+   若上游失败响应被 transport 判定为含敏感回显，probe 只可把它记录为失败，使用
+   `response_redacted=true` 与 `response_sha256=null`；不会保存响应正文或降级为成功。
+   成功或有效空响应仍必须携带合法 SHA-256，否则整批 fail closed。
+
    HTTPS activation evidence 必须保存在仓外，由调用方先核对 sidecar SHA-256，再通过
    显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定

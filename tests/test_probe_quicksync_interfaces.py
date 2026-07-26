@@ -206,6 +206,7 @@ def _call_with(
     outcomes: dict[str, ProviderCallOutcome] | None = None,
     *,
     response_bytes: int = 128,
+    response_sha256: str | None = RESPONSE_SHA,
     calls: list[dict[str, object]] | None = None,
 ):
     configured = outcomes or {}
@@ -229,7 +230,7 @@ def _call_with(
                     "max_response_bytes": max_response_bytes,
                 }
             )
-        response_observer(response_bytes, RESPONSE_SHA)
+        response_observer(response_bytes, response_sha256)
         return configured.get(api_name, _success_outcome())
 
     return call
@@ -1296,6 +1297,45 @@ def test_redacted_provider_diagnostic_is_only_recorded_as_unclassified_failure(
     assert evidence["results"][0]["state"] == "provider_failed_unclassified"
 
 
+def test_redacted_provider_failure_keeps_no_response_digest_without_failing_probe(
+    tmp_path: Path,
+) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path, _plan_document(gap_count=1)))
+    evidence = _execute_probe(
+        plan,
+        scope="gaps",
+        token="private-token",
+        concurrency=1,
+        call=_call_with(
+            {
+                "api_000": _failed_outcome(
+                    40102,
+                    error_message="provider diagnostic [REDACTED]",
+                )
+            },
+            response_sha256=None,
+        ),
+    )
+
+    result = evidence["results"][0]
+    assert result["state"] == "provider_failed_unclassified"
+    assert result["response_redacted"] is True
+    assert result["response_sha256"] is None
+
+
+def test_success_without_response_digest_remains_fail_closed(tmp_path: Path) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path))
+
+    with pytest.raises(probe.ProbeExecutionError, match="response evidence"):
+        _execute_probe(
+            plan,
+            scope="gaps",
+            token="private-token",
+            concurrency=1,
+            call=_call_with(response_sha256=None),
+        )
+
+
 def test_total_response_budget_stops_before_an_unbudgeted_call(tmp_path: Path) -> None:
     document = _plan_document(gap_count=18)
     plan = probe.load_probe_plan(_write_plan(tmp_path, document))
@@ -1701,6 +1741,7 @@ def test_atomic_evidence_is_0600_single_link_and_contains_no_sensitive_values(
         "fields": ["code", "value"],
         "provider_class": "ok",
         "response_bytes": 128,
+        "response_redacted": False,
         "response_sha256": RESPONSE_SHA,
         "row_count": 1,
         "state": "success",
