@@ -351,13 +351,14 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   12 active。
 - TradingAgent 专用 credential 已完成阶段 A dual registration：non-secret reference 为
   `ta-read-20260722T223457Z-0907cd`，旧/新 credential 均在服务器 loopback 对 catalog
-  `v1-fcc1aaa39c20743e` 返回 200（190 total / 12 active）。2026-07-23 TradingAgent 已明确
-  给出 freeze-window GO；发布侧 fresh 复核 TA schedule/process/runtime holder 均为 0、旧 front
-  已 inactive 且 runtime masked、8787 closed 后，状态已进入
-  `credential_mutation_frozen_waiting_tradingagent_parent`。canonical source 与旧 runtime
-  parent/leaf 仍未改变，collector timer 仍 inactive/disabled，8082 未改；必须等 TA 安装并
-  验证 `root:tradingagent 0710` parent 后才允许原子安装 staged leaf。token 与 token hash
-  从未进入消息、日志或 evidence。
+  `v1-fcc1aaa39c20743e` 返回 200。2026-07-26 在 TradingAgent 安装并 readback
+  `root:tradingagent 0710` parent、确认 schedule/process/runtime holder 均为 0、旧 front
+  inactive/runtime-masked、8787 closed 后，发布侧原子替换为 leaf-only tmpfiles 规则并安装新
+  runtime leaf。leaf 为 `tradingagent:tradingagent 0600`、regular、nlink=1；以该身份读取
+  18082 catalog 返回 200，未认证返回 401。catalog 共 190 项，运行投影为 3 `success`、9
+  `stale`、178 `paused`，如实反映 collector timer 仍 inactive/disabled。freeze marker 已记录
+  `runtime_cutover_complete_unfrozen`；8082、timer、真实交易和旧 front 均未改变。token 与 token
+  hash 从未进入消息、日志或 evidence。
 
 未验证：
 

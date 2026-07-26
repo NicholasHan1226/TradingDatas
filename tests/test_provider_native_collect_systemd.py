@@ -26,6 +26,8 @@ def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
     for argument in (
         "--db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite",
         "--lock-path /run/tradingdatas/collect.lock",
+        "--activation-wave pilot_existing",
+        "--current-only",
         "--execute",
     ):
         assert argument in source
@@ -34,6 +36,7 @@ def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
         "TRADINGDATAS_REGISTRY_PATH",
         "TRADINGDATAS_SCHEDULE_PATH",
         "--schedule-config",
+        "--activation-wave direct_wave_",
     ):
         assert forbidden not in source
 

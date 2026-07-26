@@ -256,7 +256,9 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    2026-07-23 production no-write plan 同时生成 current、backfill 与 correction 的问题，
    但尚未发布到 production。timer 仍保持 disabled；先做 fresh release 和受控 one-shot，
    确认 0 backfill / 0 correction、facts/receipts/API readback 后，才可评估仅 Wave 1/2 的
-   cadence pilot。`direct_wave_3` 永远按 `on_demand` 跳过 scheduler。
+   cadence pilot。已安装的 collector unit 也只传入这两个参数；后续扩大 cadence 的唯一
+   路径是先审查并更新受控 activation wave，而不是删掉 current-only。`direct_wave_3`
+   永远按 `on_demand` 跳过 scheduler。
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 
