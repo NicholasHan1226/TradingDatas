@@ -112,8 +112,9 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
 
-截至 2026-07-26，正式 production 已运行
-`3896969983585ccd1e448f4a1eefb83c6c596255` 的 26 active / 164 paused registry；这只表示
+截至 2026-07-26 的服务器 readback，正式 production 运行
+`0472be2f52338b64b0c2561afe2d1baaf19586b6`，catalog
+`v1-c19a22c011fc363e` 为 26 active / 164 paused registry；这只表示
 catalog 可发现，不表示 26 项均已采集或可供交易消费者使用。受控 `pilot_existing --current-only`
 one-shot 已只处理原五项：`trade_cal`、`stock_basic`、`index_classify` 为 `ready`，`daily` 与
 `sw_daily` 为 `stale/degraded`，其余 active 项仍须以每项正式 receipt/query readback 判定。

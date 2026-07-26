@@ -48,7 +48,7 @@ runtime registry 仍为 190 项，其中当前 `main` 有 29 项 `active` 可进
 API 仍返回 `partial/degraded`。
 
 `main` 的 29 项不等于 29 项 production 数据 ready：截至 2026-07-26，正式 production 仍为
-`3896969...` 的 26 active / 164 paused。受控 current-only one-shot 只对五个原 pilot
+`0472be2...` 的 26 active / 164 paused。受控 current-only one-shot 只对五个原 pilot
 dataset 运行；每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded
 判定可用性。
 

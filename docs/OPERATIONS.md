@@ -252,7 +252,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。当前 `main` 的正式编译不传 activation evidence，
    固定生成 29 active / 161 paused；截至 2026-07-26，已部署 production release 仍为
-   `3896969983585ccd1e448f4a1eefb83c6c596255` 的 26 / 164。受控 one-shot 不会把
+   `0472be2f52338b64b0c2561afe2d1baaf19586b6` 的 26 / 164。受控 one-shot 不会把
    active 状态等同于 ready，collector timer 仍 disabled；回滚 release
    `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 为 12 / 178。任何时刻都必须以
    release readback 而不是仓库文本判定。用当前 main compiler 重编 2026-07-22
