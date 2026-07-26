@@ -111,10 +111,13 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
 
-正式生产仍固定在 `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 的
-12 active / 178 paused；`direct_wave_3` 与 `direct_wave_4` 均尚未发布，不改变 TradingAgent 当前冻结的
-12-dataset handoff。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置误报为
-已采集或已上线。
+截至 2026-07-26，正式 production 已运行
+`3896969983585ccd1e448f4a1eefb83c6c596255` 的 26 active / 164 paused registry；这只表示
+catalog 可发现，不表示 26 项均已采集或可供交易消费者使用。受控 `pilot_existing --current-only`
+one-shot 已只处理原五项：`trade_cal`、`stock_basic`、`index_classify` 为 `ready`，`daily` 与
+`sw_daily` 为 `stale/degraded`，其余 active 项仍须以每项正式 receipt/query readback 判定。
+collector timer 保持 disabled。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、
+HTTP 200 或 catalog active 状态误报为数据已采集或已上线。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式

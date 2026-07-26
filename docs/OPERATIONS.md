@@ -239,9 +239,10 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。当前 `main` 的正式编译不传 activation evidence，
-   固定生成 26 active / 164 paused；当前已部署 production release 仍为
-   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 的 12 / 178，回滚 release
-   `486e42a655481bbe0df359a97b8167f4611e6bcd` 为 9 / 181；任何时刻都必须以
+   固定生成 26 active / 164 paused；截至 2026-07-26，已部署 production release 为
+   `3896969983585ccd1e448f4a1eefb83c6c596255` 的 26 / 164。受控 one-shot 不会把
+   active 状态等同于 ready，collector timer 仍 disabled；回滚 release
+   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 为 12 / 178。任何时刻都必须以
    release readback 而不是仓库文本判定。用当前 main compiler 重编 2026-07-22
    观测 sidecar 得到的 119 active / 71 paused 仅属于 SHA-256
    `cebbff13971b4d6465b986089a152feb056dc8e56e0bc0d4992a63175d20268c` 的仓外 sidecar

@@ -257,8 +257,8 @@
   重复规划已有 success 窗口。GitHub `main` 随后新增了显式
   `--activation-wave pilot_existing --current-only` 门禁：只接受这个 pilot wave，且计划与
   执行前均拒绝 backfill/correction/非 current 项，形成 0 backfill / 0 correction 的受审入口。
-  该代码尚未发布到 production；timer 继续 disabled，Wave 1/2 继续 manual-only，直到 fresh
-  release、真实 latest/current one-shot 与 API readback 通过。
+  该代码已于 2026-07-26 发布到 production，并完成一次受控 latest/current one-shot 与 API
+  readback；timer 继续 disabled，Wave 1/2 继续 manual-only，直到跨 cadence fresh evidence 通过。
 
 ## 当前停止线
 
@@ -266,26 +266,26 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
 研究 snapshot 与旧 8082/cron 退役：
 
 1. scope v2 与离线 artifact 已冻结 222 个产品能力；仓库与 production formal runtime
-   registry 均有 190 个合同项，但 GitHub `main` 为 26 active / 164 paused、production
-   仍为 12 active / 178 paused；新增 32 项保持
+   registry 均有 190 个合同项，GitHub `main` 与 production 均为 26 active / 164 paused；active
+   仅代表可发现/可计划，新增 32 项保持
    discovery-only。不得把静态目录或历史 HTTP 矩阵误报为全量采集；
-2. `c3232d0...` 正式 SQLite 与正式 18082 API 已完成十二项 latest/current readback，但 daily 的
-   无界跨分区读取会触发 SQLite 查询预算；当前内部消费者必须按日期/范围有界查询；
-3. TradingAgent Bearer transport 与五项有界 query 已在 formal 18082 通过，但其完整
-   integration probe 仍错误假设 provider-native 每行都携带 ISO PIT/receipt 字段并对所有
-   dataset 强制同一 `as_of`；该消费者研究层合同需在 TA 内修正，不得要求 TradingDatas
-   伪造行证据或新增交易语义；
+2. `3896969...` 正式 SQLite 与正式 18082 API 已完成 pilot current-only one-shot：
+   `trade_cal`、`stock_basic`、`index_classify` 为 `ready`，`daily`、`sw_daily` 为
+   `stale/degraded`。daily 仍必须按日期/范围有界查询；消费者不得把 HTTP 200 当成可用性；
+3. TradingAgent 专用 read token 与 18082 catalog 已完成以 `tradingagent` 身份的 200 readback，
+   未认证为 401；TA 仍须按当前 26-row catalog 动态完成 fail-closed parity，不得要求
+   TradingDatas 伪造行证据或新增交易语义；
 4. QuickSync 双 DNS 节点仍有一个 TLS 不一致节点，混合大响应和每日额度未知；timer 必须
    保持 disabled，历史回填只能继续人工 bounded one-shot，不能自动恢复；
-5. 旧 18082 已停用；旧 8082、relay、27 条 active SharedSignals cron 及 90GB 代码/数据面仍有真实
+5. 旧 shadow 18085 已停用；旧 8082、relay、27 条 active SharedSignals cron 及 90GB 代码/数据面仍有真实
    runtime 依赖。两个旧 TD canary 的无依赖代码目录已经删除，但广义旧系统必须等现役消费者切换与
    回滚门禁后分批禁用、观察、删除，数据保留另行批准。
 
 ## 当前执行顺序
 
-1. 保持 production timer disabled；先完成 TradingAgent 专用只读 token 的正确 owner/UID
-   handoff，并由 TradingAgent 在自身仓按 catalog 动态完成当前 12 个 active dataset 的正式消费 parity；
-2. TradingAgent 在自身仓修正 provider-native row/envelope 消费合同并完成 sim-only full
+1. 保持 production timer disabled；TradingAgent 专用只读 token 的 owner/UID handoff 已完成，
+   由 TradingAgent 在自身仓按 catalog 动态完成当前 26 个 active dataset 的正式消费 parity；
+2. TradingAgent 在自身仓完成 provider-native row/envelope 的 fail-closed parity 与 sim-only
    integration probe；TradingDatas 不新增 TA 专用字段、route 或表；
 3. 部署现役 TA consumer，移除 8082 override 后先禁用并观察旧 8082、relay 与 SharedSignals
    writer/cron；跨完整调度周期无旧
@@ -355,10 +355,19 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   `root:tradingagent 0710` parent、确认 schedule/process/runtime holder 均为 0、旧 front
   inactive/runtime-masked、8787 closed 后，发布侧原子替换为 leaf-only tmpfiles 规则并安装新
   runtime leaf。leaf 为 `tradingagent:tradingagent 0600`、regular、nlink=1；以该身份读取
-  18082 catalog 返回 200，未认证返回 401。catalog 共 190 项，运行投影为 3 `success`、9
-  `stale`、178 `paused`，如实反映 collector timer 仍 inactive/disabled。freeze marker 已记录
+  18082 catalog 返回 200，未认证返回 401。随后 2026-07-26 的 `3896969...` current-only
+  release 将 catalog 更新为 190 项：3 `success`、9 `stale`、14 `unobserved`、164 `paused`，
+  如实反映 26 active 不等于 26 ready，且 collector timer 仍 inactive/disabled。freeze marker 已记录
   `runtime_cutover_complete_unfrozen`；8082、timer、真实交易和旧 front 均未改变。token 与 token
   hash 从未进入消息、日志或 evidence。
+- 2026-07-26，commit `3896969983585ccd1e448f4a1eefb83c6c596255` 的本地、origin 与 GitHub
+  main 一致；immutable release 经 trusted verifier 读回为 112 files verified。正式 current
+  已原子切换到该 release，`tradingdatas-v1-internal.service` active，18082 未认证为 401，
+  `tradingagent` scoped token catalog 为 200。一次 `pilot_existing --current-only --execute`
+  service run exit 0：仅完成 `trade_cal` 与 `stock_basic` 的 current success，`daily` 与
+  `sw_daily` 因历史 data-through 如实为 stale/degraded；`index_classify` 保持已有 ready receipt。
+  SQLite `quick_check=ok`，且 timer 继续 disabled。此条是内部服务基线证据，不是全量接口采集、
+  自动 cadence 或 TradingAgent production parity 的完成证明。
 
 未验证：
 
