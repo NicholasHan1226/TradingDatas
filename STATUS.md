@@ -380,6 +380,22 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   含敏感回显，evidence 仅记录 `response_redacted=true` 与空 SHA，不保存正文。该结果推翻
   “已全量稳定采集”的说法：只有经后续 SQLite receipt 与 catalog/query readback 验证的成功项
   才能 promotion，失败/blocked 项继续 paused，不能自动启用 timer。
+- 2026-07-26，对最新已知开市日 `20260724` 的只读定向 QuickSync 探测确认：`daily` 返回
+  5,526 行，而 `sw_daily` 返回 provider code `40101`（权限不足）、零行；两次探测均未写 SQLite。
+  生产 read-only SQLite 同时显示日线事实只到 `20260722`，而交易日历只有 `20260726` 的休市行
+  并携带权威 `pretrade_date=20260724`。因此日线阻塞是通用计划器未利用已验证前一开市日字段，
+  不是日线 entitlement 缺失；下一候选只在通用 calendar policy 中声明该字段并以 TDD 修复，
+  不增加日线专用 collector、route 或 consumer 逻辑。`sw_daily` 仍保持 provider-impaired，
+  TradingAgent 必须继续 fail closed，直到获得真实 provider 成功 receipt 与 API readback。
+- 随后以现役、通用 `collect_provider_dataset.py` 对 `daily@20260724` 执行一次受控 one-shot：
+  5,526 行 returned/validated/committed/inserted，rejected 为 0，新增 1 条 success receipt；执行前
+  SQLite online backup 保存在受限 evidence 目录，执行后 `quick_check=ok`，日线分区上界为
+  `20260724`。以 `tradingagent` scoped credential 通过 18082 `POST /v1/query` 回读为
+  `ready/success/fresh/valid/lineage-complete`，水位 `2026-07-24T00:00:00+08:00`；没有启用 timer、
+  改动 8082 或输出 token。该 one-shot 只恢复日线内部可读性，不代表 `sw_daily` 或 190 个合同已可用。
+- 为防止已知 `40101` 在后续 current-only 计划中被反复调用，候选将 `cn.dataset.sw_daily` 从
+  `pilot_existing` 自动执行波次移出；它仍留在 catalog 中如实投影为受损，只有取得新的真实 provider
+  成功 receipt 与 API readback 后才可重新进入自动波次。该变更不新增专用 collector、路由或交易语义。
 
 未验证：
 

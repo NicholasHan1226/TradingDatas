@@ -1173,6 +1173,7 @@ def test_tushare_rows_outcome_keeps_unknown_provider_error_failed(monkeypatch):
     "provider_code",
     [
         pytest.param(-2001, id="official-tushare"),
+        pytest.param(40101, id="quicksync-observed-permission"),
         pytest.param(40203, id="quicksync-gateway"),
     ],
 )

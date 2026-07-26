@@ -1145,7 +1145,9 @@ def _safe_provider_response_error_message(exc: BaseException) -> str:
     return "Tushare response validation failed"
 
 
-_CLASSIFIABLE_PROVIDER_CODES = frozenset((-2001, "-2001", 40203, "40203"))
+_CLASSIFIABLE_PROVIDER_CODES = frozenset(
+    (-2001, "-2001", 40101, "40101", 40203, "40203")
+)
 _INTERNAL_ERROR_PATTERNS = (
     re.compile(
         r"\b(?:service|config(?:uration)?|classifier|cache|policy|limiter)\b"

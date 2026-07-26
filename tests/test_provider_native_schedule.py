@@ -236,8 +236,18 @@ def _seed_calendar(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     sessions: dict[date, bool],
+    *,
+    previous_open_days: dict[date, date] | None = None,
 ) -> None:
     ordered = sorted(sessions)
+    if previous_open_days is None:
+        previous_open_days = {}
+        prior_open: date | None = None
+        for day in ordered:
+            if not sessions[day] and prior_open is not None:
+                previous_open_days[day] = prior_open
+            if sessions[day]:
+                prior_open = day
     window = {
         "start_date": ordered[0].strftime("%Y%m%d"),
         "end_date": ordered[-1].strftime("%Y%m%d"),
@@ -254,13 +264,20 @@ def _seed_calendar(
     )
     for day in ordered:
         value = day.strftime("%Y%m%d")
+        payload: dict[str, object] = {
+            "cal_date": value,
+            "exchange": "SSE",
+            "is_open": int(sessions[day]),
+        }
+        if day in previous_open_days:
+            payload["pretrade_date"] = previous_open_days[day].strftime("%Y%m%d")
         _fact(
             conn,
             registry,
             "cn.market.trade_calendar",
             receipt,
             value,
-            {"cal_date": value, "exchange": "SSE", "is_open": int(sessions[day])},
+            payload,
         )
     conn.commit()
 
@@ -1280,6 +1297,207 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
     )
 
 
+def test_postclose_uses_calendar_pretrade_date_for_missing_latest_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 26): False},
+            previous_open_days={date(2026, 7, 26): date(2026, 7, 24)},
+        )
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 26, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="pilot_existing",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+        current_only=True,
+    )
+
+    daily = [plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"]
+    assert [plan.request_window for plan in daily] == [{"trade_date": "20260724"}]
+
+
+def test_postclose_rejects_calendar_missing_pretrade_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 26): False},
+            previous_open_days={},
+        )
+
+    with pytest.raises(RuntimeError, match="calendar previous session is missing"):
+        scheduler.run_schedule(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=db_path,
+            now=datetime(2026, 7, 26, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+        )
+
+
+def test_postclose_rejects_missing_pretrade_for_latest_closed_with_later_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 26): False, date(2026, 7, 27): True},
+            previous_open_days={},
+        )
+
+    with pytest.raises(RuntimeError, match="calendar previous session is missing"):
+        scheduler.run_schedule(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=db_path,
+            now=datetime(2026, 7, 27, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+        )
+
+
+def test_postclose_rejects_conflicting_duplicate_calendar_pretrade_dates() -> None:
+    registry = _active_registry()
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    dataset = registry.resolve("cn.market.trade_calendar")
+    binding = dataset.provider_bindings[0]
+    facts = (
+        cadence_planner._Fact(
+            "20260726",
+            MappingProxyType(
+                {
+                    "cal_date": "20260726",
+                    "exchange": "SSE",
+                    "is_open": 0,
+                    "pretrade_date": "20260724",
+                }
+            ),
+            "receipt-one",
+        ),
+        cadence_planner._Fact(
+            "20260726",
+            MappingProxyType(
+                {
+                    "cal_date": "20260726",
+                    "exchange": "SSE",
+                    "is_open": 0,
+                    "pretrade_date": "20260723",
+                }
+            ),
+            "receipt-two",
+        ),
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType(
+            {
+                (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                    facts=facts
+                )
+            }
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="calendar previous session is conflicting"):
+        cadence_planner._calendar(
+            registry, state, schedule.cadences["postclose_daily"]
+        )
+
+
+def test_postclose_rejects_invalid_calendar_pretrade_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 26): False},
+            previous_open_days={date(2026, 7, 26): date(2026, 7, 24)},
+        )
+        conn.execute(
+            "UPDATE provider_dataset_rows SET payload_json=? "
+            "WHERE dataset_id=? AND partition_value=?",
+            (
+                json.dumps(
+                    {
+                        "cal_date": "20260726",
+                        "exchange": "SSE",
+                        "is_open": 0,
+                        "pretrade_date": "2026072x",
+                    }
+                ),
+                "cn.market.trade_calendar",
+                "20260726",
+            ),
+        )
+        conn.commit()
+
+    with pytest.raises(RuntimeError, match="calendar previous session is invalid"):
+        scheduler.run_schedule(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=db_path,
+            now=datetime(2026, 7, 26, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+        )
+
+
+def test_postclose_rejects_conflicting_calendar_pretrade_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 24): False, date(2026, 7, 26): False},
+            previous_open_days={date(2026, 7, 26): date(2026, 7, 24)},
+        )
+
+    with pytest.raises(RuntimeError, match="calendar previous session is conflicting"):
+        scheduler.run_schedule(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            db_path=db_path,
+            now=datetime(2026, 7, 26, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            execute=False,
+        )
+
+
 def test_trade_calendar_uses_bounded_chunks_through_current_day(tmp_path: Path) -> None:
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
@@ -1908,7 +2126,6 @@ def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -
     assert pilot.dataset_ids == frozenset(
         {
             "cn.dataset.index_classify",
-            "cn.dataset.sw_daily",
             "cn.equity.daily",
             "cn.equity.security_master",
             "cn.market.trade_calendar",

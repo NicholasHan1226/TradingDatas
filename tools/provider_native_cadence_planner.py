@@ -99,6 +99,7 @@ class CalendarPolicy:
     date_field: str
     open_field: str
     open_values: tuple[object, ...]
+    previous_open_date_field: str | None = None
 
 
 @dataclass(frozen=True)
@@ -380,7 +381,16 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
         calendar = None
         if raw_calendar is not None:
             item = _mapping(raw_calendar, f"cadence {name}.calendar")
-            if set(item) != {"dataset_id", "date_field", "open_field", "open_values"}:
+            required_calendar_keys = {
+                "dataset_id",
+                "date_field",
+                "open_field",
+                "open_values",
+            }
+            allowed_calendar_keys = required_calendar_keys | {
+                "previous_open_date_field"
+            }
+            if not required_calendar_keys <= set(item) <= allowed_calendar_keys:
                 raise ValueError("calendar keys are invalid")
             open_values = item["open_values"]
             if type(open_values) is not list or not open_values:
@@ -390,6 +400,14 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
                 _text(item["date_field"], "calendar.date_field"),
                 _text(item["open_field"], "calendar.open_field"),
                 tuple(open_values),
+                (
+                    _text(
+                        item["previous_open_date_field"],
+                        "calendar.previous_open_date_field",
+                    )
+                    if item.get("previous_open_date_field") is not None
+                    else None
+                ),
             )
         retry_value = _mapping(value["retry"], f"cadence {name}.retry")
         if set(retry_value) != {
@@ -627,6 +645,7 @@ def _calendar(
     dataset = registry.resolve(policy.calendar.dataset_id)
     binding = _active_binding(dataset)
     result: dict[date, bool] = {}
+    previous_open_by_closed_day: dict[date, set[date | None]] = defaultdict(set)
     for fact in state.get(dataset, binding).facts:
         day = _partition(
             fact.payload.get(policy.calendar.date_field, fact.partition_value)
@@ -639,6 +658,36 @@ def _calendar(
         if day in result and result[day] != opened:
             raise RuntimeError("calendar session is conflicting")
         result[day] = opened
+        if policy.calendar.previous_open_date_field is not None and not opened:
+            raw_prior = fact.payload.get(policy.calendar.previous_open_date_field)
+            if raw_prior is None:
+                previous_open_by_closed_day[day].add(None)
+                continue
+            try:
+                prior = _partition(raw_prior)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("calendar previous session is invalid") from exc
+            if prior >= day:
+                raise RuntimeError("calendar previous session is invalid")
+            previous_open_by_closed_day[day].add(prior)
+    prior_open_days: set[date] = set()
+    missing_previous_days: set[date] = set()
+    for day, values in previous_open_by_closed_day.items():
+        if len(values) != 1:
+            raise RuntimeError("calendar previous session is conflicting")
+        prior = next(iter(values))
+        if prior is None:
+            missing_previous_days.add(day)
+        else:
+            prior_open_days.add(prior)
+    closed_days = tuple(day for day, opened in result.items() if not opened)
+    if closed_days and max(closed_days) in missing_previous_days:
+        raise RuntimeError("calendar previous session is missing")
+    for prior in prior_open_days:
+        existing = result.get(prior)
+        if existing is False:
+            raise RuntimeError("calendar previous session is conflicting")
+        result.setdefault(prior, True)
     return MappingProxyType(result)
 
 
