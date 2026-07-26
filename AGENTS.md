@@ -31,6 +31,8 @@ provider registry
 - 请求差异只通过四种通用 request shape、variants、fanout、pagination 和 budgets 声明。
 - 只有 transport/auth/pagination 协议真实不同，才增加 provider-level adapter。
 - provider payload 必须无损保留；未知字段标记 schema drift，不能静默删除或改写。
+- **复杂度止损：** 新一批普通 Tushare dataset 先用批量 matrix + registry/config 完成；只有证明现有四种 request shape、八种 cadence class 和通用 SQLite adapter 无法表达时，才允许讨论 Python 改动，并须先记录可复现的配置表达缺口。
+- **采集前门禁：** `activation=active` 不是采集成功，也不能替代 planner 验证。每个自动采集候选必须先从同一 registry 做 dry-run，证明选中 dataset、窗口和频率会生成非零计划；`on_demand` 只能保持按需查询语义，不能被 wave、timer 或文档误称为自动采集。
 
 ## 固定接口
 
@@ -61,6 +63,8 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 当前/最新分区优先，历史回填有界并在后台运行。调度从 registry、SQLite facts 和可信 receipts 推导缺口，不以最近一次运行时间假装数据完整。账号级、provider 级、API 级预算必须跨 dataset 生效。
 
 QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不得启用自动调度；历史回填也不能绕过同一 transport budget。
+
+普通接口接入按同一批次推进：先批量探测并分类权限/参数/空响应，再按 data class 批量冻结 cadence 与 window，随后用同一个 runner 做有界入库和 API readback。不得为单个 API 单独创建任务流、测试栈、service、timer、route 或发布流程。
 
 ## clean-slate 与退役
 

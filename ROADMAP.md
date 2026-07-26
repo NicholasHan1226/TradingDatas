@@ -35,6 +35,8 @@
 - 对每个 API 标记 scope、entitlement、activation 和 successor；
 - 对每个 API 记录 QuickSync 真实观测的权限状态；账号级/API 级分钟、每日和并发预算未知时保持 unknown，不能用官方直连积分频次替代；凭证存在本身不得视为权限证明；
 - 批量生成 provider-neutral dataset registry；
+- 先按数据类型批量冻结 cadence/window，再验证每个 activation wave 会生成非零通用采集计划；
+  `on_demand` 保持按需查询，不得借由 active 状态伪装为自动采集；
 - 一次实现四种 request shape：
   - `snapshot_or_date_range`
   - `entity_fanout`
@@ -54,7 +56,8 @@
 退出条件：222 个首期 dataset 均有明确分类；所有已授权项都有可执行合同或明确
 blocked 原因；190 个历史合同子集与新增 32 项的证据层不混淆；普通 dataset
 onboarding 不修改 Python；QuickSync transport profile、权限码和有界 budget 证据已
-冻结，production timer 在此之前保持 disabled。
+冻结，production timer 在此之前保持 disabled。新增普通接口不得增加专用 collector、
+路由、timer、service 或发布流程。
 
 ## Phase 2 — 内部服务
 
