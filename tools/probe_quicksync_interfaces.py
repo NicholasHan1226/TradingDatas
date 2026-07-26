@@ -1203,13 +1203,27 @@ def execute_probe(
     transport_scheme: str,
     endpoint_host: str,
     authorize_request_start: Callable[[], RequestStartReservation],
+    selected_entries: tuple[ProbeEntry, ...] | None = None,
     call: Callable[..., ProviderCallOutcome] = tushare_rows_outcome,
 ) -> dict[str, object]:
     planned = plan.planned(scope)
     blocked = plan.blocked(scope)
-    selected = plan.select(scope)
+    all_selected = plan.select(scope)
+    selected = all_selected if selected_entries is None else selected_entries
     if scope == "all" and blocked:
         raise ProbeValidationError("all scope contains blocked probe entries")
+    if (
+        not isinstance(selected, tuple)
+        or not selected
+        or len(selected) > len(all_selected)
+        or any(
+            entry not in all_selected or not isinstance(entry, ProbeEntry)
+            for entry in selected
+        )
+        or tuple(entry.api_name for entry in selected)
+        != tuple(sorted(entry.api_name for entry in selected))
+    ):
+        raise ProbeValidationError("probe batch selection is invalid")
     if not planned or not selected:
         raise ProbeValidationError("selected probe scope is empty")
     if type(token) is not str or not token:
@@ -1320,7 +1334,7 @@ def execute_probe(
         "interface_count": len(results),
         "coverage": {
             "planned": len(planned),
-            "executable": len(planned) - len(blocked),
+            "executable": len(all_selected),
             "blocked": len(blocked),
             "selected": len(selected),
             "executed": len(results),
@@ -1452,7 +1466,42 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--expected-plan-sha256")
     parser.add_argument("--concurrency", type=int, default=MAX_CONCURRENCY)
+    parser.add_argument("--start-index", type=int, default=0)
+    parser.add_argument("--max-interfaces", type=int)
     return parser.parse_args(argv)
+
+
+def select_probe_batch(
+    plan: ProbePlan,
+    *,
+    scope: str,
+    start_index: int,
+    max_interfaces: int | None,
+) -> tuple[ProbeEntry, ...]:
+    """Return one deterministic contiguous batch from the frozen selection."""
+
+    if (
+        type(start_index) is not int
+        or isinstance(start_index, bool)
+        or start_index < 0
+        or (
+            max_interfaces is not None
+            and (
+                type(max_interfaces) is not int
+                or isinstance(max_interfaces, bool)
+                or not 1 <= max_interfaces <= MAX_INTERFACE_COUNT
+            )
+        )
+    ):
+        raise ProbeValidationError("probe batch range is invalid")
+    selected = plan.select(scope)
+    if start_index >= len(selected):
+        raise ProbeValidationError("probe batch start is outside selected interfaces")
+    stop = len(selected) if max_interfaces is None else start_index + max_interfaces
+    batch = selected[start_index:stop]
+    if not batch:
+        raise ProbeValidationError("probe batch selection is empty")
+    return batch
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1472,7 +1521,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.scope == "all" and plan.blocked("all"):
             raise ProbeValidationError("all scope contains blocked probe entries")
         output = _validate_output_target(args.output)
-        selected_count = len(plan.select(args.scope))
+        selected = select_probe_batch(
+            plan,
+            scope=args.scope,
+            start_index=args.start_index,
+            max_interfaces=args.max_interfaces,
+        )
+        selected_count = len(selected)
         if not 1 <= selected_count <= MAX_REQUESTS_PER_WINDOW:
             raise ProbeValidationError(
                 "selected probe scope exceeds the request budget"
@@ -1490,6 +1545,7 @@ def main(argv: list[str] | None = None) -> int:
                 transport_scheme="https",
                 endpoint_host="api.quicksync.cn",
                 authorize_request_start=lambda: authorize_request_start(lock),
+                selected_entries=selected,
                 call=tushare_rows_outcome,
             )
             post_execution_plan = load_probe_plan(args.request_plan)

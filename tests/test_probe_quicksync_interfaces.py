@@ -896,6 +896,55 @@ def test_execute_calls_each_selected_interface_once_with_resolved_plan_only(
     }
 
 
+def test_execute_can_emit_a_deterministic_contiguous_batch_with_full_coverage(
+    tmp_path: Path,
+) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path, _plan_document(gap_count=5)))
+    selected = probe.select_probe_batch(
+        plan,
+        scope="gaps",
+        start_index=2,
+        max_interfaces=2,
+    )
+    calls: list[dict[str, object]] = []
+    evidence = _execute_probe(
+        plan,
+        scope="gaps",
+        token="private-token",
+        concurrency=1,
+        selected_entries=selected,
+        call=_call_with(calls=calls),
+    )
+
+    assert [item["api_name"] for item in calls] == ["api_002", "api_003"]
+    assert evidence["coverage"] == {
+        "blocked": 0,
+        "executable": 5,
+        "executed": 2,
+        "planned": 5,
+        "selected": 2,
+    }
+
+
+@pytest.mark.parametrize(
+    ("start_index", "max_interfaces"),
+    [(-1, 1), (0, 0), (5, 1), (False, 1), (0, True)],
+)
+def test_probe_batch_range_rejects_invalid_values(
+    tmp_path: Path,
+    start_index: object,
+    max_interfaces: object,
+) -> None:
+    plan = probe.load_probe_plan(_write_plan(tmp_path, _plan_document(gap_count=5)))
+    with pytest.raises(probe.ProbeValidationError):
+        probe.select_probe_batch(
+            plan,
+            scope="gaps",
+            start_index=start_index,  # type: ignore[arg-type]
+            max_interfaces=max_interfaces,  # type: ignore[arg-type]
+        )
+
+
 def test_all_scope_with_blocked_entry_fails_before_lock_config_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
