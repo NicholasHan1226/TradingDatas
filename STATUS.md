@@ -1,9 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-23。
+最后更新：2026-07-26。
 
 ## 结论
 
+- **最新生产事实优先。** 2026-07-26 使用正式 QuickSync transport、同一冻结 190 项计划的
+  139 个安全可执行请求，按响应预算分批后全部完成且无重复：5 `success`（`daily`、
+  `stock_basic`、`trade_cal`、`fut_basic`、`fut_trade_cal`）、10 `valid_empty`、117
+  `permission_denied`、7 `provider_failed_unclassified`；另有 51 项因安全参数或依赖未解
+  而未调用。证据位于服务器受限目录
+  `quicksync-final-matrix-20260724T120059Z`。因此，当前账号**不具备全部 Tushare 接口权限**；
+  不得把历史 HTTP matrix、官方积分说明或 catalog 数量表述成当前可采集能力。
+- 当前正式 release 为 `0472be2f52338b64b0c2561afe2d1baaf19586b6`，18082 API active 且
+  未认证 readback 为 401；collector inactive、timer disabled。`daily`、`stock_basic`、
+  `trade_cal` 已有正式 SQLite receipt 与 catalog/query readback；`fut_basic` 与
+  `fut_trade_cal` 只有本轮 probe 成功，尚未纳入当前 A-share pilot 或正式入库。10 个
+  `valid_empty` 也不是可用数据完成证据，须在各自正确 session/window 下单独入库验证。
+- 历史段落仅作事故和候选追溯；若与本页 2026-07-26 的 QuickSync matrix 冲突，以本条为准。
 - 2026-07-20 transport 假设已纠正：当前真实上游通道不是官方 `api.tushare.pro` 直连，而是 Tushare-compatible QuickSync。身份固定为 `provider=tushare`、`transport_service=quicksync`；官方 Tushare 文档继续作为 dataset/schema/cadence 参考，QuickSync 文档与有界真实观测才是 endpoint/auth/permission/error/rate/concurrency 的运行事实源。
 - 因此，现有 registry、通用 executor、SQLite facts/receipts 与固定 catalog/query API 可以继续复用，不需要迁库或逐接口重写。旧 official-direct release 与服务器 transport readback 对生产采集结论作废，该旧证据只证明代码层、发布布局和 fail-closed impaired 投影。2026-07-23 新链路的正式内部 API 已发布 9 个激活数据集，其中 5 项为 `ready/success`，新增 4 项如实为 `partial/empty/degraded`；全接口自动 cadence、现役 TA front 切换与旧链退役仍为 NO-GO，不得合并成一个“整体已完成”。
 - 2026-07-22 已修正能力分母：官方固定目录 239 个名称与当前 MCP 258 个工具的
