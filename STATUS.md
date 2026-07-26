@@ -368,6 +368,18 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
   `sw_daily` 因历史 data-through 如实为 stale/degraded；`index_classify` 保持已有 ready receipt。
   SQLite `quick_check=ok`，且 timer 继续 disabled。此条是内部服务基线证据，不是全量接口采集、
   自动 cadence 或 TradingAgent production parity 的完成证明。
+- 2026-07-26，production `current` 已按 immutable manifest 原子切换到
+  `42c89e3ed2cb5867d79a8ce235d75dd2c27e59d1`；18082 API 重新启动为 active，collector
+  仍 inactive、timer 仍 disabled。以该 release、同一 `tradingdatas` runtime identity 和
+  QuickSync transport 对冻结的 190 合同执行 `executable` HTTPS probe：139 项具有安全请求
+  形状并实际执行，结果为 4 `success`、11 `valid_empty`、124
+  `provider_failed_unclassified`；另有 51 项因冻结计划缺少安全参数或依赖而未调用。证据为
+  `/opt/investment-data/tradingdatas/evidence/https-probe-42c89e3ed2cb5867d79a8ce235d75dd2c27e59d1-20260726T101410Z/probe-evidence.json`，
+  `request_authorizations=139`、总响应字节 95,417。4 项 success 是 `stock_basic`、`trade_cal`、
+  `fut_basic`、`fut_trade_cal`；11 项 valid-empty 不能替代有数据或完整性证据。4 个失败响应
+  含敏感回显，evidence 仅记录 `response_redacted=true` 与空 SHA，不保存正文。该结果推翻
+  “已全量稳定采集”的说法：只有经后续 SQLite receipt 与 catalog/query readback 验证的成功项
+  才能 promotion，失败/blocked 项继续 paused，不能自动启用 timer。
 
 未验证：
 
