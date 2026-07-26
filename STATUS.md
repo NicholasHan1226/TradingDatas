@@ -21,6 +21,11 @@
   QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
   provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
   collector、route、cron 或 timer。
+- **下一批候选严格限于 3 项。** `anns_d`、`etf_basic`、`fut_basic` 已有 2026-07-26
+  QuickSync 非空观测，并由本地同一 batch runner dry-run 生成合法计划；main/GitHub
+  候选将从 26 / 164 变为 29 / 161，但在新的 immutable release、SQLite receipt 与 API
+  readback 完成前，production 仍是 26 / 164。`broker_recommend` 为月度窗口，
+  `cb_basic`、`cn_schedule`、`opt_basic` 为 schema-subset，均不在这一批强行激活。
 - **最新生产事实优先。** 2026-07-26 续费后的服务器受控复测，使用正式 QuickSync
   transport、同一冻结计划的 139 个安全可执行请求，全部完成且无重复：17 `success`
   （非空响应）、115 `valid_empty`、3 `permission_denied`（`npr`、`stk_premarket`、

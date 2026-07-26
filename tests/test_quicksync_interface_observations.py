@@ -92,9 +92,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 26
-    assert activation_projection["active_count"] == 26
-    assert activation_projection["paused_count"] == 164
+    assert activation_projection["candidate_count"] == 29
+    assert activation_projection["active_count"] == 29
+    assert activation_projection["paused_count"] == 161
 
     _compiled_with_activation(document)
 
@@ -192,12 +192,15 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     }
     assert active == {
         "adj_factor",
+        "anns_d",
         "cb_issue",
         "hsgt_top10",
         "daily",
         "daily_info",
         "disclosure_date",
+        "etf_basic",
         "fund_div",
+        "fut_basic",
         "index_classify",
         "index_dailybasic",
         "limit_cpt_list",
@@ -222,7 +225,7 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     assert sum(
         dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
         for dataset in bindings.values()
-    ) == 164
+    ) == 161
 
     expected_direct_wave_ref = (
         "server-evidence/20260722TQkgWsk-1def337-provider-native"

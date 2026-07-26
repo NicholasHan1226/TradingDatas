@@ -107,7 +107,7 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
 五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
 
-当前 `main` 的 190 项 runtime registry 有 26 个 active dataset：原有
+当前 production release 的 190 项 runtime registry 有 26 个 active dataset：原有
 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
 `direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，以及
 `direct_wave_2` 中的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及
@@ -124,7 +124,10 @@ unsupported 均按观测结果 fail closed。
 catalog 可发现，不表示 26 项均已采集或可供交易消费者使用。受控 `pilot_existing --current-only`
 one-shot 已只处理原五项：`trade_cal`、`stock_basic`、`index_classify` 为 `ready`，`daily` 与
 `sw_daily` 为 `stale/degraded`，其余 active 项仍须以每项正式 receipt/query readback 判定。
-collector timer 保持 disabled。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、
+collector timer 保持 disabled。2026-07-26 的本地/GitHub 候选在同一 registry/config
+合同下额外准入了 `anns_d`、`etf_basic`、`fut_basic` 三项，它们已有新的 QuickSync 非空
+受控观测，但尚未发布、入库或由 API readback；因此 production 仍是 26 / 164，候选才是
+29 / 161。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、
 HTTP 200 或 catalog active 状态误报为数据已采集或已上线。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
