@@ -2191,6 +2191,13 @@ def test_formal_direct_wave_2_is_hash_bound_and_disjoint_from_existing_waves() -
         registry_payload=registry_payload,
         schedule_payload=schedule_payload,
     )
+    renewal = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "renewal_nonempty_wave_1",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
 
     assert direct.dataset_ids == frozenset(
         {
@@ -2201,6 +2208,16 @@ def test_formal_direct_wave_2_is_hash_bound_and_disjoint_from_existing_waves() -
     )
     assert direct.dataset_ids.isdisjoint(direct_wave_1.dataset_ids)
     assert direct.dataset_ids.isdisjoint(pilot.dataset_ids)
+    assert renewal.dataset_ids == frozenset(
+        {
+            "cn.dataset.anns_d",
+            "cn.dataset.etf_basic",
+            "cn.dataset.fut_basic",
+        }
+    )
+    assert renewal.dataset_ids.isdisjoint(direct.dataset_ids)
+    assert renewal.dataset_ids.isdisjoint(direct_wave_1.dataset_ids)
+    assert renewal.dataset_ids.isdisjoint(pilot.dataset_ids)
 
 
 def test_formal_direct_wave_2_dry_run_plans_every_selected_dataset(
