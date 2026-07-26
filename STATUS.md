@@ -18,8 +18,12 @@
   官方积分说明表述成当前可采集能力。
 - 当前正式 release 为 `0472be2f52338b64b0c2561afe2d1baaf19586b6`，18082 API active 且
   未认证 readback 为 401；collector inactive、timer disabled。`daily`、`stock_basic`、
-  `trade_cal` 已有正式 SQLite receipt 与 catalog/query readback。新增 14 个非空响应接口
-  尚未完成各自的 provider → SQLite receipt → catalog/query 纵向验证；115 个
+  `trade_cal` 已有正式 SQLite receipt 与 catalog/query readback。GitHub `main`
+  `56fb4ed8fde89c88023a82cc3b8272ee994702a9` 已把三项已验证非空且
+  `ingest_contract_state=ready` 的通用数据集（`anns_d`、`etf_basic`、`fut_basic`）纳入
+  独立 `renewal_nonempty_wave_1`，因此仓库 registry 为 29 active / 161 paused；该 commit
+  尚未发布到 production，三项也尚未完成各自的 provider → SQLite receipt → catalog/query
+  纵向验证。其余 11 个非空响应接口及 115 个
   `valid_empty` 也须在各自正确 session/window 下验证，不能直接激活。
 - 历史段落仅作事故和候选追溯；若与本页 2026-07-26 的 QuickSync matrix 冲突，以本条为准。
 - 2026-07-20 transport 假设已纠正：当前真实上游通道不是官方 `api.tushare.pro` 直连，而是 Tushare-compatible QuickSync。身份固定为 `provider=tushare`、`transport_service=quicksync`；官方 Tushare 文档继续作为 dataset/schema/cadence 参考，QuickSync 文档与有界真实观测才是 endpoint/auth/permission/error/rate/concurrency 的运行事实源。

@@ -222,7 +222,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
    也不得改写 release 内任何文件。当前 `main` 的 release 候选仍必须从
    `quicksync_interface_observations.v1.yaml` 得到历史合同子集
-   190 个 dataset、26 active / 164 paused，且输出与 checked-in registry 逐字节一致。
+   190 个 dataset、29 active / 161 paused，且输出与 checked-in registry 逐字节一致。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
    采集计划。观测配置必须保持
@@ -251,7 +251,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。当前 `main` 的正式编译不传 activation evidence，
-   固定生成 26 active / 164 paused；截至 2026-07-26，已部署 production release 为
+   固定生成 29 active / 161 paused；截至 2026-07-26，已部署 production release 仍为
    `3896969983585ccd1e448f4a1eefb83c6c596255` 的 26 / 164。受控 one-shot 不会把
    active 状态等同于 ready，collector timer 仍 disabled；回滚 release
    `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 为 12 / 178。任何时刻都必须以
