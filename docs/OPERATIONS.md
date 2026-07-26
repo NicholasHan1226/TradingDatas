@@ -250,12 +250,13 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
 
-   当前 permanent collector 不能作为“仅当天数据”的 cadence pilot 直接启动：unit 未声明
-   activation wave，runner 也没有 current-only/backfill-off 入口。2026-07-23 的 production
-   no-write plan 会同时生成 current、backfill 与 correction；七个 completeness 未冻结的
-   active dataset 还会因 partitionless success receipt 无法覆盖窗口而重复规划。修复并证明
-   current-only 计划为 0 backfill / 0 correction 前，timer 必须继续 disabled；Wave 1/2 仅
-   manual one-shot，`direct_wave_3` 永远按 `on_demand` 跳过 scheduler。
+   GitHub `main` 的 runner 现在提供显式
+   `--activation-wave pilot_existing --current-only` 入口：它只接受该 pilot wave，planner
+   只保留 priority=`current`，执行前再次拒绝 backfill、correction 与非 current 项。它解决了
+   2026-07-23 production no-write plan 同时生成 current、backfill 与 correction 的问题，
+   但尚未发布到 production。timer 仍保持 disabled；先做 fresh release 和受控 one-shot，
+   确认 0 backfill / 0 correction、facts/receipts/API readback 后，才可评估仅 Wave 1/2 的
+   cadence pilot。`direct_wave_3` 永远按 `on_demand` 跳过 scheduler。
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 

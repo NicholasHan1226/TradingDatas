@@ -251,12 +251,14 @@
   SHA-256 仍为 `e0d567d5a04546fd8fa0e2117f1a2e3ff8e7ffcaa6bbff0d23fbc77b1b5e4b20`。
   所有临时 18085 API 均已停止，production timer 未启用；失败与误配置 receipt 均保留，
   没有删除或改写历史证据。
-- 2026-07-23 07:11 CST 的 production no-write cadence plan 证明当前 permanent collector
+- 2026-07-23 07:11 CST 的 production no-write cadence plan 证明当时的 permanent collector
   不能直接启用：全 active 会产生 29 个计划（5 current、23 backfill、1 correction），
   `pilot_existing` 也仍含 6 backfill 与 1 correction；七个 completeness 未冻结的数据集还会
-  重复规划已有 success 窗口。现有 unit 没有 activation-wave，runner 没有
-  current-only/backfill-off 参数。因此 timer 继续 disabled，Wave 1/2 维持 manual-only，
-  只允许在 0 backfill / 0 correction 的受审入口完成后再启动五项 `pilot_existing` cadence。
+  重复规划已有 success 窗口。GitHub `main` 随后新增了显式
+  `--activation-wave pilot_existing --current-only` 门禁：只接受这个 pilot wave，且计划与
+  执行前均拒绝 backfill/correction/非 current 项，形成 0 backfill / 0 correction 的受审入口。
+  该代码尚未发布到 production；timer 继续 disabled，Wave 1/2 继续 manual-only，直到 fresh
+  release、真实 latest/current one-shot 与 API readback 通过。
 
 ## 当前停止线
 
