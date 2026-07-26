@@ -112,6 +112,7 @@ _CREDENTIAL_REJECTED_MESSAGES = (
 _PERMISSION_DENIED_MESSAGES = (
     re.compile(r"(?:permission|access)\s+denied[.!]?"),
     re.compile(r"(?:not\s+authori[sz]ed|unauthorized|forbidden)[.!]?"),
+    re.compile(r"(?:您的|账户)?权限不足[。.!]?"),
     re.compile(r"(?:抱歉[，,]\s*)?(?:您|你|用户|账户)没有访问该接口的权限[。.!]?"),
     re.compile(r"(?:该|此)?接口权限(?:不足|被拒绝|未开通)[。.!]?"),
 )

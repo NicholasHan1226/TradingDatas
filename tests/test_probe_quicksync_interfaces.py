@@ -1103,7 +1103,11 @@ def test_permission_and_other_provider_errors_are_recorded_without_numeric_guess
         concurrency=1,
         call=_call_with(
             {
-                "api_000": _failed_outcome(40101, error_code="permission_denied"),
+                "api_000": _failed_outcome(
+                    40101,
+                    error_code="permission_denied",
+                    error_message="您的权限不足",
+                ),
                 "api_001": _failed_outcome(
                     40102,
                     error_message="interface is unsupported",
@@ -1115,7 +1119,7 @@ def test_permission_and_other_provider_errors_are_recorded_without_numeric_guess
     assert [
         (item["state"], item["provider_class"]) for item in evidence["results"]
     ] == [
-        ("provider_failed_unclassified", "provider_failed_unclassified"),
+        ("permission_denied", "permission_denied"),
         ("unsupported", "unsupported"),
     ]
     assert all("ingest" not in item for item in evidence["results"])
