@@ -1195,6 +1195,23 @@ def test_tushare_rows_outcome_classifies_entitlement_denial(
     assert outcome.error_message == message
 
 
+def test_tushare_rows_outcome_classifies_quicksync_possessive_permission_denial(
+    monkeypatch,
+):
+    message = "您的权限不足"
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 40101, "msg": message, "data": None},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("index_classify", "stub-token")
+
+    assert outcome.state == "failed"
+    assert outcome.provider_code == 40101
+    assert outcome.error_code == "permission_denied"
+    assert outcome.error_message == message
+
+
 def test_tushare_rows_outcome_classifies_rate_limit(monkeypatch):
     message = "每分钟最多访问该接口200次"
     _stub_outcome_response(

@@ -396,6 +396,11 @@ TradingDatas 的 formal 18082 固定内部 API 已上线；当前停止线已收
 - 为防止已知 `40101` 在后续 current-only 计划中被反复调用，候选将 `cn.dataset.sw_daily` 从
   `pilot_existing` 自动执行波次移出；它仍留在 catalog 中如实投影为受损，只有取得新的真实 provider
   成功 receipt 与 API readback 后才可重新进入自动波次。该变更不新增专用 collector、路由或交易语义。
+- 同一受控波次的 `stock_basic` 成功返回并校验 5,950 行，全部为已有事实的幂等 unchanged，仍写入
+  success receipts；`index_classify` 实测返回 QuickSync `40101` 与“您的权限不足”。候选把该标准
+  权限措辞纳入通用、code-gated 的 `permission_denied` 分类，并将 `cn.dataset.index_classify` 与
+  `sw_daily` 一并排除出自动波次。它们继续保留在 catalog，等待将来新的真实 provider 成功证据，
+  不会被当成可用或无限自动重试。
 
 未验证：
 

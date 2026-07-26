@@ -34,7 +34,6 @@ waves:
     - cn.dataset.sz_daily_info
   pilot_existing:
     dataset_ids:
-    - cn.dataset.index_classify
     - cn.equity.daily
     - cn.equity.security_master
     - cn.market.trade_calendar

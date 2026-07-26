@@ -2125,7 +2125,6 @@ def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -
     )
     assert pilot.dataset_ids == frozenset(
         {
-            "cn.dataset.index_classify",
             "cn.equity.daily",
             "cn.equity.security_master",
             "cn.market.trade_calendar",

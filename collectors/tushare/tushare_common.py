@@ -1216,6 +1216,7 @@ _PERMISSION_DENIED_PATTERNS = (
         rf"){_CHINESE_RETRY_SUFFIX}"
     ),
     re.compile(
+        rf"(?:抱歉[，,]\s*)?(?:(?:您|你|用户|账户)(?:的)?)?"
         rf"(?:该|此)?(?:接口|访问|调用)?权限(?:不足|被拒绝|未开通)"
         rf"{_CHINESE_RETRY_SUFFIX}"
     ),
