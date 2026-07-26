@@ -234,6 +234,11 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    official/request/transport/reviewed 或 registered 四类冻结输入；调用方传入的映射不能
    绕过原始字节 SHA。seed receipt 的 producer schema 必须与 registry 精确一致；
 
+   HTTPS probe 的 `--scope executable` 仅从同一冻结 190 项 plan 中选择已经标记
+   `probe_state=executable` 的条目，保留 blocked 条目及其原因，不改写 registry、SQLite、
+   activation 或 scheduler。它用于一次批量复验安全请求形状；`all` 仍在任一 blocked 条目
+   存在时 fail closed。
+
    HTTPS activation evidence 必须保存在仓外，由调用方先核对 sidecar SHA-256，再通过
    显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定

@@ -90,6 +90,7 @@ _CREDENTIAL_PARAMETER = re.compile(
     re.IGNORECASE,
 )
 _ALLOWED_SCOPE_LABELS = frozenset({"all", "gaps"})
+_ALLOWED_SCOPES = _ALLOWED_SCOPE_LABELS | frozenset({"executable"})
 _PROBE_STATES = frozenset({"executable", "blocked"})
 _INGEST_CONTRACT_STATES = frozenset({"ready", "blocked"})
 _PROBE_BLOCK_REASONS = frozenset(
@@ -216,8 +217,12 @@ class ProbePlan:
     entries: tuple[ProbeEntry, ...]
 
     def planned(self, scope: str) -> tuple[ProbeEntry, ...]:
-        if scope not in _ALLOWED_SCOPE_LABELS:
+        if scope not in _ALLOWED_SCOPES:
             raise ProbeValidationError("probe scope is invalid")
+        if scope == "executable":
+            return tuple(
+                entry for entry in self.entries if entry.probe_state == "executable"
+            )
         return tuple(entry for entry in self.entries if scope in entry.scope_labels)
 
     def select(self, scope: str) -> tuple[ProbeEntry, ...]:
@@ -1427,7 +1432,9 @@ def write_evidence_atomic(path: Path, evidence: Mapping[str, object]) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request-plan", type=Path, required=True)
-    parser.add_argument("--scope", choices=("gaps", "all"), default="gaps")
+    parser.add_argument(
+        "--scope", choices=("gaps", "all", "executable"), default="gaps"
+    )
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--expected-plan-sha256")

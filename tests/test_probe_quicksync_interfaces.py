@@ -945,6 +945,31 @@ def test_all_scope_with_blocked_entry_fails_before_lock_config_or_provider(
     assert not (tmp_path / "evidence.json").exists()
 
 
+def test_executable_scope_projects_only_safe_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    document = _plan_document()
+    document["entries"][0].update(  # type: ignore[index]
+        {
+            "probe_state": "blocked",
+            "probe_block_reasons": ["required_parameter_unresolved"],
+            "params": {},
+        }
+    )
+    _sync_counts(document)
+    document, _, _ = _bind_authority_files(tmp_path, monkeypatch, document)
+    path = _write_plan(tmp_path, document)
+
+    plan = probe.load_probe_plan(path)
+
+    executable = plan.planned("executable")
+    assert len(executable) == 189
+    assert document["entries"][0]["api_name"] not in {
+        entry.api_name for entry in executable
+    }
+    assert plan.blocked("executable") == ()
+
+
 def test_gaps_scope_executes_only_executable_and_reports_full_coverage(
     tmp_path: Path,
 ) -> None:
