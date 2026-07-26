@@ -84,6 +84,11 @@ facts + receipt transaction。manifest 不得含 token、provider API name、fie
 业务逻辑，也不进入仓库。`on_demand` 仍不会被 scheduler 自动计划：只有已验证的
 window 被明确放进该 manifest，才会采集。
 
+该 CLI 目前只是 release 内的通用执行能力，不构成已经上线的 production batch job。
+生产执行仍必须在 safe-release 中复用现有 `tradingdatas` systemd 身份、凭证加载和互斥
+边界，并先完成 manifest plan readback；不得直接在 shell 绕过运行账号、临时创建第二个
+常驻 service，或启用 timer。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、
