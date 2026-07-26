@@ -44,6 +44,10 @@ EXIT_EMPTY = 3
 EXIT_FAILED = 4
 
 _MAX_REQUEST_WINDOW_BYTES = 65_536
+_MAX_BATCH_MANIFEST_BYTES = 131_072
+_MAX_BATCH_ITEMS = 32
+_BATCH_MANIFEST_KEYS = frozenset({"version", "items"})
+_BATCH_ITEM_KEYS = frozenset({"dataset_id", "request_window"})
 _VALIDATION_ERROR_CODES = frozenset(
     {"config_error", "resource_budget", "validation_failed"}
 )
@@ -56,6 +60,12 @@ class _CollectionPlan:
     request_window: Mapping[str, str]
     request_variants: tuple[Mapping[str, RequestScalar], ...]
     parameter_keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _BatchRequest:
+    dataset_id: str
+    request_window: Mapping[str, str]
 
 
 def _utc_now() -> str:
@@ -110,6 +120,61 @@ def _read_request_window(
     ):
         raise ValueError("request-window keys and values must be strings")
     return payload
+
+
+def _read_batch_manifest(path: Path) -> tuple[_BatchRequest, ...]:
+    """Read one bounded, provider-neutral batch without exposing window values.
+
+    A batch is deliberately only a compact sequence of existing registry dataset
+    IDs and their normal request windows.  It does not define providers, fields,
+    schedules, routes, or dataset-specific execution behavior.
+    """
+
+    try:
+        stat = path.stat(follow_symlinks=False)
+    except FileNotFoundError as exc:
+        raise ValueError("batch manifest must be an existing regular file") from exc
+    if not path.is_file() or path.is_symlink() or stat.st_size > _MAX_BATCH_MANIFEST_BYTES:
+        raise ValueError("batch manifest must be an existing regular file within budget")
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_json_object_without_duplicate_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("batch manifest must be valid UTF-8 JSON") from exc
+    if type(payload) is not dict or set(payload) != _BATCH_MANIFEST_KEYS:
+        raise ValueError("batch manifest has an invalid shape")
+    if payload["version"] != 1 or type(payload["items"]) is not list:
+        raise ValueError("batch manifest version or items is invalid")
+    raw_items = payload["items"]
+    if not raw_items or len(raw_items) > _MAX_BATCH_ITEMS:
+        raise ValueError("batch manifest item count is outside the allowed bound")
+
+    requests: list[_BatchRequest] = []
+    dataset_ids: list[str] = []
+    for index, raw_item in enumerate(raw_items):
+        if type(raw_item) is not dict or set(raw_item) != _BATCH_ITEM_KEYS:
+            raise ValueError(f"batch manifest item {index} has an invalid shape")
+        dataset_id = raw_item["dataset_id"]
+        request_window = raw_item["request_window"]
+        if type(dataset_id) is not str or not dataset_id:
+            raise ValueError(f"batch manifest item {index} dataset_id is invalid")
+        if type(request_window) is not dict or any(
+            type(key) is not str or type(value) is not str
+            for key, value in request_window.items()
+        ):
+            raise ValueError(f"batch manifest item {index} request_window is invalid")
+        dataset_ids.append(dataset_id)
+        requests.append(
+            _BatchRequest(
+                dataset_id=dataset_id,
+                request_window=MappingProxyType(dict(request_window)),
+            )
+        )
+    if dataset_ids != sorted(dataset_ids) or len(set(dataset_ids)) != len(dataset_ids):
+        raise ValueError("batch manifest dataset_ids must be unique and sorted")
+    return tuple(requests)
 
 
 def _build_plan(
@@ -222,8 +287,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument("--db-path", required=True, type=Path)
-    parser.add_argument("--dataset-id", required=True)
-    window = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--dataset-id")
+    parser.add_argument(
+        "--batch-file",
+        type=Path,
+        help=(
+            "external JSON manifest of bounded registry dataset IDs and request windows"
+        ),
+    )
+    window = parser.add_mutually_exclusive_group()
     window.add_argument(
         "--request-window-json",
         help="JSON object whose keys exactly match the registry request template",
@@ -240,27 +312,86 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Call the provider and write SQLite; the default is a no-write plan",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (args.dataset_id is None) == (args.batch_file is None):
+        parser.error("provide exactly one of --dataset-id or --batch-file")
+    has_window = args.request_window_json is not None or args.request_window_file is not None
+    if args.batch_file is not None and has_window:
+        parser.error("--batch-file cannot be combined with a request-window input")
+    if args.dataset_id is not None and not has_window:
+        parser.error("a single dataset requires one request-window input")
+    return args
+
+
+def _batch_plan_summary(plans: tuple[_CollectionPlan, ...]) -> dict[str, object]:
+    return {
+        "batch_item_count": len(plans),
+        "dataset_ids": [plan.dataset.dataset_id for plan in plans],
+        "mode": "plan",
+        "state": "planned",
+        "will_call_provider": False,
+        "will_write_database": False,
+    }
+
+
+def _batch_result_summary(
+    plans: tuple[_CollectionPlan, ...], results: tuple[IngestResult, ...]
+) -> tuple[int, dict[str, object]]:
+    rendered_items: list[dict[str, object]] = []
+    exit_code = EXIT_SUCCESS
+    for plan, result in zip(plans, results, strict=True):
+        item_exit_code, item = _result_summary(plan, result)
+        exit_code = max(exit_code, item_exit_code)
+        rendered_items.append(
+            {
+                "counts": item["counts"],
+                "dataset_id": plan.dataset.dataset_id,
+                "error_codes": item["error_codes"],
+                "receipt_count": item["receipt_count"],
+                "state": item["state"],
+            }
+        )
+    return exit_code, {
+        "batch_item_count": len(plans),
+        "items": rendered_items,
+        "mode": "execute",
+        "state": "success" if exit_code == EXIT_SUCCESS else "impaired",
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     mode = "execute" if args.execute else "plan"
     try:
-        request_window = _read_request_window(
-            inline_json=args.request_window_json,
-            json_file=args.request_window_file,
-        )
         attempt_id = str(uuid.uuid4()) if args.attempt_id is None else args.attempt_id
         started_at = _utc_now() if args.started_at is None else args.started_at
         registry = load_runtime_dataset_registry()
-        plan = _build_plan(
-            registry=registry,
-            dataset_id=args.dataset_id,
-            request_window=request_window,
-            attempt_id=attempt_id,
-            started_at=started_at,
-        )
+        if args.batch_file is None:
+            request_window = _read_request_window(
+                inline_json=args.request_window_json,
+                json_file=args.request_window_file,
+            )
+            plans = (
+                _build_plan(
+                    registry=registry,
+                    dataset_id=args.dataset_id,
+                    request_window=request_window,
+                    attempt_id=attempt_id,
+                    started_at=started_at,
+                ),
+            )
+        else:
+            requests = _read_batch_manifest(args.batch_file)
+            plans = tuple(
+                _build_plan(
+                    registry=registry,
+                    dataset_id=item.dataset_id,
+                    request_window=item.request_window,
+                    attempt_id=f"{attempt_id}:batch:{index}",
+                    started_at=started_at,
+                )
+                for index, item in enumerate(requests)
+            )
     except Exception:
         _render(
             {
@@ -272,20 +403,36 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_VALIDATION
 
     if not args.execute:
-        _render(_plan_summary(plan))
+        _render(
+            _plan_summary(plans[0])
+            if args.batch_file is None
+            else _batch_plan_summary(plans)
+        )
         return EXIT_SUCCESS
 
     try:
-        result = provider_native_ingest.collect_provider_native_dataset(
-            args.db_path,
-            registry=registry,
-            collector=TushareCollector(),
-            dataset_id=plan.dataset.dataset_id,
-            request_window=plan.request_window,
-            attempt_id=attempt_id,
-            started_at=started_at,
+        collector = TushareCollector()
+        results = tuple(
+            provider_native_ingest.collect_provider_native_dataset(
+                args.db_path,
+                registry=registry,
+                collector=collector,
+                dataset_id=plan.dataset.dataset_id,
+                request_window=plan.request_window,
+                attempt_id=(
+                    attempt_id
+                    if args.batch_file is None
+                    else f"{attempt_id}:batch:{index}"
+                ),
+                started_at=started_at,
+            )
+            for index, plan in enumerate(plans)
         )
-        exit_code, summary = _result_summary(plan, result)
+        exit_code, summary = (
+            _result_summary(plans[0], results[0])
+            if args.batch_file is None
+            else _batch_result_summary(plans, results)
+        )
     except Exception:
         exit_code = EXIT_FAILED
         summary = {

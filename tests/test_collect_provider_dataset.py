@@ -157,6 +157,24 @@ def _registry(
     return DatasetRegistry((dataset,))
 
 
+def _two_dataset_registry() -> DatasetRegistry:
+    base = _registry()
+    first = base.resolve("cn.synthetic.runner")
+    first_binding = base.provider_binding(first.dataset_id, "tushare")
+    second_binding = replace(
+        first_binding,
+        api_name="synthetic_second",
+        read_discriminator_value="tushare_synthetic_second",
+    )
+    second = replace(
+        first,
+        dataset_id="cn.synthetic.second",
+        aliases=("tushare.synthetic_second",),
+        provider_bindings=(second_binding,),
+    )
+    return DatasetRegistry((first, second))
+
+
 def _strategy_registry(
     strategy: str,
     *,
@@ -1006,6 +1024,159 @@ def test_default_plan_validates_registry_without_provider_or_database_write(
     }
     assert "202607" not in json.dumps(output)
     assert not db_path.exists()
+
+
+def test_batch_plan_validates_every_item_before_provider_or_database_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _two_dataset_registry)
+    monkeypatch.setattr(
+        runner,
+        "TushareCollector",
+        lambda: pytest.fail("plan mode must not construct a provider collector"),
+    )
+    manifest = tmp_path / "batch.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "items": [
+                    {
+                        "dataset_id": "cn.synthetic.runner",
+                        "request_window": {
+                            "end_date": "20260717",
+                            "start_date": "20260701",
+                        },
+                    },
+                    {
+                        "dataset_id": "cn.synthetic.second",
+                        "request_window": {
+                            "end_date": "20260717",
+                            "start_date": "20260701",
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "must-not-be-created.sqlite"
+
+    code = runner.main(["--db-path", str(db_path), "--batch-file", str(manifest)])
+
+    output = json.loads(capsys.readouterr().out)
+    assert code == runner.EXIT_SUCCESS
+    assert output == {
+        "batch_item_count": 2,
+        "dataset_ids": ["cn.synthetic.runner", "cn.synthetic.second"],
+        "mode": "plan",
+        "state": "planned",
+        "will_call_provider": False,
+        "will_write_database": False,
+    }
+    assert "202607" not in json.dumps(output)
+    assert not db_path.exists()
+
+
+def test_batch_rejects_unsorted_or_invalid_item_before_provider_or_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = _FakeCollector()
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _two_dataset_registry)
+    monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
+    manifest = tmp_path / "batch.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "items": [
+                    {"dataset_id": "cn.synthetic.second", "request_window": {}},
+                    {"dataset_id": "cn.synthetic.runner", "request_window": {}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "must-not-be-created.sqlite"
+
+    code = runner.main(
+        ["--db-path", str(db_path), "--batch-file", str(manifest), "--execute"]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert code == runner.EXIT_VALIDATION
+    assert output == {
+        "error_code": "invalid_request",
+        "mode": "execute",
+        "state": "validation",
+    }
+    assert fake.calls == []
+    assert not db_path.exists()
+
+
+def test_batch_execute_reuses_one_generic_collector_and_keeps_receipts_per_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=({"ts_code": "600000.SH", "trade_date": "20260717", "close": 12.5},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+    fake = _FakeCollector(outcome)
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", _two_dataset_registry)
+    monkeypatch.setattr(runner, "TushareCollector", lambda: fake)
+    manifest = tmp_path / "batch.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "items": [
+                    {
+                        "dataset_id": "cn.synthetic.runner",
+                        "request_window": {
+                            "end_date": "20260717",
+                            "start_date": "20260717",
+                        },
+                    },
+                    {
+                        "dataset_id": "cn.synthetic.second",
+                        "request_window": {
+                            "end_date": "20260717",
+                            "start_date": "20260717",
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    code = runner.main(
+        ["--db-path", str(db_path), "--batch-file", str(manifest), "--execute"]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert code == runner.EXIT_SUCCESS
+    assert output["state"] == "success"
+    assert [item["dataset_id"] for item in output["items"]] == [
+        "cn.synthetic.runner",
+        "cn.synthetic.second",
+    ]
+    assert len(fake.calls) == 2
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs WHERE status = 'success'"
+        ).fetchone() == (2,)
 
 
 def test_execute_success_uses_only_registry_binding_and_writes_fact_and_receipt(

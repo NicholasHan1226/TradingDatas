@@ -63,6 +63,27 @@ current window 只推进到本次可用日；历史覆盖由 bounded backfill �
 被完整性合同误判为运行失败。未来日期只有在 transport 真实观测、registry 合同和
 独立回归共同证明后才能受控启用。
 
+## 有界 one-shot batch
+
+`tools/collect_provider_dataset.py --batch-file <external-json>` 是唯一的按需批量
+采集入口，不新增 systemd unit、timer、cron 或公共 API。外部 JSON manifest 固定为：
+
+```json
+{
+  "version": 1,
+  "items": [
+    {"dataset_id": "cn.example.dataset", "request_window": {}}
+  ]
+}
+```
+
+最多 32 项，`dataset_id` 必须 canonical、唯一且排序；每项只能使用该 registry 已声明的
+window keys。plan 模式会先校验整批所有 item，失败时不会构造 provider client 或打开
+SQLite；execute 模式随后串行调用相同的通用 adapter，每个 dataset 保持自己的
+facts + receipt transaction。manifest 不得含 token、provider API name、fields、路径或
+业务逻辑，也不进入仓库。`on_demand` 仍不会被 scheduler 自动计划：只有已验证的
+window 被明确放进该 manifest，才会采集。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、

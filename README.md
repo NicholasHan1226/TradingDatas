@@ -33,6 +33,13 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 
 不得为普通数据集增加专用 collector、业务表、scheduler 分支、query 分支或公共 route。只有 transport、auth 或 pagination 协议真正不同，才增加 provider-level adapter。
 
+对于没有自动 cadence 的已激活数据集，使用同一个
+`tools/collect_provider_dataset.py --batch-file <external-json>` 做有界、串行的
+one-shot 入库。batch 只列既有 `dataset_id` 和已冻结的 request window；它不增加
+route、service、timer、provider 参数逻辑或业务表。所有项先在 plan 模式一起校验，才会
+在 execute 模式逐项以各自的 SQLite transaction receipt 写入。它是当前数据的受控采集
+入口，不把 `on_demand` 伪装成自动调度，也不替代每个数据集的 receipt/API readback。
+
 ## Tushare 数据合同与 QuickSync 运行权限
 
 Tushare 官方接口文档用于生成普通数据集的请求、字段、schema 和 cadence 参考；它不证明当前 QuickSync 账号的接口权限、分钟/每日额度或并发能力。代码中的 `entitlement_state` 仅表示经 QuickSync 真实有界调用观测到的 provider 权限状态，不表示购买、按接口计费或订阅。
