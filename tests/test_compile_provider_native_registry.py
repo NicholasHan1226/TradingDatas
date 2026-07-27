@@ -695,7 +695,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert sum(
         dataset.provider_bindings[0].activation_state == "active"
         for dataset in loaded.datasets
-    ) == 27
+    ) == 30
     assert output.read_bytes() != before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
 
