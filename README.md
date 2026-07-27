@@ -107,14 +107,14 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
 五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
 
-当前 production release 的 190 项 runtime registry 有 92 个 active、98 个 paused。
-其中 63 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback，但在
+当前 production release 的 190 项 runtime registry 有 99 个 active、91 个 paused。
+其中 70 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback，但在
 response completeness 未冻结前仍必须诚实返回 `partial/degraded`。validated match、HTTP 200
 或 catalog active 只表示候选或可发现，不能自动启用 scheduler；schema drift、质量异常、empty、
 权限拒绝、凭证拒绝和 unsupported 均按观测结果 fail closed。
 
 截至 2026-07-27 的服务器 readback，正式 production 运行
-`c647d65a3df6e4598ae7017ccddd528d3e3bfc17`，registry 为 92 active / 98 paused；这只表示
+`42fcf6c8822cf0b3268ee9ebdd20b207d69a3902`，registry 为 99 active / 91 paused；这只表示
 catalog 可发现，不表示 92 项均已完整采集、已完成历史回填或可供交易消费者使用。63 个新增项
 已经各自完成 SQLite receipt 和 authenticated API readback，但仍按实际完整性返回
 `partial/degraded`；其余 active 项仍须以每项正式 receipt/query readback 判定。collector timer
@@ -124,14 +124,14 @@ catalog active 状态误报为数据已采集或已上线。
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
 `--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
-production `c647...` 的正式 registry 为 92 active / 98 paused；当前 main 的 99 / 91
-只是待发布候选。仓外 sidecar、CI fixture 或仓内配置都不能替代 immutable production release
-的 compiler/readback。
+production `42fc...` 的正式 registry 为 99 active / 91 paused。仓外 sidecar、CI fixture 或
+仓内配置都不能替代 immutable production release 的 compiler/readback。
 
 2026-07-27 的月度/季度候选已使用同一 QuickSync probe 合同完成 7 个真实调用：
 `broker_recommend` 返回 308 行，`cn_cpi`、`cn_gdp`、`cn_m`、`cn_pmi`、`cn_ppi` 与
-`sf_month` 返回合法空结果。它们在候选 registry 中为 99 active / 91 paused，等待同一通用
-batch 的 SQLite receipt 与 API readback；production `c647...` 仍保持 92 / 98，未因此改变 timer。
+`sf_month` 返回合法空结果。随后同一通用 batch 为 `broker_recommend` 写入 308 行 success
+receipt，并为其余六项写入 empty receipt；TradingAgent 只读身份以固定 API 逐项回读。生产
+registry 现为 99 active / 91 paused，timer 仍 disabled。
 
 2026-07-27 的通用 HTTPS probe 使用五个受限证据分片，覆盖
 139 个安全可执行合同（19 个非空 `success`、113 个 `valid_empty`、3 个

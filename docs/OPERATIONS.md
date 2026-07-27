@@ -280,7 +280,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    compiler 才会生成 canary registry。正式 release 的 activation 只来自同版本、已审查的
    `active_evidence` 配置；因此 active/paused 计数必须由 immutable target 的 compiler 和
    checked-in registry 共同读回。截至 2026-07-27，已部署 production release
-   `c647d65a3df6e4598ae7017ccddd528d3e3bfc17` 为 92 / 98；没有更大的本地 activation
+   `42fcf6c8822cf0b3268ee9ebdd20b207d69a3902` 为 99 / 91；没有更大的本地 activation
    候选待发布。受控 one-shot 不会把 active 状态等同于 ready，collector timer 始终 disabled；任何
    时刻都必须以 release/runtime readback，而不是仓库文本、历史 sidecar 或 CI fixture 判定。
 5. 运行一次受控 latest/current collection；

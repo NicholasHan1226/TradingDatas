@@ -38,14 +38,14 @@ visibility 不能自动生成文档 URL、权限或 scheduler 激活。
 artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
 `DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
 它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
-runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 92 / 98
+runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 99 / 91
 事实取代；没有更大的本地激活候选。`forecast` 与 `pledge_detail` 的日期窗口实测仍要求
-`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 92 个 active binding 中，
-63 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback；新增项只放宽 activation，
+`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 99 个 active binding 中，
+70 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback；新增项只放宽 activation，
 不改写 schema、cadence 或 completeness，在完整性未证明时 API 仍返回 `partial/degraded`。
 
-production 的 92 项也不等于 92 项数据 ready：截至 2026-07-27，正式 production 为
-`c647d65...` 的 92 active / 98 paused。受控 current-only one-shot 只对原 pilot dataset 运行；
+production 的 99 项也不等于 99 项数据 ready：截至 2026-07-27，正式 production 为
+`42fcf6c...` 的 99 active / 91 paused。受控 current-only one-shot 只对原 pilot dataset 运行；
 每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded 判定可用性。
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。

@@ -4,7 +4,7 @@
 
 ## 结论
 
-- **2026-07-27 生产 current 已切换至 `c647d65a3df6e4598ae7017ccddd528d3e3bfc17`。**
+- **2026-07-27 生产 current 已切换至 `42fcf6c8822cf0b3268ee9ebdd20b207d69a3902`。**
   该 release 的 immutable manifest 已按 commit/tree/blob/owner/mode 验证；18082
   API 已恢复为 active，collector inactive、timer disabled。没有启用 cron、没有删除
   旧数据或回滚 release。
@@ -18,11 +18,14 @@
   `forecast` 与 `pledge_detail` 的同窗口实测均被上游以“须提供 `ts_code`”拒绝，因此没有
   新增专用 fanout 或 collector，两项保持 paused 并保留 failed receipt；`stk_factor_pro` 等
   不满足同一安全窗口或预算的接口也继续 paused。
-- **下一候选为 7 个共享周期窗口，不是新 collector。** 2026-07-27 服务器以 `tradingdatas`
+- **7 个共享周期窗口已完成正式纵向读回，不是新 collector。** 2026-07-27 服务器以 `tradingdatas`
   identity 在既有 QuickSync probe 预算内，对 `broker_recommend`、`cn_cpi`、`cn_gdp`、`cn_m`、
   `cn_pmi`、`cn_ppi`、`sf_month` 执行真实调用：前者 `success` 308 行，后六项为 `valid_empty`，
-  无权限、参数或 transport 失败。候选 registry 为 99 active / 91 paused；production current
-  仍为 `c647...` 的 92 / 98，待 generic batch 的 SQLite receipt 与 `/v1/query` readback 后才可发布。
+  无权限、参数或 transport 失败。随后同一 generic batch 在 global collect lock 内写入 SQLite：
+  `broker_recommend` 写入 308 行 success receipt，另六项各写入合法 empty receipt。TradingAgent
+  专用只读身份经 `POST /v1/query` 回读 7/7 HTTP 200，保留 receipt 与 `empty`/`success` metadata；
+  均因 completeness/watermark 未冻结返回 `partial/degraded`。production registry 现在为 99 active /
+  91 paused，collector 仍 inactive、timer 仍 disabled。
 - **2026-07-26 的 26 个 active dataset 历史批次已完成一次真实受控 latest batch。** 同一通用
   `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
   collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入
@@ -37,7 +40,7 @@
   provider variants 均有 receipt。三项均已以 TradingAgent 专用只读身份经
   `POST /v1/query` 回读到数据；它们仍是 `partial/degraded`，不得冒充完整覆盖。
 - **这不是全部 Tushare 接口已经稳定采集。** 当前 runtime contract 仍为 190 项，其中
-  92 active、98 paused；首期产品 catalog 的另 32 项尚缺正式 runtime contract 或
+  99 active、91 paused；首期产品 catalog 的另 32 项尚缺正式 runtime contract 或
   QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
   provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
   collector、route、cron 或 timer。
