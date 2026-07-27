@@ -335,7 +335,6 @@ active_evidence:
   etf_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
   etf_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   etf_share_size: server-evidence/20260727T082100Z-quicksync-executable-reprobe
-  forecast: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   ft_limit: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -374,7 +373,6 @@ active_evidence:
   monthly: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   namechange: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   new_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
-  pledge_detail: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repo_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   report_rc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native

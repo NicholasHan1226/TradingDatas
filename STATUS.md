@@ -14,9 +14,10 @@
   contract-match 与预算门禁的接口与原 29 项形成 92 active / 98 paused。63 个新增项已
   通过两个 generic batch 写入 49 条非空 success receipt 与 14 条合法 empty receipt，且以
   TradingAgent 专用只读身份逐项经 `POST /v1/query` 回读为 HTTP 200、保留 receipt metadata；
-  当前均按真实完整性状态返回 partial/degraded，不等同于 ready 或自动调度就绪。`stk_factor_pro`
-  等不满足同一安全窗口或预算的接口继续 paused。下一本地候选仅新增 `forecast` 与
-  `pledge_detail`，为 94 active / 96 paused，尚未发布。
+  当前均按真实完整性状态返回 partial/degraded，不等同于 ready 或自动调度就绪。随后
+  `forecast` 与 `pledge_detail` 的同窗口实测均被上游以“须提供 `ts_code`”拒绝，因此没有
+  新增专用 fanout 或 collector，两项保持 paused 并保留 failed receipt；`stk_factor_pro` 等
+  不满足同一安全窗口或预算的接口也继续 paused。
 - **当前 26 个 active dataset 已完成一次真实受控 latest batch。** 同一通用
   `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
   collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入

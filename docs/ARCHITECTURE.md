@@ -39,7 +39,8 @@ artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
 `DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
 它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
 runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 92 / 98
-事实取代；当前本地 94 / 96 扩容仍只是待发布候选。production 的 29 项可进入 SQLite 读侧检查：
+事实取代；没有更大的本地激活候选。`forecast` 与 `pledge_detail` 的日期窗口实测仍要求
+`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 29 项可进入 SQLite 读侧检查：
 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
 `direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，以及
 `direct_wave_2` 中的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及
