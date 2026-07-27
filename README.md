@@ -107,33 +107,34 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
 五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
 
-当前 production release 的 190 项 runtime registry 有 26 个 active dataset：原有
+当前 production release 的 190 项 runtime registry 有 29 个 active dataset：原有
 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
 `direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，以及
 `direct_wave_2` 中的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及
 `direct_wave_3` 中仅按需调用的 `repurchase`、`research_report`、`top_list`，以及
-`direct_wave_4` 中 11 个仅按需调用的数据集；其余 164 个全部 paused。除原五项外的
+`direct_wave_4` 中 11 个仅按需调用的数据集，以及 2026-07-27 验证并发布的
+`anns_d`、`etf_basic`、`fut_basic`；其余 161 个全部 paused。除原五项外的
 新增项在 response completeness 未冻结前仍必须诚实返回
 `partial/degraded`。validated match 与已修复数字字段只表示
 候选，不会自动启用 scheduler；schema drift、质量异常、empty、权限拒绝、凭证拒绝和
 unsupported 均按观测结果 fail closed。
 
-截至 2026-07-26 的服务器 readback，正式 production 运行
-`0472be2f52338b64b0c2561afe2d1baaf19586b6`，catalog
-`v1-c19a22c011fc363e` 为 26 active / 164 paused registry；这只表示
-catalog 可发现，不表示 26 项均已采集或可供交易消费者使用。受控 `pilot_existing --current-only`
+截至 2026-07-27 的服务器 readback，正式 production 运行
+`807853e7faa839d5a8f8f7270a29776ec644560c`，catalog
+`v1-86e03b5b39f971f0` 为 29 active / 161 paused registry；这只表示
+catalog 可发现，不表示 29 项均已完整采集或可供交易消费者使用。受控 `pilot_existing --current-only`
 one-shot 已只处理原五项：`trade_cal`、`stock_basic`、`index_classify` 为 `ready`，`daily` 与
 `sw_daily` 为 `stale/degraded`，其余 active 项仍须以每项正式 receipt/query readback 判定。
-collector timer 保持 disabled。2026-07-26 的本地/GitHub 候选在同一 registry/config
-合同下额外准入了 `anns_d`、`etf_basic`、`fut_basic` 三项，它们已有新的 QuickSync 非空
-受控观测，但尚未发布、入库或由 API readback；因此 production 仍是 26 / 164，候选才是
-29 / 161。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、
+collector timer 保持 disabled。2026-07-27 的正式 release 已额外准入并采集
+`anns_d`、`etf_basic`、`fut_basic`：三项均有 SQLite success receipt 和 authenticated
+API readback，因此 production 为 29 / 161；三项的 response completeness 仍未冻结，
+必须返回 `partial/degraded`。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、
 HTTP 200 或 catalog active 状态误报为数据已采集或已上线。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
 `--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
-当前仓库正式 registry 为 26 active / 164 paused；用当前 main compiler 重编仓外
+当前仓库正式 registry 为 29 active / 161 paused；用当前 main compiler 重编仓外
 sidecar 得到的更大集合只属于候选，精确数量必须由当次 hash-bound 编译读回，不能由
 CI fixture、仓内文件或 formal 编译臆测为 production activation。
 
