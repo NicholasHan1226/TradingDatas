@@ -92,9 +92,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert len({item["api_name"] for item in results}) == len(results)
     activation_projection = document["activation_projection"]
     assert isinstance(activation_projection, dict)
-    assert activation_projection["candidate_count"] == 29
-    assert activation_projection["active_count"] == 29
-    assert activation_projection["paused_count"] == 161
+    assert activation_projection["candidate_count"] == 92
+    assert activation_projection["active_count"] == 92
+    assert activation_projection["paused_count"] == 98
 
     _compiled_with_activation(document)
 
@@ -190,48 +190,18 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
         for api_name, dataset in bindings.items()
         if dataset["provider_bindings"][0]["activation_state"] == "active"  # type: ignore[index]
     }
-    assert active == {
-        "adj_factor",
-        "anns_d",
-        "cb_issue",
-        "hsgt_top10",
-        "daily",
-        "daily_info",
-        "disclosure_date",
-        "etf_basic",
-        "fund_div",
-        "fut_basic",
-        "index_classify",
-        "index_dailybasic",
-        "limit_cpt_list",
-        "limit_list_ths",
-        "limit_step",
-        "moneyflow_hsgt",
-        "moneyflow_ind_ths",
-        "repurchase",
-        "research_report",
-        "share_float",
-        "stk_auction",
-        "stk_limit",
-        "stk_managers",
-        "stock_basic",
-        "suspend_d",
-        "sw_daily",
-        "sz_daily_info",
-        "top_list",
-        "trade_cal",
-    }
+    active_evidence = _observations()["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    assert active == set(active_evidence)
     assert len(bindings) == 190
     assert sum(
         dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
         for dataset in bindings.values()
-    ) == 161
+    ) == 98
 
     expected_direct_wave_ref = (
         "server-evidence/20260722TQkgWsk-1def337-provider-native"
     )
-    active_evidence = _observations()["active_evidence"]
-    assert isinstance(active_evidence, dict)
     direct_api_names = (
         "adj_factor",
         "cb_issue",

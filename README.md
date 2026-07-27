@@ -138,6 +138,15 @@ HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repo
 sidecar 得到的更大集合只属于候选，精确数量必须由当次 hash-bound 编译读回，不能由
 CI fixture、仓内文件或 formal 编译臆测为 production activation。
 
+2026-07-27 的下一批本地候选使用同一通用 HTTPS probe 的五个受限证据分片，覆盖
+139 个安全可执行合同（19 个非空 `success`、113 个 `valid_empty`、3 个
+`permission_denied`、4 个 `provider_failed_unclassified`，无重复）。其中只有同时满足
+现有 `validated_contract_match`、安全预算和激活证据绑定的 63 个新增接口，才与原 29 项
+一起编译为 **92 active / 98 paused** 的本地候选；例如超出通用扫描预算的
+`stk_factor_pro` 仍保持 paused。该候选尚未提交、发布、写入 production SQLite 或经
+`/v1/query` 回读，因此不能表述为已上线或已稳定采集。后续仍使用既有
+`collect_provider_dataset.py --batch-file` 的通用 batch 纵向验证，不新增接口专用代码。
+
 旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
 官方输入参数迁移资料保留：它们不是 entitlement/activation authority，不得被 collector、
 scheduler 或生产命令执行；待输入映射迁入 provider-native runtime contracts 后删除。

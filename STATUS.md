@@ -8,6 +8,13 @@
   该 release 的 immutable manifest 已按 commit/tree/blob/owner/mode 验证；18082
   API 已恢复为 active，collector inactive、timer disabled。没有启用 cron、没有删除
   旧数据或回滚 release。
+- **下一批仅处于本地候选，尚未上线。** 2026-07-27 的通用 QuickSync reprobe 以五个
+  有界证据分片覆盖 139 个可执行合同，无重复：19 `success`、113 `valid_empty`、3
+  `permission_denied`、4 `provider_failed_unclassified`。原 29 项加 63 个满足既有
+  contract-match 与预算门禁的接口可编译为 92 active / 98 paused；`stk_factor_pro` 等
+  不满足通用安全预算的接口继续 paused。这不是 SQLite receipt、API readback、timer 或
+  production 结论。候选通过完整测试、精确发布和每项受控 batch 纵向验证前，生产事实仍为
+  29 active / 161 paused。
 - **当前 26 个 active dataset 已完成一次真实受控 latest batch。** 同一通用
   `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
   collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入

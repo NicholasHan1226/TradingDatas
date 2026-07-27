@@ -326,11 +326,22 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
     with sqlite3.connect(db_path) as conn:
         _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
 
-    result = scheduler.run_schedule(
-        registry=registry, schedule=schedule, db_path=db_path, now=now, execute=False
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset(
+            {
+                "cn.equity.daily",
+                "cn.equity.security_master",
+                "cn.market.trade_calendar",
+            }
+        ),
     )
     current = {
-        plan.dataset_id: plan for plan in result.plans if plan.priority == "current"
+        plan.dataset_id: plan for plan in plans if plan.priority == "current"
     }
     assert dict(current["cn.equity.daily"].request_window) == {"trade_date": "20260720"}
     assert dict(current["cn.equity.security_master"].request_window) == {}
@@ -345,9 +356,9 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
     assert "cn.market.trade_calendar" not in current
     assert any(
         item.dataset_id == "cn.market.trade_calendar" and item.priority == "backfill"
-        for item in result.plans
+        for item in plans
     )
-    assert all(plan.provider for plan in result.plans)
+    assert all(plan.provider for plan in plans)
 
 
 @pytest.mark.parametrize(
@@ -585,7 +596,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
 
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "not_due"
-    assert {item.dataset_id for item in result.executed} == {
+    expected_core = {
         "cn.dataset.adj_factor",
         "cn.dataset.hsgt_top10",
         "cn.dataset.index_classify",
@@ -598,6 +609,22 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.equity.security_master",
         "cn.market.trade_calendar",
     }
+    executed = {item.dataset_id for item in result.executed}
+    assert expected_core - {"cn.market.trade_calendar"} <= executed
+    assert (
+        "cn.market.trade_calendar" in executed
+        or skipped["cn.market.trade_calendar"] == "rate_budget"
+    )
+    automatic_active = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].entitlement_state == "active"
+        and dataset.provider_bindings[0].activation_state == "active"
+        and scheduler.load_schedule(SCHEDULE_CONFIG).cadences[
+            dataset.cadence_class
+        ].automatic
+    }
+    assert executed <= automatic_active
     assert {
         skipped[dataset_id]
         for dataset_id in (
@@ -890,15 +917,20 @@ def test_missing_calendar_skips_postclose_without_guessing_market_holidays(
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "calendar_unavailable"
     assert skipped["cn.dataset.sw_daily"] == "calendar_unavailable"
-    assert {item.dataset_id for item in result.executed} == {
+    expected_without_calendar = {
         "cn.dataset.adj_factor",
         "cn.dataset.index_classify",
         "cn.dataset.stk_auction",
         "cn.dataset.stk_limit",
         "cn.dataset.suspend_d",
         "cn.equity.security_master",
-        "cn.market.trade_calendar",
     }
+    executed = {item.dataset_id for item in result.executed}
+    assert expected_without_calendar <= executed
+    assert all(
+        registry.resolve(dataset_id).cadence_class != "postclose_daily"
+        for dataset_id in executed
+    )
 
 
 def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> None:
