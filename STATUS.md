@@ -18,6 +18,11 @@
   `forecast` 与 `pledge_detail` 的同窗口实测均被上游以“须提供 `ts_code`”拒绝，因此没有
   新增专用 fanout 或 collector，两项保持 paused 并保留 failed receipt；`stk_factor_pro` 等
   不满足同一安全窗口或预算的接口也继续 paused。
+- **下一候选为 7 个共享周期窗口，不是新 collector。** 2026-07-27 服务器以 `tradingdatas`
+  identity 在既有 QuickSync probe 预算内，对 `broker_recommend`、`cn_cpi`、`cn_gdp`、`cn_m`、
+  `cn_pmi`、`cn_ppi`、`sf_month` 执行真实调用：前者 `success` 308 行，后六项为 `valid_empty`，
+  无权限、参数或 transport 失败。候选 registry 为 99 active / 91 paused；production current
+  仍为 `c647...` 的 92 / 98，待 generic batch 的 SQLite receipt 与 `/v1/query` readback 后才可发布。
 - **2026-07-26 的 26 个 active dataset 历史批次已完成一次真实受控 latest batch。** 同一通用
   `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
   collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入

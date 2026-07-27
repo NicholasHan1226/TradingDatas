@@ -319,12 +319,18 @@ active_evidence:
   block_trade: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   bond_blk: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   bond_blk_detail: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  broker_recommend: server-evidence/20260727T091112Z-periodic-window-probe-r2
   cb_call: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   cb_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   cb_factor_pro: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   cb_issue: server-evidence/20260722TQkgWsk-1def337-provider-native
   cctv_news: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   ci_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  cn_cpi: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  cn_gdp: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  cn_m: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  cn_pmi: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  cn_ppi: server-evidence/20260727T091112Z-periodic-window-probe-r2
   daily: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
   daily_info: server-evidence/20260722TQkgWsk-1def337-provider-native
   dc_concept: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -377,6 +383,7 @@ active_evidence:
   report_rc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native
   research_report: server-evidence/20260722TQkgWsk-1def337-provider-native
+  sf_month: server-evidence/20260727T091112Z-periodic-window-probe-r2
   sge_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   share_float: server-evidence/20260722TQkgWsk-1def337-provider-native
   slb_len: server-evidence/20260727T082100Z-quicksync-executable-reprobe

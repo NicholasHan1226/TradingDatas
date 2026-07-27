@@ -2603,7 +2603,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_broker_recommend
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -6149,7 +6149,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_cpi
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -6315,7 +6315,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_gdp
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -6456,7 +6456,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_m
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -6604,7 +6604,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_pmi
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -7099,7 +7099,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_ppi
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -26626,7 +26626,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_sf_month
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

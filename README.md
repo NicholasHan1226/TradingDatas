@@ -124,9 +124,14 @@ catalog active 状态误报为数据已采集或已上线。
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
 `--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
-当前仓库正式 registry 为 92 active / 98 paused；用当前 main compiler 重编仓外
-sidecar 得到的更大集合只属于候选，精确数量必须由当次 hash-bound 编译读回，不能由
-CI fixture、仓内文件或 formal 编译臆测为 production activation。
+production `c647...` 的正式 registry 为 92 active / 98 paused；当前 main 的 99 / 91
+只是待发布候选。仓外 sidecar、CI fixture 或仓内配置都不能替代 immutable production release
+的 compiler/readback。
+
+2026-07-27 的月度/季度候选已使用同一 QuickSync probe 合同完成 7 个真实调用：
+`broker_recommend` 返回 308 行，`cn_cpi`、`cn_gdp`、`cn_m`、`cn_pmi`、`cn_ppi` 与
+`sf_month` 返回合法空结果。它们在候选 registry 中为 99 active / 91 paused，等待同一通用
+batch 的 SQLite receipt 与 API readback；production `c647...` 仍保持 92 / 98，未因此改变 timer。
 
 2026-07-27 的通用 HTTPS probe 使用五个受限证据分片，覆盖
 139 个安全可执行合同（19 个非空 `success`、113 个 `valid_empty`、3 个
