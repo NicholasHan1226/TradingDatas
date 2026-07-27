@@ -115,7 +115,7 @@ response completeness 未冻结前仍必须诚实返回 `partial/degraded`。val
 
 截至 2026-07-27 的服务器 readback，正式 production 运行
 `42fcf6c8822cf0b3268ee9ebdd20b207d69a3902`，registry 为 99 active / 91 paused；这只表示
-catalog 可发现，不表示 92 项均已完整采集、已完成历史回填或可供交易消费者使用。63 个新增项
+catalog 可发现，不表示 99 项均已完整采集、已完成历史回填或可供交易消费者使用。70 个新增项
 已经各自完成 SQLite receipt 和 authenticated API readback，但仍按实际完整性返回
 `partial/degraded`；其余 active 项仍须以每项正式 receipt/query readback 判定。collector timer
 保持 disabled。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、HTTP 200 或
