@@ -147,7 +147,8 @@ catalog count 或 HTTP 200 当作完整数据覆盖。
 读回；每项仍按自己的 metadata 如实报告 `partial/degraded` 或合法空结果。随后对
 `forecast` 与 `pledge_detail` 的同窗口实测表明 QuickSync 还要求 `ts_code`；两项没有
 创建专用 collector 或猜测 fanout，而是保留 paused 和 failed receipt 证据。`stk_factor_pro`
-等未满足同一通用窗口或扫描预算的接口也保持 paused。后续仍使用既有
+已在 main 的通用 node-budget 修正候选中完成一次合法空结果验证：其 261 个字段将按自动收缩
+的行数预算执行；production 在 fresh release/readback 前仍保持 paused。后续仍使用既有
 `collect_provider_dataset.py --batch-file` 的通用 batch 纵向验证，不新增接口专用代码。
 
 旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
