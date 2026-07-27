@@ -262,7 +262,7 @@ def test_candidate_compiler_caps_active_row_budget_to_runtime_scan_limit(
     _provider_scan_budget(dataset, binding)
 
 
-def test_candidate_compiler_keeps_field_budget_incompatible_contract_paused() -> None:
+def test_candidate_compiler_admits_wide_contract_with_bounded_row_budget() -> None:
     bundle = _bundle()
     observations = _observations()
     registry = compile_provider_native_registry(
@@ -282,7 +282,8 @@ def test_candidate_compiler_keeps_field_budget_incompatible_contract_paused() ->
     )
 
     assert binding["entitlement_state"] == "active"
-    assert binding["activation_state"] == "paused"
+    assert binding["activation_state"] == "active"
+    assert binding["max_rows_per_attempt"] < 10_000
 
 
 def test_formal_mode_never_promotes_preactivation_evidence() -> None:

@@ -54,7 +54,9 @@ _WINDOW_PLACEHOLDER = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _MAX_WINDOW_VALUE_BYTES = 1024
 _PROVIDER_SCAN_FIELD_HEADROOM = 16
 _PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
-_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 256
+# Must stay in lock-step with the compiler: node budgeting, rather than an
+# arbitrary narrow schema ceiling, is the final transport safety bound.
+_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 512
 _PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
 _PROVIDER_SCAN_ENVELOPE_DEPTH = 4
 _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64

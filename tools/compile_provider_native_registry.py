@@ -75,7 +75,10 @@ _SENSITIVE_EVIDENCE_PATTERN = re.compile(
 )
 _PROVIDER_SCAN_FIELD_HEADROOM = 16
 _PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
-_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 256
+# The scanner bounds total nodes independently and shrinks the per-attempt row
+# limit as a schema widens.  Keep the field ceiling above the largest reviewed
+# provider-native schema so a safe wide dataset is not needlessly paused.
+_PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 512
 _PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
 _PROVIDER_SCAN_ENVELOPE_DEPTH = 4
 _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64

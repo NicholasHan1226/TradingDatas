@@ -390,6 +390,7 @@ active_evidence:
   stk_auction: server-evidence/20260722TQkgWsk-1def337-provider-native
   stk_auction_c: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   stk_auction_o: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  stk_factor_pro: server-evidence/20260727T0945Z-stk-factor-pro-probe
   stk_holdernumber: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   stk_holdertrade: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   stk_limit: server-evidence/20260722TQkgWsk-1def337-provider-native

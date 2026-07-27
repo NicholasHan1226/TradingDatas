@@ -44,6 +44,11 @@
   QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
   provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
   collector、route、cron 或 timer。
+- **下一份候选只扩大通用扫描容量，尚未进入 production。** `stk_factor_pro` 的 261 个
+  provider 字段已在服务器得到一次合法空结果；旧 256-field ceiling 会在 node budget 仍可
+  自动收缩时把它错误地保持为 paused。候选把通用 ceiling 提至 512，并继续以既有 node
+  上限推导每次行数预算；它不新增接口专用 collector、route、table 或 timer。候选必须通过
+  fresh review、精确 main/release/readback 后，才可能把 production 从 99 active 扩为 100。
 - **99 项 active 已完成一轮生产只读 API 枚举。** 以 `tradingagent` 专用 read scope 对
   18082 的 catalog 动态发现 99 项 active，并逐项以 `limit=1`、省略 `as_of` 的固定 query
   合同回读：99/99 HTTP 200、零 query contract failure；79 项当前返回非空行，20 项为合法
