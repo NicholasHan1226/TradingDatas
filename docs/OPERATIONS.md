@@ -246,9 +246,10 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 
    `cmp --silent` 成功才证明重建结果与该 release 内 checked-in registry 逐字节一致；
    无论成功、失败或中断都必须清理临时文件。验证过程不得从 `/current` 执行 compiler，
-   也不得改写 release 内任何文件。当前 `main` 的 release 候选仍必须从
-   `quicksync_interface_observations.v1.yaml` 得到历史合同子集
-   190 个 dataset、26 active / 164 paused，且输出与 checked-in registry 逐字节一致。
+   也不得改写 release 内任何文件。目标 release 必须从同版本的
+   `quicksync_interface_observations.v1.yaml` 重建其 190 个 runtime contract，并与
+   checked-in registry 逐字节一致；active/paused 的精确计数由该次目标 release 的读回
+   决定，不能在本说明中写死或由旧候选推断。
    scope v2 的产品目录已扩为 222，但新增 32 项在正式合同、HTTPS entitlement 与
    runtime registry 接线完成前只允许 `unobserved/paused`，不得由 MCP 可见性自动加入
    采集计划。观测配置必须保持
@@ -276,15 +277,12 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
    formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
-   compiler 才会生成 canary registry。当前 `main` 的正式编译不传 activation evidence，
-   固定生成 26 active / 164 paused；截至 2026-07-26，已部署 production release 仍为
-   `0472be2f52338b64b0c2561afe2d1baaf19586b6` 的 26 / 164。受控 one-shot 不会把
-   active 状态等同于 ready，collector timer 仍 disabled；回滚 release
-   `c3232d0422aa09b83b8d8e9ed6cd87067bcb47cc` 为 12 / 178。任何时刻都必须以
-   release readback 而不是仓库文本判定。用当前 main compiler 重编 2026-07-22
-   观测 sidecar 得到的 119 active / 71 paused 仅属于 SHA-256
-   `cebbff13971b4d6465b986089a152feb056dc8e56e0bc0d4992a63175d20268c` 的仓外 sidecar
-   候选，不是 CI 期望值、checked registry 或 production activation。
+   compiler 才会生成 canary registry。正式 release 的 activation 只来自同版本、已审查的
+   `active_evidence` 配置；因此 active/paused 计数必须由 immutable target 的 compiler 和
+   checked-in registry 共同读回。截至 2026-07-27，已部署 production release
+   `807853e7faa839d5a8f8f7270a29776ec644560c` 为 29 / 161；本地后续 92 / 98 候选尚未
+   发布。受控 one-shot 不会把 active 状态等同于 ready，collector timer 始终 disabled；任何
+   时刻都必须以 release/runtime readback，而不是仓库文本、历史 sidecar 或 CI fixture 判定。
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；

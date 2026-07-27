@@ -38,7 +38,8 @@ visibility 不能自动生成文档 URL、权限或 scheduler 激活。
 artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
 `DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
 它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
-runtime registry 仍为 190 项，其中当前 `main` 有 26 项 `active` 可进入 SQLite 读侧检查：
+runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 29 / 161
+事实取代；当前本地 92 / 98 扩容仍只是待发布候选。production 的 29 项可进入 SQLite 读侧检查：
 `trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
 `direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，以及
 `direct_wave_2` 中的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及
@@ -46,8 +47,8 @@ runtime registry 仍为 190 项，其中当前 `main` 有 26 项 `active` 可进
 新增项只放宽 activation，不改写 schema、cadence 或 completeness；在完整性未证明时
 API 仍返回 `partial/degraded`。
 
-`main` 的 26 项不等于 26 项 production 数据 ready：截至 2026-07-26，正式 production 仍为
-`0472be2...` 的 26 active / 164 paused。受控 current-only one-shot 只对五个原 pilot
+production 的 29 项也不等于 29 项数据 ready：截至 2026-07-27，正式 production 为
+`807853...` 的 29 active / 161 paused。受控 current-only one-shot 只对五个原 pilot
 dataset 运行；每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded
 判定可用性。
 
