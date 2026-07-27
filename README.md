@@ -133,6 +133,12 @@ production `42fc...` 的正式 registry 为 99 active / 91 paused。仓外 sidec
 receipt，并为其余六项写入 empty receipt；TradingAgent 只读身份以固定 API 逐项回读。生产
 registry 现为 99 active / 91 paused，timer 仍 disabled。
 
+同日以 TradingAgent 专用只读身份动态发现 99 项 active 后，逐项执行固定 `POST /v1/query`
+(`limit=1`、省略 `as_of`)：99/99 为 HTTP 200，79 项返回非空行、20 项为合法 empty；元数据只
+有 3 项 `ready`，92 项 `partial`、4 项 `stale`。因此内部 API 已可统一读取全部 99 个 active
+合同，但消费者仍必须按单 dataset 的 receipt、freshness、quality 与 degraded fail closed，不能把
+catalog count 或 HTTP 200 当作完整数据覆盖。
+
 2026-07-27 的通用 HTTPS probe 使用五个受限证据分片，覆盖
 139 个安全可执行合同（19 个非空 `success`、113 个 `valid_empty`、3 个
 `permission_denied`、4 个 `provider_failed_unclassified`，无重复）。其中 63 个同时满足

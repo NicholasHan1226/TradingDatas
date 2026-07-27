@@ -44,6 +44,12 @@
   QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
   provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
   collector、route、cron 或 timer。
+- **99 项 active 已完成一轮生产只读 API 枚举。** 以 `tradingagent` 专用 read scope 对
+  18082 的 catalog 动态发现 99 项 active，并逐项以 `limit=1`、省略 `as_of` 的固定 query
+  合同回读：99/99 HTTP 200、零 query contract failure；79 项当前返回非空行，20 项为合法
+  empty receipt，75 项 runtime state 为 success、20 项为 empty、4 项为 stale。面向消费者的
+  metadata 是 3 `ready`、92 `partial`、4 `stale`，因此 **99 可调用不等于 99 ready**；任何
+  研究或 TradingAgent 消费者必须继续按 dataset metadata fail closed。
 - **下一批不能按响应非空强推。** 月度、季度与周度窗口已统一由 shared planner 支持；
   `broker_recommend` 等仍须先取得本轮真实 receipt/query readback。`cb_basic`、`cn_schedule`、
   `opt_basic` 仍因 schema-subset 保持 paused，直到用相同通用合同解决字段完整性。
