@@ -1453,6 +1453,24 @@ def _data_through_in_utc(value: str, timezone_name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datetime:
+    """Use the end of a date-only post-close partition for freshness checks."""
+
+    data_through_utc = _data_through_in_utc(value, dataset.timezone)
+    if dataset.cadence_class != "postclose_daily":
+        return data_through_utc
+    try:
+        dataset_timezone = ZoneInfo(dataset.timezone)
+    except ZoneInfoNotFoundError:
+        raise ValueError("dataset_timezone_invalid") from None
+    local = data_through_utc.astimezone(dataset_timezone)
+    if any((local.hour, local.minute, local.second, local.microsecond)):
+        return data_through_utc
+    return (local + timedelta(days=1) - timedelta(microseconds=1)).astimezone(
+        timezone.utc
+    )
+
+
 def _project_dataset_runtime(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
@@ -1599,7 +1617,7 @@ def _project_dataset_runtime(
             reasons=("invalid_data_through",),
         )
     try:
-        data_through_utc = _data_through_in_utc(data_through, dataset.timezone)
+        data_through_utc = _freshness_reference_in_utc(data_through, dataset)
     except ValueError as exc:
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,

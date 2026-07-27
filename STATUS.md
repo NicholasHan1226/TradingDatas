@@ -49,6 +49,10 @@
   自动收缩时把它错误地保持为 paused。候选把通用 ceiling 提至 512，并继续以既有 node
   上限推导每次行数预算；它不新增接口专用 collector、route、table 或 timer。候选必须通过
   fresh review、精确 main/release/readback 后，才可能把 production 从 99 active 扩为 100。
+- **日线 latest receipt 已写入，但周末 freshness 语义需要修正后才可交给 TA。** 2026-07-27
+  针对 `trade_date=20260724` 的 generic one-shot 已校验并保留 5,526 行 success receipt；旧投影
+  却将本地午夜当作日线完成时刻而错误标 stale。候选只把 `postclose_daily` 的纯日期/本地午夜作为
+  本地交易日结束用于 freshness 比较；不放宽事实、receipt、API 或 TradingAgent 门禁。
 - **99 项 active 已完成一轮生产只读 API 枚举。** 以 `tradingagent` 专用 read scope 对
   18082 的 catalog 动态发现 99 项 active，并逐项以 `limit=1`、省略 `as_of` 的固定 query
   合同回读：99/99 HTTP 200、零 query contract failure；79 项当前返回非空行，20 项为合法

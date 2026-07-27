@@ -1583,6 +1583,30 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
     assert stale.reasons == ("freshness_sla_exceeded",)
 
 
+def test_postclose_date_partition_stays_fresh_through_its_local_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-friday-close",
+        started_at="2026-07-27T12:00:00+00:00",
+        finished_at="2026-07-27T12:01:00+00:00",
+        data_through="2026-07-24",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(freshness_sla_seconds=3 * 86_400),
+        now=datetime(2026, 7, 27, 12, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+
+
 def test_empty_receipt_without_success_watermark_does_not_invent_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
