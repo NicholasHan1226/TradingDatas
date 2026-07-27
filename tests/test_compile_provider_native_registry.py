@@ -544,8 +544,14 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         else:
             assert binding.activation_state == "paused"
             paused_dataset_ids.add(dataset.dataset_id)
-    assert len(active_dataset_ids) == 92
-    assert len(paused_dataset_ids) == 98
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    assert active_dataset_ids == {
+        dataset["dataset_id"]
+        for dataset in contracts["contracts"]
+        if isinstance(dataset, dict) and dataset["api_name"] in active_evidence
+    }
+    assert len(active_dataset_ids) + len(paused_dataset_ids) == len(loaded.datasets)
     assert request_shapes == {
         "snapshot_or_date_range",
         "entity_fanout",

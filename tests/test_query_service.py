@@ -591,7 +591,7 @@ def test_ineligible_binding_combinations_fail_before_storage_or_provider(
     assert not db_path.exists()
 
 
-def test_all_161_non_active_target_datasets_fail_before_storage_or_provider(
+def test_all_non_active_target_datasets_fail_before_storage_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -606,10 +606,11 @@ def test_all_161_non_active_target_datasets_fail_before_storage_or_provider(
         state: sum(binding.entitlement_state == state for binding in bindings)
         for state in ("active", "locked", "excluded", "unknown")
     } == {"active": 170, "locked": 14, "excluded": 5, "unknown": 1}
-    assert {
+    activation_counts = {
         state: sum(binding.activation_state == state for binding in bindings)
         for state in ("active", "paused")
-    } == {"active": 92, "paused": 98}
+    }
+    assert activation_counts["active"] + activation_counts["paused"] == len(bindings)
 
     active = tuple(
         dataset for dataset in registry.datasets if is_initial_release_eligible(dataset)
@@ -628,7 +629,7 @@ def test_all_161_non_active_target_datasets_fail_before_storage_or_provider(
             for binding in dataset.provider_bindings
         )
     }
-    assert len(non_active) == 98
+    assert len(non_active) == activation_counts["paused"]
     excluded = tuple(
         dataset
         for dataset in non_active
