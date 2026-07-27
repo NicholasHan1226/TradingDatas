@@ -192,6 +192,42 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
 
 
 @pytest.mark.parametrize(
+    ("api_name", "expected_format"),
+    (
+        ("broker_recommend", "yyyymm"),
+        ("cn_gdp", "yyyy_qn"),
+    ),
+)
+def test_fresh_https_evidence_promotes_supported_non_daily_windows(
+    api_name: str, expected_format: str
+) -> None:
+    """Monthly and quarterly contracts use the same generic planner path."""
+
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name=api_name,
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    binding = next(
+        dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["api_name"] == api_name
+    )
+
+    assert binding["activation_state"] == "active"
+    assert set(binding["request_window_policy"]["formats"].values()) == {
+        expected_format
+    }
+
+
+@pytest.mark.parametrize(
     "api_name",
     ("cb_factor_pro", "fund_factor_pro", "idx_factor_pro"),
 )

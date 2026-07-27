@@ -212,6 +212,14 @@ _REQUEST_WINDOW_FORMATS = frozenset(
         "yyyyww",
     }
 )
+# These formats can be produced deterministically from the shared cadence
+# planner.  ``local_datetime_seconds`` deliberately remains manual-window
+# only: the planner rejects automatic intraday ranges rather than guessing a
+# market session.  Keep this list at the generic request-shape boundary; do
+# not add per-dataset activation exceptions.
+_AUTOMATIC_REQUEST_WINDOW_FORMATS = frozenset(
+    {"yyyymmdd", "yyyymm", "yyyy_qn", "yyyyww"}
+)
 _REQUEST_SHAPES = frozenset(
     {
         "snapshot_or_date_range",
@@ -1249,7 +1257,7 @@ def _activation_evidence_index(
         if (
             by_api[api_name]["request_window_policy"] is None
             or set(by_api[api_name]["request_window_policy"]["formats"].values())
-            <= {"yyyymmdd"}
+            <= _AUTOMATIC_REQUEST_WINDOW_FORMATS
         )
     }
     paused_api_names = planned_api_names - active_api_names

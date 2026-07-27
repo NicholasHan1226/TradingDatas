@@ -40,20 +40,19 @@ artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
 它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
 runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 92 / 98
 事实取代；没有更大的本地激活候选。`forecast` 与 `pledge_detail` 的日期窗口实测仍要求
-`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 29 项可进入 SQLite 读侧检查：
-`trade_cal`、`stock_basic`、`daily`、`index_classify`、`sw_daily`，以及独立
-`direct_wave_1` 中的 `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d`，以及
-`direct_wave_2` 中的 `hsgt_top10`、`limit_list_ths`、`moneyflow_ind_ths`，以及
-`direct_wave_3` 中仅按需调用的 `repurchase`、`research_report`、`top_list`。
-新增项只放宽 activation，不改写 schema、cadence 或 completeness；在完整性未证明时
-API 仍返回 `partial/degraded`。
+`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 92 个 active binding 中，
+63 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback；新增项只放宽 activation，
+不改写 schema、cadence 或 completeness，在完整性未证明时 API 仍返回 `partial/degraded`。
 
-production 的 29 项也不等于 29 项数据 ready：截至 2026-07-27，正式 production 为
-`807853...` 的 29 active / 161 paused。受控 current-only one-shot 只对五个原 pilot
-dataset 运行；每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded
-判定可用性。
+production 的 92 项也不等于 92 项数据 ready：截至 2026-07-27，正式 production 为
+`c647d65...` 的 92 active / 98 paused。受控 current-only one-shot 只对原 pilot dataset 运行；
+每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded 判定可用性。
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
+
+自动 cadence 统一支持 `yyyymmdd`、`yyyymm`、`yyyy_qn` 与 `yyyyww` 四种已验证窗口编码；它们
+都由同一个 planner 生成。`local_datetime_seconds` 只允许显式有界 one-shot，不能由 scheduler 猜测
+盘中窗口。窗口格式本身不构成 activation 证据，仍须经过 provider → SQLite receipt → query readback。
 
 `dataset_field` 参数可以声明可选的正整数 `batch_size`，未声明时默认为 `1`；compiler 将该值原样投影到通用 fanout 合同。executor 对已验证的来源值做稳定去重和有界分批，同一批的多个值作为一个逗号分隔的 provider 参数发送。该能力只描述通用请求形状，不改变 entitlement、activation、receipt 或数据完整性门禁，也不允许按 dataset 或 API 增加执行分支。
 

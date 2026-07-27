@@ -18,7 +18,7 @@
   `forecast` 与 `pledge_detail` 的同窗口实测均被上游以“须提供 `ts_code`”拒绝，因此没有
   新增专用 fanout 或 collector，两项保持 paused 并保留 failed receipt；`stk_factor_pro` 等
   不满足同一安全窗口或预算的接口也继续 paused。
-- **当前 26 个 active dataset 已完成一次真实受控 latest batch。** 同一通用
+- **2026-07-26 的 26 个 active dataset 历史批次已完成一次真实受控 latest batch。** 同一通用
   `collect_provider_dataset.py --batch-file` runner 在 `tradingdatas` identity 与全局
   collect lock 下调用 QuickSync，并在 2026-07-26T14:41--14:42Z 为 25 项写入
   `success` receipt；`security_master` 本轮是合法 `empty`，既有完整 snapshot 保留。
@@ -26,19 +26,19 @@
   `ready`，21 项为 `partial/degraded`。后者表示 response-completeness/覆盖口径尚未
   冻结，不能表述为完整或自动调度就绪；它们的 provider receipt 仍为 `success`。
   token 仅在服务器受控进程内用于认证，未输出、传输或记录到证据。
-- **当前 29 个 active dataset 已完成一次真实受控 latest batch。** 初始 26 项之后，
+- **2026-07-27 的 29 个 active dataset 历史批次已完成一次真实受控 latest batch。** 初始 26 项之后，
   `anns_d`、`etf_basic`、`fut_basic` 又在 2026-07-27 由同一 batch runner 成功写入
   1,140、3,366、11,119 行及 transaction-scoped success receipt；`fut_basic` 的 6 个
   provider variants 均有 receipt。三项均已以 TradingAgent 专用只读身份经
   `POST /v1/query` 回读到数据；它们仍是 `partial/degraded`，不得冒充完整覆盖。
 - **这不是全部 Tushare 接口已经稳定采集。** 当前 runtime contract 仍为 190 项，其中
-  29 active、161 paused；首期产品 catalog 的另 32 项尚缺正式 runtime contract 或
+  92 active、98 paused；首期产品 catalog 的另 32 项尚缺正式 runtime contract 或
   QuickSync 运行证据。后续只允许按现有 registry/adapter/batch runner 分批完成真实
   provider -> SQLite receipt -> catalog/query readback，不得新增 dataset-specific
   collector、route、cron 或 timer。
-- **下一批不能按响应非空强推。** `broker_recommend` 为月度窗口，`cb_basic`、
-  `cn_schedule`、`opt_basic` 为 schema-subset；它们仍保持 paused，直到用相同通用合同
-  解决窗口或字段完整性，而不是绕过 registry 检查。
+- **下一批不能按响应非空强推。** 月度、季度与周度窗口已统一由 shared planner 支持；
+  `broker_recommend` 等仍须先取得本轮真实 receipt/query readback。`cb_basic`、`cn_schedule`、
+  `opt_basic` 仍因 schema-subset 保持 paused，直到用相同通用合同解决字段完整性。
 - **最新生产事实优先。** 2026-07-26 续费后的服务器受控复测，使用正式 QuickSync
   transport、同一冻结计划的 139 个安全可执行请求，全部完成且无重复：17 `success`
   （非空响应）、115 `valid_empty`、3 `permission_denied`（`npr`、`stk_premarket`、

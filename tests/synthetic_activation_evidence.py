@@ -7,6 +7,11 @@ from typing import Mapping
 import yaml
 
 
+_AUTOMATIC_REQUEST_WINDOW_FORMATS = frozenset(
+    {"yyyymmdd", "yyyymm", "yyyy_qn", "yyyyww"}
+)
+
+
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -85,7 +90,7 @@ def build_synthetic_activation_evidence(
         if (
             by_api[api_name]["request_window_policy"] is None
             or set(by_api[api_name]["request_window_policy"]["formats"].values())
-            <= {"yyyymmdd"}
+            <= _AUTOMATIC_REQUEST_WINDOW_FORMATS
         )
     }
     paused_api_names = planned_api_names - active_api_names
