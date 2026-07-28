@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import MappingProxyType
+
 import pytest
 
 from collectors.binance.collector import BinanceSpotPublicCollector, _RejectRedirects
@@ -10,6 +12,7 @@ from dataset_registry import (
     runtime_dataset_registry_path,
 )
 from provider_transport import provider_transport_profile
+from query_service import _validate_filter_clause
 
 
 def test_canary_registry_freezes_only_the_two_symbols_and_rule_sets() -> None:
@@ -62,3 +65,24 @@ def test_binance_transport_rejects_redirects() -> None:
         _RejectRedirects().redirect_request(
             None, None, 302, "Found", {}, "https://example.invalid/"
         )
+
+
+def test_rfc3339_open_time_between_normalizes_to_provider_row_order() -> None:
+    bar = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH).resolve(
+        "crypto.spot.binance.btcusdt.5m"
+    )
+    open_time = next(field for field in bar.fields if field.name == "open_time")
+    operator, values = _validate_filter_clause(
+        open_time,
+        MappingProxyType(
+            {
+                "between": (
+                    "2026-07-28T08:40:00+00:00",
+                    "2026-07-28T09:40:00+00:00",
+                )
+            }
+        ),
+        dataset=bar,
+    )
+    assert operator == "between"
+    assert values == ("2026-07-28T08:40:00.000Z", "2026-07-28T09:40:00.000Z")

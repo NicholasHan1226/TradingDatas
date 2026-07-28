@@ -451,11 +451,52 @@ def _parse_yyyymmdd(value: object, name: str) -> date:
     return parsed
 
 
+def _parse_rfc3339_filter(value: object, name: str) -> datetime:
+    """Accept one canonical, aware RFC3339 bound for a timestamp range."""
+
+    if type(value) is not str or value != value.strip():
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    match = _EVIDENCE_ISO_TIMESTAMP_RE.fullmatch(value)
+    if match is None or match.group("zone") is None or value.endswith("-00:00"):
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (OverflowError, ValueError):
+        raise QueryValidationError(f"{name} must use canonical RFC3339") from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    canonical = parsed.isoformat(
+        timespec="microseconds" if parsed.microsecond else "seconds"
+    )
+    if value != canonical:
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    return parsed
+
+
+def _range_filter_values(
+    dataset: DatasetDefinition,
+    values: tuple[object, ...],
+    *,
+    name: str,
+) -> tuple[date | datetime, ...]:
+    if dataset.as_of_format == "rfc3339":
+        return tuple(_parse_rfc3339_filter(value, name) for value in values)
+    return tuple(_parse_yyyymmdd(value, name) for value in values)
+
+
+def _provider_rfc3339_milliseconds(value: datetime) -> str:
+    """Match the UTC millisecond representation held in provider-native rows."""
+
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+
+
 def _validate_filter_clause(
     field: DatasetField,
     clause: object,
     *,
-    range_field: str | None,
+    dataset: DatasetDefinition,
 ) -> tuple[str, tuple[object, ...]]:
     if not isinstance(clause, MappingProxyType) or len(clause) != 1:
         raise QueryValidationError(f"filters.{field.name} is invalid")
@@ -481,18 +522,25 @@ def _validate_filter_clause(
         raise QueryValidationError(
             f"filters.{field.name}.between lower bound exceeds upper bound"
         )
-    if field.name == range_field:
-        dates = tuple(
-            _parse_yyyymmdd(
-                value,
-                f"filters.{field.name}.{operator}",
-            )
-            for value in validated
+    if field.name == dataset.range_field:
+        range_values = _range_filter_values(
+            dataset,
+            validated,
+            name=f"filters.{field.name}.{operator}",
         )
-        if operator == "between" and dates[0] > dates[1]:
+        if operator == "between" and range_values[0] > range_values[1]:
             raise QueryValidationError(
                 f"filters.{field.name}.between lower bound exceeds upper bound"
             )
+        if dataset.as_of_format == "rfc3339":
+            encoded = tuple(
+                _provider_rfc3339_milliseconds(value)
+                for value in range_values
+                if isinstance(value, datetime)
+            )
+            if len(encoded) != len(range_values):
+                raise QueryServiceUnavailable("query service is unavailable")
+            validated = encoded
     return operator, validated
 
 
@@ -510,13 +558,23 @@ def _lookback_span_days(
         return None
     operator, raw_operand = next(iter(clause.items()))
     values = raw_operand if type(raw_operand) is tuple else (raw_operand,)
-    dates = tuple(
-        _parse_yyyymmdd(
-            value,
-            f"filters.{dataset.range_field}.{operator}",
-        )
-        for value in values
+    range_values = _range_filter_values(
+        dataset,
+        values,
+        name=f"filters.{dataset.range_field}.{operator}",
     )
+    if dataset.as_of_format == "rfc3339":
+        datetimes = tuple(
+            value for value in range_values if isinstance(value, datetime)
+        )
+        if len(datetimes) != len(range_values):
+            raise QueryServiceUnavailable("query service is unavailable")
+        dates = tuple(
+            value.astimezone(ZoneInfo(dataset.timezone)).date()
+            for value in datetimes
+        )
+    else:
+        dates = tuple(value for value in range_values if isinstance(value, date))
     if operator == "eq":
         return 0
     if operator == "in":
@@ -582,7 +640,7 @@ def _prepare_query(
         _validate_filter_clause(
             field,
             clause,
-            range_field=dataset.range_field,
+            dataset=dataset,
         )
 
     if (
@@ -798,7 +856,7 @@ def _base_predicates(
         operator, values = _validate_filter_clause(
             field_map[field_name],
             clause,
-            range_field=dataset.range_field,
+            dataset=dataset,
         )
         sql, values_params = _compile_scalar_filter(
             _field_expression(dataset, field_name),

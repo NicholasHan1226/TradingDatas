@@ -28,6 +28,18 @@ open_time]`; `open_time` and `close_time` are UTC, and the raw millisecond
 timestamps are retained. OHLC, base volume and quote volume are text so a
 consumer can apply `Decimal` rather than binary float.
 
+## Consumer terminal-window profile
+
+The frozen provider-neutral profile for a delayed-paper consumer is option A:
+`symbol eq`, an `open_time between [window_start, latest_open]` RFC3339 UTC
+window, `as_of`, the ten default bar fields, deterministic
+`symbol:asc,open_time:desc`, and `limit=13`. `open_time` is explicitly
+filterable with `between` in catalog. The query layer canonicalizes RFC3339
+input to the provider-row UTC millisecond representation before comparison, so
+an exactly thirteen-bar inclusive window returns 13 rows and terminal
+`next_cursor=null`; it does not hide a cursor from a broader result set.
+`window_start` must equal `latest_open - 60 minutes` for this profile.
+
 Rules are read from the actual `exchangeInfo` response and expose symbol/status,
 base/quote asset, `PRICE_FILTER.tickSize`, `LOT_SIZE.stepSize`/`minQty`, and
 `MIN_NOTIONAL` or `NOTIONAL.minNotional`. They are factual constraints for a
