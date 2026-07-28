@@ -112,7 +112,11 @@ watermark；SLA 内返回 `runtime_state=empty`、`degraded=false`、
 
 `lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
-对 `runtime_state=success`，传输合同校验以当前完整 receipt cohort 为准；旧 schema 或旧合同的历史 receipt 不能把当前已验证分区降级。只有读取方实际使用历史 fallback 时，才会把该 fallback cohort 一并纳入 lineage 校验。
+对 `runtime_state=success`，传输合同校验以当前完整 receipt cohort 为准；receipt 的
+`config_hash` 必须与当前 registry 和 provider transport profile 精确匹配。旧 schema 或旧合同的
+历史 receipt/facts 仍保留在 SQLite 供审计，但不得参与当前 `data_through`、freshness、receipt
+watermark 或 lineage 投影，也不能把当前已验证分区降级。只有读取方实际使用历史 fallback 时，才会把
+该 fallback cohort 一并纳入 lineage 校验。
 
 `cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的 30 只沪深主板 canary。代码列表是
 registry 中冻结的多代码 request，不依赖 security-master fanout；其身份为 `[ts_code, time]`。
