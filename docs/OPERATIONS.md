@@ -24,11 +24,11 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
 Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
-前，不在生产启用采集 timer。首次允许启用的例外只能是 `pilot_existing` 的 500 只主板
-`cn.dataset.rt_min` coverage canary：它从已完成的 security-master receipt 按冻结主板规则
-和稳定哈希选择 500 只，分为 5 个 100 只 provider 请求，仍服从 `intraday` 预算和 receipt
-事务；上游晚一根 bar 时如实保存实际 bar time，不声明低延迟或执行可用。该 canary 不是研究
-或交易 Universe。
+前，不在生产启用采集 timer。当前允许启用的唯一例外是 `pilot_existing` 的固定 30 只沪深
+主板 `cn.dataset.rt_min` 5MIN canary：每轮使用一个冻结的多代码 provider 请求，并保留实际
+bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或
+交易 Universe。500 只压力 canary 只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前
+不得进入 production registry、release 或 timer。
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
@@ -57,10 +57,10 @@ closed。波次外的 active dataset 以
 redaction 均不变。
 
 省略 `--activation-wave` 时保持完整 scheduler 行为。当前 `pilot_existing` 包含三个已验证
-的日线/参考 dataset，以及 500 只主板的 `cn.dataset.rt_min` 5 分钟 coverage canary。它不是
-新增 entitlement、全市场分钟覆盖、研究/交易 Universe 或低延迟执行证据：每轮必须保留实际
-bar time、observed_at 和 receipt，不能把上游延迟伪装成实时数据。fresh probe 审核完成前，
-不得把其它候选加入该清单。
+的日线/参考 dataset，以及固定 30 只主板的 `cn.dataset.rt_min` 5 分钟 canary。它不是新增
+entitlement、全市场分钟覆盖、研究/交易 Universe 或低延迟执行证据：每轮必须保留实际 bar
+time、observed_at 和 receipt，不能把上游延迟伪装成实时数据。500 只候选与其它扩容在独立
+worktree/release 审核，未通过前不得加入该清单。
 只读 plan 可按以下方式检查：
 
 ```bash
