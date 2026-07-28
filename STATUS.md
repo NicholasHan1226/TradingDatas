@@ -5,18 +5,17 @@
 ## 结论
 
 - **最新 production 事实优先：**`current` 已切换至
-  `226ee7646ab03075da1c2adfaef8986a34e5e64e`，对应 `origin/main` 同一 commit；
+  `d0edb516d8d9785082a10bbb96a14389f27b29bc`，对应 `origin/main` 的同一代码 release；
   `tradingdatas-v1-internal.service` active，正式 API 保持仅 `GET /v1/catalog` 与
-  `POST /v1/query`。本次仅把 `session_minute` 最小间隔从 300 秒收紧为 270 秒，以覆盖
-  五分钟 timer 的最多 15 秒随机延迟；没有新增 route、dataset 专用 collector、TradingAgent
-  改动、8082 改动或任何交易动作。
-- **固定十只主板的 `cn.dataset.rt_min` 5MIN canary 已恢复受控连续采集：**
+  `POST /v1/query`。本次只将既有 `cn.dataset.rt_min` 的固定主板请求从 10 只扩为 30 只；
+  没有新增 route、dataset 专用 collector、TradingAgent 改动、8082 改动或任何交易动作。
+- **固定三十只主板的 `cn.dataset.rt_min` 5MIN canary 已恢复受控采集：**
   `tradingdatas-provider-native-collect.timer` 为 enabled/active，使用单一
-  `OnCalendar=*:0/5` 通用 planner。2026-07-28 11:05 与 11:10 的自动轮分别经正式 18082
-  回读相邻的 11:00 与 11:05 bar，各 10/10，均为
-  `ready/success/fresh/valid/non-degraded` 且 receipt/lineage 完整；11:00--11:20 后续
-  bar 也连续 10/10。此前为修复 300 秒阈值问题而停用 timer 的时段留下日内历史缺口，
-  不得描述为当天全天完整率；继续采集到收盘并以实际 bar time 统计。
+  `OnCalendar=*:0/5` 通用 planner。2026-07-28 11:57 的 production one-shot 经正式 18082
+  精确回读午休前最后可用的 11:30 bar，30/30，均为
+  `ready/success/fresh/valid/non-degraded` 且 receipt/lineage 完整。午休期间不将无新 bar
+  写成连续采集；下午开市后仍需以相邻两根实际 bar 证明 30 只连续性。此前为修复 300 秒
+  阈值问题而停用 timer 的时段留下日内历史缺口，不得描述为当天全天完整率。
 - **日线优先刷新仍按真实收盘窗口执行：**`cn.equity.daily`、
   `cn.dataset.stk_limit` 与 `cn.dataset.adj_factor` 对 `trade_date=20260728` 的既有
   provider-neutral 计划均已 dry-run 通过，但 `daily` 的 registry 可用时刻为 16:30 CST，
