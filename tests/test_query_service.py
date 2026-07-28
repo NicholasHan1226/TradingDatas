@@ -158,6 +158,59 @@ def test_runtime_lineage_fails_closed_for_unbound_tushare_config_hash() -> None:
     assert metadata["lineage"]["transport_service"] is None
 
 
+def test_current_success_does_not_mix_prior_schema_config_into_transport_proof() -> None:
+    registry = load_dataset_registry()
+    dataset = registry.resolve("cn.equity.daily")
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=dataset.default_projection,
+        filters={},
+        as_of=None,
+        order=None,
+        limit=1,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=NOW,
+    )
+    expected = provider_ingest_config_hash(dataset, dataset.provider_bindings[0])
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="20260719",
+            observed_at="2026-07-20T03:00:00+00:00",
+            receipt_id="receipt-current",
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("tushare",),
+        last_success_receipt_id="receipt-prior",
+        last_success_providers=("tushare",),
+        last_success_data_through="20260718",
+        current_provider_config_hashes=(("tushare", expected),),
+        last_success_provider_config_hashes=(("tushare", "b" * 64),),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "watermark-current",
+    )
+
+    assert allow_rows is True
+    assert metadata["state"] == "ready"
+    assert metadata["degraded"] is False
+    assert metadata["lineage"]["transport_service"] == "quicksync"
+
+
 def test_success_without_response_completeness_is_partial_but_keeps_rows() -> None:
     source = load_dataset_registry()
     base = source.resolve("cn.equity.daily")
