@@ -715,6 +715,7 @@ def _validate_response_completeness(
     *,
     request_window: Mapping[str, str],
     resolved_params: Mapping[str, str],
+    calls: Sequence[ProviderCall],
 ) -> None:
     policy = binding.response_completeness
     if policy is None:
@@ -739,7 +740,9 @@ def _validate_response_completeness(
         )
     elif policy.strategy == "unique_primary_key_snapshot":
         _validate_unique_primary_keys(dataset, rows)
-        if policy.snapshot_field is not None:
+        if policy.fanout_field is not None:
+            _validate_fanout_snapshot(policy, rows, calls=calls)
+        elif policy.snapshot_field is not None:
             _validate_homogeneous_snapshot_field(policy.snapshot_field, rows)
     elif policy.strategy == "single_partition_unique_primary_key":
         _validate_single_partition(
@@ -750,6 +753,40 @@ def _validate_response_completeness(
         )
     else:
         raise ValueError("provider response completeness strategy is unsupported")
+
+
+def _validate_fanout_snapshot(
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    calls: Sequence[ProviderCall],
+) -> None:
+    """Validate an exact fanout cohort at one provider snapshot timestamp."""
+
+    if policy.fanout_field is None and policy.snapshot_field is None:
+        return
+    if policy.fanout_field is None or policy.snapshot_field is None:
+        raise ValueError("provider response fanout snapshot contract is incomplete")
+    expected = {value for call in calls for value in call.identity.fanout_values}
+    if not expected:
+        raise ValueError("provider response fanout snapshot has no requested values")
+    observed: set[str] = set()
+    snapshots: set[str] = set()
+    for row in rows:
+        value = row.get(policy.fanout_field)
+        snapshot = row.get(policy.snapshot_field)
+        if type(value) is not str or not value:
+            raise ValueError("provider response fanout field is invalid")
+        if type(snapshot) is not str or not snapshot:
+            raise ValueError("provider response snapshot field is invalid")
+        if value in observed:
+            raise ValueError("provider response contains duplicate fanout value")
+        observed.add(value)
+        snapshots.add(snapshot)
+    if observed != expected:
+        raise ValueError("provider response fanout coverage is incomplete")
+    if len(snapshots) != 1:
+        raise ValueError("provider response fanout snapshot time is inconsistent")
 
 
 def _validate_calendar_dates(
@@ -1176,6 +1213,7 @@ def _persist_provider_execution(
                 execution.outcome.rows,
                 request_window=normalized_window,
                 resolved_params=resolved_params,
+                calls=execution.calls,
             )
         except ValueError:
             return _persist_failed_execution(
