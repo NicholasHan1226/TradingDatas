@@ -1,17 +1,28 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-28 19:53 CST。
+最后更新：2026-07-28 20:36 CST。
 
-## 当前事实快照（2026-07-28 19:53 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 20:36 CST，优先于以下历史记录）
 
-- production `current` 为 `d47137c6e68eacb3f58c81427a7ab1b015ae6bad`；immutable manifest
-  已按 commit/tree/blob/owner/mode 复核通过，`09695d5…` 是原子 rollback 点。正式内部 API
+- A 股 production `current` 为 `3e55f5f500b52c2d89c9723937cf5f3fc6a439f5`；immutable
+  release 经服务器 `current` 指针读回，正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active，
   通用 collector timer enabled/active。没有切换 8082、TradingAgent timer、broker 或真实交易。
-- formal catalog 为 `v1-db6c48bb0aaa7fa8`。它仍含 190 个 runtime datasets；catalog 可发现性
+- A 股 formal catalog 为 `v1-96bffb64b01f3acd`。它仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
+- 隔离 Crypto production `current` 为
+  `24298b22f0bbd4a5746514dac96c92e59b8f3011`；`127.0.0.1:18083` API active，
+  catalog `v1-e7ea3dd714066d3c` 只含 BTCUSDT/ETHUSDT 的 5 分钟 bar 与公开
+  exchangeInfo 规则四项。未认证 catalog 为 401，认证 catalog 为 200，
+  `/tushare` 与 `/source_status` 均为 404；它不使用 Binance 账户或 API key。
+- Crypto 独立 timer 已 enabled/active。2026-07-28 20:35 CST 第一轮自动采集成功；
+  BTCUSDT/ETHUSDT bar 经正式 18083 回读均为
+  `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整，当前保留
+  20:15、20:20、20:25、20:30 CST 四根连续 open-time bar。两项规则也经通用
+  registry batch 真实采集并回读为相同健康状态。该运行面只负责积累公共数据，
+  不授予 TradingAgent 执行、账户、Testnet、Live 或真实交易权限。
 - `cn.dataset.rt_min` 是唯一启用的持续采集：固定 30 只沪深主板、5MIN、现有通用
   collector/timer。17:47 CST 的 controlled scheduler receipt 经 TA UID987 的正式 18082
   精确 `time=2026-07-28 15:00:00` query 读回为 30/30，且
@@ -34,7 +45,7 @@
   正式 query 返回 `is_open=1`、`pretrade_date=20260728` 与
   `ready/success/fresh/valid/non-degraded` metadata。交易日历可返回 provider 已发布的未来
   日期；receipt 执行时间仍不得在未来，其他 dataset 仍对 future `data_through` fail closed。
-- `REAL_TRADING_ENABLED=false`；没有启用 TradingAgent timer、broker 或真实交易。本文下方
+- `REAL_TRADING_ENABLED=false`；没有启用 TradingAgent Crypto timer、broker 或真实交易。本文下方
   仅保留追溯记录；若与本快照冲突，以本快照和本轮正式 API/readback 为准。
 
 ## 结论

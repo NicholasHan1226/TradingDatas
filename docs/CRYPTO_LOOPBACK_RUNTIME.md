@@ -1,13 +1,13 @@
-# Crypto loopback candidate runtime
+# Crypto loopback runtime
 
-This is a candidate deployment contract, not a production deployment. It is
-based on TradingDatas main `62d76f8` and the merged Binance Spot public-data
-contracts. It does not change the A-share API at `127.0.0.1:18082`, any
-Tushare timer, any A-share SQLite file, or any trading authority.
+The internal runtime is deployed from immutable release
+`24298b22f0bbd4a5746514dac96c92e59b8f3011`. It does not change the A-share
+API at `127.0.0.1:18082`, any Tushare timer, any A-share SQLite file, or any
+trading authority.
 
 ## Fixed isolation contract
 
-| Surface | Candidate value |
+| Surface | Runtime value |
 | --- | --- |
 | API listener | `127.0.0.1:18083` only |
 | API service account | `tradingdatas-crypto:tradingdatas-crypto` |
@@ -16,7 +16,7 @@ Tushare timer, any A-share SQLite file, or any trading authority.
 | API data store | `/opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite` |
 | API unit | `tradingdatas-crypto-v1-internal.service` |
 | collector unit | `tradingdatas-crypto-binance-collect.service` |
-| timer | `tradingdatas-crypto-binance-collect.timer`, disabled by default |
+| timer | `tradingdatas-crypto-binance-collect.timer`, enabled for isolated 5-minute collection |
 | lock | `/run/tradingdatas-crypto/collect.lock` |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`
@@ -32,25 +32,31 @@ TradingAgent consumer token leaf is separate at
 `/run/secrets/tradingagent/tradingdatas-crypto-read.token`; it is never the API
 hash registry, salt, or a provider credential.
 
-## Collector behavior
+## Collector behavior and current proof
 
-The timer may only run after candidate review and explicit server preflight. It
-collects BTCUSDT and ETHUSDT through the existing provider-native receipt path,
-using two adjacent already-closed 5m bars per run. Its `observed_at` is the
-actual collection time. Bounded historical backfill remains a separate
-one-shot operation and is never real-time/PIT evidence.
+The timer passed candidate review and server preflight before it was enabled.
+It collects BTCUSDT and ETHUSDT through the existing provider-native receipt
+path, using two adjacent already-closed 5m bars per run. Its `observed_at` is
+the actual collection time. The 2026-07-28 20:35 CST automatic run completed
+successfully; authenticated `POST /v1/query` readback returned both bar
+datasets as `ready/fresh/valid/non-degraded`, with complete receipt lineage.
+The two public rules datasets were separately collected once through the
+generic registry runner and have the same healthy metadata. Bounded historical
+backfill remains a separate one-shot operation and is never real-time/PIT
+evidence.
 
-## Candidate preflight and rollback
+## Provisioning and rollback
 
-Before enabling either unit, create the dedicated service account, immutable
+Before enabling either unit on a new host, create the dedicated service account, immutable
 Crypto release root and data directory, initialise the dedicated SQLite schema,
-create only the three API hash/salt/cursor files with the exact owner/mode above, and
-atomically install a distinct TA read token leaf without printing it. Verify no
+create only the three API hash/salt/cursor files with the exact owner/mode
+above, and atomically install a distinct TA read token leaf without printing
+it. Verify no
 listener exists on `18083`, the A-share release pointer and units are unchanged,
 and the Crypto release pointer resolves only below
 `/opt/investment/releases/tradingdatas-crypto`. The first proof must include
 authenticated catalog/query readback, receipt lineage, freshness, a
-disabled-timer readback and A-share isolation readback.
+disabled-timer readback before activation, and A-share isolation readback.
 
 Rollback is: `systemctl disable --now tradingdatas-crypto-binance-collect.timer`,
 then stop `tradingdatas-crypto-v1-internal.service`. Do not delete Crypto facts
