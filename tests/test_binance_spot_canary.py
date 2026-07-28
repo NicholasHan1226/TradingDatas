@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import MappingProxyType
 
 import pytest
@@ -12,7 +13,8 @@ from dataset_registry import (
     runtime_dataset_registry_path,
 )
 from provider_transport import provider_transport_profile
-from query_service import _validate_filter_clause
+from query_contract import QueryExecutionOptions, QueryRequest
+from query_service import _base_predicates, _prepare_query, _validate_filter_clause
 
 
 def test_canary_registry_freezes_only_the_two_symbols_and_rule_sets() -> None:
@@ -86,3 +88,80 @@ def test_rfc3339_open_time_between_normalizes_to_provider_row_order() -> None:
     )
     assert operator == "between"
     assert values == ("2026-07-28T08:40:00.000Z", "2026-07-28T09:40:00.000Z")
+
+
+def _bar_request(
+    *,
+    filters: MappingProxyType[str, MappingProxyType[str, object]],
+    as_of: str | None,
+) -> tuple[QueryRequest, object, object]:
+    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
+    request = QueryRequest(
+        dataset_id=bar.dataset_id,
+        schema_major=bar.schema_major,
+        fields=(),
+        filters=filters,
+        as_of=as_of,
+        order=None,
+        limit=13,
+        cursor=None,
+    )
+    return request, bar, registry
+
+
+def test_rfc3339_open_time_gte_matches_catalog_contract() -> None:
+    request, bar, registry = _bar_request(
+        filters=MappingProxyType(
+            {
+                "open_time": MappingProxyType(
+                    {"gte": "2026-07-28T08:40:00+00:00"}
+                )
+            }
+        ),
+        as_of="2026-07-28T09:44:59.999+00:00",
+    )
+
+    prepared = _prepare_query(
+        request,
+        QueryExecutionOptions(),
+        bar,
+        registry,
+        now=datetime(2026, 7, 28, 9, 45, tzinfo=timezone.utc),
+    )
+
+    assert prepared.empty_interval is False
+
+
+def test_rfc3339_as_of_cutoff_uses_provider_row_timestamp_encoding() -> None:
+    request, bar, registry = _bar_request(
+        filters=MappingProxyType(
+            {
+                "open_time": MappingProxyType(
+                    {
+                        "between": (
+                            "2026-07-28T08:40:00+00:00",
+                            "2026-07-28T09:40:00+00:00",
+                        )
+                    }
+                )
+            }
+        ),
+        as_of="2026-07-28T09:44:59.999+00:00",
+    )
+    prepared = _prepare_query(
+        request,
+        QueryExecutionOptions(),
+        bar,
+        registry,
+        now=datetime(2026, 7, 28, 9, 45, tzinfo=timezone.utc),
+    )
+
+    _, params = _base_predicates(
+        request,
+        QueryExecutionOptions(),
+        bar,
+        prepared,
+    )
+
+    assert params[-1] == "2026-07-28T09:44:59.999Z"

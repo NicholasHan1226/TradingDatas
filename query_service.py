@@ -597,6 +597,50 @@ def _lookback_span_days(
     return None
 
 
+def _range_gte_starts_after_cutoff(
+    request: QueryRequest,
+    dataset: DatasetDefinition,
+    *,
+    now: datetime,
+    as_of: ResolvedQueryAsOf,
+) -> bool:
+    if dataset.range_field is None:
+        return False
+    clause = request.filters.get(dataset.range_field)
+    if not isinstance(clause, MappingProxyType) or "gte" not in clause:
+        return False
+    lower_bound = _range_filter_values(
+        dataset,
+        (clause["gte"],),
+        name=f"filters.{dataset.range_field}.gte",
+    )[0]
+    try:
+        dataset_timezone = ZoneInfo(dataset.timezone)
+        if dataset.as_of_format == "rfc3339":
+            if not isinstance(lower_bound, datetime):
+                raise QueryServiceUnavailable("query service is unavailable")
+            cutoff = (
+                now.astimezone(dataset_timezone)
+                if as_of.resolved_as_of is None
+                else datetime.fromisoformat(as_of.resolved_as_of).astimezone(
+                    dataset_timezone
+                )
+            )
+            return lower_bound.astimezone(dataset_timezone) > cutoff
+        if not isinstance(lower_bound, date):
+            raise QueryServiceUnavailable("query service is unavailable")
+        cutoff_date = (
+            now.astimezone(dataset_timezone).date()
+            if as_of.resolved_as_of is None
+            else datetime.fromisoformat(as_of.resolved_as_of)
+            .astimezone(dataset_timezone)
+            .date()
+        )
+        return lower_bound > cutoff_date
+    except (ValueError, ZoneInfoNotFoundError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
+
+
 def _prepare_query(
     request: QueryRequest,
     options: QueryExecutionOptions,
@@ -697,20 +741,12 @@ def _prepare_query(
         order=tuple(order),
         as_of=as_of,
         empty_interval=(
-            dataset.range_field is not None
-            and isinstance(request.filters.get(dataset.range_field), MappingProxyType)
-            and "gte" in request.filters[dataset.range_field]
-            and span == 0
-            and _parse_yyyymmdd(
-                request.filters[dataset.range_field]["gte"],
-                f"filters.{dataset.range_field}.gte",
-            )
-            > (
-                now.astimezone(ZoneInfo(dataset.timezone)).date()
-                if as_of.resolved_as_of is None
-                else datetime.fromisoformat(as_of.resolved_as_of)
-                .astimezone(ZoneInfo(dataset.timezone))
-                .date()
+            span == 0
+            and _range_gte_starts_after_cutoff(
+                request,
+                dataset,
+                now=now,
+                as_of=as_of,
             )
         ),
         provider_native_full_payload=provider_native_full_payload,
@@ -868,7 +904,12 @@ def _base_predicates(
         params.extend(values_params)
     if prepared.as_of.field is not None:
         predicates.append(f"{_field_expression(dataset, prepared.as_of.field)} <= ?")
-        params.append(prepared.as_of.encoded_cutoff)
+        encoded_cutoff = prepared.as_of.encoded_cutoff
+        if dataset.as_of_format == "rfc3339":
+            encoded_cutoff = _provider_rfc3339_milliseconds(
+                _parse_rfc3339_filter(encoded_cutoff, "as_of")
+            )
+        params.append(encoded_cutoff)
     if options.any_of_eq_filters:
         branches: list[str] = []
         branch_params: list[object] = []
