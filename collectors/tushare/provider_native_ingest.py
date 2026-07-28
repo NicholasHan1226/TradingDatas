@@ -1299,7 +1299,13 @@ def collect_provider_native_dataset(
     dataset = registry.resolve(dataset_id)
     if dataset.dataset_id != dataset_id:
         raise ValueError("collection requires the canonical dataset_id, not an alias")
-    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    active_bindings = tuple(
+        item for item in dataset.provider_bindings
+        if item.entitlement_state == "active" and item.activation_state == "active"
+    )
+    if len(active_bindings) != 1:
+        raise ValueError("collection requires exactly one active provider binding")
+    binding = active_bindings[0]
     if dataset.read_model_adapter.storage_kind != "provider_native_rows":
         raise ValueError("dataset is not configured for provider-native collection")
     if binding.entitlement_state != "active" or binding.activation_state != "active":

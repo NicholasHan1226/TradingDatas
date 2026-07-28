@@ -1,0 +1,265 @@
+version: 1
+query_defaults:
+  max_request_bytes: 65536
+  max_response_bytes: 4194304
+  max_page_size: 500
+  max_lookback_days: 36500
+  max_selected_fields: 100
+  max_filter_terms: 16
+  max_in_values: 100
+  max_order_terms: 8
+  max_catalog_search_chars: 128
+  cursor_ttl_seconds: 900
+  sqlite_progress_steps: 1000000
+datasets:
+- dataset_id: crypto.spot.binance.btcusdt.5m
+  aliases: [binance_spot.btcusdt.5m]
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: ohlcv_bar
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: klines_btcusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_btcusdt_5m
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables: [provider_dataset_rows]
+    input_fields:
+    - {name: symbol, declared_source_type: str, required: true}
+    - {name: interval, declared_source_type: str, required: true}
+    - {name: start_open_time, declared_source_type: str, required: true}
+    - {name: end_open_time, declared_source_type: str, required: true}
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BTCUSDT
+      interval: 5m
+      start_open_time: ${window.start_open_time}
+      end_open_time: ${window.end_open_time}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {symbol: symbol}
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
+  read_model_adapter: &bar_read_model
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields: &bar_fields
+  - {name: symbol, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: open_time_ms, logical_type: integer, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: open_time, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: close_time_ms, logical_type: integer, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: close_time, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: open, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: high, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: low, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: close, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: volume, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: quote_volume, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: trade_count, logical_type: integer, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: taker_buy_base_volume, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: taker_buy_quote_volume, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: ignore, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  primary_key: [symbol, open_time]
+  default_projection: [symbol, open_time, close_time, open, high, low, close, volume, quote_volume, trade_count]
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.ethusdt.5m
+  aliases: [binance_spot.ethusdt.5m]
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: ohlcv_bar
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: klines_ethusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_ethusdt_5m
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables: [provider_dataset_rows]
+    input_fields:
+    - {name: symbol, declared_source_type: str, required: true}
+    - {name: interval, declared_source_type: str, required: true}
+    - {name: start_open_time, declared_source_type: str, required: true}
+    - {name: end_open_time, declared_source_type: str, required: true}
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ETHUSDT
+      interval: 5m
+      start_open_time: ${window.start_open_time}
+      end_open_time: ${window.end_open_time}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {symbol: symbol}
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
+  read_model_adapter: *bar_read_model
+  fields: *bar_fields
+  primary_key: [symbol, open_time]
+  default_projection: [symbol, open_time, close_time, open, high, low, close, volume, quote_volume, trade_count]
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.btcusdt.rules
+  aliases: [binance_spot.btcusdt.rules]
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: symbol_rules
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 86400
+  provider_bindings:
+  - provider: binance_spot
+    api_name: exchangeInfo_btcusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_btcusdt_rules
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables: [provider_dataset_rows]
+    input_fields:
+    - {name: symbol, declared_source_type: str, required: true}
+    request_shape: snapshot_or_date_range
+    request_template: {symbol: BTCUSDT}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {symbol: symbol}
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter: &rules_read_model
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields: &rules_fields
+  - {name: symbol, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: status, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: base_asset, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: quote_asset, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: price_filter_tick_size, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: lot_size_step_size, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: lot_size_min_qty, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: min_notional, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  primary_key: [symbol]
+  default_projection: [symbol, status, base_asset, quote_asset, price_filter_tick_size, lot_size_step_size, lot_size_min_qty, min_notional]
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.ethusdt.rules
+  aliases: [binance_spot.ethusdt.rules]
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: symbol_rules
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 86400
+  provider_bindings:
+  - provider: binance_spot
+    api_name: exchangeInfo_ethusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_ethusdt_rules
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables: [provider_dataset_rows]
+    input_fields:
+    - {name: symbol, declared_source_type: str, required: true}
+    request_shape: snapshot_or_date_range
+    request_template: {symbol: ETHUSDT}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {symbol: symbol}
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter: *rules_read_model
+  fields: *rules_fields
+  primary_key: [symbol]
+  default_projection: [symbol, status, base_asset, quote_asset, price_filter_tick_size, lot_size_step_size, lot_size_min_qty, min_notional]
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard

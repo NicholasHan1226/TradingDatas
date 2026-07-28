@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from catalog_service import inspect_dataset_queryability, is_initial_release_eligible
 from provider_ingest_contract import provider_ingest_config_hash
 from provider_transport import (
+    BINANCE_SPOT_DATA_PROVIDER,
     TUSHARE_DATA_PROVIDER,
-    TUSHARE_TRANSPORT_SERVICE,
     provider_transport_profile,
 )
 from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
@@ -451,11 +451,52 @@ def _parse_yyyymmdd(value: object, name: str) -> date:
     return parsed
 
 
+def _parse_rfc3339_filter(value: object, name: str) -> datetime:
+    """Accept one canonical, aware RFC3339 bound for a timestamp range."""
+
+    if type(value) is not str or value != value.strip():
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    match = _EVIDENCE_ISO_TIMESTAMP_RE.fullmatch(value)
+    if match is None or match.group("zone") is None or value.endswith("-00:00"):
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (OverflowError, ValueError):
+        raise QueryValidationError(f"{name} must use canonical RFC3339") from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    canonical = parsed.isoformat(
+        timespec="microseconds" if parsed.microsecond else "seconds"
+    )
+    if value != canonical:
+        raise QueryValidationError(f"{name} must use canonical RFC3339")
+    return parsed
+
+
+def _range_filter_values(
+    dataset: DatasetDefinition,
+    values: tuple[object, ...],
+    *,
+    name: str,
+) -> tuple[date | datetime, ...]:
+    if dataset.as_of_format == "rfc3339":
+        return tuple(_parse_rfc3339_filter(value, name) for value in values)
+    return tuple(_parse_yyyymmdd(value, name) for value in values)
+
+
+def _provider_rfc3339_milliseconds(value: datetime) -> str:
+    """Match the UTC millisecond representation held in provider-native rows."""
+
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+
+
 def _validate_filter_clause(
     field: DatasetField,
     clause: object,
     *,
-    range_field: str | None,
+    dataset: DatasetDefinition,
 ) -> tuple[str, tuple[object, ...]]:
     if not isinstance(clause, MappingProxyType) or len(clause) != 1:
         raise QueryValidationError(f"filters.{field.name} is invalid")
@@ -481,18 +522,25 @@ def _validate_filter_clause(
         raise QueryValidationError(
             f"filters.{field.name}.between lower bound exceeds upper bound"
         )
-    if field.name == range_field:
-        dates = tuple(
-            _parse_yyyymmdd(
-                value,
-                f"filters.{field.name}.{operator}",
-            )
-            for value in validated
+    if field.name == dataset.range_field:
+        range_values = _range_filter_values(
+            dataset,
+            validated,
+            name=f"filters.{field.name}.{operator}",
         )
-        if operator == "between" and dates[0] > dates[1]:
+        if operator == "between" and range_values[0] > range_values[1]:
             raise QueryValidationError(
                 f"filters.{field.name}.between lower bound exceeds upper bound"
             )
+        if dataset.as_of_format == "rfc3339":
+            encoded = tuple(
+                _provider_rfc3339_milliseconds(value)
+                for value in range_values
+                if isinstance(value, datetime)
+            )
+            if len(encoded) != len(range_values):
+                raise QueryServiceUnavailable("query service is unavailable")
+            validated = encoded
     return operator, validated
 
 
@@ -510,13 +558,23 @@ def _lookback_span_days(
         return None
     operator, raw_operand = next(iter(clause.items()))
     values = raw_operand if type(raw_operand) is tuple else (raw_operand,)
-    dates = tuple(
-        _parse_yyyymmdd(
-            value,
-            f"filters.{dataset.range_field}.{operator}",
-        )
-        for value in values
+    range_values = _range_filter_values(
+        dataset,
+        values,
+        name=f"filters.{dataset.range_field}.{operator}",
     )
+    if dataset.as_of_format == "rfc3339":
+        datetimes = tuple(
+            value for value in range_values if isinstance(value, datetime)
+        )
+        if len(datetimes) != len(range_values):
+            raise QueryServiceUnavailable("query service is unavailable")
+        dates = tuple(
+            value.astimezone(ZoneInfo(dataset.timezone)).date()
+            for value in datetimes
+        )
+    else:
+        dates = tuple(value for value in range_values if isinstance(value, date))
     if operator == "eq":
         return 0
     if operator == "in":
@@ -537,6 +595,50 @@ def _lookback_span_days(
             raise QueryServiceUnavailable("query service is unavailable") from None
         return max(0, (cutoff - dates[0]).days)
     return None
+
+
+def _range_gte_starts_after_cutoff(
+    request: QueryRequest,
+    dataset: DatasetDefinition,
+    *,
+    now: datetime,
+    as_of: ResolvedQueryAsOf,
+) -> bool:
+    if dataset.range_field is None:
+        return False
+    clause = request.filters.get(dataset.range_field)
+    if not isinstance(clause, MappingProxyType) or "gte" not in clause:
+        return False
+    lower_bound = _range_filter_values(
+        dataset,
+        (clause["gte"],),
+        name=f"filters.{dataset.range_field}.gte",
+    )[0]
+    try:
+        dataset_timezone = ZoneInfo(dataset.timezone)
+        if dataset.as_of_format == "rfc3339":
+            if not isinstance(lower_bound, datetime):
+                raise QueryServiceUnavailable("query service is unavailable")
+            cutoff = (
+                now.astimezone(dataset_timezone)
+                if as_of.resolved_as_of is None
+                else datetime.fromisoformat(as_of.resolved_as_of).astimezone(
+                    dataset_timezone
+                )
+            )
+            return lower_bound.astimezone(dataset_timezone) > cutoff
+        if not isinstance(lower_bound, date):
+            raise QueryServiceUnavailable("query service is unavailable")
+        cutoff_date = (
+            now.astimezone(dataset_timezone).date()
+            if as_of.resolved_as_of is None
+            else datetime.fromisoformat(as_of.resolved_as_of)
+            .astimezone(dataset_timezone)
+            .date()
+        )
+        return lower_bound > cutoff_date
+    except (ValueError, ZoneInfoNotFoundError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
 
 
 def _prepare_query(
@@ -582,7 +684,7 @@ def _prepare_query(
         _validate_filter_clause(
             field,
             clause,
-            range_field=dataset.range_field,
+            dataset=dataset,
         )
 
     if (
@@ -639,20 +741,12 @@ def _prepare_query(
         order=tuple(order),
         as_of=as_of,
         empty_interval=(
-            dataset.range_field is not None
-            and isinstance(request.filters.get(dataset.range_field), MappingProxyType)
-            and "gte" in request.filters[dataset.range_field]
-            and span == 0
-            and _parse_yyyymmdd(
-                request.filters[dataset.range_field]["gte"],
-                f"filters.{dataset.range_field}.gte",
-            )
-            > (
-                now.astimezone(ZoneInfo(dataset.timezone)).date()
-                if as_of.resolved_as_of is None
-                else datetime.fromisoformat(as_of.resolved_as_of)
-                .astimezone(ZoneInfo(dataset.timezone))
-                .date()
+            span == 0
+            and _range_gte_starts_after_cutoff(
+                request,
+                dataset,
+                now=now,
+                as_of=as_of,
             )
         ),
         provider_native_full_payload=provider_native_full_payload,
@@ -798,7 +892,7 @@ def _base_predicates(
         operator, values = _validate_filter_clause(
             field_map[field_name],
             clause,
-            range_field=dataset.range_field,
+            dataset=dataset,
         )
         sql, values_params = _compile_scalar_filter(
             _field_expression(dataset, field_name),
@@ -810,7 +904,12 @@ def _base_predicates(
         params.extend(values_params)
     if prepared.as_of.field is not None:
         predicates.append(f"{_field_expression(dataset, prepared.as_of.field)} <= ?")
-        params.append(prepared.as_of.encoded_cutoff)
+        encoded_cutoff = prepared.as_of.encoded_cutoff
+        if dataset.as_of_format == "rfc3339":
+            encoded_cutoff = _provider_rfc3339_milliseconds(
+                _parse_rfc3339_filter(encoded_cutoff, "as_of")
+            )
+        params.append(encoded_cutoff)
     if options.any_of_eq_filters:
         branches: list[str] = []
         branch_params: list[object] = []
@@ -1388,7 +1487,12 @@ def _runtime_metadata(
     if not lineage_complete:
         providers.clear()
         provider_config_hashes.clear()
-    transport_profile = provider_transport_profile(TUSHARE_DATA_PROVIDER)
+    transport_profile = None
+    if len(providers) == 1:
+        try:
+            transport_profile = provider_transport_profile(next(iter(providers)))
+        except KeyError:
+            transport_profile = None
     expected_provider_config_hashes = {
         (
             binding.provider,
@@ -1398,20 +1502,18 @@ def _runtime_metadata(
         if binding.provider in providers
     }
     transport_profile_proven = (
-        providers == {TUSHARE_DATA_PROVIDER}
+        transport_profile is not None
         and provider_config_hashes == expected_provider_config_hashes
     )
-    transport_profile_unverified = (
-        providers == {TUSHARE_DATA_PROVIDER} and not transport_profile_proven
-    )
+    transport_profile_unverified = bool(
+        providers & {TUSHARE_DATA_PROVIDER, BINANCE_SPOT_DATA_PROVIDER}
+    ) and not transport_profile_proven
     if transport_profile_unverified:
         lineage_complete = False
         allow_rows = False
         reasons = sorted(set([*reasons, "transport_profile_unverified"]))
     transport_service = (
-        TUSHARE_TRANSPORT_SERVICE
-        if transport_profile_proven
-        else None
+        transport_profile["transport_service"] if transport_profile_proven else None
     )
     effective_degraded = bool(
         projection.degraded
