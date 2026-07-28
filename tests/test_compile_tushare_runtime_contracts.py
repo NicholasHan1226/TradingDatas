@@ -391,6 +391,27 @@ def test_reviewed_moneyflow_contracts_bind_real_day_partition_identities() -> No
         assert set(primary_key).issubset(contract["requested_fields"])
 
 
+def test_reviewed_dc_concept_contract_binds_real_day_partition_identity() -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = {item["api_name"]: item for item in compiled["contracts"]}["dc_concept"]
+
+    assert contract["schema_version"] == "2.0.0"
+    assert contract["primary_key"] == ["trade_date", "theme_code"]
+    assert contract["as_of_field"] == "trade_date"
+    assert contract["range_field"] == "trade_date"
+    assert contract["partition_field"] == "trade_date"
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert set(contract["primary_key"]).issubset(contract["requested_fields"])
+
+
 def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)

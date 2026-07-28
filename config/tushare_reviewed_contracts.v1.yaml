@@ -1044,3 +1044,54 @@ contracts:
       max_batch_bytes: 4194304
       max_nesting_depth: 16
     reviewed_type_overrides: []
+  # The stored DC concept cohort has a complete trade_date/theme_code identity
+  # with no null or duplicate keys.  Keep this a normal date-partitioned
+  # Tushare contract; it does not introduce a dataset-specific collector.
+  - dataset_id: cn.dataset.dc_concept
+    aliases: [tushare.dc_concept]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: dc_concept
+    source_document_url: https://tushare.pro/wctapi/documents/421.md
+    source_document_sha256: d768af3c3e0408ff9bde72e8aaf49a6c80026218c645740be6dbe1892acebedc
+    schema_version: 2.0.0
+    fields:
+      - {name: theme_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pct_change, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: hot, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: sort, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: strength, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: z_t_num, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: main_change, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: lead_stock, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: lead_stock_code, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: lead_stock_pct_change, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, theme_code]
+    default_projection: [trade_date, theme_code, name, pct_change, hot, sort, strength, z_t_num, main_change, lead_stock, lead_stock_code, lead_stock_pct_change]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: postclose_daily
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [theme_code, trade_date, name, pct_change, hot, sort, strength, z_t_num, main_change, lead_stock, lead_stock_code, lead_stock_pct_change]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []

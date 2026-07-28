@@ -8149,7 +8149,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -8193,8 +8193,25 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - theme_code
+    - trade_date
+    - name
+    - pct_change
+    - hot
+    - sort
+    - strength
+    - z_t_num
+    - main_change
+    - lead_stock
+    - lead_stock_code
+    - lead_stock_pct_change
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -8208,13 +8225,13 @@ datasets:
   fields:
   - name: theme_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -8278,10 +8295,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
-  default_projection:
-  - theme_code
+  primary_key:
   - trade_date
+  - theme_code
+  default_projection:
+  - trade_date
+  - theme_code
   - name
   - pct_change
   - hot
@@ -8292,10 +8311,10 @@ datasets:
   - lead_stock
   - lead_stock_code
   - lead_stock_pct_change
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
