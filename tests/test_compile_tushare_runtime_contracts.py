@@ -412,6 +412,38 @@ def test_reviewed_dc_concept_contract_binds_real_day_partition_identity() -> Non
     assert set(contract["primary_key"]).issubset(contract["requested_fields"])
 
 
+@pytest.mark.parametrize(
+    ("api_name", "primary_key", "cadence_class"),
+    [
+        ("etf_share_size", ["trade_date", "ts_code"], "daily_reference"),
+        ("hsgt_top10", ["trade_date", "market_type", "rank"], "postclose_daily"),
+        ("weekly", ["ts_code", "trade_date"], "weekly"),
+    ],
+)
+def test_reviewed_market_snapshot_contracts_bind_partition_identities(
+    api_name: str, primary_key: list[str], cadence_class: str
+) -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
+
+    assert contract["schema_version"] == "2.0.0"
+    assert contract["primary_key"] == primary_key
+    assert contract["cadence_class"] == cadence_class
+    assert contract["as_of_field"] == "trade_date"
+    assert contract["range_field"] == "trade_date"
+    assert contract["partition_field"] == "trade_date"
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert set(primary_key).issubset(contract["requested_fields"])
+
+
 def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)

@@ -243,7 +243,7 @@ entries:
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 1e790a1f485a98b87ccb9ca100248a9ea0048d161445aafa9cd17b3f8761a076
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: etf_sz_cons
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
@@ -408,7 +408,7 @@ entries:
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: d926ccb8fef3163635370a4f7a24c1e5f3eae835818527b36024efd76eb404e0
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: idx_factor_pro
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -943,7 +943,7 @@ entries:
   cadence_class: weekly
   freshness_sla_seconds: 604800
   source_document_sha256: cbe7b7909f1f48b82a8c643cbd61a435434a63c632850341c0897876df97685f
-  reason_code: doc_explicit_weekly
+  reason_code: reviewed_contract_exact
 - api_name: wz_index
   cadence_class: on_demand
   freshness_sla_seconds: 86400
