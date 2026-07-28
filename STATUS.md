@@ -1,17 +1,20 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-28。
+最后更新：2026-07-28 17:50 CST。
 
-## 当前事实快照（2026-07-28 14:45 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 17:50 CST，优先于以下历史记录）
 
-- production `current` 为 `e4d86a966e082067091358e39961a3f86b4599b6`；正式内部 API
+- production `current` 为 `4d5c3e9f296b0fc3a887b6fb40fc4a1b7fc5c2bd`；正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active。
-- formal catalog 为 `v1-541b1314702f4897`。它仍含 190 个 runtime datasets；catalog 可发现性
+- formal catalog 为 `v1-c9cf1c5e8e93e632`。它仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
 - `cn.dataset.rt_min` 是唯一启用的持续采集：固定 30 只沪深主板、5MIN、现有通用
-  collector/timer。扩容到 500 的尝试已暂停，不能影响此 30 只 canary 的最近成功 receipt。
+  collector/timer。17:47 CST 的 controlled scheduler receipt 经 TA UID987 的正式 18082
+  精确 `time=2026-07-28 15:00:00` query 读回为 30/30，且
+  `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。500 扩容候选保持隔离暂停，
+  不能影响这 30 只 canary 的最近成功 receipt 或 timer。
 - schema-2 的通用直接窗口已正式 readback：`adj_factor(20260727)`、
   `stk_auction(20260728)`、`stk_limit(20260728)` 均为
   `ready/success/fresh/valid/non-degraded` 且有 receipt/lineage；
