@@ -4,7 +4,7 @@
 
 TradingDatas 是一个类似 Tushare 的 provider-neutral 金融数据平台。Tushare 是首个已接入上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。
 
-唯一当前目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。
+当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情是独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 
 TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金、持仓、风控、订单、成交、执行回执或交易建议；不直接 import TradingAgent/MarketGraph 业务代码，不共享数据库，不做跨系统事务或 callback。
 
@@ -44,7 +44,8 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 ## 首期范围
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
-- 港股、美股、加密货币、预测市场和 provider 写/账号管理操作排除；
+- Binance 公共现货 BTCUSDT/ETHUSDT 只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，仅允许在隔离 Crypto 运行面接入；
+- 港股、美股、其它加密资产、预测市场和 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
 - 每个激活数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence。
 
@@ -68,7 +69,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 ## clean-slate 与退役
 
-当前代码树不保留旧 SharedSignals 公共 route、双注册表、opening gate、Crypto、预测市场、DuckDB、邮件、旧 cron、旧 reader 或交易式控制。Git 历史承担追溯。
+当前代码树不保留旧 SharedSignals 公共 route、双注册表、opening gate、旧 Crypto 路由/采集器、预测市场、DuckDB、邮件、旧 cron、旧 reader 或交易式控制。新的 Binance 公共数据切片只能通过独立 provider-level adapter 和隔离运行面接入；Git 历史承担旧实现追溯。
 
 旧生产系统只在 TradingDatas 真实采集、API readback、消费者切换和回滚证明完成前作为短期回滚源；不得把其接口或数据结构带回新架构。数据库和历史数据删除需要单独保留策略。
 

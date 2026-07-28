@@ -12,7 +12,7 @@
 6. 如实暴露 success、empty、unobserved、paused、failed、stale；
 7. 支持当前数据优先、历史数据后台回填和失败后有界重试。
 
-首期不包含港股、美股、加密货币、预测市场和 provider 写操作。
+首期境内数据范围不包含港股、美股、其它加密资产、预测市场和 provider 写操作。另设隔离的 Binance 公共现货纵向切片，仅覆盖 BTCUSDT/ETHUSDT 5 分钟行情与公开 exchangeInfo 交易约束元数据；它不得共享 A 股 release、SQLite、内部 API 认证材料、端口或 timer，且无需并禁止 Binance 账户/API key。实际部署状态以 `STATUS.md` 为准。
 
 ## Phase 0 — clean-slate 基础
 
