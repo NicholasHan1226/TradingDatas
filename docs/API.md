@@ -114,11 +114,11 @@ watermark；SLA 内返回 `runtime_state=empty`、`degraded=false`、
 
 对 `runtime_state=success`，传输合同校验以当前完整 receipt cohort 为准；旧 schema 或旧合同的历史 receipt 不能把当前已验证分区降级。只有读取方实际使用历史 fallback 时，才会把该 fallback cohort 一并纳入 lineage 校验。
 
-`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的 500 只主板 coverage canary。
-它从已完成的 `cn.equity.security_master` receipt 中动态筛选 `market=主板`、
-`list_status=L`、`curr_type=CNY` 且上市至少 30 日的股票，再以稳定哈希顺序截取 500 只，
-按 100 只分片采集。该选择只用于采集压力、receipt 与 API 覆盖验证；它不是中证500成分、
-研究代表性样本或交易 Universe。其身份为 `[ts_code, time]`。本平台把 provider 返回的
+`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的 30 只沪深主板 canary。代码列表是
+registry 中冻结的多代码 request，不依赖 security-master fanout；其身份为 `[ts_code, time]`。
+500 只动态分片只属于隔离压力候选，在完整 cohort、receipt 和 fresh review 通过前不属于正式
+catalog/query 生产合同。首批 30 只也不是中证500成分、研究代表性样本或交易 Universe。
+本平台把 provider 返回的
 `time` 解释为该 5 分钟 bar 的结束时间；
 上游字段说明仅称其为“交易时间”，因此这是本平台基于已验证 5 分钟返回形状冻结的
 读取语义，不是对上游文档的额外断言。它是 OHLCV/amount bar，不是 bid/ask 或逐笔成交；

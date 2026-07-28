@@ -872,7 +872,7 @@ def test_active_loader_accepts_runtime_request_window_formats_and_rejects_others
     path.write_text(yaml.safe_dump(registry, sort_keys=False), encoding="utf-8")
     loaded = load_dataset_registry(path)
     monthly = loaded.provider_binding("cn.dataset.cn_cpi", "tushare")
-    assert monthly.activation_state == "paused"
+    assert monthly.activation_state == "active"
     assert monthly.request_window_policy is not None
     assert monthly.request_window_policy.formats["m"] == "yyyymm"
 
