@@ -12,6 +12,91 @@ matrix_evidence:
   interface_probe_scheme: http
   production_ready: false
   production_transport_alignment: blocked_until_safe_pre_request_dns_failover_is_implemented_and_verified
+response_contract_overrides:
+  anns_d:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [rec_time]
+    type_overrides: []
+    additional_fields: []
+  bak_basic:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: []
+    type_overrides:
+    - {field: holder_num, declared_source_type: str, logical_type: text}
+    additional_fields: []
+  cb_daily:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [bond_over_rate, bond_value, cb_over_rate, cb_value]
+    type_overrides: []
+    additional_fields: []
+  cb_issue:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [issue_cost, lead_underwriter, lead_underwriter_vol, offl_deposit, offl_pch_excess, offl_pch_num, offl_pch_vol, offl_winning_rate, onl_winning_rate, shd_ration_excess, shd_ration_num, shd_ration_vol]
+    type_overrides: []
+    additional_fields: []
+  dc_daily:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: []
+    type_overrides: []
+    additional_fields:
+    - {name: category, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+  disclosure_date:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [modify_date]
+    type_overrides: []
+    additional_fields: []
+  fut_settle:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [exchange, offset_today_fee]
+    type_overrides: []
+    additional_fields: []
+  moneyflow:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: []
+    type_overrides:
+    - {field: buy_elg_vol, declared_source_type: str, logical_type: text}
+    - {field: buy_lg_vol, declared_source_type: str, logical_type: text}
+    - {field: buy_md_vol, declared_source_type: str, logical_type: text}
+    - {field: buy_sm_vol, declared_source_type: str, logical_type: text}
+    - {field: net_mf_vol, declared_source_type: str, logical_type: text}
+    - {field: sell_elg_vol, declared_source_type: str, logical_type: text}
+    - {field: sell_lg_vol, declared_source_type: str, logical_type: text}
+    - {field: sell_md_vol, declared_source_type: str, logical_type: text}
+    - {field: sell_sm_vol, declared_source_type: str, logical_type: text}
+    additional_fields: []
+  stk_holdertrade:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [begin_date, close_date]
+    type_overrides: []
+    additional_fields: []
+  stk_managers:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [resume]
+    type_overrides: []
+    additional_fields: []
+  ths_daily:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: [float_mv, total_mv]
+    type_overrides: []
+    additional_fields: []
+  top_inst:
+    evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
+    schema_version: 2.0.0
+    missing_fields: []
+    type_overrides:
+    - {field: side, declared_source_type: int, logical_type: integer}
+    additional_fields: []
 classifications:
   validated_contract_match:
   - adj_factor

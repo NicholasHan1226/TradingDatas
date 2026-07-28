@@ -45,7 +45,9 @@ runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 p
 不改写 schema、cadence 或 completeness，在完整性未证明时 API 仍返回 `partial/degraded`。
 
 production 的 99 项也不等于 99 项数据 ready：截至 2026-07-27，正式 production 为
-`42fcf6c...` 的 99 active / 91 paused。受控 current-only one-shot 只对原 pilot dataset 运行；
+历史 `42fcf6c...` 的 99 active / 91 paused 仅作追溯证据。当前 release、catalog 计数与
+dataset 可消费性必须以 `STATUS.md` 和正式 catalog/query server readback 为准；
+受控 current-only one-shot 只对原 pilot dataset 运行；
 每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded 判定可用性。
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。

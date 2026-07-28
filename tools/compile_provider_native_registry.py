@@ -155,6 +155,7 @@ _OBSERVATION_ROOT_KEYS = frozenset(
         "matrix_evidence",
         "classifications",
         "active_evidence",
+        "response_contract_overrides",
     }
 )
 _MATRIX_EVIDENCE_KEYS = frozenset(
@@ -299,6 +300,18 @@ _OVERRIDE_KEYS = frozenset(
         "reason",
         "evidence",
     }
+)
+_RESPONSE_CONTRACT_OVERRIDE_KEYS = frozenset(
+    {
+        "evidence_ref",
+        "schema_version",
+        "missing_fields",
+        "type_overrides",
+        "additional_fields",
+    }
+)
+_RESPONSE_TYPE_OVERRIDE_KEYS = frozenset(
+    {"field", "declared_source_type", "logical_type"}
 )
 _ACTIVATION_EVIDENCE_ROOT_KEYS = frozenset(
     {
@@ -588,6 +601,101 @@ def _safe_evidence_ref(value: object, label: str) -> str:
     return evidence
 
 
+def _response_contract_override_index(
+    raw: object,
+    contracts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Parse small, evidence-bound QuickSync response deltas.
+
+    Official Tushare documents remain the source declaration.  A delta exists
+    only when the approved QuickSync transport returns a stable, incompatible
+    field subset, type, or additional field.  It cannot alter identity,
+    cadence, request mappings, or completeness contracts.
+    """
+
+    source = _mapping(raw, "QuickSync observations.response_contract_overrides")
+    result: dict[str, dict[str, Any]] = {}
+    expected_types = {
+        "str": "text",
+        "int": "integer",
+        "float": "float",
+        "datetime": "text",
+    }
+    for raw_api_name, raw_override in source.items():
+        api_name = _required_text(
+            raw_api_name, "QuickSync observations.response_contract_overrides key"
+        )
+        if _SAFE_PARAMETER_NAME.fullmatch(api_name) is None or api_name not in contracts:
+            raise ValueError(
+                "QuickSync response contract override must name one declared provider API: "
+                f"{api_name}"
+            )
+        label = f"QuickSync observations.response_contract_overrides.{api_name}"
+        override = _mapping(raw_override, label)
+        _reject_keys(override, _RESPONSE_CONTRACT_OVERRIDE_KEYS, label)
+        schema_version = _required_text(override["schema_version"], f"{label}.schema_version")
+        if _SCHEMA_VERSION_PATTERN.fullmatch(schema_version) is None:
+            raise ValueError(f"{label}.schema_version must use semantic version grammar")
+        base = contracts[api_name]
+        base_major = int(str(base["schema_version"]).split(".", 1)[0])
+        observed_major = int(schema_version.split(".", 1)[0])
+        if observed_major <= base_major:
+            raise ValueError(
+                f"{label}.schema_version must advance the source contract major"
+            )
+        missing_fields = _string_list(
+            override["missing_fields"], f"{label}.missing_fields", allow_empty=True
+        )
+        if any(_SAFE_PROVIDER_FIELD.fullmatch(field) is None for field in missing_fields):
+            raise ValueError(f"{label}.missing_fields contains invalid provider field")
+        base_fields = {field["name"] for field in base["fields"]}
+        unknown_missing = sorted(set(missing_fields) - base_fields)
+        if unknown_missing:
+            raise ValueError(f"{label}.missing_fields contains undeclared field: {unknown_missing[0]}")
+
+        type_overrides: list[dict[str, str]] = []
+        override_names: set[str] = set()
+        for index, raw_type in enumerate(_sequence(override["type_overrides"], f"{label}.type_overrides")):
+            type_label = f"{label}.type_overrides[{index}]"
+            type_override = _mapping(raw_type, type_label)
+            _reject_keys(type_override, _RESPONSE_TYPE_OVERRIDE_KEYS, type_label)
+            field_name = _required_text(type_override["field"], f"{type_label}.field")
+            declared_source_type = _required_text(
+                type_override["declared_source_type"], f"{type_label}.declared_source_type"
+            )
+            logical_type = _required_text(type_override["logical_type"], f"{type_label}.logical_type")
+            if (
+                field_name not in base_fields
+                or field_name in missing_fields
+                or field_name in override_names
+            ):
+                raise ValueError(f"{type_label}.field must name one retained declared field")
+            if expected_types.get(declared_source_type) != logical_type:
+                raise ValueError(f"{type_label} must use the canonical logical type")
+            override_names.add(field_name)
+            type_overrides.append(
+                {
+                    "field": field_name,
+                    "declared_source_type": declared_source_type,
+                    "logical_type": logical_type,
+                }
+            )
+
+        additional_fields = _fields(override["additional_fields"], f"{label}.additional_fields") if override["additional_fields"] else []
+        additional_names = {field["name"] for field in additional_fields}
+        overlap = sorted(additional_names & base_fields)
+        if overlap:
+            raise ValueError(f"{label}.additional_fields overlaps declared field: {overlap[0]}")
+        result[api_name] = {
+            "evidence_ref": _safe_evidence_ref(override["evidence_ref"], f"{label}.evidence_ref"),
+            "schema_version": schema_version,
+            "missing_fields": missing_fields,
+            "type_overrides": type_overrides,
+            "additional_fields": additional_fields,
+        }
+    return result
+
+
 def _observation_index(
     document: Mapping[str, Any] | None,
     contracts: Sequence[Mapping[str, Any]],
@@ -740,6 +848,10 @@ def _observation_index(
             "QuickSync observation api_names_sha256 does not match API set"
         )
 
+    response_contract_overrides = _response_contract_override_index(
+        root["response_contract_overrides"], by_api
+    )
+
     numeric_fields = grouped["numeric_field_repaired"]
     schema_fields = grouped["schema_subset"]
     assert isinstance(numeric_fields, dict)
@@ -789,6 +901,7 @@ def _observation_index(
             "evidence_ref": active_evidence.get(api_name),
             "classification": classification,
             "schema_missing_fields": list(schema_fields.get(api_name, [])),
+            "response_contract_override": response_contract_overrides.get(api_name),
         }
     return result
 
@@ -2129,6 +2242,75 @@ def _apply_observed_schema_subset(
     return normalized
 
 
+def _apply_observed_response_contract(
+    contract: Mapping[str, Any], observation: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Apply an evidence-bound transport response delta without changing behavior."""
+
+    normalized = deepcopy(dict(contract))
+    if observation is None:
+        return normalized
+    override = observation.get("response_contract_override")
+    if override is None:
+        return normalized
+
+    missing = set(override["missing_fields"])
+    fields_by_name = {field["name"]: field for field in normalized["fields"]}
+    protected = set(normalized["primary_key"])
+    protected.update(
+        field
+        for field in (
+            normalized["as_of_field"],
+            normalized["range_field"],
+            normalized["partition_field"],
+        )
+        if field is not None
+    )
+    completeness = normalized["response_completeness"]
+    if completeness is not None:
+        protected.update(completeness["fixed_field_matches"])
+        for key in ("date_field", "partition_field"):
+            field = completeness.get(key)
+            if field is not None:
+                protected.add(field)
+    overlap = sorted(missing & protected)
+    if overlap:
+        raise ValueError(
+            "QuickSync response contract cannot remove structural field: "
+            f"{normalized['api_name']}/{overlap[0]}"
+        )
+
+    for type_override in override["type_overrides"]:
+        field = fields_by_name[type_override["field"]]
+        field["declared_source_type"] = type_override["declared_source_type"]
+        field["logical_type"] = type_override["logical_type"]
+    normalized["fields"] = [
+        field for field in normalized["fields"] if field["name"] not in missing
+    ]
+    normalized["fields"].extend(deepcopy(override["additional_fields"]))
+    normalized["default_projection"] = [
+        field for field in normalized["default_projection"] if field not in missing
+    ]
+    normalized["default_projection"].extend(
+        field["name"] for field in override["additional_fields"]
+    )
+    normalized["requested_fields"] = [
+        field for field in normalized["requested_fields"] if field not in missing
+    ]
+    normalized["reviewed_type_overrides"] = [
+        item
+        for item in normalized["reviewed_type_overrides"]
+        if item["field"] not in missing
+    ]
+    normalized["schema_version"] = override["schema_version"]
+    if not normalized["fields"] or not normalized["default_projection"]:
+        raise ValueError(
+            f"QuickSync response contract cannot empty schema/default projection: "
+            f"{normalized['api_name']}"
+        )
+    return normalized
+
+
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
@@ -2328,7 +2510,12 @@ def compile_provider_native_registry(
         "datasets": [
             _compiled_dataset(
                 _apply_observed_schema_subset(
-                    contract,
+                    _apply_observed_response_contract(
+                        contract,
+                        observations.get(
+                            (contract["dataset_id"], contract["provider"])
+                        ),
+                    ),
                     observations.get((contract["dataset_id"], contract["provider"])),
                 ),
                 activation_index.get(

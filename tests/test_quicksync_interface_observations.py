@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 import yaml
 
+from tests.synthetic_activation_evidence import build_synthetic_activation_evidence
 from tools.compile_provider_native_registry import (
     compile_provider_native_registry,
     render_registry,
 )
-from tests.synthetic_activation_evidence import build_synthetic_activation_evidence
-
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
@@ -157,7 +156,7 @@ def test_frozen_matrix_identity_and_classifications_cover_190_once() -> None:
     seen: set[str] = set()
     for classification, expected_count in expected_counts.items():
         group = classifications[classification]
-        api_names = set(group if isinstance(group, list) else group)
+        api_names = set(group)
         assert len(api_names) == expected_count
         assert seen.isdisjoint(api_names)
         seen.update(api_names)
@@ -314,6 +313,85 @@ def test_schema_subset_removes_only_observed_non_structural_fields() -> None:
     assert "freq" in {
         field["name"] for field in registry_by_api["rt_min_daily"]["fields"]
     }
+
+
+def test_observed_response_contract_deltas_are_small_and_schema_versioned() -> None:
+    source_by_api = {
+        item["api_name"]: item for item in _contracts()["contracts"]
+    }
+    registry_by_api = _bindings(_compiled())
+    overrides = _observations()["response_contract_overrides"]
+    assert isinstance(overrides, dict)
+    assert set(overrides) == {
+        "anns_d",
+        "bak_basic",
+        "cb_daily",
+        "cb_issue",
+        "dc_daily",
+        "disclosure_date",
+        "fut_settle",
+        "moneyflow",
+        "stk_holdertrade",
+        "stk_managers",
+        "ths_daily",
+        "top_inst",
+    }
+
+    for api_name, override in overrides.items():
+        assert isinstance(override, dict)
+        source = source_by_api[api_name]
+        target = registry_by_api[api_name]
+        assert source["schema_version"] == "1.0.0"
+        assert target["schema_version"] == "2.0.0"
+        source_fields = {field["name"] for field in source["fields"]}
+        target_fields = {field["name"] for field in target["fields"]}
+        missing = set(override["missing_fields"])
+        additions = {field["name"] for field in override["additional_fields"]}
+        assert target_fields == (source_fields - missing) | additions
+
+    assert "rec_time" not in {
+        field["name"] for field in registry_by_api["anns_d"]["fields"]
+    }
+    assert "category" in {
+        field["name"] for field in registry_by_api["dc_daily"]["fields"]
+    }
+    assert {
+        field["name"]: field["logical_type"]
+        for field in registry_by_api["moneyflow"]["fields"]
+        if field["name"].endswith("_vol")
+    }["net_mf_vol"] == "text"
+    assert {
+        field["name"]: field["logical_type"]
+        for field in registry_by_api["top_inst"]["fields"]
+    }["side"] == "integer"
+
+
+def test_observed_response_contract_cannot_remove_structural_field() -> None:
+    observations = _observations()
+    overrides = observations["response_contract_overrides"]
+    assert isinstance(overrides, dict)
+    overrides["daily"] = {
+        "evidence_ref": "docs/adr/ADR-0011-quicksync-observed-response-contracts.md",
+        "schema_version": "3.0.0",
+        "missing_fields": ["trade_date"],
+        "type_overrides": [],
+        "additional_fields": [],
+    }
+
+    with pytest.raises(ValueError, match="cannot remove structural field"):
+        _compiled(observations)
+
+
+def test_observed_response_contract_requires_a_new_schema_major() -> None:
+    observations = _observations()
+    overrides = observations["response_contract_overrides"]
+    assert isinstance(overrides, dict)
+    override = overrides["anns_d"]
+    assert isinstance(override, dict)
+    override["schema_version"] = "1.0.1"
+
+    with pytest.raises(ValueError, match="advance the source contract major"):
+        _compiled(observations)
 
 
 def test_numeric_repair_must_exist_in_current_contract() -> None:

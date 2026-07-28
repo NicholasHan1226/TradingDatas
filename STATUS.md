@@ -1,17 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-28 20:36 CST。
+最后更新：2026-07-28 23:00 CST。
 
-## 当前事实快照（2026-07-28 20:36 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 23:00 CST，优先于以下历史记录）
 
-- A 股 production `current` 为 `3e55f5f500b52c2d89c9723937cf5f3fc6a439f5`；immutable
-  release 经服务器 `current` 指针读回，正式内部 API
+- A 股 production `current` 为 `80a7591ae44df7a068873b303f7b0ed437728f4d`；immutable
+  release 经服务器 `current` 指针、service 与 timer readback 核对，正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active，
   通用 collector timer enabled/active。没有切换 8082、TradingAgent timer、broker 或真实交易。
 - A 股 formal catalog 为 `v1-96bffb64b01f3acd`。它仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
+- 正式 catalog 当前为 101 个 active / 89 个 paused。最新 automatic cycle 用既有 generic
+  runner 在约 137 秒完成：48 个 success、7 个合法 empty、0 个 failed；其余 166 个按
+  `not_due`、`on_demand`、`paused` 或既有 receipt authority 诚实跳过。另有 69 个
+  on-demand dataset 的一次受控首轮 batch：43 个 success、25 个合法 empty、1 个 provider
+  failure。它们都不自动等同于 `ready`；每个内部消费者仍只以正式 query metadata 决定可用性。
 - 隔离 Crypto production `current` 为
   `24298b22f0bbd4a5746514dac96c92e59b8f3011`；`127.0.0.1:18083` API active，
   catalog `v1-e7ea3dd714066d3c` 只含 BTCUSDT/ETHUSDT 的 5 分钟 bar 与公开
@@ -48,7 +53,7 @@
 - `REAL_TRADING_ENABLED=false`；没有启用 TradingAgent Crypto timer、broker 或真实交易。本文下方
   仅保留追溯记录；若与本快照冲突，以本快照和本轮正式 API/readback 为准。
 
-## 结论
+## 历史结论与证据（如与上述当前事实快照冲突，以上述快照和正式 readback 为准）
 
 - **最新 production 事实优先：**`current` 已切换至
   `d0edb516d8d9785082a10bbb96a14389f27b29bc`，对应 `origin/main` 的同一代码 release；

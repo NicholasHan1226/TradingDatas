@@ -56,7 +56,7 @@
 退出条件：222 个首期 dataset 均有明确分类；所有已授权项都有可执行合同或明确
 blocked 原因；190 个历史合同子集与新增 32 项的证据层不混淆；普通 dataset
 onboarding 不修改 Python；QuickSync transport profile、权限码和有界 budget 证据已
-冻结，production timer 在此之前保持 disabled。新增普通接口不得增加专用 collector、
+冻结，并经 target release/server readback 验证后，production timer 才可由受控发布流程显式启用。新增普通接口不得增加专用 collector、
 路由、timer、service 或发布流程。
 
 ## Phase 2 — 内部服务
@@ -75,7 +75,7 @@ onboarding 不修改 Python；QuickSync transport profile、权限码和有界 b
   `/opt/investment/releases/tradingdatas/current` 原子指向当前版本，并把 SQLite 放在独立的
   `/opt/investment-data/tradingdatas/` 数据目录；
 - 每个 target 与 rollback release 都必须有外置、确定性的 Git tree/file manifest，
-  `current` 只在两端 release 均通过验证且所有 TradingDatas unit inactive、timer disabled
+  `current` 只在两端 release 均通过验证、采集执行已 quiesce 且 timer 已停止或被安全隔离
   时原子切换；release 回滚不得覆盖 SQLite；
 - systemd service/timer 观察至少一个完整运行周期；
 - 验证频率、积压、失败重试、资源预算、备份和回滚；

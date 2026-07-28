@@ -44,7 +44,7 @@ route、service、timer、provider 参数逻辑或业务表。所有项先在 pl
 
 Tushare 官方接口文档用于生成普通数据集的请求、字段、schema 和 cadence 参考；它不证明当前 QuickSync 账号的接口权限、分钟/每日额度或并发能力。代码中的 `entitlement_state` 仅表示经 QuickSync 真实有界调用观测到的 provider 权限状态，不表示购买、按接口计费或订阅。
 
-QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。2026-07-21 CST（证据时间 2026-07-20Z）的受控实测只证明健康单一 HTTPS 节点的小响应 request-start 能力达到 210 次/分钟、并发 4；当前 `main` 代码设置更保守的保护门禁 200 次/60 秒、并发 4，但它不是 QuickSync 合同额度或已部署的 production 配置。混合大响应、每日额度和 DNS failover 仍待服务器验收，也不能由吞吐下限替代逐接口权限、schema、真实 receipt 和 API readback。production timer 在 provider-level transport、权限矩阵与 fresh server canary 全部通过前保持 disabled。Tushare 官方说明仍只作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
+QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。2026-07-21 CST（证据时间 2026-07-20Z）的受控实测只证明健康单一 HTTPS 节点的小响应 request-start 能力达到 210 次/分钟、并发 4；当前 `main` 代码设置更保守的保护门禁 200 次/60 秒、并发 4，但它不是 QuickSync 合同额度或已部署的 production 配置。混合大响应、每日额度和 DNS failover 仍待服务器验收，也不能由吞吐下限替代逐接口权限、schema、真实 receipt 和 API readback。timer 只能在 provider transport、权限矩阵、fresh server canary 与可回滚发布均通过后由受控发布流程显式启用；实际状态以 `STATUS.md` 和服务器 readback 为准。Tushare 官方说明仍只作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
 
 ## 固定内部 API
 
@@ -107,55 +107,20 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 这只决定数据新鲜度目标，不推导 QuickSync entitlement、activation 或 scheduler 启用。已有
 五个 reviewed contract 的更具体 cadence/SLA 保持优先级，不会被通用政策改写。
 
-当前 production release 的 190 项 runtime registry 有 99 个 active、91 个 paused。
-其中 70 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback，但在
-response completeness 未冻结前仍必须诚实返回 `partial/degraded`。validated match、HTTP 200
-或 catalog active 只表示候选或可发现，不能自动启用 scheduler；schema drift、质量异常、empty、
-权限拒绝、凭证拒绝和 unsupported 均按观测结果 fail closed。
-
-截至 2026-07-27 的服务器 readback，正式 production 运行
-`42fcf6c8822cf0b3268ee9ebdd20b207d69a3902`，registry 为 99 active / 91 paused；这只表示
-catalog 可发现，不表示 99 项均已完整采集、已完成历史回填或可供交易消费者使用。70 个新增项
-已经各自完成 SQLite receipt 和 authenticated API readback，但仍按实际完整性返回
-`partial/degraded`；其余 active 项仍须以每项正式 receipt/query readback 判定。collector timer
-保持 disabled。仓库、GitHub 与 production 必须分别读回，不得把 `main` 配置、HTTP 200 或
-catalog active 状态误报为数据已采集或已上线。
+生产状态不在 README 固化 commit、active 数量或 timer 状态。它们会随 immutable release、
+receipt 和窗口而变化，必须以 [STATUS.md](STATUS.md) 的最新快照和本轮服务器
+`current`/catalog/query readback 为准。catalog active、HTTP 200、历史 probe 或单次 success
+都不能替代 dataset 级的 receipt、freshness、quality、lineage 与 completeness 验收。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
-`--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。
-production `42fc...` 的正式 registry 为 99 active / 91 paused。仓外 sidecar、CI fixture 或
-仓内配置都不能替代 immutable production release 的 compiler/readback。
+`--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。仓外
+sidecar、CI fixture 或仓内配置都不能替代 immutable production release 的 compiler/readback。
 
-2026-07-27 的月度/季度候选已使用同一 QuickSync probe 合同完成 7 个真实调用：
-`broker_recommend` 返回 308 行，`cn_cpi`、`cn_gdp`、`cn_m`、`cn_pmi`、`cn_ppi` 与
-`sf_month` 返回合法空结果。随后同一通用 batch 为 `broker_recommend` 写入 308 行 success
-receipt，并为其余六项写入 empty receipt；TradingAgent 只读身份以固定 API 逐项回读。生产
-registry 现为 99 active / 91 paused，timer 仍 disabled。
-
-同日以 TradingAgent 专用只读身份动态发现 99 项 active 后，逐项执行固定 `POST /v1/query`
-(`limit=1`、省略 `as_of`)：99/99 为 HTTP 200，79 项返回非空行、20 项为合法 empty；元数据只
-有 3 项 `ready`，92 项 `partial`、4 项 `stale`。因此内部 API 已可统一读取全部 99 个 active
-合同，但消费者仍必须按单 dataset 的 receipt、freshness、quality 与 degraded fail closed，不能把
-catalog count 或 HTTP 200 当作完整数据覆盖。
-
-2026-07-27 的通用 HTTPS probe 使用五个受限证据分片，覆盖
-139 个安全可执行合同（19 个非空 `success`、113 个 `valid_empty`、3 个
-`permission_denied`、4 个 `provider_failed_unclassified`，无重复）。其中 63 个同时满足
-现有 `validated_contract_match`、安全预算和激活证据绑定的新增接口已与原 29 项形成
-**92 active / 98 paused** 的 production release，并完成 SQLite receipt 与 `/v1/query`
-读回；每项仍按自己的 metadata 如实报告 `partial/degraded` 或合法空结果。随后对
-`forecast` 与 `pledge_detail` 的同窗口实测表明 QuickSync 还要求 `ts_code`；两项没有
-创建专用 collector 或猜测 fanout，而是保留 paused 和 failed receipt 证据。`stk_factor_pro`
-已在 main 的通用 node-budget 修正候选中完成一次合法空结果验证：其 261 个字段将按自动收缩
-的行数预算执行；production 在 fresh release/readback 前仍保持 paused。后续仍使用既有
-`collect_provider_dataset.py --batch-file` 的通用 batch 纵向验证，不新增接口专用代码。
-
-旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 暂仅作为
-官方输入参数迁移资料保留：它们不是 entitlement/activation authority，不得被 collector、
-scheduler 或生产命令执行；待输入映射迁入 provider-native runtime contracts 后删除。
-正式验证统一走 registry-driven collector 的受控 one-shot，使真实 facts 与 transaction
-receipt 同事务，再通过固定 catalog/query API readback。
+旧 manual entitlement probe 与 policy 已退役。request-profile 配置及 resolver 仅作为
+官方输入参数迁移资料：它们不是 entitlement/activation authority，不得被 collector、scheduler
+或生产命令执行。正式验证统一走 registry-driven collector 的受控 one-shot，使事实数据与
+transaction receipt 同事务，再通过固定 catalog/query API readback。
 
 ## 本地验证
 

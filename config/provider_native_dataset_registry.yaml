@@ -128,7 +128,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -218,12 +218,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: rec_time
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ann_date
@@ -231,7 +225,6 @@ datasets:
   - name
   - title
   - url
-  - rec_time
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -248,7 +241,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -441,7 +434,7 @@ datasets:
     filterable: true
     sortable: true
   - name: holder_num
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -4049,7 +4042,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -4175,30 +4168,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: bond_value
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: bond_over_rate
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: cb_value
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: cb_over_rate
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -4212,10 +4181,6 @@ datasets:
   - pct_chg
   - vol
   - amount
-  - bond_value
-  - bond_over_rate
-  - cb_value
-  - cb_over_rate
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -4933,7 +4898,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -5035,12 +5000,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: issue_cost
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: onl_code
     logical_type: text
     nullable: true
@@ -5078,12 +5037,6 @@ datasets:
     filterable: true
     sortable: true
   - name: onl_pch_excess
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: onl_winning_rate
     logical_type: float
     nullable: true
     selectable: true
@@ -5137,67 +5090,7 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: shd_ration_vol
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: shd_ration_num
-    logical_type: integer
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: shd_ration_excess
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   - name: offl_size
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: offl_deposit
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: offl_pch_vol
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: offl_pch_num
-    logical_type: integer
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: offl_pch_excess
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: offl_winning_rate
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: lead_underwriter
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: lead_underwriter_vol
     logical_type: float
     nullable: true
     selectable: true
@@ -5212,7 +5105,6 @@ datasets:
   - issue_size
   - issue_price
   - issue_type
-  - issue_cost
   - onl_code
   - onl_name
   - onl_date
@@ -5220,7 +5112,6 @@ datasets:
   - onl_pch_vol
   - onl_pch_num
   - onl_pch_excess
-  - onl_winning_rate
   - shd_ration_code
   - shd_ration_name
   - shd_ration_date
@@ -5229,17 +5120,7 @@ datasets:
   - shd_ration_price
   - shd_ration_ratio
   - shd_ration_size
-  - shd_ration_vol
-  - shd_ration_num
-  - shd_ration_excess
   - offl_size
-  - offl_deposit
-  - offl_pch_vol
-  - offl_pch_num
-  - offl_pch_excess
-  - offl_winning_rate
-  - lead_underwriter
-  - lead_underwriter_vol
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -8459,7 +8340,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -8594,6 +8475,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: category
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -8608,6 +8495,7 @@ datasets:
   - amount
   - swing
   - turnover_rate
+  - category
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -8910,7 +8798,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -9003,12 +8891,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: modify_date
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -9016,7 +8898,6 @@ datasets:
   - end_date
   - pre_date
   - actual_date
-  - modify_date
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -15196,7 +15077,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -15319,18 +15200,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: offset_today_fee
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: exchange
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -15343,8 +15212,6 @@ datasets:
   - s_hedging_margin_rate
   - long_margin_rate
   - short_margin_rate
-  - offset_today_fee
-  - exchange
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -21600,7 +21467,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -21673,7 +21540,7 @@ datasets:
     filterable: true
     sortable: true
   - name: buy_sm_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21685,7 +21552,7 @@ datasets:
     filterable: true
     sortable: true
   - name: sell_sm_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21697,7 +21564,7 @@ datasets:
     filterable: true
     sortable: true
   - name: buy_md_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21709,7 +21576,7 @@ datasets:
     filterable: true
     sortable: true
   - name: sell_md_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21721,7 +21588,7 @@ datasets:
     filterable: true
     sortable: true
   - name: buy_lg_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21733,7 +21600,7 @@ datasets:
     filterable: true
     sortable: true
   - name: sell_lg_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21745,7 +21612,7 @@ datasets:
     filterable: true
     sortable: true
   - name: buy_elg_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21757,7 +21624,7 @@ datasets:
     filterable: true
     sortable: true
   - name: sell_elg_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -21769,7 +21636,7 @@ datasets:
     filterable: true
     sortable: true
   - name: net_mf_vol
-    logical_type: integer
+    logical_type: text
     nullable: true
     selectable: true
     filterable: true
@@ -30820,7 +30687,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -30952,18 +30819,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: begin_date
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: close_date
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -30977,8 +30832,6 @@ datasets:
   - after_ratio
   - avg_price
   - total_share
-  - begin_date
-  - close_date
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -31120,7 +30973,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -31246,12 +31099,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: resume
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -31265,7 +31112,6 @@ datasets:
   - birthday
   - begin_date
   - end_date
-  - resume
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -34134,7 +33980,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -34266,18 +34112,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: total_mv
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: float_mv
-    logical_type: float
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
   primary_key: []
   default_projection:
   - ts_code
@@ -34292,8 +34126,6 @@ datasets:
   - pct_change
   - vol
   - turnover_rate
-  - total_mv
-  - float_mv
   as_of_field: null
   as_of_format: null
   range_field: null
@@ -34932,7 +34764,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -35005,7 +34837,7 @@ datasets:
     filterable: true
     sortable: true
   - name: side
-    logical_type: text
+    logical_type: integer
     nullable: true
     selectable: true
     filterable: true

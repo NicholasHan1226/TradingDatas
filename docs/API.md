@@ -15,6 +15,12 @@ schema 和请求合同冻结前不进入 runtime registry、SQLite、scheduler �
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
 `entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
 
+`schema_version` 表示当前 provider-neutral 可读合同，而不是客户端对官方文档字段的假设。
+当 QuickSync 的稳定实际响应与官方参考字段不一致时，registry 只会通过受证据约束的
+response-contract delta 做字段子集、类型或新增字段修正，并递增受影响 dataset 的 schema
+major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.md)。消费者必须
+始终从 catalog 读取 schema major，不得把旧 schema 当作兼容回退。
+
 ## POST /v1/query
 
 请求：
