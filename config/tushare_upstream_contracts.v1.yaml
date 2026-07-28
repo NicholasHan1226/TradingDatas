@@ -22210,7 +22210,7 @@ contracts:
   api_name: margin
   source_document_url: https://tushare.pro/wctapi/documents/58.md
   source_document_sha256: c0843ebeebda7ef71e75b67e88d959a5390077eb6c10b7c6e0d70b1aa55c8fb6
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: trade_date
     declared_source_type: str
@@ -22228,14 +22228,14 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: exchange_id
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -22288,7 +22288,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - exchange_id
   default_projection:
   - trade_date
   - exchange_id
@@ -22299,10 +22301,10 @@ contracts:
   - rqmcl
   - rzrqye
   - rqyl
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -22328,8 +22330,22 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - exchange_id
+  - rzye
+  - rzmre
+  - rzche
+  - rqye
+  - rqmcl
+  - rzrqye
+  - rqyl
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -22351,7 +22367,7 @@ contracts:
   api_name: margin_detail
   source_document_url: https://tushare.pro/wctapi/documents/59.md
   source_document_sha256: 2545053ff91ee46e10cff4699baed7357bb498b35c51d59bf3240d7f7bed5274
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: trade_date
     declared_source_type: str
@@ -22369,14 +22385,14 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -22443,7 +22459,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - trade_date
   - ts_code
@@ -22456,10 +22474,10 @@ contracts:
   - rqchl
   - rqmcl
   - rzrqye
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -22485,8 +22503,24 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ts_code
+  - name
+  - rzye
+  - rqye
+  - rzmre
+  - rqyl
+  - rzche
+  - rqchl
+  - rqmcl
+  - rzrqye
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -22508,7 +22542,7 @@ contracts:
   api_name: margin_secs
   source_document_url: https://tushare.pro/wctapi/documents/326.md
   source_document_sha256: 879badbdf09ff989d418119015d79821af7676775620b5fa6fa2accefaf33870
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: ts_code
     declared_source_type: str
@@ -22529,14 +22563,14 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -22554,16 +22588,18 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - trade_date
   - ts_code
   - name
   - exchange
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -22589,8 +22625,17 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ts_code
+  - name
+  - exchange
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

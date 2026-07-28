@@ -513,17 +513,17 @@ entries:
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: c0843ebeebda7ef71e75b67e88d959a5390077eb6c10b7c6e0d70b1aa55c8fb6
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: margin_detail
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 2545053ff91ee46e10cff4699baed7357bb498b35c51d59bf3240d7f7bed5274
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: margin_secs
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 879badbdf09ff989d418119015d79821af7676775620b5fa6fa2accefaf33870
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: mkt_idx_bmk
   cadence_class: on_demand
   freshness_sla_seconds: 86400

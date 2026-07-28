@@ -334,6 +334,34 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     assert unreviewed["requested_fields"] == ["ts_code", "trade_date", "adj_factor"]
 
 
+def test_reviewed_margin_contracts_bind_real_day_partition_identities() -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    by_api = {item["api_name"]: item for item in compiled["contracts"]}
+
+    expected_keys = {
+        "margin": ["trade_date", "exchange_id"],
+        "margin_detail": ["trade_date", "ts_code"],
+        "margin_secs": ["trade_date", "ts_code"],
+    }
+    for api_name, primary_key in expected_keys.items():
+        contract = by_api[api_name]
+        assert contract["schema_version"] == "2.0.0"
+        assert contract["primary_key"] == primary_key
+        assert contract["as_of_field"] == "trade_date"
+        assert contract["range_field"] == "trade_date"
+        assert contract["partition_field"] == "trade_date"
+        assert contract["response_completeness"] == {
+            "strategy": "single_partition_unique_primary_key",
+            "partition_field": "trade_date",
+            "request_partition_key": "trade_date",
+            "fixed_field_matches": {},
+            "reject_at_row_limit": True,
+        }
+        assert set(primary_key).issubset(contract["requested_fields"])
+
+
 def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
