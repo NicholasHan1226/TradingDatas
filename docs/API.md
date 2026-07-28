@@ -99,9 +99,10 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 `metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低 `data_through`。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort 的完整 member receipt IDs；variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前 success rows。
 
 交易日历是已知未来事实的例外：`entity_type=trade_calendar` 可以返回 provider 已发布的下一
-交易日及其 `is_open` / `pretrade_date`，即使该日的 `data_through` 晚于读取时钟。该例外不
-放宽 receipt 的 `started_at`、`finished_at` 或 `observed_at`：这些执行时间仍不得在未来，且
-calendar 以外的数据集仍对未来 `data_through` fail closed。
+交易日及其 `is_open` / `pretrade_date`。未来有效日期只保留在行字段；envelope 的
+`data_through` 投影为该 success receipt 的已知/入库时间，因此仍不晚于 `observed_at`。
+该例外不放宽 receipt 的 `started_at`、`finished_at` 或 `observed_at`：这些执行时间仍不得在
+未来，且 calendar 以外的数据集仍对 future `data_through` fail closed。
 
 对允许为空的数据集，最新的完整 `empty` receipt 是“该请求窗口已在 `observed_at`
 检查且无行”的客观证据。其新鲜度按该 receipt 的观察时间计算，而不是按旧 success
