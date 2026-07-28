@@ -25,7 +25,7 @@ from dataset_registry import (
     RequestWindowPolicy,
     ResponseCompletenessPolicy,
 )
-from storage.ingest_receipts import IngestResult
+from storage.ingest_receipts import IngestResult, ProviderRequestIdentity
 import storage.ingest_receipts as ingest_receipts
 from storage.receipt_projection import (
     load_dataset_runtime_projection,
@@ -1522,6 +1522,51 @@ def test_snapshot_accepts_unique_primary_keys_below_provider_cap(
     assert code == runner.EXIT_SUCCESS
     assert output["state"] == "success"
     assert provider_fact_count(db_path) == 2
+
+
+def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None:
+    policy = ResponseCompletenessPolicy(
+        strategy="unique_primary_key_snapshot",
+        fixed_field_matches=MappingProxyType({}),
+        fanout_field="ts_code",
+        snapshot_field="time",
+    )
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=({"ts_code": "000001.SZ", "time": "2026-07-28 15:00:00"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    def call(symbol: str) -> native_ingest.ProviderCall:
+        return native_ingest.ProviderCall(
+            identity=ProviderRequestIdentity(
+                request_variant=MappingProxyType({}),
+                fanout_parameter="ts_code",
+                fanout_values=(symbol,),
+                page_offset=None,
+                page_index=0,
+            ),
+            outcome=outcome,
+            call_index=0,
+            retry_index=0,
+        )
+
+    rows = (
+        {"ts_code": "000001.SZ", "time": "2026-07-28 15:00:00"},
+        {"ts_code": "000002.SZ", "time": "2026-07-28 15:00:00"},
+    )
+    native_ingest._validate_fanout_snapshot(policy, rows, calls=(call("000001.SZ"), call("000002.SZ")))  # noqa: SLF001
+
+    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
+        native_ingest._validate_fanout_snapshot(policy, rows[:1], calls=(call("000001.SZ"), call("000002.SZ")))  # noqa: SLF001
+    with pytest.raises(ValueError, match="snapshot time is inconsistent"):
+        native_ingest._validate_fanout_snapshot(
+            policy,
+            (rows[0], {"ts_code": "000002.SZ", "time": "2026-07-28 14:55:00"}),
+            calls=(call("000001.SZ"), call("000002.SZ")),
+        )  # noqa: SLF001
 
 
 def test_snapshot_rejects_duplicate_primary_key_before_storage(

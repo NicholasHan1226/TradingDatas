@@ -26283,6 +26283,8 @@ datasets:
       fixed_field_matches:
         freq: freq
       reject_at_row_limit: true
+      fanout_field: ts_code
+      snapshot_field: time
     requested_fields:
     - ts_code
     - freq
@@ -26296,7 +26298,7 @@ datasets:
     max_batch_bytes: 4194304
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 200
+    max_rows_per_attempt: 600
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows

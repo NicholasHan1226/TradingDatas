@@ -648,6 +648,8 @@ class ResponseCompletenessPolicy:
     request_end_key: str | None = None
     partition_field: str | None = None
     request_partition_key: str | None = None
+    fanout_field: str | None = None
+    snapshot_field: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1261,6 +1263,8 @@ def _response_completeness_policy(
         ),
     }[strategy]
     allowed_keys = required_keys
+    if strategy == "unique_primary_key_snapshot":
+        allowed_keys = allowed_keys | {"fanout_field", "snapshot_field"}
     if strategy == "one_row_per_calendar_date":
         allowed_keys = allowed_keys | {"reject_at_row_limit"}
     _reject_unknown_keys(value, allowed_keys, path, required=required_keys)
@@ -1273,6 +1277,8 @@ def _response_completeness_policy(
     request_end_key: str | None = None
     partition_field: str | None = None
     request_partition_key: str | None = None
+    fanout_field: str | None = None
+    snapshot_field: str | None = None
     if strategy == "one_row_per_calendar_date":
         date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
         request_start_key = _provider_parameter_name(
@@ -1293,6 +1299,17 @@ def _response_completeness_policy(
         if request_window_policy is not None:
             raise ValueError(
                 f"{path}.unique_primary_key_snapshot must not use request_window_policy"
+            )
+        raw_fanout_field = value.get("fanout_field")
+        raw_snapshot_field = value.get("snapshot_field")
+        if (raw_fanout_field is None) != (raw_snapshot_field is None):
+            raise ValueError(f"{path} fanout and snapshot fields must be declared together")
+        if raw_fanout_field is not None:
+            fanout_field = _provider_field_name(
+                raw_fanout_field, f"{path}.fanout_field"
+            )
+            snapshot_field = _provider_field_name(
+                raw_snapshot_field, f"{path}.snapshot_field"
             )
     else:
         partition_field = _provider_field_name(
@@ -1338,6 +1355,8 @@ def _response_completeness_policy(
         request_end_key=request_end_key,
         partition_field=partition_field,
         request_partition_key=request_partition_key,
+        fanout_field=fanout_field,
+        snapshot_field=snapshot_field,
     )
 
 

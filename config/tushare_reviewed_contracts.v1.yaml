@@ -699,11 +699,12 @@ contracts:
       fixed_field_matches:
         freq: freq
       reject_at_row_limit: true
+      fanout_field: ts_code
+      snapshot_field: time
     requested_fields: [ts_code, freq, time, open, high, low, close, vol, amount]
     budgets:
-      # A 100-code request must not be rejected merely because every symbol
-      # returns one bar; a larger cap preserves truncation detection.
-      max_rows_per_attempt: 200
+      # Five 100-code calls form one all-or-nothing 500-symbol snapshot.
+      max_rows_per_attempt: 600
       max_payload_bytes_per_row: 65536
       max_batch_bytes: 4194304
       max_nesting_depth: 16
