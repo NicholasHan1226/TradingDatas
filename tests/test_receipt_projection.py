@@ -17,6 +17,7 @@ import pytest
 import storage.ingest_receipts as receipt_module
 import storage.receipt_projection as projection_module
 from dataset_registry import DatasetDefinition, DatasetRegistry, load_dataset_registry
+from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
@@ -80,16 +81,23 @@ def _insert_receipt(
     request_window: dict[str, str] | None = None,
     dataset_id: str = "cn.equity.daily",
     provider_api: str = "daily",
+    config_hash: str | None = None,
+    dataset: DatasetDefinition | None = None,
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
-    binding = _dataset().provider_bindings[0]
+    dataset = _dataset() if dataset is None else dataset
+    binding = dataset.provider_bindings[0]
     context = IngestContext(
         attempt_id=attempt_id,
         dataset_id=dataset_id,
         provider="tushare",
         provider_api=provider_api,
         request_window=request_window or {"trade_date": "20260715"},
-        config_hash=CONFIG_HASH,
+        config_hash=(
+            provider_ingest_config_hash(dataset, binding)
+            if config_hash is None
+            else config_hash
+        ),
         adapter_version=binding.adapter_version,
         started_at=started_at,
         data_through=data_through,
@@ -371,6 +379,7 @@ def test_dataset_scoped_history_does_not_cross_attest_invalid_receipts(
     invalid_receipt = _insert_receipt(
         monkeypatch,
         conn,
+        dataset=invalid,
         dataset_id=invalid.dataset_id,
         provider_api="daily_other",
         status="success",
@@ -425,6 +434,7 @@ def test_dataset_scoped_history_keeps_malformed_known_receipt_local(
     invalid_receipt = _insert_receipt(
         monkeypatch,
         conn,
+        dataset=invalid,
         dataset_id=invalid.dataset_id,
         provider_api="daily_other",
         status="success",
@@ -1855,6 +1865,45 @@ def test_current_empty_receipt_is_not_staled_by_an_older_success_watermark(
     assert projection.receipt_id == receipt_id
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
     assert projection.reasons == ("provider_returned_no_rows",)
+
+
+def test_superseded_config_receipt_cannot_advance_current_freshness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Historical receipt config cannot make old rows appear freshly ingested."""
+
+    conn = _memory_db()
+    current_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-current-contract",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-superseded-contract",
+        started_at="2026-07-20T00:00:00+00:00",
+        finished_at="2026-07-20T00:01:00+00:00",
+        data_through="20260720",
+        config_hash="c" * 64,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(freshness_sla_seconds=3_600),
+        now=datetime(2026, 7, 20, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "stale"
+    assert projection.degraded is True
+    assert projection.receipt_id == current_receipt_id
+    assert projection.data_through == "20260715"
+    assert projection.reasons == ("freshness_sla_exceeded",)
 
 
 def test_receipt_like_unknown_schema_fails_closed() -> None:

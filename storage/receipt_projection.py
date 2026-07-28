@@ -20,6 +20,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dataset_registry import DatasetDefinition, DatasetRegistry, ProviderBinding
+from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
     RECEIPT_SCHEMA_VERSION,
     UNMAPPED_TUSHARE_ADAPTER_VERSION,
@@ -1333,6 +1334,24 @@ def _success_watermark_receipt(
     )[1]
 
 
+def _receipt_matches_active_config(
+    receipt: _Receipt,
+    dataset: DatasetDefinition,
+    expected_binding: ProviderBinding | None,
+) -> bool:
+    """Return whether a valid receipt attests to the active ingest contract."""
+
+    bindings = (
+        (expected_binding,)
+        if expected_binding is not None
+        else dataset.provider_bindings
+    )
+    return any(
+        receipt.config_hash == provider_ingest_config_hash(dataset, binding)
+        for binding in bindings
+    )
+
+
 def _attempt_context_failures(
     receipts: list[_Receipt],
 ) -> tuple[_InvalidReceipt, ...]:
@@ -1575,8 +1594,13 @@ def _project_dataset_runtime(
     invalid.extend(_attempt_context_failures(receipts))
     invalid.extend(_execution_context_failures(receipts))
 
-    successful = list(_complete_success_receipts(receipts, dataset))
-    last_success = _success_watermark_receipt(receipts, dataset) or max(
+    authority_receipts = [
+        receipt
+        for receipt in receipts
+        if _receipt_matches_active_config(receipt, dataset, expected_binding)
+    ]
+    successful = list(_complete_success_receipts(authority_receipts, dataset))
+    last_success = _success_watermark_receipt(authority_receipts, dataset) or max(
         successful,
         key=_success_sort_key,
         default=None,
@@ -1607,7 +1631,7 @@ def _project_dataset_runtime(
             receipt_id=None,
             reasons=("registry_activation_paused",),
         )
-    if not receipts:
+    if not authority_receipts:
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,
             state="unobserved",
@@ -1618,7 +1642,7 @@ def _project_dataset_runtime(
             reasons=("no_recognized_receipt",),
         )
 
-    latest = _latest_run_terminal(dataset, receipts)
+    latest = _latest_run_terminal(dataset, authority_receipts)
     representative = latest.representative
     data_through = public_success_watermark
     if latest.status == "failed":
@@ -1972,8 +1996,13 @@ def project_dataset_runtime_evidence(
         rows=rows,
         expected_binding=provider_binding,
     )
-    successful = list(_complete_success_receipts(receipts, dataset))
-    last_success = _success_watermark_receipt(receipts, dataset) or max(
+    authority_receipts = [
+        receipt
+        for receipt in receipts
+        if _receipt_matches_active_config(receipt, dataset, provider_binding)
+    ]
+    successful = list(_complete_success_receipts(authority_receipts, dataset))
+    last_success = _success_watermark_receipt(authority_receipts, dataset) or max(
         successful,
         key=_success_sort_key,
         default=None,
@@ -1983,8 +2012,12 @@ def project_dataset_runtime_evidence(
     current_providers: tuple[str, ...] = ()
     current_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     current_receipt_ids: tuple[str, ...] = ()
-    if not invalid and projection.state not in {"paused", "unobserved"} and receipts:
-        latest = _latest_run_terminal(dataset, receipts)
+    if (
+        not invalid
+        and projection.state not in {"paused", "unobserved"}
+        and authority_receipts
+    ):
+        latest = _latest_run_terminal(dataset, authority_receipts)
         current_status = latest.status
         current_execution = latest.receipts
         current_providers = tuple(sorted({receipt.provider for receipt in current_execution}))
@@ -2007,7 +2040,7 @@ def project_dataset_runtime_evidence(
     if last_success is not None:
         last_success_execution = tuple(
             receipt
-            for receipt in receipts
+            for receipt in authority_receipts
             if receipt.execution_id == last_success.execution_id
         )
         last_success_providers = tuple(
