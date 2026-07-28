@@ -1724,7 +1724,7 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
         data_through="2026-07-15T12:00:00",
     )
     dataset = _dataset(freshness_sla_seconds=3_600)
-    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+    boundary = datetime(2026, 7, 15, 4, 1, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
     stale = project_dataset_runtime(
@@ -1764,7 +1764,7 @@ def test_postclose_date_partition_stays_fresh_through_its_local_day(
     assert projection.degraded is False
 
 
-def test_empty_receipt_without_success_watermark_does_not_invent_freshness(
+def test_empty_receipt_uses_receipt_observation_for_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = _memory_db()
@@ -1778,7 +1778,7 @@ def test_empty_receipt_without_success_watermark_does_not_invent_freshness(
         data_through="2026-07-15T12:00:00",
     )
     dataset = _dataset(freshness_sla_seconds=3_600)
-    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+    boundary = datetime(2026, 7, 15, 4, 1, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
     after_boundary = project_dataset_runtime(
@@ -1789,10 +1789,46 @@ def test_empty_receipt_without_success_watermark_does_not_invent_freshness(
 
     assert exact.state == "empty"
     assert exact.degraded is False
-    assert after_boundary.state == "empty"
-    assert after_boundary.degraded is False
+    assert after_boundary.state == "stale"
+    assert after_boundary.degraded is True
     assert after_boundary.data_through is None
-    assert after_boundary.reasons == ("provider_returned_no_rows",)
+    assert after_boundary.reasons == ("freshness_sla_exceeded", "latest_receipt_empty")
+
+
+def test_current_empty_receipt_is_not_staled_by_an_older_success_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-old-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id="attempt-current-empty",
+        started_at="2026-07-20T03:00:00+00:00",
+        finished_at="2026-07-20T03:01:00+00:00",
+        data_through=None,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(freshness_sla_seconds=3_600),
+        now=datetime(2026, 7, 20, 3, 30, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "empty"
+    assert projection.degraded is False
+    assert projection.receipt_id == receipt_id
+    assert projection.data_through == "2026-07-15T08:00:00+08:00"
+    assert projection.reasons == ("provider_returned_no_rows",)
 
 
 def test_receipt_like_unknown_schema_fails_closed() -> None:

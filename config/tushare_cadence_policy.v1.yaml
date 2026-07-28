@@ -793,7 +793,7 @@ entries:
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 81b85ae2a018d4898006ca4239cff719bf221216b90c8f102aa3e7be68ffd8e4
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: stk_managers
   cadence_class: on_demand
   freshness_sla_seconds: 86400

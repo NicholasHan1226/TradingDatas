@@ -1622,17 +1622,34 @@ def _project_dataset_runtime(
             receipt_id=representative.receipt_id,
             reasons=latest.errors,
         )
-    if data_through is None:
-        if latest.status == "empty":
+    # A terminal empty receipt is current evidence that the requested window
+    # was checked and contained no rows.  Its freshness is the observation
+    # time, not an older successful data watermark: otherwise a legitimate
+    # empty current partition is incorrectly reported as stale forever.
+    if latest.status == "empty":
+        empty_is_stale = now_utc - representative.finished_sort > timedelta(
+            seconds=dataset.freshness_sla_seconds
+        )
+        if empty_is_stale:
             return DatasetRuntimeProjection(
                 dataset_id=dataset.dataset_id,
-                state="empty",
-                degraded=False,
-                data_through=None,
+                state="stale",
+                degraded=True,
+                data_through=data_through,
                 observed_at=representative.finished_at,
                 receipt_id=representative.receipt_id,
-                reasons=("provider_returned_no_rows",),
+                reasons=("freshness_sla_exceeded", "latest_receipt_empty"),
             )
+        return DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="empty",
+            degraded=False,
+            data_through=data_through,
+            observed_at=representative.finished_at,
+            receipt_id=representative.receipt_id,
+            reasons=("provider_returned_no_rows",),
+        )
+    if data_through is None:
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,
             state="failed",
@@ -1670,16 +1687,6 @@ def _project_dataset_runtime(
             observed_at=representative.finished_at,
             receipt_id=representative.receipt_id,
             reasons=reasons,
-        )
-    if latest.status == "empty":
-        return DatasetRuntimeProjection(
-            dataset_id=dataset.dataset_id,
-            state="empty",
-            degraded=False,
-            data_through=data_through,
-            observed_at=representative.finished_at,
-            receipt_id=representative.receipt_id,
-            reasons=("provider_returned_no_rows",),
         )
     return DatasetRuntimeProjection(
         dataset_id=dataset.dataset_id,
