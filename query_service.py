@@ -1747,15 +1747,9 @@ class QueryService:
                         for field in dataset.fields
                         if field.name == dataset.partition_field
                     )
-                    # provider_dataset_rows persists the registry partition in
-                    # its indexed technical column.  Resolve the latest
-                    # partition from that exact ingest value instead of
-                    # scanning every JSON payload; the subsequent predicate
-                    # keeps the public field semantics unchanged.
-                    partition_column = _quote_identifier("partition_value")
                     partition_sql = (
                         "SELECT MAX("
-                        f"{partition_column}) "
+                        f"{_field_expression(dataset, dataset.partition_field)}) "
                         f"FROM main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)}"
                         f"{_where_clause(predicates)}"
                     )
@@ -1775,7 +1769,9 @@ class QueryService:
                             raise QueryServiceUnavailable(
                                 "query service is unavailable"
                             ) from None
-                        predicates.append(f"{partition_column} = ?")
+                        predicates.append(
+                            f"{_field_expression(dataset, dataset.partition_field)} = ?"
+                        )
                         params.append(resolved_partition)
 
                 watermark = _receipt_watermark(dataset, evidence)
