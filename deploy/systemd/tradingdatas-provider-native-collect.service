@@ -19,7 +19,7 @@ Environment="TUSHARE_API_URL=https://api.quicksync.cn"
 Environment="TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token"
 Environment="PYTHONDONTWRITEBYTECODE=1"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/run_provider_native_schedule.py --db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite --lock-path /run/tradingdatas/collect.lock --activation-wave pilot_existing --current-only --execute
+ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/run_provider_native_schedule.py --db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite --lock-path /run/tradingdatas/collect.lock --execute
 SuccessExitStatus=75
 TimeoutStartSec=45min
 UMask=0077

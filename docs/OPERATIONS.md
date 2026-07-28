@@ -24,11 +24,13 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
 Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
-前，不在生产启用采集 timer。当前允许启用的唯一例外是 `pilot_existing` 的固定 30 只沪深
-主板 `cn.dataset.rt_min` 5MIN canary：每轮使用一个冻结的多代码 provider 请求，并保留实际
-bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或
-交易 Universe。500 只压力 canary 只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前
-不得进入 production registry、release 或 timer。
+前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
+planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
+receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。固定 30 只沪深主板
+`cn.dataset.rt_min` 5MIN 是其中一个受控 canary：每轮保留实际 bar time、observed_at 和 receipt；
+上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或交易 Universe。500 只压力 canary
+只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前不得进入 production registry、release
+或 timer。
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
@@ -56,11 +58,12 @@ closed。波次外的 active dataset 以
 `not_selected` 记录，global flock、planner/runtime budgets、retry、receipt 和公开输出
 redaction 均不变。
 
-省略 `--activation-wave` 时保持完整 scheduler 行为。当前 `pilot_existing` 包含三个已验证
-的日线/参考 dataset，以及固定 30 只主板的 `cn.dataset.rt_min` 5 分钟 canary。它不是新增
-entitlement、全市场分钟覆盖、研究/交易 Universe 或低延迟执行证据：每轮必须保留实际 bar
-time、observed_at 和 receipt，不能把上游延迟伪装成实时数据。500 只候选与其它扩容在独立
-worktree/release 审核，未通过前不得加入该清单。
+省略 `--activation-wave` 时保持完整 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
+`pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。固定 30 只
+主板的 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
+Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
+延迟伪装成实时数据。500 只候选与其它扩容在独立 worktree/release 审核，未通过前不得加入
+正式 registry、release 或 timer。
 只读 plan 可按以下方式检查：
 
 ```bash
@@ -299,15 +302,12 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer，但保持 disabled；
 
-   GitHub `main` 的 runner 现在提供显式
-   `--activation-wave pilot_existing --current-only` 入口：它只接受该 pilot wave，planner
-   只保留 priority=`current`，执行前再次拒绝 backfill、correction 与非 current 项。它解决了
-   2026-07-23 production no-write plan 同时生成 current、backfill 与 correction 的问题，
-   但尚未发布到 production。timer 仍保持 disabled；先做 fresh release 和受控 one-shot，
-   确认 0 backfill / 0 correction、facts/receipts/API readback 后，才可评估仅 Wave 1/2 的
-   cadence pilot。已安装的 collector unit 也只传入这两个参数；后续扩大 cadence 的唯一
-   路径是先审查并更新受控 activation wave，而不是删掉 current-only。`direct_wave_3`
-   永远按 `on_demand` 跳过 scheduler。
+   生产 collector unit 不传入 activation wave 或 dataset 参数，始终由同一 registry-driven
+   planner 选择所有 automatic cadence。发布前必须在目标 release 和正式 SQLite 上做 plan
+   readback：计划只能包含 active/entitled automatic bindings，`on_demand` 必须显式跳过；超出
+   本轮 budget 的计划项必须是 `rate_budget` skip，不能生成失败 receipt。再以受控 one-shot 或
+   一个完整 timer 周期验证 facts、receipts 和 API readback。`direct_wave_3` 等保留作有界历史
+   batch 选择，但其 `on_demand` 合同不会被 scheduler 自动执行。
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
 9. 后台运行 bounded backfill。
 
