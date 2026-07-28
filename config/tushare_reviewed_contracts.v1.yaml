@@ -7,6 +7,134 @@ provenance:
   index_path: tushare/references/数据接口.md
   index_sha256: 0df85aa1265a59b963fca6660eb3f58bec232aa2347c9c44d763d0d55a1b9cb2
 contracts:
+  - dataset_id: cn.dataset.adj_factor
+    aliases: [tushare.adj_factor]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: adj_factor
+    source_document_url: https://tushare.pro/wctapi/documents/28.md
+    source_document_sha256: e8ce97d2e7f3998d2c564235e8c696edf1973dac7bd1a3fa878ce6dbd6ee2f35
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: adj_factor, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code, trade_date]
+    default_projection: [ts_code, trade_date, adj_factor]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: daily_reference
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+      - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys: [trade_date]
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: [ts_code, trade_date, adj_factor]
+    budgets:
+      max_rows_per_attempt: 10000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 16777216
+      max_nesting_depth: 16
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.stk_auction
+    aliases: [tushare.stk_auction]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: stk_auction
+    source_document_url: https://tushare.pro/wctapi/documents/369.md
+    source_document_sha256: 84b993ce7fc827fb63055ef8eb84bd7ca6fd7716fe16ebe41aa29dd148c5e3a6
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: vol, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: price, declared_source_type: int, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pre_close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: turnover_rate, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: volume_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: float_share, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code, trade_date]
+    default_projection: [ts_code, trade_date, vol, price, amount, pre_close, turnover_rate, volume_ratio, float_share]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: daily_reference
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+      - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys: [trade_date]
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: [ts_code, trade_date, vol, price, amount, pre_close, turnover_rate, volume_ratio, float_share]
+    budgets:
+      max_rows_per_attempt: 10000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 16777216
+      max_nesting_depth: 16
+    reviewed_type_overrides:
+      - field: price
+        declared_source_type: int
+        observed_json_type: float
+        logical_type: float
+        reason: Bounded QuickSync readback returned decimal auction price without coercion.
+        evidence: 20260728 bounded trade_date readback via provider-native receipt.
   - dataset_id: cn.market.trade_calendar
     aliases: [tushare.trade_cal]
     domain: market_data

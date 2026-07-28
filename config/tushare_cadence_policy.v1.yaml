@@ -8,7 +8,7 @@ entries:
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: e8ce97d2e7f3998d2c564235e8c696edf1973dac7bd1a3fa878ce6dbd6ee2f35
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: anns_d
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -753,7 +753,7 @@ entries:
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 84b993ce7fc827fb63055ef8eb84bd7ca6fd7716fe16ebe41aa29dd148c5e3a6
-  reason_code: doc_explicit_daily_reference
+  reason_code: reviewed_contract_exact
 - api_name: stk_auction_c
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400

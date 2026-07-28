@@ -18,7 +18,7 @@ contracts:
   api_name: adj_factor
   source_document_url: https://tushare.pro/wctapi/documents/28.md
   source_document_sha256: e8ce97d2e7f3998d2c564235e8c696edf1973dac7bd1a3fa878ce6dbd6ee2f35
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: ts_code
     declared_source_type: str
@@ -36,14 +36,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -54,15 +54,17 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
   - adj_factor
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -88,10 +90,18 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - adj_factor
   budgets:
-    max_batch_bytes: 67108864
+    max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
@@ -29437,7 +29447,7 @@ contracts:
   api_name: stk_auction
   source_document_url: https://tushare.pro/wctapi/documents/369.md
   source_document_sha256: 84b993ce7fc827fb63055ef8eb84bd7ca6fd7716fe16ebe41aa29dd148c5e3a6
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: ts_code
     declared_source_type: str
@@ -29455,14 +29465,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -29475,7 +29485,7 @@ contracts:
     sortable: true
   - name: price
     declared_source_type: int
-    logical_type: integer
+    logical_type: float
     nullable: true
     selectable: true
     filterable: true
@@ -29515,7 +29525,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
@@ -29526,10 +29538,10 @@ contracts:
   - turnover_rate
   - volume_ratio
   - float_share
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -29555,14 +29567,34 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - vol
+  - price
+  - amount
+  - pre_close
+  - turnover_rate
+  - volume_ratio
+  - float_share
   budgets:
-    max_batch_bytes: 67108864
+    max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
-  reviewed_type_overrides: []
+  reviewed_type_overrides:
+  - declared_source_type: int
+    evidence: 20260728 bounded trade_date readback via provider-native receipt.
+    field: price
+    logical_type: float
+    observed_json_type: float
+    reason: Bounded QuickSync readback returned decimal auction price without coercion.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
