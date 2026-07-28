@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
+from zoneinfo import ZoneInfo
 
 from collectors.tushare.tushare_common import (
     ProviderCallOutcome,
@@ -257,6 +258,8 @@ def _stable_fanout_batches(
     *,
     parameter: str,
     batch_size: int,
+    max_values: int | None = None,
+    source_order: str = "lexical",
 ) -> tuple[FanoutBatch, ...]:
     """Deduplicate typed source values and produce stable bounded batches."""
 
@@ -264,6 +267,10 @@ def _stable_fanout_batches(
         raise ValueError("fanout parameter is invalid")
     if type(batch_size) is not int or batch_size <= 0:
         raise ValueError("fanout batch_size is invalid")
+    if max_values is not None and (type(max_values) is not int or max_values <= 0):
+        raise ValueError("fanout max_values is invalid")
+    if source_order not in {"lexical", "stable_hash"}:
+        raise ValueError("fanout source_order is invalid")
     unique: dict[tuple[str, RequestScalar], RequestScalar] = {}
     for value in values:
         if type(value) not in {str, bool, int, float} or (
@@ -273,16 +280,31 @@ def _stable_fanout_batches(
         if type(value) is str and not value:
             raise ValueError("fanout source contains an empty string")
         unique[(type(value).__name__, value)] = value
+    if source_order == "stable_hash":
+        def sort_key(item: tuple[str, RequestScalar]) -> tuple[str, str]:
+            return (
+                hashlib.sha256(
+                    json.dumps(item[1], ensure_ascii=False, allow_nan=False).encode("utf-8")
+                ).hexdigest(),
+                item[0],
+            )
+    else:
+        def sort_key(item: tuple[str, RequestScalar]) -> tuple[str, str]:
+            return (
+                item[0],
+                json.dumps(item[1], ensure_ascii=False, allow_nan=False),
+            )
     ordered = tuple(
         unique[key]
         for key in sorted(
             unique,
-            key=lambda item: (
-                item[0],
-                json.dumps(item[1], ensure_ascii=False, allow_nan=False),
-            ),
+            key=sort_key,
         )
     )
+    if max_values is not None:
+        if len(ordered) < max_values:
+            raise ValueError("fanout source has fewer values than max_values")
+        ordered = ordered[:max_values]
     return tuple(
         FanoutBatch(parameter=parameter, values=ordered[index : index + batch_size])
         for index in range(0, len(ordered), batch_size)
@@ -362,6 +384,12 @@ def _load_completed_fanout_batches(
         sqlite3.Error,
     ) as exc:
         raise ValueError("fanout source authority is unavailable") from exc
+    now = datetime.now(ZoneInfo(source.timezone)).date()
+    cutoff = (
+        None
+        if policy.source_date_lte_days is None
+        else now - timedelta(days=policy.source_date_lte_days)
+    )
     values: list[RequestScalar] = []
     for payload_json, payload_hash, receipt_id in rows:
         try:
@@ -385,22 +413,43 @@ def _load_completed_fanout_batches(
             raise ValueError("fanout source receipt is not completed authority")
         if type(payload) is not dict or policy.source_field not in payload:
             raise ValueError("fanout source payload is missing its declared field")
-        value = payload[policy.source_field]
-        if source_field.logical_type == "text":
-            valid = type(value) is str and bool(value)
-        elif source_field.logical_type == "integer":
-            valid = type(value) is int
+        for field, expected in policy.source_equals:
+            if field not in payload:
+                raise ValueError("fanout source payload is missing selector field")
+            if payload[field] != expected:
+                break
         else:
-            valid = type(value) in {int, float} and (
-                type(value) is not float or math.isfinite(value)
-            )
-        if not valid:
-            raise ValueError("fanout source value violates its declared type")
-        values.append(value)
+            if cutoff is not None:
+                if policy.source_date_field is None:
+                    raise ValueError("fanout source date selector is incomplete")
+                raw_date = payload.get(policy.source_date_field)
+                if type(raw_date) is not str or len(raw_date) != 8 or not raw_date.isdigit():
+                    raise ValueError("fanout source date selector is invalid")
+                try:
+                    listed = datetime.strptime(raw_date, "%Y%m%d").date()
+                except ValueError as exc:
+                    raise ValueError("fanout source date selector is invalid") from exc
+                if listed > cutoff:
+                    continue
+            value = payload[policy.source_field]
+            if source_field.logical_type == "text":
+                valid = type(value) is str and bool(value)
+            elif source_field.logical_type == "integer":
+                valid = type(value) is int
+            else:
+                valid = type(value) in {int, float} and (
+                    type(value) is not float or math.isfinite(value)
+                )
+            if not valid:
+                raise ValueError("fanout source value violates its declared type")
+            values.append(value)
+            continue
     batches = _stable_fanout_batches(
         values,
         parameter=policy.parameter,
         batch_size=policy.batch_size,
+        max_values=policy.max_values,
+        source_order=policy.source_order,
     )
     if not batches:
         raise ValueError("fanout source has no completed values")

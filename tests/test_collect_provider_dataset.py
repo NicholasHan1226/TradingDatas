@@ -2628,7 +2628,45 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
         base.provider_binding(source.dataset_id, "tushare"),
         response_completeness=None,
     )
-    source = replace(source, provider_bindings=(source_binding,))
+    source = replace(
+        source,
+        fields=source.fields
+        + (
+            DatasetField(
+                name="market",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="list_status",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="curr_type",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="list_date",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+        ),
+        provider_bindings=(source_binding,),
+    )
     target_binding = replace(
         source_binding,
         api_name="synthetic_target",
@@ -2640,6 +2678,13 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
             source_dataset_id=source.dataset_id,
             source_field="ts_code",
             batch_size=1,
+            source_equals=(
+                ("market", "主板"),
+                ("list_status", "L"),
+                ("curr_type", "CNY"),
+            ),
+            source_date_field="list_date",
+            source_date_lte_days=30,
         ),
         pagination=PaginationPolicy(strategy="none"),
         response_completeness=None,
@@ -2662,11 +2707,37 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
                     "ts_code": "600001.SH",
                     "trade_date": "20260716",
                     "close": 10.0,
+                    "market": "主板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
                 },
                 {
                     "ts_code": "600000.SH",
                     "trade_date": "20260717",
                     "close": 11.0,
+                    "market": "主板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
+                },
+                {
+                    "ts_code": "300001.SZ",
+                    "trade_date": "20260717",
+                    "close": 12.0,
+                    "market": "创业板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
+                },
+                {
+                    "ts_code": "605999.SH",
+                    "trade_date": "20260717",
+                    "close": 13.0,
+                    "market": "主板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20260718",
                 },
             ),
             provider_code=0,
@@ -2717,7 +2788,7 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     assert target_result.status == "success"
     assert target_result.errors == ()
     assert len(target_result.receipt_ids) == 2
-    assert provider_fact_count(db_path) == 3
+    assert provider_fact_count(db_path) == 5
     with sqlite3.connect(db_path) as conn:
         target_receipts = [
             json.loads(row[0])

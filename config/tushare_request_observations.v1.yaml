@@ -13,10 +13,10 @@ provenance:
     sha256: 3a5f0c9e75c6a9c233c69a83d9e11ac38fac35e9852083ba1998370c092c24e8
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 95156e840c883535b498d6b891738aa4586cfa417b34ac9f3f682fea571affb9
+    sha256: c045db9ab70f38273d780b584b6e31f4edbe72b12eb05d01cc1bfc4fa14e6a64
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 11ff2bd95d8173353bd0d95d78ff636f787f443c4c673f777b20e97643161004
+    sha256: 2d290bc71573f4da260b2af298aea318857a1b9681402eff3047654d5594c919
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -2730,7 +2730,7 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
@@ -2741,8 +2741,16 @@ entries:
       source: literal
       value: 5MIN
     ts_code:
-      source: literal
-      value: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 100
+      source_equals: {market: 主板, list_status: L, curr_type: CNY}
+      source_date_field: list_date
+      source_date_lte_days: 30
+      max_values: 500
+      source_order: stable_hash
   row_limit_observation: null
 - api_name: rt_min_daily
   scope_labels:

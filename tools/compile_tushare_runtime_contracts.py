@@ -726,7 +726,15 @@ def _request_parameter(
         )
         _reject_unknown_and_missing_keys(
             value,
-            allowed=required_keys | {"batch_size"},
+            allowed=required_keys
+            | {
+                "batch_size",
+                "source_equals",
+                "source_date_field",
+                "source_date_lte_days",
+                "max_values",
+                "source_order",
+            },
             required=required_keys,
             label=label,
         )
@@ -734,7 +742,7 @@ def _request_parameter(
             raise RuntimeContractCompilationError(
                 f"{label}.requires_fresh_success_receipt must be true"
             )
-        return {
+        result = {
             "source": source,
             "dataset_id": _text(value["dataset_id"], f"{label}.dataset_id"),
             "field": _text(value["field"], f"{label}.field"),
@@ -743,6 +751,37 @@ def _request_parameter(
                 value.get("batch_size", 1), f"{label}.batch_size"
             ),
         }
+        if "source_equals" in value:
+            raw_equals = value["source_equals"]
+            if not isinstance(raw_equals, dict):
+                raise RuntimeContractCompilationError(
+                    f"{label}.source_equals must be an object"
+                )
+            normalized_equals: dict[str, str] = {}
+            for field, expected in sorted(raw_equals.items()):
+                normalized_equals[_text(field, f"{label}.source_equals field")] = _text(
+                    expected, f"{label}.source_equals.{field}"
+                )
+            result["source_equals"] = normalized_equals
+        date_field = value.get("source_date_field")
+        date_days = value.get("source_date_lte_days")
+        if (date_field is None) != (date_days is None):
+            raise RuntimeContractCompilationError(
+                f"{label} source date selector is incomplete"
+            )
+        if date_field is not None:
+            result["source_date_field"] = _text(date_field, f"{label}.source_date_field")
+            result["source_date_lte_days"] = _positive_int(
+                date_days, f"{label}.source_date_lte_days"
+            )
+        if "max_values" in value:
+            result["max_values"] = _positive_int(value["max_values"], f"{label}.max_values")
+        if "source_order" in value:
+            source_order = _text(value["source_order"], f"{label}.source_order")
+            if source_order not in {"lexical", "stable_hash"}:
+                raise RuntimeContractCompilationError(f"{label}.source_order is unsupported")
+            result["source_order"] = source_order
+        return result
     _exact_keys(value, frozenset({"source", "transform", "offset_seconds"}), label)
     transform = _text(value["transform"], f"{label}.transform")
     if transform not in _PARAMETER_TRANSFORMS:
@@ -1353,6 +1392,15 @@ def _request_execution_contract(
             "source_field": declaration["field"],
             "batch_size": declaration["batch_size"],
         }
+        for key in (
+            "source_equals",
+            "source_date_field",
+            "source_date_lte_days",
+            "max_values",
+            "source_order",
+        ):
+            if key in declaration:
+                fanout[key] = declaration[key]
     else:
         fanout = {"strategy": "none"}
     if pagination_values:
@@ -1715,6 +1763,16 @@ def _registered_seed_requirements(
             raise RuntimeContractCompilationError(
                 f"{api_name}.{parameter} references unknown seed field"
             )
+        for field_name in declaration.get("source_equals", {}):
+            if field_name not in field_names:
+                raise RuntimeContractCompilationError(
+                    f"{api_name}.{parameter} selector references unknown seed field"
+                )
+        date_field = declaration.get("source_date_field")
+        if date_field is not None and date_field not in field_names:
+            raise RuntimeContractCompilationError(
+                f"{api_name}.{parameter} date selector references unknown seed field"
+            )
         expected_fanout = {
             "strategy": "dataset_field",
             "parameter": parameter,
@@ -1722,6 +1780,15 @@ def _registered_seed_requirements(
             "source_field": declaration["field"],
             "batch_size": declaration["batch_size"],
         }
+        for key in (
+            "source_equals",
+            "source_date_field",
+            "source_date_lte_days",
+            "max_values",
+            "source_order",
+        ):
+            if key in declaration:
+                expected_fanout[key] = declaration[key]
         if fanout != expected_fanout:
             raise RuntimeContractCompilationError(
                 f"registered {api_name} fanout does not match request observation"
@@ -1933,14 +2000,16 @@ def compile_https_probe_plan(
             for declaration in observation["parameters"].values()
             if declaration["source"] == "dataset_field"
         ]
-        if (
-            effective_probe_reasons == ["dependency_seed_receipt_unresolved"]
-            and dataset_declarations
-            and all(
-                (declaration["dataset_id"], declaration["field"]) in trusted_seeds
-                for declaration in dataset_declarations
-            )
-        ):
+        seeds_resolved = dataset_declarations and all(
+            (declaration["dataset_id"], declaration["field"]) in trusted_seeds
+            for declaration in dataset_declarations
+        )
+        if dataset_declarations and not seeds_resolved:
+            effective_probe_state = "blocked"
+            effective_probe_reasons = ["dependency_seed_receipt_unresolved"]
+            effective_ingest_state = "blocked"
+            effective_ingest_reasons = ["dependency_seed_receipt_unresolved"]
+        elif effective_probe_reasons == ["dependency_seed_receipt_unresolved"]:
             effective_probe_state = "executable"
             effective_probe_reasons = []
             if effective_ingest_reasons == ["dependency_seed_receipt_unresolved"]:

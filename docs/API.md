@@ -100,8 +100,12 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 
 `lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
-`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的三十只主板 canary。其身份为
-`[ts_code, time]`。本平台把 provider 返回的 `time` 解释为该 5 分钟 bar 的结束时间；
+`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的 500 只主板 coverage canary。
+它从已完成的 `cn.equity.security_master` receipt 中动态筛选 `market=主板`、
+`list_status=L`、`curr_type=CNY` 且上市至少 30 日的股票，再以稳定哈希顺序截取 500 只，
+按 100 只分片采集。该选择只用于采集压力、receipt 与 API 覆盖验证；它不是中证500成分、
+研究代表性样本或交易 Universe。其身份为 `[ts_code, time]`。本平台把 provider 返回的
+`time` 解释为该 5 分钟 bar 的结束时间；
 上游字段说明仅称其为“交易时间”，因此这是本平台基于已验证 5 分钟返回形状冻结的
 读取语义，不是对上游文档的额外断言。它是 OHLCV/amount bar，不是 bid/ask 或逐笔成交；
 `vol` 单位为股，`amount` 单位为人民币元。只允许通过同一 catalog/query API 读取；盘后

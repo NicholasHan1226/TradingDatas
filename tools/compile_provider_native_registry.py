@@ -244,7 +244,18 @@ _CADENCE_CLASSES = frozenset(
     }
 )
 _FANOUT_KEYS = frozenset(
-    {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+    {
+        "strategy",
+        "parameter",
+        "source_dataset_id",
+        "source_field",
+        "batch_size",
+        "source_equals",
+        "source_date_field",
+        "source_date_lte_days",
+        "max_values",
+        "source_order",
+    }
 )
 _PAGINATION_KEYS = frozenset(
     {"strategy", "limit_parameter", "offset_parameter", "page_size", "max_pages"}
@@ -1445,7 +1456,14 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
         _reject_keys(value, frozenset({"strategy"}), label)
         result = {"strategy": "none"}
     elif strategy == "dataset_field":
-        _reject_keys(value, _FANOUT_KEYS, label)
+        _reject_keys(
+            value,
+            _FANOUT_KEYS,
+            label,
+            required=frozenset(
+                {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+            ),
+        )
         parameter = _required_text(value["parameter"], f"{label}.parameter")
         source_field = _required_text(value["source_field"], f"{label}.source_field")
         if (
@@ -1464,6 +1482,36 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
                 value["batch_size"], f"{label}.batch_size"
             ),
         }
+        if "source_equals" in value:
+            raw_equals = value["source_equals"]
+            if not isinstance(raw_equals, dict):
+                raise ValueError(f"{label}.source_equals must be an object")
+            result["source_equals"] = {
+                _required_text(field, f"{label}.source_equals field"): _required_text(
+                    expected, f"{label}.source_equals.{field}"
+                )
+                for field, expected in sorted(raw_equals.items())
+            }
+        date_field = value.get("source_date_field")
+        date_days = value.get("source_date_lte_days")
+        if (date_field is None) != (date_days is None):
+            raise ValueError(f"{label} source date selector is incomplete")
+        if date_field is not None:
+            result["source_date_field"] = _required_text(
+                date_field, f"{label}.source_date_field"
+            )
+            result["source_date_lte_days"] = _required_positive_int(
+                date_days, f"{label}.source_date_lte_days"
+            )
+        if "max_values" in value:
+            result["max_values"] = _required_positive_int(
+                value["max_values"], f"{label}.max_values"
+            )
+        if "source_order" in value:
+            source_order = _required_text(value["source_order"], f"{label}.source_order")
+            if source_order not in {"lexical", "stable_hash"}:
+                raise ValueError(f"{label}.source_order is unsupported")
+            result["source_order"] = source_order
     else:
         raise ValueError(f"{label}.strategy is unsupported")
     requires_fanout = request_shape in {"entity_fanout", "dimension_fanout"}

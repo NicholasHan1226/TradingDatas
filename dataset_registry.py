@@ -149,7 +149,18 @@ _REQUEST_WINDOW_POLICY_KEYS = frozenset(
     }
 )
 _FANOUT_KEYS = frozenset(
-    {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+    {
+        "strategy",
+        "parameter",
+        "source_dataset_id",
+        "source_field",
+        "batch_size",
+        "source_equals",
+        "source_date_field",
+        "source_date_lte_days",
+        "max_values",
+        "source_order",
+    }
 )
 _PAGINATION_KEYS = frozenset(
     {
@@ -381,6 +392,11 @@ class FanoutPolicy:
     source_dataset_id: str | None = None
     source_field: str | None = None
     batch_size: int | None = None
+    source_equals: tuple[tuple[str, str], ...] = ()
+    source_date_field: str | None = None
+    source_date_lte_days: int | None = None
+    max_values: int | None = None
+    source_order: str = "lexical"
 
 
 @dataclass(frozen=True)
@@ -1050,7 +1066,24 @@ def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
             required=frozenset({"strategy"}),
         )
         return FanoutPolicy(strategy="none")
-    _reject_unknown_keys(value, _FANOUT_KEYS, path, required=_FANOUT_KEYS)
+    required = frozenset(
+        {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
+    )
+    _reject_unknown_keys(value, _FANOUT_KEYS, path, required=required)
+    raw_equals = value.get("source_equals", {})
+    equals = _mapping(raw_equals, f"{path}.source_equals")
+    normalized_equals: list[tuple[str, str]] = []
+    for field_name, expected in sorted(equals.items()):
+        normalized_equals.append(
+            (
+                _provider_field_name(field_name, f"{path}.source_equals field"),
+                _non_empty_string(expected, f"{path}.source_equals.{field_name}"),
+            )
+        )
+    date_field = value.get("source_date_field")
+    date_days = value.get("source_date_lte_days")
+    if (date_field is None) != (date_days is None):
+        raise ValueError(f"{path} source date selector is incomplete")
     return FanoutPolicy(
         strategy="dataset_field",
         parameter=_provider_parameter_name(value["parameter"], f"{path}.parameter"),
@@ -1061,6 +1094,27 @@ def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
             value["source_field"], f"{path}.source_field"
         ),
         batch_size=_positive_int(value["batch_size"], f"{path}.batch_size"),
+        source_equals=tuple(normalized_equals),
+        source_date_field=(
+            None
+            if date_field is None
+            else _provider_field_name(date_field, f"{path}.source_date_field")
+        ),
+        source_date_lte_days=(
+            None
+            if date_days is None
+            else _positive_int(date_days, f"{path}.source_date_lte_days")
+        ),
+        max_values=(
+            None
+            if value.get("max_values") is None
+            else _positive_int(value["max_values"], f"{path}.max_values")
+        ),
+        source_order=_choice(
+            value.get("source_order", "lexical"),
+            frozenset({"lexical", "stable_hash"}),
+            f"{path}.source_order",
+        ),
     )
 
 

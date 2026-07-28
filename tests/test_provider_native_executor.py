@@ -159,6 +159,34 @@ def test_fanout_values_are_typed_stably_deduplicated_and_batched() -> None:
     )
 
 
+def test_fanout_stable_hash_order_is_bounded_without_code_order_bias() -> None:
+    values = ("600000.SH", "000001.SZ", "601899.SH", "000858.SZ", "600519.SH")
+
+    first = _stable_fanout_batches(
+        values,
+        parameter="ts_code",
+        batch_size=2,
+        max_values=4,
+        source_order="stable_hash",
+    )
+    second = _stable_fanout_batches(
+        tuple(reversed(values)),
+        parameter="ts_code",
+        batch_size=2,
+        max_values=4,
+        source_order="stable_hash",
+    )
+
+    assert first == second
+    assert sum(len(batch.values) for batch in first) == 4
+    assert first != _stable_fanout_batches(
+        values,
+        parameter="ts_code",
+        batch_size=2,
+        max_values=4,
+    )
+
+
 def test_executor_sends_one_fanout_batch_as_one_comma_parameter() -> None:
     codes = tuple(f"0000{index:02d}.SZ" for index in range(1, 11))
     binding = _binding(
