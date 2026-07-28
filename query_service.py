@@ -17,7 +17,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from catalog_service import inspect_dataset_queryability, is_initial_release_eligible
 from provider_ingest_contract import provider_ingest_config_hash
-from provider_transport import provider_transport_profile
+from provider_transport import (
+    BINANCE_SPOT_DATA_PROVIDER,
+    TUSHARE_DATA_PROVIDER,
+    provider_transport_profile,
+)
 from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
 from query_contract import (
     QueryAccessContext,
@@ -1402,7 +1406,9 @@ def _runtime_metadata(
         transport_profile is not None
         and provider_config_hashes == expected_provider_config_hashes
     )
-    transport_profile_unverified = bool(providers) and not transport_profile_proven
+    transport_profile_unverified = bool(
+        providers & {TUSHARE_DATA_PROVIDER, BINANCE_SPOT_DATA_PROVIDER}
+    ) and not transport_profile_proven
     if transport_profile_unverified:
         lineage_complete = False
         allow_rows = False

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from collectors.binance.collector import BinanceSpotPublicCollector
+from collectors.binance.collector import BinanceSpotPublicCollector, _RejectRedirects
 from dataset_registry import (
     BINANCE_SPOT_CANARY_MODE,
     BINANCE_SPOT_CANARY_REGISTRY_PATH,
@@ -57,3 +55,10 @@ def test_binance_transport_is_credential_free_and_market_data_only() -> None:
     assert profile["credential_mode"] == "none"
     assert profile["market_data_only"] is True
     assert profile["transport_service"] == "binance_public_market_data"
+
+
+def test_binance_transport_rejects_redirects() -> None:
+    with pytest.raises(OSError, match="redirect rejected"):
+        _RejectRedirects().redirect_request(
+            None, None, 302, "Found", {}, "https://example.invalid/"
+        )

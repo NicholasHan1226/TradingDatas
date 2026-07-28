@@ -10,10 +10,29 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from collectors.tushare.tushare_common import ProviderCallOutcome, SensitiveScanBudget
 from provider_transport import BINANCE_SPOT_PUBLIC_API_URL
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """Keep the public market-data origin pinned to the frozen endpoint."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> Request | None:
+        del req, fp, code, msg, headers, newurl
+        raise OSError("public market-data redirect rejected")
+
+
+_PUBLIC_OPENER = build_opener(_RejectRedirects)
 
 
 def _rfc3339_to_ms(value: object) -> int:
@@ -73,9 +92,11 @@ class BinanceSpotPublicCollector:
             headers={"Accept": "application/json", "User-Agent": "TradingDatas-Crypto-Canary/1"},
             method="GET",
         )
-        with urlopen(request, timeout=10) as response:  # nosec B310: fixed HTTPS profile
+        with _PUBLIC_OPENER.open(request, timeout=10) as response:  # nosec B310
             if response.status != 200:
                 raise OSError("unexpected public market-data status")
+            if response.geturl() != request.full_url:
+                raise OSError("public market-data origin changed")
             return json.loads(response.read().decode("utf-8"))
 
     def _klines(self, params: dict[str, Any]) -> list[dict[str, Any]]:
