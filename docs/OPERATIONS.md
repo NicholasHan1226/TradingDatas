@@ -24,7 +24,11 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
 Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
 registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
-前，不在生产启用采集 timer。
+前，不在生产启用采集 timer。首次允许启用的例外只能是 `pilot_existing` 的固定
+10 只主板 `cn.dataset.rt_min` canary：每轮最多一次 provider 请求，仍服从 `intraday`
+预算和 receipt 事务；上游晚一根 bar 时如实保存实际 bar time，不声明低延迟或执行可用。
+回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
+release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
 
