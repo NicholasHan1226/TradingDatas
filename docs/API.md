@@ -98,6 +98,12 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 
 `metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低 `data_through`。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort 的完整 member receipt IDs；variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前 success rows。
 
+对允许为空的数据集，最新的完整 `empty` receipt 是“该请求窗口已在 `observed_at`
+检查且无行”的客观证据。其新鲜度按该 receipt 的观察时间计算，而不是按旧 success
+watermark；SLA 内返回 `runtime_state=empty`、`degraded=false`、
+`quality.valid=true` 和 `data=[]`，超过 SLA 才转为 `stale`。这不虚构 `data_through`：
+它仍保留最近完整 success watermark 或为 `null`。
+
 `lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
 `cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的三十只主板 canary。其身份为

@@ -32605,7 +32605,7 @@ contracts:
   api_name: stk_limit
   source_document_url: https://tushare.pro/wctapi/documents/183.md
   source_document_sha256: 81b85ae2a018d4898006ca4239cff719bf221216b90c8f102aa3e7be68ffd8e4
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: ts_code
     declared_source_type: str
@@ -32623,14 +32623,14 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -32655,21 +32655,23 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - trade_date
   - ts_code
   - pre_close
   - up_limit
   - down_limit
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: allowed
   required_scope: market_data
@@ -32691,10 +32693,20 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ts_code
+  - pre_close
+  - up_limit
+  - down_limit
   budgets:
-    max_batch_bytes: 67108864
+    max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
