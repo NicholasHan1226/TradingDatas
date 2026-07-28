@@ -48,9 +48,11 @@ closed。波次外的 active dataset 以
 `not_selected` 记录，global flock、planner/runtime budgets、retry、receipt 和公开输出
 redaction 均不变。
 
-省略 `--activation-wave` 时保持完整 scheduler 行为。当前 `pilot_existing` 只包含已有
-五个生产验证 dataset；它不是新增 entitlement、fresh probe 或启用 timer 的证据。fresh
-probe 审核完成前，不得把其它候选加入该清单。只读 plan 可按以下方式检查：
+省略 `--activation-wave` 时保持完整 scheduler 行为。当前 `pilot_existing` 包含三个已验证
+的日线/参考 dataset，以及固定 10 只主板的 `cn.dataset.rt_min` 5 分钟 canary。它不是新增
+entitlement、全市场分钟覆盖或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和
+receipt，不能把上游延迟伪装成实时数据。fresh probe 审核完成前，不得把其它候选加入该清单。
+只读 plan 可按以下方式检查：
 
 ```bash
 uv run --python 3.12 --with-requirements requirements.txt \

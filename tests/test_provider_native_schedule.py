@@ -1858,6 +1858,27 @@ def _activation_wave_manifest(
     return manifest
 
 
+def test_pilot_existing_wave_is_the_fixed_internal_minute_canary() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "pilot_existing",
+        registry=_active_registry(),
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset(
+        {
+            "cn.dataset.rt_min",
+            "cn.equity.daily",
+            "cn.equity.security_master",
+            "cn.market.trade_calendar",
+        }
+    )
+
+
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
 def test_current_only_requires_pilot_wave_before_database_access(
     activation_wave: str | None,
