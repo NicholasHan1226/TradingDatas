@@ -10,13 +10,13 @@ provenance:
     sha256: 2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 90351ce9fa86ebcfdbe038b30be71b30f27293924bc0e6adeadda69abbb1e6cb
+    sha256: 3a5f0c9e75c6a9c233c69a83d9e11ac38fac35e9852083ba1998370c092c24e8
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: d1b7c9447e1351a1ae194352630d00cc6fcb0a9a96c941b13a26398f54b4eeaf
+    sha256: fa97d8384e05e3f71573807d5e123f4e6a7d893536967a5bcd50dd5d11cbab5a
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: dc6aab13dd5ab6e5ace272a103e059e74bf730ff45382f2dc6737ff01320c5ec
+    sha256: 5cae16519890e6a390a937a13b6a11d3e0b948ff557e629ddafa45bdd1dd824b
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -67,10 +67,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 139
-  probe_blocked: 51
-  ingest_contract_ready: 124
-  ingest_contract_blocked: 66
+  probe_executable: 140
+  probe_blocked: 50
+  ingest_contract_ready: 125
+  ingest_contract_blocked: 65
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -2729,24 +2729,20 @@ entries:
   scope_labels:
   - all
   - gaps
-  transport_observation_class: schema_subset
-  request_shape: entity_fanout
-  probe_state: blocked
-  probe_block_reasons:
-  - dependency_seed_receipt_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - dependency_seed_receipt_unresolved
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters:
     freq:
       source: literal
-      value: 1MIN
+      value: 5MIN
     ts_code:
-      source: dataset_field
-      dataset_id: cn.equity.security_master
-      field: ts_code
-      requires_fresh_success_receipt: true
+      source: literal
+      value: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH
   row_limit_observation: null
 - api_name: rt_min_daily
   scope_labels:

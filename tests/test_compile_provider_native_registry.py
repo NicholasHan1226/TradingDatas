@@ -654,8 +654,11 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert sum(
         dataset.provider_bindings[0].activation_state == "active"
         for dataset in loaded.datasets
-    ) == 30
-    assert output.read_bytes() != before[TARGET_PATH]
+    ) == 101
+    # The checked-in target is already the current compiled registry.  The
+    # external preactivation compile must be reproducible rather than mutate
+    # or manufacture a second registry variant.
+    assert output.read_bytes() == before[TARGET_PATH]
     assert before == {path: path.read_bytes() for path in protected_release_paths}
 
 

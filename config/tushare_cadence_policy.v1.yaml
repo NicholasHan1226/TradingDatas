@@ -688,7 +688,7 @@ entries:
   cadence_class: session_minute
   freshness_sla_seconds: 300
   source_document_sha256: ede04579484e3a509dfd2e5afadebaebfb069eb02fc46c739e345911fded1e00
-  reason_code: doc_explicit_session_minute
+  reason_code: reviewed_contract_exact
 - api_name: rt_min_daily
   cadence_class: session_minute
   freshness_sla_seconds: 300

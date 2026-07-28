@@ -145,9 +145,9 @@ def test_frozen_matrix_identity_and_classifications_cover_190_once() -> None:
         == "blocked_until_safe_pre_request_dns_failover_is_implemented_and_verified"
     )
     expected_counts = {
-        "validated_contract_match": 145,
+        "validated_contract_match": 146,
         "numeric_field_repaired": 4,
-        "schema_subset": 17,
+        "schema_subset": 16,
         "quality_anomaly": 1,
         "empty": 3,
         "permission_denied": 14,
@@ -239,7 +239,7 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
     candidates = set(observations["validated_contract_match"]) | set(
         observations["numeric_field_repaired"]
     )
-    assert len(candidates) == 149
+    assert len(candidates) == 150
     for api_name in candidates - active:
         binding = bindings[api_name]["provider_bindings"][0]  # type: ignore[index]
         assert binding["entitlement_state"] == "active"
@@ -274,7 +274,7 @@ def test_schema_subset_removes_only_observed_non_structural_fields() -> None:
     assert isinstance(classifications, dict)
     subsets = classifications["schema_subset"]
     assert isinstance(subsets, dict)
-    assert len(subsets) == 17
+    assert len(subsets) == 16
 
     for api_name, missing_fields in subsets.items():
         source = source_by_api[api_name]

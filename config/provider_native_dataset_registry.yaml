@@ -26222,7 +26222,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: session_minute
   timezone: Asia/Shanghai
   freshness_sla_seconds: 300
@@ -26232,13 +26232,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_min
     entitlement_state: active
-    activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -26248,26 +26246,36 @@ datasets:
     - name: ts_code
       declared_source_type: str
       required: true
-    request_shape: entity_fanout
+    request_shape: snapshot_or_date_range
     request_template:
-      freq: 1MIN
+      freq: 5MIN
+      ts_code: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH
     request_variants:
     - {}
     fanout:
-      strategy: dataset_field
-      parameter: ts_code
-      source_dataset_id: cn.equity.security_master
-      source_field: ts_code
-      batch_size: 1
+      strategy: none
     pagination:
       strategy: none
     request_window_policy: null
-    response_completeness: null
-    requested_fields: []
-    max_batch_bytes: 67108864
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        freq: freq
+      reject_at_row_limit: true
+    requested_fields:
+    - ts_code
+    - freq
+    - time
+    - open
+    - high
+    - low
+    - close
+    - vol
+    - amount
+    max_batch_bytes: 4194304
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 100
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -26275,19 +26283,25 @@ datasets:
     storage_kind: provider_native_rows
     row_key_strategy: payload_hash
   fields:
-  - name: time
+  - name: ts_code
     logical_type: text
-    nullable: true
-    selectable: true
-    filterable: false
-    sortable: false
-  - name: open
-    logical_type: float
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  - name: close
+  - name: freq
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
     logical_type: float
     nullable: true
     selectable: true
@@ -26305,6 +26319,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
+  - name: close
+    logical_type: float
+    nullable: true
+    selectable: true
+    filterable: true
+    sortable: true
   - name: vol
     logical_type: float
     nullable: true
@@ -26317,13 +26337,16 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - time
   default_projection:
+  - ts_code
   - time
   - open
-  - close
   - high
   - low
+  - close
   - vol
   - amount
   as_of_field: null

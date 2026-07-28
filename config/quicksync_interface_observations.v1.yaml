@@ -120,6 +120,7 @@ classifications:
   - report_rc
   - repurchase
   - research_report
+  - rt_min
   - sf_month
   - sge_basic
   - sge_daily
@@ -260,8 +261,6 @@ classifications:
     opt_basic:
     - symbol
     - opt_multiplier
-    rt_min:
-    - code
     st:
     - st_type
     stk_factor:
@@ -383,6 +382,7 @@ active_evidence:
   report_rc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native
   research_report: server-evidence/20260722TQkgWsk-1def337-provider-native
+  rt_min: mcp-evidence/20260727T161911Z-rt-min-5min-10-mainboard
   sf_month: server-evidence/20260727T091112Z-periodic-window-probe-r2
   sge_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   share_float: server-evidence/20260722TQkgWsk-1def337-provider-native
