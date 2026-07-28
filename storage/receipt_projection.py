@@ -1556,7 +1556,11 @@ def _project_dataset_runtime(
                 )
             except ValueError:
                 data_through_utc = None
-            if data_through_utc is not None and data_through_utc > now_utc:
+            if (
+                data_through_utc is not None
+                and data_through_utc > now_utc
+                and dataset.entity_type != "trade_calendar"
+            ):
                 invalid.append(
                     _InvalidReceipt(
                         "data_through_in_future",
@@ -1774,7 +1778,11 @@ def _trusted_receipts_for_evidence(
                 )
             except ValueError:
                 data_through_utc = None
-            if data_through_utc is not None and data_through_utc > now_utc:
+            if (
+                data_through_utc is not None
+                and data_through_utc > now_utc
+                and dataset.entity_type != "trade_calendar"
+            ):
                 invalid.append(
                     _InvalidReceipt(
                         "data_through_in_future",
