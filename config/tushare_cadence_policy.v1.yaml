@@ -548,7 +548,7 @@ entries:
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 4e870d03b37fba566ef4e8f0e540610f057a22d9238a8ecdc23b10961306ab06
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_hsgt
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -558,17 +558,17 @@ entries:
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 2bf371f716967ba19f11c1497f5387b82a3f1c1c6606d377e11e38ca4bf95272
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_ind_ths
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: ba8d336b014cf6b34c913f0e1c0c0e81b9ac39437075e53f7c3be93b4be06930
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_mkt_dc
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: db7738a45c769aca6fdecd5937d8d5a3dc240648503c9d0015979bcb467ab0ff
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_ths
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
