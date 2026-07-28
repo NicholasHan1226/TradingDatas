@@ -1686,6 +1686,31 @@ def test_future_data_through_fails_closed(
     assert projection.reasons == ("data_through_in_future",)
 
 
+def test_trade_calendar_allows_next_known_calendar_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="calendar-next-known-day",
+        started_at="2026-07-28T06:00:00+00:00",
+        finished_at="2026-07-28T06:01:00+00:00",
+        data_through="2026-07-29T00:00:00+08:00",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        replace(_dataset(), entity_type="trade_calendar"),
+        now=datetime(2026, 7, 28, 6, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.receipt_id == receipt_id
+
+
 def test_receipt_and_data_through_equal_to_now_are_allowed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
