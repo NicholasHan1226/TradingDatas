@@ -1,12 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-28 17:50 CST。
+最后更新：2026-07-28 19:21 CST。
 
-## 当前事实快照（2026-07-28 17:50 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 19:21 CST，优先于以下历史记录）
 
-- production `current` 为 `4d5c3e9f296b0fc3a887b6fb40fc4a1b7fc5c2bd`；正式内部 API
-  只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active。
-- formal catalog 为 `v1-c9cf1c5e8e93e632`。它仍含 190 个 runtime datasets；catalog 可发现性
+- production `current` 为 `09695d5acc4d8c9da983505c89bec88a34248deb`；immutable manifest
+  已按 commit/tree/blob/owner/mode 复核通过。正式内部 API 只提供 `GET /v1/catalog` 与
+  `POST /v1/query`，`tradingdatas-v1-internal.service` active；通用 collector timer 为
+  enabled/active。没有切换 8082、TradingAgent timer、broker 或真实交易。
+- formal catalog 为 `v1-5fcc50c656800909`，含 190 个 runtime datasets（101 active、89 paused）；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
@@ -15,6 +17,11 @@
   精确 `time=2026-07-28 15:00:00` query 读回为 30/30，且
   `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。500 扩容候选保持隔离暂停，
   不能影响这 30 只 canary 的最近成功 receipt 或 timer。
+- `cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs` 已在 schema-2
+  合同中冻结日分区和真实 primary key，并经 production SQLite receipt 与 TradingAgent UID987
+  的正式 18082 bounded query 读回为 `ready/success/fresh/valid/non-degraded`、receipt/lineage
+  完整。`09695d5` 的这三项修复不会把其它 active dataset 的 `partial`、`stale`、`empty`、
+  `failed` 或 `paused` 状态伪装为 ready；其余数据集仍必须按每次 envelope fail closed。
 - schema-2 的通用直接窗口已正式 readback：`adj_factor(20260727)`、
   `stk_auction(20260728)`、`stk_limit(20260728)` 均为
   `ready/success/fresh/valid/non-degraded` 且有 receipt/lineage；
