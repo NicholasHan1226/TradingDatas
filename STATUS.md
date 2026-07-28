@@ -1,26 +1,31 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 00:22 CST。
+最后更新：2026-07-29 01:15 CST。
 
-## 当前事实快照（2026-07-29 00:22 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-29 01:15 CST，优先于以下历史记录）
 
-- A 股 ECS `i-7xv38klbo04losfsa551` 已在 2026-07-29 00:00 CST 到期并处于
-  `Stopped`（financial lock）；SSH 与 Cloud Assistant 的生产命令均不可执行。因此当前没有
-  active API、timer 或 collector 可被误报为生产运行，新的 release/recollection 必须等待实例
-  恢复后重新 preflight。最后一次服务器 readback 的 on-disk `current` 为
-  `80a7591ae44df7a068873b303f7b0ed437728f4d`，但它不是当前运行证明。
-- ECS 停止前，正式内部 API 只提供 `GET /v1/catalog` 与 `POST /v1/query`，
-  `tradingdatas-v1-internal.service` active，通用 collector timer enabled/active；没有切换
-  8082、TradingAgent timer、broker 或真实交易。
-- 最后一次正式 catalog readback 为 `v1-96bffb64b01f3acd`，仍含 190 个 runtime datasets；catalog 可发现性
-  或 HTTP 200 不等同于数据完整或可消费。
+- A 股 ECS `i-7xv38klbo04losfsa551` 续费并重新启动后，正式 TradingDatas immutable
+  `current` 已从已验证回滚点 `80a7591ae44df7a068873b303f7b0ed437728f4d` 原子切换到
+  `768ba2fdabe14a9c7f066a61f528a0fffe7a69d5`；两份 manifest 均由 trusted verifier
+  读回，目标为 125 files。切换前 API/collector inactive、timer disabled；切换后
+  `tradingdatas-v1-internal.service` active、18082 loopback 监听，通用 collector timer
+  enabled/active。SQLite facts、receipts 和旧 8082 均未被覆盖或切换。
+- 重启后，TradingAgent 的 tmpfiles 配置含字面量 `\\n`，未重建 `/run` 下的只读 leaf。
+  已保留原配置证据、修正为 leaf-only `C` 规则，并在服务器本地重新注册独立的
+  `tradingagent` read token；持久源与 runtime leaf 均为单链接 regular `0600`，runtime
+  owner 为 `tradingagent:tradingagent`。明文与 hash 均未输出。以该 UID 认证 catalog
+  readback 成功。
+- 最新正式 catalog 为 `v1-1e4560099e58a89e`，含 190 个 runtime datasets；运行投影为
+  65 `success`、28 `empty`、7 `stale`、1 `failed`、89 `paused`。catalog 可发现性或
+  HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
-- 正式 catalog 当前为 101 个 active / 89 个 paused。最新 automatic cycle 用既有 generic
-  runner 在约 137 秒完成：48 个 success、7 个合法 empty、0 个 failed；其余 166 个按
-  `not_due`、`on_demand`、`paused` 或既有 receipt authority 诚实跳过。另有 69 个
-  on-demand dataset 的一次受控首轮 batch：43 个 success、25 个合法 empty、1 个 provider
-  failure。它们都不自动等同于 `ready`；每个内部消费者仍只以正式 query metadata 决定可用性。
+- 12 项已观测到 QuickSync 稳定响应差异的数据集（公告、备用基础、可转债、东方财富、
+  结算、资金流、管理层、同花顺和龙虎榜）已在 schema major 2 下通过同一 generic bounded
+  batch 重采。每项都返回 provider success、SQLite transaction receipt、18082 bounded
+  query row 与 complete lineage。它们当前仍诚实返回 `partial/degraded`：这些官方合同
+  尚未声明可证明的 identity、完整性及业务水位，不能因有行就伪报 `ready`；这是后续合同
+  工作，不影响已保存的 facts/receipts。
 - 隔离 Crypto production `current` 为
   `24298b22f0bbd4a5746514dac96c92e59b8f3011`；`127.0.0.1:18083` API active，
   catalog `v1-e7ea3dd714066d3c` 只含 BTCUSDT/ETHUSDT 的 5 分钟 bar 与公开
