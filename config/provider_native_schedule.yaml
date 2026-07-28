@@ -29,7 +29,7 @@ cadences:
       date_field: cal_date
       open_field: is_open
       open_values: [1]
-    minimum_interval_seconds: 300
+    minimum_interval_seconds: 270
     failure_retry_seconds: 120
     correction_overlap_days: 0
     correction_overlap_bars: 1

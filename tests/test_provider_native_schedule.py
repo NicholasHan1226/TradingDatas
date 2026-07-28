@@ -1954,6 +1954,53 @@ def test_pilot_existing_wave_is_the_fixed_internal_minute_canary() -> None:
     )
 
 
+def test_minute_canary_is_due_before_the_next_jittered_timer_tick(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 5-minute timer must not skip the next bar after normal completion lag."""
+
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.dataset.rt_min",
+            status="success",
+            started_at="2026-07-28T02:45:01Z",
+            finished_at="2026-07-28T02:45:07Z",
+            request_window={},
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.dataset.rt_min",
+            receipt,
+            "2026-07-28 10:40:00",
+            {"ts_code": "600000.SH", "time": "2026-07-28 10:40:00"},
+        )
+        conn.commit()
+
+    state = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=datetime(2026, 7, 28, 10, 50, 4, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=datetime(2026, 7, 28, 10, 50, 4, tzinfo=ZoneInfo("Asia/Shanghai")),
+        selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+        current_only=True,
+    )
+
+    assert [plan.dataset_id for plan in plans] == ["cn.dataset.rt_min"]
+    assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
+
+
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
 def test_current_only_requires_pilot_wave_before_database_access(
     activation_wave: str | None,
