@@ -1377,7 +1377,12 @@ def _runtime_metadata(
     if current_complete:
         providers.update(evidence.current_providers)
         provider_config_hashes.update(evidence.current_provider_config_hashes)
-    if allow_rows and prior_complete:
+    # A current successful receipt is the authority for the current complete
+    # partition.  Older successful receipts can legitimately have a different
+    # config hash after a schema-major contract correction; folding them into
+    # the current transport proof would incorrectly degrade an otherwise
+    # verified current response.  Stale fallback still binds both cohorts.
+    if allow_rows and prior_complete and state != "success":
         providers.update(evidence.last_success_providers)
         provider_config_hashes.update(evidence.last_success_provider_config_hashes)
     if not lineage_complete:

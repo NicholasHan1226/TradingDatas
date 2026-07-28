@@ -324,6 +324,65 @@ contracts:
       max_batch_bytes: 16777216
       max_nesting_depth: 16
     reviewed_type_overrides: []
+  - dataset_id: cn.dataset.suspend_d
+    aliases: [tushare.suspend_d]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: suspend_d
+    source_document_url: https://tushare.pro/wctapi/documents/214.md
+    source_document_sha256: 707658b197e7e31a2c0fccaff773c6a0b36e2bab746780feccbb3d1d8c18b8ec
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: suspend_timing, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: suspend_type, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code, trade_date]
+    default_projection: [ts_code, trade_date, suspend_timing, suspend_type]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: event
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 900
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+      - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys: [trade_date]
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: [ts_code, trade_date, suspend_timing, suspend_type]
+    budgets:
+      max_rows_per_attempt: 10000
+      max_payload_bytes_per_row: 65536
+      max_batch_bytes: 16777216
+      max_nesting_depth: 16
+    reviewed_type_overrides: []
   - dataset_id: cn.dataset.index_classify
     aliases: [tushare.index_classify]
     domain: provider_data

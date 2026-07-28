@@ -32732,7 +32732,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 900
@@ -32782,9 +32782,18 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
-    max_batch_bytes: 67108864
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - suspend_timing
+    - suspend_type
+    max_batch_bytes: 16777216
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
@@ -32797,13 +32806,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -32819,16 +32828,18 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
   - suspend_timing
   - suspend_type
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
