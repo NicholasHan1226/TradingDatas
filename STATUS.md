@@ -2,9 +2,9 @@
 
 最后更新：2026-07-28。
 
-## 当前事实快照（2026-07-28 14:40 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 14:45 CST，优先于以下历史记录）
 
-- production `current` 为 `3e065817ae8b7dfb27ffb0d081cb02a41e2eba4a`；正式内部 API
+- production `current` 为 `e4d86a966e082067091358e39961a3f86b4599b6`；正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active。
 - formal catalog 为 `v1-541b1314702f4897`。它仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
