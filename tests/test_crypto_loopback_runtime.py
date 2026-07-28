@@ -39,6 +39,21 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     assert "18083" in profile
     assert "tradingdatas-crypto" in api + collector
     assert "/opt/investment-data/tradingdatas-crypto" in api + collector + profile
+    assert "/opt/investment/releases/tradingdatas/current" not in api + collector
+    assert "/opt/investment/releases/tradingdatas-crypto/current" in api + collector
     assert "TRADINGDATAS_CANARY_MODE=binance_spot_v1" in profile
     assert "tradingdatas-crypto-binance-collect.service" in timer
     assert "quicksync" not in collector.lower()
+
+
+def test_crypto_api_has_no_mutable_runtime_environment_override() -> None:
+    api = (ROOT / "deploy/systemd/tradingdatas-crypto-v1-internal.service").read_text()
+
+    assert "/etc/tradingdatas-crypto/internal-api.env" not in api
+    assert api.count("EnvironmentFile=") == 1
+    assert (
+        "EnvironmentFile=/opt/investment/releases/tradingdatas-crypto/current/"
+        "deploy/crypto/tradingdatas_crypto_internal.env"
+    ) in api
+    assert 'Environment="TRADINGDATAS_TOKEN_HASH_FILE=' in api
+    assert 'Environment="TRADINGDATAS_TOKEN_SALT_FILE=' in api

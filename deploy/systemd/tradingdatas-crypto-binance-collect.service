@@ -8,11 +8,11 @@ ConditionPathExists=/opt/investment-data/tradingdatas-crypto/read_model/provider
 Type=oneshot
 User=tradingdatas-crypto
 Group=tradingdatas-crypto
-WorkingDirectory=/opt/investment/releases/tradingdatas/current
-EnvironmentFile=/opt/investment/releases/tradingdatas/current/deploy/crypto/tradingdatas_crypto_internal.env
+WorkingDirectory=/opt/investment/releases/tradingdatas-crypto/current
+EnvironmentFile=/opt/investment/releases/tradingdatas-crypto/current/deploy/crypto/tradingdatas_crypto_internal.env
 Environment="PYTHONDONTWRITEBYTECODE=1"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/run_binance_spot_canary.py --db-path /opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite --lock-path /run/tradingdatas-crypto/collect.lock --execute
+ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas-crypto/current/tools/run_binance_spot_canary.py --db-path /opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite --lock-path /run/tradingdatas-crypto/collect.lock --execute
 TimeoutStartSec=10min
 UMask=0077
 RuntimeDirectory=tradingdatas-crypto
