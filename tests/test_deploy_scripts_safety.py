@@ -16,6 +16,10 @@ def test_deploy_tree_contains_only_the_internal_v1_service_surface() -> None:
     }
 
     assert files == {
+        "crypto/tradingdatas_crypto_internal.env",
+        "systemd/tradingdatas-crypto-binance-collect.service",
+        "systemd/tradingdatas-crypto-binance-collect.timer",
+        "systemd/tradingdatas-crypto-v1-internal.service",
         "systemd/tradingdatas-provider-native-collect.service",
         "systemd/tradingdatas-provider-native-collect.timer",
         "systemd/tradingdatas-v1-internal.service",
