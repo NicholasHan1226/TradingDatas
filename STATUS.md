@@ -1,14 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-28 23:00 CST。
+最后更新：2026-07-29 00:22 CST。
 
-## 当前事实快照（2026-07-28 23:00 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-29 00:22 CST，优先于以下历史记录）
 
-- A 股 production `current` 为 `80a7591ae44df7a068873b303f7b0ed437728f4d`；immutable
-  release 经服务器 `current` 指针、service 与 timer readback 核对，正式内部 API
-  只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active，
-  通用 collector timer enabled/active。没有切换 8082、TradingAgent timer、broker 或真实交易。
-- A 股 formal catalog 为 `v1-96bffb64b01f3acd`。它仍含 190 个 runtime datasets；catalog 可发现性
+- A 股 ECS `i-7xv38klbo04losfsa551` 已在 2026-07-29 00:00 CST 到期并处于
+  `Stopped`（financial lock）；SSH 与 Cloud Assistant 的生产命令均不可执行。因此当前没有
+  active API、timer 或 collector 可被误报为生产运行，新的 release/recollection 必须等待实例
+  恢复后重新 preflight。最后一次服务器 readback 的 on-disk `current` 为
+  `80a7591ae44df7a068873b303f7b0ed437728f4d`，但它不是当前运行证明。
+- ECS 停止前，正式内部 API 只提供 `GET /v1/catalog` 与 `POST /v1/query`，
+  `tradingdatas-v1-internal.service` active，通用 collector timer enabled/active；没有切换
+  8082、TradingAgent timer、broker 或真实交易。
+- 最后一次正式 catalog readback 为 `v1-96bffb64b01f3acd`，仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
   消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
