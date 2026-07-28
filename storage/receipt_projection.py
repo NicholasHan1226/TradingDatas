@@ -1581,13 +1581,18 @@ def _project_dataset_runtime(
         key=_success_sort_key,
         default=None,
     )
+    public_success_watermark = (
+        last_success.finished_at
+        if dataset.entity_type == "trade_calendar" and last_success is not None
+        else (last_success.data_through if last_success else None)
+    )
     if invalid:
         failure = max(invalid, key=_invalid_receipt_sort_key)
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,
             state="failed",
             degraded=True,
-            data_through=last_success.data_through if last_success else None,
+            data_through=public_success_watermark,
             observed_at=failure.observed_at,
             receipt_id=failure.receipt_id,
             reasons=(failure.reason,),
@@ -1615,7 +1620,7 @@ def _project_dataset_runtime(
 
     latest = _latest_run_terminal(dataset, receipts)
     representative = latest.representative
-    data_through = None if last_success is None else last_success.data_through
+    data_through = public_success_watermark
     if latest.status == "failed":
         return DatasetRuntimeProjection(
             dataset_id=dataset.dataset_id,

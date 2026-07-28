@@ -1709,6 +1709,7 @@ def test_trade_calendar_allows_next_known_calendar_day(
     assert projection.state == "success"
     assert projection.degraded is False
     assert projection.receipt_id == receipt_id
+    assert projection.data_through == "2026-07-28T06:01:00+00:00"
 
 
 def test_receipt_and_data_through_equal_to_now_are_allowed(
