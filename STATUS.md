@@ -2,9 +2,9 @@
 
 最后更新：2026-07-28。
 
-## 当前事实快照（2026-07-28 14:20 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 14:40 CST，优先于以下历史记录）
 
-- production `current` 为 `be72ebe635c84665c5ea1c34d37443039f976652`；正式内部 API
+- production `current` 为 `3e065817ae8b7dfb27ffb0d081cb02a41e2eba4a`；正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active。
 - formal catalog 为 `v1-541b1314702f4897`。它仍含 190 个 runtime datasets；catalog 可发现性
   或 HTTP 200 不等同于数据完整或可消费。
@@ -17,6 +17,10 @@
   `ready/success/fresh/valid/non-degraded` 且有 receipt/lineage；
   `suspend_d(20260728)` 是 `empty/valid/non-degraded` 的合法空结果，也有 receipt/lineage。
   这些状态不推断其它 dataset 的权限、完整性或自动调度就绪。
+- `cn.market.trade_calendar(exchange=SSE, cal_date=20260729)` 已由通用 collector 写入并经
+  正式 query 返回 `is_open=1`、`pretrade_date=20260728` 与
+  `ready/success/fresh/valid/non-degraded` metadata。交易日历可返回 provider 已发布的未来
+  日期；receipt 执行时间仍不得在未来，其他 dataset 仍对 future `data_through` fail closed。
 - `REAL_TRADING_ENABLED=false`；没有启用 TradingAgent timer、broker 或真实交易。本文下方
   仅保留追溯记录；若与本快照冲突，以本快照和本轮正式 API/readback 为准。
 
