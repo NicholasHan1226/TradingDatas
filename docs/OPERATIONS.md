@@ -32,6 +32,8 @@ release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或
 
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
 
+收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。
+
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用
 `/run/tradingdatas/collect.lock`；这种调用绕过 systemd，运行账号无权创建 `/run` 子目录。

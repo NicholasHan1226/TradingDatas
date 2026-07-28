@@ -361,6 +361,31 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
     assert all(plan.provider for plan in plans)
 
 
+def test_planner_skips_only_dataset_with_invalid_receipt_authority() -> None:
+    registry = _active_registry()
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    now = datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    state = cadence_planner.PlannerState(
+        MappingProxyType({}),
+        MappingProxyType({("cn.equity.daily", "tushare"): ("receipt_timestamp_in_future",)}),
+    )
+
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset({"cn.equity.daily", "cn.equity.security_master"}),
+    )
+
+    assert all(plan.dataset_id != "cn.equity.daily" for plan in plans)
+    assert any(
+        item.dataset_id == "cn.equity.daily"
+        and item.state == "invalid_receipt_authority"
+        for item in skips
+    )
+
+
 @pytest.mark.parametrize(
     ("format_name", "cadence_class", "partition_frequency", "expected"),
     [
@@ -755,7 +780,7 @@ def test_complete_recent_variant_cohort_is_not_due(
     assert skipped["cn.equity.security_master"] == "not_due"
 
 
-def test_tampered_success_receipt_fails_planner_closed(
+def test_tampered_success_receipt_blocks_only_its_dataset(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -792,14 +817,26 @@ def test_tampered_success_receipt_fails_planner_closed(
         )
         conn.commit()
 
-    with pytest.raises(RuntimeError, match="planner authority"):
-        scheduler.run_schedule(
-            registry=registry,
-            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
-            db_path=db_path,
-            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
-            execute=False,
-        )
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+
+    assert result.mode == "plan"
+    assert any(
+        item.dataset_id == "cn.equity.daily"
+        and item.state == "invalid_receipt_authority"
+        for item in result.skipped
+    )
+    assert all(plan.dataset_id != "cn.equity.daily" for plan in result.plans)
+    assert not any(
+        item.dataset_id == "cn.equity.security_master"
+        and item.state == "invalid_receipt_authority"
+        for item in result.skipped
+    )
 
 
 def test_failed_receipt_uses_short_retry_not_success_interval(
@@ -863,7 +900,7 @@ def test_failed_receipt_still_obeys_retry_backoff(
     assert skipped["cn.equity.daily"] == "not_due"
 
 
-def test_weak_receipt_envelope_fails_planner_closed(
+def test_weak_receipt_envelope_blocks_only_its_dataset(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -889,14 +926,26 @@ def test_weak_receipt_envelope_fails_planner_closed(
             ),
         )
 
-    with pytest.raises(RuntimeError, match="planner authority"):
-        scheduler.run_schedule(
-            registry=registry,
-            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
-            db_path=db_path,
-            now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
-            execute=False,
-        )
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+
+    assert result.mode == "plan"
+    assert any(
+        item.dataset_id == "cn.equity.daily"
+        and item.state == "invalid_receipt_authority"
+        for item in result.skipped
+    )
+    assert all(plan.dataset_id != "cn.equity.daily" for plan in result.plans)
+    assert not any(
+        item.dataset_id == "cn.equity.security_master"
+        and item.state == "invalid_receipt_authority"
+        for item in result.skipped
+    )
 
 
 def test_missing_calendar_skips_postclose_without_guessing_market_holidays(
@@ -1315,9 +1364,23 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
             _seed_daily(
                 monkeypatch, conn, registry, day, finished_at="2026-07-20T08:45:00Z"
             )
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    standard = schedule.rate_budgets["standard"]
+    unconstrained = replace(
+        schedule,
+        rate_budgets={
+            **schedule.rate_budgets,
+            "standard": replace(
+                standard,
+                account_requests_per_run=1_000,
+                provider_requests_per_run=1_000,
+                api_requests_per_run=1_000,
+            ),
+        },
+    )
     result = scheduler.run_schedule(
         registry=registry,
-        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        schedule=unconstrained,
         db_path=db_path,
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
         execute=False,
@@ -1589,9 +1652,22 @@ def test_correction_overlap_and_api_budget_are_bounded(
                     monkeypatch, conn, registry, day, finished_at="2026-07-18T09:00:00Z"
                 )
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    budget = schedule.rate_budgets["standard"]
+    unconstrained = replace(
+        schedule,
+        rate_budgets={
+            **schedule.rate_budgets,
+            "standard": replace(
+                budget,
+                account_requests_per_run=1_000,
+                provider_requests_per_run=1_000,
+                api_requests_per_run=1_000,
+            ),
+        },
+    )
     result = scheduler.run_schedule(
         registry=registry,
-        schedule=schedule,
+        schedule=unconstrained,
         db_path=db_path,
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
         execute=False,
@@ -1602,7 +1678,6 @@ def test_correction_overlap_and_api_budget_are_bounded(
         ("20260717", "correction"),
     ]
 
-    budget = schedule.rate_budgets["standard"]
     constrained = replace(
         schedule,
         rate_budgets={
@@ -2178,6 +2253,7 @@ def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -
     )
     assert pilot.dataset_ids == frozenset(
         {
+            "cn.dataset.rt_min",
             "cn.equity.daily",
             "cn.equity.security_master",
             "cn.market.trade_calendar",

@@ -286,6 +286,19 @@ class ValidatedReceiptHistoryEntry:
 
 
 @dataclass(frozen=True)
+class ValidatedReceiptHistories:
+    """Dataset-scoped planner authority derived from immutable receipts.
+
+    A malformed receipt must make *its own* dataset unavailable.  It must not
+    attest to, or prevent planning for, unrelated datasets sharing the same
+    SQLite read model.
+    """
+
+    entries_by_dataset: Mapping[str, tuple[ValidatedReceiptHistoryEntry, ...]]
+    failures_by_dataset: Mapping[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
 class _Receipt:
     receipt_id: str
     attempt_id: str
@@ -750,6 +763,13 @@ def _validate_receipt_row(
     if not scanned.receipt_like:
         return None
     if scanned.invalid is not None:
+        source = scanned.raw[9]
+        if (
+            type(source) is str
+            and source in known_dataset_ids
+            and source != dataset.dataset_id
+        ):
+            return None
         return scanned.invalid
     payload = scanned.payload
     assert payload is not None
@@ -774,6 +794,12 @@ def _validate_receipt_row(
     receipt_id = run_id if type(run_id) is str else None
     observed_at = finished_at if type(finished_at) is str else None
 
+    if (
+        type(source) is str
+        and source in known_dataset_ids
+        and source != dataset.dataset_id
+    ):
+        return None
     if payload.get("schema_version") != RECEIPT_SCHEMA_VERSION:
         return _InvalidReceipt("unknown_receipt_schema", receipt_id, observed_at)
     if not _related_to_dataset(payload, source, dataset.dataset_id):
@@ -1756,13 +1782,13 @@ def _trusted_receipts_for_evidence(
     return current_receipts, invalid
 
 
-def validated_receipt_history(
+def validated_receipt_histories_by_dataset(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     *,
     now: datetime,
-) -> tuple[ValidatedReceiptHistoryEntry, ...]:
-    """Return fully validated receipt history or fail closed on any invalid row."""
+) -> ValidatedReceiptHistories:
+    """Return immutable planner history and dataset-local authority failures."""
 
     if not isinstance(conn, sqlite3.Connection):
         raise TypeError("conn must be sqlite3.Connection")
@@ -1771,8 +1797,8 @@ def validated_receipt_history(
     _canonical_now(now)
     known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
     rows = _scan_ingest_run_rows(conn)
-    entries: list[ValidatedReceiptHistoryEntry] = []
-    invalid: list[_InvalidReceipt] = []
+    entries_by_dataset: dict[str, tuple[ValidatedReceiptHistoryEntry, ...]] = {}
+    failures_by_dataset: dict[str, tuple[str, ...]] = {}
     for dataset in registry.datasets:
         receipts, rejected = _trusted_receipts_for_evidence(
             dataset,
@@ -1781,7 +1807,11 @@ def validated_receipt_history(
             rows=rows,
             expected_binding=None,
         )
-        invalid.extend(rejected)
+        if rejected:
+            failures_by_dataset[dataset.dataset_id] = tuple(
+                sorted({item.reason for item in rejected})
+            )
+            continue
         by_execution: dict[str, list[_Receipt]] = {}
         for receipt in receipts:
             by_execution.setdefault(receipt.execution_id, []).append(receipt)
@@ -1789,7 +1819,7 @@ def validated_receipt_history(
             execution_id: _variant_cohort_terminal(dataset, members).status
             for execution_id, members in by_execution.items()
         }
-        entries.extend(
+        entries_by_dataset[dataset.dataset_id] = tuple(
             ValidatedReceiptHistoryEntry(
                 dataset_id=dataset.dataset_id,
                 provider=receipt.provider,
@@ -1804,18 +1834,43 @@ def validated_receipt_history(
             )
             for receipt in receipts
         )
-    if invalid:
+    return ValidatedReceiptHistories(
+        entries_by_dataset=MappingProxyType(
+            {
+                dataset_id: tuple(
+                    sorted(
+                        entries,
+                        key=lambda entry: (
+                            entry.provider,
+                            entry.finished_at,
+                            entry.receipt_id,
+                        ),
+                    )
+                )
+                for dataset_id, entries in sorted(entries_by_dataset.items())
+            }
+        ),
+        failures_by_dataset=MappingProxyType(
+            dict(sorted(failures_by_dataset.items()))
+        ),
+    )
+
+
+def validated_receipt_history(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    *,
+    now: datetime,
+) -> tuple[ValidatedReceiptHistoryEntry, ...]:
+    """Return fully validated receipt history or fail closed on any invalid row."""
+
+    histories = validated_receipt_histories_by_dataset(conn, registry, now=now)
+    if histories.failures_by_dataset:
         raise RuntimeProjectionError("receipt history contains invalid authority")
     return tuple(
-        sorted(
-            entries,
-            key=lambda entry: (
-                entry.dataset_id,
-                entry.provider,
-                entry.finished_at,
-                entry.receipt_id,
-            ),
-        )
+        entry
+        for entries in histories.entries_by_dataset.values()
+        for entry in entries
     )
 
 

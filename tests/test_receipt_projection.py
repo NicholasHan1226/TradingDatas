@@ -78,14 +78,16 @@ def _insert_receipt(
     transaction_index: int = 0,
     request_identity: ProviderRequestIdentity | None = None,
     request_window: dict[str, str] | None = None,
+    dataset_id: str = "cn.equity.daily",
+    provider_api: str = "daily",
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
     binding = _dataset().provider_bindings[0]
     context = IngestContext(
         attempt_id=attempt_id,
-        dataset_id="cn.equity.daily",
+        dataset_id=dataset_id,
         provider="tushare",
-        provider_api="daily",
+        provider_api=provider_api,
         request_window=request_window or {"trade_date": "20260715"},
         config_hash=CONFIG_HASH,
         adapter_version=binding.adapter_version,
@@ -336,6 +338,161 @@ def test_validated_receipt_history_rejects_canonical_shaped_tampering(
             registry,
             now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
         )
+
+
+def test_dataset_scoped_history_does_not_cross_attest_invalid_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    base = load_dataset_registry()
+    valid = _dataset()
+    invalid = replace(
+        valid,
+        dataset_id="cn.equity.daily.other",
+        aliases=(),
+        provider_bindings=(
+            replace(
+                valid.provider_bindings[0],
+                api_name="daily_other",
+                read_discriminator_value="tushare_daily_other",
+            ),
+        ),
+    )
+    registry = DatasetRegistry((valid, invalid), query_defaults=base.query_defaults)
+    valid_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="history-valid",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    invalid_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset_id=invalid.dataset_id,
+        provider_api="daily_other",
+        status="success",
+        attempt_id="history-invalid",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    _tamper_notes(conn, invalid_receipt, "counts.validated", 0)
+
+    histories = projection_module.validated_receipt_histories_by_dataset(
+        conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    )
+
+    assert [
+        entry.receipt_id for entry in histories.entries_by_dataset[valid.dataset_id]
+    ] == [valid_receipt]
+    assert set(histories.failures_by_dataset) == {invalid.dataset_id}
+    assert histories.failures_by_dataset[invalid.dataset_id]
+
+
+def test_dataset_scoped_history_keeps_malformed_known_receipt_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malformed receipt's stored source still isolates its planner failure."""
+
+    conn = _memory_db()
+    base = load_dataset_registry()
+    valid = _dataset()
+    invalid = replace(
+        valid,
+        dataset_id="cn.equity.daily.other",
+        aliases=(),
+        provider_bindings=(
+            replace(
+                valid.provider_bindings[0],
+                api_name="daily_other",
+                read_discriminator_value="tushare_daily_other",
+            ),
+        ),
+    )
+    registry = DatasetRegistry((valid, invalid), query_defaults=base.query_defaults)
+    valid_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="malformed-history-valid",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    invalid_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset_id=invalid.dataset_id,
+        provider_api="daily_other",
+        status="success",
+        attempt_id="malformed-history-invalid",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+        ("{malformed", invalid_receipt),
+    )
+
+    histories = projection_module.validated_receipt_histories_by_dataset(
+        conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    )
+
+    assert [
+        entry.receipt_id for entry in histories.entries_by_dataset[valid.dataset_id]
+    ] == [valid_receipt]
+    assert set(histories.failures_by_dataset) == {invalid.dataset_id}
+    assert histories.failures_by_dataset[invalid.dataset_id] == (
+        "receipt_payload_invalid",
+    )
+
+
+def test_dataset_scoped_history_keeps_unknown_receipt_owner_global(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    base = load_dataset_registry()
+    first = _dataset()
+    second = replace(
+        first,
+        dataset_id="cn.equity.daily.other",
+        aliases=(),
+        provider_bindings=(
+            replace(
+                first.provider_bindings[0],
+                api_name="daily_other",
+                read_discriminator_value="tushare_daily_other",
+            ),
+        ),
+    )
+    registry = DatasetRegistry((first, second), query_defaults=base.query_defaults)
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="history-unknown-owner",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET source = ? WHERE run_id = ?",
+        ("unknown.dataset", receipt_id),
+    )
+    conn.commit()
+
+    histories = projection_module.validated_receipt_histories_by_dataset(
+        conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    )
+
+    assert set(histories.failures_by_dataset) == {
+        first.dataset_id,
+        second.dataset_id,
+    }
 
 
 def test_projector_returns_paused_from_registry_activation() -> None:

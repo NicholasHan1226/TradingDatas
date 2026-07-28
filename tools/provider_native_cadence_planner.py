@@ -28,7 +28,7 @@ from storage.receipt_projection import (
     RuntimeProjectionError,
     ValidatedReceiptHistoryEntry,
     open_verified_read_model_snapshot,
-    validated_receipt_history,
+    validated_receipt_histories_by_dataset,
 )
 
 
@@ -186,6 +186,9 @@ class _ReceiptCohort:
 @dataclass(frozen=True)
 class PlannerState:
     datasets: Mapping[tuple[str, str], _DatasetState]
+    invalid_datasets: Mapping[tuple[str, str], tuple[str, ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def get(
         self, dataset: DatasetDefinition, binding: ProviderBinding
@@ -193,6 +196,11 @@ class PlannerState:
         return self.datasets.get(
             (dataset.dataset_id, binding.provider), _DatasetState()
         )
+
+    def invalid_reasons(
+        self, dataset: DatasetDefinition, binding: ProviderBinding
+    ) -> tuple[str, ...]:
+        return self.invalid_datasets.get((dataset.dataset_id, binding.provider), ())
 
 
 class _UniqueLoader(yaml.SafeLoader):
@@ -571,10 +579,24 @@ def load_planner_state(
     )
     facts: dict[tuple[str, str], list[_Fact]] = defaultdict(list)
     try:
+        invalid_datasets: dict[tuple[str, str], tuple[str, ...]] = {}
         with open_verified_read_model_snapshot(db_path) as conn:
-            for receipt in validated_receipt_history(conn, registry, now=now):
-                if receipt.dataset_id in datasets:
-                    receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
+            histories = validated_receipt_histories_by_dataset(
+                conn, registry, now=now
+            )
+            for dataset_id, reasons in histories.failures_by_dataset.items():
+                dataset = datasets.get(dataset_id)
+                if dataset is None:
+                    continue
+                try:
+                    binding = _active_binding(dataset)
+                except ValueError:
+                    continue
+                invalid_datasets[(dataset_id, binding.provider)] = reasons
+            for entries in histories.entries_by_dataset.values():
+                for receipt in entries:
+                    if receipt.dataset_id in datasets:
+                        receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
             for dataset in datasets.values():
                 try:
                     binding = _active_binding(dataset)
@@ -622,7 +644,8 @@ def load_planner_state(
                 key: _DatasetState(tuple(receipts[key]), tuple(facts[key]))
                 for key in keys
             }
-        )
+        ),
+        MappingProxyType(dict(sorted(invalid_datasets.items()))),
     )
 
 
@@ -1000,6 +1023,11 @@ def plan_runs(
         ):
             skips.append(
                 PlannerSkip(dataset.dataset_id, binding.provider, "not_selected")
+            )
+            continue
+        if state.invalid_reasons(dataset, binding):
+            skips.append(
+                PlannerSkip(dataset.dataset_id, binding.provider, "invalid_receipt_authority")
             )
             continue
         try:
