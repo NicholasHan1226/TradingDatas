@@ -1749,7 +1749,7 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
         data_through="2026-07-15T12:00:00",
     )
     dataset = _dataset(freshness_sla_seconds=3_600)
-    boundary = datetime(2026, 7, 15, 4, 1, tzinfo=timezone.utc)
+    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
     stale = project_dataset_runtime(
