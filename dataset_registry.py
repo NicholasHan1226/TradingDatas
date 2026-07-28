@@ -24,8 +24,13 @@ import yaml
 PROVIDER_NATIVE_DATASET_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "provider_native_dataset_registry.yaml"
 )
+BINANCE_SPOT_CANARY_REGISTRY_PATH = (
+    Path(__file__).resolve().parent / "config" / "crypto_binance_spot_canary_registry.v1.yaml"
+)
 DATASET_REGISTRY_PATH = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
 DATASET_REGISTRY_PATH_ENV = "TRADINGDATAS_REGISTRY_PATH"
+CANARY_MODE_ENV = "TRADINGDATAS_CANARY_MODE"
+BINANCE_SPOT_CANARY_MODE = "binance_spot_v1"
 
 _ROOT_KEYS = frozenset({"version", "query_defaults", "schema_profiles", "datasets"})
 _ROOT_REQUIRED_KEYS = frozenset({"version", "query_defaults", "datasets"})
@@ -2194,13 +2199,21 @@ def runtime_dataset_registry_path() -> Path:
     """
 
     raw_path = os.environ.get(DATASET_REGISTRY_PATH_ENV)
+    canary_mode = os.environ.get(CANARY_MODE_ENV)
+    if canary_mode not in {None, BINANCE_SPOT_CANARY_MODE}:
+        raise ValueError(f"{CANARY_MODE_ENV} is invalid")
+    if canary_mode == BINANCE_SPOT_CANARY_MODE:
+        if raw_path is not None:
+            raise ValueError("canary registry does not accept a path override")
+        expected = BINANCE_SPOT_CANARY_REGISTRY_PATH
+    else:
+        expected = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
     if raw_path is None:
-        return PROVIDER_NATIVE_DATASET_REGISTRY_PATH
+        raw_path = os.fspath(expected)
     if not raw_path or raw_path != raw_path.strip():
         raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} is invalid")
 
     selected = Path(raw_path)
-    expected = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
     if not selected.is_absolute() or os.path.normpath(raw_path) != raw_path:
         raise ValueError(f"{DATASET_REGISTRY_PATH_ENV} must be canonical")
     if selected != expected:

@@ -17,11 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from catalog_service import inspect_dataset_queryability, is_initial_release_eligible
 from provider_ingest_contract import provider_ingest_config_hash
-from provider_transport import (
-    TUSHARE_DATA_PROVIDER,
-    TUSHARE_TRANSPORT_SERVICE,
-    provider_transport_profile,
-)
+from provider_transport import provider_transport_profile
 from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
 from query_contract import (
     QueryAccessContext,
@@ -1388,7 +1384,12 @@ def _runtime_metadata(
     if not lineage_complete:
         providers.clear()
         provider_config_hashes.clear()
-    transport_profile = provider_transport_profile(TUSHARE_DATA_PROVIDER)
+    transport_profile = None
+    if len(providers) == 1:
+        try:
+            transport_profile = provider_transport_profile(next(iter(providers)))
+        except KeyError:
+            transport_profile = None
     expected_provider_config_hashes = {
         (
             binding.provider,
@@ -1398,20 +1399,16 @@ def _runtime_metadata(
         if binding.provider in providers
     }
     transport_profile_proven = (
-        providers == {TUSHARE_DATA_PROVIDER}
+        transport_profile is not None
         and provider_config_hashes == expected_provider_config_hashes
     )
-    transport_profile_unverified = (
-        providers == {TUSHARE_DATA_PROVIDER} and not transport_profile_proven
-    )
+    transport_profile_unverified = bool(providers) and not transport_profile_proven
     if transport_profile_unverified:
         lineage_complete = False
         allow_rows = False
         reasons = sorted(set([*reasons, "transport_profile_unverified"]))
     transport_service = (
-        TUSHARE_TRANSPORT_SERVICE
-        if transport_profile_proven
-        else None
+        transport_profile["transport_service"] if transport_profile_proven else None
     )
     effective_degraded = bool(
         projection.degraded

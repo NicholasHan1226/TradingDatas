@@ -136,7 +136,9 @@ def is_catalog_discoverable(dataset: DatasetDefinition) -> bool:
 
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
-    return dataset.market == "CN"
+    # The default registry remains CN-only.  The only non-CN discoverable
+    # surface is the separately selected Binance public-market-data canary.
+    return dataset.market in {"CN", "CRYPTO_SPOT"}
 
 
 def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:

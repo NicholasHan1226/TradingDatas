@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
+from collectors.binance.collector import BinanceSpotPublicCollector  # noqa: E402
 from collectors.tushare import provider_native_ingest  # noqa: E402
 from dataset_registry import (  # noqa: E402
     DatasetDefinition,
@@ -188,7 +189,13 @@ def _build_plan(
     dataset = registry.resolve(dataset_id)
     if dataset.dataset_id != dataset_id:
         raise ValueError("collection requires a canonical dataset_id")
-    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    active_bindings = tuple(
+        item for item in dataset.provider_bindings
+        if item.entitlement_state == "active" and item.activation_state == "active"
+    )
+    if len(active_bindings) != 1:
+        raise ValueError("collection requires exactly one active provider binding")
+    binding = active_bindings[0]
     if dataset.read_model_adapter.storage_kind != "provider_native_rows":
         raise ValueError("dataset is not configured for provider-native collection")
     if binding.entitlement_state != "active" or binding.activation_state != "active":
@@ -411,12 +418,15 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SUCCESS
 
     try:
-        collector = TushareCollector()
+        collectors = {
+            "tushare": TushareCollector(),
+            "binance_spot": BinanceSpotPublicCollector(),
+        }
         results = tuple(
             provider_native_ingest.collect_provider_native_dataset(
                 args.db_path,
                 registry=registry,
-                collector=collector,
+                collector=collectors[plan.binding.provider],
                 dataset_id=plan.dataset.dataset_id,
                 request_window=plan.request_window,
                 attempt_id=(

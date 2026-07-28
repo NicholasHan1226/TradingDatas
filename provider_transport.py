@@ -10,14 +10,33 @@ TUSHARE_DATA_PROVIDER = "tushare"
 TUSHARE_TRANSPORT_SERVICE = "quicksync"
 TUSHARE_TRANSPORT_PROFILE_ID = "quicksync-tushare-compatible.v2"
 QUICKSYNC_TUSHARE_API_URL = "https://api.quicksync.cn"
+BINANCE_SPOT_DATA_PROVIDER = "binance_spot"
+BINANCE_SPOT_TRANSPORT_SERVICE = "binance_public_market_data"
+BINANCE_SPOT_PUBLIC_API_URL = "https://data-api.binance.vision"
 
 
 def provider_transport_profile(provider: str) -> dict[str, object]:
     """Return one credential-free, code-pinned provider transport profile."""
 
-    if provider != TUSHARE_DATA_PROVIDER:
-        raise KeyError("provider transport profile is unavailable")
-    payload: dict[str, object] = {
+    if provider == BINANCE_SPOT_DATA_PROVIDER:
+        payload: dict[str, object] = {
+            "data_provider": BINANCE_SPOT_DATA_PROVIDER,
+            "endpoint": BINANCE_SPOT_PUBLIC_API_URL,
+            "profile_id": "binance-spot-public-market-data.v1",
+            "redirects_allowed": False,
+            "connection_mode": "public_https",
+            "canonical_host": "data-api.binance.vision",
+            "host_header": "data-api.binance.vision",
+            "sni_server_name": "data-api.binance.vision",
+            "certificate_hostname": "data-api.binance.vision",
+            "pre_send_node_failover": False,
+            "post_send_replay": False,
+            "credential_mode": "none",
+            "market_data_only": True,
+            "transport_service": BINANCE_SPOT_TRANSPORT_SERVICE,
+        }
+    elif provider == TUSHARE_DATA_PROVIDER:
+        payload = {
         "data_provider": TUSHARE_DATA_PROVIDER,
         "endpoint": QUICKSYNC_TUSHARE_API_URL,
         "profile_id": TUSHARE_TRANSPORT_PROFILE_ID,
@@ -35,7 +54,9 @@ def provider_transport_profile(provider: str) -> dict[str, object]:
         "tls_minimum": "TLSv1.3",
         "tls_maximum": "TLSv1.3",
         "transport_service": TUSHARE_TRANSPORT_SERVICE,
-    }
+        }
+    else:
+        raise KeyError("provider transport profile is unavailable")
     canonical = json.dumps(
         payload,
         ensure_ascii=False,
