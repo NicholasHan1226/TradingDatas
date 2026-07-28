@@ -11,7 +11,7 @@ Tushare timer, any A-share SQLite file, or any trading authority.
 | --- | --- |
 | API listener | `127.0.0.1:18083` only |
 | API service account | `tradingdatas-crypto:tradingdatas-crypto` |
-| API token files | `/etc/tradingdatas-crypto/api_tokens.json` and `token_salt`, each owned by `tradingdatas-crypto`, mode `0600` |
+| API private files | `/etc/tradingdatas-crypto/api_tokens.json`, `token_salt`, and `cursor_signing_key`, each owned by `tradingdatas-crypto`, mode `0600` |
 | immutable release root | `/opt/investment/releases/tradingdatas-crypto/current` |
 | API data store | `/opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite` |
 | API unit | `tradingdatas-crypto-v1-internal.service` |
@@ -25,6 +25,9 @@ There is no Binance route, no localhost auth bypass, no public ingress, no API
 key, account, Testnet, order, or TradingAgent direct provider access.
 No mutable `/etc` environment file is loaded: listener, registry mode, release
 root and SQLite path come only from the immutable release profile. The
+cursor HMAC key is read only from the dedicated private file named above; it is
+never stored as a plaintext environment value, committed, logged, or shared
+with the A-share API. The
 TradingAgent consumer token leaf is separate at
 `/run/secrets/tradingagent/tradingdatas-crypto-read.token`; it is never the API
 hash registry, salt, or a provider credential.
@@ -41,7 +44,7 @@ one-shot operation and is never real-time/PIT evidence.
 
 Before enabling either unit, create the dedicated service account, immutable
 Crypto release root and data directory, initialise the dedicated SQLite schema,
-create only the two API hash/salt files with the exact owner/mode above, and
+create only the three API hash/salt/cursor files with the exact owner/mode above, and
 atomically install a distinct TA read token leaf without printing it. Verify no
 listener exists on `18083`, the A-share release pointer and units are unchanged,
 and the Crypto release pointer resolves only below

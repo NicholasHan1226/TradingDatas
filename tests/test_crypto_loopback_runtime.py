@@ -31,8 +31,12 @@ def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
 
 def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     api = (ROOT / "deploy/systemd/tradingdatas-crypto-v1-internal.service").read_text()
-    collector = (ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.service").read_text()
-    timer = (ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.timer").read_text()
+    collector = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.service"
+    ).read_text()
+    timer = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.timer"
+    ).read_text()
     profile = (ROOT / "deploy/crypto/tradingdatas_crypto_internal.env").read_text()
 
     assert "127.0.0.1:18082" not in api + collector + timer + profile
@@ -57,3 +61,10 @@ def test_crypto_api_has_no_mutable_runtime_environment_override() -> None:
     ) in api
     assert 'Environment="TRADINGDATAS_TOKEN_HASH_FILE=' in api
     assert 'Environment="TRADINGDATAS_TOKEN_SALT_FILE=' in api
+    assert (
+        'Environment="TRADINGDATAS_CURSOR_SIGNING_KEY_FILE='
+        "/etc/tradingdatas-crypto/cursor_signing_key"
+        '"'
+    ) in api
+    assert "TRADINGDATAS_CURSOR_SIGNING_KEY=" not in api
+    assert "ConditionPathExists=/etc/tradingdatas-crypto/cursor_signing_key" in api

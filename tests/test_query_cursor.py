@@ -813,6 +813,7 @@ def test_from_env_rejects_missing_key_without_a_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", raising=False)
 
     with pytest.raises(CursorConfigurationError, match="signing key"):
         SignedCursorCodec.from_env()
@@ -827,6 +828,122 @@ def test_from_env_accepts_exactly_32_utf8_bytes(
     codec = SignedCursorCodec.from_env()
 
     assert codec.decode(codec.encode(claims), expected=expectation, now=NOW) == claims
+
+
+def test_from_env_accepts_private_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    claims: CursorClaims,
+    expectation: CursorExpectation,
+) -> None:
+    key_file = tmp_path / "cursor.key"
+    key_file.write_bytes(SECRET + b"\n")
+    key_file.chmod(0o600)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(key_file))
+
+    codec = SignedCursorCodec.from_env()
+
+    assert codec.decode(codec.encode(claims), expected=expectation, now=NOW) == claims
+
+
+def test_from_env_rejects_ambiguous_plaintext_and_file_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    key_file = tmp_path / "cursor.key"
+    key_file.write_bytes(SECRET)
+    key_file.chmod(0o600)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY", SECRET.decode("ascii"))
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(key_file))
+
+    with pytest.raises(CursorConfigurationError, match="ambiguous"):
+        SignedCursorCodec.from_env()
+
+
+@pytest.mark.parametrize("mode", [0o400, 0o640, 0o644])
+def test_from_env_rejects_unsafe_private_file_mode_without_exposing_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mode: int,
+) -> None:
+    key_file = tmp_path / "cursor.key"
+    key_file.write_bytes(SECRET)
+    key_file.chmod(mode)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(key_file))
+
+    with pytest.raises(CursorConfigurationError, match="unavailable") as exc_info:
+        SignedCursorCodec.from_env()
+    assert SECRET.decode("ascii") not in str(exc_info.value)
+
+
+def test_from_env_rejects_symlink_private_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "target.key"
+    target.write_bytes(SECRET)
+    target.chmod(0o600)
+    linked = tmp_path / "cursor.key"
+    linked.symlink_to(target)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(linked))
+
+    with pytest.raises(CursorConfigurationError, match="unavailable"):
+        SignedCursorCodec.from_env()
+
+
+def test_from_env_rejects_symlink_private_file_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    private_dir = tmp_path / "private"
+    private_dir.mkdir()
+    key_file = private_dir / "cursor.key"
+    key_file.write_bytes(SECRET)
+    key_file.chmod(0o600)
+    linked_dir = tmp_path / "linked"
+    linked_dir.symlink_to(private_dir, target_is_directory=True)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv(
+        "TRADINGDATAS_CURSOR_SIGNING_KEY_FILE",
+        str(linked_dir / "cursor.key"),
+    )
+
+    with pytest.raises(CursorConfigurationError, match="unavailable"):
+        SignedCursorCodec.from_env()
+
+
+def test_from_env_rejects_private_file_not_owned_by_service_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    key_file = tmp_path / "cursor.key"
+    key_file.write_bytes(SECRET)
+    key_file.chmod(0o600)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(key_file))
+    monkeypatch.setattr(query_cursor.os, "geteuid", lambda: key_file.stat().st_uid + 1)
+
+    with pytest.raises(CursorConfigurationError, match="unavailable"):
+        SignedCursorCodec.from_env()
+
+
+@pytest.mark.parametrize("content", [b"", b"x" * 31, b"x" * 4097])
+def test_from_env_rejects_empty_short_or_oversized_private_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    content: bytes,
+) -> None:
+    key_file = tmp_path / "cursor.key"
+    key_file.write_bytes(content)
+    key_file.chmod(0o600)
+    monkeypatch.delenv("TRADINGDATAS_CURSOR_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("TRADINGDATAS_CURSOR_SIGNING_KEY_FILE", str(key_file))
+
+    with pytest.raises(CursorConfigurationError, match="signing key"):
+        SignedCursorCodec.from_env()
 
 
 def test_from_env_maps_utf8_encoding_failure_to_configuration_error(
