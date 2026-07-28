@@ -1,0 +1,43 @@
+[Unit]
+Description=TradingDatas Crypto candidate internal catalog/query API
+After=network.target
+ConditionPathExists=/etc/tradingdatas-crypto/internal-api.env
+ConditionPathExists=/etc/tradingdatas-crypto/api_tokens.json
+ConditionPathExists=/etc/tradingdatas-crypto/token_salt
+ConditionPathExists=/opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite
+
+[Service]
+Type=simple
+User=tradingdatas-crypto
+Group=tradingdatas-crypto
+WorkingDirectory=/opt/investment/releases/tradingdatas/current
+EnvironmentFile=/opt/investment/releases/tradingdatas/current/deploy/crypto/tradingdatas_crypto_internal.env
+EnvironmentFile=/etc/tradingdatas-crypto/internal-api.env
+Environment="TRADINGDATAS_TOKEN_HASH_FILE=/etc/tradingdatas-crypto/api_tokens.json"
+Environment="TRADINGDATAS_TOKEN_SALT_FILE=/etc/tradingdatas-crypto/token_salt"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/serve_provider_native_v1.py
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+ReadOnlyPaths=/opt/investment-data/tradingdatas-crypto
+ReadOnlyPaths=/etc/tradingdatas-crypto
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
