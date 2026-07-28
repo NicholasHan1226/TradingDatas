@@ -260,7 +260,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
         "freq": {"source": "literal", "value": "5MIN"},
         "ts_code": {
             "source": "literal",
-            "value": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH",
+            "value": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH",
         },
     }
 
@@ -281,7 +281,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     rt_min = _contract(bundle, "rt_min")
     assert rt_min["request_template"] == {
         "freq": "5MIN",
-        "ts_code": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH",
+        "ts_code": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH",
     }
     assert rt_min["primary_key"] == ["ts_code", "time"]
     assert rt_min["default_projection"] == [

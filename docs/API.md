@@ -100,7 +100,7 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 
 `lineage.providers` 来自 SQLite receipt/read-model 投影，标识数据合同与 provider-native payload 来源；`lineage.transport_service` 与 `transport_profile_*` 来自代码固定的 provider-level transport profile，该 profile 连同哈希绑定进 receipt 的 `config_hash`。这些字段均不允许客户端参数覆盖。外部受邀 Beta 不改变此固定接口；再分发条款未验证前不开放真实数据。
 
-`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的十只主板 canary。其身份为
+`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的三十只主板 canary。其身份为
 `[ts_code, time]`。本平台把 provider 返回的 `time` 解释为该 5 分钟 bar 的结束时间；
 上游字段说明仅称其为“交易时间”，因此这是本平台基于已验证 5 分钟返回形状冻结的
 读取语义，不是对上游文档的额外断言。它是 OHLCV/amount bar，不是 bid/ask 或逐笔成交；

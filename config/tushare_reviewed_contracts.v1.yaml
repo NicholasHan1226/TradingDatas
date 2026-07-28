@@ -429,7 +429,7 @@ contracts:
     request_shape: snapshot_or_date_range
     request_template:
       freq: 5MIN
-      ts_code: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH
+      ts_code: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH
     request_variants:
       - {}
     fanout:
@@ -443,7 +443,7 @@ contracts:
       reject_at_row_limit: true
     requested_fields: [ts_code, freq, time, open, high, low, close, vol, amount]
     budgets:
-      # Keep the provider cap above the ten-code canary so an exact ten-row
+      # Keep the provider cap above the thirty-code canary so an exact thirty-row
       # result is never mistaken for a provider-side truncation boundary.
       max_rows_per_attempt: 100
       max_payload_bytes_per_row: 65536
