@@ -2,9 +2,9 @@ version: 2
 dataset_timeout_seconds: 900
 rate_budgets:
   standard:
-    account_requests_per_run: 32
-    provider_requests_per_run: 32
-    api_requests_per_run: 8
+    account_requests_per_run: 64
+    provider_requests_per_run: 64
+    api_requests_per_run: 16
   intraday:
     account_requests_per_run: 12
     provider_requests_per_run: 12

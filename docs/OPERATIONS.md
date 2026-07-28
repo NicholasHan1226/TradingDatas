@@ -31,6 +31,13 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或交易 Universe。500 只压力 canary
 只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前不得进入 production registry、release
 或 timer。
+
+当前 `standard` budget 每轮最多 64 个账号/上游请求、同一 provider API 最多 16 个请求。
+这是在已观测到的 QuickSync 200 request-start/minute 下保留的保守下限，并非对上游额度的
+猜测或扩权；runner 仍是串行、每五分钟最多运行一次。发布前必须在目标 release 上证明完整
+一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
+回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
+
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
