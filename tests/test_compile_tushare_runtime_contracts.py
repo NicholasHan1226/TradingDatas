@@ -319,13 +319,19 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     assert unreviewed["dataset_id"] == "cn.dataset.adj_factor"
     assert unreviewed["aliases"] == ["tushare.adj_factor"]
     assert unreviewed["point_in_time"] == "append_only"
-    assert unreviewed["primary_key"] == []
-    assert unreviewed["response_completeness"] is None
+    assert unreviewed["primary_key"] == ["ts_code", "trade_date"]
+    assert unreviewed["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
     assert unreviewed["cadence_class"] == "daily_reference"
     assert unreviewed["freshness_sla_seconds"] == 86400
     assert unreviewed["request_template"] == {"trade_date": "${window.trade_date}"}
     assert unreviewed["request_variants"] == [{}]
-    assert unreviewed["requested_fields"] == []
+    assert unreviewed["requested_fields"] == ["ts_code", "trade_date", "adj_factor"]
 
 
 def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None:

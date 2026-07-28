@@ -255,21 +255,17 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
             "offset_seconds": 0,
         },
     }
-    assert _entry(observations, "rt_min")["request_shape"] == "entity_fanout"
+    static_minute_canary = (
+        "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,"
+        "601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,"
+        "000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,"
+        "002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,"
+        "600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH"
+    )
+    assert _entry(observations, "rt_min")["request_shape"] == "snapshot_or_date_range"
     assert _entry(observations, "rt_min")["parameters"] == {
         "freq": {"source": "literal", "value": "5MIN"},
-        "ts_code": {
-            "source": "dataset_field",
-            "dataset_id": "cn.equity.security_master",
-            "field": "ts_code",
-            "requires_fresh_success_receipt": True,
-            "batch_size": 100,
-            "source_equals": {"market": "主板", "list_status": "L", "curr_type": "CNY"},
-            "source_date_field": "list_date",
-            "source_date_lte_days": 30,
-            "max_values": 500,
-            "source_order": "stable_hash",
-        },
+        "ts_code": {"source": "literal", "value": static_minute_canary},
     }
 
     bundle = _compile()
@@ -287,19 +283,11 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
         "start_date": "${window.start_date}",
     }
     rt_min = _contract(bundle, "rt_min")
-    assert rt_min["request_template"] == {"freq": "5MIN"}
-    assert rt_min["fanout"] == {
-        "strategy": "dataset_field",
-        "parameter": "ts_code",
-        "source_dataset_id": "cn.equity.security_master",
-        "source_field": "ts_code",
-        "batch_size": 100,
-        "source_equals": {"curr_type": "CNY", "list_status": "L", "market": "主板"},
-        "source_date_field": "list_date",
-        "source_date_lte_days": 30,
-        "max_values": 500,
-        "source_order": "stable_hash",
+    assert rt_min["request_template"] == {
+        "freq": "5MIN",
+        "ts_code": static_minute_canary,
     }
+    assert rt_min["fanout"] == {"strategy": "none"}
     assert rt_min["primary_key"] == ["ts_code", "time"]
     assert rt_min["default_projection"] == [
         "ts_code",
@@ -434,10 +422,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 139,
-        "blocked": 51,
-        "ingest_contract_ready": 124,
-        "ingest_contract_blocked": 66,
+        "executable": 140,
+        "blocked": 50,
+        "ingest_contract_ready": 125,
+        "ingest_contract_blocked": 65,
     }
 
     daily = _entry(plan, "daily")
@@ -460,9 +448,18 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     assert daily_basic["params"] == {}
 
     rt_min = _entry(plan, "rt_min")
-    assert rt_min["probe_state"] == "blocked"
-    assert rt_min["probe_block_reasons"] == ["dependency_seed_receipt_unresolved"]
-    assert rt_min["params"] == {}
+    assert rt_min["probe_state"] == "executable"
+    assert rt_min["probe_block_reasons"] == []
+    assert rt_min["params"] == {
+        "freq": "5MIN",
+        "ts_code": (
+            "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,"
+            "601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,"
+            "000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,"
+            "002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,"
+            "600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH"
+        ),
+    }
 
 
 def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
@@ -872,7 +869,7 @@ def test_active_loader_accepts_runtime_request_window_formats_and_rejects_others
     path.write_text(yaml.safe_dump(registry, sort_keys=False), encoding="utf-8")
     loaded = load_dataset_registry(path)
     monthly = loaded.provider_binding("cn.dataset.cn_cpi", "tushare")
-    assert monthly.activation_state == "paused"
+    assert monthly.activation_state == "active"
     assert monthly.request_window_policy is not None
     assert monthly.request_window_policy.formats["m"] == "yyyymm"
 
