@@ -2,18 +2,21 @@
 
 最后更新：2026-07-28。
 
-## 当前事实快照（2026-07-28 14:05 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-28 14:20 CST，优先于以下历史记录）
 
-- production `current` 为 `614bad0c4c0a873e5e5b655de9c5501a1f86c86d`；正式内部 API
+- production `current` 为 `be72ebe635c84665c5ea1c34d37443039f976652`；正式内部 API
   只提供 `GET /v1/catalog` 与 `POST /v1/query`，`tradingdatas-v1-internal.service` active。
-- formal catalog 为 `v1-d27aa31fbfb60a3c`：190 个 runtime datasets，101 active、89 paused。
-  active 或 HTTP 200 不等同于数据完整或可消费；消费者必须按每次 query envelope 的
+- formal catalog 为 `v1-541b1314702f4897`。它仍含 190 个 runtime datasets；catalog 可发现性
+  或 HTTP 200 不等同于数据完整或可消费。
+  消费者必须按每次 query envelope 的
   `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage fail closed。
 - `cn.dataset.rt_min` 是唯一启用的持续采集：固定 30 只沪深主板、5MIN、现有通用
   collector/timer。扩容到 500 的尝试已暂停，不能影响此 30 只 canary 的最近成功 receipt。
-- `adj_factor`、`stk_auction`、`stk_limit`、`suspend_d` 的 schema-2 直接窗口合同正在
-  候选 `c801bf4` 审查中，尚未合入或发布；不得将下面任何旧 receipt、候选或历史 release
-  描述为该合同的 production 证明。
+- schema-2 的通用直接窗口已正式 readback：`adj_factor(20260727)`、
+  `stk_auction(20260728)`、`stk_limit(20260728)` 均为
+  `ready/success/fresh/valid/non-degraded` 且有 receipt/lineage；
+  `suspend_d(20260728)` 是 `empty/valid/non-degraded` 的合法空结果，也有 receipt/lineage。
+  这些状态不推断其它 dataset 的权限、完整性或自动调度就绪。
 - `REAL_TRADING_ENABLED=false`；没有启用 TradingAgent timer、broker 或真实交易。本文下方
   仅保留追溯记录；若与本快照冲突，以本快照和本轮正式 API/readback 为准。
 
