@@ -3,6 +3,7 @@ Description=TradingDatas Crypto candidate internal catalog/query API
 After=network.target
 ConditionPathExists=/etc/tradingdatas-crypto/api_tokens.json
 ConditionPathExists=/etc/tradingdatas-crypto/token_salt
+ConditionPathExists=/etc/tradingdatas-crypto/cursor_signing_key
 ConditionPathExists=/opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite
 
 [Service]
@@ -13,6 +14,7 @@ WorkingDirectory=/opt/investment/releases/tradingdatas-crypto/current
 EnvironmentFile=/opt/investment/releases/tradingdatas-crypto/current/deploy/crypto/tradingdatas_crypto_internal.env
 Environment="TRADINGDATAS_TOKEN_HASH_FILE=/etc/tradingdatas-crypto/api_tokens.json"
 Environment="TRADINGDATAS_TOKEN_SALT_FILE=/etc/tradingdatas-crypto/token_salt"
+Environment="TRADINGDATAS_CURSOR_SIGNING_KEY_FILE=/etc/tradingdatas-crypto/cursor_signing_key"
 Environment="PYTHONDONTWRITEBYTECODE=1"
 Environment="PYTHONUNBUFFERED=1"
 ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas-crypto/current/tools/serve_provider_native_v1.py

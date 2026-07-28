@@ -13,10 +13,14 @@ import math
 import os
 import re
 
+from auth import AuthError, _private_file_bytes
+
 
 _CURSOR_VERSION = 1
 _SIGNING_KEY_ENV = "TRADINGDATAS_CURSOR_SIGNING_KEY"
+_SIGNING_KEY_FILE_ENV = "TRADINGDATAS_CURSOR_SIGNING_KEY_FILE"
 _MINIMUM_SIGNING_KEY_BYTES = 32
+_MAXIMUM_SIGNING_KEY_FILE_BYTES = 4096
 _SEGMENT_RE = re.compile(r"[A-Za-z0-9_-]+\Z", re.ASCII)
 _DATASET_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*\Z", re.ASCII)
 _KINDS = frozenset({"catalog", "query"})
@@ -312,6 +316,23 @@ class SignedCursorCodec:
     @classmethod
     def from_env(cls) -> SignedCursorCodec:
         value = os.environ.get(_SIGNING_KEY_ENV)
+        raw_path = os.environ.get(_SIGNING_KEY_FILE_ENV)
+        if value and raw_path:
+            raise CursorConfigurationError(
+                "cursor signing key configuration is ambiguous"
+            )
+        if raw_path:
+            try:
+                signing_key = _private_file_bytes(
+                    raw_path,
+                    label="cursor signing key",
+                    max_bytes=_MAXIMUM_SIGNING_KEY_FILE_BYTES,
+                ).strip()
+            except AuthError as exc:
+                raise CursorConfigurationError(
+                    "cursor signing key is unavailable"
+                ) from exc
+            return cls(signing_key)
         if type(value) is not str or not value:
             raise CursorConfigurationError("cursor signing key is unavailable")
         try:
