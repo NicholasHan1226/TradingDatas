@@ -34659,7 +34659,7 @@ contracts:
   as_of_format: yyyymmdd
   cadence_class: event
   timezone: Asia/Shanghai
-  freshness_sla_seconds: 900
+  freshness_sla_seconds: 86400
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

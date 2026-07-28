@@ -476,7 +476,11 @@ contracts:
     partition_field: trade_date
     cadence_class: event
     timezone: Asia/Shanghai
-    freshness_sla_seconds: 900
+    # suspend_d is a trade-date reference feed.  The provider payload remains
+    # event-shaped, but a completed trade-date partition is valid through the
+    # next daily-reference window; treating its YYYYMMDD watermark as a
+    # 15-minute intraday event falsely degrades a successful post-close ingest.
+    freshness_sla_seconds: 86400
     point_in_time: append_only
     backfill_policy: provider_limited
     empty_data_policy: allowed

@@ -861,7 +861,7 @@ entries:
   reason_code: ambiguous_insufficient_document_frequency
 - api_name: suspend_d
   cadence_class: event
-  freshness_sla_seconds: 900
+  freshness_sla_seconds: 86400
   source_document_sha256: 707658b197e7e31a2c0fccaff773c6a0b36e2bab746780feccbb3d1d8c18b8ec
   reason_code: reviewed_contract_exact
 - api_name: sw_daily
