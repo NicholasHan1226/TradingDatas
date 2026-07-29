@@ -12,8 +12,10 @@
   `5ac3925c3931a81132ea02abb16f9745033fb6dc` 已作为已验证回滚目标保留。本次只允许
   registry 声明的未来一日交易日历进入通用 planner；没有新增 route、专用 collector、
   TradingAgent 改动、8082 改动或交易动作。
-- `tradingdatas-v1-internal.service` active，通用 provider-native collector timer
-  enabled/active。正式 catalog 为 `v1-1e4560099e58a89e`，含 190 个 runtime
+- `tradingdatas-v1-internal.service` active。通用 provider-native collector timer 已在
+  18:51 CST fail-closed 停用：18:45 与 18:50 的收盘后 `cn.dataset.rt_min` 请求均为
+  provider transport timeout，不能把持续重试误报为稳定采集。正式 catalog 为
+  `v1-1e4560099e58a89e`，含 190 个 runtime
   contracts，其中 101 个 activation active、89 个 paused。
 - 本轮正式运行投影为：64 个 `success` 且 non-degraded、35 个合法 `empty` 且
   non-degraded、`cn.dataset.rt_min` 因收盘后的 300 秒 SLA 诚实为 stale/degraded、
@@ -31,7 +33,9 @@
   第一次初始化创建只读输入，第二次精确重放复用同一结果。它不代表生产交易启动：
   `REAL_TRADING_ENABLED=false`，没有 broker、订单、资金或 fill 写入。
 - 下一步是用当前 release 绑定的通用 probe plan 分批验证 paused/executable 合同的实际权限和
-  参数窗口，并将结果诚实投影到 catalog/query；不得为单个接口另写公共 API 或业务 collector。
+  参数窗口，并将结果诚实投影到 catalog/query；此前必须以最小 session-end 条件修正分钟
+  调度，再在下一交易时段重新验证。probe-plan 指纹修复已在主线 `aa98026`，但尚未发布到
+  production；不得为单个接口另写公共 API 或业务 collector。
 
 ## 已被上述快照取代的上午事实记录（仅供追溯）
 
