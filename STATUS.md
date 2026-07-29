@@ -1,15 +1,29 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 01:15 CST。
+最后更新：2026-07-29 11:14 CST。
 
-## 当前事实快照（2026-07-29 01:15 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-29 11:14 CST，优先于以下历史记录）
 
-- A 股 ECS `i-7xv38klbo04losfsa551` 续费并重新启动后，正式 TradingDatas immutable
-  `current` 已从已验证回滚点 `80a7591ae44df7a068873b303f7b0ed437728f4d` 原子切换到
-  `768ba2fdabe14a9c7f066a61f528a0fffe7a69d5`；两份 manifest 均由 trusted verifier
-  读回，目标为 125 files。切换前 API/collector inactive、timer disabled；切换后
-  `tradingdatas-v1-internal.service` active、18082 loopback 监听，通用 collector timer
-  enabled/active。SQLite facts、receipts 和旧 8082 均未被覆盖或切换。
+> 本次更新只重新验证了以下 release、调度与 receipt 事实；其余本节中较早的
+> dataset 状态必须仍以当次 `POST /v1/query` envelope 为准，不能从旧描述推断可用性。
+
+- 正式 immutable `current` 为
+  `5ac3925c3931a81132ea02abb16f9745033fb6dc`，对应源码主线已含
+  `3e854f3` 的混合上游 snapshot fail-closed 保护。主线后续
+  `2e49e74` 仅补强该保护的验收测试；它不改变运行时代码。
+  运行中的 API 与通用 collector timer 均未切换 route、8082、TA、broker 或交易状态。
+- 混合的同一 snapshot-field 上游响应必须写入 `failed` receipt，且不会写入 facts 或
+  `success` receipt；当前测试同时断言 `data_through=null`。因此错误的 `ready` 不会覆盖
+  既有历史成功事实。
+- 对 payload 不变的同一事实重新观测时，SQLite 只在同一 transaction 中把该行的
+  provenance 绑定到新的 success receipt，不改 payload 或 revision；若 receipt 写入失败，
+  整笔 transaction 回滚。2026-07-29 11:10 的自动轮已验证交易日历事实绑定到当前
+  recognized receipt，盘后 `cn.equity.daily` 的通用计划可正常进入执行队列。
+
+- 2026-07-29 01:15 的 `768ba2fdabe14a9c7f066a61f528a0fffe7a69d5` 切换记录已被上述
+  `5ac3925` 正式 current 取代；两次切换均在 API/collector inactive、timer disabled 的
+  发布窗口内进行，随后恢复 `tradingdatas-v1-internal.service`、18082 与通用 collector
+  timer。SQLite facts、receipts 和旧 8082 均未被覆盖或切换。
 - 重启后，TradingAgent 的 tmpfiles 配置含字面量 `\\n`，未重建 `/run` 下的只读 leaf。
   已保留原配置证据、修正为 leaf-only `C` 规则，并在服务器本地重新注册独立的
   `tradingagent` read token；持久源与 runtime leaf 均为单链接 regular `0600`，runtime
