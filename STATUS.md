@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 21:27 CST。
+最后更新：2026-07-29 23:04 CST。
 
 ## 当前运行面
 
@@ -15,20 +15,23 @@
 
 ## 已验证的内部数据事实
 
-- 当前 catalog 含 190 个 runtime contracts：101 active、89 paused。这个数量只表示合同与
-  可发现性；消费者必须每次根据 query envelope 的 `state`、`degraded`、`freshness`、
-  `quality`、receipt 与 lineage 决定是否消费。
-- 2026-07-29 的正式 18082、以 `tradingagent` 身份 readback 已验证：
+- 2026-07-29 23:04 CST 的正式 18082、以 `tradingagent` 身份 readback 得到
+  `catalog_version=v1-1e4560099e58a89e`。catalog 的数量只表示合同与可发现性；消费者必须
+  每次根据 query envelope 的 `state`、`degraded`、`freshness`、`quality`、receipt 与 lineage
+  决定是否消费。
+- 同次 readback 已验证：
   `cn.market.trade_calendar(SSE, 20260730)`、`cn.equity.daily(20260729)`、
   `cn.dataset.stk_limit(20260729)`、`cn.dataset.adj_factor(20260729)` 当时均为
   `ready/success/fresh/valid/non-degraded`，且 receipt/lineage 完整。
 - `cn.dataset.suspend_d(20260729)` 最近 provider 结果为 `provider_error`，保持
   failed/degraded；不得把空行或旧 receipt 当作可用结果。
 
-## 500 只分钟数据候选（未上线）
+## 500 只分钟数据 release（未切换）
 
-- 候选 commit：`4329307352d9138186cd2e3fca994ca5cdc96083`；独立分支：
-  `codex/rtmin-500-atomic-v3`。它没有合入 main，也没有切换 production current 或 timer。
+- 原始候选 commit：`4329307352d9138186cd2e3fca994ca5cdc96083`；审计分支：
+  `codex/rtmin-500-atomic-v3`。其 4 份配置改动已正常合入 main 的
+  `3b4ecc35531091d6356604f8bf156acffa28b2b8`，并已预构建为同 SHA 的不可变 release；
+  但 production current 仍为 `78435bb...`，timer 仍关闭。
 - 只修改同一通用数据面需要的 4 份 registry/contract/hash 配置：
   `cn.dataset.rt_min` 使用 `entity_fanout`、5 片 × 100、`identity=[ts_code,time]`，并要求
   每轮同一 bar_end 的 500 个唯一身份齐全；没有新增 route、专用 collector、TA 改动或交易语义。
@@ -37,9 +40,10 @@
   data/cursor/metadata 一致。候选证据：
   `/opt/investment-data/tradingdatas/candidate-evidence/rtmin500-4329307352d9138186cd2e3fca994ca5cdc96083/rtmin500-history-1500-evidence.json`
   （SHA-256 `21b66b0d7e7dcfe7137e19865c856ff44d4877b997909288d0980b46d7a90be8`）。
-- 该候选的 fresh clean-overlay 关键门禁为 7/7 PASS。它仍不能替代下一交易时段的真实证明：
-  先确认现役 30/30 第一根，再要求候选连续两根相邻 live bar 均为 500/500、5/5 分片、
-  同一 bar_end、总耗时小于 300 秒。任一失败则保持 30 只 production rollback，不切换。
+- 该候选的 fresh clean-overlay 关键门禁为 7/7 PASS；合入后同一关键回归为 10/10 PASS。
+  它仍不能替代下一交易时段的真实证明：先确认现役 30/30 第一根，再要求预构建 release
+  连续两根相邻 live bar 均为 500/500、5/5 分片、同一 bar_end、总耗时小于 300 秒。任一
+  失败则保持 30 只 production rollback，不切换。
 
 ## 旧系统退役与保留
 
