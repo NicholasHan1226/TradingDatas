@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 23:25 CST。
+最后更新：2026-07-29 23:38 CST。
 
 ## 当前运行面
 
@@ -44,6 +44,15 @@
   30 只分钟链路；其余数据集需要先补齐 registry 的完整性/水位合同，才可能从 partial 晋级为
   可消费的 ready。
 
+## 明日批量准备
+
+- 对 2026-07-30 16:35 CST 的 registry-driven 计划进行了只读模拟：24 项会被选中，
+  `failed=0`。其中包括日线、复权因子、涨跌停、融资融券、申万日线、北向与资金流；
+  68 项按需数据和 89 项 paused 数据继续被排除。这是明日盘后受控 one-shot 的准备证据，
+  不是预先启用 timer 或宣称 24 项已经采集成功。
+- 当前 5 项 partial 的合同不会被凭空改为 ready。只有补齐各自的 primary identity、请求窗口
+  完整性和业务 watermark 后，才允许以新合同重新采集、receipt 验证和正式 API 读回。
+
 ## 500 只分钟数据 release（未切换）
 
 - 原始候选 commit：`4329307352d9138186cd2e3fca994ca5cdc96083`；审计分支：
@@ -73,6 +82,10 @@
   （`SHA256SUMS` 摘要：`832b938f21638deea95dd16ed565684dfbe9b72642090cdf1f74d4d2e28a9629`）。
 - 旧 SharedSignals 代码目录、SQLite、挂载和历史 evidence 尚未物理删除。它们不是运行依赖，
   但仍是受控 rollback/审计材料；物理删除须先单独冻结数据保留清单并获得批准。
+- 2026-07-29 已清除 12 条指向已不存在 `/private/tmp` 目录的 Git worktree 元数据；这不会删除
+  任何文件或数据。仍有 16 个本地 SharedSignals 历史 worktree，全部存在未提交内容；为避免
+  覆盖未知候选与 `.codegraphcontext`，它们不能被批量强删。下一步是先输出逐目录保留/归档清单，
+  再依据明确授权移除代码副本；SQLite、receipt、evidence 和 rollback 材料不在删除范围。
 
 ## 下一步与停止线
 
