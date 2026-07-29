@@ -653,6 +653,7 @@ class ResponseCompletenessPolicy:
     request_end_key: str | None = None
     partition_field: str | None = None
     request_partition_key: str | None = None
+    snapshot_field: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1266,6 +1267,8 @@ def _response_completeness_policy(
         ),
     }[strategy]
     allowed_keys = required_keys
+    if strategy == "unique_primary_key_snapshot":
+        allowed_keys = allowed_keys | {"snapshot_field"}
     if strategy == "one_row_per_calendar_date":
         allowed_keys = allowed_keys | {"reject_at_row_limit"}
     _reject_unknown_keys(value, allowed_keys, path, required=required_keys)
@@ -1278,6 +1281,7 @@ def _response_completeness_policy(
     request_end_key: str | None = None
     partition_field: str | None = None
     request_partition_key: str | None = None
+    snapshot_field: str | None = None
     if strategy == "one_row_per_calendar_date":
         date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
         request_start_key = _provider_parameter_name(
@@ -1298,6 +1302,10 @@ def _response_completeness_policy(
         if request_window_policy is not None:
             raise ValueError(
                 f"{path}.unique_primary_key_snapshot must not use request_window_policy"
+            )
+        if "snapshot_field" in value:
+            snapshot_field = _provider_field_name(
+                value["snapshot_field"], f"{path}.snapshot_field"
             )
     else:
         partition_field = _provider_field_name(
@@ -1343,6 +1351,7 @@ def _response_completeness_policy(
         request_end_key=request_end_key,
         partition_field=partition_field,
         request_partition_key=request_partition_key,
+        snapshot_field=snapshot_field,
     )
 
 
@@ -2094,6 +2103,18 @@ def _load_dataset(
                     raise ValueError(
                         f"{binding_path}.requested_fields must include completeness "
                         f"field(s): {', '.join(missing_completeness_fields)}"
+                    )
+            if completeness.snapshot_field is not None:
+                snapshot_field = completeness.snapshot_field
+                if snapshot_field not in fields_by_name:
+                    raise ValueError(
+                        f"{binding_path}.response_completeness.snapshot_field is "
+                        "undeclared"
+                    )
+                if snapshot_field not in binding.requested_fields:
+                    raise ValueError(
+                        f"{binding_path}.requested_fields must include "
+                        "response_completeness.snapshot_field"
                     )
             if binding.request_window_policy is not None:
                 if (

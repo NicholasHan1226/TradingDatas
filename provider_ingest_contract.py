@@ -105,6 +105,7 @@ def provider_ingest_config_hash(
                 "request_partition_key": (
                     binding.response_completeness.request_partition_key
                 ),
+                "snapshot_field": binding.response_completeness.snapshot_field,
                 "fixed_field_matches": dict(
                     binding.response_completeness.fixed_field_matches
                 ),

@@ -853,6 +853,7 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
     snapshot_binding.pop("request_window_policy")  # type: ignore[index]
     snapshot_binding["response_completeness"] = {  # type: ignore[index]
         "strategy": "unique_primary_key_snapshot",
+        "snapshot_field": "trade_date",
         "fixed_field_matches": {},
         "reject_at_row_limit": True,
     }
@@ -890,6 +891,7 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
         snapshot_policy.response_completeness.strategy == "unique_primary_key_snapshot"
     )
     assert snapshot_policy.response_completeness.reject_at_row_limit is True
+    assert snapshot_policy.response_completeness.snapshot_field == "trade_date"
     assert partition_policy.request_window_policy is not None
     assert partition_loaded.datasets[0].empty_data_policy == "allowed"
     assert partition_policy.request_window_policy.range_start_key == "trade_date"
@@ -932,6 +934,12 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
                 },
             ),
             "unique_primary_key_snapshot",
+        ),
+        (
+            lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]
+                snapshot_field="missing"
+            ),
+            "snapshot_field.*undeclared",
         ),
         (
             lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]

@@ -26325,6 +26325,7 @@ datasets:
       fixed_field_matches:
         freq: freq
       reject_at_row_limit: true
+      snapshot_field: time
     requested_fields:
     - ts_code
     - freq

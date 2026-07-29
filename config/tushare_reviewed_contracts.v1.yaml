@@ -1032,6 +1032,7 @@ contracts:
       strategy: none
     response_completeness:
       strategy: unique_primary_key_snapshot
+      snapshot_field: time
       fixed_field_matches:
         freq: freq
       reject_at_row_limit: true

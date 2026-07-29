@@ -272,6 +272,7 @@ _COMPLETENESS_KEYS = frozenset(
         "request_end_key",
         "partition_field",
         "request_partition_key",
+        "snapshot_field",
         "fixed_field_matches",
         "reject_at_row_limit",
     }
@@ -1767,6 +1768,14 @@ def _completeness(
         result.update(
             date_field=date_field, request_start_key=start, request_end_key=end
         )
+    elif strategy == "unique_primary_key_snapshot":
+        if "snapshot_field" in value:
+            snapshot_field = _required_text(
+                value["snapshot_field"], f"{label}.snapshot_field"
+            )
+            if snapshot_field not in fields:
+                raise ValueError(f"{label}.snapshot_field is undeclared")
+            result["snapshot_field"] = snapshot_field
     elif strategy == "single_partition_unique_primary_key":
         required = {
             "strategy",
@@ -2214,6 +2223,9 @@ def _apply_observed_schema_subset(
             field = completeness.get(key)
             if field is not None:
                 protected.add(field)
+        snapshot_field = completeness.get("snapshot_field")
+        if snapshot_field is not None:
+            protected.add(snapshot_field)
     overlap = sorted(missing & protected)
     if overlap:
         raise ValueError(
@@ -2273,6 +2285,9 @@ def _apply_observed_response_contract(
             field = completeness.get(key)
             if field is not None:
                 protected.add(field)
+        snapshot_field = completeness.get("snapshot_field")
+        if snapshot_field is not None:
+            protected.add(snapshot_field)
     overlap = sorted(missing & protected)
     if overlap:
         raise ValueError(

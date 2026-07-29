@@ -739,6 +739,8 @@ def _validate_response_completeness(
         )
     elif policy.strategy == "unique_primary_key_snapshot":
         _validate_unique_primary_keys(dataset, rows)
+        if policy.snapshot_field is not None:
+            _validate_homogeneous_snapshot_field(policy.snapshot_field, rows)
     elif policy.strategy == "single_partition_unique_primary_key":
         _validate_single_partition(
             dataset,
@@ -825,6 +827,17 @@ def _validate_unique_primary_keys(
         if identity in observed:
             raise ValueError("provider response contains duplicate primary key")
         observed.add(identity)
+
+
+def _validate_homogeneous_snapshot_field(
+    snapshot_field: str,
+    rows: tuple[Mapping[str, Any], ...],
+) -> None:
+    """Require one provider observation value across a snapshot response."""
+
+    observed = {row.get(snapshot_field) for row in rows}
+    if len(observed) != 1 or None in observed or "" in observed:
+        raise ValueError("provider response snapshot field is not homogeneous")
 
 
 def _validate_single_partition(

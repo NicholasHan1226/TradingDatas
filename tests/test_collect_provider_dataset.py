@@ -1551,6 +1551,56 @@ def test_snapshot_rejects_duplicate_primary_key_before_storage(
     assert success_receipt_count(db_path) == 0
 
 
+def test_snapshot_rejects_mixed_homogeneous_snapshot_field_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    base = _strategy_registry("unique_primary_key_snapshot")
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = base.provider_binding(dataset.dataset_id, "tushare")
+    assert binding.response_completeness is not None
+    registry = DatasetRegistry(
+        (
+            replace(
+                dataset,
+                provider_bindings=(
+                    replace(
+                        binding,
+                        response_completeness=replace(
+                            binding.response_completeness,
+                            snapshot_field="trade_date",
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    code, output, _, db_path = _run(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        registry=registry,
+        request_window={},
+        outcome=ProviderCallOutcome(
+            state="success",
+            rows=(
+                _calendar_row("20260717"),
+                _calendar_row("20260718", symbol="000001.SZ"),
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        ),
+    )
+
+    assert code == runner.EXIT_VALIDATION
+    assert output["state"] == "validation"
+    assert provider_fact_count(db_path) == 0
+    assert success_receipt_count(db_path) == 0
+
+
 def test_snapshot_preserves_unusable_key_degraded_payload_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
