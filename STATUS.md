@@ -8,10 +8,13 @@
 > 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
 > 不能仅依据 catalog、HTTP 200 或本文件推断可用性。
 
-- 正式 immutable `current` 为 `82f785f147359ce15fddaa129a97d1b3917ed391`；
-  `64695852ff5be23b3cf8a8d1d03a13f7274e4586` 已作为已验证回滚目标保留。本次在既有
-  通用 cadence 中加入开市日历与本地上午/下午分钟窗口门禁；没有新增 route、专用 collector、
-  TradingAgent 改动、8082 改动或交易动作。
+- 正式 immutable `current` 为 `78435bb37754fda5bb4d2be6d46a9b63211b7401`；其即时、
+  已验证回滚目标为 `82f785f147359ce15fddaa129a97d1b3917ed391`，更早的
+  `64695852ff5be23b3cf8a8d1d03a13f7274e4586` 继续保留。本次在既有通用 cadence 中让
+  `session_minute` 在同一计划优先级内先于其它 automatic 合同执行；原有开市日历与本地
+  上午/下午窗口门禁仍生效。没有新增 route、专用 collector、TradingAgent 改动、8082 改动
+  或交易动作。生产绑定的 20260730 09:35 CST dry-run 选择 15 个 current plans，
+  `cn.dataset.rt_min` 位于第 1 位；这只是计划证明，尚不是 provider/API 真实成功。
 - `tradingdatas-v1-internal.service` active。通用 provider-native collector timer 已在
   18:51 CST fail-closed 停用：18:45 与 18:50 的收盘后 `cn.dataset.rt_min` 请求均为
   provider transport timeout，不能把持续重试误报为稳定采集。正式 catalog 为
