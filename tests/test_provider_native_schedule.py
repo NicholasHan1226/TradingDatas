@@ -132,6 +132,7 @@ def _canonical_receipt(
     attempt_id: str | None = None,
     request_variant: dict[str, str] | None = None,
     config_hash: str | None = None,
+    data_through: str = "20260720",
 ) -> str:
     dataset = _active_registry().resolve(dataset_id)
     binding = dataset.provider_bindings[0]
@@ -188,7 +189,7 @@ def _canonical_receipt(
             config_hash=config_hash or provider_ingest_config_hash(dataset, binding),
             adapter_version=binding.adapter_version,
             started_at=started_at,
-            data_through="20260720",
+            data_through=data_through,
             request_identity=ProviderRequestIdentity(
                 request_variant=request_variant or {},
                 fanout_parameter=None,
@@ -311,6 +312,7 @@ def _seed_daily(
         started_at=started,
         finished_at=finished_at,
         request_window={"trade_date": value},
+        data_through=value,
     )
     _fact(
         conn,
@@ -1425,7 +1427,7 @@ def test_main_emits_public_terminal_summary_without_request_values(
     ("current_open", "expected"),
     [
         (True, ["20260720"]),
-        (False, ["20260717"]),
+        (False, []),
     ],
 )
 def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
@@ -1479,7 +1481,9 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
     )
     daily = [plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"]
     assert [plan.request_window["trade_date"] for plan in daily] == expected
-    assert [plan.priority for plan in daily] == ["current"]
+    assert [plan.priority for plan in daily] == (
+        ["current"] if current_open else []
+    )
 
 
 def test_postclose_uses_calendar_pretrade_date_for_missing_latest_session(
@@ -1720,7 +1724,7 @@ def _date(value: str) -> date:
     return datetime.strptime(value, "%Y%m%d").date()
 
 
-def test_correction_overlap_and_api_budget_are_bounded(
+def test_no_implicit_correction_when_backfill_is_disabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1765,7 +1769,6 @@ def test_correction_overlap_and_api_budget_are_bounded(
     daily = [plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"]
     assert [(plan.request_window["trade_date"], plan.priority) for plan in daily] == [
         ("20260720", "current"),
-        ("20260717", "correction"),
     ]
 
     constrained = replace(
@@ -1786,7 +1789,7 @@ def test_correction_overlap_and_api_budget_are_bounded(
         len([plan for plan in limited.plans if plan.dataset_id == "cn.equity.daily"])
         == 1
     )
-    assert any(
+    assert not any(
         item.dataset_id == "cn.equity.daily" and item.state == "rate_budget"
         for item in limited.skipped
     )
