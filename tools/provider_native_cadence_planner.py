@@ -24,6 +24,7 @@ from dataset_registry import (
     normalize_request_window,
     request_window_covered_dates,
 )
+from provider_ingest_contract import provider_ingest_config_hash
 from storage.receipt_projection import (
     RuntimeProjectionError,
     ValidatedReceiptHistoryEntry,
@@ -613,8 +614,19 @@ def load_planner_state(
                 invalid_datasets[(dataset_id, binding.provider)] = reasons
             for entries in histories.entries_by_dataset.values():
                 for receipt in entries:
-                    if receipt.dataset_id in datasets:
-                        receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
+                    dataset = datasets.get(receipt.dataset_id)
+                    if dataset is None:
+                        continue
+                    try:
+                        binding = _active_binding(dataset)
+                    except ValueError:
+                        continue
+                    if (
+                        receipt.provider != binding.provider
+                        or receipt.config_hash != provider_ingest_config_hash(dataset, binding)
+                    ):
+                        continue
+                    receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
             for dataset in datasets.values():
                 try:
                     binding = _active_binding(dataset)

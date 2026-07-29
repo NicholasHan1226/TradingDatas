@@ -284,6 +284,7 @@ class ValidatedReceiptHistoryEntry:
     request_window: Mapping[str, str]
     request_variant: Mapping[str, object]
     execution_id: str
+    config_hash: str | None
 
 
 @dataclass(frozen=True)
@@ -1875,6 +1876,7 @@ def validated_receipt_histories_by_dataset(
                 request_window=receipt.request_window,
                 request_variant=receipt.request_variant,
                 execution_id=receipt.execution_id,
+                config_hash=receipt.config_hash,
             )
             for receipt in receipts
         )

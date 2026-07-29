@@ -27,6 +27,7 @@ from storage.ingest_receipts import (
 )
 from storage.schema import SCHEMA_SQL
 from storage.sqlite_authority_lock import sqlite_authority_lock_path
+from provider_ingest_contract import provider_ingest_config_hash
 import tools.run_provider_native_schedule as scheduler
 import tools.provider_native_cadence_planner as cadence_planner
 
@@ -130,6 +131,7 @@ def _canonical_receipt(
     row_count: int = 1,
     attempt_id: str | None = None,
     request_variant: dict[str, str] | None = None,
+    config_hash: str | None = None,
 ) -> str:
     dataset = _active_registry().resolve(dataset_id)
     binding = dataset.provider_bindings[0]
@@ -183,7 +185,7 @@ def _canonical_receipt(
             provider=binding.provider,
             provider_api=binding.api_name,
             request_window=window,
-            config_hash=CONFIG_HASH,
+            config_hash=config_hash or provider_ingest_config_hash(dataset, binding),
             adapter_version=binding.adapter_version,
             started_at=started_at,
             data_through="20260720",
@@ -719,6 +721,46 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
             "cn.dataset.top_list",
         )
     } == {"on_demand"}
+
+
+def test_recent_receipt_with_replaced_contract_is_replanned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.equity.daily",
+            status="success",
+            started_at="2026-07-20T07:00:00Z",
+            finished_at="2026-07-20T08:30:00Z",
+            request_window={"trade_date": "20260720"},
+            config_hash="b" * 64,
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.equity.daily",
+            receipt,
+            "20260720",
+            {"trade_date": "20260720"},
+        )
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+
+    assert "cn.equity.daily" in {item.dataset_id for item in result.executed}
 
 
 def test_single_recent_variant_receipt_cannot_suppress_complete_cohort(
