@@ -197,6 +197,7 @@ class DatasetRuntimeEvidence:
     last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     current_receipt_ids: tuple[str, ...] = ()
     last_success_receipt_ids: tuple[str, ...] = ()
+    as_of_success_receipt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.projection, DatasetRuntimeProjection):
@@ -237,6 +238,7 @@ class DatasetRuntimeEvidence:
         for name, receipt_ids in (
             ("current_receipt_ids", self.current_receipt_ids),
             ("last_success_receipt_ids", self.last_success_receipt_ids),
+            ("as_of_success_receipt_ids", self.as_of_success_receipt_ids),
         ):
             if type(receipt_ids) is not tuple or any(
                 type(receipt_id) is not str or not receipt_id
@@ -1967,8 +1969,17 @@ def project_dataset_runtime_evidence(
     now: datetime,
     registry: DatasetRegistry | None = None,
     provider_binding: ProviderBinding | None = None,
+    evidence_as_of: datetime | None = None,
+    data_through_as_of: datetime | None = None,
 ) -> DatasetRuntimeEvidence:
-    """Return one projection and typed lineage evidence from one receipt scan."""
+    """Return one projection and typed lineage evidence from one receipt scan.
+
+    ``evidence_as_of`` is an observation cutoff, not a provider-row timestamp.
+    When present, only complete receipt executions whose collection interval and
+    data watermark are at or before their respective cutoffs can attest to
+    returned rows. ``data_through_as_of`` defaults to ``evidence_as_of``.
+    Omitting both preserves the current read projection exactly.
+    """
 
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
@@ -1977,23 +1988,90 @@ def project_dataset_runtime_evidence(
         and provider_binding not in dataset.provider_bindings
     ):
         raise ValueError("provider_binding must belong to dataset")
+    if evidence_as_of is not None and (
+        not isinstance(evidence_as_of, datetime)
+        or evidence_as_of.tzinfo is None
+        or evidence_as_of.utcoffset() is None
+    ):
+        raise ValueError("evidence_as_of must be a timezone-aware datetime")
+    if data_through_as_of is not None and (
+        evidence_as_of is None
+        or not isinstance(data_through_as_of, datetime)
+        or data_through_as_of.tzinfo is None
+        or data_through_as_of.utcoffset() is None
+    ):
+        raise ValueError(
+            "data_through_as_of requires a timezone-aware evidence_as_of"
+        )
     known_dataset_ids = (
         frozenset(item.dataset_id for item in registry.datasets)
         if registry is not None
         else frozenset({dataset.dataset_id})
     )
     rows = _scan_ingest_run_rows(conn)
+    projection_now = now
+    if evidence_as_of is not None:
+        cutoff = evidence_as_of.astimezone(timezone.utc)
+        data_cutoff = (
+            cutoff
+            if data_through_as_of is None
+            else data_through_as_of.astimezone(timezone.utc)
+        )
+        receipts_at_read_time, invalid_at_read_time = _trusted_receipts_for_evidence(
+            dataset,
+            now=now,
+            known_dataset_ids=known_dataset_ids,
+            rows=rows,
+            expected_binding=provider_binding,
+        )
+        if invalid_at_read_time:
+            raise RuntimeProjectionError(
+                "receipt authority contains invalid evidence"
+            )
+        receipts_by_execution: dict[str, list[_Receipt]] = {}
+        for receipt in receipts_at_read_time:
+            receipts_by_execution.setdefault(receipt.execution_id, []).append(receipt)
+        eligible_receipt_ids: set[str] = set()
+        for execution_receipts in receipts_by_execution.values():
+            execution_is_eligible = True
+            for receipt in execution_receipts:
+                if receipt.started_sort > cutoff or receipt.finished_sort > cutoff:
+                    execution_is_eligible = False
+                    break
+                if receipt.data_through is not None:
+                    try:
+                        data_through = _data_through_in_utc(
+                            receipt.data_through,
+                            dataset.timezone,
+                        )
+                    except ValueError:
+                        execution_is_eligible = False
+                        break
+                    if data_through > data_cutoff:
+                        execution_is_eligible = False
+                        break
+            if execution_is_eligible:
+                eligible_receipt_ids.update(
+                    receipt.receipt_id for receipt in execution_receipts
+                )
+        rows = tuple(
+            row
+            for row in rows
+            if row.payload is not None
+            and row.payload.get("receipt_id") in eligible_receipt_ids
+        )
+        projection_now = cutoff
     projection = _project_dataset_runtime(
         conn,
         dataset,
-        now=now,
+        now=projection_now,
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         expected_binding=provider_binding,
     )
     receipts, invalid = _trusted_receipts_for_evidence(
         dataset,
-        now=now,
+        now=projection_now,
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         expected_binding=provider_binding,
@@ -2075,6 +2153,11 @@ def project_dataset_runtime_evidence(
         last_success_provider_config_hashes=last_success_provider_config_hashes,
         current_receipt_ids=current_receipt_ids,
         last_success_receipt_ids=last_success_receipt_ids,
+        as_of_success_receipt_ids=(
+            ()
+            if evidence_as_of is None
+            else tuple(sorted({receipt.receipt_id for receipt in successful}))
+        ),
     )
 
 

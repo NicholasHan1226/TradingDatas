@@ -10,7 +10,11 @@ import pytest
 
 import collectors.tushare.tushare_common as tushare_common
 from catalog_service import DatasetQueryability, is_initial_release_eligible
-from dataset_registry import DatasetRegistry, load_dataset_registry
+from dataset_registry import (
+    BINANCE_SPOT_CANARY_REGISTRY_PATH,
+    DatasetRegistry,
+    load_dataset_registry,
+)
 from provider_ingest_contract import provider_ingest_config_hash
 from provider_transport import provider_transport_profile
 from query_contract import QueryAccessContext, QueryExecutionOptions, QueryRequest
@@ -25,6 +29,100 @@ from storage.receipt_projection import (
 
 SIGNING_KEY = b"query-service-test-signing-key-32-bytes"
 NOW = datetime(2026, 7, 20, 4, 0, tzinfo=timezone.utc)
+
+
+def test_crypto_rfc3339_asof_metadata_binds_exact_receipt_cutoff() -> None:
+    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    dataset = registry.resolve("crypto.spot.binance.btcusdt.5m")
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=dataset.default_projection,
+        filters={
+            "symbol": {"eq": "BTCUSDT"},
+            "open_time": {
+                "between": [
+                    "2026-07-28T08:40:00+00:00",
+                    "2026-07-28T09:40:00+00:00",
+                ]
+            },
+        },
+        as_of="2026-07-28T09:44:59.999+00:00",
+        order=("symbol:asc", "open_time:desc"),
+        limit=13,
+        cursor=None,
+    )
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        registry,
+        now=datetime(2026, 7, 28, 9, 45, 30, tzinfo=timezone.utc),
+    )
+    binding = dataset.provider_bindings[0]
+    receipt_id = "receipt-before-asof"
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="success",
+            degraded=False,
+            data_through="2026-07-28T09:44:59.999Z",
+            observed_at="2026-07-28T09:44:58+00:00",
+            receipt_id=receipt_id,
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("binance_spot",),
+        last_success_receipt_id=receipt_id,
+        last_success_providers=("binance_spot",),
+        last_success_data_through="2026-07-28T09:44:59.999Z",
+        current_provider_config_hashes=(
+            (
+                "binance_spot",
+                provider_ingest_config_hash(dataset, binding),
+            ),
+        ),
+        last_success_provider_config_hashes=(
+            (
+                "binance_spot",
+                provider_ingest_config_hash(dataset, binding),
+            ),
+        ),
+        current_receipt_ids=(receipt_id,),
+        last_success_receipt_ids=(receipt_id,),
+        as_of_success_receipt_ids=(receipt_id,),
+    )
+
+    metadata, allow_rows = query_module._runtime_metadata(  # noqa: SLF001
+        dataset,
+        prepared,
+        evidence,
+        "crypto-asof-watermark",
+    )
+
+    assert allow_rows is True
+    assert metadata["state"] == "ready"
+    assert metadata["receipt_id"] == receipt_id
+    assert metadata["data_through"] == "2026-07-28T09:44:59.999000+00:00"
+    assert metadata["observed_at"] == "2026-07-28T09:44:58+00:00"
+    assert metadata["resolved_as_of"] == "2026-07-28T09:44:59.999000+00:00"
+
+    later = replace(
+        evidence,
+        projection=replace(
+            evidence.projection,
+            data_through="2026-07-28T09:49:59.999Z",
+            observed_at="2026-07-28T09:50:01+00:00",
+            receipt_id="receipt-after-asof",
+        ),
+    )
+    with pytest.raises(QueryServiceUnavailable, match="unavailable"):
+        query_module._runtime_metadata(  # noqa: SLF001
+            dataset,
+            prepared,
+            later,
+            "crypto-later-watermark",
+        )
 
 
 @pytest.mark.parametrize(

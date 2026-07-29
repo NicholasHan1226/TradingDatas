@@ -49,6 +49,13 @@ catalog/query readback. A symbol failure is isolated and must not be hidden by
 another symbol's healthy envelope. Bounded 180-day backfill remains a separate
 one-shot operation and is never real-time/PIT evidence.
 
+An explicit query `as_of` also bounds receipt authority: bar rows and envelope
+metadata can use only complete success receipts whose collection interval is at
+or before the requested cutoff and whose data watermark is at or before the
+resolved cutoff. A later collection is excluded even when its bar timestamps
+are historical; if no matching receipt exists, the query fails closed.
+Omitting `as_of` retains the current projection.
+
 ## Provisioning and rollback
 
 Before enabling either unit on a new host, create the dedicated service account, immutable
