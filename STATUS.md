@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 23:04 CST。
+最后更新：2026-07-29 23:25 CST。
 
 ## 当前运行面
 
@@ -23,8 +23,26 @@
   `cn.market.trade_calendar(SSE, 20260730)`、`cn.equity.daily(20260729)`、
   `cn.dataset.stk_limit(20260729)`、`cn.dataset.adj_factor(20260729)` 当时均为
   `ready/success/fresh/valid/non-degraded`，且 receipt/lineage 完整。
-- `cn.dataset.suspend_d(20260729)` 最近 provider 结果为 `provider_error`，保持
-  failed/degraded；不得把空行或旧 receipt 当作可用结果。
+- `cn.dataset.suspend_d(20260729)` 的较早 `provider_error` 已由本页所述 23:24 CST
+  的成功 receipt 覆盖；当前读取状态以最新可信 receipt 为准，不能把较早错误或空行混作
+  当前结果。
+
+## 夜间预采集快照
+
+- 2026-07-29 23:24–23:25 CST 通过正式、受控的 provider-native oneshot（timer 仍关闭）
+  串行完成了当前已到窗口的六项通用 registry 采集。它没有增加 route、专用 collector、
+  交易语义或新的自动调度。
+- `cn.dataset.broker_recommend`、`cn.dataset.limit_list_ths`、
+  `cn.dataset.moneyflow_ths`、`cn.dataset.stk_holdernumber` 已取得 success receipt，
+  `cn.dataset.fund_portfolio` 取得合法 empty receipt；五项均可从正式 18082 查询到数据或
+  空结果，且 lineage 完整，但由于当前 registry 尚未声明 response completeness 和可信业务
+  watermark，API 如实返回 `state=partial`、`degraded=true`，不能被消费者作为新鲜完整事实。
+- `cn.dataset.suspend_d(20260729)` 已通过同一正式 18082 以 TradingAgent 只读身份回读：
+  `state=ready`、`runtime_state=success`、`freshness=fresh`、`quality=valid`、
+  `degraded=false`，receipt 与 lineage 均完整。
+- 此轮证明的是“通用入库与内部 API 读回”而非六项都已稳定自动化。明早仍只按既有门禁复核
+  30 只分钟链路；其余数据集需要先补齐 registry 的完整性/水位合同，才可能从 partial 晋级为
+  可消费的 ready。
 
 ## 500 只分钟数据 release（未切换）
 
