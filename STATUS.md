@@ -1,16 +1,16 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 18:01 CST。
+最后更新：2026-07-29 19:11 CST。
 
-## 当前事实快照（2026-07-29 18:01 CST，优先于以下全部记录）
+## 当前事实快照（2026-07-29 19:11 CST，优先于以下全部记录）
 
 > 本快照只陈述 TradingDatas 的 A 股/QuickSync 正式数据面；Crypto 由独立发布线负责，
 > 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
 > 不能仅依据 catalog、HTTP 200 或本文件推断可用性。
 
-- 正式 immutable `current` 为 `64695852ff5be23b3cf8a8d1d03a13f7274e4586`；上一个
-  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 已作为已验证回滚目标保留。本次只允许
-  registry 声明的未来一日交易日历进入通用 planner；没有新增 route、专用 collector、
+- 正式 immutable `current` 为 `82f785f147359ce15fddaa129a97d1b3917ed391`；
+  `64695852ff5be23b3cf8a8d1d03a13f7274e4586` 已作为已验证回滚目标保留。本次在既有
+  通用 cadence 中加入开市日历与本地上午/下午分钟窗口门禁；没有新增 route、专用 collector、
   TradingAgent 改动、8082 改动或交易动作。
 - `tradingdatas-v1-internal.service` active。通用 provider-native collector timer 已在
   18:51 CST fail-closed 停用：18:45 与 18:50 的收盘后 `cn.dataset.rt_min` 请求均为
@@ -33,9 +33,9 @@
   第一次初始化创建只读输入，第二次精确重放复用同一结果。它不代表生产交易启动：
   `REAL_TRADING_ENABLED=false`，没有 broker、订单、资金或 fill 写入。
 - 下一步是用当前 release 绑定的通用 probe plan 分批验证 paused/executable 合同的实际权限和
-  参数窗口，并将结果诚实投影到 catalog/query；此前必须以最小 session-end 条件修正分钟
-  调度，再在下一交易时段重新验证。probe-plan 指纹修复已在主线 `aa98026`，但尚未发布到
-  production；不得为单个接口另写公共 API 或业务 collector。
+  参数窗口，并将结果诚实投影到 catalog/query。`aa98026` 的 probe-plan 指纹修复与
+  `82f785f` 的 session-minute 窗口门禁均已进入 production；下一交易时段仍须先做
+  plan/API health readback 再恢复 timer。不得为单个接口另写公共 API 或业务 collector。
 
 ## 已被上述快照取代的上午事实记录（仅供追溯）
 
