@@ -2162,6 +2162,35 @@ def test_minute_canary_only_runs_in_declared_open_session_windows(
         assert {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"] == "not_due"
 
 
+def test_session_minute_current_plan_precedes_other_current_plans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime(2026, 7, 28, 9, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {now.date(): True})
+        conn.commit()
+
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset(
+            {"cn.dataset.adj_factor", "cn.dataset.rt_min"}
+        ),
+    )
+
+    assert [plan.dataset_id for plan in plans] == [
+        "cn.dataset.rt_min",
+        "cn.dataset.adj_factor",
+    ]
+
+
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
 def test_current_only_requires_pilot_wave_before_database_access(
     activation_wave: str | None,

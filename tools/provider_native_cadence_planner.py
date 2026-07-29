@@ -81,6 +81,22 @@ _ACTIVATION_WAVE_KEYS = frozenset({"dataset_ids"})
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
+def _execution_order(plan: "ScheduledRun") -> tuple[int, int, str]:
+    """Order current intraday observations before other equal-priority work.
+
+    This remains cadence-driven: any dataset declared as ``session_minute`` gets
+    the first provider slot in its current/backfill/correction tier.  It avoids
+    an alphabetically earlier reference request delaying a completed bar while
+    preserving the existing priority and deterministic dataset ordering.
+    """
+
+    return (
+        _PRIORITY[plan.priority],
+        0 if plan.cadence_class == "session_minute" else 1,
+        plan.dataset_id,
+    )
+
+
 @dataclass(frozen=True)
 class RetryPolicy:
     max_attempts: int
@@ -1163,7 +1179,7 @@ def plan_runs(
     accepted: list[ScheduledRun] = []
     for _, plan in sorted(
         enumerate(candidates),
-        key=lambda item: (_PRIORITY[item[1].priority], item[1].dataset_id, item[0]),
+        key=lambda item: (*_execution_order(item[1]), item[0]),
     ):
         budget = schedule.rate_budgets[plan.rate_budget_class]
         provider_key = (plan.rate_budget_class, plan.provider)
