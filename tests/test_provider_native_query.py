@@ -173,6 +173,7 @@ def _insert_row(
     row_key: str,
     payload: dict[str, object],
     issues: tuple[str, ...] = (),
+    receipt_id: str | None = None,
 ) -> None:
     canonical = json.dumps(
         payload,
@@ -196,7 +197,7 @@ def _insert_row(
             "degraded" if issues else "valid",
             json.dumps(list(issues), separators=(",", ":")),
             "2026-07-17T03:00:00+00:00",
-            f"receipt:{provider}:{row_key}",
+            receipt_id or f"receipt:{provider}:{row_key}",
         ),
     )
 
@@ -295,7 +296,7 @@ def native_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             state="success",
             degraded=False,
             data_through="20260716",
-            observed_at="2026-07-17T03:00:00+00:00",
+            observed_at="2026-07-16T15:00:00+00:00",
             receipt_id="receipt-current",
             reasons=(),
         ),
@@ -304,10 +305,22 @@ def native_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         last_success_receipt_id="receipt-current",
         last_success_providers=("provider-a", "provider-b"),
         last_success_data_through="20260716",
+        current_receipt_ids=("receipt-current",),
+        last_success_receipt_ids=("receipt-current",),
     )
 
-    def project(*_args: object, **_kwargs: object) -> DatasetRuntimeEvidence:
-        return evidence
+    def project(*_args: object, **kwargs: object) -> DatasetRuntimeEvidence:
+        if kwargs.get("evidence_as_of") is None:
+            return evidence
+        return replace(
+            evidence,
+            as_of_success_receipt_ids=(
+                "receipt-current",
+                "receipt:provider-a:row-a",
+                "receipt:provider-a:row-b",
+                "receipt:provider-b:row-c",
+            ),
+        )
 
     monkeypatch.setattr(
         query_module,
@@ -559,6 +572,115 @@ def test_native_query_filter_order_asof_and_partition_are_registry_compiled(
         {"symbol": "BBB", "trade_date": "20260716"},
         {"symbol": "BBB", "trade_date": "20260716"},
     ]
+    assert response["metadata"]["receipt_id"] == "receipt-current"
+    assert (
+        response["metadata"]["data_through"]
+        == "2026-07-16T00:00:00+08:00"
+    )
+    assert response["metadata"]["observed_at"] == "2026-07-16T15:00:00+00:00"
+
+
+def test_asof_query_excludes_rows_bound_only_to_a_later_receipt(
+    native_harness: dict[str, object],
+) -> None:
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="later-receipt-row",
+        payload={
+            "symbol": "LATER",
+            "trade_date": "20260716",
+            "note": "not observable at cutoff",
+            "big": 4,
+        },
+        receipt_id="receipt-later",
+    )
+    native_harness["conn"].commit()
+
+    historical = _execute(
+        native_harness,
+        _request(
+            fields=("symbol",),
+            as_of="2026-07-16T23:59:59+08:00",
+            order=("symbol:asc",),
+        ),
+    )
+    current = _execute(
+        native_harness,
+        _request(fields=("symbol",), order=("symbol:asc",)),
+    )
+
+    assert [row["symbol"] for row in historical["data"]] == ["AAA", "BBB", "BBB"]
+    assert [row["symbol"] for row in current["data"]] == [
+        "AAA",
+        "BBB",
+        "BBB",
+        "LATER",
+    ]
+
+
+def test_asof_query_without_a_matching_success_receipt_fails_closed(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = query_module.project_dataset_runtime_evidence
+
+    def without_matching_receipt(
+        *args: object, **kwargs: object
+    ) -> DatasetRuntimeEvidence:
+        return replace(
+            project(*args, **kwargs),
+            as_of_success_receipt_ids=(),
+        )
+
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        without_matching_receipt,
+    )
+
+    with pytest.raises(QueryServiceUnavailable, match="unavailable"):
+        _execute(
+            native_harness,
+            _request(
+                fields=("symbol",),
+                as_of="2026-07-16T23:59:59+08:00",
+            ),
+        )
+
+
+def test_asof_cursor_remains_terminal_when_a_later_receipt_row_exists(
+    native_harness: dict[str, object],
+) -> None:
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="later-receipt-pagination-row",
+        payload={
+            "symbol": "ZZZ",
+            "trade_date": "20260716",
+            "note": "not observable at cutoff",
+            "big": 4,
+        },
+        receipt_id="receipt-later",
+    )
+    native_harness["conn"].commit()
+
+    request = _request(
+        fields=("symbol",),
+        as_of="2026-07-16T23:59:59+08:00",
+        order=("symbol:asc",),
+        limit=1,
+    )
+    rows: list[dict[str, object]] = []
+    while True:
+        response = _execute(native_harness, request)
+        rows.extend(response["data"])
+        if response["next_cursor"] is None:
+            break
+        request = replace(request, cursor=response["next_cursor"])
+
+    assert [row["symbol"] for row in rows] == ["AAA", "BBB", "BBB"]
 
 
 @pytest.mark.parametrize(

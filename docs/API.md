@@ -102,7 +102,24 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 `freshness_watermark_unverified`。该完整性叠加层不改写客观 `runtime_state`；已具备
 完整性合同的数据集继续使用既有 `ready` / `empty`、freshness 与 valid 语义。
 
-`metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低 `data_through`。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort 的完整 member receipt IDs；variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前 success rows。
+省略 `as_of` 时，`metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前
+execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大
+可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低
+`data_through`。显式请求 `as_of` 时，读取投影只允许使用完整 execution 内
+`started_at`、`finished_at` 均不晚于 `requested_as_of`，且 `data_through` 不晚于
+`resolved_as_of` 的 success receipts，返回行也必须绑定这些 receipts；metadata、
+lineage 与 cursor watermark 均从该
+有界 receipt authority 重建。若截止点前没有匹配的完整 success receipt，查询以 503
+fail closed，不能把后采 receipt、当前 metadata 或无 lineage 的历史行拼入结果。
+`metadata.data_through` 不得晚于 `resolved_as_of`，`metadata.observed_at` 不得晚于
+`requested_as_of`。截止点之后新增的 receipt 不改变同一 as-of 的 cursor authority。
+
+该约束不会把历史回填变成 PIT：receipt 的 `data_through` 可以描述较早 bar，但
+`observed_at` 仍是实际 collection time。若回填在请求的 `as_of` 之后才采集，它不得进入该
+历史读取投影。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort
+的完整 member receipt IDs；显式 as-of 还覆盖全部允许返回行的 success receipt IDs。
+variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前
+success rows。
 
 交易日历是已知未来事实的例外：`entity_type=trade_calendar` 可以返回 provider 已发布的下一
 交易日及其 `is_open` / `pretrade_date`。未来有效日期只保留在行字段；envelope 的

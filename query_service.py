@@ -1207,28 +1207,44 @@ def _receipt_watermark(
     evidence: DatasetRuntimeEvidence,
 ) -> str:
     projection = evidence.projection
-    return _digest(
-        {
-            "dataset_id": dataset.dataset_id,
-            "runtime_state": projection.state,
-            "degraded": projection.degraded,
-            "reasons": sorted(set(projection.reasons)),
-            "current": {
-                "receipt_id": projection.receipt_id,
-                "receipt_ids": list(evidence.current_receipt_ids),
-                "data_through": projection.data_through,
-                "observed_at": projection.observed_at,
-                "status": evidence.current_receipt_status,
-                "providers": list(evidence.current_providers),
-            },
-            "last_success": {
-                "receipt_id": evidence.last_success_receipt_id,
-                "receipt_ids": list(evidence.last_success_receipt_ids),
-                "data_through": evidence.last_success_data_through,
-                "providers": list(evidence.last_success_providers),
-            },
-        }
-    )
+    payload = {
+        "dataset_id": dataset.dataset_id,
+        "runtime_state": projection.state,
+        "degraded": projection.degraded,
+        "reasons": sorted(set(projection.reasons)),
+        "current": {
+            "receipt_id": projection.receipt_id,
+            "receipt_ids": list(evidence.current_receipt_ids),
+            "data_through": projection.data_through,
+            "observed_at": projection.observed_at,
+            "status": evidence.current_receipt_status,
+            "providers": list(evidence.current_providers),
+        },
+        "last_success": {
+            "receipt_id": evidence.last_success_receipt_id,
+            "receipt_ids": list(evidence.last_success_receipt_ids),
+            "data_through": evidence.last_success_data_through,
+            "providers": list(evidence.last_success_providers),
+        },
+    }
+    if evidence.as_of_success_receipt_ids:
+        payload["as_of_success_receipt_ids"] = list(
+            evidence.as_of_success_receipt_ids
+        )
+    return _digest(payload)
+
+
+def _evidence_as_of(prepared: _PreparedQuery) -> datetime | None:
+    requested = prepared.as_of.requested_as_of
+    if requested is None:
+        return None
+    try:
+        cutoff = datetime.fromisoformat(requested)
+    except ValueError:
+        raise QueryServiceUnavailable("query service is unavailable") from None
+    if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+        raise QueryServiceUnavailable("query service is unavailable")
+    return cutoff
 
 
 def _execution_query_hash(
@@ -1507,6 +1523,54 @@ def _runtime_metadata(
         observed_at = None
         receipt_id = None
 
+    evidence_as_of = _evidence_as_of(prepared)
+    if evidence_as_of is not None:
+        permitted_receipt_ids = frozenset(evidence.as_of_success_receipt_ids)
+        if state == "success" and (
+            receipt_id not in permitted_receipt_ids
+            or not set(evidence.current_receipt_ids).issubset(
+                permitted_receipt_ids
+            )
+            or not set(evidence.last_success_receipt_ids).issubset(
+                permitted_receipt_ids
+            )
+        ):
+            raise QueryServiceUnavailable("query service is unavailable")
+        observation_cutoff_utc = evidence_as_of.astimezone(timezone.utc)
+        try:
+            data_cutoff_utc = datetime.fromisoformat(
+                prepared.as_of.resolved_as_of or ""
+            ).astimezone(timezone.utc)
+        except ValueError:
+            raise QueryServiceUnavailable("query service is unavailable") from None
+        if data_through is not None:
+            try:
+                data_through_value = datetime.fromisoformat(data_through)
+            except ValueError:
+                raise QueryServiceUnavailable(
+                    "query service is unavailable"
+                ) from None
+            if (
+                data_through_value.tzinfo is None
+                or data_through_value.utcoffset() is None
+                or data_through_value.astimezone(timezone.utc) > data_cutoff_utc
+            ):
+                raise QueryServiceUnavailable("query service is unavailable")
+        if observed_at is not None:
+            try:
+                observed_value = datetime.fromisoformat(observed_at)
+            except ValueError:
+                raise QueryServiceUnavailable(
+                    "query service is unavailable"
+                ) from None
+            if (
+                observed_value.tzinfo is None
+                or observed_value.utcoffset() is None
+                or observed_value.astimezone(timezone.utc)
+                > observation_cutoff_utc
+            ):
+                raise QueryServiceUnavailable("query service is unavailable")
+
     providers: set[str] = set()
     provider_config_hashes: set[tuple[str, str]] = set()
     if current_complete:
@@ -1756,6 +1820,12 @@ class QueryService:
                     dataset,
                     now=validated_now,
                     registry=self._registry,
+                    evidence_as_of=_evidence_as_of(prepared),
+                    data_through_as_of=(
+                        None
+                        if prepared.as_of.resolved_as_of is None
+                        else datetime.fromisoformat(prepared.as_of.resolved_as_of)
+                    ),
                 )
                 provider_native_dataset_degraded = (
                     _provider_native_dataset_quality_degraded(conn, dataset)
@@ -1774,6 +1844,23 @@ class QueryService:
                     dataset,
                     prepared,
                 )
+                if prepared.as_of.resolved_as_of is not None:
+                    if not evidence.as_of_success_receipt_ids:
+                        raise QueryServiceUnavailable(
+                            "query service is unavailable"
+                        )
+                    predicates.append(
+                        f"{_quote_identifier('receipt_id')} IN "
+                        "(SELECT value FROM json_each(?) WHERE type = 'text')"
+                    )
+                    params.append(
+                        json.dumps(
+                            list(evidence.as_of_success_receipt_ids),
+                            ensure_ascii=True,
+                            allow_nan=False,
+                            separators=(",", ":"),
+                        )
+                    )
                 resolved_partition: object = None
                 if validated_options.latest_partition:
                     if dataset.partition_field is None:
@@ -1869,6 +1956,7 @@ class QueryService:
                         _quote_identifier("row_key"),
                         _quote_identifier("quality_state"),
                         _quote_identifier("quality_issues_json"),
+                        _quote_identifier("receipt_id"),
                         *(
                             _field_expression(dataset, field_name)
                             for field_name, _direction in prepared.order
@@ -1904,19 +1992,27 @@ class QueryService:
                 if selected_rows:
                     field_map = {field.name: field for field in dataset.fields}
                     for row in selected_rows:
-                        if len(row) != len(prepared.order) + 5:
+                        if len(row) != len(prepared.order) + 6:
                             raise QueryServiceUnavailable(
                                 "query service is unavailable"
                             )
                         payload = _parse_provider_native_payload(row[0])
                         provider = row[1]
                         row_key = row[2]
+                        row_receipt_id = row[5]
                         if (
                             provider not in _provider_native_providers(dataset)
                             or type(row_key) is not str
                             or not row_key
                             or row_key != row_key.strip()
                             or len(row_key) > 256
+                            or type(row_receipt_id) is not str
+                            or not row_receipt_id
+                            or (
+                                prepared.as_of.resolved_as_of is not None
+                                and row_receipt_id
+                                not in evidence.as_of_success_receipt_ids
+                            )
                         ):
                             raise QueryServiceUnavailable(
                                 "query service is unavailable"
@@ -1937,7 +2033,7 @@ class QueryService:
                         for index, (field_name, _direction) in enumerate(
                             prepared.order
                         ):
-                            value = row[5 + index]
+                            value = row[6 + index]
                             if value is not None:
                                 try:
                                     _validate_typed_value(

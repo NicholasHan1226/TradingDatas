@@ -559,6 +559,91 @@ def test_projector_accepts_recognized_success_and_empty_receipts(
     assert projection.reasons == expected_reason
 
 
+def test_asof_evidence_excludes_later_receipt_and_binds_internal_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    first_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-asof-first",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:00:00+00:00",
+    )
+    later_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-asof-later",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through="2026-07-15T00:10:00+00:00",
+    )
+    dataset = _dataset(timezone_name="UTC")
+
+    current = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+    )
+    historical = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+        evidence_as_of=datetime(2026, 7, 15, 0, 5, tzinfo=timezone.utc),
+    )
+
+    assert current.projection.receipt_id == later_receipt
+    assert current.projection.data_through == "2026-07-15T00:10:00+00:00"
+    assert current.as_of_success_receipt_ids == ()
+    assert historical.projection.state == "success"
+    assert historical.projection.receipt_id == first_receipt
+    assert historical.projection.data_through == "2026-07-15T00:00:00+00:00"
+    assert historical.projection.observed_at == "2026-07-15T00:01:00+00:00"
+    assert historical.current_receipt_ids == (first_receipt,)
+    assert historical.last_success_receipt_ids == (first_receipt,)
+    assert historical.as_of_success_receipt_ids == (first_receipt,)
+
+
+def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-collection-time-backfill",
+        started_at="2026-07-20T00:00:00+00:00",
+        finished_at="2026-07-20T00:01:00+00:00",
+        data_through="2026-07-01T00:00:00+00:00",
+    )
+    dataset = _dataset(
+        freshness_sla_seconds=60 * 60 * 24 * 30,
+        timezone_name="UTC",
+    )
+
+    historical = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 20, 0, 5, tzinfo=timezone.utc),
+        evidence_as_of=datetime(2026, 7, 2, 0, 0, tzinfo=timezone.utc),
+    )
+    current = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 20, 0, 5, tzinfo=timezone.utc),
+    )
+
+    assert historical.projection.state == "unobserved"
+    assert historical.projection.receipt_id is None
+    assert historical.as_of_success_receipt_ids == ()
+    assert current.projection.receipt_id == receipt_id
+    assert current.projection.observed_at == "2026-07-20T00:01:00+00:00"
+
+
 def test_projector_binds_complete_singular_provider_request_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
