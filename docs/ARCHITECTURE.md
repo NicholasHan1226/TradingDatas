@@ -28,27 +28,15 @@ api_name + params + fields -> fields/items
 
 Tushare 官方目录和接口文档只生成 dataset/schema/cadence 参考，不能证明 QuickSync 账号的 runtime 权限或调用预算。QuickSync 只在 provider-level transport adapter 中出现；普通 dataset 不因 transport 修正而增加 collector、业务表、公共 route 或 scheduler 分支。
 
-能力目录还必须区分四个事实层：官方目录、transport/tool 可见性、账号真实
-entitlement、runtime activation。当前 scope v2 将 239 个官方名称与 258 个 MCP 工具
-合并为 268 个唯一能力名，首期产品目录为 222 个境内只读 dataset；其中 190 个已有
-官方文档合同，新增 32 个在合同或 HTTPS 证据缺失时仅可发现、不可执行。MCP
-visibility 不能自动生成文档 URL、权限或 scheduler 激活。
+能力目录必须区分四个事实层：官方目录、transport/tool 可见性、账号真实 entitlement、
+runtime activation。能力目录是离线、可重建的产品发现 artifact，不是 runtime registry；
+discovery-only 项不得伪造成 `DatasetDefinition`，也不得猜测 dataset ID、schema、字段、
+主键、cadence 或请求模板。它们在正式合同冻结前不进入 SQLite、collector、scheduler 或
+`POST /v1/query`。MCP visibility 不能自动生成文档 URL、权限或 scheduler 激活。
 
-`config/tushare_capability_catalog.v2.yaml` 是上述 222 项的离线、可重建产品能力发现
-artifact，不是 runtime registry。32 个 discovery-only 项不得伪造成
-`DatasetDefinition`，也不得猜测 dataset ID、schema、字段、主键、cadence 或请求模板；
-它们在正式合同冻结前不进入 SQLite、collector、scheduler 或 `POST /v1/query`。当前
-runtime registry 仍为 190 项。历史 26 项 active 快照已被 2026-07-27 production 的 99 / 91
-事实取代；没有更大的本地激活候选。`forecast` 与 `pledge_detail` 的日期窗口实测仍要求
-`ts_code`，故保持 paused，不能以专用 fanout 绕过通用合同。production 的 99 个 active binding 中，
-70 个新增 binding 已完成首轮 SQLite receipt 与 authenticated query readback；新增项只放宽 activation，
-不改写 schema、cadence 或 completeness，在完整性未证明时 API 仍返回 `partial/degraded`。
-
-production 的 99 项也不等于 99 项数据 ready：截至 2026-07-27，正式 production 为
-历史 `42fcf6c...` 的 99 active / 91 paused 仅作追溯证据。当前 release、catalog 计数与
-dataset 可消费性必须以 `STATUS.md` 和正式 catalog/query server readback 为准；
-受控 current-only one-shot 只对原 pilot dataset 运行；
-每个消费者仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded 判定可用性。
+架构文档不固化会漂移的 active/paused 数量、release 或某次探测结论；这些都以
+`STATUS.md` 和正式 catalog/query server readback 为准。无论 catalog 显示什么，消费者
+仍必须依据 query envelope 的 receipt、freshness、quality 与 degraded 判定可用性。
 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
@@ -101,6 +89,31 @@ runtime 投影把“最新可信 scheduler run 的当前状态”和“全部完
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。
 
 API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
+
+## 运行面隔离与未来扩展
+
+TradingDatas 是一个产品和一套固定数据合同，不是一个必须共享所有运行状态的单体服务。
+所有 lane 复用同一 registry → provider adapter → SQLite facts/receipts → catalog/query
+链路；但 cadence、上游、凭证、市场时间、监管边界或故障域不同的数据，必须保持独立
+运行面。
+
+- 当前境内 Tushare/QuickSync 与 Crypto/Binance 分别拥有独立 immutable release、SQLite、
+  lock/runtime 目录、timer、loopback port 和凭证边界；它们不得合并数据库、timer 或
+  transaction receipt。
+- 新闻、公告、研报、政策、客观舆情等事件源，以及期货、美股等市场，先按其 provider、
+  cadence 和凭证判断是否新建 lane。只有这些边界确实相同，才可复用既有 lane；不能只因
+  都属于“金融数据”而强行共库或共调度。
+- 新 lane 不新增公共 route。它仍只暴露 `GET /v1/catalog` 与 `POST /v1/query`，由 dataset
+  registry 定义数据集、schema、过滤、排序、receipt 与 metadata 合同。
+- 内部消费者只保存“lane base URL + 允许的 dataset IDs”，不直连 SQLite，也不跨 lane
+  transaction。TradingAgent 只消费 envelope，不能反向控制采集、研究或交易逻辑。
+- 只有确有一个消费者需要同一次调用跨多个 lane 查询时，才评估一个薄的只读 gateway：它只
+  聚合 catalog、按 dataset_id 转发 query，不复制 facts、不做跨库 join、不改写 metadata、
+  不成为采集或交易控制层。当前个人内部使用不预先实现该 gateway。
+
+未来扩展的最小步骤固定为：冻结 provider 合同与通用 request shape → 隔离有界 canary →
+provider-to-receipt-to-query readback → 在该 lane 启用节奏。普通数据集只改 registry/config；
+只有 transport/auth/pagination 真正不同才增加 provider-level adapter。
 
 ## 扩展模型
 
