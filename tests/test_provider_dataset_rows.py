@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -316,6 +317,47 @@ def test_unchanged_provenance_refresh_rolls_back_when_receipt_fails(
     assert after["revision"] == before["revision"] == 1
 
 
+def test_append_only_stable_identity_rejects_schema_change_without_new_receipt(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    dataset_payload = generic_dataset(point_in_time="append_only")
+    dataset_payload["read_model_adapter"]["row_key_strategy"] = "payload_hash"  # type: ignore[index]
+    registry = load_dataset_registry(write_registry(tmp_path, dataset_payload))
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    initial = ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[_row(close=10.0)],
+        context=_context(dataset, binding, 1),
+    )
+    before = _fact(db_path)
+    changed_contract = replace(dataset, schema_version="2.2.0")
+
+    with pytest.raises(
+        RuntimeError,
+        match="append_only provider identity must not update",
+    ):
+        ingest_provider_native_rows(
+            db_path,
+            dataset=changed_contract,
+            binding=binding,
+            rows=[_row(close=10.0)],
+            context=_context(changed_contract, binding, 2),
+        )
+
+    after = _fact(db_path)
+    assert tuple(after) == tuple(before)
+    assert after["receipt_id"] == initial.receipt_ids[0]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone() == (1,)
+
+
 def test_snapshot_missing_key_uses_tagged_payload_fallback(tmp_path: Path) -> None:
     db_path = tmp_path / "facts.sqlite"
     _db(db_path)
@@ -431,6 +473,7 @@ def test_append_only_payload_identity_never_updates(tmp_path: Path) -> None:
         rows=[_row(close=10.0)],
         context=_context(dataset, binding, 1),
     )
+    first_fact = _fact(db_path)
     second = ingest_provider_native_rows(
         db_path,
         dataset=dataset,
@@ -449,6 +492,19 @@ def test_append_only_payload_identity_never_updates(tmp_path: Path) -> None:
     assert first.counts.inserted == 1
     assert second.counts.inserted == 1
     assert third.counts.unchanged == 1
+    with sqlite3.connect(db_path) as conn:
+        unchanged_fact = conn.execute(
+            """SELECT receipt_id, collected_at, revision
+               FROM provider_dataset_rows
+               WHERE json_extract(payload_json, '$.close') = 10.0"""
+        ).fetchone()
+    assert unchanged_fact == (
+        first_fact["receipt_id"],
+        first_fact["collected_at"],
+        first_fact["revision"],
+    )
+    assert first_fact["revision"] == 1
+    assert third.receipt_ids[0] != first.receipt_ids[0]
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
             "SELECT revision FROM provider_dataset_rows ORDER BY row_key"

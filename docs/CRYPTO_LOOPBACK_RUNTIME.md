@@ -56,6 +56,12 @@ resolved cutoff. A later collection is excluded even when its bar timestamps
 are historical; if no matching receipt exists, the query fails closed.
 Omitting `as_of` retains the current projection.
 
+For append-only bars, an identical row re-observed in the next overlapping
+collector window keeps its first receipt and collection provenance. The later
+transaction still records an exact success receipt with unchanged counts.
+Instrument rules remain current-snapshot data and continue to refresh their
+receipt provenance. No existing fact or receipt is migrated in place.
+
 ## Provisioning and rollback
 
 Before enabling either unit on a new host, create the dedicated service account, immutable

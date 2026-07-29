@@ -683,6 +683,113 @@ def test_asof_cursor_remains_terminal_when_a_later_receipt_row_exists(
     assert [row["symbol"] for row in rows] == ["AAA", "BBB", "BBB"]
 
 
+def test_append_only_overlap_replay_keeps_exact_terminal_window_after_later_receipt(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    append_only_dataset = replace(
+        native_harness["dataset"],
+        point_in_time="append_only",
+        max_page_size=13,
+    )
+    append_only_registry = DatasetRegistry(
+        (append_only_dataset,),
+        query_defaults=native_harness["registry"].query_defaults,
+    )
+    harness = {
+        **native_harness,
+        "dataset": append_only_dataset,
+        "registry": append_only_registry,
+        "service": QueryService(
+            db_path=(tmp_path / "append-only-query.sqlite").absolute(),
+            registry=append_only_registry,
+            cursor_codec=SignedCursorCodec(SIGNING_KEY),
+        ),
+    }
+    permitted = {
+        "receipt-current",
+        "receipt:provider-a:row-a",
+        "receipt:provider-a:row-b",
+        "receipt:provider-b:row-c",
+    }
+    for index, symbol in enumerate("CDEFGHIJKL", start=1):
+        receipt_id = f"receipt:append-only-first:{index}"
+        permitted.add(receipt_id)
+        _insert_row(
+            native_harness["conn"],
+            provider="provider-a",
+            row_key=f"append-only-first-{index}",
+            payload={
+                "symbol": symbol,
+                "trade_date": "20260716",
+                "note": "first append-only provenance",
+                "big": index,
+            },
+            receipt_id=receipt_id,
+        )
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="append-only-later-overlap",
+        payload={
+            "symbol": "ZZZ",
+            "trade_date": "20260716",
+            "note": "later receipt outside cutoff",
+            "big": 99,
+        },
+        receipt_id="receipt:append-only-later",
+    )
+    native_harness["conn"].commit()
+
+    original_project = query_module.project_dataset_runtime_evidence
+
+    def append_only_authority(
+        *args: object, **kwargs: object
+    ) -> DatasetRuntimeEvidence:
+        evidence = original_project(*args, **kwargs)
+        if kwargs.get("evidence_as_of") is None:
+            return evidence
+        return replace(
+            evidence,
+            as_of_success_receipt_ids=tuple(sorted(permitted)),
+        )
+
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        append_only_authority,
+    )
+    request = _request(
+        fields=("symbol", "trade_date"),
+        as_of="2026-07-16T23:59:59+08:00",
+        order=("symbol:asc",),
+        limit=13,
+    )
+
+    first = _execute(harness, request)
+    replay = _execute(harness, request)
+
+    assert len(first["data"]) == 13
+    assert first["next_cursor"] is None
+    assert first["data"] == replay["data"]
+    assert first["metadata"] == replay["metadata"]
+    assert all(row["symbol"] != "ZZZ" for row in first["data"])
+
+    current_request = replace(request, as_of=None)
+    current_first = _execute(harness, current_request)
+    assert len(current_first["data"]) == 13
+    assert current_first["next_cursor"] is not None
+    current_second = _execute(
+        harness,
+        replace(current_request, cursor=current_first["next_cursor"]),
+    )
+    assert current_second["data"] == [
+        {"symbol": "ZZZ", "trade_date": "20260716"}
+    ]
+    assert current_second["next_cursor"] is None
+
+
 @pytest.mark.parametrize(
     "query_request",
     [

@@ -535,6 +535,17 @@ def _write_prepared_rows(
             continue
         existing_tuple = tuple(existing)
         if existing_tuple[:11] == desired_content:
+            if dataset.point_in_time == "append_only":
+                # An append-only identity already proves this exact immutable
+                # payload at its first successful observation.  Rebinding the
+                # row to a later identical overlap receipt destroys that
+                # earlier row-to-receipt authority and makes a bounded as-of
+                # replay impossible without inventing historical PIT state.
+                # Keep the first provenance while still recording this
+                # transaction's exact ``unchanged`` outcome in its receipt.
+                expected_rows[identity] = existing_tuple
+                unchanged += 1
+                continue
             # Re-observing an identical current-snapshot payload is still a
             # new, successful provider observation.  Bind the fact to this
             # transaction's receipt so a current registry contract cannot be
