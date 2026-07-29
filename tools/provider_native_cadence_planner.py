@@ -52,6 +52,7 @@ _CADENCE_KEYS = frozenset(
     {
         "automatic",
         "availability_after_local",
+        "session_windows_local",
         "weekdays",
         "incremental_mode",
         "partition_frequency",
@@ -70,6 +71,7 @@ _CADENCE_KEYS = frozenset(
         "retry",
     }
 )
+_REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {"session_windows_local"}
 _PRIORITY = {"current": 0, "backfill": 1, "correction": 2}
 _ACTIVATION_WAVE_ROOT_KEYS = frozenset({"version", "input_hashes", "waves"})
 _ACTIVATION_WAVE_HASH_KEYS = frozenset(
@@ -77,6 +79,22 @@ _ACTIVATION_WAVE_HASH_KEYS = frozenset(
 )
 _ACTIVATION_WAVE_KEYS = frozenset({"dataset_ids"})
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _execution_order(plan: "ScheduledRun") -> tuple[int, int, str]:
+    """Order current intraday observations before other equal-priority work.
+
+    This remains cadence-driven: any dataset declared as ``session_minute`` gets
+    the first provider slot in its current/backfill/correction tier.  It avoids
+    an alphabetically earlier reference request delaying a completed bar while
+    preserving the existing priority and deterministic dataset ordering.
+    """
+
+    return (
+        _PRIORITY[plan.priority],
+        0 if plan.cadence_class == "session_minute" else 1,
+        plan.dataset_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -107,6 +125,7 @@ class CalendarPolicy:
 class CadencePolicy:
     automatic: bool
     availability_after_local: time | None
+    session_windows_local: tuple[tuple[time, time], ...]
     weekdays: tuple[int, ...]
     incremental_mode: str
     partition_frequency: str
@@ -346,6 +365,26 @@ def _day(value: object, label: str) -> date | None:
         raise ValueError(f"{label} must use YYYYMMDD") from exc
 
 
+def _session_windows(value: object, label: str) -> tuple[tuple[time, time], ...]:
+    if value is None:
+        return ()
+    if type(value) is not list:
+        raise ValueError(f"{label} must be a list")
+    windows: list[tuple[time, time]] = []
+    for index, raw in enumerate(value):
+        item = _mapping(raw, f"{label}[{index}]")
+        if set(item) != {"start", "end"}:
+            raise ValueError(f"{label}[{index}] keys are invalid")
+        start = _clock(item["start"], f"{label}[{index}].start")
+        end = _clock(item["end"], f"{label}[{index}].end")
+        if start is None or end is None or start >= end:
+            raise ValueError(f"{label}[{index}] range is invalid")
+        windows.append((start, end))
+    if any(previous[1] >= current[0] for previous, current in zip(windows, windows[1:])):
+        raise ValueError(f"{label} windows must be sorted and disjoint")
+    return tuple(windows)
+
+
 def load_schedule_bytes(payload: bytes) -> Schedule:
     root = _mapping(
         yaml.load(payload.decode("utf-8"), Loader=_UniqueLoader),
@@ -384,7 +423,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
     cadences: dict[str, CadencePolicy] = {}
     for name, raw in raw_cadences.items():
         value = _mapping(raw, f"cadence {name}")
-        if set(value) != _CADENCE_KEYS:
+        if not _REQUIRED_CADENCE_KEYS <= set(value) <= _CADENCE_KEYS:
             raise ValueError(f"cadence {name} keys are invalid")
         raw_calendar = value["calendar"]
         calendar = None
@@ -477,9 +516,15 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
         rate_class = _text(value["rate_budget_class"], "rate_budget_class")
         if rate_class not in budgets:
             raise ValueError("rate budget class is unknown")
+        session_windows = _session_windows(
+            value.get("session_windows_local"), "session_windows_local"
+        )
+        if session_windows and (name != "session_minute" or calendar is None):
+            raise ValueError("session windows require session_minute calendar cadence")
         cadences[name] = CadencePolicy(
             automatic,
             _clock(value["availability_after_local"], "availability_after_local"),
+            session_windows,
             tuple(sorted(set(weekdays))),
             incremental,
             frequency,
@@ -706,6 +751,27 @@ def _latest_available(now: datetime, policy: CadencePolicy) -> date:
     while day.isoweekday() not in policy.weekdays:
         day -= timedelta(days=1)
     return day
+
+
+def _session_window_state(
+    registry: DatasetRegistry,
+    state: PlannerState,
+    policy: CadencePolicy,
+    local_now: datetime,
+) -> str | None:
+    """Return a fail-closed skip state outside a declared intraday session."""
+
+    if not policy.session_windows_local:
+        return None
+    clock = local_now.timetz().replace(tzinfo=None, second=0, microsecond=0)
+    if not any(start <= clock <= end for start, end in policy.session_windows_local):
+        return "not_due"
+    calendar = _calendar(registry, state, policy)
+    if calendar is None or local_now.date() not in calendar:
+        return "calendar_unavailable"
+    if calendar[local_now.date()] is not True:
+        return "not_due"
+    return None
 
 
 def _calendar(
@@ -938,6 +1004,10 @@ def _dataset_plans(
 ) -> tuple[tuple[ScheduledRun, ...], str]:
     current = state.get(dataset, binding)
     now_utc = now.astimezone(timezone.utc)
+    local_now = now.astimezone(ZoneInfo(dataset.timezone))
+    session_state = _session_window_state(registry, state, policy, local_now)
+    if session_state is not None:
+        return (), session_state
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
         if latest is not None:
@@ -955,7 +1025,6 @@ def _dataset_plans(
         return _runs(
             dataset, binding, policy, MappingProxyType({}), "current"
         ), "planned"
-    local_now = now.astimezone(ZoneInfo(dataset.timezone))
     available = _latest_available(local_now, policy)
     # The registry, not a dataset name or provider API branch, declares the
     # bounded known-future window.  Its value is capped by the cadence policy;
@@ -1110,7 +1179,7 @@ def plan_runs(
     accepted: list[ScheduledRun] = []
     for _, plan in sorted(
         enumerate(candidates),
-        key=lambda item: (_PRIORITY[item[1].priority], item[1].dataset_id, item[0]),
+        key=lambda item: (*_execution_order(item[1]), item[0]),
     ):
         budget = schedule.rate_budgets[plan.rate_budget_class]
         provider_key = (plan.rate_budget_class, plan.provider)

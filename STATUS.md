@@ -1,22 +1,30 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 18:01 CST。
+最后更新：2026-07-29 19:11 CST。
 
-## 当前事实快照（2026-07-29 18:01 CST，优先于以下全部记录）
+## 当前事实快照（2026-07-29 19:11 CST，优先于以下全部记录）
 
 > 本快照只陈述 TradingDatas 的 A 股/QuickSync 正式数据面；Crypto 由独立发布线负责，
 > 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
 > 不能仅依据 catalog、HTTP 200 或本文件推断可用性。
 
-- 正式 immutable `current` 为 `64695852ff5be23b3cf8a8d1d03a13f7274e4586`；上一个
-  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 已作为已验证回滚目标保留。本次只允许
-  registry 声明的未来一日交易日历进入通用 planner；没有新增 route、专用 collector、
-  TradingAgent 改动、8082 改动或交易动作。
+- 正式 immutable `current` 为 `78435bb37754fda5bb4d2be6d46a9b63211b7401`；其即时、
+  已验证回滚目标为 `82f785f147359ce15fddaa129a97d1b3917ed391`，更早的
+  `64695852ff5be23b3cf8a8d1d03a13f7274e4586` 继续保留。本次在既有通用 cadence 中让
+  `session_minute` 在同一计划优先级内先于其它 automatic 合同执行；原有开市日历与本地
+  上午/下午窗口门禁仍生效。没有新增 route、专用 collector、TradingAgent 改动、8082 改动
+  或交易动作。生产绑定的 20260730 09:35 CST dry-run 选择 15 个 current plans，
+  `cn.dataset.rt_min` 位于第 1 位；这只是计划证明，尚不是 provider/API 真实成功。
 - `tradingdatas-v1-internal.service` active。通用 provider-native collector timer 已在
   18:51 CST fail-closed 停用：18:45 与 18:50 的收盘后 `cn.dataset.rt_min` 请求均为
   provider transport timeout，不能把持续重试误报为稳定采集。正式 catalog 为
   `v1-1e4560099e58a89e`，含 190 个 runtime
   contracts，其中 101 个 activation active、89 个 paused。
+- 19:13 CST 对既有通用 `direct_wave_1` 做的有界 dry-run 后执行只选中
+  `cn.dataset.suspend_d`。上游在约 8 秒内返回 `provider_error`，系统只写入
+  `failed` receipt `186ae553…31ff3b6`，`returned/validated/committed=0`，没有写入或
+  覆盖 facts。该结果不是权限否定，也不是成功采集；在新的已批准窗口证明 transport
+  恢复前，不扩大 direct wave，也不重启分钟 timer。
 - 本轮正式运行投影为：64 个 `success` 且 non-degraded、35 个合法 `empty` 且
   non-degraded、`cn.dataset.rt_min` 因收盘后的 300 秒 SLA 诚实为 stale/degraded、
   `cn.dataset.stk_factor_pro` 因历史 receipt chronology 异常 fail-closed。它不是
@@ -33,9 +41,9 @@
   第一次初始化创建只读输入，第二次精确重放复用同一结果。它不代表生产交易启动：
   `REAL_TRADING_ENABLED=false`，没有 broker、订单、资金或 fill 写入。
 - 下一步是用当前 release 绑定的通用 probe plan 分批验证 paused/executable 合同的实际权限和
-  参数窗口，并将结果诚实投影到 catalog/query；此前必须以最小 session-end 条件修正分钟
-  调度，再在下一交易时段重新验证。probe-plan 指纹修复已在主线 `aa98026`，但尚未发布到
-  production；不得为单个接口另写公共 API 或业务 collector。
+  参数窗口，并将结果诚实投影到 catalog/query。`aa98026` 的 probe-plan 指纹修复与
+  `82f785f` 的 session-minute 窗口门禁均已进入 production；下一交易时段仍须先做
+  plan/API health readback 再恢复 timer。不得为单个接口另写公共 API 或业务 collector。
 
 ## 已被上述快照取代的上午事实记录（仅供追溯）
 

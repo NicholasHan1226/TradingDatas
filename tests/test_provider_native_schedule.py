@@ -2079,6 +2079,7 @@ def test_minute_canary_is_due_before_the_next_jittered_timer_tick(
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
     with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
         receipt = _canonical_receipt(
             monkeypatch,
             conn,
@@ -2114,6 +2115,80 @@ def test_minute_canary_is_due_before_the_next_jittered_timer_tick(
 
     assert [plan.dataset_id for plan in plans] == ["cn.dataset.rt_min"]
     assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "expected"),
+    [
+        (9, 35, True),
+        (11, 35, True),
+        (11, 40, False),
+        (12, 55, False),
+        (13, 0, True),
+        (15, 5, True),
+        (15, 10, False),
+    ],
+)
+def test_minute_canary_only_runs_in_declared_open_session_windows(
+    hour: int,
+    minute: int,
+    expected: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
+        conn.commit()
+
+    state = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=datetime(2026, 7, 28, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=datetime(2026, 7, 28, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai")),
+        selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+        current_only=True,
+    )
+
+    assert (len(plans) == 1) is expected
+    if not expected:
+        assert {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"] == "not_due"
+
+
+def test_session_minute_current_plan_precedes_other_current_plans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime(2026, 7, 28, 9, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {now.date(): True})
+        conn.commit()
+
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset(
+            {"cn.dataset.adj_factor", "cn.dataset.rt_min"}
+        ),
+    )
+
+    assert [plan.dataset_id for plan in plans] == [
+        "cn.dataset.rt_min",
+        "cn.dataset.adj_factor",
+    ]
 
 
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
