@@ -13,6 +13,7 @@ import pytest
 import storage.ingest_receipts as receipt_module
 import storage.sqlite_authority_lock as lock_module
 from dataset_registry import load_dataset_registry
+from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import IngestContext, ProviderRequestIdentity
 from storage.provider_dataset_rows import (
     ingest_provider_native_rows,
@@ -228,7 +229,7 @@ def test_generic_write_and_projection_share_one_clean_slate_authority(
         provider=binding.provider,
         provider_api=binding.api_name,
         request_window={"trade_date": "20260720"},
-        config_hash="a" * 64,
+        config_hash=provider_ingest_config_hash(dataset, binding),
         adapter_version=binding.adapter_version,
         started_at="2026-07-20T00:00:00+00:00",
         data_through="20260720",
