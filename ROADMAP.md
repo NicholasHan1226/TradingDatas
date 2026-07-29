@@ -14,6 +14,10 @@
 
 首期境内数据范围不包含港股、美股、其它加密资产、预测市场和 provider 写操作。另设隔离的 Binance 公共现货纵向切片，仅覆盖 BTCUSDT/ETHUSDT 5 分钟行情与公开 exchangeInfo 交易约束元数据；它不得共享 A 股 release、SQLite、内部 API 认证材料、端口或 timer，且无需并禁止 Binance 账户/API key。实际部署状态以 `STATUS.md` 为准。
 
+### 当前执行停止线
+
+本路线图当前只推进个人内部量化所需的数据闭环：provider → SQLite facts/receipts → 固定内部 `GET /v1/catalog` 与 `POST /v1/query` → 内部只读消费者。优先完成已有通用数据面上的稳定采集、真实 readback 和可回滚发布；不为了未来对外服务提前建设公网网关、多租户、计费、使用量账本、复杂权限层、专用 API、专用 collector 或按接口增加 timer。新增数据源必须沿用现有 registry/adapter/receipt/query 链路；只有已验证的通用协议缺口才允许最小修复。
+
 ## Phase 0 — clean-slate 基础
 
 - 产品和仓库统一命名为 TradingDatas；
