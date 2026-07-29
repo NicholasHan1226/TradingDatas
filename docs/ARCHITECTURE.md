@@ -115,6 +115,29 @@ TradingDatas 是一个产品和一套固定数据合同，不是一个必须共�
 provider-to-receipt-to-query readback → 在该 lane 启用节奏。普通数据集只改 registry/config；
 只有 transport/auth/pagination 真正不同才增加 provider-level adapter。
 
+## 跨市场语义与另类数据
+
+运行隔离是可用性与安全边界，不是语义孤岛。TradingDatas 必须让后续 A 股、期货、
+美股、Crypto、全球新闻和自建另类数据能够在**读取侧**以可审计方式关联；但这种关联
+不得变成跨 lane 写事务、采集回调或交易判断。
+
+每个新 dataset 在 registry 中至少要明确：资产类别、市场/交易所、币种、原生标的身份、
+时间字段及其语义（事件发生、bar open/bar end、披露、可得、采集观察）、时区、provider
+身份、transport、schema major、quality/freshness/lineage 与 receipt 口径。原始 payload
+始终保留；标准化字段只补充可解释的公共语义，不能抹平来源差异或未知字段。
+
+- 跨市场读取使用受版本约束的 entity mapping 与时间语义，而不是用代码字符串、收盘价或
+  采集时间作隐式猜测。股票、指数、期货合约、加密交易对和新闻实体可有不同原生身份；
+  映射须保留来源、有效期与置信状态。
+- 新闻、公告、舆情和其它另类数据必须分开保存 `event_at`、`published_at`、
+  `available_at` 与 `observed_at`（适用时）。后采历史内容不能被伪装成当时可用的信息，
+  也不能以情绪分数或关联标签覆盖原文、来源或时间证据。
+- 自建另类数据源遵循同一 provider adapter、raw payload、receipt 与 catalog/query 合同；
+  先作为客观事实数据发布，研究侧再决定如何做实体关联、特征、预测或策略解释。
+- 跨市场图谱、相关性、候选、预测、资金与交易判断属于 MarketGraph 或 TradingAgent 的
+  读取侧职责。TradingDatas 只交付带来源和时间证据的数据快照，不能在数据平台内形成
+  交易信号或反向控制采集。
+
 ## 扩展模型
 
 新增普通 Tushare dataset 只改 registry/config。新增 provider 仅在 transport、auth 或 pagination 不同时增加 provider adapter。公共 API 不随数据源增长。
