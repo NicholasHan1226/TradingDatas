@@ -1,8 +1,39 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 11:14 CST。
+最后更新：2026-07-29 18:01 CST。
 
-## 当前事实快照（2026-07-29 11:14 CST，优先于以下历史记录）
+## 当前事实快照（2026-07-29 18:01 CST，优先于以下全部记录）
+
+> 本快照只陈述 TradingDatas 的 A 股/QuickSync 正式数据面；Crypto 由独立发布线负责，
+> 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
+> 不能仅依据 catalog、HTTP 200 或本文件推断可用性。
+
+- 正式 immutable `current` 为 `64695852ff5be23b3cf8a8d1d03a13f7274e4586`；上一个
+  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 已作为已验证回滚目标保留。本次只允许
+  registry 声明的未来一日交易日历进入通用 planner；没有新增 route、专用 collector、
+  TradingAgent 改动、8082 改动或交易动作。
+- `tradingdatas-v1-internal.service` active，通用 provider-native collector timer
+  enabled/active。正式 catalog 为 `v1-1e4560099e58a89e`，含 190 个 runtime
+  contracts，其中 101 个 activation active、89 个 paused。
+- 本轮正式运行投影为：64 个 `success` 且 non-degraded、35 个合法 `empty` 且
+  non-degraded、`cn.dataset.rt_min` 因收盘后的 300 秒 SLA 诚实为 stale/degraded、
+  `cn.dataset.stk_factor_pro` 因历史 receipt chronology 异常 fail-closed。它不是
+  “190 个接口已完整稳定采集”的证明；paused 与 degraded/failed 数据集仍不可按 ready 使用。
+- 以 `tradingagent` UID 的正式 18082 readback：
+  `cn.market.trade_calendar`（SSE、`cal_date=20260730`）返回
+  `is_open=1`、`pretrade_date=20260729`，并为
+  `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。未来适用日期保留在行中，
+  而 envelope `data_through` 为实际观测时间，满足 `data_through <= observed_at`。
+- 同一身份对 `cn.equity.daily`（`trade_date=20260729`）的正式查询返回可分页事实行，且为
+  `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。此前首次日历采集后的
+  日线跳过是通用 planner 的依赖快照所致；下一轮已按同一通用链路成功完成，未手工插库。
+- TradingAgent 已独立验证隔离的 20260730 initializer：30/30 日线分批 readback 完整，
+  第一次初始化创建只读输入，第二次精确重放复用同一结果。它不代表生产交易启动：
+  `REAL_TRADING_ENABLED=false`，没有 broker、订单、资金或 fill 写入。
+- 下一步是用当前 release 绑定的通用 probe plan 分批验证 paused/executable 合同的实际权限和
+  参数窗口，并将结果诚实投影到 catalog/query；不得为单个接口另写公共 API 或业务 collector。
+
+## 已被上述快照取代的上午事实记录（仅供追溯）
 
 > 本次更新只重新验证了以下 release、调度与 receipt 事实；其余本节中较早的
 > dataset 状态必须仍以当次 `POST /v1/query` envelope 为准，不能从旧描述推断可用性。
