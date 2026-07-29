@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 21:10 CST。
+最后更新：2026-07-29 21:27 CST。
 
 ## 当前运行面
 
@@ -43,10 +43,12 @@
 
 ## 旧系统退役与保留
 
-- SharedSignals 运行态已退役：`sharedsignals-api.service` 与 relay 均
-  `inactive/disabled`；旧 `8082` 无监听；root 的 5 条和 `marketgraph` 的 22 条活动旧 cron
-  已移除。退役与回滚证据：
-  `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
+- SharedSignals 运行态已退役并 permanent-mask：7 个历史 service/timer 均为
+  `inactive/masked`；旧 `8082` 无监听；root 的 5 条和 `marketgraph` 的 22 条活动旧 cron
+  已移除。原 unit 文件已复制并移入受限退役证据目录，回滚需先显式 `unmask` 后恢复该副本。
+  退役证据：
+  `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement/unit-mask-20260729T211900Z`
+  （`SHA256SUMS` 摘要：`832b938f21638deea95dd16ed565684dfbe9b72642090cdf1f74d4d2e28a9629`）。
 - 旧 SharedSignals 代码目录、SQLite、挂载和历史 evidence 尚未物理删除。它们不是运行依赖，
   但仍是受控 rollback/审计材料；物理删除须先单独冻结数据保留清单并获得批准。
 

@@ -364,10 +364,11 @@ sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 - 旧 `8082` 服务、旧 SharedSignals 代码与数据路径。
 
 **2026-07-29 20:46 CST 退役 readback：** 已先生成 root-only 回滚快照，随后停用
-`sharedsignals-api.service` 与 `sharedsignals-sg-relay-tunnel.service`。两项服务均为
-`inactive/disabled`，`127.0.0.1:8082` 已无监听；root 的 5 条与 `marketgraph` 的 22 条
-非注释旧 SharedSignals 计划任务均已移除。TradingDatas 18082 仍为 active，自己的 collector
-timer 继续 disabled。证据位于受限目录
+`sharedsignals-api.service` 与 `sharedsignals-sg-relay-tunnel.service`。随后 7 个历史
+SharedSignals service/timer 的 unit 均已移出 systemd 搜索路径并 `masked`，因此不能被意外
+启动；原 unit 副本和摘要保留在受限退役证据目录。`127.0.0.1:8082` 已无监听；root 的 5 条与
+`marketgraph` 的 22 条非注释旧 SharedSignals 计划任务均已移除。TradingDatas 18082 仍为
+active，自己的 collector timer 继续 disabled。基础退役证据位于受限目录
 `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
 旧代码目录、挂载、SQLite 与历史证据未删除；若要物理删除，仍须先完成数据保留清单和单独批准。
 
