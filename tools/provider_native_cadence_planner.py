@@ -567,8 +567,26 @@ def _active_binding(dataset: DatasetDefinition) -> ProviderBinding:
 
 
 def load_planner_state(
-    db_path: Path, registry: DatasetRegistry, *, now: datetime
+    db_path: Path,
+    registry: DatasetRegistry,
+    *,
+    now: datetime,
+    calendar_dataset_ids: frozenset[str] | None = None,
 ) -> PlannerState:
+    """Load only the fact material needed to plan one schedule run.
+
+    All datasets need their validated receipt history and partition values.
+    Provider payloads are only needed to derive an exchange calendar; avoiding
+    payload JSON hydration for every other historical fact keeps the common
+    automatic run bounded without changing scheduling semantics.
+    ``None`` preserves the complete-fact behaviour for direct callers.
+    """
+
+    if calendar_dataset_ids is not None and any(
+        type(dataset_id) is not str or not dataset_id
+        for dataset_id in calendar_dataset_ids
+    ):
+        raise ValueError("calendar_dataset_ids must contain non-empty strings")
     datasets = {
         item.dataset_id: item
         for item in registry.datasets
@@ -608,12 +626,32 @@ def load_planner_state(
                     for item in receipts[key]
                     if item.status == "success" and item.cohort_status == "success"
                 }
-                for partition_value, payload_json, receipt_id in conn.execute(
-                    "SELECT partition_value, payload_json, receipt_id FROM provider_dataset_rows "
+                hydrate_payload = (
+                    calendar_dataset_ids is None
+                    or dataset.dataset_id in calendar_dataset_ids
+                )
+                columns = (
+                    "partition_value, payload_json, receipt_id"
+                    if hydrate_payload
+                    else "partition_value, receipt_id"
+                )
+                for row in conn.execute(
+                    f"SELECT {columns} FROM provider_dataset_rows "
                     "WHERE dataset_id=? AND provider=? AND schema_major=?",
                     (dataset.dataset_id, binding.provider, dataset.schema_major),
                 ):
+                    if hydrate_payload:
+                        partition_value, payload_json, receipt_id = row
+                    else:
+                        partition_value, receipt_id = row
                     if receipt_id not in success_ids:
+                        continue
+                    if partition_value is not None and type(partition_value) is not str:
+                        raise RuntimeError("provider-native fact authority is invalid")
+                    if not hydrate_payload:
+                        facts[key].append(
+                            _Fact(partition_value, MappingProxyType({}), receipt_id)
+                        )
                         continue
                     try:
                         payload = json.loads(
@@ -628,9 +666,7 @@ def load_planner_state(
                         raise RuntimeError(
                             "provider-native fact authority is invalid"
                         ) from exc
-                    if type(payload) is not dict or (
-                        partition_value is not None and type(partition_value) is not str
-                    ):
+                    if type(payload) is not dict:
                         raise RuntimeError("provider-native fact authority is invalid")
                     facts[key].append(
                         _Fact(partition_value, MappingProxyType(payload), receipt_id)

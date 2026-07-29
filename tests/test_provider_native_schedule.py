@@ -366,6 +366,45 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
     assert all(plan.provider for plan in plans)
 
 
+def test_schedule_state_skips_noncalendar_payload_hydration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        receipt = _seed_daily(
+            monkeypatch,
+            conn,
+            registry,
+            date(2026, 7, 20),
+        )
+        conn.execute(
+            "UPDATE provider_dataset_rows SET payload_json=? WHERE receipt_id=?",
+            ('{"ts_code":"000001.SZ","ts_code":"duplicate"}', receipt),
+        )
+        conn.commit()
+
+    now = datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    state = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=now,
+        calendar_dataset_ids=frozenset({"cn.market.trade_calendar"}),
+    )
+    daily = registry.resolve("cn.equity.daily")
+    binding = daily.provider_bindings[0]
+    facts = state.get(daily, binding).facts
+    assert len(facts) == 1
+    assert facts[0].partition_value == "20260720"
+    assert dict(facts[0].payload) == {}
+
+    with pytest.raises(RuntimeError, match="fact authority is invalid"):
+        scheduler.load_planner_state(db_path, registry, now=now)
+
+
 def test_planner_skips_only_dataset_with_invalid_receipt_authority() -> None:
     registry = _active_registry()
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)

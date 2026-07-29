@@ -287,7 +287,17 @@ def run_schedule(
         ).dataset_ids
     elif registry is None or schedule is None:
         raise ValueError("default schedule inputs are required")
-    state = load_planner_state(db_path, registry, now=now)
+    calendar_dataset_ids = frozenset(
+        policy.calendar.dataset_id
+        for policy in schedule.cadences.values()
+        if policy.calendar is not None
+    )
+    state = load_planner_state(
+        db_path,
+        registry,
+        now=now,
+        calendar_dataset_ids=calendar_dataset_ids,
+    )
     plans, planner_skips = _plan_runs(
         registry=registry,
         schedule=schedule,
