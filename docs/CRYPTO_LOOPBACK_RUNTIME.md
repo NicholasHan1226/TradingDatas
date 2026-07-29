@@ -17,6 +17,8 @@ trading authority.
 | API unit | `tradingdatas-crypto-v1-internal.service` |
 | collector unit | `tradingdatas-crypto-binance-collect.service` |
 | timer | `tradingdatas-crypto-binance-collect.timer`, enabled for isolated 5-minute collection |
+| rule unit | `tradingdatas-crypto-binance-rules.service` |
+| rule timer | `tradingdatas-crypto-binance-rules.timer`, daily public-rule refresh |
 | lock | `/run/tradingdatas-crypto/collect.lock` |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`
@@ -35,15 +37,17 @@ hash registry, salt, or a provider credential.
 ## Collector behavior and current proof
 
 The timer passed candidate review and server preflight before it was enabled.
-It collects BTCUSDT and ETHUSDT through the existing provider-native receipt
-path, using two adjacent already-closed 5m bars per run. Its `observed_at` is
-the actual collection time. The 2026-07-28 20:35 CST automatic run completed
-successfully; authenticated `POST /v1/query` readback returned both bar
-datasets as `ready/fresh/valid/non-degraded`, with complete receipt lineage.
-The two public rules datasets were separately collected once through the
-generic registry runner and have the same healthy metadata. Bounded historical
-backfill remains a separate one-shot operation and is never real-time/PIT
-evidence.
+The current production baseline collects BTCUSDT and ETHUSDT through the
+existing provider-native receipt path, using two adjacent already-closed 5m
+bars per run. Its `observed_at` is the actual collection time.
+
+The expansion contract freezes ten symbols in
+`config/crypto_binance_spot_universe.v1.yaml` and compiles twenty datasets:
+one bar and one public-rule dataset per symbol. Promotion requires all ten bar
+datasets and all ten rule datasets to pass independent authenticated
+catalog/query readback. A symbol failure is isolated and must not be hidden by
+another symbol's healthy envelope. Bounded 180-day backfill remains a separate
+one-shot operation and is never real-time/PIT evidence.
 
 ## Provisioning and rollback
 
@@ -58,6 +62,8 @@ and the Crypto release pointer resolves only below
 authenticated catalog/query readback, receipt lineage, freshness, a
 disabled-timer readback before activation, and A-share isolation readback.
 
-Rollback is: `systemctl disable --now tradingdatas-crypto-binance-collect.timer`,
-then stop `tradingdatas-crypto-v1-internal.service`. Do not delete Crypto facts
+Rollback is: disable and stop both
+`tradingdatas-crypto-binance-collect.timer` and
+`tradingdatas-crypto-binance-rules.timer`, then stop
+`tradingdatas-crypto-v1-internal.service`. Do not delete Crypto facts
 or receipts, and do not stop, reload, reconfigure, or restart A-share units.
