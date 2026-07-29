@@ -12,6 +12,7 @@ import pytest
 
 import catalog_service as catalog_module
 import storage.ingest_receipts as receipt_module
+import storage.receipt_projection as receipt_projection_module
 from catalog_service import (
     CatalogService,
     CatalogFilters,
@@ -403,6 +404,11 @@ def real_catalog_harness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    monkeypatch.setattr(
+        receipt_projection_module,
+        "provider_ingest_config_hash",
+        lambda _dataset, _binding: "a" * 64,
+    )
     success = _receipt_dataset(
         _catalog_dataset(
             "cn.runtime.a_success",
