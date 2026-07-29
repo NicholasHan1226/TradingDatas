@@ -382,6 +382,15 @@ def test_schedule_state_skips_noncalendar_payload_hydration(
             date(2026, 7, 20),
         )
         conn.execute(
+            """INSERT INTO provider_dataset_rows
+               SELECT dataset_id, provider, schema_major, ingested_schema_version,
+                      row_key || '-duplicate', observed_at, partition_value,
+                      payload_json, payload_hash, quality_state,
+                      quality_issues_json, collected_at, receipt_id, revision
+               FROM provider_dataset_rows WHERE receipt_id=?""",
+            (receipt,),
+        )
+        conn.execute(
             "UPDATE provider_dataset_rows SET payload_json=? WHERE receipt_id=?",
             ('{"ts_code":"000001.SZ","ts_code":"duplicate"}', receipt),
         )
