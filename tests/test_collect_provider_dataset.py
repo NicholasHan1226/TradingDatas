@@ -1547,8 +1547,14 @@ def test_snapshot_rejects_duplicate_primary_key_before_storage(
     assert code == runner.EXIT_VALIDATION
     assert output["state"] == "validation"
     assert output["error_codes"] == ["validation_failed"]
-    assert provider_fact_count(db_path) == 0
-    assert success_receipt_count(db_path) == 0
+    with sqlite3.connect(db_path) as conn:
+        assert provider_fact_count(db_path) == 0
+        assert success_receipt_count(db_path) == 0
+        receipt_rows = conn.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+        assert [row[0] for row in receipt_rows] == ["failed"]
+        assert json.loads(receipt_rows[0][1])["data_through"] is None
 
 
 def test_snapshot_rejects_mixed_homogeneous_snapshot_field_before_storage(
@@ -1663,8 +1669,14 @@ def test_snapshot_rejects_exact_provider_row_cap_before_storage(
     assert code == runner.EXIT_VALIDATION
     assert output["state"] == "validation"
     assert output["error_codes"] == ["validation_failed"]
-    assert provider_fact_count(db_path) == 0
-    assert success_receipt_count(db_path) == 0
+    with sqlite3.connect(db_path) as conn:
+        assert provider_fact_count(db_path) == 0
+        assert success_receipt_count(db_path) == 0
+        receipt_rows = conn.execute(
+            "SELECT status, notes FROM market_ingest_runs"
+        ).fetchall()
+        assert [row[0] for row in receipt_rows] == ["failed"]
+        assert json.loads(receipt_rows[0][1])["data_through"] is None
 
 
 def test_partition_accepts_unique_rows_matching_requested_date(
