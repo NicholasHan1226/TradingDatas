@@ -135,6 +135,11 @@ catalog/query 生产合同。首批 30 只也不是中证500成分、研究代�
 `vol` 单位为股，`amount` 单位为人民币元。只允许通过同一 catalog/query API 读取；盘后
 可读到的最后一根 bar 不得被描述为 300 秒内的实时新鲜数据。
 
+500 只 canary 仅在同一轮的全部五个分片都返回、恰好覆盖冻结的 500 个 `ts_code`、无
+重复且所有行具有同一个 `time` 时才投影为 `ready`。任一分片失败、缺代码、重复代码或
+bar 时间不一致都只写失败 receipt 并使该数据集 fail-closed；不会把部分分片或上一轮数据
+伪装成完整 500 只快照。现行 30 只生产 canary 保留为独立回滚点。
+
 ## 禁止接口
 
 TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交易控制接口。新增 dataset 不得新增 route。

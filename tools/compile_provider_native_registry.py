@@ -272,6 +272,7 @@ _COMPLETENESS_KEYS = frozenset(
         "request_end_key",
         "partition_field",
         "request_partition_key",
+        "fanout_field",
         "snapshot_field",
         "fixed_field_matches",
         "reject_at_row_limit",
@@ -1795,6 +1796,17 @@ def _completeness(
         if partition not in fields or request_key not in window["required_keys"]:
             raise ValueError(f"{label} partition identity is not declared")
         result.update(partition_field=partition, request_partition_key=request_key)
+    elif strategy == "unique_primary_key_snapshot":
+        fanout_field = value.get("fanout_field")
+        snapshot_field = value.get("snapshot_field")
+        if (fanout_field is None) != (snapshot_field is None):
+            raise ValueError(f"{label} fanout and snapshot fields must be declared together")
+        if fanout_field is not None:
+            fanout_field = _required_text(fanout_field, f"{label}.fanout_field")
+            snapshot_field = _required_text(snapshot_field, f"{label}.snapshot_field")
+            if fanout_field not in fields or snapshot_field not in fields:
+                raise ValueError(f"{label} fanout snapshot fields must be declared")
+            result.update(fanout_field=fanout_field, snapshot_field=snapshot_field)
     return result
 
 
