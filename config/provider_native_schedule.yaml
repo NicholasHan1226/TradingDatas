@@ -21,6 +21,9 @@ cadences:
   session_minute:
     automatic: true
     availability_after_local: "09:30"
+    session_windows_local:
+      - {start: "09:30", end: "11:35"}
+      - {start: "13:00", end: "15:05"}
     weekdays: [1, 2, 3, 4, 5]
     incremental_mode: request_shape
     partition_frequency: session

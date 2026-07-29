@@ -32,7 +32,8 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 `cn.dataset.rt_min` 5MIN 是其中一个受控 canary：每轮保留实际 bar time、observed_at 和 receipt；
 上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或交易 Universe。500 只压力 canary
 只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前不得进入 production registry、release
-或 timer。
+或 timer。`session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
+午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。
 
 `daily_reference` 的下一日期窗口只适用于 registry 声明为 `trade_calendar` 的已知未来事实，
 用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只
