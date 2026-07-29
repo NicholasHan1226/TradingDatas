@@ -44,7 +44,7 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 ## 首期范围
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
-- Binance 公共现货 BTCUSDT/ETHUSDT 只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，仅允许在隔离 Crypto 运行面接入；
+- Binance 公共现货冻结的 10 个高流动性 USDT 标的只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，仅允许在隔离 Crypto 运行面接入；标的清单由版本化 universe 合同编译，不能由运行时临时扩张；
 - 港股、美股、其它加密资产、预测市场和 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
 - 每个激活数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence。

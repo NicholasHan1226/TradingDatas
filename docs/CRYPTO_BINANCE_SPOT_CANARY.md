@@ -12,12 +12,16 @@ Spot `klines` and `exchangeInfo` reads from `https://data-api.binance.vision`.
 It contains no API key, account, Testnet, order, or retry/fallback-to-trading
 surface.
 
-## Frozen v1 datasets
+## Frozen v1 cohort
 
-- `crypto.spot.binance.btcusdt.5m`
-- `crypto.spot.binance.ethusdt.5m`
-- `crypto.spot.binance.btcusdt.rules`
-- `crypto.spot.binance.ethusdt.rules`
+The versioned source of truth is
+`config/crypto_binance_spot_universe.v1.yaml`. It freezes ten established,
+liquid USDT Spot symbols with at least 180 days of public 5m history:
+BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT,
+LINKUSDT and AVAXUSDT. BTCUSDT and ETHUSDT remain first as the rollback
+baseline. The deterministic registry compiler emits one `.5m` and one
+`.rules` dataset per symbol; runtime collection cannot add a symbol that is
+absent from the compiled registry.
 
 The bar datasets accept only their named symbol, `5m`, and a caller-supplied
 UTC RFC3339 open-time range. One physical request is bounded to three days and
@@ -47,11 +51,12 @@ downstream simulator, not permission to trade.
 
 ## Evidence and shutdown
 
-The canary has its own database and evidence root below a caller-created
+Candidate proof uses its own database and evidence root below a caller-created
 private runtime root, for example `/private/tmp/td-crypto-canary-v3`; it must
-not use `/opt/investment-data/tradingdatas`. There is intentionally no canary
-systemd unit or timer. Stopping it is therefore simply ending the one-shot
-process; no persistent task is enabled, and no shared timer requires changing.
+not use `/opt/investment-data/tradingdatas`. The production-isolated runtime,
+if promoted, continues to use only the dedicated Crypto unit, timer and data
+root documented in `CRYPTO_LOOPBACK_RUNTIME.md`; it never shares the A-share
+database or timer.
 
 Freshness is calculated from the actual closed bar and receipt observation
 time. A successful HTTP response, catalog item, historical backfill, or

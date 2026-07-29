@@ -15,15 +15,33 @@ from dataset_registry import (
 from provider_transport import provider_transport_profile
 from query_contract import QueryExecutionOptions, QueryRequest
 from query_service import _base_predicates, _prepare_query, _validate_filter_clause
+from tools.compile_crypto_binance_spot_registry import (
+    DEFAULT_REGISTRY,
+    DEFAULT_UNIVERSE,
+    compile_registry,
+)
 
 
-def test_canary_registry_freezes_only_the_two_symbols_and_rule_sets() -> None:
+SYMBOLS = (
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "BNBUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "TRXUSDT",
+    "LINKUSDT",
+    "AVAXUSDT",
+)
+
+
+def test_canary_registry_freezes_ten_symbols_and_rule_sets() -> None:
     registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    assert len(registry.datasets) == 20
     assert [item.dataset_id for item in registry.datasets] == [
-        "crypto.spot.binance.btcusdt.5m",
-        "crypto.spot.binance.ethusdt.5m",
-        "crypto.spot.binance.btcusdt.rules",
-        "crypto.spot.binance.ethusdt.rules",
+        *(f"crypto.spot.binance.{symbol.lower()}.5m" for symbol in SYMBOLS),
+        *(f"crypto.spot.binance.{symbol.lower()}.rules" for symbol in SYMBOLS),
     ]
     bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
     assert bar.primary_key == ("symbol", "open_time")
@@ -32,16 +50,34 @@ def test_canary_registry_freezes_only_the_two_symbols_and_rule_sets() -> None:
     assert bar.freshness_sla_seconds == 600
 
 
-def test_canary_mode_selects_only_the_pinned_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_crypto_registry_compiler_is_deterministic_and_matches_checked_in_bytes() -> (
+    None
+):
+    first = compile_registry(
+        universe_path=DEFAULT_UNIVERSE,
+        registry_path=DEFAULT_REGISTRY,
+    )
+    second = compile_registry(
+        universe_path=DEFAULT_UNIVERSE,
+        registry_path=DEFAULT_REGISTRY,
+    )
+    assert first == second == DEFAULT_REGISTRY.read_bytes()
+
+
+def test_canary_mode_selects_only_the_pinned_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", BINANCE_SPOT_CANARY_MODE)
     monkeypatch.delenv("TRADINGDATAS_REGISTRY_PATH", raising=False)
     assert runtime_dataset_registry_path() == BINANCE_SPOT_CANARY_REGISTRY_PATH
-    monkeypatch.setenv("TRADINGDATAS_REGISTRY_PATH", str(BINANCE_SPOT_CANARY_REGISTRY_PATH))
+    monkeypatch.setenv(
+        "TRADINGDATAS_REGISTRY_PATH", str(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    )
     with pytest.raises(ValueError, match="does not accept a path override"):
         runtime_dataset_registry_path()
 
 
-def test_binance_collector_rejects_symbols_outside_the_frozen_canary() -> None:
+def test_binance_collector_rejects_registry_symbol_mismatch() -> None:
     outcome = BinanceSpotPublicCollector().collect_outcome(
         "klines_btcusdt",
         {
@@ -53,6 +89,43 @@ def test_binance_collector_rejects_symbols_outside_the_frozen_canary() -> None:
     )
     assert outcome.state == "failed"
     assert outcome.error_code == "transport_error"
+
+
+def test_binance_collector_accepts_a_frozen_non_canary_symbol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = BinanceSpotPublicCollector()
+    monkeypatch.setattr(
+        collector,
+        "_get",
+        lambda path, query: [
+            [
+                1785225600000,
+                "1.0",
+                "1.1",
+                "0.9",
+                "1.05",
+                "100",
+                1785225899999,
+                "105",
+                10,
+                "50",
+                "52.5",
+                "0",
+            ]
+        ],
+    )
+    outcome = collector.collect_outcome(
+        "klines_solusdt",
+        {
+            "symbol": "SOLUSDT",
+            "interval": "5m",
+            "start_open_time": "2026-07-28T08:00:00Z",
+            "end_open_time": "2026-07-28T08:00:00Z",
+        },
+    )
+    assert outcome.state == "success"
+    assert outcome.rows[0]["symbol"] == "SOLUSDT"
 
 
 def test_binance_transport_is_credential_free_and_market_data_only() -> None:
@@ -113,11 +186,7 @@ def _bar_request(
 def test_rfc3339_open_time_gte_matches_catalog_contract() -> None:
     request, bar, registry = _bar_request(
         filters=MappingProxyType(
-            {
-                "open_time": MappingProxyType(
-                    {"gte": "2026-07-28T08:40:00+00:00"}
-                )
-            }
+            {"open_time": MappingProxyType({"gte": "2026-07-28T08:40:00+00:00"})}
         ),
         as_of="2026-07-28T09:44:59.999+00:00",
     )

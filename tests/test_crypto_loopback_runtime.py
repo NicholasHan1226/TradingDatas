@@ -29,6 +29,22 @@ def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
     assert result["will_write_database"] is False
 
 
+def test_crypto_rules_plan_never_calls_provider_or_writes() -> None:
+    result = run(
+        db_path=Path("/private/tmp/unused.sqlite"),
+        lock_path=Path("/private/tmp/unused.lock"),
+        execute=False,
+        now=datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
+        collect_rules=True,
+    )
+    assert result["state"] == "planned"
+    assert result["collection_kind"] == "rules"
+    assert len(result["datasets"]) == 10
+    assert result["window"] == {}
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+
+
 def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     api = (ROOT / "deploy/systemd/tradingdatas-crypto-v1-internal.service").read_text()
     collector = (
@@ -37,17 +53,26 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     timer = (
         ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.timer"
     ).read_text()
+    rules_service = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-rules.service"
+    ).read_text()
+    rules_timer = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-rules.timer"
+    ).read_text()
     profile = (ROOT / "deploy/crypto/tradingdatas_crypto_internal.env").read_text()
 
-    assert "127.0.0.1:18082" not in api + collector + timer + profile
+    units = api + collector + timer + rules_service + rules_timer + profile
+    assert "127.0.0.1:18082" not in units
     assert "18083" in profile
-    assert "tradingdatas-crypto" in api + collector
-    assert "/opt/investment-data/tradingdatas-crypto" in api + collector + profile
-    assert "/opt/investment/releases/tradingdatas/current" not in api + collector
-    assert "/opt/investment/releases/tradingdatas-crypto/current" in api + collector
+    assert "tradingdatas-crypto" in units
+    assert "/opt/investment-data/tradingdatas-crypto" in units
+    assert "/opt/investment/releases/tradingdatas/current" not in units
+    assert "/opt/investment/releases/tradingdatas-crypto/current" in units
     assert "TRADINGDATAS_CANARY_MODE=binance_spot_v1" in profile
     assert "tradingdatas-crypto-binance-collect.service" in timer
-    assert "quicksync" not in collector.lower()
+    assert "tradingdatas-crypto-binance-rules.service" in rules_timer
+    assert "--rules --execute" in rules_service
+    assert "quicksync" not in units.lower()
 
 
 def test_crypto_api_has_no_mutable_runtime_environment_override() -> None:
