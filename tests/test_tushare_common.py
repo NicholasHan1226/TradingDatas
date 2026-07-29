@@ -1382,6 +1382,20 @@ def test_tushare_rows_outcome_rejects_malformed_success_data(monkeypatch):
     assert "mapping" in outcome.error_message
 
 
+def test_tushare_rows_outcome_accepts_empty_provider_partition(monkeypatch):
+    _stub_outcome_response(
+        monkeypatch,
+        {"code": 0, "msg": None, "data": {"fields": [], "items": []}},
+    )
+
+    outcome = tushare_common.tushare_rows_outcome("stk_auction", "stub-token")
+
+    assert outcome.state == "empty"
+    assert outcome.rows == ()
+    assert outcome.response_fields == ()
+    assert outcome.error_code is None
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -1399,8 +1413,12 @@ def test_tushare_rows_outcome_rejects_malformed_success_data(monkeypatch):
             id="missing-items",
         ),
         pytest.param(
-            {"code": 0, "msg": None, "data": {"fields": [], "items": []}},
-            id="empty-fields",
+            {
+                "code": 0,
+                "msg": None,
+                "data": {"fields": [], "items": [["000001.SZ"]]},
+            },
+            id="empty-fields-with-row",
         ),
         pytest.param(
             {

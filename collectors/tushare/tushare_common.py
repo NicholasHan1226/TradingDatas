@@ -1300,10 +1300,23 @@ def _strict_provider_response(
         )
 
     fields = data["fields"]
-    if not isinstance(fields, list) or not fields:
+    if not isinstance(fields, list):
         raise _ProviderResponseValidationError(
-            "Tushare response fields must be a non-empty list"
+            "Tushare response fields must be a list"
         )
+    items = data["items"]
+    if not isinstance(items, list):
+        raise _ProviderResponseValidationError("Tushare response items must be a list")
+
+    # Tushare/QuickSync represents a legitimate empty partition as
+    # {"fields": [], "items": []}.  Keep that distinct from a malformed
+    # response: an empty schema may never carry rows.
+    if not fields:
+        if items:
+            raise _ProviderResponseValidationError(
+                "Tushare response with empty fields must not contain items"
+            )
+        return (), ()
     if any(
         not isinstance(field, str) or _PROVIDER_FIELD_NAME.fullmatch(field) is None
         for field in fields
@@ -1313,10 +1326,6 @@ def _strict_provider_response(
         )
     if len(set(fields)) != len(fields):
         raise _ProviderResponseValidationError("Tushare response fields must be unique")
-
-    items = data["items"]
-    if not isinstance(items, list):
-        raise _ProviderResponseValidationError("Tushare response items must be a list")
 
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(items):
