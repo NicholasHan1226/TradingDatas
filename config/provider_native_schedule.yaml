@@ -33,8 +33,10 @@ cadences:
     failure_retry_seconds: 120
     correction_overlap_days: 0
     correction_overlap_bars: 1
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 5
+    # Production timer owns the latest eligible window only.  Historical
+    # recovery is an explicit bounded one-shot, never an implicit backlog.
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 1
     future_horizon_days: 0
@@ -61,8 +63,8 @@ cadences:
     failure_retry_seconds: 900
     correction_overlap_days: 0
     correction_overlap_bars: 2
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 30
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 1
     future_horizon_days: 0
@@ -84,8 +86,8 @@ cadences:
     failure_retry_seconds: 900
     correction_overlap_days: 7
     correction_overlap_bars: 0
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 731
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 366
     future_horizon_days: 0
@@ -111,8 +113,8 @@ cadences:
     failure_retry_seconds: 1800
     correction_overlap_days: 0
     correction_overlap_bars: 1
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 730
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 366
     future_horizon_days: 0
@@ -138,8 +140,8 @@ cadences:
     failure_retry_seconds: 3600
     correction_overlap_days: 0
     correction_overlap_bars: 1
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 1825
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 366
     future_horizon_days: 0
@@ -165,8 +167,8 @@ cadences:
     failure_retry_seconds: 7200
     correction_overlap_days: 30
     correction_overlap_bars: 1
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 3650
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 366
     future_horizon_days: 0
@@ -188,8 +190,8 @@ cadences:
     failure_retry_seconds: 300
     correction_overlap_days: 2
     correction_overlap_bars: 0
-    backfill_start_policy: rolling_days
-    backfill_lookback_days: 7
+    backfill_start_policy: none
+    backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 1
     future_horizon_days: 0

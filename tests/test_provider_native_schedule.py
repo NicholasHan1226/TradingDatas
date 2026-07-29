@@ -104,6 +104,14 @@ def _single_partition_schedule(
     )
 
 
+def test_production_automatic_cadences_do_not_start_implicit_backfill() -> None:
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    for name, policy in schedule.cadences.items():
+        if policy.automatic:
+            assert policy.backfill_start_policy == "none", name
+            assert policy.backfill_lookback_days == 0, name
+
+
 def _database(path: Path) -> None:
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
@@ -354,10 +362,7 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
         {"list_status": "P"},
     ]
     assert "cn.market.trade_calendar" not in current
-    assert any(
-        item.dataset_id == "cn.market.trade_calendar" and item.priority == "backfill"
-        for item in plans
-    )
+    assert all(item.priority != "backfill" for item in plans)
     assert all(plan.provider for plan in plans)
 
 
@@ -636,10 +641,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     }
     executed = {item.dataset_id for item in result.executed}
     assert expected_core - {"cn.market.trade_calendar"} <= executed
-    assert (
-        "cn.market.trade_calendar" in executed
-        or skipped["cn.market.trade_calendar"] == "rate_budget"
-    )
+    assert skipped["cn.market.trade_calendar"] == "not_due"
     automatic_active = {
         dataset.dataset_id
         for dataset in registry.datasets
@@ -1332,8 +1334,8 @@ def test_main_emits_public_terminal_summary_without_request_values(
 @pytest.mark.parametrize(
     ("current_open", "expected"),
     [
-        (True, ["20260720", "20260714"]),
-        (False, ["20260714"]),
+        (True, ["20260720"]),
+        (False, ["20260717"]),
     ],
 )
 def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
@@ -1387,9 +1389,7 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
     )
     daily = [plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"]
     assert [plan.request_window["trade_date"] for plan in daily] == expected
-    assert [plan.priority for plan in daily] == (
-        ["current", "backfill"] if current_open else ["backfill"]
-    )
+    assert [plan.priority for plan in daily] == ["current"]
 
 
 def test_postclose_uses_calendar_pretrade_date_for_missing_latest_session(
@@ -1754,7 +1754,7 @@ def test_current_only_wave_emits_zero_backfill_and_zero_correction(
         for plan in default_result.plans
         if plan.dataset_id == "cn.equity.daily"
     ]
-    assert default_daily == ["current", "backfill", "correction"]
+    assert default_daily == ["current"]
     assert current_result.plans
     assert {plan.priority for plan in current_result.plans} == {"current"}
     assert schedule.cadences["postclose_daily"].max_backfill_chunks_per_run == 3

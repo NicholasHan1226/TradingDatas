@@ -22,8 +22,10 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 
 采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
-Tushare API 增加 service/timer。所有真实采集频率、失败重试与回填预算都来自
-registry cadence。没有正式 QuickSync 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
+Tushare API 增加 service/timer。生产 timer 只采集每个 automatic dataset 的最新
+eligible window；它不会隐式启动历史回填。历史回填必须经同一 registry 的外部、有界
+one-shot manifest 明确选择，且继续受同一 transport budget 约束。没有正式 QuickSync
+凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
 planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
 receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。固定 30 只沪深主板
@@ -41,7 +43,7 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。当前/最新 window 仍优先于 bounded backfill。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。
 
@@ -317,7 +319,7 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    一个完整 timer 周期验证 facts、receipts 和 API readback。`direct_wave_3` 等保留作有界历史
    batch 选择，但其 `on_demand` 合同不会被 scheduler 自动执行。
 8. 正式 QuickSync 凭证、权限/流控 evidence、受控 latest collection 和 API readback 通过后才启用 timer，并观察完整 cadence 周期；
-9. 后台运行 bounded backfill。
+9. 如有批准的历史需求，再运行独立、有界且可回滚的 backfill manifest；它不得影响当前 timer 的 latest-window 可用性。
 
 `POST /v1/query` 的稳定性证明必须符合数据集粒度。对于 `daily`、`sw_daily` 等按
 `trade_date` 分区的数据集，latest/current readback 使用显式 `eq` 或有界日期范围并完整
