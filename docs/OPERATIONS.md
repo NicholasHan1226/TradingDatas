@@ -363,12 +363,13 @@ sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 - systemd override：`/etc/systemd/system/tradingagent-front-api.service.d/sharedsignals.conf`，其 `SHAREDSIGNALS_API_URL` 仍指向 `127.0.0.1:8082`；
 - 旧 `8082` 服务、旧 SharedSignals 代码与数据路径。
 
-**2026-07-29 只读复核：** 旧运行面仍未达到删除条件。`sharedsignals-api.service` 与
-`sharedsignals-sg-relay-tunnel.service` 都是 `active/enabled`，`127.0.0.1:8082` 仍有监听；
-root crontab 仍有 5 条、`marketgraph` crontab 仍有 22 条非注释的旧 SharedSignals 计划任务。
-因此这些项目前只能标为“待替代/待退役”，不能因为 TradingDatas 文档已更名而直接删除。下一次
-退役必须逐项先证明无持有者、无消费者和已有回滚快照，再停用旧 writer/probe，最后才删除对应
-service、cron、代码或说明；SQLite 与历史证据不随此操作删除。
+**2026-07-29 20:46 CST 退役 readback：** 已先生成 root-only 回滚快照，随后停用
+`sharedsignals-api.service` 与 `sharedsignals-sg-relay-tunnel.service`。两项服务均为
+`inactive/disabled`，`127.0.0.1:8082` 已无监听；root 的 5 条与 `marketgraph` 的 22 条
+非注释旧 SharedSignals 计划任务均已移除。TradingDatas 18082 仍为 active，自己的 collector
+timer 继续 disabled。证据位于受限目录
+`/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
+旧代码目录、挂载、SQLite 与历史证据未删除；若要物理删除，仍须先完成数据保留清单和单独批准。
 
 退役必须分项执行并保留证据：
 

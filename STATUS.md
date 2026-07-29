@@ -1,8 +1,8 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 19:40 CST。
+最后更新：2026-07-29 20:46 CST。
 
-## 当前事实快照（2026-07-29 19:40 CST，优先于以下全部记录）
+## 当前事实快照（2026-07-29 20:46 CST，优先于以下全部记录）
 
 > 本快照只陈述 TradingDatas 的 A 股/QuickSync 正式数据面；Crypto 由独立发布线负责，
 > 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
@@ -15,6 +15,12 @@
   上午/下午窗口门禁仍生效。没有新增 route、专用 collector、TradingAgent 改动、8082 改动
   或交易动作。生产绑定的 20260730 09:35 CST dry-run 选择 15 个 current plans，
   `cn.dataset.rt_min` 位于第 1 位；这只是计划证明，尚不是 provider/API 真实成功。
+- 已完成旧 SharedSignals 运行面退役：先保存 root-only crontab 与 service 状态快照，再停用
+  `sharedsignals-api.service`、`sharedsignals-sg-relay-tunnel.service`，移除 root 5 条与
+  `marketgraph` 22 条活动旧 cron。fresh readback 为两项服务 `inactive/disabled`、8082 无监听、
+  TradingDatas 18082 继续 active。证据目录为
+  `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
+  未删除旧代码目录、SQLite、mount 或历史 evidence；物理删除必须另行批准。
 - `tradingdatas-v1-internal.service` active。通用 provider-native collector timer 已在
   18:51 CST fail-closed 停用：18:45 与 18:50 的收盘后 `cn.dataset.rt_min` 请求均为
   provider transport timeout，不能把持续重试误报为稳定采集。正式 catalog 为
