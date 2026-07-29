@@ -110,6 +110,7 @@ _CONTRACT_KEYS = frozenset(
         "cadence_class",
         "timezone",
         "freshness_sla_seconds",
+        "known_future_horizon_days",
         "point_in_time",
         "backfill_policy",
         "empty_data_policy",
@@ -131,7 +132,10 @@ _CONTRACT_KEYS = frozenset(
         "ingest_contract_block_reasons",
     }
 )
-_CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {"request_window_policy"}
+_CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {
+    "request_window_policy",
+    "known_future_horizon_days",
+}
 _FIELD_KEYS = frozenset(
     {
         "name",
@@ -2067,6 +2071,15 @@ def _normalized_contract(
         raise ValueError(f"{label}.point_in_time is unsupported")
     if point_in_time == "current_snapshot" and not primary_key:
         raise ValueError(f"{label} current_snapshot requires a non-empty primary_key")
+    known_future_horizon_days = _required_non_negative_int(
+        value.get("known_future_horizon_days", 0),
+        f"{label}.known_future_horizon_days",
+    )
+    entity_type = _required_text(value["entity_type"], f"{label}.entity_type")
+    if known_future_horizon_days and entity_type != "trade_calendar":
+        raise ValueError(
+            f"{label}.known_future_horizon_days requires entity_type trade_calendar"
+        )
     if value["data_classification"] != "objective_factual":
         raise ValueError(f"{label}.data_classification is unsupported")
     return {
@@ -2074,7 +2087,7 @@ def _normalized_contract(
         "aliases": _string_list(value["aliases"], f"{label}.aliases"),
         "domain": _required_text(value["domain"], f"{label}.domain"),
         "market": _required_text(value["market"], f"{label}.market"),
-        "entity_type": _required_text(value["entity_type"], f"{label}.entity_type"),
+        "entity_type": entity_type,
         "data_classification": "objective_factual",
         "provider": contract_provider,
         "api_name": api_name,
@@ -2093,6 +2106,11 @@ def _normalized_contract(
         "timezone": _required_text(value["timezone"], f"{label}.timezone"),
         "freshness_sla_seconds": _required_positive_int(
             value["freshness_sla_seconds"], f"{label}.freshness_sla_seconds"
+        ),
+        **(
+            {"known_future_horizon_days": known_future_horizon_days}
+            if known_future_horizon_days
+            else {}
         ),
         "point_in_time": point_in_time,
         "backfill_policy": _required_text(
@@ -2341,6 +2359,7 @@ def _apply_observed_response_contract(
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
+    known_future_horizon_days = contract.get("known_future_horizon_days", 0)
     probe_state = (
         contract["probe_state"]
         if activation is None
@@ -2447,6 +2466,11 @@ def _compiled_dataset(
         "cadence_class": contract["cadence_class"],
         "timezone": contract["timezone"],
         "freshness_sla_seconds": contract["freshness_sla_seconds"],
+        **(
+            {"known_future_horizon_days": known_future_horizon_days}
+            if known_future_horizon_days
+            else {}
+        ),
         "provider_bindings": [binding],
         "read_model_adapter": {
             "adapter_version": READ_ADAPTER_VERSION,

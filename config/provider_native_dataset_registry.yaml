@@ -35963,6 +35963,7 @@ datasets:
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 604800
+  known_future_horizon_days: 1
   provider_bindings:
   - provider: tushare
     api_name: trade_cal

@@ -94,6 +94,7 @@ _DATASET_KEYS = frozenset(
         "cadence_class",
         "timezone",
         "freshness_sla_seconds",
+        "known_future_horizon_days",
         "max_page_size",
         "max_lookback_days",
         "point_in_time",
@@ -105,7 +106,10 @@ _DATASET_KEYS = frozenset(
         "read_model_adapter",
     }
 )
-_DATASET_REQUIRED_KEYS = _DATASET_KEYS - _PROFILE_CONTRACT_KEYS - {"schema_profile"}
+_DATASET_REQUIRED_KEYS = _DATASET_KEYS - _PROFILE_CONTRACT_KEYS - {
+    "known_future_horizon_days",
+    "schema_profile",
+}
 _FIELD_KEYS = frozenset(
     {
         "name",
@@ -685,6 +689,7 @@ class DatasetDefinition:
     quota_class: str
     provider_bindings: tuple[ProviderBinding, ...]
     read_model_adapter: ReadModelAdapter
+    known_future_horizon_days: int = 0
 
     @property
     def schema_major(self) -> int:
@@ -902,6 +907,12 @@ def _reject_duplicate_strings(values: tuple[str, ...], path: str) -> None:
 def _positive_int(value: Any, path: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{path} must be a positive integer")
+    return value
+
+
+def _nonnegative_int(value: Any, path: str) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{path} must be a non-negative integer")
     return value
 
 
@@ -2148,14 +2159,24 @@ def _load_dataset(
             "provider binding target_tables for: "
             f"{', '.join(missing_read_tables)}"
         )
+    entity_type = _non_empty_string(
+        value["entity_type"], f"dataset {dataset_id}.entity_type"
+    )
+    known_future_horizon_days = _nonnegative_int(
+        value.get("known_future_horizon_days", 0),
+        f"dataset {dataset_id}.known_future_horizon_days",
+    )
+    if known_future_horizon_days and entity_type != "trade_calendar":
+        raise ValueError(
+            f"dataset {dataset_id}.known_future_horizon_days requires "
+            "entity_type trade_calendar"
+        )
     return DatasetDefinition(
         dataset_id=dataset_id,
         aliases=_string_tuple(value["aliases"], f"dataset {dataset_id}.aliases"),
         domain=_non_empty_string(value["domain"], f"dataset {dataset_id}.domain"),
         market=_non_empty_string(value["market"], f"dataset {dataset_id}.market"),
-        entity_type=_non_empty_string(
-            value["entity_type"], f"dataset {dataset_id}.entity_type"
-        ),
+        entity_type=entity_type,
         data_classification=_choice(
             value["data_classification"],
             _DATA_CLASSIFICATIONS,
@@ -2186,6 +2207,7 @@ def _load_dataset(
         quota_class=schema_contract.quota_class,
         provider_bindings=provider_bindings,
         read_model_adapter=read_model_adapter,
+        known_future_horizon_days=known_future_horizon_days,
     )
 
 
