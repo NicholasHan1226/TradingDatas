@@ -183,6 +183,12 @@ def test_request_observations_pin_current_quicksync_observation_bytes() -> None:
         "path": "config/quicksync_interface_observations.v1.yaml",
         "sha256": hashlib.sha256(OBSERVATIONS_PATH.read_bytes()).hexdigest(),
     }
+    registered = provenance["registered_contract_bundle"]
+    assert isinstance(registered, dict)
+    assert registered == {
+        "path": "config/tushare_upstream_contracts.v1.yaml",
+        "sha256": hashlib.sha256(CONTRACTS_PATH.read_bytes()).hexdigest(),
+    }
 
 
 def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused() -> None:
