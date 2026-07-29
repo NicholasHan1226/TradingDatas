@@ -633,7 +633,7 @@ def load_planner_state(
                 columns = (
                     "partition_value, payload_json, receipt_id"
                     if hydrate_payload
-                    else "partition_value, receipt_id"
+                    else "DISTINCT partition_value, receipt_id"
                 )
                 for row in conn.execute(
                     f"SELECT {columns} FROM provider_dataset_rows "
