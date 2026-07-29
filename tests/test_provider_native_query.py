@@ -1124,3 +1124,84 @@ def test_native_query_missing_quality_index_fails_closed(
 
     with pytest.raises(QueryServiceUnavailable, match="unavailable"):
         _execute(native_harness, _request(fields=("symbol",)))
+
+
+def test_native_partition_filter_uses_partition_index_within_vm_budget(
+    native_harness: dict[str, object],
+) -> None:
+    conn = native_harness["conn"]
+    conn.execute("DELETE FROM provider_dataset_rows")
+    conn.execute(
+        "CREATE INDEX provider_dataset_rows_partition_idx "
+        "ON provider_dataset_rows(dataset_id, provider, schema_major, "
+        "partition_value, row_key)"
+    )
+    rows: list[tuple[object, ...]] = []
+    for index in range(25_000):
+        trade_date = "20260716" if index < 10 else "20260715"
+        payload = json.dumps(
+            {
+                "big": index,
+                "note": None,
+                "symbol": f"S{index:05d}",
+                "trade_date": trade_date,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        rows.append(
+            (
+                "cn.native.query",
+                "provider-a",
+                1,
+                "1.2.0",
+                f"partition-{index:05d}",
+                trade_date,
+                trade_date,
+                payload,
+                "a" * 64,
+                "valid",
+                "[]",
+                "2026-07-17T03:00:00+00:00",
+                f"receipt:provider-a:partition-{index:05d}",
+                1,
+            )
+        )
+    conn.executemany(
+        "INSERT INTO provider_dataset_rows VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+
+    dataset = native_harness["dataset"]
+    registry = DatasetRegistry(
+        (dataset,),
+        query_defaults=replace(
+            native_harness["registry"].query_defaults,
+            sqlite_progress_steps=100_000,
+        ),
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,  # noqa: SLF001
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    request = _request(
+        fields=("symbol", "trade_date"),
+        filters={"trade_date": {"eq": "20260716"}},
+        order=("symbol:asc",),
+        limit=10,
+    )
+    response = service.execute(
+        request,
+        access=native_harness["access"],
+        now=NOW,
+        request_id="request-native-partition",
+    )
+
+    assert [row["symbol"] for row in response["data"]] == [
+        f"S{index:05d}" for index in range(10)
+    ]
+    assert all(row["trade_date"] == "20260716" for row in response["data"])
+    assert query_module._field_expression(dataset, "trade_date") == '"partition_value"'

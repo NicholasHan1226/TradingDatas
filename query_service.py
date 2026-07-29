@@ -57,6 +57,7 @@ _ORDER_RE = re.compile(r"([A-Za-z0-9_]{1,64}):(asc|desc)\Z")
 _FILTER_OPERATORS = frozenset({"eq", "in", "gte", "lte", "between"})
 _PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
 _PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
+_PROVIDER_NATIVE_PARTITION_INDEX = "provider_dataset_rows_partition_idx"
 _PROVIDER_NATIVE_QUALITY_INDEX = "provider_dataset_rows_quality_idx"
 _PROVIDER_NATIVE_ISSUE_RE = re.compile(
     r"(?:"
@@ -778,6 +779,12 @@ def _provider_json_path(field_name: str) -> str:
 
 
 def _field_expression(dataset: DatasetDefinition, field_name: str) -> str:
+    # ``partition_value`` is the immutable, lossless read-model projection of
+    # the declared partition field.  Reuse it for that one field so bounded
+    # partition reads use the existing provider-native partition index instead
+    # of scanning every JSON payload in the dataset.
+    if field_name == dataset.partition_field:
+        return _quote_identifier("partition_value")
     path = _provider_json_path(field_name)
     return f"json_extract({_quote_identifier('payload_json')}, '{path}')"
 
@@ -837,6 +844,35 @@ def _provider_native_isolation(
         ],
         [dataset.dataset_id, *providers, _provider_native_schema_major(dataset)],
     )
+
+
+def _provider_native_query_table(
+    dataset: DatasetDefinition,
+    request: QueryRequest,
+) -> str:
+    """Return the bounded physical read path for one validated request.
+
+    An exact declared-partition filter is the common daily/reference-data
+    access pattern.  Its persisted ``partition_value`` projection has a
+    mandatory index, so force that path instead of allowing SQLite to choose
+    a payload-order scan that can exceed the request VM budget on history.
+    Other query shapes retain the generic primary-table path.
+    """
+
+    partition_field = dataset.partition_field
+    partition_clause = (
+        request.filters.get(partition_field)
+        if partition_field is not None
+        else None
+    )
+    exact_partition = (
+        isinstance(partition_clause, MappingProxyType)
+        and tuple(partition_clause) == ("eq",)
+    )
+    table = f"main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)}"
+    if exact_partition:
+        return f"{table} INDEXED BY {_quote_identifier(_PROVIDER_NATIVE_PARTITION_INDEX)}"
+    return table
 
 
 def _compile_scalar_filter(
@@ -1846,7 +1882,7 @@ class QueryService:
                     )
                     row_sql = (
                         f"SELECT {', '.join(select_parts)} "
-                        f"FROM main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)}"
+                        f"FROM {_provider_native_query_table(dataset, validated_request)}"
                         f"{_where_clause(predicates)} ORDER BY "
                         + ", ".join(order_sql)
                         + " LIMIT ?"
