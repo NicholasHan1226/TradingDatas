@@ -535,7 +535,36 @@ def _write_prepared_rows(
             continue
         existing_tuple = tuple(existing)
         if existing_tuple[:11] == desired_content:
-            expected_rows[identity] = existing_tuple
+            # Re-observing an identical current-snapshot payload is still a
+            # new, successful provider observation.  Bind the fact to this
+            # transaction's receipt so a current registry contract cannot be
+            # left with a success receipt but no authoritative facts merely
+            # because SQLite avoided a payload rewrite.  ``revision`` tracks
+            # payload changes, so it deliberately remains unchanged here.
+            cursor = conn.execute(
+                """UPDATE provider_dataset_rows
+                   SET collected_at = ?, receipt_id = ?
+                   WHERE dataset_id = ? AND provider = ?
+                     AND schema_major = ? AND row_key = ?""",
+                (
+                    collected_at,
+                    receipt_id,
+                    dataset.dataset_id,
+                    binding.provider,
+                    schema_major,
+                    row.row_key,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "provider fact provenance refresh did not affect exactly one row"
+                )
+            expected_rows[identity] = (
+                *desired_content,
+                collected_at,
+                receipt_id,
+                int(existing_tuple[13]),
+            )
             unchanged += 1
             continue
         if dataset.point_in_time != "current_snapshot":

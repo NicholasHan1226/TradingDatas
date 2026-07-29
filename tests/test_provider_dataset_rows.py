@@ -233,6 +233,7 @@ def test_snapshot_insert_unchanged_update_and_receipts_are_exact(
         rows=[_row()],
         context=_context(dataset, binding, 2),
     )
+    unchanged_fact = _fact(db_path)
     updated = ingest_provider_native_rows(
         db_path,
         dataset=dataset,
@@ -251,6 +252,12 @@ def test_snapshot_insert_unchanged_update_and_receipts_are_exact(
         unchanged.counts.updated,
         unchanged.counts.unchanged,
     ) == (0, 0, 1)
+    # A fresh success receipt must own a re-observed, unchanged snapshot row.
+    # Otherwise a later contract refresh can have a current receipt with no
+    # current facts, which makes the generic cadence planner lose authority.
+    assert unchanged_fact["revision"] == 1
+    assert unchanged_fact["receipt_id"] == unchanged.receipt_ids[0]
+    assert json.loads(unchanged_fact["payload_json"])["close"] == 11.25
     assert (
         updated.counts.inserted,
         updated.counts.updated,
@@ -268,6 +275,45 @@ def test_snapshot_insert_unchanged_update_and_receipts_are_exact(
     assert {
         json.loads(receipt[0])["counts"]["count_semantics"] for receipt in receipts
     } == {"exact_row_outcomes"}
+
+
+def test_unchanged_provenance_refresh_rolls_back_when_receipt_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    initial = ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[_row()],
+        context=_context(dataset, binding, 1),
+    )
+    before = _fact(db_path)
+
+    def reject_receipt(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("receipt write failed")
+
+    monkeypatch.setattr(
+        provider_rows_module,
+        "insert_ingest_receipt_with_evidence",
+        reject_receipt,
+    )
+    with pytest.raises(RuntimeError, match="receipt write failed"):
+        ingest_provider_native_rows(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            rows=[_row()],
+            context=_context(dataset, binding, 2),
+        )
+
+    after = _fact(db_path)
+    assert after["receipt_id"] == initial.receipt_ids[0] == before["receipt_id"]
+    assert after["collected_at"] == before["collected_at"]
+    assert after["revision"] == before["revision"] == 1
 
 
 def test_snapshot_missing_key_uses_tagged_payload_fallback(tmp_path: Path) -> None:
