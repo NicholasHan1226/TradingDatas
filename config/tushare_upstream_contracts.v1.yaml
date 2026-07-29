@@ -38076,6 +38076,7 @@ contracts:
   cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 604800
+  known_future_horizon_days: 1
   point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: forbidden

@@ -821,6 +821,13 @@ def test_current_snapshot_dataset_cannot_omit_primary_key(tmp_path: Path) -> Non
         load_dataset_registry(write_registry(tmp_path, dataset))
 
 
+def test_known_future_window_is_reserved_for_trade_calendar(tmp_path: Path) -> None:
+    dataset = generic_dataset(known_future_horizon_days=1)
+
+    with pytest.raises(ValueError, match="requires entity_type trade_calendar"):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
 def test_existing_provider_native_contract_can_omit_response_completeness(
     tmp_path: Path,
 ) -> None:

@@ -90,7 +90,10 @@ cadences:
     backfill_lookback_days: 0
     backfill_start_date: null
     backfill_chunk_span_days: 366
-    future_horizon_days: 0
+    # Only registry-declared trade calendars may use this known-future
+    # window.  The generic planner keeps all other daily references at the
+    # current available date.
+    future_horizon_days: 1
     max_backfill_chunks_per_run: 2
     rate_budget_class: standard
     retry:
