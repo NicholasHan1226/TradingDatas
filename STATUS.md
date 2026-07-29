@@ -1,8 +1,8 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-29 19:11 CST。
+最后更新：2026-07-29 19:40 CST。
 
-## 当前事实快照（2026-07-29 19:11 CST，优先于以下全部记录）
+## 当前事实快照（2026-07-29 19:40 CST，优先于以下全部记录）
 
 > 本快照只陈述 TradingDatas 的 A 股/QuickSync 正式数据面；Crypto 由独立发布线负责，
 > 本次未变更或重新认证。所有消费者仍须以每次 `POST /v1/query` 的 envelope 判断，
@@ -37,6 +37,15 @@
 - 同一身份对 `cn.equity.daily`（`trade_date=20260729`）的正式查询返回可分页事实行，且为
   `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。此前首次日历采集后的
   日线跳过是通用 planner 的依赖快照所致；下一轮已按同一通用链路成功完成，未手工插库。
+- 19:40 CST 以 `tradingagent` UID 对正式 18082 做了新的只读 readback：
+  `cn.equity.daily(20260729)`、`cn.dataset.stk_limit(20260729)` 与
+  `cn.dataset.adj_factor(20260729)` 各返回首页 500 行、均有 next cursor，且分别为
+  `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整；
+  `cn.dataset.suspend_d(20260729)` 返回 0 行并保持
+  `failed/degraded`，原因 `provider_error`，不伪报为合法空结果；
+  `cn.market.trade_calendar(SSE,20260730)` 返回 1 行且为
+  `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整。catalog readback 为
+  `v1-1e4560099e58a89e`，分页仍可见；这些只是当前分区/API 事实，不扩大 timer 或接口范围。
 - TradingAgent 已独立验证隔离的 20260730 initializer：30/30 日线分批 readback 完整，
   第一次初始化创建只读输入，第二次精确重放复用同一结果。它不代表生产交易启动：
   `REAL_TRADING_ENABLED=false`，没有 broker、订单、资金或 fill 写入。
