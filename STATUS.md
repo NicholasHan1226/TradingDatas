@@ -17,6 +17,11 @@
   provider transport timeout，不能把持续重试误报为稳定采集。正式 catalog 为
   `v1-1e4560099e58a89e`，含 190 个 runtime
   contracts，其中 101 个 activation active、89 个 paused。
+- 19:13 CST 对既有通用 `direct_wave_1` 做的有界 dry-run 后执行只选中
+  `cn.dataset.suspend_d`。上游在约 8 秒内返回 `provider_error`，系统只写入
+  `failed` receipt `186ae553…31ff3b6`，`returned/validated/committed=0`，没有写入或
+  覆盖 facts。该结果不是权限否定，也不是成功采集；在新的已批准窗口证明 transport
+  恢复前，不扩大 direct wave，也不重启分钟 timer。
 - 本轮正式运行投影为：64 个 `success` 且 non-degraded、35 个合法 `empty` 且
   non-degraded、`cn.dataset.rt_min` 因收盘后的 300 秒 SLA 诚实为 stale/degraded、
   `cn.dataset.stk_factor_pro` 因历史 receipt chronology 异常 fail-closed。它不是
