@@ -957,12 +957,18 @@ def _dataset_plans(
         ), "planned"
     local_now = now.astimezone(ZoneInfo(dataset.timezone))
     available = _latest_available(local_now, policy)
+    # The registry, not a dataset name or provider API branch, declares the
+    # bounded known-future window.  Its value is capped by the cadence policy;
+    # ordinary datasets therefore remain at the current available date.
+    future_horizon_days = min(
+        dataset.known_future_horizon_days, policy.future_horizon_days
+    )
     start = (
         available - timedelta(days=policy.backfill_lookback_days - 1)
         if policy.backfill_start_policy == "rolling_days"
         else policy.backfill_start_date or available
     )
-    end = available + timedelta(days=policy.future_horizon_days)
+    end = available + timedelta(days=future_horizon_days)
     calendar = _calendar(registry, state, policy)
     desired = _desired(start, end, policy, calendar)
     if policy.calendar is not None and not calendar:
@@ -998,7 +1004,7 @@ def _dataset_plans(
     current_days = {
         day
         for day in needed
-        if day >= available and (policy.future_horizon_days or day == available)
+        if day >= available and (future_horizon_days or day == available)
     }
     backfill_days = missing - current_days
     correction_days = overlap - missing - current_days

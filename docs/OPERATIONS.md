@@ -34,6 +34,10 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前不得进入 production registry、release
 或 timer。
 
+`daily_reference` 的下一日期窗口只适用于 registry 声明为 `trade_calendar` 的已知未来事实，
+用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只
+请求当前可用日期，不能因日历预取而创建未来数据 receipt。
+
 当前 `standard` budget 每轮最多 64 个账号/上游请求、同一 provider API 最多 16 个请求。
 这是在已观测到的 QuickSync 200 request-start/minute 下保留的保守下限，并非对上游额度的
 猜测或扩权；runner 仍是串行、每五分钟最多运行一次。发布前必须在目标 release 上证明完整
@@ -80,11 +84,10 @@ uv run --python 3.12 --with-requirements requirements.txt \
   python tools/run_provider_native_schedule.py --activation-wave pilot_existing
 ```
 
-`daily_reference` 不假设上游提前提供下一自然年的完整交易日历，range 数据集的
-current window 只推进到本次可用日；历史覆盖由 bounded backfill 逐段补齐。不得为了
-预取未来日历把固定未来天数当成 provider 能力事实，否则合法的 future-empty 响应会
-被完整性合同误判为运行失败。未来日期只有在 transport 真实观测、registry 合同和
-独立回归共同证明后才能受控启用。
+`daily_reference` 不假设上游提前提供下一自然年的完整交易日历；历史覆盖仍由
+bounded backfill 逐段补齐。固定未来天数不能被当成 provider 能力事实：只有
+registry 明确声明、transport 实际观测且独立回归覆盖的日历窗口才能受控请求下一日。
+future-empty 响应必须按既有完整性合同诚实处理，不能把其它日参考数据推进到未来。
 
 ## 有界 one-shot batch
 

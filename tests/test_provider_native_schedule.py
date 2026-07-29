@@ -365,7 +365,10 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
         {"list_status": "D"},
         {"list_status": "P"},
     ]
-    assert "cn.market.trade_calendar" not in current
+    assert dict(current["cn.market.trade_calendar"].request_window) == {
+        "start_date": "20260720",
+        "end_date": "20260721",
+    }
     assert all(item.priority != "backfill" for item in plans)
     assert all(plan.provider for plan in plans)
 
@@ -692,8 +695,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.market.trade_calendar",
     }
     executed = {item.dataset_id for item in result.executed}
-    assert expected_core - {"cn.market.trade_calendar"} <= executed
-    assert skipped["cn.market.trade_calendar"] == "not_due"
+    assert expected_core <= executed
     automatic_active = {
         dataset.dataset_id
         for dataset in registry.datasets
@@ -1383,7 +1385,7 @@ def test_schedule_config_has_no_dataset_or_provider_api_lists() -> None:
     )
     assert schedule.cadences["postclose_daily"].calendar is not None
     assert schedule.cadences["postclose_daily"].backfill_chunk_span_days == 1
-    assert schedule.cadences["daily_reference"].future_horizon_days == 0
+    assert schedule.cadences["daily_reference"].future_horizon_days == 1
     assert schedule.cadences["on_demand"].automatic is False
 
 
@@ -1687,7 +1689,7 @@ def test_postclose_rejects_conflicting_calendar_pretrade_date(
         )
 
 
-def test_trade_calendar_uses_bounded_chunks_through_current_day(tmp_path: Path) -> None:
+def test_trade_calendar_uses_bounded_chunks_through_known_next_day(tmp_path: Path) -> None:
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -1705,9 +1707,9 @@ def test_trade_calendar_uses_bounded_chunks_through_current_day(tmp_path: Path) 
     assert plans[0].priority == "current"
     assert plans[0].request_window == {
         "start_date": "20260720",
-        "end_date": "20260720",
+        "end_date": "20260721",
     }
-    assert max(_date(plan.request_window["end_date"]) for plan in plans) == today
+    assert max(_date(plan.request_window["end_date"]) for plan in plans) == today + timedelta(days=1)
     assert all(
         1
         <= (
@@ -1718,6 +1720,26 @@ def test_trade_calendar_uses_bounded_chunks_through_current_day(tmp_path: Path) 
         <= 366
         for plan in plans
     )
+
+
+def test_daily_reference_non_calendar_does_not_plan_future_partition(
+    tmp_path: Path,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+    )
+    plans = [plan for plan in result.plans if plan.dataset_id == "cn.dataset.adj_factor"]
+
+    assert plans
+    assert {plan.request_window["trade_date"] for plan in plans} == {"20260720"}
 
 
 def _date(value: str) -> date:
