@@ -1,0 +1,17 @@
+version: 1
+selection_policy: liquid_usdt_spot_history_v1
+selected_at: '2026-07-29T04:20:00Z'
+quote_asset: USDT
+interval: 5m
+minimum_history_days: 180
+symbols:
+- BTCUSDT
+- ETHUSDT
+- SOLUSDT
+- XRPUSDT
+- BNBUSDT
+- DOGEUSDT
+- ADAUSDT
+- TRXUSDT
+- LINKUSDT
+- AVAXUSDT

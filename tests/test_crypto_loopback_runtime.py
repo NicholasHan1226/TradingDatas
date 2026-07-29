@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from tools.run_binance_spot_canary import latest_closed_window, run
+from tools.run_binance_spot_canary import backfill_windows, latest_closed_window, run
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +15,23 @@ def test_crypto_collector_window_uses_only_two_closed_adjacent_bars() -> None:
         "start_open_time": "2026-07-28T09:35:00Z",
         "end_open_time": "2026-07-28T09:40:00Z",
     }
+
+
+def test_crypto_180_day_backfill_windows_are_contiguous_and_bounded() -> None:
+    windows = backfill_windows(
+        datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
+        days=180,
+    )
+    assert len(windows) == 60
+    previous_end: datetime | None = None
+    for window in windows:
+        start = datetime.fromisoformat(window["start_open_time"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(window["end_open_time"].replace("Z", "+00:00"))
+        assert end - start <= timedelta(days=3)
+        if previous_end is not None:
+            assert start == previous_end + timedelta(minutes=5)
+        previous_end = end
+    assert windows[-1]["end_open_time"] == "2026-07-28T09:40:00Z"
 
 
 def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
@@ -29,6 +46,22 @@ def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
     assert result["will_write_database"] is False
 
 
+def test_crypto_rules_plan_never_calls_provider_or_writes() -> None:
+    result = run(
+        db_path=Path("/private/tmp/unused.sqlite"),
+        lock_path=Path("/private/tmp/unused.lock"),
+        execute=False,
+        now=datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
+        collect_rules=True,
+    )
+    assert result["state"] == "planned"
+    assert result["collection_kind"] == "rules"
+    assert len(result["datasets"]) == 10
+    assert result["windows"] == [{}]
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+
+
 def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     api = (ROOT / "deploy/systemd/tradingdatas-crypto-v1-internal.service").read_text()
     collector = (
@@ -37,17 +70,26 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     timer = (
         ROOT / "deploy/systemd/tradingdatas-crypto-binance-collect.timer"
     ).read_text()
+    rules_service = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-rules.service"
+    ).read_text()
+    rules_timer = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-rules.timer"
+    ).read_text()
     profile = (ROOT / "deploy/crypto/tradingdatas_crypto_internal.env").read_text()
 
-    assert "127.0.0.1:18082" not in api + collector + timer + profile
+    units = api + collector + timer + rules_service + rules_timer + profile
+    assert "127.0.0.1:18082" not in units
     assert "18083" in profile
-    assert "tradingdatas-crypto" in api + collector
-    assert "/opt/investment-data/tradingdatas-crypto" in api + collector + profile
-    assert "/opt/investment/releases/tradingdatas/current" not in api + collector
-    assert "/opt/investment/releases/tradingdatas-crypto/current" in api + collector
+    assert "tradingdatas-crypto" in units
+    assert "/opt/investment-data/tradingdatas-crypto" in units
+    assert "/opt/investment/releases/tradingdatas/current" not in units
+    assert "/opt/investment/releases/tradingdatas-crypto/current" in units
     assert "TRADINGDATAS_CANARY_MODE=binance_spot_v1" in profile
     assert "tradingdatas-crypto-binance-collect.service" in timer
-    assert "quicksync" not in collector.lower()
+    assert "tradingdatas-crypto-binance-rules.service" in rules_timer
+    assert "--rules --execute" in rules_service
+    assert "quicksync" not in units.lower()
 
 
 def test_crypto_api_has_no_mutable_runtime_environment_override() -> None:
