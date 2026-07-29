@@ -80,12 +80,14 @@
   退役证据：
   `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement/unit-mask-20260729T211900Z`
   （`SHA256SUMS` 摘要：`832b938f21638deea95dd16ed565684dfbe9b72642090cdf1f74d4d2e28a9629`）。
-- 旧 SharedSignals 代码目录、SQLite、挂载和历史 evidence 尚未物理删除。它们不是运行依赖，
-  但仍是受控 rollback/审计材料；物理删除须先单独冻结数据保留清单并获得批准。
+- 2026-07-29 已按逐目录审计和明确授权退役本地 SharedSignals 源码：16 个历史 worktree、
+  26 个本地候选分支及其旧 Python 环境、缓存和源码残留均已移除，且没有候选需要合并进
+  TradingDatas。旧仓仅保留本地 Git 历史、`RETIRED.md`、`data/`、`logs/` 和
+  `.codegraphcontext/`；SQLite、receipt、evidence 和 rollback 材料不在删除范围。
+- 旧 SharedSignals 仓原先错误指向 TradingDatas GitHub remote 的 `origin` 已移除，防止它再向
+  活跃 TradingDatas 主线推送。该退役提交只留在旧仓本地历史；TradingDatas main/origin 不受影响。
 - 2026-07-29 已清除 12 条指向已不存在 `/private/tmp` 目录的 Git worktree 元数据；这不会删除
-  任何文件或数据。仍有 16 个本地 SharedSignals 历史 worktree，全部存在未提交内容；为避免
-  覆盖未知候选与 `.codegraphcontext`，它们不能被批量强删。下一步是先输出逐目录保留/归档清单，
-  再依据明确授权移除代码副本；SQLite、receipt、evidence 和 rollback 材料不在删除范围。
+  任何文件或数据。
 
 ## 下一步与停止线
 
