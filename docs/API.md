@@ -121,6 +121,13 @@ fail closed，不能把后采 receipt、当前 metadata 或无 lineage 的历史
 variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前
 success rows。
 
+对 `point_in_time=append_only` 的稳定 identity，后续 transaction 重观测到字节完全相同
+的 payload 时继续写入独立 success receipt 与 `unchanged` counts，但事实行保留首次
+`collected_at` / `receipt_id` / `revision`。这样较早 as-of 的行与 receipt 绑定不会被
+后续重叠窗口覆盖。`current_snapshot` 数据集仍把相同 payload 的重观测绑定到最新 receipt；
+append-only payload 一旦变化仍按既有合同 fail closed。该规则不迁移或反写既有历史事实，
+也不把后采 backfill 伪装成历史可得。
+
 交易日历是已知未来事实的例外：`entity_type=trade_calendar` 可以返回 provider 已发布的下一
 交易日及其 `is_open` / `pretrade_date`。未来有效日期只保留在行字段；envelope 的
 `data_through` 投影为该 success receipt 的已知/入库时间，因此仍不晚于 `observed_at`。
