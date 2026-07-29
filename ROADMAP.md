@@ -88,6 +88,6 @@ onboarding 不修改 Python；QuickSync transport profile、权限码和有界 b
 
 数据库和历史数据只有在单独批准的数据保留清单中才可删除。
 
-## Phase 4 — 后续扩源与外部 Beta
+## 后续评估（不属于当前开发）
 
-内部稳定后才增加外部账户治理。新增 provider 继续复用固定 API；只有 transport/auth/pagination 不同才增加 provider adapter。QuickSync/Tushare 的缓存、再分发和对外服务条款未经书面核验前，受邀外部账户 Beta 不开放真实数据面。
+当前不开发外部账户或公网数据服务。若未来重新立项，新增 provider 仍须复用固定 API；只有 transport/auth/pagination 协议确有差异才增加 provider adapter。QuickSync/Tushare 的缓存、再分发和对外服务条款必须先完成书面核验，不能复用内部凭证或把内部 API 直接暴露为外部数据面。
