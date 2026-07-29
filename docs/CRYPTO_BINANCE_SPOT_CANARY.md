@@ -25,8 +25,9 @@ absent from the compiled registry.
 
 The bar datasets accept only their named symbol, `5m`, and a caller-supplied
 UTC RFC3339 open-time range. One physical request is bounded to three days and
-at most 1,000 rows; the 30-day backfill is therefore ten or more separately
-receipted bounded windows, never a fabricated historical observation. Bars
+at most 1,000 rows; the frozen 180-day backfill is sixty separately receipted
+bounded windows per symbol, never a fabricated historical observation. Its
+`observed_at` is collection time rather than historical PIT. Bars
 whose close time has not occurred are discarded. Identity is `[symbol,
 open_time]`; `open_time` and `close_time` are UTC, and the raw millisecond
 timestamps are retained. OHLC, base volume and quote volume are text so a

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from tools.run_binance_spot_canary import latest_closed_window, run
+from tools.run_binance_spot_canary import backfill_windows, latest_closed_window, run
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +15,23 @@ def test_crypto_collector_window_uses_only_two_closed_adjacent_bars() -> None:
         "start_open_time": "2026-07-28T09:35:00Z",
         "end_open_time": "2026-07-28T09:40:00Z",
     }
+
+
+def test_crypto_180_day_backfill_windows_are_contiguous_and_bounded() -> None:
+    windows = backfill_windows(
+        datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
+        days=180,
+    )
+    assert len(windows) == 60
+    previous_end: datetime | None = None
+    for window in windows:
+        start = datetime.fromisoformat(window["start_open_time"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(window["end_open_time"].replace("Z", "+00:00"))
+        assert end - start <= timedelta(days=3)
+        if previous_end is not None:
+            assert start == previous_end + timedelta(minutes=5)
+        previous_end = end
+    assert windows[-1]["end_open_time"] == "2026-07-28T09:40:00Z"
 
 
 def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
@@ -40,7 +57,7 @@ def test_crypto_rules_plan_never_calls_provider_or_writes() -> None:
     assert result["state"] == "planned"
     assert result["collection_kind"] == "rules"
     assert len(result["datasets"]) == 10
-    assert result["window"] == {}
+    assert result["windows"] == [{}]
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
 

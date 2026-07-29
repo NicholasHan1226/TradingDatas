@@ -31,6 +31,8 @@ from dataset_registry import (  # noqa: E402
     load_dataset_registry,
 )
 
+FIVE_MINUTES = timedelta(minutes=5)
+
 
 def _bar_datasets(registry) -> tuple[str, ...]:
     datasets = tuple(
@@ -78,6 +80,29 @@ def latest_closed_window(now: datetime) -> dict[str, str]:
     }
 
 
+def backfill_windows(now: datetime, *, days: int) -> tuple[dict[str, str], ...]:
+    """Return contiguous non-overlapping windows within the provider cap."""
+
+    if days != 180:
+        raise ValueError("the frozen historical backfill horizon is 180 days")
+    latest = latest_closed_window(now)["end_open_time"]
+    latest_open = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    first_open = latest_open - timedelta(days=days) + FIVE_MINUTES
+    windows: list[dict[str, str]] = []
+    cursor = first_open
+    maximum_span = timedelta(days=3)
+    while cursor <= latest_open:
+        end = min(cursor + maximum_span, latest_open)
+        windows.append(
+            {
+                "start_open_time": _utc(cursor),
+                "end_open_time": _utc(end),
+            }
+        )
+        cursor = end + FIVE_MINUTES
+    return tuple(windows)
+
+
 def _private_lock(path: Path):
     if not path.is_absolute() or path.parent.is_symlink():
         raise ValueError("lock path must be an absolute non-symlink child")
@@ -97,17 +122,30 @@ def run(
     execute: bool,
     now: datetime,
     collect_rules: bool = False,
+    backfill_days: int | None = None,
 ) -> dict[str, object]:
     registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    if collect_rules and backfill_days is not None:
+        raise ValueError("public rules do not support historical backfill")
     datasets = _rule_datasets(registry) if collect_rules else _bar_datasets(registry)
-    window = {} if collect_rules else latest_closed_window(now)
+    windows = (
+        ({},)
+        if collect_rules
+        else (
+            backfill_windows(now, days=backfill_days)
+            if backfill_days is not None
+            else (latest_closed_window(now),)
+        )
+    )
     if not execute:
         return {
+            "backfill_days": backfill_days,
             "collection_kind": "rules" if collect_rules else "bars",
             "datasets": list(datasets),
             "mode": "plan",
             "state": "planned",
-            "window": window,
+            "window_count": len(windows),
+            "windows": list(windows),
             "will_call_provider": False,
             "will_write_database": False,
         }
@@ -120,31 +158,34 @@ def run(
     try:
         collector = BinanceSpotPublicCollector()
         results = []
-        for dataset_id in datasets:
-            result = collect_provider_native_dataset(
-                db_path,
-                registry=registry,
-                collector=collector,
-                dataset_id=dataset_id,
-                request_window=window,
-                attempt_id=str(uuid.uuid4()),
-                started_at=_utc(now),
-            )
-            results.append(
-                {
-                    "dataset_id": dataset_id,
-                    "receipt_ids": list(result.receipt_ids),
-                    "state": result.status,
-                }
-            )
+        for window in windows:
+            for dataset_id in datasets:
+                result = collect_provider_native_dataset(
+                    db_path,
+                    registry=registry,
+                    collector=collector,
+                    dataset_id=dataset_id,
+                    request_window=window,
+                    attempt_id=str(uuid.uuid4()),
+                    started_at=_utc(now),
+                )
+                results.append(
+                    {
+                        "dataset_id": dataset_id,
+                        "receipt_ids": list(result.receipt_ids),
+                        "state": result.status,
+                        "window": window,
+                    }
+                )
         if any(item["state"] != "success" for item in results):
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
+            "backfill_days": backfill_days,
             "collection_kind": "rules" if collect_rules else "bars",
             "datasets": results,
             "mode": "execute",
             "state": "success",
-            "window": window,
+            "window_count": len(windows),
         }
     finally:
         try:
@@ -159,6 +200,7 @@ def main() -> int:
     parser.add_argument("--lock-path", required=True, type=Path)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--rules", action="store_true")
+    parser.add_argument("--backfill-days", type=int)
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     try:
@@ -168,6 +210,7 @@ def main() -> int:
             execute=args.execute,
             now=now,
             collect_rules=args.rules,
+            backfill_days=args.backfill_days,
         )
     except Exception:
         print(
