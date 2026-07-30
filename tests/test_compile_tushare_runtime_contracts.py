@@ -10,10 +10,11 @@ import yaml
 from tools.compile_provider_native_registry import load_upstream_contract_bundle
 from tools.compile_tushare_runtime_contracts import (
     RuntimeContractCompilationError,
-    compile_runtime_contract_bundle as _compile_runtime_contract_bundle,
     render_contract_bundle,
 )
-
+from tools.compile_tushare_runtime_contracts import (
+    compile_runtime_contract_bundle as _compile_runtime_contract_bundle,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
