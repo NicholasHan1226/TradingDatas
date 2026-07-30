@@ -1,18 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 11:53 CST。
+最后更新：2026-07-30 12:02 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。它继续服务既有的 30 只
-  `rt_min` 会话，不能被本次 500 候选的分页结果中断。
-- 500 分钟候选已正常合入主线；其运行代码 release
-  `a42e66277aa7bbfa284fb7afdef980a4ba95386d` 已完成 129 个 Git blob 的不可变 manifest
-  校验与 registry byte-equality 重编译校验。它尚未切换 `current`、18082 或 timer；
-  `5ac3925` 保持可回滚基线。
+- 正式 immutable `current`：`a42e66277aa7bbfa284fb7afdef980a4ba95386d`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。午间切换前已分别验证目标与
+  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 回滚 release 的 manifest，目标 release 的
+  registry 也完成 byte-equality 重编译校验；切换后再次验证 `current`。
+- 此次切换只启用 500 分钟的正式合同，不把旧 30 只历史行或午间无数据窗口当作 500 证明。
+  `5ac3925` 保持可回滚基线，第一根与相邻第二根 live 500/500 receipt/API readback 尚待
+  开市窗口完成。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -55,13 +55,13 @@
 - 当前 5 项 partial 的合同不会被凭空改为 ready。只有补齐各自的 primary identity、请求窗口
   完整性和业务 watermark 后，才允许以新合同重新采集、receipt 验证和正式 API 读回。
 
-## 500 只分钟数据 release（未切换）
+## 500 只分钟数据 release（已切换，live 验证待完成）
 
 - 2026-07-30 主线已普通合入 500 分片合同，并补齐已审的次日交易日历、开市分钟窗口与
   session-minute 优先级。目标 immutable release 为
-  `a42e66277aa7bbfa284fb7afdef980a4ba95386d`，已完成本页所述 release 预构建校验。
-  它仍必须在下一交易日通过两根相邻 live 500/500 读回后，才可能请求切换；今天不得改变
-  30 只生产会话。
+  `a42e66277aa7bbfa284fb7afdef980a4ba95386d`，已完成本页所述 release 预构建校验并于午间
+  原子切换。它仍必须取得两根相邻 live 500/500 读回，才能声明分钟数据稳定；任一分片失败、
+  时间混合或 degraded metadata 都必须立即切回 `5ac3925`。
 
 - 原始候选 commit：`4329307352d9138186cd2e3fca994ca5cdc96083`；审计分支：
   `codex/rtmin-500-atomic-v3`。其 4 份配置改动已正常合入 main 的
@@ -99,10 +99,10 @@
 
 ## 下一步与停止线
 
-1. 下个开市窗口先复核 release、18082、calendar 和 30 只现役计划；失败则继续关闭 timer，
-   不手工补分钟事实。
-2. 在隔离候选完成两根 500/500 相邻 live bar 后，才做独立 review、普通 main 集成、
-   immutable release 和可回滚切换。
+1. 13:00 后先取得完整 500/500 的第一根 live bar，再验证相邻第二根；失败则立即回滚
+   `5ac3925`，不手工补分钟事实。
+2. 两轮均通过后，才把 500 分钟链路标记为稳定可消费；其它 Tushare dataset 仍按各自
+   registry 合同和 receipt/metadata 验收，不因本次切换自动晋级。
 3. 当前不扩公共 API、不新增专用采集器，不把已 active、paused 或单次成功说成“全部接口已稳定采集”。
 
 历史候选、事故、旧端口和早期探测结论以 Git 历史与服务器 evidence 为准，不再保留在当前状态页。
