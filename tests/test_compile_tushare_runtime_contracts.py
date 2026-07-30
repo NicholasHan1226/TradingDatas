@@ -444,7 +444,10 @@ def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
     contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
 
     assert contract["primary_key"] == primary_key
-    assert contract["cadence_class"] == "daily_reference"
+    assert contract["cadence_class"] == "event"
+    # The generic event scheduler polls every 15 minutes, while date-only
+    # provider partitions remain fresh for the trading day.
+    assert contract["freshness_sla_seconds"] == 86400
     assert contract["as_of_field"] == partition_field
     assert contract["range_field"] == partition_field
     assert contract["partition_field"] == partition_field

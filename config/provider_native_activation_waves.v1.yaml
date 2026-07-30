@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "30fd92630257816fa48a7f10db404b06532af446931b20d0ee1a454cdd6ba52f"
+  runtime_registry_sha256: "1499bff292a5d32371045fab1b9c7e81d34ed04aebd86617fcf11f43364e28b0"
   schedule_sha256: "f123ab07a3084f8a3177cbabee26ab1977ee406bfb20dc88a3d6f3203212475d"
 waves:
   direct_wave_1:

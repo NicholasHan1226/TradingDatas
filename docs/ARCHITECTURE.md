@@ -131,8 +131,8 @@ provider/transport、schema major、quality/freshness/lineage 与 receipt 口径
   `published_at`、`available_at`、`observed_at`（适用时）。后采历史内容不能被伪装成当时
   可用的信息；TradingDatas 不生成情绪分数、关联标签或“利好/利空”结论。
 - 首批 Tushare 事件证据切片固定为 `anns_d`、`cctv_news`、`irm_qa_sh`、
-  `irm_qa_sz` 与 `research_report`。它们复用境内通用 collector，按
-  `daily_reference` 独立于盘中分钟行情采集，并以各自日期分区、公开 identity 和
+  `irm_qa_sz` 与 `research_report`。它们复用境内通用 collector，按通用 `event`
+  cadence 独立于盘中分钟行情约每 15 分钟采集，并以各自日期分区、公开 identity 和
   transaction receipt 判定完整性；`event_evidence_wave_1` 只用于有界验收，不新增专用
   route 或 collector。HTTP 200、旧 receipt 或空行数均不等于 ready，消费者仍须逐数据集
   检查 `ready/fresh/valid/non-degraded`。
