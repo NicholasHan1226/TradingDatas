@@ -10,7 +10,7 @@ entries:
   source_document_sha256: e8ce97d2e7f3998d2c564235e8c696edf1973dac7bd1a3fa878ce6dbd6ee2f35
   reason_code: reviewed_contract_exact
 - api_name: anns_d
-  cadence_class: on_demand
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 412dff39b4e403283241cdff24221cad215426e755b32963afa201b8c4b5a98b
   reason_code: reviewed_contract_exact
@@ -115,7 +115,7 @@ entries:
   source_document_sha256: 9e19ad255be99b9ba0b0168872e71cdfd720d25658ac01a1b2935f75207a175e
   reason_code: no_document_frequency_evidence
 - api_name: cctv_news
-  cadence_class: on_demand
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 9745bbc6e6f8b35727785adeac8381acde60a7f32bace7669b783a56db8e55d7
   reason_code: reviewed_contract_exact
@@ -465,12 +465,12 @@ entries:
   source_document_sha256: 12f269cbd0829f0ddea2b753065bef6a54f01ec08cee180057cace5694a64b2f
   reason_code: doc_explicit_monthly
 - api_name: irm_qa_sh
-  cadence_class: on_demand
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 82fa8e3ea0b9a4214d11619f9aa286560a299e52f2b8b34ff34070aa5c823216
   reason_code: reviewed_contract_exact
 - api_name: irm_qa_sz
-  cadence_class: on_demand
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 50559eaaeb9a9eb19cee7a57f845482b148496bcd6303425effcbf761cf52a90
   reason_code: reviewed_contract_exact
@@ -640,7 +640,7 @@ entries:
   source_document_sha256: 48399ac9c0f621fa2e6494d9f23133ff24a79621bd298fa0e810a964ae60f954
   reason_code: no_document_frequency_evidence
 - api_name: research_report
-  cadence_class: on_demand
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: ec6a52d71dc05d7b2f7bbbd2e60f997a1c290184fd674234bfde636cfaecdf9c
   reason_code: reviewed_contract_exact

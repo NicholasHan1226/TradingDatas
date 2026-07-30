@@ -718,7 +718,6 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
             "cn.dataset.repurchase",
-            "cn.dataset.research_report",
             "cn.dataset.share_float",
             "cn.dataset.stk_managers",
             "cn.dataset.sz_daily_info",
@@ -2642,7 +2641,6 @@ def test_formal_direct_wave_3_is_hash_bound_and_disjoint_from_existing_waves() -
     assert direct.dataset_ids == frozenset(
         {
             "cn.dataset.repurchase",
-            "cn.dataset.research_report",
             "cn.dataset.top_list",
         }
     )
@@ -2674,7 +2672,6 @@ def test_formal_direct_wave_3_dry_run_preserves_on_demand_only_contract(
         conn.commit()
     expected = {
         "cn.dataset.repurchase",
-        "cn.dataset.research_report",
         "cn.dataset.top_list",
     }
 
@@ -2696,6 +2693,73 @@ def test_formal_direct_wave_3_dry_run_preserves_on_demand_only_contract(
         for item in result.skipped
         if item.dataset_id in expected
     } == {(dataset_id, "on_demand") for dataset_id in expected}
+
+
+def test_event_evidence_wave_is_hash_bound_and_daily_reference_complete() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "event_evidence_wave_1",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset(
+        {
+            "cn.dataset.anns_d",
+            "cn.dataset.cctv_news",
+            "cn.dataset.irm_qa_sh",
+            "cn.dataset.irm_qa_sz",
+            "cn.dataset.research_report",
+        }
+    )
+    for dataset_id in wave.dataset_ids:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "daily_reference"
+        assert dataset.primary_key
+        assert dataset.partition_field in {"ann_date", "date", "trade_date"}
+        assert binding.response_completeness is not None
+        assert binding.response_completeness.strategy == (
+            "single_partition_unique_primary_key"
+        )
+        assert binding.response_completeness.reject_at_row_limit is True
+
+
+def test_event_evidence_wave_dry_run_plans_without_market_session_dependency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): False})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="event_evidence_wave_1",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == {
+        "cn.dataset.anns_d",
+        "cn.dataset.cctv_news",
+        "cn.dataset.irm_qa_sh",
+        "cn.dataset.irm_qa_sz",
+        "cn.dataset.research_report",
+    }
 
 
 def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -> None:
