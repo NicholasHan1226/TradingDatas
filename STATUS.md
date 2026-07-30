@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 11:24 CST。
+最后更新：2026-07-30 11:53 CST。
 
 ## 当前运行面
 
@@ -9,8 +9,10 @@
 - 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
   active，通用 provider-native timer 为 `enabled/active`。它继续服务既有的 30 只
   `rt_min` 会话，不能被本次 500 候选的分页结果中断。
-- `e275dbb6a7eed84f592afb6b9e821ab00ae29e50` 已合入主线并仅进入 immutable-release
-  预构建门禁：尚未切换 `current`、18082 或 timer；`5ac3925` 保持可回滚基线。
+- 500 分钟候选已正常合入主线；其运行代码 release
+  `a42e66277aa7bbfa284fb7afdef980a4ba95386d` 已完成 129 个 Git blob 的不可变 manifest
+  校验与 registry byte-equality 重编译校验。它尚未切换 `current`、18082 或 timer；
+  `5ac3925` 保持可回滚基线。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -55,8 +57,9 @@
 
 ## 500 只分钟数据 release（未切换）
 
-- 2026-07-30 主线已普通合入候选 `e275dbb6a7eed84f592afb6b9e821ab00ae29e50`：除完整
-  500 分片合同外，还带入已审的次日交易日历、开市分钟窗口与 session-minute 优先级。
+- 2026-07-30 主线已普通合入 500 分片合同，并补齐已审的次日交易日历、开市分钟窗口与
+  session-minute 优先级。目标 immutable release 为
+  `a42e66277aa7bbfa284fb7afdef980a4ba95386d`，已完成本页所述 release 预构建校验。
   它仍必须在下一交易日通过两根相邻 live 500/500 读回后，才可能请求切换；今天不得改变
   30 只生产会话。
 
