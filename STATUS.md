@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 13:16 CST。
+最后更新：2026-07-30 15:30 CST。
 
 ## 当前运行面
 
@@ -20,6 +20,12 @@
   completed bar：`13:05` 与 `13:10` 各 30 个唯一 symbol。正式 envelope 为
   `ready/success/fresh/valid/non-degraded`，receipt 存在且 lineage 完整；这是 30 只回滚链
   恢复的证据，不解除 500 候选的 NO-GO。
+- 15:05 和 15:10 的 `rt_min` 上游调用各留下一个 `provider_error` 的 failed receipt（均为
+  0 行）；没有手工重试、插库或删除失败证据。现有通用 session-minute timer 在下一合资格
+  15:20 轮自然恢复，取得实际 `time=2026-07-30 15:00:00` 的 30 个唯一 symbol；15:25 轮
+  同样成功。以 `tradingagent` 身份对正式 18082 精确查询该 time 为
+  `ready/success/fresh/valid/non-degraded`，receipt 与 lineage 完整。这只证明最终 bar 的
+  合法恢复，不填补 15:05/15:10 的失败尝试，也不解除 500 的 NO-GO。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -86,6 +92,16 @@
   它仍不能替代下一交易时段的真实证明：先确认现役 30/30 第一根，再要求预构建 release
   连续两根相邻 live bar 均为 500/500、5/5 分片、同一 bar_end、总耗时小于 300 秒。任一
   失败则保持 30 只 production rollback，不切换。
+- 13:00 生产失败的隔离根因已复现：五个 100-symbol 上游分片实际合计只有 498 个唯一
+  symbol（缺 `002294.SZ`、`000333.SZ`），且全部是旧的 11:30 bar；因此正式查询 13:00
+  返回 0 行是正确的，不是 API 投影故障。编译器曾静默丢失 registry 声明的
+  `fanout_field=ts_code`，并把采集开始时间当作 snapshot `data_through`，使缺码旧 bar
+  错记为 success/fresh。
+- 该问题的隔离修正候选为 `8d18b5cffa06fd7af979d1962cb7b94c01f61794`（仅候选分支，未合入、
+  未部署）：保留 `fanout_field` 并要求每个请求值恰好一次，同时以 provider 的真实 bar time
+  生成 snapshot watermark。候选在独立 SQLite 上完成一次收盘后 5×100 的 500/500 同一 15:00
+  bar、5 个 success receipt、8.5 秒采集；候选 API 对已过 SLA 的历史 bar 诚实返回 stale，
+  没有宣称 live-ready。仍欠下一交易时段两根相邻的真实 500/500 证明，之前禁止再切换生产。
 
 ## 旧系统退役与保留
 
