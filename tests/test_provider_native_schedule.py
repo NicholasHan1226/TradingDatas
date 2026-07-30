@@ -2659,7 +2659,14 @@ def test_formal_direct_wave_3_is_hash_bound_and_disjoint_from_existing_waves() -
         assert binding.pagination.strategy == "none"
         assert binding.request_window_policy is not None
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
-        assert binding.response_completeness is None
+        if dataset_id == "cn.dataset.research_report":
+            assert binding.response_completeness is not None
+            assert (
+                binding.response_completeness.strategy
+                == "single_partition_unique_primary_key"
+            )
+        else:
+            assert binding.response_completeness is None
 
 
 def test_formal_direct_wave_3_dry_run_preserves_on_demand_only_contract(
