@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 13:08 CST。
+最后更新：2026-07-30 13:16 CST。
 
 ## 当前运行面
 
@@ -16,6 +16,10 @@
 - 回滚后以 `tradingagent` 身份对正式 18082 查询
   `cn.dataset.rt_min(time=2026-07-30 11:30:00)` 得到 30 个唯一 symbol、单一 time，
   但 metadata 诚实为 `stale/degraded`；这仅证明回滚可读，**不**证明实时分钟链已恢复。
+- 13:16 CST 的后续 UID987 受控 readback 已确认回滚后的 30 只链路重新出现两根相邻
+  completed bar：`13:05` 与 `13:10` 各 30 个唯一 symbol。正式 envelope 为
+  `ready/success/fresh/valid/non-degraded`，receipt 存在且 lineage 完整；这是 30 只回滚链
+  恢复的证据，不解除 500 候选的 NO-GO。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
