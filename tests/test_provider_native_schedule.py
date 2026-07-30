@@ -2702,7 +2702,7 @@ def test_formal_direct_wave_3_dry_run_preserves_on_demand_only_contract(
     } == {(dataset_id, "on_demand") for dataset_id in expected}
 
 
-def test_event_evidence_wave_is_hash_bound_and_daily_reference_complete() -> None:
+def test_event_evidence_wave_is_hash_bound_and_event_complete() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()
     registry = _active_registry()
@@ -2727,7 +2727,7 @@ def test_event_evidence_wave_is_hash_bound_and_daily_reference_complete() -> Non
     for dataset_id in wave.dataset_ids:
         dataset = registry.resolve(dataset_id)
         binding = dataset.provider_bindings[0]
-        assert dataset.cadence_class == "daily_reference"
+        assert dataset.cadence_class == "event"
         assert dataset.primary_key
         assert dataset.partition_field in {"ann_date", "date", "trade_date"}
         assert binding.response_completeness is not None
