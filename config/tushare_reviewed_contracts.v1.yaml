@@ -62,6 +62,222 @@ contracts:
     requested_fields: [trade_date, ts_code, name, pct_change, close, net_amount, net_amount_rate, buy_elg_amount, buy_elg_amount_rate, buy_lg_amount, buy_lg_amount_rate, buy_md_amount, buy_md_amount_rate, buy_sm_amount, buy_sm_amount_rate]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # These five event/date partitions were independently collected through the
+  # ordinary QuickSync transport on 2026-07-30.  Their identities are facts
+  # from that bounded provider response; collection remains on-demand rather
+  # than creating a news-specific scheduler.
+  - dataset_id: cn.dataset.anns_d
+    aliases: [tushare.anns_d]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: anns_d
+    source_document_url: https://tushare.pro/wctapi/documents/176.md
+    source_document_sha256: 412dff39b4e403283241cdff24221cad215426e755b32963afa201b8c4b5a98b
+    schema_version: 1.0.0
+    fields:
+      - {name: ann_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: url, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: rec_time, declared_source_type: datetime, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ann_date, ts_code, title, url]
+    default_projection: [ann_date, ts_code, name, title, url]
+    as_of_field: ann_date
+    as_of_format: yyyymmdd
+    range_field: ann_date
+    partition_field: ann_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {ann_date: '${window.ann_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [ann_date], formats: {ann_date: yyyymmdd}, range_start_key: ann_date, range_end_key: ann_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: ann_date, request_partition_key: ann_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ann_date, ts_code, name, title, url]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.cctv_news
+    aliases: [tushare.cctv_news]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: cctv_news
+    source_document_url: https://tushare.pro/wctapi/documents/154.md
+    source_document_sha256: 9745bbc6e6f8b35727785adeac8381acde60a7f32bace7669b783a56db8e55d7
+    schema_version: 1.0.0
+    fields:
+      - {name: date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: content, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [date, title, content]
+    default_projection: [date, title, content]
+    as_of_field: date
+    as_of_format: yyyymmdd
+    range_field: date
+    partition_field: date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {date: '${window.date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [date], formats: {date: yyyymmdd}, range_start_key: date, range_end_key: date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: date, request_partition_key: date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [date, title, content]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.irm_qa_sh
+    aliases: [tushare.irm_qa_sh]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: irm_qa_sh
+    source_document_url: https://tushare.pro/wctapi/documents/366.md
+    source_document_sha256: 82fa8e3ea0b9a4214d11619f9aa286560a299e52f2b8b34ff34070aa5c823216
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: q, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: a, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: pub_time, declared_source_type: datetime, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, ts_code, pub_time, q, a]
+    default_projection: [ts_code, name, trade_date, q, a, pub_time]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, name, trade_date, q, a, pub_time]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.irm_qa_sz
+    aliases: [tushare.irm_qa_sz]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: irm_qa_sz
+    source_document_url: https://tushare.pro/wctapi/documents/367.md
+    source_document_sha256: 50559eaaeb9a9eb19cee7a57f845482b148496bcd6303425effcbf761cf52a90
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: q, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: a, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: pub_time, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: industry, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, ts_code, pub_time, q, a]
+    default_projection: [ts_code, name, trade_date, q, a, pub_time, industry]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, name, trade_date, q, a, pub_time, industry]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.research_report
+    aliases: [tushare.research_report]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: research_report
+    source_document_url: https://tushare.pro/wctapi/documents/415.md
+    source_document_sha256: ec6a52d71dc05d7b2f7bbbd2e60f997a1c290184fd674234bfde636cfaecdf9c
+    schema_version: 1.0.0
+    fields:
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: abstr, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: report_type, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: author, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: inst_csname, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ind_name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: url, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, title, author, url]
+    default_projection: [trade_date, abstr, title, report_type, author, name, ts_code, inst_csname, ind_name, url]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [trade_date, abstr, title, report_type, author, name, ts_code, inst_csname, ind_name, url]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   - dataset_id: cn.dataset.moneyflow_ind_dc
     aliases: [tushare.moneyflow_ind_dc]
     domain: provider_data

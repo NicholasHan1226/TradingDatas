@@ -139,14 +139,14 @@ contracts:
   - name: ann_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -160,14 +160,14 @@ contracts:
   - name: title
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: url
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -178,18 +178,21 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ann_date
+  - ts_code
+  - title
+  - url
   default_projection:
   - ann_date
   - ts_code
   - name
   - title
   - url
-  - rec_time
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: ann_date
+  range_field: ann_date
+  partition_field: ann_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -215,8 +218,18 @@ contracts:
     range_start_key: ann_date
     range_end_key: ann_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: ann_date
+    request_partition_key: ann_date
+  requested_fields:
+  - ann_date
+  - ts_code
+  - name
+  - title
+  - url
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -6241,33 +6254,36 @@ contracts:
   - name: date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: title
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: content
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - date
+  - title
+  - content
   default_projection:
   - date
   - title
   - content
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: date
+  range_field: date
+  partition_field: date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -6293,8 +6309,16 @@ contracts:
     range_start_key: date
     range_end_key: date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: date
+    request_partition_key: date
+  requested_fields:
+  - date
+  - title
+  - content
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -20814,7 +20838,7 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20828,32 +20852,37 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: q
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: a
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: pub_time
     declared_source_type: datetime
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
+  - pub_time
+  - q
+  - a
   default_projection:
   - ts_code
   - name
@@ -20861,10 +20890,10 @@ contracts:
   - q
   - a
   - pub_time
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -20890,8 +20919,19 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - name
+  - trade_date
+  - q
+  - a
+  - pub_time
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -20937,7 +20977,7 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20951,28 +20991,28 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: q
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: a
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: pub_time
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20983,7 +21023,12 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
+  - pub_time
+  - q
+  - a
   default_projection:
   - ts_code
   - name
@@ -20992,10 +21037,10 @@ contracts:
   - a
   - pub_time
   - industry
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -21021,8 +21066,20 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - name
+  - trade_date
+  - q
+  - a
+  - pub_time
+  - industry
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -26572,7 +26629,7 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -26586,7 +26643,7 @@ contracts:
   - name: title
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -26600,7 +26657,7 @@ contracts:
   - name: author
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -26635,11 +26692,15 @@ contracts:
   - name: url
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - title
+  - author
+  - url
   default_projection:
   - trade_date
   - abstr
@@ -26651,10 +26712,10 @@ contracts:
   - inst_csname
   - ind_name
   - url
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -26680,8 +26741,23 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - abstr
+  - title
+  - report_type
+  - author
+  - name
+  - ts_code
+  - inst_csname
+  - ind_name
+  - url
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

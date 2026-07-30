@@ -413,6 +413,51 @@ def test_reviewed_dc_concept_contract_binds_real_day_partition_identity() -> Non
 
 
 @pytest.mark.parametrize(
+    ("api_name", "primary_key", "partition_field"),
+    [
+        ("anns_d", ["ann_date", "ts_code", "title", "url"], "ann_date"),
+        ("cctv_news", ["date", "title", "content"], "date"),
+        (
+            "irm_qa_sh",
+            ["trade_date", "ts_code", "pub_time", "q", "a"],
+            "trade_date",
+        ),
+        (
+            "irm_qa_sz",
+            ["trade_date", "ts_code", "pub_time", "q", "a"],
+            "trade_date",
+        ),
+        (
+            "research_report",
+            ["trade_date", "title", "author", "url"],
+            "trade_date",
+        ),
+    ],
+)
+def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
+    api_name: str, primary_key: list[str], partition_field: str
+) -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
+
+    assert contract["primary_key"] == primary_key
+    assert contract["cadence_class"] == "on_demand"
+    assert contract["as_of_field"] == partition_field
+    assert contract["range_field"] == partition_field
+    assert contract["partition_field"] == partition_field
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": partition_field,
+        "request_partition_key": partition_field,
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert set(primary_key).issubset(contract["requested_fields"])
+
+
+@pytest.mark.parametrize(
     ("api_name", "primary_key", "cadence_class"),
     [
         ("etf_share_size", ["trade_date", "ts_code"], "daily_reference"),
