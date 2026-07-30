@@ -1,14 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 15:30 CST。
+最后更新：2026-07-30 22:50 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。`a42e66277aa7bbfa284fb7afdef980a4ba95386d`
-  仍完整保留为 500 候选 release，不再是 production current。
+- 正式 immutable `current`：`ad4bc00ed25dbf2d6eaf3293d80f5782a1f275e4`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。它是经盘后原子切换的 500-symbol
+  release；`5ac3925c3931a81132ea02abb16f9745033fb6dc` 保留为已验证的 30-symbol immutable
+  rollback。该切换不写入、覆盖或补造任何 SQLite facts/receipts。
+- 切换前后均以 trusted manifest verifier 验证 current/release；目标 release 逐字节 registry
+  重编译一致。以 `tradingagent` 身份的正式 18082 catalog readback 为 HTTP 200，且
+  `trade_calendar(SSE, 20260731)` 为 ready/fresh/valid、receipt/lineage 完整。闭市 planner
+  对 `cn.dataset.rt_min` 返回 `not_due`，因此未在闭市窗口伪采分钟 bar。
 - 13:05 CST 的 a42 首轮 live 验证未通过：collector 日志显示 `rt_min` success，但正式
   18082 精确查询 `time=2026-07-30 13:00:00` 返回 0 行，不能将旧 11:30 数据伪装为
   最新 500 分钟 bar。按 fail-closed 停止线，已先停 API/timer、用已验证 manifest 原子回切
@@ -97,11 +102,16 @@
   返回 0 行是正确的，不是 API 投影故障。编译器曾静默丢失 registry 声明的
   `fanout_field=ts_code`，并把采集开始时间当作 snapshot `data_through`，使缺码旧 bar
   错记为 success/fresh。
-- 该问题的隔离修正候选为 `8d18b5cffa06fd7af979d1962cb7b94c01f61794`（仅候选分支，未合入、
-  未部署）：保留 `fanout_field` 并要求每个请求值恰好一次，同时以 provider 的真实 bar time
+- 该问题最初在隔离候选 `8d18b5cffa06fd7af979d1962cb7b94c01f61794` 中修正：保留
+  `fanout_field` 并要求每个请求值恰好一次，同时以 provider 的真实 bar time
   生成 snapshot watermark。候选在独立 SQLite 上完成一次收盘后 5×100 的 500/500 同一 15:00
   bar、5 个 success receipt、8.5 秒采集；候选 API 对已过 SLA 的历史 bar 诚实返回 stale，
   没有宣称 live-ready。仍欠下一交易时段两根相邻的真实 500/500 证明，之前禁止再切换生产。
+- 该通用修正已在主线普通合入为 `ad4bc00`，并作为上述盘后 production release 切换；这只是
+  代码/配置发布，不等于 500 分钟数据已经被 live 证明。明早首两根已完成 bar 必须各自满足
+  500 个唯一 symbol、同一实际 provider time、5/5 分片 success receipt、完整 lineage、
+  `ready/success/fresh/valid/non-degraded` 的正式 18082 envelope 与一致重放。任一轮失败即
+  受控回切 `5ac3925`，保留失败 receipt，不手工补库。
 
 ## 旧系统退役与保留
 
@@ -122,10 +132,10 @@
 
 ## 下一步与停止线
 
-1. 先确认现行 30 只分钟链重新出现真实 completed bar；若继续缺失或 metadata degraded，
-   保持 fail-closed，不手工补分钟事实。
-2. 仅在确定上游实际可提供当前 completed bar 后，重新在隔离 500 候选取得两根相邻完整
-   500/500 readback；两轮均通过后才重新申请 production 切换。其它 Tushare dataset 仍按各自
+1. 明早在 formal 18082 上验证 production 500 的首两根真实 completed bar。任一轮缺分片、
+   跨 time、少于 500、metadata 降级或 receipt/lineage 不完整，立即原子回滚 30-symbol
+   `5ac3925`；不做手工补分钟事实。
+2. 仅在两轮均通过后才将 500 分钟 production 标为可消费。其它 Tushare dataset 仍按各自
    registry 合同和 receipt/metadata 验收，不因本次切换自动晋级。
 3. 当前不扩公共 API、不新增专用采集器，不把已 active、paused 或单次成功说成“全部接口已稳定采集”。
 
