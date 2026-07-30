@@ -111,6 +111,9 @@ execution 状态；`metadata.data_through` 是所有 exact-complete success coho
 lineage 与 cursor watermark 均从该
 有界 receipt authority 重建。若截止点前没有匹配的完整 success receipt，查询以 503
 fail closed，不能把后采 receipt、当前 metadata 或无 lineage 的历史行拼入结果。
+对声明 `snapshot_field` 的 cohort，watermark 必须取 provider 返回的该 snapshot 值，
+不能以 collector 的开始时间代替；同时声明 `fanout_field` 时，所有请求值必须恰好出现
+一次且共享同一 snapshot，否则该 cohort 只能形成 failed receipt。
 `metadata.data_through` 不得晚于 `resolved_as_of`，`metadata.observed_at` 不得晚于
 `requested_as_of`。截止点之后新增的 receipt 不改变同一 as-of 的 cursor authority。
 

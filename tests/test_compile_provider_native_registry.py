@@ -131,6 +131,23 @@ def test_compiler_projects_all_input_fields_byte_for_byte() -> None:
         )
 
 
+def test_compiler_preserves_exact_fanout_snapshot_contract() -> None:
+    registry = compile_provider_native_registry(_bundle())
+    binding = next(
+        dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+        if dataset["dataset_id"] == "cn.dataset.rt_min"
+    )
+
+    assert binding["response_completeness"] == {
+        "strategy": "unique_primary_key_snapshot",
+        "fixed_field_matches": {"freq": "freq"},
+        "reject_at_row_limit": True,
+        "fanout_field": "ts_code",
+        "snapshot_field": "time",
+    }
+
+
 def test_numeric_leading_provider_fields_compile_without_per_api_code() -> None:
     registry = compile_provider_native_registry(_bundle())
     by_api = {

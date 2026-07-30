@@ -681,17 +681,27 @@ def _matching_values(
 
 def _data_through(
     dataset: DatasetDefinition,
+    binding: ProviderBinding,
     outcome: ProviderCallOutcome,
     started_at: str,
 ) -> str | None:
-    for field_name in (dataset.as_of_field, dataset.partition_field):
+    snapshot_field = (
+        None
+        if binding.response_completeness is None
+        else binding.response_completeness.snapshot_field
+    )
+    for field_name in (dataset.as_of_field, dataset.partition_field, snapshot_field):
         values = _matching_values(dataset, outcome.rows, field_name)
         if values:
             try:
                 return str(max(values))
             except TypeError:
                 continue
-    if dataset.as_of_field is None and dataset.partition_field is None:
+    if (
+        dataset.as_of_field is None
+        and dataset.partition_field is None
+        and snapshot_field is None
+    ):
         return started_at
     return None
 
@@ -986,7 +996,7 @@ def _persist_provider_call(
         root_attempt_id=root_attempt_id,
         started_at=started_at,
         data_through=(
-            _data_through(dataset, outcome, started_at)
+            _data_through(dataset, binding, outcome, started_at)
             if outcome.state == "success"
             else None
         ),
