@@ -75,23 +75,24 @@
 
 ## 新闻、公告与互动数据候选（未发布）
 
-- 主线 `df7406e5c49d57dce96d425fcee41245ea43df70` 已冻结五项按需数据的通用 registry
+- 主线已冻结五项日频事件证据数据的通用 registry
   合同：`cn.dataset.anns_d`、`cn.dataset.cctv_news`、`cn.dataset.irm_qa_sh`、
-  `cn.dataset.irm_qa_sz` 与 `cn.dataset.research_report`。它们仍只走既有 QuickSync
-  transport、SQLite receipt、catalog/query 数据面；没有新增公共 route、专用 collector、
-  业务表或新闻 timer。
+  `cn.dataset.irm_qa_sz` 与 `cn.dataset.research_report`。它们复用既有 QuickSync
+  transport、SQLite receipt、catalog/query 数据面与通用 `daily_reference` cadence；没有新增
+  公共 route、专用 collector、业务表或新闻专用 timer。
 - 隔离 SQLite 的 `20260730` provider 采集成功且身份数与行数一致：公告 1119、央视新闻
   11、上证互动 282、深证互动 2、研报 13。相同窗口第二次真实上游重放均为 `unchanged`
   success receipt；公告历史窗口经有界 `as_of` 分页为 3 页、1119 个唯一身份，首分页重放一致。
-- `20260731` 首次按需检查返回五个合法 empty receipt；候选 API 以 TradingAgent 只读身份
+- `20260731` 首次受控日期窗口检查返回五个合法 empty receipt；候选 API 以 TradingAgent 只读身份
   返回 `empty/valid/non-degraded` 与完整 receipt/lineage，未把空结果伪装为成功数据。
   昨日分区在当前读取时钟下按 86400 秒 SLA 诚实为 stale；历史重放必须带明确 `as_of`，不能将
   昨日数据称为当前新鲜事实。
-- 候选 release manifest SHA-256 为
-  `08ddf79a5f338e171a9f806c9f6836a942d9162427092f035010609a96592450`，服务器 immutable
-  candidate 已由现役 trusted verifier 验证。编译/registry/schedule 回归分别为
-  37/37、48/48、95/95 通过。**它尚未切入 18082 production**，避免在 A 股 500 分钟链
-  的实时门禁期间变更 catalog；`major_news`/`news` 仍维持 paused/404，不伪装为已接入。
+- 早期按需候选的 immutable manifest SHA-256 为
+  `08ddf79a5f338e171a9f806c9f6836a942d9162427092f035010609a96592450`，其编译/registry/
+  schedule 回归分别为 37/37、48/48、95/95 通过。其后主线调整为通用日频 event wave，
+  **尚需对当前主线重新冻结、复核和部署**；两者都未切入 18082 production，避免在 A 股
+  500 分钟链的实时门禁期间变更 catalog。`major_news`/`news` 仍维持 paused/404，不伪装为
+  已接入。
 
 ## 500 只分钟数据候选（已回滚，live 验证失败）
 
