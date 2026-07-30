@@ -13,7 +13,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 412dff39b4e403283241cdff24221cad215426e755b32963afa201b8c4b5a98b
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: bak_basic
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -118,7 +118,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 9745bbc6e6f8b35727785adeac8381acde60a7f32bace7669b783a56db8e55d7
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: ci_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -468,12 +468,12 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 82fa8e3ea0b9a4214d11619f9aa286560a299e52f2b8b34ff34070aa5c823216
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: irm_qa_sz
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 50559eaaeb9a9eb19cee7a57f845482b148496bcd6303425effcbf761cf52a90
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: kpl_concept_cons
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -643,7 +643,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: ec6a52d71dc05d7b2f7bbbd2e60f997a1c290184fd674234bfde636cfaecdf9c
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: rt_etf_k
   cadence_class: on_demand
   freshness_sla_seconds: 86400
