@@ -73,13 +73,15 @@
 - 当前 5 项 partial 的合同不会被凭空改为 ready。只有补齐各自的 primary identity、请求窗口
   完整性和业务 watermark 后，才允许以新合同重新采集、receipt 验证和正式 API 读回。
 
-## 新闻、公告与互动数据候选（未发布）
+## 新闻、公告与互动数据（已发布自动采集）
 
-- 主线已冻结五项日频事件证据数据的通用 registry
+- 主线与 production release `56ab09aaa758943485890717fa2b5e29254d281a`
+  已冻结五项事件证据数据的通用 registry
   合同：`cn.dataset.anns_d`、`cn.dataset.cctv_news`、`cn.dataset.irm_qa_sh`、
   `cn.dataset.irm_qa_sz` 与 `cn.dataset.research_report`。它们复用既有 QuickSync
-  transport、SQLite receipt、catalog/query 数据面与通用 `daily_reference` cadence；没有新增
-  公共 route、专用 collector、业务表或新闻专用 timer。
+  transport、SQLite receipt、catalog/query 数据面与通用 `event` cadence；现有通用
+  scheduler 约每 15 分钟检查一次，日期分区的 freshness SLA 为 86400 秒。没有新增公共
+  route、专用 collector、业务表或新闻专用 timer。
 - 隔离 SQLite 的 `20260730` provider 采集成功且身份数与行数一致：公告 1119、央视新闻
   11、上证互动 282、深证互动 2、研报 13。相同窗口第二次真实上游重放均为 `unchanged`
   success receipt；公告历史窗口经有界 `as_of` 分页为 3 页、1119 个唯一身份，首分页重放一致。
@@ -89,10 +91,12 @@
   昨日数据称为当前新鲜事实。
 - 早期按需候选的 immutable manifest SHA-256 为
   `08ddf79a5f338e171a9f806c9f6836a942d9162427092f035010609a96592450`，其编译/registry/
-  schedule 回归分别为 37/37、48/48、95/95 通过。其后主线调整为通用日频 event wave，
-  **尚需对当前主线重新冻结、复核和部署**；两者都未切入 18082 production，避免在 A 股
-  500 分钟链的实时门禁期间变更 catalog。`major_news`/`news` 仍维持 paused/404，不伪装为
-  已接入。
+  schedule 回归分别为 37/37、48/48、95/95 通过。最终 event cadence 版本另有 134 项
+  compiler/scheduler 回归、生成文件逐字节相等和 activation hash 校验；production
+  catalog_version=`v1-1a25a650e12bdc4d`。2026-07-31 02:15 CST 首个自动周期
+  `Result=success`，五项 formal 18082 readback 均为合法
+  `empty/valid/non-degraded`，receipt 与 lineage 完整；这表示当天当时上游无返回行，
+  不是已有新闻内容或交易信号。`major_news`/`news` 仍维持 paused/404，不伪装为已接入。
 
 ## 500 只分钟数据候选（已回滚，live 验证失败）
 
