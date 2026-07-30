@@ -1,18 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 12:02 CST。
+最后更新：2026-07-30 13:08 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`a42e66277aa7bbfa284fb7afdef980a4ba95386d`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。午间切换前已分别验证目标与
-  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 回滚 release 的 manifest，目标 release 的
-  registry 也完成 byte-equality 重编译校验；切换后再次验证 `current`。
-- 此次切换只启用 500 分钟的正式合同，不把旧 30 只历史行或午间无数据窗口当作 500 证明。
-  `5ac3925` 保持可回滚基线，第一根与相邻第二根 live 500/500 receipt/API readback 尚待
-  开市窗口完成。
+- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。`a42e66277aa7bbfa284fb7afdef980a4ba95386d`
+  仍完整保留为 500 候选 release，不再是 production current。
+- 13:05 CST 的 a42 首轮 live 验证未通过：collector 日志显示 `rt_min` success，但正式
+  18082 精确查询 `time=2026-07-30 13:00:00` 返回 0 行，不能将旧 11:30 数据伪装为
+  最新 500 分钟 bar。按 fail-closed 停止线，已先停 API/timer、用已验证 manifest 原子回切
+  `5ac3925`，再恢复 API/timer；SQLite facts 和 receipts 均未覆盖或删除。
+- 回滚后以 `tradingagent` 身份对正式 18082 查询
+  `cn.dataset.rt_min(time=2026-07-30 11:30:00)` 得到 30 个唯一 symbol、单一 time，
+  但 metadata 诚实为 `stale/degraded`；这仅证明回滚可读，**不**证明实时分钟链已恢复。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -55,18 +58,18 @@
 - 当前 5 项 partial 的合同不会被凭空改为 ready。只有补齐各自的 primary identity、请求窗口
   完整性和业务 watermark 后，才允许以新合同重新采集、receipt 验证和正式 API 读回。
 
-## 500 只分钟数据 release（已切换，live 验证待完成）
+## 500 只分钟数据候选（已回滚，live 验证失败）
 
 - 2026-07-30 主线已普通合入 500 分片合同，并补齐已审的次日交易日历、开市分钟窗口与
-  session-minute 优先级。目标 immutable release 为
-  `a42e66277aa7bbfa284fb7afdef980a4ba95386d`，已完成本页所述 release 预构建校验并于午间
-  原子切换。它仍必须取得两根相邻 live 500/500 读回，才能声明分钟数据稳定；任一分片失败、
-  时间混合或 degraded metadata 都必须立即切回 `5ac3925`。
+  session-minute 优先级。候选 immutable release 为
+  `a42e66277aa7bbfa284fb7afdef980a4ba95386d`；午间虽完成原子切换，但首轮 live
+  500/500 证明失败，现已安全回滚到 `5ac3925`。该候选在重新取得两根相邻 live 500/500
+  receipt/API readback 前不得再次切入 production。
 
 - 原始候选 commit：`4329307352d9138186cd2e3fca994ca5cdc96083`；审计分支：
   `codex/rtmin-500-atomic-v3`。其 4 份配置改动已正常合入 main 的
-  `3b4ecc35531091d6356604f8bf156acffa28b2b8`，并已预构建为同 SHA 的不可变 release；
-  但 production current 仍为 `78435bb...`，timer 仍关闭。
+  `3b4ecc35531091d6356604f8bf156acffa28b2b8`。该记录是早期候选的审计来源；当前
+  production 指针、timer 状态和可用性以上文 13:08 CST readback 为准。
 - 只修改同一通用数据面需要的 4 份 registry/contract/hash 配置：
   `cn.dataset.rt_min` 使用 `entity_fanout`、5 片 × 100、`identity=[ts_code,time]`，并要求
   每轮同一 bar_end 的 500 个唯一身份齐全；没有新增 route、专用 collector、TA 改动或交易语义。
@@ -99,9 +102,10 @@
 
 ## 下一步与停止线
 
-1. 13:00 后先取得完整 500/500 的第一根 live bar，再验证相邻第二根；失败则立即回滚
-   `5ac3925`，不手工补分钟事实。
-2. 两轮均通过后，才把 500 分钟链路标记为稳定可消费；其它 Tushare dataset 仍按各自
+1. 先确认现行 30 只分钟链重新出现真实 completed bar；若继续缺失或 metadata degraded，
+   保持 fail-closed，不手工补分钟事实。
+2. 仅在确定上游实际可提供当前 completed bar 后，重新在隔离 500 候选取得两根相邻完整
+   500/500 readback；两轮均通过后才重新申请 production 切换。其它 Tushare dataset 仍按各自
    registry 合同和 receipt/metadata 验收，不因本次切换自动晋级。
 3. 当前不扩公共 API、不新增专用采集器，不把已 active、paused 或单次成功说成“全部接口已稳定采集”。
 
