@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "844e2e241d1c3c9624720af6b78df07e7c5a635d2e21f323da807768d9173e07"
+  runtime_registry_sha256: "30fd92630257816fa48a7f10db404b06532af446931b20d0ee1a454cdd6ba52f"
   schedule_sha256: "f123ab07a3084f8a3177cbabee26ab1977ee406bfb20dc88a3d6f3203212475d"
 waves:
   direct_wave_1:
@@ -17,7 +17,6 @@ waves:
   direct_wave_3:
     dataset_ids:
     - cn.dataset.repurchase
-    - cn.dataset.research_report
     - cn.dataset.top_list
   direct_wave_4:
     dataset_ids:
@@ -32,6 +31,13 @@ waves:
     - cn.dataset.share_float
     - cn.dataset.stk_managers
     - cn.dataset.sz_daily_info
+  event_evidence_wave_1:
+    dataset_ids:
+    - cn.dataset.anns_d
+    - cn.dataset.cctv_news
+    - cn.dataset.irm_qa_sh
+    - cn.dataset.irm_qa_sz
+    - cn.dataset.research_report
   pilot_existing:
     dataset_ids:
     - cn.dataset.rt_min

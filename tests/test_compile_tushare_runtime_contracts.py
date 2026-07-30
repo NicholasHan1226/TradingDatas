@@ -444,7 +444,7 @@ def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
     contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
 
     assert contract["primary_key"] == primary_key
-    assert contract["cadence_class"] == "on_demand"
+    assert contract["cadence_class"] == "daily_reference"
     assert contract["as_of_field"] == partition_field
     assert contract["range_field"] == partition_field
     assert contract["partition_field"] == partition_field

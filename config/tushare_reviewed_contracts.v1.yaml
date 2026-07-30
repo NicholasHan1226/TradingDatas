@@ -64,8 +64,8 @@ contracts:
     reviewed_type_overrides: []
   # These five event/date partitions were independently collected through the
   # ordinary QuickSync transport on 2026-07-30.  Their identities are facts
-  # from that bounded provider response; collection remains on-demand rather
-  # than creating a news-specific scheduler.
+  # from that bounded provider response.  They use the existing generic daily
+  # reference cadence rather than creating a news-specific scheduler.
   - dataset_id: cn.dataset.anns_d
     aliases: [tushare.anns_d]
     domain: provider_data
@@ -90,7 +90,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: ann_date
     partition_field: ann_date
-    cadence_class: on_demand
+    cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -129,7 +129,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: date
     partition_field: date
-    cadence_class: on_demand
+    cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -171,7 +171,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: trade_date
     partition_field: trade_date
-    cadence_class: on_demand
+    cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -214,7 +214,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: trade_date
     partition_field: trade_date
-    cadence_class: on_demand
+    cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -260,7 +260,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: trade_date
     partition_field: trade_date
-    cadence_class: on_demand
+    cadence_class: daily_reference
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
