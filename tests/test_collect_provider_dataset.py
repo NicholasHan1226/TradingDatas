@@ -1569,6 +1569,41 @@ def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None
         )  # noqa: SLF001
 
 
+def test_snapshot_data_through_uses_provider_bar_time_not_collection_start() -> None:
+    registry = _strategy_registry("unique_primary_key_snapshot")
+    original = registry.resolve("cn.synthetic.runner")
+    binding = registry.provider_binding(original.dataset_id, "tushare")
+    assert binding.response_completeness is not None
+    snapshot_binding = replace(
+        binding,
+        response_completeness=replace(
+            binding.response_completeness,
+            snapshot_field="trade_date",
+        ),
+    )
+    dataset = replace(
+        original,
+        as_of_field=None,
+        as_of_format=None,
+        partition_field=None,
+        provider_bindings=(snapshot_binding,),
+    )
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=(_calendar_row("20260718"),),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        snapshot_binding,
+        outcome,
+        "2026-07-28T15:05:00+00:00",
+    ) == "20260718"
+
+
 def test_snapshot_rejects_duplicate_primary_key_before_storage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
