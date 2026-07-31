@@ -325,6 +325,104 @@ contracts:
     requested_fields: [ts_code, ann_date, end_date, pre_date, actual_date, modify_date]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Two real production receipt cohorts contained 65 non-null, unique
+  # [ann_date, float_date, ts_code, holder_name, share_type] identities.
+  - dataset_id: cn.dataset.share_float
+    aliases: [tushare.share_float]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: share_float
+    source_document_url: https://tushare.pro/wctapi/documents/160.md
+    source_document_sha256: 9bfbf3d0ff4c8d43cdd4c669a6199fddc22c0c34997c7512a3b357b7c47d5216
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ann_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: float_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: float_share, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: float_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: holder_name, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: share_type, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [ann_date, float_date, ts_code, holder_name, share_type]
+    default_projection: [ts_code, ann_date, float_date, float_share, float_ratio, holder_name, share_type]
+    as_of_field: ann_date
+    as_of_format: yyyymmdd
+    range_field: ann_date
+    partition_field: ann_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {ann_date: '${window.ann_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [ann_date], formats: {ann_date: yyyymmdd}, range_start_key: ann_date, range_end_key: ann_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: ann_date, request_partition_key: ann_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, ann_date, float_date, float_share, float_ratio, holder_name, share_type]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  # Two real production receipt cohorts contained 164 non-null, unique
+  # [trade_date, ts_code, reason] identities.
+  - dataset_id: cn.dataset.top_list
+    aliases: [tushare.top_list]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: top_list
+    source_document_url: https://tushare.pro/wctapi/documents/106.md
+    source_document_sha256: bc2d883cf542748c6d73e464e9ff7453451017c47844b7ce14ef945c1eeccd85
+    schema_version: 1.0.0
+    fields:
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pct_change, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: turnover_rate, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: l_sell, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: l_buy, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: l_amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: net_amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: net_rate, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount_rate, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: float_values, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: reason, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, ts_code, reason]
+    default_projection: [trade_date, ts_code, name, close, pct_change, turnover_rate, amount, l_sell, l_buy, l_amount, net_amount, net_rate, amount_rate, float_values, reason]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [trade_date, ts_code, name, close, pct_change, turnover_rate, amount, l_sell, l_buy, l_amount, net_amount, net_rate, amount_rate, float_values, reason]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   - dataset_id: cn.dataset.moneyflow_ind_dc
     aliases: [tushare.moneyflow_ind_dc]
     domain: provider_data

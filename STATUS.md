@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 09:45 CST。
+最后更新：2026-07-31 10:00 CST。
 
 ## 当前运行面
 
@@ -42,6 +42,12 @@
   symbol、单一 time，metadata 为 `ready/success/fresh/valid/non-degraded`，receipt 与
   lineage 完整。`09:30` 分区仍可见此前 500 候选写入的事实，因此读取方必须继续使用冻结
   Universe，不能把全分区行数当作当前 30-symbol cohort 完整性证明。
+- 后续正式读回确认 `09:35`、`09:40`、`09:45` 三根相邻 completed bar 各为 30 个唯一
+  symbol、无游标且 metadata/receipt/lineage 全部通过。TA 于 09:57 重新初始化冻结的 30-symbol
+  日内状态，并于 09:58 通过显式 incident-recovery late-start 消费 `09:45` 一根：30 行、
+  资金/执行 authority 均为 false、无候选、无持仓、四个影子袖套对账通过。被跳过的 `09:35`
+  与 `09:40` 被记录为 gap，因此当天 `full_session_complete=false`、
+  `learning_eligible=false`，没有伪造历史 PIT 或补做交易。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -129,6 +135,14 @@
   完整性；`report_rc` 与 `repurchase` 的可区分修订字段存在空值；`stk_surv` 尚无真实行级
   样本。因此四项继续保持 partial/stale 或 empty 的现状，不通过新增专用代码、伪主键或
   人工插库强行升级。
+- 本次扩展继续选择可由现有通用 `yyyymmdd` 分区合同表达、且生产 SQLite 已有真实
+  行级样本的接口：`share_float` 的 65 行在两个公告日分区内以
+  `[ann_date,float_date,ts_code,holder_name,share_type]` 全部非空且唯一；
+  `top_list` 的 164 行在两个交易日分区内以 `[trade_date,ts_code,reason]` 全部非空且唯一。
+  两项只增加 reviewed registry/completeness 合同，不增加 Python、route、collector 或
+  timer；在新的 immutable release、真实 receipt 和 formal 18082 readback 完成前仍不是当前
+  可消费数据。`block_trade` 虽当前 131 行可区分，但上游没有稳定业务流水号，重复成交碰撞
+  仍可能发生，未纳入本批。
 
 ## 500 只分钟数据候选（已回滚，live 验证失败）
 

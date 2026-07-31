@@ -27295,8 +27295,20 @@ datasets:
       range_start_key: ann_date
       range_end_key: ann_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: ann_date
+      request_partition_key: ann_date
+    requested_fields:
+    - ts_code
+    - ann_date
+    - float_date
+    - float_share
+    - float_ratio
+    - holder_name
+    - share_type
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -27310,19 +27322,19 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ann_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: float_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -27340,17 +27352,22 @@ datasets:
     sortable: true
   - name: holder_name
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: share_type
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ann_date
+  - float_date
+  - ts_code
+  - holder_name
+  - share_type
   default_projection:
   - ts_code
   - ann_date
@@ -27359,10 +27376,10 @@ datasets:
   - float_ratio
   - holder_name
   - share_type
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: ann_date
+  as_of_format: yyyymmdd
+  range_field: ann_date
+  partition_field: ann_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -35050,8 +35067,28 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - trade_date
+    - ts_code
+    - name
+    - close
+    - pct_change
+    - turnover_rate
+    - amount
+    - l_sell
+    - l_buy
+    - l_amount
+    - net_amount
+    - net_rate
+    - amount_rate
+    - float_values
+    - reason
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -35065,13 +35102,13 @@ datasets:
   fields:
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -35149,11 +35186,14 @@ datasets:
     sortable: true
   - name: reason
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
+  - reason
   default_projection:
   - trade_date
   - ts_code
@@ -35170,10 +35210,10 @@ datasets:
   - amount_rate
   - float_values
   - reason
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
