@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 13:52 CST。
+最后更新：2026-07-31 16:01 CST。
 
 ## 当前运行面
 
@@ -24,6 +24,15 @@
   因而未达到 500 unique、单一 time、5 个 success shard receipt、分页终止/重放与
   `ready/fresh/valid` 条件；没有尝试第三轮，也没有把旧 30 或旧 bar 伪装为通过。当前保持
   5ac/30 production，500 仅作为隔离候选，真实交易继续关闭。
+- 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
+  attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
+  `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
+  NO-GO 的唯一根因是当时 QuickSync/Tushare 没有返回任何分钟行，不是分页、SQLite 投影或
+  分片原子性故障。隔离 DB 在 15:08 以同一通用 5×100 runner 对 15:00 bar 取得 5 个 success
+  receipt、500 个唯一 symbol、同一 provider time；临时 loopback catalog/query 可分页终止并
+  重放一致。16:00 读取时该 bar 已按 300 秒 SLA 诚实为 stale，且没有在同一 clean isolate
+  中取得第二根相邻的 fresh bar，故不能以此替代下一交易时段的双轮 live 门禁，也不得据此切换
+  正式 current。
 - 回滚后的自然 30-symbol 链路已恢复：正式 18082、`tradingagent` 身份对 `13:25`、`13:30`、
   `13:35`、`13:40` 的精确 query 均为 30 行/30 个唯一 symbol、单一 time、
   `ready/success/fresh/valid/non-degraded` 且 receipt/lineage 完整；本页复核的 `13:45`
