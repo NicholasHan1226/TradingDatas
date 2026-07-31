@@ -162,6 +162,16 @@
   因没有可用 success receipt 诚实 503 fail-closed。没有伪造月度 data_through、没有手工 SQLite，
   也没有把 broker_recommend 标为可消费。
 
+- 同一切换后的只读候选审计不新增采集或配置：`report_rc` 当前窗口是合法 empty，历史行中
+  `quarter` 有 11 个空值，不能作为稳定修订身份；`repurchase` 最近成功 receipt 的 49 行均缺
+  `end_date`/`exp_date`，不能用伪主键；`top_inst` 最近成功 receipt 的 909 行按
+  `[trade_date,ts_code,exalter,side,reason]` 仍有 132 个重复 excess。三项均维持 NO-GO。
+  `stk_managers` 的最近 4 行样本暂时唯一且非空，但样本量不足，只可进入后续隔离真实 receipt
+  评估，不进入本次 production。事件侧 `anns_d` 的有界 as-of query 为 ready；
+  `research_report` 虽有行和 lineage，但 response completeness 未冻结，仍 degraded；
+  `cctv_news` 与两项 `irm_qa` 的 as-of query 没有匹配 success receipt 而诚实 503，
+  `major_news`/`news` 继续 paused。没有为任何一项新增 route、专用 collector 或数据表。
+
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
   `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 已通过 registry/config
