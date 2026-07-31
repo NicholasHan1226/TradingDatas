@@ -1,16 +1,17 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 23:47 CST。
+最后更新：2026-08-01 00:00 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`cb89620b7e20356a00c7ff3f06c357b401565113`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只冻结
-  `cn.dataset.fund_share` 的通用日分区完整性合同，未修改分钟 collector、API route 或
-  TradingAgent。`0935b70aafca4f3bd269381aa2ee6bba8ac73f61` 是本次直接原子回退点，
-  `1f17708730172bc31fba3f849fa938da6e8a73fa` 与经过验证的
+- 正式 immutable `current`：`6299d6239c717f579e734a86e94fa1505ecac6ec`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加
+  `cn.dataset.limit_list_ths` 的通用日分区完整性合同，未修改分钟 collector、API route 或
+  TradingAgent。`cb89620b7e20356a00c7ff3f06c357b401565113` 是本次直接原子回退点，
+  `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
+  与经过验证的
   `5ac3925c3931a81132ea02abb16f9745033fb6dc` 继续保留为分钟运行面的后续 rollback
   链；`71b7890928a9cc8c6345f41b0cd87a60f46158f8` 仍只作为已验证的 500-symbol 候选，
   不挂载到正式 18082。
@@ -199,7 +200,8 @@
   完整。第二次相同查询的行数、身份 digest 和 receipt 完全一致。该项现在是可按需内部读取的
   数据事实，不代表自动调度、研究结论或交易 authority。
 - `fund_share` 闭环后的下一独立候选是 `cn.dataset.limit_list_ths`。候选
-  `9a45f577c650946348b46a17865eb53f9087da91`（Draft PR #28）只冻结真实返回的 18 个字段、
+  `9a45f577c650946348b46a17865eb53f9087da91` 已经 PR #28 普通合并为
+  `6299d6239c717f579e734a86e94fa1505ecac6ec`，只冻结真实返回的 18 个字段、
   `schema_major=2`、日分区 `[trade_date,ts_code]` 身份和既有通用
   `single_partition_unique_primary_key` 合同；上游这次未返回的 6 个文档可选字段不再被伪装为
   已有字段，原始 provider payload 仍无损保存。候选没有增加 Python、route、collector、timer
@@ -208,8 +210,12 @@
   `trade_date=20260731`：第一次 100/100 写入，第二次 100/100 unchanged，两个 receipt 的
   payload 指纹一致。随后临时 loopback（18084，已停止）以 `tradingagent` 身份按固定
   catalog/query 合同读取到两页 100/100 非空唯一身份、终页 cursor 和重放一致；metadata 为
-  `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整。正式 18082/current 仍未变更，
-  因而它当前仍按旧合同如实为 `partial/degraded`，不能提前写成正式可消费。
+  `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整。随后受控原子切换正式 current，
+  以 `tradingdatas` 身份对同一日期完成 plan+execute，并以 `tradingagent` 身份从 formal 18082
+  得到两页 100/100、终页 cursor、重放一致与
+  `ready/success/fresh/valid/non-degraded`；正式 receipt 为
+  `receipt:85ed2ad22d0f1882bd0889039b90a3723f76c84b016c26eac173f20c42244785`，lineage 完整。
+  该数据集现在可按日分区从内部 API 只读消费，不代表自动交易或策略 authority。
 - `stk_holdernumber` 有一条业务身份重复，`moneyflow_ths` 存在 30,150 条重复 excess 且单分区
   达 14,593 行，均继续 NO-GO；此前的 `report_rc`、`repurchase`、`top_inst`、`stk_managers`
   结论不变。此候选与筛选没有触及分钟 timer。
