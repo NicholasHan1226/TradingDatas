@@ -1,9 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 21:10 CST。
+最后更新：2026-08-01 05:57 CST。
 
 ## 当前运行面
 
+- `bak_basic`、`limit_list_d`、`ci_daily` 与 `ths_daily` 的四项同类单日分区合同已正常
+  合入 main（PR #43，`ecf336b`）。修正后的候选只含 registry/config 及其生成物，不新增
+  route、collector、table、timer 或交易语义。真实 QuickSync 隔离采集对
+  `trade_date=20260731` 分别完成 `5543/206/444/1880 inserted`，同窗口重放分别为
+  `5543/206/444/1880 unchanged`；认证候选 18091 query 的终止分页、首分页重放以及
+  receipt/lineage 都已验证。`limit_list_d.last_time` 的 107/206 合法空值现明确为非主键可空，
+  `[trade_date, ts_code]` 仍全量非空唯一。独立 clean-overlay review P0/P1=0，131 项
+  compiler/registry/observations 回归通过。该固定 20260731 分区已超过 86400 秒 SLA，
+  所有候选 envelope 因而如实为 `stale/degraded`；候选 18091 已停止，尚未切换 formal 18082。
+  下一可用交易日的新分区 receipt 与正式 18082 fresh readback 才是部署门槛。
 - `limit_cpt_list`、`limit_step` 与 `sz_daily_info` 的同类、单日分区合同已正常合入
   main（`0d2b2ea`）：三项均复用既有 generic registry/transport/SQLite receipt/catalog-query
   路径，不新增 route、collector、table、timer 或交易语义。隔离 immutable candidate
