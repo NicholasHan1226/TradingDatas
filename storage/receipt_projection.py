@@ -1971,6 +1971,7 @@ def project_dataset_runtime_evidence(
     provider_binding: ProviderBinding | None = None,
     evidence_as_of: datetime | None = None,
     data_through_as_of: datetime | None = None,
+    request_partition: tuple[str, str] | None = None,
 ) -> DatasetRuntimeEvidence:
     """Return one projection and typed lineage evidence from one receipt scan.
 
@@ -1978,7 +1979,10 @@ def project_dataset_runtime_evidence(
     When present, only complete receipt executions whose collection interval and
     data watermark are at or before their respective cutoffs can attest to
     returned rows. ``data_through_as_of`` defaults to ``evidence_as_of``.
-    Omitting both preserves the current read projection exactly.
+    Omitting both preserves the current read projection exactly.  An exact
+    ``request_partition`` narrows receipt authority to the matching immutable
+    request window.  It is deliberately opt-in: unbounded/range queries keep
+    the dataset-wide fail-closed projection.
     """
 
     if not isinstance(dataset, DatasetDefinition):
@@ -2003,6 +2007,12 @@ def project_dataset_runtime_evidence(
         raise ValueError(
             "data_through_as_of requires a timezone-aware evidence_as_of"
         )
+    if request_partition is not None and (
+        type(request_partition) is not tuple
+        or len(request_partition) != 2
+        or any(type(value) is not str or not value for value in request_partition)
+    ):
+        raise ValueError("request_partition must be a non-empty string pair")
     known_dataset_ids = (
         frozenset(item.dataset_id for item in registry.datasets)
         if registry is not None
@@ -2061,6 +2071,25 @@ def project_dataset_runtime_evidence(
             and row.payload.get("receipt_id") in eligible_receipt_ids
         )
         projection_now = cutoff
+    if request_partition is not None:
+        request_partition_key, request_partition_value = request_partition
+        scoped_rows: list[_ScannedIngestRunRow] = []
+        for row in rows:
+            validated = _validate_receipt_row(
+                row,
+                dataset,
+                known_dataset_ids,
+                projection_now,
+                provider_binding,
+            )
+            # Invalid source evidence remains dataset-fatal.  Only a validated
+            # receipt from another complete partition may be excluded.
+            if not isinstance(validated, _Receipt) or (
+                validated.request_window.get(request_partition_key)
+                == request_partition_value
+            ):
+                scoped_rows.append(row)
+        rows = tuple(scoped_rows)
     projection = _project_dataset_runtime(
         conn,
         dataset,

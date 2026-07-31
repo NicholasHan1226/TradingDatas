@@ -1952,6 +1952,60 @@ def test_current_empty_receipt_is_not_staled_by_an_older_success_watermark(
     assert projection.reasons == ("provider_returned_no_rows",)
 
 
+def test_exact_request_partition_uses_its_own_receipt_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later empty partition must not mask an earlier exact partition."""
+
+    conn = _memory_db()
+    dataset = _dataset(freshness_sla_seconds=3 * 86_400)
+    success_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-partition-success",
+        started_at="2026-07-14T00:00:00+00:00",
+        finished_at="2026-07-14T00:01:00+00:00",
+        data_through="20260714",
+        request_window={"trade_date": "20260714"},
+        dataset=dataset,
+    )
+    empty_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id="attempt-partition-empty",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through=None,
+        request_window={"trade_date": "20260715"},
+        dataset=dataset,
+    )
+    now = datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc)
+
+    unbounded = project_dataset_runtime_evidence(conn, dataset, now=now)
+    historical = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=now,
+        request_partition=("trade_date", "20260714"),
+    )
+    empty_partition = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=now,
+        request_partition=("trade_date", "20260715"),
+    )
+
+    assert unbounded.projection.state == "empty"
+    assert unbounded.projection.receipt_id == empty_receipt
+    assert historical.projection.state == "success"
+    assert historical.projection.receipt_id == success_receipt
+    assert historical.current_receipt_ids == (success_receipt,)
+    assert empty_partition.projection.state == "empty"
+    assert empty_partition.projection.receipt_id == empty_receipt
+
+
 def test_superseded_config_receipt_cannot_advance_current_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -65,6 +65,40 @@ def test_monthly_range_field_accepts_yyyymm_and_normalizes_receipt_watermark() -
     ) == "2026-07-01T00:00:00+08:00"
 
 
+def test_exact_single_partition_query_scopes_receipt_evidence() -> None:
+    registry = load_runtime_dataset_registry()
+    dataset = registry.resolve("cn.equity.daily")
+    exact = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={"trade_date": {"eq": "20260720"}},
+        as_of=None,
+        order=None,
+        limit=10,
+        cursor=None,
+    )
+    range_request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={"trade_date": {"between": ["20260719", "20260720"]}},
+        as_of=None,
+        order=None,
+        limit=10,
+        cursor=None,
+    )
+
+    assert query_module._exact_request_partition_evidence(  # noqa: SLF001
+        dataset,
+        exact,
+    ) == ("trade_date", "20260720")
+    assert query_module._exact_request_partition_evidence(  # noqa: SLF001
+        dataset,
+        range_request,
+    ) is None
+
+
 def test_provider_local_minute_snapshot_data_through_normalizes_to_dataset_timezone() -> None:
     dataset = load_runtime_dataset_registry().resolve("cn.dataset.rt_min")
 
