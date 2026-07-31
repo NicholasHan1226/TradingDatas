@@ -2648,8 +2648,17 @@ datasets:
       range_start_key: month
       range_end_key: month
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: month
+      request_partition_key: month
+    requested_fields:
+    - month
+    - broker
+    - ts_code
+    - name
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -2663,38 +2672,42 @@ datasets:
   fields:
   - name: month
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: broker
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: name
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - month
+  - broker
+  - ts_code
+  - name
   default_projection:
   - month
   - broker
   - ts_code
   - name
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: month
+  as_of_format: yyyymm
+  range_field: month
+  partition_field: month
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

@@ -240,7 +240,7 @@ _BACKFILL_POLICIES = frozenset({"provider_limited", "disabled"})
 _EMPTY_DATA_POLICIES = frozenset({"allowed", "forbidden"})
 _DATA_CLASSIFICATIONS = frozenset({"objective_factual"})
 _INTERNAL_NON_QUERYABLE_FIELDS = frozenset({"raw_json", "source_file"})
-_AS_OF_FORMATS = frozenset({"yyyymmdd", "rfc3339"})
+_AS_OF_FORMATS = frozenset({"yyyymm", "yyyymmdd", "rfc3339"})
 _REQUEST_WINDOW_FORMATS = frozenset(
     {
         "identity",
@@ -2096,11 +2096,11 @@ def _load_dataset(
                     schema_contract.as_of_field != partition_field
                     or schema_contract.range_field != partition_field
                     or schema_contract.partition_field != partition_field
-                    or schema_contract.as_of_format != "yyyymmdd"
+                    or schema_contract.as_of_format not in {"yyyymm", "yyyymmdd"}
                 ):
                     raise ValueError(
                         f"{binding_path}.response_completeness.partition_field must "
-                        "be the dataset yyyymmdd as_of/range/partition field"
+                        "be the dataset yyyymm or yyyymmdd as_of/range/partition field"
                     )
                 partition_contract = fields_by_name[partition_field]
                 if (

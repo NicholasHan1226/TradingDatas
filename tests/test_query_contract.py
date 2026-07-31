@@ -482,6 +482,48 @@ def test_query_as_of_yyyymmdd_in_rejects_invalid_member() -> None:
         contract.resolve_query_as_of(request, daily)
 
 
+def test_query_as_of_yyyymm_uses_month_partition_and_filter_bound() -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="month",
+        as_of_format="yyyymm",
+        range_field="month",
+        partition_field="month",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-31T23:59:59+08:00",
+            filters={"month": {"in": ["202606", "202607"]}},
+        )
+    )
+
+    resolved = contract.resolve_query_as_of(request, dataset)
+
+    assert resolved.encoded_cutoff == "202607"
+    assert resolved.resolved_as_of == "2026-07-01T00:00:00+08:00"
+
+
+def test_query_as_of_yyyymm_rejects_invalid_filter_member() -> None:
+    contract = _contract()
+    dataset = replace(
+        load_dataset_registry().resolve("cn.equity.daily"),
+        as_of_field="month",
+        as_of_format="yyyymm",
+        range_field="month",
+        partition_field="month",
+    )
+    request = contract.parse_query_request(
+        _payload(
+            as_of="2026-07-31T23:59:59+08:00",
+            filters={"month": {"eq": "202613"}},
+        )
+    )
+
+    with pytest.raises(contract.QueryValidationError, match="yyyymm"):
+        contract.resolve_query_as_of(request, dataset)
+
+
 @pytest.mark.parametrize(
     ("values", "expected_cutoff"),
     [
