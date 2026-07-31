@@ -21571,7 +21571,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 2.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -21617,8 +21617,33 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - trade_date
+    - ts_code
+    - buy_sm_vol
+    - buy_sm_amount
+    - sell_sm_vol
+    - sell_sm_amount
+    - buy_md_vol
+    - buy_md_amount
+    - sell_md_vol
+    - sell_md_amount
+    - buy_lg_vol
+    - buy_lg_amount
+    - sell_lg_vol
+    - sell_lg_amount
+    - buy_elg_vol
+    - buy_elg_amount
+    - sell_elg_vol
+    - sell_elg_amount
+    - net_mf_vol
+    - net_mf_amount
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -21630,15 +21655,15 @@ datasets:
     storage_kind: provider_native_rows
     row_key_strategy: payload_hash
   fields:
-  - name: ts_code
+  - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  - name: trade_date
+  - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -21750,10 +21775,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
-  default_projection:
-  - ts_code
+  primary_key:
   - trade_date
+  - ts_code
+  default_projection:
+  - trade_date
+  - ts_code
   - buy_sm_vol
   - buy_sm_amount
   - sell_sm_vol
@@ -21772,10 +21799,10 @@ datasets:
   - sell_elg_amount
   - net_mf_vol
   - net_mf_amount
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

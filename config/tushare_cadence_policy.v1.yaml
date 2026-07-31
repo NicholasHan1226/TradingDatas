@@ -535,10 +535,10 @@ entries:
   source_document_sha256: e83c216b3fafea1dfbfd8583d9c8fcf2cc0e6a037cca1eedb26dedcc828ae638
   reason_code: doc_explicit_quarterly_reporting
 - api_name: moneyflow
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 866730bb8c4eece18cf058563f5f4b73711137d33a7a589fca9b61370d6824d3
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_cnt_ths
   cadence_class: on_demand
   freshness_sla_seconds: 86400
