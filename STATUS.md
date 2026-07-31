@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 03:20 CST。
+最后更新：2026-08-01 03:45 CST。
 
 ## 当前运行面
 
@@ -55,6 +55,13 @@
   digest 与 cursor 语义一致。metadata 为 `ready/success/fresh/valid/non-degraded`，receipt
   `receipt:09823b511506ab7295233384eba702c692c0a75a6a2027add1f3b77aa9043987` 与 lineage
   完整。该项是客观的日级资金流数据事实，不是交易信号或执行 authority。
+- `moneyflow_cnt_ths` 已正常合入 main（`bdd9bf6`），但尚未部署到正式 current：隔离 candidate
+  对 `trade_date=20260731` 的通用采集为 386 行 inserted，第二次为 386 行 unchanged；
+  `[trade_date, ts_code]` 均非空且唯一、未触顶，candidate loopback 分页为 `100/100/100/86`、
+  terminal cursor 与 lineage 完整。独立 review 为 P0/P1/P2=0，且 activation-wave 的 registry
+  hash 已同步。由于此时已跨 86400 秒 SLA，candidate envelope 如实为 `stale/degraded`；因此
+  未切换正式 current，也不把该 yesterday partition 写成 fresh production 通过。下一可用日分区
+  的 receipt 与正式 18082 readback 是该项部署门槛。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
