@@ -1,28 +1,32 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 10:20 CST。
+最后更新：2026-07-31 12:04 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。2026-07-31 早盘 500-symbol
-  live 门禁失败后，已按预先冻结的停止线回切该 30-symbol release；发布切换不写入、覆盖或
-  补造任何 SQLite facts/receipts。
-- 事件数据 release `56ab09aaa758943485890717fa2b5e29254d281a`、包含
-  `disclosure_date` 合同的 release `7ee1396a5bf84ae6f393605450fbd193cc8093ea`，以及继续
-  冻结 `share_float` / `top_list` 通用完整性合同的当前 main/server immutable release
-  `7de9ed58ef17da8422a16be3a8eb1f9441471d46` 均已保留，但当前没有挂载到正式 18082。
-  `7de9ed58` 的 trusted manifest 为 129 files、tree
-  `7359f15adec047fa1e72a87735a1197c3e78b629`，manifest SHA-256 为
-  `6ecbf82e111ebfc7685cd7f36f204c94c1f643b57e15ca6f74fdf0fe61db2382`，registry
-  重编译逐字节一致。历史 receipts/facts 仍保留；在下一次经过验证的正式 release 恢复这些
-  合同前，不能把新闻公告称为“当前生产可查询”。
-- 切换前后均以 trusted manifest verifier 验证 current/release；目标 release 逐字节 registry
-  重编译一致。以 `tradingagent` 身份的正式 18082 catalog readback 为 HTTP 200，且
-  `trade_calendar(SSE, 20260731)` 为 ready/fresh/valid、receipt/lineage 完整。闭市 planner
-  对 `cn.dataset.rt_min` 返回 `not_due`，因此未在闭市窗口伪采分钟 bar。
+- 正式 immutable `current`：`71b7890928a9cc8c6345f41b0cd87a60f46158f8`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。在 TA 四个 A 股消费 timer 已
+  fence 为 inactive 后，发布侧先停止 API/timer，再用 trusted manifest 原子切换 current 并
+  恢复 API/timer；切换本身没有写入、覆盖或补造任何 SQLite facts/receipts。
+  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 仍保留为已验证的 30-symbol immutable
+  rollback。当前 release trusted manifest 为 129 files、tree
+  `67f0029874ddd5be9e2da66c967cef647ee24705`、manifest SHA-256
+  `0d8a53e310cebebbd38a71387bb619afbc54c88b766544efb0f2b931a1487ecb`，registry 重编译
+  逐字节一致。
+- `71b7890` 已包含事件/公告合同与严格 provider-local minute timestamp 投影。以
+  `tradingagent` 身份对正式 18082 的 `cn.dataset.anns_d` 进行带 `as_of` 的分页 readback
+  已返回两页 `ready/success/fresh/valid/non-degraded`，receipt 与 lineage 完整；这是
+  数据面 PIT 可读证据，不增加任何新闻分析或交易逻辑。
+- 切换前后均以 trusted manifest verifier 验证 current/release。以 `tradingagent` 身份的正式
+  18082 catalog readback 为 HTTP 200；闭市 planner 在 `tradingdatas` 身份下对
+  `cn.dataset.rt_min` 返回 `not_due`，因此未在闭市窗口伪采分钟 bar。
+- **500-symbol live 门禁仍未完成：** 当前 production 只等待 13:05、13:10 两根相邻完成 bar
+  的正式 18082 验收。每根必须为冻结 universe 的 500 个唯一 `ts_code`、单一 provider
+  bar time、5 个 success shard receipt、完整 fanout/lineage、分页终止与重放一致，并且
+  metadata 为 `ready/success/fresh/valid/non-degraded`。任一条件失败即原子回切 `5ac3925`
+  并保留失败 receipt；切换不启用真实交易。
 - 13:05 CST 的 a42 首轮 live 验证未通过：collector 日志显示 `rt_min` success，但正式
   18082 精确查询 `time=2026-07-30 13:00:00` 返回 0 行，不能将旧 11:30 数据伪装为
   最新 500 分钟 bar。按 fail-closed 停止线，已先停 API/timer、用已验证 manifest 原子回切
