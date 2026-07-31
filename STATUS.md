@@ -1,16 +1,20 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 09:22 CST。
+最后更新：2026-07-31 09:45 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`56ab09aaa758943485890717fa2b5e29254d281a`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。该 release 包含经盘后切换的
-  500-symbol 分钟合同和五项事件数据合同；`5ac3925c3931a81132ea02abb16f9745033fb6dc`
-  保留为已验证的 30-symbol immutable rollback。发布不写入、覆盖或补造任何 SQLite
-  facts/receipts。
+- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。2026-07-31 早盘 500-symbol
+  live 门禁失败后，已按预先冻结的停止线回切该 30-symbol release；发布切换不写入、覆盖或
+  补造任何 SQLite facts/receipts。
+- 事件数据 release `56ab09aaa758943485890717fa2b5e29254d281a` 与包含
+  `disclosure_date` 合同的 release
+  `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 均已作为 immutable server release 保留，
+  但当前没有挂载到正式 18082。它们的历史 receipts/facts 仍保留；在下一次经过验证的正式
+  release 恢复这些合同前，不能把新闻公告称为“当前生产可查询”。
 - 切换前后均以 trusted manifest verifier 验证 current/release；目标 release 逐字节 registry
   重编译一致。以 `tradingagent` 身份的正式 18082 catalog readback 为 HTTP 200，且
   `trade_calendar(SSE, 20260731)` 为 ready/fresh/valid、receipt/lineage 完整。闭市 planner
@@ -32,6 +36,12 @@
   同样成功。以 `tradingagent` 身份对正式 18082 精确查询该 time 为
   `ready/success/fresh/valid/non-degraded`，receipt 与 lineage 完整。这只证明最终 bar 的
   合法恢复，不填补 15:05/15:10 的失败尝试，也不解除 500 的 NO-GO。
+- 2026-07-31 09:35 的 500 live 门禁失败后，TA 已停止并禁用 scale500 session/paper
+  timers，恢复旧 30 session/paper timers；两个状态根均保留且
+  `REAL_TRADING_ENABLED=false`。回切后正式 18082 精确查询 `09:35` 得到 30 个唯一
+  symbol、单一 time，metadata 为 `ready/success/fresh/valid/non-degraded`，receipt 与
+  lineage 完整。`09:30` 分区仍可见此前 500 候选写入的事实，因此读取方必须继续使用冻结
+  Universe，不能把全分区行数当作当前 30-symbol cohort 完整性证明。
 - `REAL_TRADING_ENABLED=false`。TradingDatas 不管理策略、资金、订单、broker 或交易。
 
 ## 已验证的内部数据事实
@@ -74,15 +84,16 @@
 - 当前 5 项 partial 的合同不会被凭空改为 ready。只有补齐各自的 primary identity、请求窗口
   完整性和业务 watermark 后，才允许以新合同重新采集、receipt 验证和正式 API 读回。
 
-## 新闻、公告与互动数据（已发布自动采集）
+## 新闻、公告与互动数据（历史生产证据已保留，当前未挂载）
 
-- 主线与 production release `56ab09aaa758943485890717fa2b5e29254d281a`
+- 主线与 immutable release `56ab09aaa758943485890717fa2b5e29254d281a`
   已冻结五项事件证据数据的通用 registry
   合同：`cn.dataset.anns_d`、`cn.dataset.cctv_news`、`cn.dataset.irm_qa_sh`、
   `cn.dataset.irm_qa_sz` 与 `cn.dataset.research_report`。它们复用既有 QuickSync
   transport、SQLite receipt、catalog/query 数据面与通用 `event` cadence；现有通用
   scheduler 约每 15 分钟检查一次，日期分区的 freshness SLA 为 86400 秒。没有新增公共
-  route、专用 collector、业务表或新闻专用 timer。
+  route、专用 collector、业务表或新闻专用 timer。该 release 当前不再是正式 `current`；
+  下列 readback 是回滚前保留的真实生产证据，不是当前 18082 可用性声明。
 - 隔离 SQLite 的 `20260730` provider 采集成功且身份数与行数一致：公告 1119、央视新闻
   11、上证互动 282、深证互动 2、研报 13。相同窗口第二次真实上游重放均为 `unchanged`
   success receipt；公告历史窗口经有界 `as_of` 分页为 3 页、1119 个唯一身份，首分页重放一致。
@@ -104,15 +115,16 @@
   同期 `cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report` 均为合法
   `empty/valid/non-degraded`，只表示当前 provider 返回 0 行，不表示接口失效。
 
-## 第二批非开盘接口（已合入、待发布）
+## 第二批非开盘接口（已合入并预构建，当前未挂载）
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
   `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 已通过 registry/config
   将它冻结为 `on_demand`、`ann_date` 单日分区和
   `single_partition_unique_primary_key` 完整性合同；QuickSync 未返回的 `modify_date`
-  继续由既有响应观测显式移除。正式 immutable current 仍为 `56ab09...`，本项尚未
-  发布或重新采集，不能提前称为 ready。
+  继续由既有响应观测显式移除。相同 SHA 的 immutable server release 已预构建并通过
+  manifest/registry 字节一致性验证，但正式 current 已因分钟 live 门禁回到 `5ac3925`；
+  本项尚未在正式 18082 重新采集和读回，不能提前称为 ready。
 - `broker_recommend` 的月份字段是 `YYYYMM`，当前通用日分区 watermark 不能科学投影月度
   完整性；`report_rc` 与 `repurchase` 的可区分修订字段存在空值；`stk_surv` 尚无真实行级
   样本。因此四项继续保持 partial/stale 或 empty 的现状，不通过新增专用代码、伪主键或
@@ -177,11 +189,12 @@
 
 ## 下一步与停止线
 
-1. 明早在 formal 18082 上验证 production 500 的首两根真实 completed bar。任一轮缺分片、
-   跨 time、少于 500、metadata 降级或 receipt/lineage 不完整，立即原子回滚 30-symbol
-   `5ac3925`；不做手工补分钟事实。
-2. 仅在两轮均通过后才将 500 分钟 production 标为可消费。其它 Tushare dataset 仍按各自
-   registry 合同和 receipt/metadata 验收，不因本次切换自动晋级。
-3. 当前不扩公共 API、不新增专用采集器，不把已 active、paused 或单次成功说成“全部接口已稳定采集”。
+1. 保持 30-symbol 回滚链与 TA 冻结 Universe，继续记录真实分钟 receipt；不得把同一 SQLite
+   中的历史 500 facts 当作当前 cohort，且不得通过放宽 SLA 掩盖 QuickSync 分钟数据延迟。
+2. 为分钟模拟盘补充可证明满足决策延迟门禁的上游或受控延迟语义；在此之前不再次放行 500。
+3. 在不影响分钟运行面的独立安全窗口，将事件合同和 `disclosure_date` 合同纳入一个经过
+   manifest、真实 receipt、正式 18082 readback 验证的 production release；发布前不得把
+   已保留 server release 称为当前可消费。
+4. 当前不扩公共 API、不新增专用采集器，不把已 active、paused 或单次成功说成“全部接口已稳定采集”。
 
 历史候选、事故、旧端口和早期探测结论以 Git 历史与服务器 evidence 为准，不再保留在当前状态页。
