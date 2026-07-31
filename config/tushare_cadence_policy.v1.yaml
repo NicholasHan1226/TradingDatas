@@ -18,7 +18,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 2f9b3d52d393c4c54ba0493b04a93b957cb046e4d90abb2986018c149dda7c0f
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: bak_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -123,7 +123,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 101dbf1599ed984a8858b4fd2b13670c1ad5357adf4ef36942d90ef6e87005b5
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: ci_index_member
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -493,7 +493,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: bbefe1d8dca06beed67a8bf6d4672fb998582d3940ae843d49b8a0fc2a764045
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: limit_list_ths
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
@@ -898,7 +898,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 0e70bf933ad4970f718bcaa9169fb9262fe61e185c5ababe4e86be2e678bc5ce
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: ths_index
   cadence_class: on_demand
   freshness_sla_seconds: 86400
