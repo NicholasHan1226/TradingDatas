@@ -183,7 +183,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: bde725df5092b92a93d581137e843286503335264359af45eacc6b359eef2b92
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: dc_concept
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
