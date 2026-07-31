@@ -1,15 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 00:00 CST。
+最后更新：2026-08-01 01:00 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`6299d6239c717f579e734a86e94fa1505ecac6ec`；18082 API
+- 正式 immutable `current`：`013623aed01cc2b6400f6ce1341d64b39db09bf0`；18082 API
   active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加
-  `cn.dataset.limit_list_ths` 的通用日分区完整性合同，未修改分钟 collector、API route 或
-  TradingAgent。`cb89620b7e20356a00c7ff3f06c357b401565113` 是本次直接原子回退点，
+  `cn.dataset.fund_div` 的通用按需日分区合同（schema 2、`ann_date` 分区及已验证业务
+  identity），未修改分钟 collector、API route 或 TradingAgent。切换前后 target/rollback
+  manifest 均通过 trusted verifier，目标 registry 也已从冻结输入逐字节重编译。直接原子
+  回退点为 `6299d6239c717f579e734a86e94fa1505ecac6ec`；
+  `cb89620b7e20356a00c7ff3f06c357b401565113`、
   `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
   与经过验证的
   `5ac3925c3931a81132ea02abb16f9745033fb6dc` 继续保留为分钟运行面的后续 rollback
@@ -216,6 +219,17 @@
   `ready/success/fresh/valid/non-degraded`；正式 receipt 为
   `receipt:85ed2ad22d0f1882bd0889039b90a3723f76c84b016c26eac173f20c42244785`，lineage 完整。
   该数据集现在可按日分区从内部 API 只读消费，不代表自动交易或策略 authority。
+- `cn.dataset.fund_div` 以 PR #31 普通合并为
+  `013623aed01cc2b6400f6ce1341d64b39db09bf0`，仅新增通用 registry/config 与回归：
+  schema `2.0.0`、`ann_date` 单日窗口、
+  `[ts_code,ann_date,imp_anndate,base_date,div_proc]` identity 和
+  `single_partition_unique_primary_key` 完整性合同。独立 clean-overlay 审查为 P0/P1/P2=0；
+  不新增 Python、route、collector、timer 或业务表。受控发布后，正式 18082 以
+  `tradingagent` 身份对 `ann_date=20260801` 返回合法
+  `empty/valid/non-degraded`（receipt
+  `receipt:76915b398ca1278be35652f228b3dd6901f0f08c1ffdf08811b55c3f29b345c6`，lineage 完整）。
+  这是上游当前窗口无记录的真实状态，不伪装为有内容或自动调度；当有真实公告日数据时，再以同一
+  on-demand 合同做有界 readback。
 - `stk_holdernumber` 有一条业务身份重复，`moneyflow_ths` 存在 30,150 条重复 excess 且单分区
   达 14,593 行，均继续 NO-GO；此前的 `report_rc`、`repurchase`、`top_inst`、`stk_managers`
   结论不变。此候选与筛选没有触及分钟 timer。
