@@ -29,7 +29,9 @@ OPERATIONS_PATH = ROOT / "docs" / "OPERATIONS.md"
 
 
 def test_runtime_activation_evidence_is_not_repository_owned() -> None:
-    assert not (ROOT / "config" / "quicksync_https_activation_evidence.v1.yaml").exists()
+    assert not (
+        ROOT / "config" / "quicksync_https_activation_evidence.v1.yaml"
+    ).exists()
     assert not hasattr(compiler_module, "DEFAULT_ACTIVATION_EVIDENCE_PATH")
 
 
@@ -56,6 +58,36 @@ def _trade_calendar(bundle: dict[str, object]) -> dict[str, object]:
         if isinstance(item, dict) and item["dataset_id"] == "cn.market.trade_calendar"
     )
     return contract
+
+
+def test_disclosure_date_observation_projects_reviewed_identity_without_missing_field() -> (
+    None
+):
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    contracts = registry["datasets"]
+    assert isinstance(contracts, list)
+    contract = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["dataset_id"] == "cn.dataset.disclosure_date"
+    )
+
+    assert contract["schema_version"] == "2.0.0"
+    assert contract["primary_key"] == ["ann_date", "end_date", "ts_code"]
+    assert contract["partition_field"] == "ann_date"
+    binding = contract["provider_bindings"][0]
+    assert binding["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+        "partition_field": "ann_date",
+        "request_partition_key": "ann_date",
+    }
+    assert "modify_date" not in {field["name"] for field in contract["fields"]}
+    assert binding["ingest_contract_state"] == "ready"
+    assert "modify_date" not in binding["requested_fields"]
 
 
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
@@ -205,7 +237,9 @@ def test_fresh_https_evidence_promotes_exactly_the_ingest_ready_result_set() -> 
     active_evidence = observations["active_evidence"]
     assert isinstance(active_evidence, dict)
     assert active == set(active_evidence)
-    assert all(bindings[api_name]["entitlement_state"] == "active" for api_name in active)
+    assert all(
+        bindings[api_name]["entitlement_state"] == "active" for api_name in active
+    )
 
 
 @pytest.mark.parametrize(
@@ -668,10 +702,13 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert completed.stdout == ""
     assert completed.stderr == ""
     loaded = load_dataset_registry(output)
-    assert sum(
-        dataset.provider_bindings[0].activation_state == "active"
-        for dataset in loaded.datasets
-    ) == 101
+    assert (
+        sum(
+            dataset.provider_bindings[0].activation_state == "active"
+            for dataset in loaded.datasets
+        )
+        == 101
+    )
     # The checked-in target is already the current compiled registry.  The
     # external preactivation compile must be reproducible rather than mutate
     # or manufacture a second registry variant.
@@ -743,7 +780,10 @@ def test_cli_refuses_candidate_mode_inside_repository(
     )
 
     assert completed.returncode == 2
-    assert "preactivation candidate cannot overwrite the checked registry" in completed.stderr
+    assert (
+        "preactivation candidate cannot overwrite the checked registry"
+        in completed.stderr
+    )
     assert output == TARGET_PATH or not output.exists()
 
 

@@ -1,15 +1,16 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-30 22:50 CST。
+最后更新：2026-07-31 09:22 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`ad4bc00ed25dbf2d6eaf3293d80f5782a1f275e4`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。它是经盘后原子切换的 500-symbol
-  release；`5ac3925c3931a81132ea02abb16f9745033fb6dc` 保留为已验证的 30-symbol immutable
-  rollback。该切换不写入、覆盖或补造任何 SQLite facts/receipts。
+- 正式 immutable `current`：`56ab09aaa758943485890717fa2b5e29254d281a`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。该 release 包含经盘后切换的
+  500-symbol 分钟合同和五项事件数据合同；`5ac3925c3931a81132ea02abb16f9745033fb6dc`
+  保留为已验证的 30-symbol immutable rollback。发布不写入、覆盖或补造任何 SQLite
+  facts/receipts。
 - 切换前后均以 trusted manifest verifier 验证 current/release；目标 release 逐字节 registry
   重编译一致。以 `tradingagent` 身份的正式 18082 catalog readback 为 HTTP 200，且
   `trade_calendar(SSE, 20260731)` 为 ready/fresh/valid、receipt/lineage 完整。闭市 planner
@@ -97,6 +98,23 @@
   `Result=success`，五项 formal 18082 readback 均为合法
   `empty/valid/non-degraded`，receipt 与 lineage 完整；这表示当天当时上游无返回行，
   不是已有新闻内容或交易信号。`major_news`/`news` 仍维持 paused/404，不伪装为已接入。
+- 2026-07-31 早盘的后续自动采集已取得真实公告内容：正式 18082 对
+  `cn.dataset.anns_d(ann_date=20260731)` 有界分页返回 1209 行、1209 个唯一身份，metadata
+  为 `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整，首分页再次读回一致。
+  同期 `cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report` 均为合法
+  `empty/valid/non-degraded`，只表示当前 provider 返回 0 行，不表示接口失效。
+
+## 第二批非开盘接口（候选合同）
+
+- 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
+  `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。当前候选只通过 registry/config
+  将它冻结为 `on_demand`、`ann_date` 单日分区和
+  `single_partition_unique_primary_key` 完整性合同；QuickSync 未返回的 `modify_date`
+  继续由既有响应观测显式移除。它尚未合入、部署或重新采集，不能提前称为 ready。
+- `broker_recommend` 的月份字段是 `YYYYMM`，当前通用日分区 watermark 不能科学投影月度
+  完整性；`report_rc` 与 `repurchase` 的可区分修订字段存在空值；`stk_surv` 尚无真实行级
+  样本。因此四项继续保持 partial/stale 或 empty 的现状，不通过新增专用代码、伪主键或
+  人工插库强行升级。
 
 ## 500 只分钟数据候选（已回滚，live 验证失败）
 

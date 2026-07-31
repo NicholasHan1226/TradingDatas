@@ -213,7 +213,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 6b1b360e8a79ca1d458ba5e784716021d97fc5a9bbbcee68ba867e79ac363594
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: dividend
   cadence_class: on_demand
   freshness_sla_seconds: 86400

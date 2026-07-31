@@ -123,10 +123,14 @@ def test_cadence_policy_has_exact_sorted_coverage_and_projects_each_contract() -
     document_by_api = {item["api_name"]: item for item in documents["contracts"]}
     reviewed_by_api = {item["api_name"]: item for item in reviewed["contracts"]}
     for api_name, entry in policy_by_api.items():
-        assert entry["source_document_sha256"] == document_by_api[api_name]["doc_sha256"]
+        assert (
+            entry["source_document_sha256"] == document_by_api[api_name]["doc_sha256"]
+        )
         contract = compiled_by_api[api_name]
         if api_name in reviewed_by_api:
-            assert contract["cadence_class"] == reviewed_by_api[api_name]["cadence_class"]
+            assert (
+                contract["cadence_class"] == reviewed_by_api[api_name]["cadence_class"]
+            )
             assert (
                 contract["freshness_sla_seconds"]
                 == reviewed_by_api[api_name]["freshness_sla_seconds"]
@@ -154,9 +158,7 @@ def test_cadence_policy_has_exact_sorted_coverage_and_projects_each_contract() -
         ("reviewed_reason_missing", "reviewed API.*reason_code"),
     ],
 )
-def test_compiler_rejects_invalid_cadence_policy(
-    mutation: str, message: str
-) -> None:
+def test_compiler_rejects_invalid_cadence_policy(mutation: str, message: str) -> None:
     cadence_policy = _yaml(CADENCE_POLICY)
     entries = cadence_policy["entries"]
     assert isinstance(entries, list)
@@ -179,17 +181,13 @@ def test_compiler_rejects_invalid_cadence_policy(
     elif mutation == "reason_cadence_mismatch":
         entries[0]["reason_code"] = "doc_explicit_weekly"
     elif mutation == "false_reviewed_exact":
-        reviewed_api_names = {
-            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
-        }
+        reviewed_api_names = {item["api_name"] for item in _yaml(REVIEWED)["contracts"]}
         unreviewed_entry = next(
             entry for entry in entries if entry["api_name"] not in reviewed_api_names
         )
         unreviewed_entry["reason_code"] = "reviewed_contract_exact"
     elif mutation in {"reviewed_exact_cadence_drift", "reviewed_exact_freshness_drift"}:
-        reviewed_api_names = {
-            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
-        }
+        reviewed_api_names = {item["api_name"] for item in _yaml(REVIEWED)["contracts"]}
         reviewed_entry = next(
             entry for entry in entries if entry["api_name"] in reviewed_api_names
         )
@@ -198,13 +196,13 @@ def test_compiler_rejects_invalid_cadence_policy(
         else:
             reviewed_entry["freshness_sla_seconds"] += 1
     else:
-        reviewed_api_names = {
-            item["api_name"] for item in _yaml(REVIEWED)["contracts"]
-        }
+        reviewed_api_names = {item["api_name"] for item in _yaml(REVIEWED)["contracts"]}
         reviewed_entry = next(
             entry for entry in entries if entry["api_name"] in reviewed_api_names
         )
-        reviewed_entry["reason_code"] = f"doc_explicit_{reviewed_entry['cadence_class']}"
+        reviewed_entry["reason_code"] = (
+            f"doc_explicit_{reviewed_entry['cadence_class']}"
+        )
 
     with pytest.raises(RuntimeContractCompilationError, match=message):
         compile_runtime_contract_bundle(
@@ -459,6 +457,33 @@ def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
         "reject_at_row_limit": True,
     }
     assert set(primary_key).issubset(contract["requested_fields"])
+
+
+def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition() -> (
+    None
+):
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = {item["api_name"]: item for item in compiled["contracts"]}[
+        "disclosure_date"
+    ]
+
+    assert contract["schema_version"] == "1.0.0"
+    assert contract["primary_key"] == ["ann_date", "end_date", "ts_code"]
+    assert contract["cadence_class"] == "on_demand"
+    assert contract["as_of_field"] == "ann_date"
+    assert contract["range_field"] == "ann_date"
+    assert contract["partition_field"] == "ann_date"
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "ann_date",
+        "request_partition_key": "ann_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert "modify_date" in {field["name"] for field in contract["fields"]}
+    assert set(contract["primary_key"]).issubset(contract["requested_fields"])
 
 
 @pytest.mark.parametrize(

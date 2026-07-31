@@ -99,9 +99,7 @@ def _single_partition_schedule(
     )
     return replace(
         schedule,
-        cadences=MappingProxyType(
-            {**schedule.cadences, cadence_class: policy}
-        ),
+        cadences=MappingProxyType({**schedule.cadences, cadence_class: policy}),
     )
 
 
@@ -352,9 +350,7 @@ def test_generic_windows_cover_snapshot_partition_and_bounded_range(
             }
         ),
     )
-    current = {
-        plan.dataset_id: plan for plan in plans if plan.priority == "current"
-    }
+    current = {plan.dataset_id: plan for plan in plans if plan.priority == "current"}
     assert dict(current["cn.equity.daily"].request_window) == {"trade_date": "20260720"}
     assert dict(current["cn.equity.security_master"].request_window) == {}
     assert [
@@ -427,7 +423,9 @@ def test_planner_skips_only_dataset_with_invalid_receipt_authority() -> None:
     now = datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
     state = cadence_planner.PlannerState(
         MappingProxyType({}),
-        MappingProxyType({("cn.equity.daily", "tushare"): ("receipt_timestamp_in_future",)}),
+        MappingProxyType(
+            {("cn.equity.daily", "tushare"): ("receipt_timestamp_in_future",)}
+        ),
     )
 
     plans, skips = cadence_planner.plan_runs(
@@ -435,7 +433,9 @@ def test_planner_skips_only_dataset_with_invalid_receipt_authority() -> None:
         schedule=schedule,
         state=state,
         now=now,
-        selected_dataset_ids=frozenset({"cn.equity.daily", "cn.equity.security_master"}),
+        selected_dataset_ids=frozenset(
+            {"cn.equity.daily", "cn.equity.security_master"}
+        ),
     )
 
     assert all(plan.dataset_id != "cn.equity.daily" for plan in plans)
@@ -701,9 +701,9 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         for dataset in registry.datasets
         if dataset.provider_bindings[0].entitlement_state == "active"
         and dataset.provider_bindings[0].activation_state == "active"
-        and scheduler.load_schedule(SCHEDULE_CONFIG).cadences[
-            dataset.cadence_class
-        ].automatic
+        and scheduler.load_schedule(SCHEDULE_CONFIG)
+        .cadences[dataset.cadence_class]
+        .automatic
     }
     assert executed <= automatic_active
     assert {
@@ -814,9 +814,7 @@ def test_single_recent_variant_receipt_cannot_suppress_complete_cohort(
     )
 
     plans = [
-        plan
-        for plan in result.plans
-        if plan.dataset_id == "cn.equity.security_master"
+        plan for plan in result.plans if plan.dataset_id == "cn.equity.security_master"
     ]
     assert len(plans) == 1
     assert [dict(variant) for variant in plans[0].request_variants] == [
@@ -1297,7 +1295,9 @@ def test_execute_current_only_requires_pilot_wave_before_credentials_provider_or
     monkeypatch.setattr(
         scheduler,
         "exclusive_schedule_lock",
-        lambda *args, **kwargs: pytest.fail("missing wave must fail before lock or database"),
+        lambda *args, **kwargs: pytest.fail(
+            "missing wave must fail before lock or database"
+        ),
     )
 
     code = scheduler.main(
@@ -1482,9 +1482,7 @@ def test_daily_uses_calendar_and_repairs_earliest_gap_after_current_session(
     )
     daily = [plan for plan in result.plans if plan.dataset_id == "cn.equity.daily"]
     assert [plan.request_window["trade_date"] for plan in daily] == expected
-    assert [plan.priority for plan in daily] == (
-        ["current"] if current_open else []
-    )
+    assert [plan.priority for plan in daily] == (["current"] if current_open else [])
 
 
 def test_postclose_uses_calendar_pretrade_date_for_missing_latest_session(
@@ -1614,9 +1612,7 @@ def test_postclose_rejects_conflicting_duplicate_calendar_pretrade_dates() -> No
     )
 
     with pytest.raises(RuntimeError, match="calendar previous session is conflicting"):
-        cadence_planner._calendar(
-            registry, state, schedule.cadences["postclose_daily"]
-        )
+        cadence_planner._calendar(registry, state, schedule.cadences["postclose_daily"])
 
 
 def test_postclose_rejects_invalid_calendar_pretrade_date(
@@ -1688,7 +1684,9 @@ def test_postclose_rejects_conflicting_calendar_pretrade_date(
         )
 
 
-def test_trade_calendar_uses_bounded_chunks_through_known_next_day(tmp_path: Path) -> None:
+def test_trade_calendar_uses_bounded_chunks_through_known_next_day(
+    tmp_path: Path,
+) -> None:
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -1708,7 +1706,9 @@ def test_trade_calendar_uses_bounded_chunks_through_known_next_day(tmp_path: Pat
         "start_date": "20260720",
         "end_date": "20260721",
     }
-    assert max(_date(plan.request_window["end_date"]) for plan in plans) == today + timedelta(days=1)
+    assert max(
+        _date(plan.request_window["end_date"]) for plan in plans
+    ) == today + timedelta(days=1)
     assert all(
         1
         <= (
@@ -1735,7 +1735,9 @@ def test_daily_reference_non_calendar_does_not_plan_future_partition(
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
         execute=False,
     )
-    plans = [plan for plan in result.plans if plan.dataset_id == "cn.dataset.adj_factor"]
+    plans = [
+        plan for plan in result.plans if plan.dataset_id == "cn.dataset.adj_factor"
+    ]
 
     assert plans
     assert {plan.request_window["trade_date"] for plan in plans} == {"20260720"}
@@ -2010,8 +2012,7 @@ def test_binding_variants_do_not_leak_between_same_key_datasets(
         plan for plan in result.plans if plan.dataset_id == synthetic.dataset_id
     ]
     assert [
-        [dict(variant) for variant in plan.request_variants]
-        for plan in synthetic_plans
+        [dict(variant) for variant in plan.request_variants] for plan in synthetic_plans
     ] == [[{"list_status": "X"}]]
 
 
@@ -2030,10 +2031,16 @@ def _activation_wave_manifest(
                 "version: 1",
                 "input_hashes:",
                 '  runtime_registry_sha256: "'
-                + (registry_hash or hashlib.sha256(TARGET_REGISTRY.read_bytes()).hexdigest())
+                + (
+                    registry_hash
+                    or hashlib.sha256(TARGET_REGISTRY.read_bytes()).hexdigest()
+                )
                 + '"',
                 '  schedule_sha256: "'
-                + (schedule_hash or hashlib.sha256(SCHEDULE_CONFIG.read_bytes()).hexdigest())
+                + (
+                    schedule_hash
+                    or hashlib.sha256(SCHEDULE_CONFIG.read_bytes()).hexdigest()
+                )
                 + '"',
                 "waves:",
                 f"  {wave_id}:",
@@ -2158,7 +2165,9 @@ def test_minute_canary_only_runs_in_declared_open_session_windows(
 
     assert (len(plans) == 1) is expected
     if not expected:
-        assert {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"] == "not_due"
+        assert {item.dataset_id: item.state for item in skips}[
+            "cn.dataset.rt_min"
+        ] == "not_due"
 
 
 def test_session_minute_current_plan_precedes_other_current_plans(
@@ -2179,9 +2188,7 @@ def test_session_minute_current_plan_precedes_other_current_plans(
         schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
         state=state,
         now=now,
-        selected_dataset_ids=frozenset(
-            {"cn.dataset.adj_factor", "cn.dataset.rt_min"}
-        ),
+        selected_dataset_ids=frozenset({"cn.dataset.adj_factor", "cn.dataset.rt_min"}),
     )
 
     assert [plan.dataset_id for plan in plans] == [
@@ -2275,13 +2282,13 @@ def test_activation_wave_rejects_an_unknown_wave_before_planner_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = _active_registry()
-    manifest = _activation_wave_manifest(
-        tmp_path, dataset_ids=["cn.equity.daily"]
-    )
+    manifest = _activation_wave_manifest(tmp_path, dataset_ids=["cn.equity.daily"])
     monkeypatch.setattr(
         scheduler,
         "load_planner_state",
-        lambda *args, **kwargs: pytest.fail("unknown wave must fail before database access"),
+        lambda *args, **kwargs: pytest.fail(
+            "unknown wave must fail before database access"
+        ),
     )
 
     with pytest.raises(ValueError, match="unknown activation wave"):
@@ -2347,11 +2354,9 @@ def test_activation_wave_rejects_non_active_or_non_entitled_dataset(
         b"    entitlement_state: active\n"
         b"    activation_state: active\n"
     )
-    inactive_fragment = (
-        active_fragment.replace(
-            b"entitlement_state: active", b"entitlement_state: locked"
-        ).replace(b"activation_state: active", b"activation_state: paused")
-    )
+    inactive_fragment = active_fragment.replace(
+        b"entitlement_state: active", b"entitlement_state: locked"
+    ).replace(b"activation_state: active", b"activation_state: paused")
     assert registry_bytes.count(active_fragment) == 1
     inactive_registry_bytes = registry_bytes.replace(
         active_fragment, inactive_fragment, 1
@@ -2390,7 +2395,9 @@ def test_activation_wave_rejects_authority_hash_drift_before_planner_access(
     monkeypatch.setattr(
         scheduler,
         "load_planner_state",
-        lambda *args, **kwargs: pytest.fail("hash drift must fail before database access"),
+        lambda *args, **kwargs: pytest.fail(
+            "hash drift must fail before database access"
+        ),
     )
 
     with pytest.raises(ValueError, match="registry SHA-256 does not match"):
@@ -2598,9 +2605,7 @@ def test_formal_direct_wave_2_dry_run_plans_every_selected_dataset(
 
     assert {plan.dataset_id for plan in result.plans} == expected
     assert not {
-        item.dataset_id
-        for item in result.skipped
-        if item.dataset_id in expected
+        item.dataset_id for item in result.skipped if item.dataset_id in expected
     }
 
 
@@ -2826,7 +2831,14 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         assert binding.pagination.strategy == "none"
         assert binding.request_window_policy is not None
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
-        assert binding.response_completeness is None
+        if dataset_id == "cn.dataset.disclosure_date":
+            completeness = binding.response_completeness
+            assert completeness is not None
+            assert completeness.strategy == "single_partition_unique_primary_key"
+            assert completeness.partition_field == "ann_date"
+            assert completeness.request_partition_key == "ann_date"
+        else:
+            assert binding.response_completeness is None
 
 
 def test_formal_direct_wave_4_explicit_dry_run_skips_all_as_on_demand(
@@ -2881,7 +2893,9 @@ def test_activation_wave_uses_hashed_input_bytes_not_detached_objects(
     daily = source_registry.resolve("cn.equity.daily")
     detached_daily = replace(
         daily,
-        provider_bindings=(replace(daily.provider_bindings[0], api_name="detached_api"),),
+        provider_bindings=(
+            replace(daily.provider_bindings[0], api_name="detached_api"),
+        ),
     )
     detached_registry = DatasetRegistry(
         (
@@ -2950,9 +2964,7 @@ def test_activation_wave_uses_hashed_input_bytes_not_detached_objects(
     ("hidden_wave", "message"),
     [
         (
-            "  zzz_hidden_alias:\n"
-            "    dataset_ids:\n"
-            "    - tushare.daily\n",
+            "  zzz_hidden_alias:\n    dataset_ids:\n    - tushare.daily\n",
             "canonical dataset_id",
         ),
         (
@@ -2969,9 +2981,7 @@ def test_activation_manifest_validates_every_wave_before_selection(
     message: str,
     tmp_path: Path,
 ) -> None:
-    manifest = _activation_wave_manifest(
-        tmp_path, dataset_ids=["cn.equity.daily"]
-    )
+    manifest = _activation_wave_manifest(tmp_path, dataset_ids=["cn.equity.daily"])
     manifest.write_text(
         manifest.read_text(encoding="utf-8") + hidden_wave,
         encoding="utf-8",
@@ -2992,13 +3002,9 @@ def test_activation_manifest_validates_every_wave_before_selection(
 
 
 def test_activation_manifest_rejects_boolean_version(tmp_path: Path) -> None:
-    manifest = _activation_wave_manifest(
-        tmp_path, dataset_ids=["cn.equity.daily"]
-    )
+    manifest = _activation_wave_manifest(tmp_path, dataset_ids=["cn.equity.daily"])
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "version: 1", "version: true", 1
-        ),
+        manifest.read_text(encoding="utf-8").replace("version: 1", "version: true", 1),
         encoding="utf-8",
     )
 

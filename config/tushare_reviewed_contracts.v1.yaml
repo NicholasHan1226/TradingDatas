@@ -278,6 +278,53 @@ contracts:
     requested_fields: [trade_date, abstr, title, report_type, author, name, ts_code, inst_csname, ind_name, url]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # The disclosure-date endpoint is queried by announcement date. Three real
+  # production receipt cohorts contained non-null, unique
+  # [ann_date, end_date, ts_code] identities within each requested partition.
+  # QuickSync omits the documented modify_date field; the existing observed
+  # response override keeps that omission explicit in compiled schema v2.
+  - dataset_id: cn.dataset.disclosure_date
+    aliases: [tushare.disclosure_date]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: disclosure_date
+    source_document_url: https://tushare.pro/wctapi/documents/162.md
+    source_document_sha256: 6b1b360e8a79ca1d458ba5e784716021d97fc5a9bbbcee68ba867e79ac363594
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ann_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: end_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: pre_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: actual_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: modify_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ann_date, end_date, ts_code]
+    default_projection: [ts_code, ann_date, end_date, pre_date, actual_date, modify_date]
+    as_of_field: ann_date
+    as_of_format: yyyymmdd
+    range_field: ann_date
+    partition_field: ann_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {ann_date: '${window.ann_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [ann_date], formats: {ann_date: yyyymmdd}, range_start_key: ann_date, range_end_key: ann_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: ann_date, request_partition_key: ann_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, ann_date, end_date, pre_date, actual_date, modify_date]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   - dataset_id: cn.dataset.moneyflow_ind_dc
     aliases: [tushare.moneyflow_ind_dc]
     domain: provider_data
