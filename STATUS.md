@@ -104,13 +104,15 @@
   同期 `cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report` 均为合法
   `empty/valid/non-degraded`，只表示当前 provider 返回 0 行，不表示接口失效。
 
-## 第二批非开盘接口（候选合同）
+## 第二批非开盘接口（已合入、待发布）
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
-  `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。当前候选只通过 registry/config
+  `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
+  `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 已通过 registry/config
   将它冻结为 `on_demand`、`ann_date` 单日分区和
   `single_partition_unique_primary_key` 完整性合同；QuickSync 未返回的 `modify_date`
-  继续由既有响应观测显式移除。它尚未合入、部署或重新采集，不能提前称为 ready。
+  继续由既有响应观测显式移除。正式 immutable current 仍为 `56ab09...`，本项尚未
+  发布或重新采集，不能提前称为 ready。
 - `broker_recommend` 的月份字段是 `YYYYMM`，当前通用日分区 watermark 不能科学投影月度
   完整性；`report_rc` 与 `repurchase` 的可区分修订字段存在空值；`stk_surv` 尚无真实行级
   样本。因此四项继续保持 partial/stale 或 empty 的现状，不通过新增专用代码、伪主键或
