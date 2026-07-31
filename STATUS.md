@@ -1,17 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 17:30 CST。
+最后更新：2026-07-31 23:18 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`0935b70aafca4f3bd269381aa2ee6bba8ac73f61`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加通用月分区
-  query 校验，未修改分钟 collector、API route 或 TradingAgent。`1f17708730172bc31fba3f849fa938da6e8a73fa`
-  是本次直接原子回退点，经过验证的 `5ac3925c3931a81132ea02abb16f9745033fb6dc` 继续保留为
-  30-symbol 分钟运行面的下一级 rollback release；`71b7890928a9cc8c6345f41b0cd87a60f46158f8`
-  仍只作为已验证的 500-symbol 候选，不挂载到正式 18082。
+- 正式 immutable `current`：`cb89620b7e20356a00c7ff3f06c357b401565113`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只冻结
+  `cn.dataset.fund_share` 的通用日分区完整性合同，未修改分钟 collector、API route 或
+  TradingAgent。`0935b70aafca4f3bd269381aa2ee6bba8ac73f61` 是本次直接原子回退点，
+  `1f17708730172bc31fba3f849fa938da6e8a73fa` 与经过验证的
+  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 继续保留为分钟运行面的后续 rollback
+  链；`71b7890928a9cc8c6345f41b0cd87a60f46158f8` 仍只作为已验证的 500-symbol 候选，
+  不挂载到正式 18082。
   13:05/13:10 的 500 live 门禁失败后，发布侧按停止线先停 API/timer、以 trusted manifest
   原子回切 5ac、再恢复 API/timer；切换没有写入、覆盖或补造任何 SQLite facts/receipts。
 - 71b 的事件/公告合同与严格 provider-local minute timestamp 投影仍保留在 immutable
@@ -180,12 +182,22 @@
   伪造身份。此项为 P1/NO-GO：不生成 registry/config 候选、不建 PR、不发布，隔离 DB/receipt
   仅保留审计证据，正式 18082 与 30-symbol 分钟链未受影响。
 
-- 随后的只读排序只选择了一个下一候选：`cn.dataset.fund_share`。现有 active contract 的
-  `trade_date` 请求形状、默认字段和 10,000 行预算均可复用；隔离 SQLite 对
+- 随后的只读排序只选择了一个下一候选：`cn.dataset.fund_share`。隔离 SQLite 对
   `trade_date=20260728` 的真实 provider 调用得到 1,703 行，
-  `[trade_date,ts_code]` 为 1,703/1,703 非空唯一、未触顶。相同窗口第二次调用返回 1,703
-  `unchanged` 行，未产生重复 facts。它是下一项可用纯 registry/completeness 合同推进的候选；
-  当前只完成隔离数据验证，尚未修改 registry、创建 PR、切换 release 或写入正式 DB。
+  `[trade_date,ts_code]` 为 1,703/1,703 非空唯一、未触顶，重放为 1,703 `unchanged` 行。
+  该证据已用于冻结纯 registry/config 合同：schema `2.0.0`、日分区、
+  `[trade_date,ts_code]` 主键、默认排序和
+  `single_partition_unique_primary_key` response completeness；cadence 仍为 `on_demand`，
+  没有新增 collector、route、timer 或业务表。PR #27 已普通合并为 `cb89620`，target release
+  manifest、离线 registry 重编译、clean-overlay P0/P1 审查和 13 项 compiler/query/scheduler/
+  receipt 回归均通过。
+- 2026-07-31 23:14 CST 的正式单项 generic one-shot（`tradingdatas` 身份）对
+  `trade_date=20260731` plan 与 execute 均成功。随后以 `tradingagent` 身份从 formal 18082
+  分页 readback：791 行、791 个非空唯一身份、两页终止；metadata 为
+  `ready/success/fresh/valid/non-degraded`，receipt
+  `receipt:14d8e037c2798d02cdb7b193fb7dede3cdd290a05e0caedcd2c5bcceeee95db0` 与 lineage
+  完整。第二次相同查询的行数、身份 digest 和 receipt 完全一致。该项现在是可按需内部读取的
+  数据事实，不代表自动调度、研究结论或交易 authority。
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
