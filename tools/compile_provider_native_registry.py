@@ -1885,7 +1885,7 @@ def _normalized_contract(
     if optional["as_of_field"] is None:
         if as_of_format is not None:
             raise ValueError(f"{label}.as_of_format requires as_of_field")
-    elif as_of_format not in {"yyyymmdd", "rfc3339"}:
+    elif as_of_format not in {"yyyymm", "yyyymmdd", "rfc3339"}:
         raise ValueError(f"{label}.as_of_format is unsupported")
     request_shape = _required_text(value["request_shape"], f"{label}.request_shape")
     if request_shape not in _REQUEST_SHAPES:
@@ -1962,12 +1962,12 @@ def _normalized_contract(
             optional["as_of_field"] != partition_field
             or optional["range_field"] != partition_field
             or optional["partition_field"] != partition_field
-            or as_of_format != "yyyymmdd"
+            or as_of_format not in {"yyyymm", "yyyymmdd"}
             or partition_field not in primary_key
         ):
             raise ValueError(
                 f"{label}.response_completeness.partition_field must be the "
-                "contract yyyymmdd primary-key partition field"
+                "contract yyyymm or yyyymmdd primary-key partition field"
             )
         completeness_fields.add(partition_field)
     if requested_fields:

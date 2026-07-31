@@ -46,6 +46,7 @@ _RFC3339_RE = re.compile(
     r"(?P<offset_minute>[0-5][0-9]))\Z"
 )
 _YYYYMMDD_RE = re.compile(r"\d{8}\Z")
+_YYYYMM_RE = re.compile(r"\d{6}\Z")
 _QUERY_DEFAULTS = load_dataset_registry().query_defaults
 
 
@@ -605,6 +606,15 @@ def _decode_dataset_cutoff(
     timezone: ZoneInfo,
     name: str,
 ) -> datetime:
+    if as_of_format == "yyyymm":
+        text = _canonical_non_empty_string(value, name)
+        if _YYYYMM_RE.fullmatch(text) is None:
+            raise QueryValidationError(f"{name} must use yyyymm")
+        try:
+            parsed = datetime.strptime(text, "%Y%m")
+        except ValueError as exc:
+            raise QueryValidationError(f"{name} must use yyyymm") from exc
+        return parsed.replace(tzinfo=timezone)
     if as_of_format == "yyyymmdd":
         text = _canonical_non_empty_string(value, name)
         if _YYYYMMDD_RE.fullmatch(text) is None:
@@ -645,7 +655,7 @@ def resolve_query_as_of(
 
     requested = _parse_aware_rfc3339(request.as_of, "as_of")
     local_cutoff = requested.astimezone(timezone)
-    if dataset.as_of_format == "yyyymmdd":
+    if dataset.as_of_format in {"yyyymm", "yyyymmdd"}:
         local_cutoff = local_cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
 
     explicit_bounds = _explicit_as_of_upper_bounds(request, dataset.as_of_field)
@@ -661,7 +671,9 @@ def resolve_query_as_of(
         )
         local_cutoff = min(local_cutoff, explicit_cutoff)
 
-    if dataset.as_of_format == "yyyymmdd":
+    if dataset.as_of_format == "yyyymm":
+        encoded_cutoff = local_cutoff.strftime("%Y%m")
+    elif dataset.as_of_format == "yyyymmdd":
         encoded_cutoff = local_cutoff.strftime("%Y%m%d")
     else:
         encoded_cutoff = _canonical_rfc3339(local_cutoff)

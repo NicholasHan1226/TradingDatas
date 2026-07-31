@@ -121,6 +121,11 @@ fail closed，不能把后采 receipt、当前 metadata 或无 lineage 的历史
 `observed_at` 仍是实际 collection time。若回填在请求的 `as_of` 之后才采集，它不得进入该
 历史读取投影。`lineage.receipt_watermark` 的摘要同时覆盖当前 run 与最大 success cohort
 的完整 member receipt IDs；显式 as-of 还覆盖全部允许返回行的 success receipt IDs。
+
+`as_of` 本身始终使用 RFC3339；catalog 中每个 dataset 的 `as_of_format` 决定它绑定的
+业务字段编码。当前通用格式为 `yyyymmdd`、`yyyymm` 和 `rfc3339`。例如月度数据集的
+`month=YYYYMM` 是一个完整月分区；读取时间在该月内时，API 只接受不晚于该月的已观测
+receipt，绝不把后采集的月度记录投影到过去。
 variant 缺失或真实失败时 runtime 必须 fail closed，查询 `data` 为空，不能混读先前
 success rows。
 
