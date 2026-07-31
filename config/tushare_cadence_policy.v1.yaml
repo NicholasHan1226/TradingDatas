@@ -498,7 +498,7 @@ entries:
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 8f4a039a6bb569292443dd4eedfd94609afccac0db54b382522f06393a674dce
-  reason_code: doc_explicit_postclose_daily
+  reason_code: reviewed_contract_exact
 - api_name: limit_step
   cadence_class: on_demand
   freshness_sla_seconds: 86400
