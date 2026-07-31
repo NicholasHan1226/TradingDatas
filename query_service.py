@@ -76,6 +76,11 @@ _EVIDENCE_ISO_TIMESTAMP_RE = re.compile(
     r"(?P<second>[0-5][0-9])(?:\.(?P<fraction>[0-9]{1,6}))?"
     r"(?P<zone>Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?\Z"
 )
+_PROVIDER_LOCAL_SNAPSHOT_TIMESTAMP_RE = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2} "
+    r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+    r"(?:\.[0-9]{1,6})?\Z"
+)
 _RESPONSE_COMPLETENESS_UNVERIFIED = "response_completeness_unverified"
 _FRESHNESS_WATERMARK_UNVERIFIED = "freshness_watermark_unverified"
 
@@ -1194,7 +1199,16 @@ def _normalize_data_through(value: object, dataset: DatasetDefinition) -> str | 
             tzinfo=dataset_timezone
         )
     else:
-        parsed, aware = _parse_evidence_iso_timestamp(value)
+        # Provider minute bars use a local ``YYYY-MM-DD HH:MM:SS`` value for
+        # their snapshot watermark.  It is receipt-internal evidence, not a
+        # client ``as_of`` value; normalize only this exact unzoned shape
+        # before applying the normal strict ISO parser.
+        normalized_value = (
+            value.replace(" ", "T", 1)
+            if _PROVIDER_LOCAL_SNAPSHOT_TIMESTAMP_RE.fullmatch(value) is not None
+            else value
+        )
+        parsed, aware = _parse_evidence_iso_timestamp(normalized_value)
         if not aware:
             parsed = _localize_unambiguous_timestamp(parsed, dataset_timezone)
     return parsed.isoformat(
