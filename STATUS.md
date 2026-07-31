@@ -172,6 +172,14 @@
   `cctv_news` 与两项 `irm_qa` 的 as-of query 没有匹配 success receipt 而诚实 503，
   `major_news`/`news` 继续 paused。没有为任何一项新增 route、专用 collector 或数据表。
 
+- `stk_managers` 的下一独立隔离 slice 已在独立 SQLite 中通过同一 generic collector 对
+  `ann_date=20260728` 与 `20260731` 得到两个真实 success receipt（分别 57 与 8 行）。候选
+  业务身份 `[ann_date,ts_code,name,title,begin_date]` 在 20260731 的 8 行样本中非空且唯一，
+  但 20260728 的 57 行有 11 个 `begin_date` 空值，并存在一组重复；重复行只在可空 `lev`
+  字段不同。因而没有可证明的非空稳定业务主键，不能以 payload hash、可空字段拼接或丢弃字段
+  伪造身份。此项为 P1/NO-GO：不生成 registry/config 候选、不建 PR、不发布，隔离 DB/receipt
+  仅保留审计证据，正式 18082 与 30-symbol 分钟链未受影响。
+
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
   `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 已通过 registry/config
