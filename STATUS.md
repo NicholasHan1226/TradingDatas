@@ -1,17 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 01:00 CST。
+最后更新：2026-08-01 02:20 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`013623aed01cc2b6400f6ce1341d64b39db09bf0`；18082 API
+- 正式 immutable `current`：`5abb124a05f99495d5f0308329f4d4b84bd4ed5e`；18082 API
   active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加
-  `cn.dataset.fund_div` 的通用按需日分区合同（schema 2、`ann_date` 分区及已验证业务
-  identity），未修改分钟 collector、API route 或 TradingAgent。切换前后 target/rollback
+  `cn.dataset.stock_st` 的通用按需日分区合同（schema 2、`trade_date` 分区、
+  `[trade_date, ts_code]` identity 及单分区完整性），未修改分钟 collector、API route
+  或 TradingAgent。切换前后 target/rollback
   manifest 均通过 trusted verifier，目标 registry 也已从冻结输入逐字节重编译。直接原子
-  回退点为 `6299d6239c717f579e734a86e94fa1505ecac6ec`；
+  回退点为 `013623aed01cc2b6400f6ce1341d64b39db09bf0`；
   `cb89620b7e20356a00c7ff3f06c357b401565113`、
   `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
   与经过验证的
@@ -33,6 +34,12 @@
   因而未达到 500 unique、单一 time、5 个 success shard receipt、分页终止/重放与
   `ready/fresh/valid` 条件；没有尝试第三轮，也没有把旧 30 或旧 bar 伪装为通过。当前保持
   5ac/30 production，500 仅作为隔离候选，真实交易继续关闭。
+- `stock_st` production readback：正式 generic one-shot 对 `trade_date=20260731`
+  返回 208 行并留下 success receipt；随后以 `tradingagent` 身份通过 formal 18082
+  分页读取为 208 行、208 个 `[trade_date, ts_code]` 唯一 identity、3 页且 terminal cursor
+  为 null，receipt/lineage 完整。该分区的 `data_through=2026-07-31` 已跨读取时钟的
+  86400 秒 SLA，envelope 因而如实为 `stale/degraded`；它证明稳定按需入库/API 合同，
+  不把昨日 ST 标记数据伪装为当前新鲜或可交易事实。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
