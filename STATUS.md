@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 04:20 CST。
+最后更新：2026-08-01 04:35 CST。
 
 ## 当前运行面
 
@@ -73,6 +73,12 @@
   receipt/lineage 完整。独立 review 为 P0/P1/P2=0。该分区已跨 86400 秒 SLA，envelope
   因而诚实为 `stale/degraded`；尚未切入正式 current。下一可用日分区的正式 receipt 与
   18082 fresh readback 是部署门槛，不能用这一昨日证据宣称内部生产可消费。
+- `index_dailybasic` 已正常合入 main（`da55d55`）：隔离 immutable candidate 的两次通用采集对
+  `trade_date=20260731` 依次得到 12 条 inserted、12 条 unchanged；`[trade_date, ts_code]`
+  全部非空且唯一，认证 loopback query 为 schema 1、12 行、终止 cursor、重放一致且
+  receipt/lineage 完整。独立 review 为 P0/P1/P2=0。该日分区也已跨 86400 秒 SLA，故尚未
+  切换正式 current；只有下一个可用日分区的 production receipt 与 formal 18082 fresh readback
+  能把它加入内部可消费集合。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
