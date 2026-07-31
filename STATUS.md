@@ -103,6 +103,15 @@
   bar、5 个 success receipt、8.5 秒采集；候选 API 对已过 SLA 的历史 bar 诚实返回 stale，
   没有宣称 live-ready。仍欠下一交易时段两根相邻的真实 500/500 证明，之前禁止再切换生产。
 
+- 2026-07-31 10:15 与 10:20 CST 已在**隔离** 500 candidate SQLite/loopback API 完成新的
+  两根相邻 live 验证：每根均为 5 页 × 100、500 个唯一 `ts_code`、单一 provider bar time、
+  5 个 success receipt，且以 `tradingagent` 身份精确 `time eq` 查询得到
+  `ready/success/fresh/valid/non-degraded`、完整 receipt/lineage 与一致重放。候选读侧另以
+  `10e0bbb3` 修复 provider 本地分钟 watermark 的严格时区规范化；10:20 前的一次上游 0 行
+  `validation_failed` 已保留在隔离 evidence，未影响 30-symbol production。此结果仅解除
+  candidate 数据门禁；formal 18082 仍为 `5ac3925`/30，须在 TradingAgent 500 consumer 会话
+  门禁确认后才可受控切换。
+
 ## 旧系统退役与保留
 
 - SharedSignals 运行态已退役并 permanent-mask：7 个历史 service/timer 均为
