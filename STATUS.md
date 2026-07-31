@@ -198,6 +198,14 @@
   `receipt:14d8e037c2798d02cdb7b193fb7dede3cdd290a05e0caedcd2c5bcceeee95db0` 与 lineage
   完整。第二次相同查询的行数、身份 digest 和 receipt 完全一致。该项现在是可按需内部读取的
   数据事实，不代表自动调度、研究结论或交易 authority。
+- `fund_share` 闭环后只做了下一项的只读筛选，选中
+  `cn.dataset.limit_list_ths` 作为下一独立候选：现有七个交易日分区共有 1,173 行，按
+  `[trade_date,ts_code]` 全部非空唯一、最大单分区 219 行，低于 10,000 行预算；其现有
+  `trade_date=20260731` receipt 为 100 行 success。正式 18082 仍如实为
+  `partial/degraded`，原因是响应字段/完整性与 freshness watermark 尚未冻结，因此它不是
+  可消费数据，也没有新建候选、采集、配置或发布。`stk_holdernumber` 有一条业务身份重复，
+  `moneyflow_ths` 存在 30,150 条重复 excess 且单分区达 14,593 行，均继续 NO-GO；此前的
+  `report_rc`、`repurchase`、`top_inst`、`stk_managers` 结论不变。此筛选没有触及分钟 timer。
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
