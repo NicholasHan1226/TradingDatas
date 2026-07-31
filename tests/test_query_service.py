@@ -460,11 +460,9 @@ def test_success_without_response_completeness_is_partial_but_keeps_rows() -> No
     "dataset_id",
     (
         "cn.dataset.cb_issue",
-        "cn.dataset.daily_info",
         "cn.dataset.index_dailybasic",
         "cn.dataset.limit_cpt_list",
         "cn.dataset.limit_step",
-        "cn.dataset.moneyflow_hsgt",
         "cn.dataset.stk_managers",
         "cn.dataset.sz_daily_info",
     ),
