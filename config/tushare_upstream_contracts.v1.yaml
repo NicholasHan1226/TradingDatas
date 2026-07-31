@@ -13989,7 +13989,7 @@ contracts:
   api_name: fund_div
   source_document_url: https://tushare.pro/wctapi/documents/120.md
   source_document_sha256: 1dcc9f17e7e6f383c9f6a707f81518d816eda14302c03c31ad45e6cc7429a353
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: ann_date
     declared_source_type: str
@@ -14007,35 +14007,35 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ann_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: imp_anndate
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: base_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: div_proc
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -14116,7 +14116,12 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - ann_date
+  - imp_anndate
+  - base_date
+  - div_proc
   default_projection:
   - ts_code
   - ann_date
@@ -14134,10 +14139,10 @@ contracts:
   - ear_amount
   - account_date
   - base_year
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: ann_date
+  range_field: ann_date
+  partition_field: ann_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -14163,8 +14168,29 @@ contracts:
     range_start_key: ann_date
     range_end_key: ann_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: ann_date
+    request_partition_key: ann_date
+  requested_fields:
+  - ts_code
+  - ann_date
+  - imp_anndate
+  - base_date
+  - div_proc
+  - record_date
+  - ex_date
+  - pay_date
+  - earpay_date
+  - net_ex_date
+  - div_cash
+  - base_unit
+  - ear_distr
+  - ear_amount
+  - account_date
+  - base_year
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

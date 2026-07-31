@@ -1554,6 +1554,62 @@ contracts:
     requested_fields: [trade_date, ts_code, etf_name, total_share, total_size, nav, close, exchange]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Two bounded provider receipts (20260724 and 20260728) contain 27 and 5
+  # rows respectively with this non-null, unique announcement identity.
+  # This stays an ordinary generic date-partition contract; it does not add a
+  # fund-specific runner or timer.
+  - dataset_id: cn.dataset.fund_div
+    aliases: [tushare.fund_div]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: fund_div
+    source_document_url: https://tushare.pro/wctapi/documents/120.md
+    source_document_sha256: 1dcc9f17e7e6f383c9f6a707f81518d816eda14302c03c31ad45e6cc7429a353
+    schema_version: 2.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ann_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: imp_anndate, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: base_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: div_proc, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: record_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ex_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pay_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: earpay_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: net_ex_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: div_cash, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: base_unit, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ear_distr, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ear_amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: account_date, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: base_year, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [ts_code, ann_date, imp_anndate, base_date, div_proc]
+    default_projection: [ts_code, ann_date, imp_anndate, base_date, div_proc, record_date, ex_date, pay_date, earpay_date, net_ex_date, div_cash, base_unit, ear_distr, ear_amount, account_date, base_year]
+    as_of_field: ann_date
+    as_of_format: yyyymmdd
+    range_field: ann_date
+    partition_field: ann_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {ann_date: '${window.ann_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [ann_date], formats: {ann_date: yyyymmdd}, range_start_key: ann_date, range_end_key: ann_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: ann_date, request_partition_key: ann_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, ann_date, imp_anndate, base_date, div_proc, record_date, ex_date, pay_date, earpay_date, net_ex_date, div_cash, base_unit, ear_distr, ear_amount, account_date, base_year]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   # Bounded provider receipts for 20260728 contain 1,703 rows with this
   # non-null, unique daily identity.  This remains an ordinary generic
   # date-partition contract; it does not add a fund-specific runner or timer.
