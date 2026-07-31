@@ -457,6 +457,25 @@ def _parse_yyyymmdd(value: object, name: str) -> date:
     return parsed
 
 
+def _parse_yyyymm(value: object, name: str) -> date:
+    """Parse one canonical monthly partition as its inclusive month start."""
+
+    if (
+        type(value) is not str
+        or len(value) != 6
+        or not value.isascii()
+        or not value.isdigit()
+    ):
+        raise QueryValidationError(f"{name} must use yyyymm")
+    try:
+        parsed = datetime.strptime(value, "%Y%m").date()
+    except ValueError:
+        raise QueryValidationError(f"{name} must use yyyymm") from None
+    if parsed.strftime("%Y%m") != value:
+        raise QueryValidationError(f"{name} must use yyyymm")
+    return parsed
+
+
 def _parse_rfc3339_filter(value: object, name: str) -> datetime:
     """Accept one canonical, aware RFC3339 bound for a timestamp range."""
 
@@ -487,6 +506,8 @@ def _range_filter_values(
 ) -> tuple[date | datetime, ...]:
     if dataset.as_of_format == "rfc3339":
         return tuple(_parse_rfc3339_filter(value, name) for value in values)
+    if dataset.as_of_format == "yyyymm":
+        return tuple(_parse_yyyymm(value, name) for value in values)
     return tuple(_parse_yyyymmdd(value, name) for value in values)
 
 
@@ -1190,7 +1211,15 @@ def _normalize_data_through(value: object, dataset: DatasetDefinition) -> str | 
         dataset_timezone = ZoneInfo(dataset.timezone)
     except ZoneInfoNotFoundError:
         raise QueryServiceUnavailable("query service is unavailable") from None
-    if len(value) == 8 and value.isascii() and value.isdigit():
+    if len(value) == 6 and value.isascii() and value.isdigit():
+        try:
+            parsed_date = _parse_yyyymm(value, "data_through")
+        except QueryValidationError:
+            raise QueryServiceUnavailable("query service is unavailable") from None
+        parsed = datetime.combine(parsed_date, datetime.min.time()).replace(
+            tzinfo=dataset_timezone
+        )
+    elif len(value) == 8 and value.isascii() and value.isdigit():
         try:
             parsed_date = _parse_yyyymmdd(value, "data_through")
         except QueryValidationError:

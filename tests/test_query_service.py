@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sqlite3
 
@@ -30,6 +30,39 @@ from storage.receipt_projection import (
 
 SIGNING_KEY = b"query-service-test-signing-key-32-bytes"
 NOW = datetime(2026, 7, 20, 4, 0, tzinfo=timezone.utc)
+
+
+def test_monthly_range_field_accepts_yyyymm_and_normalizes_receipt_watermark() -> None:
+    dataset = load_runtime_dataset_registry().resolve("cn.dataset.broker_recommend")
+    request = QueryRequest(
+        dataset_id=dataset.dataset_id,
+        schema_major=dataset.schema_major,
+        fields=(),
+        filters={"month": {"eq": "202607"}},
+        as_of="2026-07-31T12:00:00+08:00",
+        order=None,
+        limit=10,
+        cursor=None,
+    )
+
+    prepared = query_module._prepare_query(  # noqa: SLF001
+        request,
+        QueryExecutionOptions(),
+        dataset,
+        load_runtime_dataset_registry(),
+        now=NOW,
+    )
+
+    assert prepared.as_of.encoded_cutoff == "202607"
+    assert query_module._range_filter_values(  # noqa: SLF001
+        dataset,
+        ("202607",),
+        name="filters.month.eq",
+    ) == (date(2026, 7, 1),)
+    assert query_module._normalize_data_through(  # noqa: SLF001
+        "202607",
+        dataset,
+    ) == "2026-07-01T00:00:00+08:00"
 
 
 def test_provider_local_minute_snapshot_data_through_normalizes_to_dataset_timezone() -> None:
