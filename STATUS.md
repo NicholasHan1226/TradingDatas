@@ -1,32 +1,29 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 12:04 CST。
+最后更新：2026-07-31 13:25 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`71b7890928a9cc8c6345f41b0cd87a60f46158f8`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。在 TA 四个 A 股消费 timer 已
-  fence 为 inactive 后，发布侧先停止 API/timer，再用 trusted manifest 原子切换 current 并
-  恢复 API/timer；切换本身没有写入、覆盖或补造任何 SQLite facts/receipts。
-  `5ac3925c3931a81132ea02abb16f9745033fb6dc` 仍保留为已验证的 30-symbol immutable
-  rollback。当前 release trusted manifest 为 129 files、tree
-  `67f0029874ddd5be9e2da66c967cef647ee24705`、manifest SHA-256
-  `0d8a53e310cebebbd38a71387bb619afbc54c88b766544efb0f2b931a1487ecb`，registry 重编译
-  逐字节一致。
-- `71b7890` 已包含事件/公告合同与严格 provider-local minute timestamp 投影。以
-  `tradingagent` 身份对正式 18082 的 `cn.dataset.anns_d` 进行带 `as_of` 的分页 readback
-  已返回两页 `ready/success/fresh/valid/non-degraded`，receipt 与 lineage 完整；这是
-  数据面 PIT 可读证据，不增加任何新闻分析或交易逻辑。
+- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。`71b7890928a9cc8c6345f41b0cd87a60f46158f8`
+  仍保留为已验证的 500-symbol 候选/rollback 对象，但不再挂载到正式 18082。
+  13:05/13:10 的 500 live 门禁失败后，发布侧按停止线先停 API/timer、以 trusted manifest
+  原子回切 5ac、再恢复 API/timer；切换没有写入、覆盖或补造任何 SQLite facts/receipts。
+- 71b 的事件/公告合同与严格 provider-local minute timestamp 投影仍保留在 immutable
+  release 中。此前以 `tradingagent` 身份对候选 18082 的 `cn.dataset.anns_d` 带 `as_of`
+  分页 readback 通过；该候选证据不等于当前 5ac 正式可用性，也不增加任何新闻分析或交易逻辑。
 - 切换前后均以 trusted manifest verifier 验证 current/release。以 `tradingagent` 身份的正式
   18082 catalog readback 为 HTTP 200；闭市 planner 在 `tradingdatas` 身份下对
   `cn.dataset.rt_min` 返回 `not_due`，因此未在闭市窗口伪采分钟 bar。
-- **500-symbol live 门禁仍未完成：** 当前 production 只等待 13:05、13:10 两根相邻完成 bar
-  的正式 18082 验收。每根必须为冻结 universe 的 500 个唯一 `ts_code`、单一 provider
-  bar time、5 个 success shard receipt、完整 fanout/lineage、分页终止与重放一致，并且
-  metadata 为 `ready/success/fresh/valid/non-degraded`。任一条件失败即原子回切 `5ac3925`
-  并保留失败 receipt；切换不启用真实交易。
+- **500-symbol live 门禁失败：** 正式 18082 以 `tradingagent` 身份对
+  `time=2026-07-31 13:05:00` 与 `13:10:00` 的精确 query 均返回 0 行；两者均投影为
+  `failed/degraded/quality=degraded`，原因 `validation_failed`，且指向完整 lineage 的 failed
+  receipt `receipt:b0810c7b7667e6fedc5208f7ebc41a23bba9155c7bd6b38bacfc1b52cd4238ac`。
+  因而未达到 500 unique、单一 time、5 个 success shard receipt、分页终止/重放与
+  `ready/fresh/valid` 条件；没有尝试第三轮，也没有把旧 30 或旧 bar 伪装为通过。当前保持
+  5ac/30 production，500 仅作为隔离候选，真实交易继续关闭。
 - 13:05 CST 的 a42 首轮 live 验证未通过：collector 日志显示 `rt_min` success，但正式
   18082 精确查询 `time=2026-07-30 13:00:00` 返回 0 行，不能将旧 11:30 数据伪装为
   最新 500 分钟 bar。按 fail-closed 停止线，已先停 API/timer、用已验证 manifest 原子回切
