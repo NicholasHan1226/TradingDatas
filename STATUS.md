@@ -1,14 +1,17 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 16:01 CST。
+最后更新：2026-07-31 17:30 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`5ac3925c3931a81132ea02abb16f9745033fb6dc`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。`71b7890928a9cc8c6345f41b0cd87a60f46158f8`
-  仍保留为已验证的 500-symbol 候选/rollback 对象，但不再挂载到正式 18082。
+- 正式 immutable `current`：`0935b70aafca4f3bd269381aa2ee6bba8ac73f61`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加通用月分区
+  query 校验，未修改分钟 collector、API route 或 TradingAgent。`1f17708730172bc31fba3f849fa938da6e8a73fa`
+  是本次直接原子回退点，经过验证的 `5ac3925c3931a81132ea02abb16f9745033fb6dc` 继续保留为
+  30-symbol 分钟运行面的下一级 rollback release；`71b7890928a9cc8c6345f41b0cd87a60f46158f8`
+  仍只作为已验证的 500-symbol 候选，不挂载到正式 18082。
   13:05/13:10 的 500 live 门禁失败后，发布侧按停止线先停 API/timer、以 trusted manifest
   原子回切 5ac、再恢复 API/timer；切换没有写入、覆盖或补造任何 SQLite facts/receipts。
 - 71b 的事件/公告合同与严格 provider-local minute timestamp 投影仍保留在 immutable
@@ -146,7 +149,18 @@
   `research_report` 均为带完整 receipt/lineage 的合法 empty。该 parity 只证明发布代码可按
   现有 SQLite 事实投影，不构成正式 current 或持久候选服务。
 
-## 第二批非开盘接口（已合入并预构建，当前未挂载）
+## 第二批非开盘接口（已合入并正式挂载）
+
+- 2026-07-31 17:xx CST 已在闭市受控窗口把本批的 main `1f17708` 挂载到正式 18082，随后
+  用 `0935b70` 修复唯一 P1：通用 query 层此前把 registry 声明为 `yyyymm` 的月分区错误按
+  `yyyymmdd` 校验。修复只涉及 `query_service.py` 与回归测试；PR #26 已普通合入、目标 release
+  已由 manifest verifier 验证。正式 readback（`tradingagent` 身份）结果是：
+  `disclosure_date(20260731)` 为 2 行、`ready/success/fresh/valid/non-degraded`；
+  `share_float(20260731)` 为 44 行且同状态；`top_list(20260730)` 为 113 行、receipt/lineage
+  完整但因日分区已超过 SLA 诚实为 `stale/degraded`；`broker_recommend(202607)` 的上游当前
+  返回 0 行并留下 failed validation receipt，带 `month` 的正式 query 已不再 HTTP 400，而是
+  因没有可用 success receipt 诚实 503 fail-closed。没有伪造月度 data_through、没有手工 SQLite，
+  也没有把 broker_recommend 标为可消费。
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
