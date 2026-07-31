@@ -1,9 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 04:35 CST。
+最后更新：2026-08-01 21:10 CST。
 
 ## 当前运行面
 
+- `limit_cpt_list`、`limit_step` 与 `sz_daily_info` 的同类、单日分区合同已正常合入
+  main（`0d2b2ea`）：三项均复用既有 generic registry/transport/SQLite receipt/catalog-query
+  路径，不新增 route、collector、table、timer 或交易语义。隔离 immutable candidate
+  `f6f92ea90e54bac8ab20a74552c7c387f8c6fc10` 已经真实 QuickSync 验证：首次分别
+  `20/10/14 inserted`，同窗口重放分别 `20/10/14 unchanged`；以
+  `tradingagent` 身份的候选 18091 query 行数、终止 cursor、receipt/lineage 与规范化重放
+  均通过，独立 review P0/P1=0。查询时 `20260731` 已超过 86400 秒 SLA，三项如实投影为
+  `stale/degraded`，所以尚未切换 formal 18082；下一个可用日分区的 production receipt
+  和 fresh readback 才是部署门槛。候选 18091 已停止，正式 18082 与 30-symbol timer
+  本轮未改动。
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
 - 正式 immutable `current`：`d5b2788208d55e9f7052783caf8447233cf01dfa`；18082 API
