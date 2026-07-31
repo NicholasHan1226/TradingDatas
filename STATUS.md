@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 10:00 CST。
+最后更新：2026-07-31 10:20 CST。
 
 ## 当前运行面
 
@@ -10,11 +10,15 @@
   active，通用 provider-native timer 为 `enabled/active`。2026-07-31 早盘 500-symbol
   live 门禁失败后，已按预先冻结的停止线回切该 30-symbol release；发布切换不写入、覆盖或
   补造任何 SQLite facts/receipts。
-- 事件数据 release `56ab09aaa758943485890717fa2b5e29254d281a` 与包含
-  `disclosure_date` 合同的 release
-  `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 均已作为 immutable server release 保留，
-  但当前没有挂载到正式 18082。它们的历史 receipts/facts 仍保留；在下一次经过验证的正式
-  release 恢复这些合同前，不能把新闻公告称为“当前生产可查询”。
+- 事件数据 release `56ab09aaa758943485890717fa2b5e29254d281a`、包含
+  `disclosure_date` 合同的 release `7ee1396a5bf84ae6f393605450fbd193cc8093ea`，以及继续
+  冻结 `share_float` / `top_list` 通用完整性合同的当前 main/server immutable release
+  `7de9ed58ef17da8422a16be3a8eb1f9441471d46` 均已保留，但当前没有挂载到正式 18082。
+  `7de9ed58` 的 trusted manifest 为 129 files、tree
+  `7359f15adec047fa1e72a87735a1197c3e78b629`，manifest SHA-256 为
+  `6ecbf82e111ebfc7685cd7f36f204c94c1f643b57e15ca6f74fdf0fe61db2382`，registry
+  重编译逐字节一致。历史 receipts/facts 仍保留；在下一次经过验证的正式 release 恢复这些
+  合同前，不能把新闻公告称为“当前生产可查询”。
 - 切换前后均以 trusted manifest verifier 验证 current/release；目标 release 逐字节 registry
   重编译一致。以 `tradingagent` 身份的正式 18082 catalog readback 为 HTTP 200，且
   `trade_calendar(SSE, 20260731)` 为 ready/fresh/valid、receipt/lineage 完整。闭市 planner
@@ -120,6 +124,12 @@
   为 `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整，首分页再次读回一致。
   同期 `cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report` 均为合法
   `empty/valid/non-degraded`，只表示当前 provider 返回 0 行，不表示接口失效。
+- 10:12–10:18 CST 使用 server immutable `7de9ed58` 在临时 loopback `18086` 完成一次
+  只读候选 parity 后立即停止，端口已关闭，正式 18082/current/timer 未变。候选 catalog
+  `v1-54838b10dd9c696d` 下，`anns_d(20260731)` 为
+  `ready/success/fresh/valid/non-degraded`；`cctv_news`、两项 `irm_qa` 与
+  `research_report` 均为带完整 receipt/lineage 的合法 empty。该 parity 只证明发布代码可按
+  现有 SQLite 事实投影，不构成正式 current 或持久候选服务。
 
 ## 第二批非开盘接口（已合入并预构建，当前未挂载）
 
@@ -143,6 +153,9 @@
   timer；在新的 immutable release、真实 receipt 和 formal 18082 readback 完成前仍不是当前
   可消费数据。`block_trade` 虽当前 131 行可区分，但上游没有稳定业务流水号，重复成交碰撞
   仍可能发生，未纳入本批。
+- 同一 10:12–10:18 候选 parity 对 `disclosure_date`、`share_float` 与 `top_list`
+  均得到 `unobserved/degraded/no_recognized_receipt`，与“新合同尚未形成新 authority
+  receipt”的停止线一致；没有复用旧合同 receipt、人工插库或把已有 rows 升级为 ready。
 
 ## 500 只分钟数据候选（已回滚，live 验证失败）
 
