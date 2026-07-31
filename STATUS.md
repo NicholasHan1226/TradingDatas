@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 13:25 CST。
+最后更新：2026-07-31 13:52 CST。
 
 ## 当前运行面
 
@@ -24,6 +24,11 @@
   因而未达到 500 unique、单一 time、5 个 success shard receipt、分页终止/重放与
   `ready/fresh/valid` 条件；没有尝试第三轮，也没有把旧 30 或旧 bar 伪装为通过。当前保持
   5ac/30 production，500 仅作为隔离候选，真实交易继续关闭。
+- 回滚后的自然 30-symbol 链路已恢复：正式 18082、`tradingagent` 身份对 `13:25`、`13:30`、
+  `13:35`、`13:40` 的精确 query 均为 30 行/30 个唯一 symbol、单一 time、
+  `ready/success/fresh/valid/non-degraded` 且 receipt/lineage 完整；本页复核的 `13:45`
+  也满足同一合同。`13:20` 的多于 30 行结果不作为恢复起点。该证据仅恢复既有 30-symbol
+  数据链，不重启 500，也不赋予真实交易 authority。
 - 13:05 CST 的 a42 首轮 live 验证未通过：collector 日志显示 `rt_min` success，但正式
   18082 精确查询 `time=2026-07-30 13:00:00` 返回 0 行，不能将旧 11:30 数据伪装为
   最新 500 分钟 bar。按 fail-closed 停止线，已先停 API/timer、用已验证 manifest 原子回切
