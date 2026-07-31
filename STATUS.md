@@ -180,6 +180,13 @@
   伪造身份。此项为 P1/NO-GO：不生成 registry/config 候选、不建 PR、不发布，隔离 DB/receipt
   仅保留审计证据，正式 18082 与 30-symbol 分钟链未受影响。
 
+- 随后的只读排序只选择了一个下一候选：`cn.dataset.fund_share`。现有 active contract 的
+  `trade_date` 请求形状、默认字段和 10,000 行预算均可复用；隔离 SQLite 对
+  `trade_date=20260728` 的真实 provider 调用得到 1,703 行，
+  `[trade_date,ts_code]` 为 1,703/1,703 非空唯一、未触顶。相同窗口第二次调用返回 1,703
+  `unchanged` 行，未产生重复 facts。它是下一项可用纯 registry/completeness 合同推进的候选；
+  当前只完成隔离数据验证，尚未修改 registry、创建 PR、切换 release 或写入正式 DB。
+
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
   `7ee1396a5bf84ae6f393605450fbd193cc8093ea` 已通过 registry/config
