@@ -1290,6 +1290,51 @@ def _evidence_as_of(prepared: _PreparedQuery) -> datetime | None:
     return cutoff
 
 
+def _exact_request_partition_evidence(
+    dataset: DatasetDefinition,
+    request: QueryRequest,
+) -> tuple[str, str] | None:
+    """Bind receipt authority only for an exact declared partition query.
+
+    The registry guarantees the single-partition completeness shape.  Other
+    request shapes deliberately retain dataset-wide evidence, so a range or
+    unbounded query cannot accidentally inherit one partition's receipt.
+    """
+
+    partition_field = dataset.partition_field
+    if partition_field is None:
+        return None
+    clause = request.filters.get(partition_field)
+    if not isinstance(clause, MappingProxyType) or tuple(clause) != ("eq",):
+        return None
+    active_bindings = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    policies = tuple(
+        binding.response_completeness for binding in active_bindings
+    )
+    if not policies or any(
+        policy is None
+        or policy.strategy != "single_partition_unique_primary_key"
+        or policy.partition_field != partition_field
+        or policy.request_partition_key is None
+        for policy in policies
+    ):
+        return None
+    request_keys = {
+        policy.request_partition_key for policy in policies if policy is not None
+    }
+    if len(request_keys) != 1:
+        return None
+    field = next(field for field in dataset.fields if field.name == partition_field)
+    operator, values = _validate_filter_clause(field, clause, dataset=dataset)
+    if operator != "eq" or len(values) != 1 or type(values[0]) is not str:
+        return None
+    return next(iter(request_keys)), values[0]
+
+
 def _execution_query_hash(
     request: QueryRequest,
     options: QueryExecutionOptions,
@@ -1868,6 +1913,10 @@ class QueryService:
                         None
                         if prepared.as_of.resolved_as_of is None
                         else datetime.fromisoformat(prepared.as_of.resolved_as_of)
+                    ),
+                    request_partition=_exact_request_partition_evidence(
+                        dataset,
+                        validated_request,
                     ),
                 )
                 provider_native_dataset_degraded = (
