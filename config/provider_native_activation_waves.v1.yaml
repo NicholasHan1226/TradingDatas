@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "e634a345b0b1ff861d14e07aee1a4ffdc3a10138e0cda7f60e83bc816658b6ab"
+  runtime_registry_sha256: "90eb2f9ea54bbed2e5585d5aa8aa2ab3944bdf89cb99b72ff22ed53f0c5e9973"
   schedule_sha256: "f123ab07a3084f8a3177cbabee26ab1977ee406bfb20dc88a3d6f3203212475d"
 waves:
   direct_wave_1:
@@ -30,6 +30,7 @@ waves:
     - cn.dataset.moneyflow_hsgt
     - cn.dataset.share_float
     - cn.dataset.stk_managers
+    - cn.dataset.stock_st
     - cn.dataset.sz_daily_info
   event_evidence_wave_1:
     dataset_ids:

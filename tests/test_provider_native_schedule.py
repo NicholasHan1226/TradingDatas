@@ -720,6 +720,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
             "cn.dataset.repurchase",
             "cn.dataset.share_float",
             "cn.dataset.stk_managers",
+            "cn.dataset.stock_st",
             "cn.dataset.sz_daily_info",
             "cn.dataset.top_list",
         )
@@ -2815,6 +2816,7 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
             "cn.dataset.share_float",
+            "cn.dataset.stock_st",
             "cn.dataset.stk_managers",
             "cn.dataset.sz_daily_info",
         }
@@ -2837,12 +2839,14 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
             "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
             "cn.dataset.share_float",
+            "cn.dataset.stock_st",
         }:
             completeness = binding.response_completeness
             assert completeness is not None
             assert completeness.strategy == "single_partition_unique_primary_key"
-            assert completeness.partition_field == "ann_date"
-            assert completeness.request_partition_key == "ann_date"
+            expected_partition = "trade_date" if dataset_id == "cn.dataset.stock_st" else "ann_date"
+            assert completeness.partition_field == expected_partition
+            assert completeness.request_partition_key == expected_partition
             if dataset_id == "cn.dataset.fund_div":
                 assert dataset.schema_major == 2
                 assert dataset.primary_key == (
@@ -2869,6 +2873,16 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
                     "ear_amount",
                     "account_date",
                     "base_year",
+                )
+            if dataset_id == "cn.dataset.stock_st":
+                assert dataset.schema_major == 2
+                assert dataset.primary_key == ("trade_date", "ts_code")
+                assert binding.requested_fields == (
+                    "ts_code",
+                    "name",
+                    "trade_date",
+                    "type",
+                    "type_name",
                 )
         else:
             assert binding.response_completeness is None
