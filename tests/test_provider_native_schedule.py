@@ -2570,6 +2570,7 @@ def test_formal_direct_wave_2_is_hash_bound_and_disjoint_from_existing_waves() -
             "cn.dataset.hsgt_top10",
             "cn.dataset.limit_list_ths",
             "cn.dataset.moneyflow_ind_ths",
+            "cn.dataset.moneyflow_ths",
         }
     )
     assert direct.dataset_ids.isdisjoint(direct_wave_1.dataset_ids)
@@ -2590,6 +2591,7 @@ def test_formal_direct_wave_2_dry_run_plans_every_selected_dataset(
         "cn.dataset.hsgt_top10",
         "cn.dataset.limit_list_ths",
         "cn.dataset.moneyflow_ind_ths",
+        "cn.dataset.moneyflow_ths",
     }
 
     result = scheduler.run_schedule(
