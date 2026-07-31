@@ -1554,6 +1554,48 @@ contracts:
     requested_fields: [trade_date, ts_code, etf_name, total_share, total_size, nav, close, exchange]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Bounded provider receipts for 20260728 contain 1,703 rows with this
+  # non-null, unique daily identity.  This remains an ordinary generic
+  # date-partition contract; it does not add a fund-specific runner or timer.
+  - dataset_id: cn.dataset.fund_share
+    aliases: [tushare.fund_share]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: fund_share
+    source_document_url: https://tushare.pro/wctapi/documents/207.md
+    source_document_sha256: 16f8d8712a4122f26453a89c0506917fe28e03450a3bfe75fcc17fb23c3960dd
+    schema_version: 2.0.0
+    fields:
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: fd_share, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, ts_code]
+    default_projection: [trade_date, ts_code, fd_share]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [trade_date, ts_code, fd_share]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   - dataset_id: cn.dataset.hsgt_top10
     aliases: [tushare.hsgt_top10]
     domain: provider_data
