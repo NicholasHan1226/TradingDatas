@@ -23703,7 +23703,7 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -23749,7 +23749,8 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
   default_projection:
   - trade_date
   - ggt_ss
@@ -23758,10 +23759,10 @@ contracts:
   - sgt
   - north_money
   - south_money
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -23787,8 +23788,20 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ggt_ss
+  - ggt_sz
+  - hgt
+  - sgt
+  - north_money
+  - south_money
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

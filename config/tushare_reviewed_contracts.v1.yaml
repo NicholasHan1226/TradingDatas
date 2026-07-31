@@ -1721,6 +1721,52 @@ contracts:
     requested_fields: [trade_date, ts_code, name, lead_stock, close_price, pct_change, industry_index, company_num, pct_change_stock, net_buy_amount, net_sell_amount, net_amount]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # The bounded cross-border moneyflow receipt has one non-null trade_date
+  # row.  It remains an explicit on-demand daily partition because the
+  # source contract does not establish an automatic publication schedule.
+  - dataset_id: cn.dataset.moneyflow_hsgt
+    aliases: [tushare.moneyflow_hsgt]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: moneyflow_hsgt
+    source_document_url: https://tushare.pro/wctapi/documents/47.md
+    source_document_sha256: fecd02244e6275027b4e7f0deddaef044cb68bb596ed3f51a5d49ad147d0f6b2
+    schema_version: 1.0.0
+    fields:
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: ggt_ss, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ggt_sz, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: hgt, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: sgt, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: north_money, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: south_money, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date]
+    default_projection: [trade_date, ggt_ss, ggt_sz, hgt, sgt, north_money, south_money]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [trade_date, ggt_ss, ggt_sz, hgt, sgt, north_money, south_money]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   # The bounded daily moneyflow receipt has 5,199 non-null, unique
   # trade_date/ts_code rows. This is the same generic daily partition path.
   - dataset_id: cn.dataset.moneyflow_ths
