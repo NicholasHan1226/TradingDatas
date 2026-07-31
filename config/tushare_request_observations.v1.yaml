@@ -13,10 +13,10 @@ provenance:
     sha256: e752b45a1597959206baf5de601e70ad5e44627a6d770149f1a52f6dfa432c25
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 43be3e43fb1294163b47cd5f11a6565f59250e9cfbeb8b5a330542c8b0a02f9b
+    sha256: 860248370308c4345dbd20dad7d514f9103ae18bc04cedb16b9bf6b1cca232b2
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 2682a015b6beef6486a5532c20a4f72ba09777e875b8bdfa5a513d96f396b5cb
+    sha256: c37d8bb134cb2c3b1fd94a5108b11979ff8942cb912925747301685f0df1f3a1
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae

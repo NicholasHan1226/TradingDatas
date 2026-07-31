@@ -333,7 +333,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 16f8d8712a4122f26453a89c0506917fe28e03450a3bfe75fcc17fb23c3960dd
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fut_basic
   cadence_class: on_demand
   freshness_sla_seconds: 86400
