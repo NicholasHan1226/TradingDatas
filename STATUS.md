@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-07-31 23:18 CST。
+最后更新：2026-07-31 23:47 CST。
 
 ## 当前运行面
 
@@ -198,14 +198,21 @@
   `receipt:14d8e037c2798d02cdb7b193fb7dede3cdd290a05e0caedcd2c5bcceeee95db0` 与 lineage
   完整。第二次相同查询的行数、身份 digest 和 receipt 完全一致。该项现在是可按需内部读取的
   数据事实，不代表自动调度、研究结论或交易 authority。
-- `fund_share` 闭环后只做了下一项的只读筛选，选中
-  `cn.dataset.limit_list_ths` 作为下一独立候选：现有七个交易日分区共有 1,173 行，按
-  `[trade_date,ts_code]` 全部非空唯一、最大单分区 219 行，低于 10,000 行预算；其现有
-  `trade_date=20260731` receipt 为 100 行 success。正式 18082 仍如实为
-  `partial/degraded`，原因是响应字段/完整性与 freshness watermark 尚未冻结，因此它不是
-  可消费数据，也没有新建候选、采集、配置或发布。`stk_holdernumber` 有一条业务身份重复，
-  `moneyflow_ths` 存在 30,150 条重复 excess 且单分区达 14,593 行，均继续 NO-GO；此前的
-  `report_rc`、`repurchase`、`top_inst`、`stk_managers` 结论不变。此筛选没有触及分钟 timer。
+- `fund_share` 闭环后的下一独立候选是 `cn.dataset.limit_list_ths`。候选
+  `9a45f577c650946348b46a17865eb53f9087da91`（Draft PR #28）只冻结真实返回的 18 个字段、
+  `schema_major=2`、日分区 `[trade_date,ts_code]` 身份和既有通用
+  `single_partition_unique_primary_key` 合同；上游这次未返回的 6 个文档可选字段不再被伪装为
+  已有字段，原始 provider payload 仍无损保存。候选没有增加 Python、route、collector、timer
+  或表。
+- 2026-07-31 23:45 CST 在独立 release/SQLite 中以 `tradingdatas` 身份两次真实采集
+  `trade_date=20260731`：第一次 100/100 写入，第二次 100/100 unchanged，两个 receipt 的
+  payload 指纹一致。随后临时 loopback（18084，已停止）以 `tradingagent` 身份按固定
+  catalog/query 合同读取到两页 100/100 非空唯一身份、终页 cursor 和重放一致；metadata 为
+  `ready/success/fresh/valid/non-degraded`，receipt/lineage 完整。正式 18082/current 仍未变更，
+  因而它当前仍按旧合同如实为 `partial/degraded`，不能提前写成正式可消费。
+- `stk_holdernumber` 有一条业务身份重复，`moneyflow_ths` 存在 30,150 条重复 excess 且单分区
+  达 14,593 行，均继续 NO-GO；此前的 `report_rc`、`repurchase`、`top_inst`、`stk_managers`
+  结论不变。此候选与筛选没有触及分钟 timer。
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
