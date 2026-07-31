@@ -90,6 +90,50 @@ def test_disclosure_date_observation_projects_reviewed_identity_without_missing_
     assert "modify_date" not in binding["requested_fields"]
 
 
+@pytest.mark.parametrize(
+    ("dataset_id", "primary_key", "partition_field"),
+    [
+        (
+            "cn.dataset.share_float",
+            ["ann_date", "float_date", "ts_code", "holder_name", "share_type"],
+            "ann_date",
+        ),
+        (
+            "cn.dataset.top_list",
+            ["trade_date", "ts_code", "reason"],
+            "trade_date",
+        ),
+    ],
+)
+def test_nonmarket_evidence_observations_project_reviewed_partition_identities(
+    dataset_id: str, primary_key: list[str], partition_field: str
+) -> None:
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    contracts = registry["datasets"]
+    assert isinstance(contracts, list)
+    contract = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["dataset_id"] == dataset_id
+    )
+
+    assert contract["schema_version"] == "1.0.0"
+    assert contract["primary_key"] == primary_key
+    assert contract["partition_field"] == partition_field
+    binding = contract["provider_bindings"][0]
+    assert binding["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+        "partition_field": partition_field,
+        "request_partition_key": partition_field,
+    }
+    assert binding["ingest_contract_state"] == "ready"
+    assert set(primary_key).issubset(binding["requested_fields"])
+
+
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     parameters = inspect.signature(compile_provider_native_registry).parameters
 

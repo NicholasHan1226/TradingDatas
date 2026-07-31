@@ -2662,12 +2662,14 @@ def test_formal_direct_wave_3_is_hash_bound_and_disjoint_from_existing_waves() -
         assert binding.pagination.strategy == "none"
         assert binding.request_window_policy is not None
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
-        if dataset_id == "cn.dataset.research_report":
+        if dataset_id == "cn.dataset.top_list":
             assert binding.response_completeness is not None
             assert (
                 binding.response_completeness.strategy
                 == "single_partition_unique_primary_key"
             )
+            assert binding.response_completeness.partition_field == "trade_date"
+            assert binding.response_completeness.request_partition_key == "trade_date"
         else:
             assert binding.response_completeness is None
 
@@ -2831,7 +2833,10 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         assert binding.pagination.strategy == "none"
         assert binding.request_window_policy is not None
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
-        if dataset_id == "cn.dataset.disclosure_date":
+        if dataset_id in {
+            "cn.dataset.disclosure_date",
+            "cn.dataset.share_float",
+        }:
             completeness = binding.response_completeness
             assert completeness is not None
             assert completeness.strategy == "single_partition_unique_primary_key"

@@ -718,7 +718,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 9bfbf3d0ff4c8d43cdd4c669a6199fddc22c0c34997c7512a3b357b7c47d5216
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: shibor
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -933,7 +933,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: bc2d883cf542748c6d73e464e9ff7453451017c47844b7ce14ef945c1eeccd85
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: trade_cal
   cadence_class: daily_reference
   freshness_sla_seconds: 604800

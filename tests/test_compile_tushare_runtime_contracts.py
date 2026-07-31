@@ -487,6 +487,41 @@ def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition
 
 
 @pytest.mark.parametrize(
+    ("api_name", "primary_key", "partition_field"),
+    [
+        (
+            "share_float",
+            ["ann_date", "float_date", "ts_code", "holder_name", "share_type"],
+            "ann_date",
+        ),
+        ("top_list", ["trade_date", "ts_code", "reason"], "trade_date"),
+    ],
+)
+def test_reviewed_nonmarket_evidence_contracts_bind_observed_partition_identities(
+    api_name: str, primary_key: list[str], partition_field: str
+) -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
+
+    assert contract["schema_version"] == "1.0.0"
+    assert contract["primary_key"] == primary_key
+    assert contract["cadence_class"] == "on_demand"
+    assert contract["as_of_field"] == partition_field
+    assert contract["range_field"] == partition_field
+    assert contract["partition_field"] == partition_field
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": partition_field,
+        "request_partition_key": partition_field,
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert set(primary_key).issubset(contract["requested_fields"])
+
+
+@pytest.mark.parametrize(
     ("api_name", "primary_key", "cadence_class"),
     [
         ("etf_share_size", ["trade_date", "ts_code"], "daily_reference"),
