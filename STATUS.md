@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 03:45 CST。
+最后更新：2026-08-01 04:00 CST。
 
 ## 当前运行面
 
@@ -62,6 +62,11 @@
   hash 已同步。由于此时已跨 86400 秒 SLA，candidate envelope 如实为 `stale/degraded`；因此
   未切换正式 current，也不把该 yesterday partition 写成 fresh production 通过。下一可用日分区
   的 receipt 与正式 18082 readback 是该项部署门槛。
+- `moneyflow_hsgt` 已正常合入 main（`8f29bdc`）：候选用冻结 release 对 `trade_date=20260731`
+  留下 1 行 inserted、随后 1 行 unchanged 的两个 success receipt，`[trade_date]` 非空唯一，
+  loopback query 的 terminal cursor、payload replay 与 lineage 均完整。独立 review 为 P0/P1/P2=0，
+  但该分区已经跨 SLA，metadata 如实为 `stale/degraded`；它尚未部署到正式 current。必须由下一个
+  可用日分区的 production receipt 与 formal 18082 fresh readback 才能进入内部可消费集合。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
