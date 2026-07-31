@@ -427,7 +427,6 @@ def test_success_without_response_completeness_is_partial_but_keeps_rows() -> No
     (
         "cn.dataset.cb_issue",
         "cn.dataset.daily_info",
-        "cn.dataset.fund_div",
         "cn.dataset.index_dailybasic",
         "cn.dataset.limit_cpt_list",
         "cn.dataset.limit_step",
@@ -598,6 +597,7 @@ def test_empty_without_response_completeness_is_partial_and_keeps_lineage() -> N
     "dataset_id",
     (
         "cn.dataset.index_classify",
+        "cn.dataset.fund_div",
         "cn.dataset.sw_daily",
         "cn.equity.daily",
         "cn.equity.security_master",

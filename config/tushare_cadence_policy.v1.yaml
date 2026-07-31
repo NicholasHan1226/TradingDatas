@@ -308,7 +308,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 1dcc9f17e7e6f383c9f6a707f81518d816eda14302c03c31ad45e6cc7429a353
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fund_factor_pro
   cadence_class: on_demand
   freshness_sla_seconds: 86400

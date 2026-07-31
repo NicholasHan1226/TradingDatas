@@ -12922,7 +12922,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -12969,8 +12969,29 @@ datasets:
       range_start_key: ann_date
       range_end_key: ann_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: ann_date
+      request_partition_key: ann_date
+    requested_fields:
+    - ts_code
+    - ann_date
+    - imp_anndate
+    - base_date
+    - div_proc
+    - record_date
+    - ex_date
+    - pay_date
+    - earpay_date
+    - net_ex_date
+    - div_cash
+    - base_unit
+    - ear_distr
+    - ear_amount
+    - account_date
+    - base_year
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -12984,31 +13005,31 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ann_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: imp_anndate
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: base_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: div_proc
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -13078,7 +13099,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - ann_date
+  - imp_anndate
+  - base_date
+  - div_proc
   default_projection:
   - ts_code
   - ann_date
@@ -13096,10 +13122,10 @@ datasets:
   - ear_amount
   - account_date
   - base_year
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: ann_date
+  as_of_format: yyyymmdd
+  range_field: ann_date
+  partition_field: ann_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

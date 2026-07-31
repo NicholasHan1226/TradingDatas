@@ -2835,6 +2835,7 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
         if dataset_id in {
             "cn.dataset.disclosure_date",
+            "cn.dataset.fund_div",
             "cn.dataset.share_float",
         }:
             completeness = binding.response_completeness
@@ -2842,6 +2843,33 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
             assert completeness.strategy == "single_partition_unique_primary_key"
             assert completeness.partition_field == "ann_date"
             assert completeness.request_partition_key == "ann_date"
+            if dataset_id == "cn.dataset.fund_div":
+                assert dataset.schema_major == 2
+                assert dataset.primary_key == (
+                    "ts_code",
+                    "ann_date",
+                    "imp_anndate",
+                    "base_date",
+                    "div_proc",
+                )
+                assert binding.requested_fields == (
+                    "ts_code",
+                    "ann_date",
+                    "imp_anndate",
+                    "base_date",
+                    "div_proc",
+                    "record_date",
+                    "ex_date",
+                    "pay_date",
+                    "earpay_date",
+                    "net_ex_date",
+                    "div_cash",
+                    "base_unit",
+                    "ear_distr",
+                    "ear_amount",
+                    "account_date",
+                    "base_year",
+                )
         else:
             assert binding.response_completeness is None
 
