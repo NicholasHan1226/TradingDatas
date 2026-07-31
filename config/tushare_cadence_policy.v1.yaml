@@ -553,7 +553,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: fecd02244e6275027b4e7f0deddaef044cb68bb596ed3f51a5d49ad147d0f6b2
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: moneyflow_ind_dc
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
