@@ -712,8 +712,10 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
             "cn.dataset.cb_issue",
             "cn.dataset.daily_info",
             "cn.dataset.disclosure_date",
+            "cn.dataset.daily_info",
             "cn.dataset.fund_div",
             "cn.dataset.index_dailybasic",
+            "cn.dataset.moneyflow_hsgt",
             "cn.dataset.limit_cpt_list",
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
@@ -2840,15 +2842,28 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         assert binding.request_window_policy is not None
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
         if dataset_id in {
+            "cn.dataset.daily_info",
             "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
+            "cn.dataset.index_dailybasic",
+            "cn.dataset.moneyflow_hsgt",
             "cn.dataset.share_float",
             "cn.dataset.stock_st",
         }:
             completeness = binding.response_completeness
             assert completeness is not None
             assert completeness.strategy == "single_partition_unique_primary_key"
-            expected_partition = "trade_date" if dataset_id == "cn.dataset.stock_st" else "ann_date"
+            expected_partition = (
+                "trade_date"
+                if dataset_id
+                in {
+                    "cn.dataset.daily_info",
+                    "cn.dataset.index_dailybasic",
+                    "cn.dataset.moneyflow_hsgt",
+                    "cn.dataset.stock_st",
+                }
+                else "ann_date"
+            )
             assert completeness.partition_field == expected_partition
             assert completeness.request_partition_key == expected_partition
             if dataset_id == "cn.dataset.fund_div":
