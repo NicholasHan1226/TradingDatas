@@ -632,6 +632,7 @@ def test_empty_without_response_completeness_is_partial_and_keeps_lineage() -> N
     (
         "cn.dataset.index_classify",
         "cn.dataset.fund_div",
+        "cn.dataset.stock_st",
         "cn.dataset.sw_daily",
         "cn.equity.daily",
         "cn.equity.security_master",

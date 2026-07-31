@@ -858,7 +858,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 9b04035d1ad9fe67974227a4ccb74411d78234756e947506d6351d44228cae12
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: suspend_d
   cadence_class: event
   freshness_sla_seconds: 86400
