@@ -1,17 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 03:05 CST。
+最后更新：2026-08-01 03:20 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`04fcf3a6af8cfe1c18b0420af11f4ccec6b21a86`；18082 API
+- 正式 immutable `current`：`d5b2788208d55e9f7052783caf8447233cf01dfa`；18082 API
   active，通用 provider-native timer 为 `enabled/active`。本次闭市切换仅将
-  `cn.dataset.moneyflow_ths` 冻结为 schema 2、`trade_date` 日分区、
-  `[trade_date, ts_code]` identity、`postclose_daily` 与单分区完整性合同；没有修改分钟
-  collector、公共 API route 或 TradingAgent。target、直接回退点
-  `5abb124a05f99495d5f0308329f4d4b84bd4ed5e` 与 current 均已由 trusted manifest verifier
+  `cn.dataset.moneyflow` 冻结为 `trade_date` 日分区、`[trade_date, ts_code]` identity、
+  `postclose_daily` 与单分区完整性合同；官方 source schema 仍为 v1，既有 QuickSync
+  response override 继续生成 runtime schema v2。没有修改分钟 collector、公共 API route 或
+  TradingAgent。target、直接回退点 `04fcf3a6af8cfe1c18b0420af11f4ccec6b21a86` 与 current
+  均已由 trusted manifest verifier
   验证，目标 registry 也从冻结输入逐字节重编译。更早的回退链仍保留：
   `cb89620b7e20356a00c7ff3f06c357b401565113`、
   `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
@@ -47,6 +48,13 @@
   为 `ready/success/fresh/valid/non-degraded`，receipt
   `receipt:73b27d0be181cb17f75fc4aa7cf03629c0d6e9e55ce189884d0c88f573539af9` 与 lineage
   完整。这证明该日分区可经内部 API 稳定按日读取；不代表策略、交易或其他未验收数据集已可用。
+- `moneyflow` production readback：在候选真实 receipt 与第二次 unchanged 重放均通过独立
+  review 后，正式 generic one-shot 对 `trade_date=20260731` 返回 5,197 行。以
+  `tradingagent` 身份通过 formal 18082 分页读取为 5,197 行、5,197 个 `[trade_date, ts_code]`
+  非空唯一 identity、11 页且 terminal cursor 为 null；相同请求第二次读取的行数、identity
+  digest 与 cursor 语义一致。metadata 为 `ready/success/fresh/valid/non-degraded`，receipt
+  `receipt:09823b511506ab7295233384eba702c692c0a75a6a2027add1f3b77aa9043987` 与 lineage
+  完整。该项是客观的日级资金流数据事实，不是交易信号或执行 authority。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
