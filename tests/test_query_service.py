@@ -14,6 +14,7 @@ from dataset_registry import (
     BINANCE_SPOT_CANARY_REGISTRY_PATH,
     DatasetRegistry,
     load_dataset_registry,
+    load_runtime_dataset_registry,
 )
 from provider_ingest_contract import provider_ingest_config_hash
 from provider_transport import provider_transport_profile
@@ -29,6 +30,15 @@ from storage.receipt_projection import (
 
 SIGNING_KEY = b"query-service-test-signing-key-32-bytes"
 NOW = datetime(2026, 7, 20, 4, 0, tzinfo=timezone.utc)
+
+
+def test_provider_local_minute_snapshot_data_through_normalizes_to_dataset_timezone() -> None:
+    dataset = load_runtime_dataset_registry().resolve("cn.dataset.rt_min")
+
+    assert query_module._normalize_data_through(  # noqa: SLF001
+        "2026-07-31 10:00:00",
+        dataset,
+    ) == "2026-07-31T10:00:00+08:00"
 
 
 def test_crypto_rfc3339_asof_metadata_binds_exact_receipt_cutoff() -> None:
