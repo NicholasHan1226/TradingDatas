@@ -20192,8 +20192,22 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - name
+    - trade_date
+    - days
+    - up_stat
+    - cons_nums
+    - up_nums
+    - pct_chg
+    - rank
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -20207,7 +20221,7 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20219,7 +20233,7 @@ datasets:
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20259,7 +20273,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - name
@@ -20270,10 +20286,10 @@ datasets:
   - up_nums
   - pct_chg
   - rank
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -20781,8 +20797,17 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - name
+    - trade_date
+    - nums
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -20796,7 +20821,7 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20808,7 +20833,7 @@ datasets:
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -20818,16 +20843,18 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - name
   - trade_date
   - nums
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -33578,8 +33605,22 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - trade_date
+    - ts_code
+    - count
+    - amount
+    - vol
+    - total_share
+    - total_mv
+    - float_share
+    - float_mv
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -33593,13 +33634,13 @@ datasets:
   fields:
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -33645,7 +33686,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - trade_date
   - ts_code
@@ -33656,10 +33699,10 @@ datasets:
   - total_mv
   - float_share
   - float_mv
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

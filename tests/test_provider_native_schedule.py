@@ -2844,9 +2844,12 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
             "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
             "cn.dataset.index_dailybasic",
+            "cn.dataset.limit_cpt_list",
+            "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
             "cn.dataset.share_float",
             "cn.dataset.stock_st",
+            "cn.dataset.sz_daily_info",
         }:
             completeness = binding.response_completeness
             assert completeness is not None
@@ -2857,8 +2860,11 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
                 in {
                     "cn.dataset.daily_info",
                     "cn.dataset.index_dailybasic",
+                    "cn.dataset.limit_cpt_list",
+                    "cn.dataset.limit_step",
                     "cn.dataset.moneyflow_hsgt",
                     "cn.dataset.stock_st",
+                    "cn.dataset.sz_daily_info",
                 }
                 else "ann_date"
             )

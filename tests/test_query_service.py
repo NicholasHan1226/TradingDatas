@@ -460,10 +460,7 @@ def test_success_without_response_completeness_is_partial_but_keeps_rows() -> No
     "dataset_id",
     (
         "cn.dataset.cb_issue",
-        "cn.dataset.limit_cpt_list",
-        "cn.dataset.limit_step",
         "cn.dataset.stk_managers",
-        "cn.dataset.sz_daily_info",
     ),
 )
 def test_direct_wave_4_success_stays_partial_and_degraded_without_completeness(

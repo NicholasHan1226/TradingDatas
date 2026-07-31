@@ -488,7 +488,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 64bf48114a6f3c0db1d1a9c50940e705b7263758b5ef91446424b4428ab7d140
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: limit_list_d
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -503,7 +503,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 79d8bf18f3eedd1a4ddf658521053178bfc2c6b081f115c3d778ce05dbe5a7b4
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: major_news
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -878,7 +878,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 206e7394207217bb26b8c3da5e4fc03d5b3664e180a641865218321fb4f08e19
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: tdx_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
