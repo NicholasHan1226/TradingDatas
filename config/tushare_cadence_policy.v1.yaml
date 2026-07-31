@@ -443,7 +443,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 74a32d9c2ae528f5c45307582ff67ee533fa7cbc6132d7672b584f9b8b138c04
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: index_member_all
   cadence_class: on_demand
   freshness_sla_seconds: 86400
