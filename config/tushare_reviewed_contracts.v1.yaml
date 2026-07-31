@@ -138,7 +138,7 @@ contracts:
       - {name: turnover_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: fd_amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: first_time, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
-      - {name: last_time, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: last_time, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: open_times, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: up_stat, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
       - {name: limit_times, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}

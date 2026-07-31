@@ -20520,7 +20520,7 @@ datasets:
     sortable: true
   - name: last_time
     logical_type: text
-    nullable: false
+    nullable: true
     selectable: true
     filterable: true
     sortable: true
