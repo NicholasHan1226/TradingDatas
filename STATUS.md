@@ -1,18 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 02:20 CST。
+最后更新：2026-08-01 03:05 CST。
 
 ## 当前运行面
 
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`5abb124a05f99495d5f0308329f4d4b84bd4ed5e`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换只增加
-  `cn.dataset.stock_st` 的通用按需日分区合同（schema 2、`trade_date` 分区、
-  `[trade_date, ts_code]` identity 及单分区完整性），未修改分钟 collector、API route
-  或 TradingAgent。切换前后 target/rollback
-  manifest 均通过 trusted verifier，目标 registry 也已从冻结输入逐字节重编译。直接原子
-  回退点为 `013623aed01cc2b6400f6ce1341d64b39db09bf0`；
+- 正式 immutable `current`：`04fcf3a6af8cfe1c18b0420af11f4ccec6b21a86`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换仅将
+  `cn.dataset.moneyflow_ths` 冻结为 schema 2、`trade_date` 日分区、
+  `[trade_date, ts_code]` identity、`postclose_daily` 与单分区完整性合同；没有修改分钟
+  collector、公共 API route 或 TradingAgent。target、直接回退点
+  `5abb124a05f99495d5f0308329f4d4b84bd4ed5e` 与 current 均已由 trusted manifest verifier
+  验证，目标 registry 也从冻结输入逐字节重编译。更早的回退链仍保留：
   `cb89620b7e20356a00c7ff3f06c357b401565113`、
   `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
   与经过验证的
@@ -40,6 +40,13 @@
   为 null，receipt/lineage 完整。该分区的 `data_through=2026-07-31` 已跨读取时钟的
   86400 秒 SLA，envelope 因而如实为 `stale/degraded`；它证明稳定按需入库/API 合同，
   不把昨日 ST 标记数据伪装为当前新鲜或可交易事实。
+- `moneyflow_ths` production readback：正式 generic one-shot 对 `trade_date=20260731`
+  返回 5,199 行并留下 success receipt；随后以 `tradingagent` 身份通过 formal 18082
+  分页读取为 5,199 行、5,199 个 `[trade_date, ts_code]` 非空唯一 identity、11 页且 terminal
+  cursor 为 null。相同请求第二次读取的行数、identity digest 与 cursor 语义一致；metadata
+  为 `ready/success/fresh/valid/non-degraded`，receipt
+  `receipt:73b27d0be181cb17f75fc4aa7cf03629c0d6e9e55ce189884d0c88f573539af9` 与 lineage
+  完整。这证明该日分区可经内部 API 稳定按日读取；不代表策略、交易或其他未验收数据集已可用。
 - 对失败 receipt `b0810c7b...` 的 16:01 CST 只读审计进一步确认：同一 13:20
   attempt 的 5 个非空 100-symbol 分片均为 `returned=validated=committed=0`、
   `terminal_no_data_transaction`、`validation_failed`，没有部分 500 facts 写入。因此该次
@@ -237,9 +244,11 @@
   `receipt:76915b398ca1278be35652f228b3dd6901f0f08c1ffdf08811b55c3f29b345c6`，lineage 完整）。
   这是上游当前窗口无记录的真实状态，不伪装为有内容或自动调度；当有真实公告日数据时，再以同一
   on-demand 合同做有界 readback。
-- `stk_holdernumber` 有一条业务身份重复，`moneyflow_ths` 存在 30,150 条重复 excess 且单分区
-  达 14,593 行，均继续 NO-GO；此前的 `report_rc`、`repurchase`、`top_inst`、`stk_managers`
-  结论不变。此候选与筛选没有触及分钟 timer。
+- `stk_holdernumber` 有一条业务身份重复，继续 NO-GO；此前的 `report_rc`、`repurchase`、
+  `top_inst`、`stk_managers` 结论不变。此前 `moneyflow_ths` 的历史 receipt 审计包含一个
+  14,593 行、30,150 duplicate-excess 的不合格窗口；它没有被删除或覆盖。后续隔离真实采集
+  使用冻结的单日窗口得到 5,199/5,199 非空唯一事实后，才以新的完整 success receipt 进入本次
+  production readback。此候选与筛选没有触及分钟 timer。
 
 - 生产 receipt 审计表明，`cn.dataset.disclosure_date` 的三个真实分区均可使用
   `[ann_date,end_date,ts_code]` 作为分区内非空唯一身份。main/GitHub 的
