@@ -10,13 +10,15 @@ without it the report refuses to call any dataset ``formal_ready``.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import sys
-from typing import Mapping
+from typing import Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -26,7 +28,9 @@ from dataset_registry import (  # noqa: E402
     PROVIDER_NATIVE_DATASET_REGISTRY_PATH,
     DatasetDefinition,
     DatasetRegistry,
+    ProviderBinding,
     load_runtime_dataset_registry,
+    normalize_request_window,
 )
 from query_contract import public_catalog_version  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
@@ -38,6 +42,23 @@ from storage.receipt_projection import (  # noqa: E402
 
 
 ARTIFACT_SCHEMA_VERSION = 1
+PARTITION_AUDIT_SCHEMA_VERSION = 1
+PARTITION_AUDIT_PURPOSES = frozenset(
+    {"legal_empty_control", "nonempty_control", "rare_nonempty_control"}
+)
+TRAVERSAL_POLICY = {
+    "routine_query": "receipt_bound_single_traversal",
+    "escalated_verification": {
+        "contexts": [
+            "onboarding",
+            "contract_drift",
+            "incident_recovery",
+            "daily_scrub",
+        ],
+        "mode": "independent_double_traversal",
+    },
+    "historical_pit_without_explicit_vintage": "observation_only",
+}
 READINESS_CLASSES = frozenset(
     {
         "formal_ready",
@@ -55,6 +76,13 @@ READINESS_CLASSES = frozenset(
 _API_UNAVAILABLE = "not_provided"
 
 
+@dataclass(frozen=True)
+class PartitionRegistration:
+    dataset_id: str
+    purpose: str
+    request_window: Mapping[str, str]
+
+
 def _canonical_json(value: object) -> bytes:
     return json.dumps(
         value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
@@ -63,6 +91,239 @@ def _canonical_json(value: object) -> bytes:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_partition_registrations(
+    path: Path | None,
+) -> tuple[tuple[PartitionRegistration, ...], str | None]:
+    if path is None:
+        return (), None
+    raw = path.read_bytes()
+    try:
+        manifest = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("partition audit manifest must be JSON") from exc
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schema_version",
+        "partitions",
+    }:
+        raise ValueError("partition audit manifest has invalid keys")
+    if manifest.get("schema_version") != PARTITION_AUDIT_SCHEMA_VERSION:
+        raise ValueError("partition audit manifest schema_version is invalid")
+    values = manifest.get("partitions")
+    if not isinstance(values, list) or not 1 <= len(values) <= 32:
+        raise ValueError("partition audit manifest partitions are invalid")
+    registrations: list[PartitionRegistration] = []
+    for value in values:
+        if not isinstance(value, dict) or set(value) != {
+            "dataset_id",
+            "purpose",
+            "request_window",
+        }:
+            raise ValueError("partition audit registration has invalid keys")
+        dataset_id, purpose, window = (
+            value["dataset_id"],
+            value["purpose"],
+            value["request_window"],
+        )
+        if type(dataset_id) is not str or not dataset_id:
+            raise ValueError("partition audit dataset_id is invalid")
+        if purpose not in PARTITION_AUDIT_PURPOSES:
+            raise ValueError("partition audit purpose is invalid")
+        if (
+            not isinstance(window, dict)
+            or not window
+            or any(
+                type(key) is not str or type(item) is not str or not key or not item
+                for key, item in window.items()
+            )
+        ):
+            raise ValueError("partition audit request_window is invalid")
+        registrations.append(
+            PartitionRegistration(dataset_id, purpose, dict(sorted(window.items())))
+        )
+    registrations.sort(
+        key=lambda item: (item.dataset_id, _canonical_json(dict(item.request_window)))
+    )
+    identities = [
+        (item.dataset_id, tuple(item.request_window.items())) for item in registrations
+    ]
+    if len(identities) != len(set(identities)):
+        raise ValueError("partition audit registrations must be unique")
+    return tuple(registrations), hashlib.sha256(raw).hexdigest()
+
+
+def _identity_tuple(
+    payload: Mapping[str, object], identity_fields: Sequence[str]
+) -> tuple[object, ...] | None:
+    values: list[object] = []
+    for field in identity_fields:
+        value = payload.get(field)
+        if (
+            value is None
+            or isinstance(value, (dict, list))
+            or (type(value) is str and not value.strip())
+        ):
+            return None
+        values.append(value)
+    return tuple(values)
+
+
+def _partition_fact_summary(
+    conn: object,
+    *,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    partition_value: str,
+    trusted_success_receipt_ids: Sequence[str],
+) -> dict[str, object]:
+    if not dataset.primary_key:
+        raise ValueError("partition audit dataset requires a declared primary_key")
+    if binding.max_rows_per_attempt is None:
+        raise ValueError("partition audit binding requires max_rows_per_attempt")
+    rows = conn.execute(
+        """SELECT receipt_id, payload_json FROM provider_dataset_rows
+           WHERE dataset_id = ? AND provider = ? AND schema_major = ?
+             AND partition_value = ? ORDER BY row_key""",
+        (dataset.dataset_id, binding.provider, dataset.schema_major, partition_value),
+    ).fetchall()
+    identities: list[tuple[object, ...]] = []
+    nulls = 0
+    fact_receipt_ids: set[str] = set()
+    for receipt_id, payload_json in rows:
+        if type(receipt_id) is not str or not receipt_id:
+            raise ValueError("partition audit provider receipt is invalid")
+        fact_receipt_ids.add(receipt_id)
+        try:
+            payload = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("partition audit provider payload is invalid") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("partition audit provider payload is invalid")
+        identity = _identity_tuple(payload, dataset.primary_key)
+        if identity is None:
+            nulls += 1
+        else:
+            identities.append(identity)
+    duplicate_excess = sum(
+        count - 1 for count in Counter(identities).values() if count > 1
+    )
+    trusted_ids = frozenset(trusted_success_receipt_ids)
+    if not fact_receipt_ids.issubset(trusted_ids):
+        raise ValueError("partition audit facts reference an untrusted receipt")
+    return {
+        "fact_row_count": len(rows),
+        "fact_receipt_ids": sorted(fact_receipt_ids),
+        "facts_receipt_bound": True,
+        "identity_fields": list(dataset.primary_key),
+        "identity_null_count": nulls,
+        "identity_duplicate_excess": duplicate_excess,
+        "at_row_cap": len(rows) >= binding.max_rows_per_attempt,
+        "max_rows_per_attempt": binding.max_rows_per_attempt,
+    }
+
+
+def build_partition_audits(
+    conn: object,
+    registry: DatasetRegistry,
+    evidence_by_dataset: Mapping[str, DatasetRuntimeEvidence],
+    registrations: Sequence[PartitionRegistration],
+    *,
+    now: datetime,
+) -> list[dict[str, object]]:
+    audits: list[dict[str, object]] = []
+    for registration in registrations:
+        dataset = registry.resolve(registration.dataset_id)
+        if dataset.dataset_id not in evidence_by_dataset:
+            raise ValueError(f"missing runtime evidence for {dataset.dataset_id}")
+        bindings = tuple(
+            binding
+            for binding in dataset.provider_bindings
+            if binding.entitlement_state == "active"
+            and binding.activation_state == "active"
+            and binding.ingest_contract_state == "ready"
+        )
+        if not bindings:
+            raise ValueError("partition audit dataset has no eligible provider binding")
+        for binding in bindings:
+            policy, completeness = (
+                binding.request_window_policy,
+                binding.response_completeness,
+            )
+            if (
+                policy is None
+                or completeness is None
+                or completeness.request_partition_key is None
+                or completeness.partition_field is None
+            ):
+                raise ValueError(
+                    "partition audit binding lacks an exact partition contract"
+                )
+            window = normalize_request_window(policy, registration.request_window)
+            partition_key = completeness.request_partition_key
+            partition_value = window.get(partition_key)
+            if partition_value is None:
+                raise ValueError("partition audit window lacks the request partition key")
+            partition_evidence = project_dataset_runtime_evidence(
+                conn,
+                dataset,
+                now=now,
+                registry=registry,
+                provider_binding=binding,
+                request_partition=(partition_key, partition_value),
+                evidence_as_of=now,
+            )
+            facts = _partition_fact_summary(
+                conn,
+                dataset=dataset,
+                binding=binding,
+                partition_value=partition_value,
+                trusted_success_receipt_ids=partition_evidence.as_of_success_receipt_ids,
+            )
+            conflict = facts["fact_row_count"] > 0 and (
+                partition_evidence.current_receipt_status in {"empty", "failed"}
+            )
+            if conflict:
+                facts["facts_receipt_bound"] = False
+            reasons = sorted(
+                set(partition_evidence.projection.reasons)
+                | ({"partition_receipt_fact_conflict"} if conflict else set())
+            )
+            audits.append(
+                {
+                    "dataset_id": dataset.dataset_id,
+                    "purpose": registration.purpose,
+                    "request_window": window,
+                    "provider": binding.provider,
+                    "provider_api": binding.api_name,
+                    "receipt_state": partition_evidence.current_receipt_status,
+                    "receipt_ids": list(partition_evidence.current_receipt_ids),
+                    "projection_state": partition_evidence.projection.state,
+                    "degraded": partition_evidence.projection.degraded,
+                    "reasons": reasons,
+                    "empty_receipt": partition_evidence.current_receipt_status == "empty",
+                    "providers": list(partition_evidence.current_providers),
+                    "historical_readiness": "observation_only",
+                    **facts,
+                }
+            )
+    return audits
+
+
+def _verify_partition_audit_replay(
+    first: Sequence[Mapping[str, object]], replay: Sequence[Mapping[str, object]]
+) -> dict[str, object]:
+    first_digest = hashlib.sha256(_canonical_json(list(first))).hexdigest()
+    replay_digest = hashlib.sha256(_canonical_json(list(replay))).hexdigest()
+    if first_digest != replay_digest:
+        raise ValueError("partition audit replay drift")
+    return {
+        "context": "onboarding",
+        "traversal_count": 2,
+        "first_digest": first_digest,
+        "replay_digest": replay_digest,
+        "semantic_replay_equal": True,
+    }
 
 
 def _canonical_now(now: datetime) -> str:
@@ -294,6 +555,9 @@ def build_artifact(
     registry_sha256: str,
     api_snapshot: Mapping[str, object] | None = None,
     api_snapshot_sha256: str | None = None,
+    partition_audits: Sequence[Mapping[str, object]] = (),
+    partition_manifest_sha256: str | None = None,
+    partition_audit_verification: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build a stable, secret-free report from already-read authority."""
 
@@ -372,8 +636,12 @@ def build_artifact(
         "source_hashes": {
             "registry_sha256": registry_sha256,
             "api_snapshot_sha256": api_snapshot_sha256,
+            "partition_manifest_sha256": partition_manifest_sha256,
         },
+        "traversal_policy": TRAVERSAL_POLICY,
         "datasets": records,
+        "pre_registered_partitions": list(partition_audits),
+        "partition_audit_verification": partition_audit_verification,
     }
 
 
@@ -396,11 +664,15 @@ def generate_artifact(
     registry_path: Path,
     now: datetime,
     api_snapshot_path: Path | None = None,
+    partition_manifest_path: Path | None = None,
 ) -> dict[str, object]:
-    """Read the verified SQLite authority once and return the report object."""
+    """Build a report and double-traverse registered partitions from read authority."""
 
     registry = load_runtime_dataset_registry()
     snapshot, snapshot_hash = _load_api_snapshot(api_snapshot_path)
+    registrations, partition_manifest_hash = _load_partition_registrations(
+        partition_manifest_path
+    )
     runtime_report = load_interface_runtime_report(db_path, registry, now=now)
     runtime_rows = runtime_report.get("datasets")
     if not isinstance(runtime_rows, Mapping):
@@ -412,6 +684,24 @@ def generate_artifact(
             )
             for dataset in registry.datasets
         }
+        partition_audits = build_partition_audits(
+            conn, registry, evidence, registrations, now=now
+        )
+    partition_audit_verification = None
+    if registrations:
+        with open_verified_read_model_snapshot(db_path) as conn:
+            replay_evidence = {
+                dataset.dataset_id: project_dataset_runtime_evidence(
+                    conn, dataset, now=now, registry=registry
+                )
+                for dataset in registry.datasets
+            }
+            replay_audits = build_partition_audits(
+                conn, registry, replay_evidence, registrations, now=now
+            )
+        partition_audit_verification = _verify_partition_audit_replay(
+            partition_audits, replay_audits
+        )
     for dataset_id, item in evidence.items():
         projection = runtime_rows.get(dataset_id)
         if not isinstance(projection, Mapping) or projection.get("state") != item.projection.state:
@@ -423,6 +713,9 @@ def generate_artifact(
         registry_sha256=_sha256_file(registry_path),
         api_snapshot=snapshot,
         api_snapshot_sha256=snapshot_hash,
+        partition_audits=partition_audits,
+        partition_manifest_sha256=partition_manifest_hash,
+        partition_audit_verification=partition_audit_verification,
     )
 
 
@@ -431,6 +724,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--api-snapshot", type=Path)
+    parser.add_argument("--partition-manifest", type=Path)
     parser.add_argument("--now", required=True, help="RFC3339 timestamp")
     args = parser.parse_args(argv)
     now = datetime.fromisoformat(args.now.replace("Z", "+00:00"))
@@ -442,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
         registry_path=registry_path,
         now=now,
         api_snapshot_path=args.api_snapshot,
+        partition_manifest_path=args.partition_manifest,
     )
     args.output.write_bytes(_canonical_json(report) + b"\n")
     return 0

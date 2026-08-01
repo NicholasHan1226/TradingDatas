@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import sqlite3
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +18,16 @@ from dataset_registry import (  # noqa: E402
     FanoutPolicy,
     load_runtime_dataset_registry,
 )
-from report_dataset_onboarding_status import build_artifact  # noqa: E402
+import report_dataset_onboarding_status as report_module  # noqa: E402
+from report_dataset_onboarding_status import (  # noqa: E402
+    PartitionRegistration,
+    TRAVERSAL_POLICY,
+    _load_partition_registrations,
+    _partition_fact_summary,
+    _verify_partition_audit_replay,
+    build_artifact,
+    generate_artifact,
+)
 from query_contract import public_catalog_version  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
     DatasetRuntimeEvidence,
@@ -251,3 +263,240 @@ def test_cross_dataset_metadata_with_matching_receipt_cannot_upgrade() -> None:
     record = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
     assert record["readiness_class"] == "observed_isolated_only"
     assert "api_snapshot_envelope_unbound" in record["blocker_codes"]
+
+
+def _partition_conn(dataset, binding, rows):
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """CREATE TABLE provider_dataset_rows (
+            dataset_id TEXT, provider TEXT, schema_major INTEGER,
+            partition_value TEXT, row_key TEXT, receipt_id TEXT, payload_json TEXT
+        )"""
+    )
+    for index, (receipt_id, payload) in enumerate(rows):
+        conn.execute(
+            "INSERT INTO provider_dataset_rows VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                dataset.dataset_id,
+                binding.provider,
+                dataset.schema_major,
+                "20260731",
+                f"row:{index}",
+                receipt_id,
+                json.dumps(payload),
+            ),
+        )
+    return conn
+
+
+def test_partition_registration_manifest_is_exact_and_rejects_duplicates(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "partitions.json"
+    value = {
+        "schema_version": 1,
+        "partitions": [
+            {
+                "dataset_id": "cn.equity.daily",
+                "purpose": "nonempty_control",
+                "request_window": {"trade_date": "20260731"},
+            }
+        ],
+    }
+    path.write_text(json.dumps(value))
+    registrations, digest = _load_partition_registrations(path)
+    assert registrations == (
+        PartitionRegistration(
+            "cn.equity.daily", "nonempty_control", {"trade_date": "20260731"}
+        ),
+    )
+    assert digest is not None and len(digest) == 64
+    value["partitions"].append(value["partitions"][0])
+    path.write_text(json.dumps(value))
+    try:
+        _load_partition_registrations(path)
+    except ValueError as exc:
+        assert str(exc) == "partition audit registrations must be unique"
+    else:
+        raise AssertionError("duplicate partition registration was accepted")
+
+
+def test_partition_facts_reject_untrusted_receipt() -> None:
+    dataset, binding = _dataset(), _dataset().provider_bindings[0]
+    conn = _partition_conn(
+        dataset,
+        binding,
+        [
+            ("receipt:trusted", {"ts_code": "000001.SZ", "trade_date": "20260731"}),
+            ("receipt:forged", {"ts_code": "000002.SZ", "trade_date": "20260731"}),
+        ],
+    )
+    try:
+        try:
+            _partition_fact_summary(
+                conn,
+                dataset=dataset,
+                binding=binding,
+                partition_value="20260731",
+                trusted_success_receipt_ids=("receipt:trusted",),
+            )
+        except ValueError as exc:
+            assert str(exc) == "partition audit facts reference an untrusted receipt"
+        else:
+            raise AssertionError("untrusted partition fact receipt was accepted")
+    finally:
+        conn.close()
+
+
+def test_partition_facts_allow_multiple_trusted_append_only_receipts() -> None:
+    dataset, binding = _dataset(), _dataset().provider_bindings[0]
+    conn = _partition_conn(
+        dataset,
+        binding,
+        [
+            ("receipt:one", {"ts_code": "000001.SZ", "trade_date": "20260731"}),
+            ("receipt:two", {"ts_code": "000002.SZ", "trade_date": "20260731"}),
+        ],
+    )
+    try:
+        facts = _partition_fact_summary(
+            conn,
+            dataset=dataset,
+            binding=binding,
+            partition_value="20260731",
+            trusted_success_receipt_ids=("receipt:one", "receipt:two"),
+        )
+    finally:
+        conn.close()
+    assert facts["fact_row_count"] == 2
+    assert facts["facts_receipt_bound"] is True
+
+
+def test_empty_or_failed_receipt_cannot_reuse_old_partition_facts(monkeypatch) -> None:
+    dataset, binding = _dataset(), _dataset().provider_bindings[0]
+    for state in ("empty", "failed"):
+        evidence = replace(
+            _evidence(dataset.dataset_id, state, receipt=f"receipt:{state}"),
+            as_of_success_receipt_ids=("receipt:old",),
+        )
+        conn = _partition_conn(
+            dataset,
+            binding,
+            [("receipt:old", {"ts_code": "000001.SZ", "trade_date": "20260731"})],
+        )
+        try:
+            monkeypatch.setattr(
+                report_module,
+                "project_dataset_runtime_evidence",
+                lambda *args, **kwargs: evidence,
+            )
+            audit = report_module.build_partition_audits(
+                conn,
+                DatasetRegistry((dataset,)),
+                {dataset.dataset_id: evidence},
+                (
+                    PartitionRegistration(
+                        dataset.dataset_id,
+                        "legal_empty_control",
+                        {"trade_date": "20260731"},
+                    ),
+                ),
+                now=NOW,
+            )[0]
+        finally:
+            conn.close()
+        assert audit["facts_receipt_bound"] is False
+        assert "partition_receipt_fact_conflict" in audit["reasons"]
+        assert audit["historical_readiness"] == "observation_only"
+
+
+def test_artifact_declares_read_only_traversal_policy() -> None:
+    dataset = _dataset()
+    artifact = build_artifact(
+        DatasetRegistry((dataset,)),
+        {dataset.dataset_id: _evidence(dataset.dataset_id, "success")},
+        now=NOW,
+        registry_sha256=HASH,
+        partition_audits=[
+            {"dataset_id": dataset.dataset_id, "historical_readiness": "observation_only"}
+        ],
+        partition_manifest_sha256="c" * 64,
+    )
+    assert artifact["traversal_policy"] == TRAVERSAL_POLICY
+    assert artifact["source_hashes"]["partition_manifest_sha256"] == "c" * 64
+
+
+def test_partition_audit_replay_requires_two_identical_traversals() -> None:
+    audit = [{"dataset_id": "cn.equity.daily", "fact_row_count": 1}]
+    verified = _verify_partition_audit_replay(audit, audit)
+    assert verified["traversal_count"] == 2
+    assert verified["semantic_replay_equal"] is True
+    try:
+        _verify_partition_audit_replay(
+            audit, [{"dataset_id": "cn.equity.daily", "fact_row_count": 2}]
+        )
+    except ValueError as exc:
+        assert str(exc) == "partition audit replay drift"
+    else:
+        raise AssertionError("partition audit replay drift was accepted")
+
+
+def test_generate_artifact_uses_two_independent_partition_audit_snapshots(
+    monkeypatch, tmp_path: Path
+) -> None:
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    manifest_path = tmp_path / "partitions.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "partitions": [
+                    {
+                        "dataset_id": dataset.dataset_id,
+                        "purpose": "nonempty_control",
+                        "request_window": {"trade_date": "20260731"},
+                    }
+                ],
+            }
+        )
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}")
+    opened: list[object] = []
+
+    @contextmanager
+    def snapshot(_db_path: Path):
+        connection = object()
+        opened.append(connection)
+        yield connection
+
+    evidence = _evidence(dataset.dataset_id, "success")
+    monkeypatch.setattr(report_module, "load_runtime_dataset_registry", lambda: registry)
+    monkeypatch.setattr(
+        report_module,
+        "load_interface_runtime_report",
+        lambda *args, **kwargs: {"datasets": {dataset.dataset_id: {"state": "success"}}},
+    )
+    monkeypatch.setattr(report_module, "open_verified_read_model_snapshot", snapshot)
+    monkeypatch.setattr(
+        report_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: evidence,
+    )
+    monkeypatch.setattr(
+        report_module,
+        "build_partition_audits",
+        lambda *args, **kwargs: [{"dataset_id": dataset.dataset_id, "fact_row_count": 1}],
+    )
+
+    artifact = generate_artifact(
+        db_path=tmp_path / "read_model.sqlite",
+        registry_path=registry_path,
+        now=NOW,
+        partition_manifest_path=manifest_path,
+    )
+
+    assert len(opened) == 2
+    assert opened[0] is not opened[1]
+    assert artifact["partition_audit_verification"]["traversal_count"] == 2
