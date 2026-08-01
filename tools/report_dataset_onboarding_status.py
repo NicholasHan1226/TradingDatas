@@ -30,6 +30,7 @@ from dataset_registry import (  # noqa: E402
 )
 from storage.receipt_projection import (  # noqa: E402
     DatasetRuntimeEvidence,
+    load_interface_runtime_report,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
 )
@@ -137,24 +138,51 @@ def _seed_state(
     return "missing", ("seed_receipt_missing",)
 
 
-def _api_fields(metadata: Mapping[str, object] | None) -> tuple[str, str, str, bool | None, tuple[str, ...]]:
+def _api_fields(
+    metadata: Mapping[str, object] | None,
+    evidence: DatasetRuntimeEvidence,
+) -> tuple[str, str, str, bool | None, bool, tuple[str, ...]]:
     if metadata is None:
-        return _API_UNAVAILABLE, _API_UNAVAILABLE, _API_UNAVAILABLE, None, ()
+        return _API_UNAVAILABLE, _API_UNAVAILABLE, _API_UNAVAILABLE, None, False, ()
     state = metadata.get("state")
     freshness = metadata.get("freshness")
     quality = metadata.get("quality")
     lineage = metadata.get("lineage")
     reasons = metadata.get("reasons")
+    degraded = metadata.get("degraded")
+    receipt_id = metadata.get("receipt_id")
+    data_through = metadata.get("data_through")
+    observed_at = metadata.get("observed_at")
     freshness_state = freshness.get("state") if isinstance(freshness, Mapping) else None
     quality_state = quality.get("state") if isinstance(quality, Mapping) else None
     lineage_complete = lineage.get("complete") if isinstance(lineage, Mapping) else None
     if type(state) is not str or type(freshness_state) is not str or type(quality_state) is not str:
-        return "invalid_snapshot", "invalid_snapshot", "invalid_snapshot", None, ("api_snapshot_invalid",)
+        return "invalid_snapshot", "invalid_snapshot", "invalid_snapshot", None, False, ("api_snapshot_invalid",)
     if type(lineage_complete) is not bool:
-        return state, freshness_state, quality_state, None, ("api_snapshot_invalid",)
+        return state, freshness_state, quality_state, None, False, ("api_snapshot_invalid",)
     if not isinstance(reasons, list) or any(type(reason) is not str for reason in reasons):
-        return state, freshness_state, quality_state, lineage_complete, ("api_snapshot_invalid",)
-    return state, freshness_state, quality_state, lineage_complete, tuple(sorted(set(reasons)))
+        return state, freshness_state, quality_state, lineage_complete, False, ("api_snapshot_invalid",)
+    providers = lineage.get("providers") if isinstance(lineage, Mapping) else None
+    binding_complete = (
+        degraded is False
+        and type(receipt_id) is str
+        and receipt_id == evidence.projection.receipt_id
+        and data_through == evidence.projection.data_through
+        and observed_at == evidence.projection.observed_at
+        and isinstance(providers, list)
+        and tuple(providers) == evidence.current_providers
+    )
+    blockers = set(reasons)
+    if not binding_complete:
+        blockers.add("api_projection_unbound")
+    return (
+        state,
+        freshness_state,
+        quality_state,
+        lineage_complete,
+        binding_complete,
+        tuple(sorted(blockers)),
+    )
 
 
 def _readiness_class(
@@ -168,6 +196,7 @@ def _readiness_class(
     freshness: str,
     quality: str,
     lineage_complete: bool | None,
+    api_binding_complete: bool,
     registry_drift: bool,
 ) -> str:
     if registry_drift or contract_state != "ready":
@@ -185,13 +214,19 @@ def _readiness_class(
         return "failed"
     if state == "stale" or freshness == "stale":
         return "stale"
-    if api_state == "empty" and quality == "valid" and lineage_complete is True:
+    if (
+        api_state == "empty"
+        and quality == "valid"
+        and lineage_complete is True
+        and api_binding_complete
+    ):
         return "legal_empty"
     if (
         api_state == "ready"
         and freshness == "fresh"
         and quality == "valid"
         and lineage_complete is True
+        and api_binding_complete
         and evidence.projection.receipt_id is not None
     ):
         return "formal_ready"
@@ -238,7 +273,14 @@ def build_artifact(
         entitlement, activation, contract_state, binding_blockers = _binding_state(dataset)
         seed_state, seed_blockers = _seed_state(dataset, evidence_by_dataset)
         metadata = _api_metadata(api_snapshot, dataset.dataset_id)
-        api_state, freshness, quality, lineage_complete, api_blockers = _api_fields(metadata)
+        (
+            api_state,
+            freshness,
+            quality,
+            lineage_complete,
+            api_binding_complete,
+            api_blockers,
+        ) = _api_fields(metadata, evidence)
         readiness = _readiness_class(
             entitlement=entitlement,
             activation=activation,
@@ -249,6 +291,7 @@ def build_artifact(
             freshness=freshness,
             quality=quality,
             lineage_complete=lineage_complete,
+            api_binding_complete=api_binding_complete,
             registry_drift=registry_drift,
         )
         blocker_codes = set(binding_blockers) | set(seed_blockers) | set(api_blockers) | set(evidence.projection.reasons)
@@ -312,6 +355,10 @@ def generate_artifact(
 
     registry = load_runtime_dataset_registry()
     snapshot, snapshot_hash = _load_api_snapshot(api_snapshot_path)
+    runtime_report = load_interface_runtime_report(db_path, registry, now=now)
+    runtime_rows = runtime_report.get("datasets")
+    if not isinstance(runtime_rows, Mapping):
+        raise ValueError("runtime report datasets are invalid")
     with open_verified_read_model_snapshot(db_path) as conn:
         evidence = {
             dataset.dataset_id: project_dataset_runtime_evidence(
@@ -319,6 +366,10 @@ def generate_artifact(
             )
             for dataset in registry.datasets
         }
+    for dataset_id, item in evidence.items():
+        projection = runtime_rows.get(dataset_id)
+        if not isinstance(projection, Mapping) or projection.get("state") != item.projection.state:
+            raise ValueError("runtime projection drift")
     return build_artifact(
         registry,
         evidence,

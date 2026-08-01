@@ -10,7 +10,11 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
-from dataset_registry import DatasetRegistry, load_runtime_dataset_registry  # noqa: E402
+from dataset_registry import (  # noqa: E402
+    DatasetRegistry,
+    FanoutPolicy,
+    load_runtime_dataset_registry,
+)
 from report_dataset_onboarding_status import build_artifact  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
     DatasetRuntimeEvidence,
@@ -62,12 +66,27 @@ def _report(dataset, evidence, *, snapshot=None):
     )["datasets"][0]
 
 
-def _metadata(state: str, *, freshness: str = "fresh", quality: str = "valid", complete: bool = True):
+def _metadata(
+    state: str,
+    *,
+    freshness: str = "fresh",
+    quality: str = "valid",
+    complete: bool = True,
+    degraded: bool = False,
+    receipt_id: str | None = "receipt:1",
+    data_through: str | None = "20260731",
+    observed_at: str | None = "2026-08-01T08:00:00Z",
+    providers: list[str] | None = None,
+):
     return {
         "state": state,
+        "degraded": degraded,
         "freshness": {"state": freshness},
         "quality": {"state": quality},
-        "lineage": {"complete": complete},
+        "lineage": {"complete": complete, "providers": ["tushare"] if providers is None else providers},
+        "receipt_id": receipt_id,
+        "data_through": data_through,
+        "observed_at": observed_at,
         "reasons": [],
     }
 
@@ -116,12 +135,57 @@ def test_partial_api_projection_is_not_formal_ready() -> None:
     assert record["readiness_class"] == "observed_isolated_only"
 
 
+def test_unbound_or_degraded_api_metadata_never_upgrades_receipt_to_formal_ready() -> None:
+    dataset = _dataset()
+    evidence = _evidence(dataset.dataset_id, "success")
+    forged = _report(
+        dataset,
+        evidence,
+        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("ready", receipt_id=None, data_through=None, observed_at=None)}}},
+    )
+    degraded = _report(
+        dataset,
+        evidence,
+        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("ready", degraded=True)}}},
+    )
+    assert forged["readiness_class"] == "observed_isolated_only"
+    assert degraded["readiness_class"] == "observed_isolated_only"
+    assert "api_projection_unbound" in forged["blocker_codes"]
+    assert "api_projection_unbound" in degraded["blocker_codes"]
+
+
 def test_locked_and_paused_registry_states_are_fail_closed() -> None:
     dataset = _dataset()
     locked = replace(dataset, provider_bindings=(replace(dataset.provider_bindings[0], entitlement_state="locked", activation_state="paused"),))
     paused = replace(dataset, provider_bindings=(replace(dataset.provider_bindings[0], activation_state="paused"),))
     assert _report(locked, _evidence(locked.dataset_id, "unobserved"))["readiness_class"] == "locked"
     assert _report(paused, _evidence(paused.dataset_id, "unobserved"))["readiness_class"] == "paused"
+
+
+def test_missing_required_fanout_seed_is_explicit() -> None:
+    dataset = _dataset()
+    source = load_runtime_dataset_registry().resolve("cn.equity.security_master")
+    dependent = replace(
+        dataset,
+        provider_bindings=(
+            replace(
+                dataset.provider_bindings[0],
+                fanout=FanoutPolicy(strategy="dataset_field", source_dataset_id=source.dataset_id),
+            ),
+        ),
+    )
+    artifact = build_artifact(
+        DatasetRegistry((dependent, source)),
+        {
+            dependent.dataset_id: _evidence(dependent.dataset_id, "success"),
+            source.dataset_id: _evidence(source.dataset_id, "unobserved"),
+        },
+        now=NOW,
+        registry_sha256=HASH,
+    )
+    record = next(item for item in artifact["datasets"] if item["dataset_id"] == dependent.dataset_id)
+    assert record["seed_receipt_state"] == "missing"
+    assert record["readiness_class"] == "seed_missing"
 
 
 def test_registry_drift_is_explicit_and_output_is_deterministic() -> None:
