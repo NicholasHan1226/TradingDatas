@@ -1,9 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 15:34 CST。
+最后更新：2026-08-01 15:45 CST。
 
 ## 当前运行面
 
+- 机器可读 onboarding 状态报告已正常合入 main/origin（`d2e7df3`，功能提交
+  `209bf1d`）。它只读取 verified SQLite snapshot、registry 和可选的脱敏 formal API snapshot，
+  不调用 provider、不写 DB、不触碰 18082、timer 或分钟运行面。报告把 `formal_ready` 与
+  `observed_isolated_only`、`legal_empty`、`stale`、`failed`、`paused`、`locked`、
+  `contract_missing`、`seed_missing`、`unobserved` 明确区分；正式可用必须满足
+  `degraded=false` 且 receipt、data-through、observed-at、provider lineage 与 SQLite 权威投影
+  精确一致。独立 review P0/P1=0，8 项回归、Ruff 与 diff-check 通过。当前本机没有可绑定的
+  production SQLite snapshot，因此未生成或伪造运行报告；服务器只读生成和 formal snapshot
+  readback 是下一项运行验收，不构成部署动作。
 - `cb_daily`、`dc_daily`、`dc_index`、`ft_limit`、`repo_daily`、`sge_daily` 与
   `tdx_index` 的七项同形单日分区合同已正常合入 main/origin（`753587a`）。变更严格限于
   六个 registry/config 及其生成物：不新增 route、collector、table、timer 或交易语义。
