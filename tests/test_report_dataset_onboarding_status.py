@@ -16,6 +16,7 @@ from dataset_registry import (  # noqa: E402
     load_runtime_dataset_registry,
 )
 from report_dataset_onboarding_status import build_artifact  # noqa: E402
+from query_contract import public_catalog_version  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
     DatasetRuntimeEvidence,
     DatasetRuntimeProjection,
@@ -66,6 +67,24 @@ def _report(dataset, evidence, *, snapshot=None):
     )["datasets"][0]
 
 
+def _snapshot(dataset, metadata, *, registry_sha256: str = HASH, **envelope):
+    registry = DatasetRegistry((dataset,))
+    return {
+        "api_version": "v1",
+        "catalog_version": public_catalog_version(registry),
+        "registry_sha256": registry_sha256,
+        "queries": {
+            dataset.dataset_id: {
+                "api_version": "v1",
+                "catalog_version": public_catalog_version(registry),
+                "dataset_id": dataset.dataset_id,
+                "metadata": metadata,
+                **envelope,
+            }
+        },
+    }
+
+
 def _metadata(
     state: str,
     *,
@@ -96,7 +115,7 @@ def test_formal_ready_requires_matching_formal_query_projection() -> None:
     record = _report(
         dataset,
         _evidence(dataset.dataset_id, "success"),
-        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("ready")}}},
+        snapshot=_snapshot(dataset, _metadata("ready")),
     )
     assert record["readiness_class"] == "formal_ready"
     assert record["lineage_complete"] is True
@@ -118,7 +137,7 @@ def test_stale_failed_and_legal_empty_are_distinct() -> None:
     empty = _report(
         dataset,
         _evidence(dataset.dataset_id, "empty"),
-        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("empty")}}},
+        snapshot=_snapshot(dataset, _metadata("empty")),
     )
     assert stale["readiness_class"] == "stale"
     assert failed["readiness_class"] == "failed"
@@ -130,7 +149,7 @@ def test_partial_api_projection_is_not_formal_ready() -> None:
     record = _report(
         dataset,
         _evidence(dataset.dataset_id, "success"),
-        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("partial", quality="degraded", complete=False)}}},
+        snapshot=_snapshot(dataset, _metadata("partial", quality="degraded", complete=False)),
     )
     assert record["readiness_class"] == "observed_isolated_only"
 
@@ -141,12 +160,12 @@ def test_unbound_or_degraded_api_metadata_never_upgrades_receipt_to_formal_ready
     forged = _report(
         dataset,
         evidence,
-        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("ready", receipt_id=None, data_through=None, observed_at=None)}}},
+        snapshot=_snapshot(dataset, _metadata("ready", receipt_id=None, data_through=None, observed_at=None)),
     )
     degraded = _report(
         dataset,
         evidence,
-        snapshot={"registry_sha256": HASH, "queries": {dataset.dataset_id: {"metadata": _metadata("ready", degraded=True)}}},
+        snapshot=_snapshot(dataset, _metadata("ready", degraded=True)),
     )
     assert forged["readiness_class"] == "observed_isolated_only"
     assert degraded["readiness_class"] == "observed_isolated_only"
@@ -190,9 +209,45 @@ def test_missing_required_fanout_seed_is_explicit() -> None:
 
 def test_registry_drift_is_explicit_and_output_is_deterministic() -> None:
     dataset = _dataset()
-    snapshot = {"registry_sha256": "c" * 64, "queries": {dataset.dataset_id: {"metadata": _metadata("ready")}}}
+    snapshot = _snapshot(dataset, _metadata("ready"), registry_sha256="c" * 64)
     first = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
     second = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
     assert first == second
     assert first["readiness_class"] == "contract_missing"
     assert "registry_drift" in first["blocker_codes"]
+
+
+def test_snapshot_root_requires_api_catalog_and_registry_bindings() -> None:
+    dataset = _dataset()
+    cases = []
+    missing_registry = _snapshot(dataset, _metadata("ready"))
+    del missing_registry["registry_sha256"]
+    cases.append(missing_registry)
+    wrong_api = _snapshot(dataset, _metadata("ready"))
+    wrong_api["api_version"] = "v2"
+    cases.append(wrong_api)
+    wrong_catalog = _snapshot(dataset, _metadata("ready"))
+    wrong_catalog["catalog_version"] = "v1-wrong"
+    cases.append(wrong_catalog)
+    for snapshot in cases:
+        record = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
+        assert record["readiness_class"] != "formal_ready"
+        assert record["readiness_class"] != "legal_empty"
+
+
+def test_query_envelope_cannot_be_rebound_to_another_dataset() -> None:
+    dataset = _dataset()
+    snapshot = _snapshot(dataset, _metadata("ready"))
+    snapshot["queries"][dataset.dataset_id]["dataset_id"] = "cn.dataset.adj_factor"
+    record = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
+    assert record["readiness_class"] == "observed_isolated_only"
+    assert "api_snapshot_envelope_unbound" in record["blocker_codes"]
+
+
+def test_cross_dataset_metadata_with_matching_receipt_cannot_upgrade() -> None:
+    dataset = _dataset()
+    snapshot = _snapshot(dataset, _metadata("ready"))
+    snapshot["queries"][dataset.dataset_id]["catalog_version"] = "v1-other"
+    record = _report(dataset, _evidence(dataset.dataset_id, "success"), snapshot=snapshot)
+    assert record["readiness_class"] == "observed_isolated_only"
+    assert "api_snapshot_envelope_unbound" in record["blocker_codes"]

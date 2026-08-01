@@ -28,6 +28,7 @@ from dataset_registry import (  # noqa: E402
     DatasetRegistry,
     load_runtime_dataset_registry,
 )
+from query_contract import public_catalog_version  # noqa: E402
 from storage.receipt_projection import (  # noqa: E402
     DatasetRuntimeEvidence,
     load_interface_runtime_report,
@@ -70,17 +71,54 @@ def _canonical_now(now: datetime) -> str:
     return now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _api_metadata(snapshot: Mapping[str, object] | None, dataset_id: str) -> Mapping[str, object] | None:
+def _snapshot_root_state(
+    snapshot: Mapping[str, object] | None,
+    *,
+    registry: DatasetRegistry,
+    registry_sha256: str,
+) -> tuple[bool, bool, tuple[str, ...]]:
     if snapshot is None:
-        return None
+        return False, False, ()
+    blockers: set[str] = set()
+    if snapshot.get("api_version") != "v1":
+        blockers.add("api_snapshot_api_version_invalid")
+    if snapshot.get("catalog_version") != public_catalog_version(registry):
+        blockers.add("api_snapshot_catalog_version_invalid")
+    registry_drift = snapshot.get("registry_sha256") != registry_sha256
+    if registry_drift:
+        blockers.add("registry_drift")
+    return not blockers, registry_drift, tuple(sorted(blockers))
+
+
+def _api_metadata(
+    snapshot: Mapping[str, object] | None,
+    dataset_id: str,
+    *,
+    root_valid: bool,
+) -> tuple[Mapping[str, object] | None, tuple[str, ...]]:
+    if snapshot is None or not root_valid:
+        return None, ()
     queries = snapshot.get("queries")
     if not isinstance(queries, Mapping):
-        return None
+        return None, ("api_snapshot_invalid",)
     envelope = queries.get(dataset_id)
     if not isinstance(envelope, Mapping):
-        return None
+        return None, ()
+    if (
+        envelope.get("api_version") != "v1"
+        or envelope.get("catalog_version") != snapshot.get("catalog_version")
+        or envelope.get("dataset_id") != dataset_id
+    ):
+        return None, ("api_snapshot_envelope_unbound",)
+    request_id = envelope.get("request_id")
+    if request_id is not None and (
+        type(request_id) is not str or not request_id or request_id != request_id.strip()
+    ):
+        return None, ("api_snapshot_envelope_unbound",)
     metadata = envelope.get("metadata")
-    return metadata if isinstance(metadata, Mapping) else None
+    if not isinstance(metadata, Mapping):
+        return None, ("api_snapshot_invalid",)
+    return metadata, ()
 
 
 def _binding_state(
@@ -263,8 +301,9 @@ def build_artifact(
         raise TypeError("registry must be DatasetRegistry")
     if len(registry_sha256) != 64:
         raise ValueError("registry_sha256 must be a SHA-256 digest")
-    snapshot_registry_hash = None if api_snapshot is None else api_snapshot.get("registry_sha256")
-    registry_drift = snapshot_registry_hash is not None and snapshot_registry_hash != registry_sha256
+    root_valid, registry_drift, root_blockers = _snapshot_root_state(
+        api_snapshot, registry=registry, registry_sha256=registry_sha256
+    )
     records: list[dict[str, object]] = []
     for dataset in sorted(registry.datasets, key=lambda item: item.dataset_id):
         evidence = evidence_by_dataset.get(dataset.dataset_id)
@@ -272,7 +311,9 @@ def build_artifact(
             raise ValueError(f"missing runtime evidence for {dataset.dataset_id}")
         entitlement, activation, contract_state, binding_blockers = _binding_state(dataset)
         seed_state, seed_blockers = _seed_state(dataset, evidence_by_dataset)
-        metadata = _api_metadata(api_snapshot, dataset.dataset_id)
+        metadata, envelope_blockers = _api_metadata(
+            api_snapshot, dataset.dataset_id, root_valid=root_valid
+        )
         (
             api_state,
             freshness,
@@ -294,9 +335,14 @@ def build_artifact(
             api_binding_complete=api_binding_complete,
             registry_drift=registry_drift,
         )
-        blocker_codes = set(binding_blockers) | set(seed_blockers) | set(api_blockers) | set(evidence.projection.reasons)
-        if registry_drift:
-            blocker_codes.add("registry_drift")
+        blocker_codes = (
+            set(binding_blockers)
+            | set(seed_blockers)
+            | set(root_blockers)
+            | set(envelope_blockers)
+            | set(api_blockers)
+            | set(evidence.projection.reasons)
+        )
         records.append(
             {
                 "dataset_id": dataset.dataset_id,
