@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 00:29 CST。
+最后更新：2026-08-02 01:47 CST。
 
 > **2026-08-01 Tradings 退役路径复核：** 旧 `/opt/investment/SharedSignals` 已从活跃路径
 > 移至 root-only `/opt/investment/_archive/SharedSignals-retired-active-path-20260801/`，
@@ -14,6 +14,23 @@
 > 生产 `current=908092d…` 未随源码入口迁移切换。
 
 ## 当前运行面
+
+- **8 月 2 日生产基线窄候选：** 为避免把最新 main 中尚未逐项正式验收的多批合同整体
+  推入生产，已从正式 `908092d…` 基线构建独立候选
+  `0ddfedb7167ec14819eb54a3c1e7eec43c4125fc`；其 runtime contract 与 registry
+  的语义差异精确只有 `cn.dataset.shibor`、`cn.dataset.shibor_quote` 和
+  `cn.dataset.tdx_daily`。两个 compiler 的仓外重建结果与 checked-in 产物逐字节一致，
+  294 项 runtime/registry/observation/schedule 回归通过，Ruff check 与 diff-check 通过；
+  当前 Ruff formatter 对三个既有文件仍会提出历史格式重排，本轮未夹带全文件机械重排。
+  Tradings 上的 129 文件 immutable release/manifest 验证通过；使用独立 SQLite、现有
+  generic batch collector 和临时 18084 完成真实 provider→receipt→catalog/query：
+  三项分别为 `1/17/616` 行、身份全非空唯一、页数 `1/1/2`、terminal cursor、双跑 rows
+  一致且 receipt/lineage 完整。因为读取发生在周末，`data_through=20260731` 已超过
+  86400 秒 SLA，三项均诚实为 `stale/degraded`；所以没有切换正式 18082。临时 18084
+  已停止、隔离 DB 已删除；root-only 非敏感证据保存在
+  `/opt/investment/release-evidence/tradingdatas/20260802T0142-reference-contracts-0ddfedb…/`。
+  正式 `current=908092d…`、18082 API、30 股 timer 均保持 active/enabled，候选分支
+  `origin/agent/production-reference-contracts-v1` 仅供下一个有效分区的 fresh 验收。
 
 - **8 月 2 日 `tdx_daily` 通用合同收口：** PR
   [#48](https://github.com/NicholasHan1226/TradingDatas/pull/48) 已普通合并，权威
