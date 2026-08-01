@@ -3691,3 +3691,80 @@ contracts:
     requested_fields: [date, bank, on_b, on_a, 1w_b, 1w_a, 2w_b, 2w_a, 1m_b, 1m_a, 3m_b, 3m_a, 6m_b, 6m_a, 9m_b, 9m_a, 1y_b, 1y_a]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Two bounded 20260731 reads returned the same 616-row identity set with all
+  # 38 declared fields, no null/duplicate identities, no partition drift, and
+  # no response-cap hit.  This remains an on-demand generic contract.
+  - dataset_id: cn.dataset.tdx_daily
+    aliases: [tushare.tdx_daily]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: tdx_daily
+    source_document_url: https://tushare.pro/wctapi/documents/378.md
+    source_document_sha256: ba10131f7c822b63d44d9d82d0fddface38487b729047bc813a6f3502f841835
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: open, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: high, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: low, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pre_close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: change, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pct_change, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: vol, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: rise, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: vol_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: turnover_rate, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: swing, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: up_num, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: down_num, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: limit_up_num, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: limit_down_num, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: lu_days, declared_source_type: int, logical_type: integer, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 3day, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 5day, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 10day, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 20day, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 60day, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: mtd, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ytd, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1year, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pe, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pb, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: float_mv, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: ab_total_mv, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: float_share, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: total_share, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: bm_buy_net, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: bm_buy_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: bm_net, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: bm_ratio, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [trade_date, ts_code]
+    default_projection: [ts_code, trade_date, close, open, high, low, pre_close, change, pct_change, vol, amount, rise, vol_ratio, turnover_rate, swing, up_num, down_num, limit_up_num, limit_down_num, lu_days, 3day, 5day, 10day, 20day, 60day, mtd, ytd, 1year, pe, pb, float_mv, ab_total_mv, float_share, total_share, bm_buy_net, bm_buy_ratio, bm_net, bm_ratio]
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {trade_date: '${window.trade_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [trade_date], formats: {trade_date: yyyymmdd}, range_start_key: trade_date, range_end_key: trade_date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: trade_date, request_partition_key: trade_date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [ts_code, trade_date, close, open, high, low, pre_close, change, pct_change, vol, amount, rise, vol_ratio, turnover_rate, swing, up_num, down_num, limit_up_num, limit_down_num, lu_days, 3day, 5day, 10day, 20day, 60day, mtd, ytd, 1year, pe, pb, float_mv, ab_total_mv, float_share, total_share, bm_buy_net, bm_buy_ratio, bm_net, bm_ratio]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
