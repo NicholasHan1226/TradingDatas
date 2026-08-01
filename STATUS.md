@@ -7,6 +7,10 @@
 > 8082 继续关闭且无 SharedSignals unit/process。95GB 历史数据与 Git/receipt 证据未销毁，
 > 不得成为 TradingDatas fallback。MarketGraph API/cron 已单独暂停；18082、18083 与
 > TradingDatas collector timers 保持运行，registry/catalog/query 合同未改变。
+> 旧源码入口 `/opt/investment/SharedSignalsV1Source` 也已在零 systemd/process/cron 引用
+> 后移入 root-only `/opt/investment/_archive/SharedSignalsV1Source-retired-20260801/`；新的
+> `/opt/investment/TradingDatasSource` 为 GitHub `main=051cc874…` 的干净源码入口。
+> 生产 `current=908092d…` 未随源码入口迁移切换。
 
 ## 当前运行面
 
