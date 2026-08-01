@@ -29344,7 +29344,7 @@ contracts:
   - name: date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -29404,7 +29404,8 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - date
   default_projection:
   - date
   - 'on'
@@ -29415,10 +29416,10 @@ contracts:
   - 6m
   - 9m
   - 1y
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: date
+  range_field: date
+  partition_field: date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -29444,8 +29445,22 @@ contracts:
     range_start_key: date
     range_end_key: date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: date
+    request_partition_key: date
+  requested_fields:
+  - date
+  - 'on'
+  - 1w
+  - 2w
+  - 1m
+  - 3m
+  - 6m
+  - 9m
+  - 1y
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -29575,14 +29590,14 @@ contracts:
   - name: date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: bank
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -29698,7 +29713,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - date
+  - bank
   default_projection:
   - date
   - bank
@@ -29718,10 +29735,10 @@ contracts:
   - 9m_a
   - 1y_b
   - 1y_a
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: date
+  range_field: date
+  partition_field: date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -29747,8 +29764,31 @@ contracts:
     range_start_key: date
     range_end_key: date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: date
+    request_partition_key: date
+  requested_fields:
+  - date
+  - bank
+  - on_b
+  - on_a
+  - 1w_b
+  - 1w_a
+  - 2w_b
+  - 2w_a
+  - 1m_b
+  - 1m_a
+  - 3m_b
+  - 3m_a
+  - 6m_b
+  - 6m_a
+  - 9m_b
+  - 9m_a
+  - 1y_b
+  - 1y_a
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

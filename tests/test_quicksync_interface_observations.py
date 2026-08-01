@@ -412,6 +412,24 @@ def test_numeric_repair_must_exist_in_current_contract() -> None:
         _compiled(observations)
 
 
+def test_numeric_repair_can_activate_only_after_declared_field_validation() -> None:
+    registry = _compiled()
+    bindings = _bindings(registry)
+
+    for api_name in ("shibor", "shibor_quote"):
+        binding = bindings[api_name]["provider_bindings"][0]  # type: ignore[index]
+        assert binding["entitlement_state"] == "active"
+        assert binding["activation_state"] == "active"
+
+
+def test_numeric_repair_without_explicit_evidence_remains_paused() -> None:
+    registry = _compiled()
+    binding = _bindings(registry)["shibor_lpr"]["provider_bindings"][0]  # type: ignore[index]
+
+    assert binding["entitlement_state"] == "active"
+    assert binding["activation_state"] == "paused"
+
+
 def test_structural_schema_field_cannot_be_removed() -> None:
     observations = _observations()
     classifications = observations["classifications"]

@@ -562,7 +562,17 @@ def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None
     )
 
     assert "1w" in {field["name"] for field in shibor["fields"]}
-    assert shibor["requested_fields"] == []
+    assert shibor["requested_fields"] == [
+        "date",
+        "on",
+        "1w",
+        "2w",
+        "1m",
+        "3m",
+        "6m",
+        "9m",
+        "1y",
+    ]
 
 
 def test_documented_input_type_tokens_and_unknown_requiredness_are_preserved() -> None:
