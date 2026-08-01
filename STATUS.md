@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 23:27 CST。
+最后更新：2026-08-02 00:29 CST。
 
 > **2026-08-01 Tradings 退役路径复核：** 旧 `/opt/investment/SharedSignals` 已从活跃路径
 > 移至 root-only `/opt/investment/_archive/SharedSignals-retired-active-path-20260801/`，
@@ -14,6 +14,33 @@
 > 生产 `current=908092d…` 未随源码入口迁移切换。
 
 ## 当前运行面
+
+- **8 月 2 日 `tdx_daily` 通用合同收口：** PR
+  [#48](https://github.com/NicholasHan1226/TradingDatas/pull/48) 已普通合并，权威
+  `main=e4589a3277d7d1c9128eb1454ec978e2324a1ad1`。变更只冻结 provider-native
+  38 字段、`[trade_date, ts_code]` identity、`trade_date` 单分区完整性和
+  `on_demand` cadence；没有新增 route、collector、table、timer 或交易语义。
+  隔离的 20260731 generic collector 写入 616 行 success receipt；基于 production
+  SQLite online backup 的候选 18085 由 UID987 双遍分页读回 `[500,116]`，616 个身份
+  全部非空唯一、terminal cursor、rows digest 重放一致，receipt 存在且 lineage complete。
+  当前是周末，86400 秒 SLA 将该旧分区诚实投影为 `stale/degraded/quality invalid`，因此
+  合同虽已入 main，但 production `current` 不切换，不能称为 formal ready。候选 release
+  `d832c3484cae5e2914924d3fab3d69ffb314277c` 的 132 文件 manifest、registry 物理重编译
+  均已验证；候选 18085 已关闭。仓外证据位于
+  `/opt/investment-data/tradingdatas/evidence/20260801T002149Z-tdx-daily-overlay/` 与
+  `/opt/investment/release-evidence/tradingagent/20260801T003000Z-tdx-daily-candidate/`。
+  同批 `stk_factor` 的 5528 行仅在窄字段探测成功，完整 35 字段请求失败，故保持
+  NO-GO，未混入 PR #48。
+
+- **8 月 1 日七项 completed-partition 通用 probe：** 使用服务器 service identity、
+  concurrency=1、零重试、零 SQLite 写入，对 20260731 依次验证：`shibor=1`、
+  `shibor_lpr=合法空`、`shibor_quote=17`、`stk_alert=合法空`、`stk_factor=5528`
+  （窄字段）、`stk_high_shock=合法空`、`tdx_daily=616`（窄字段），均未命中响应上限。
+  随后的完整字段审计只确认 `tdx_daily` 616 行覆盖全部 38 字段；`stk_factor` 因完整字段
+  请求失败而拒绝升级。权威 evidence root 为
+  `/opt/investment-data/tradingdatas/evidence/20260801T154829Z-completed-partition-probe/`；
+  早期 `identity-audit.json` 曾把 `mappingproxy` 误当 `dict` 而产生假空值，已由使用
+  `collections.abc.Mapping` 的 `identity-audit-v2.json` 明确取代，不得引用旧结论。
 
 - **8 月 1 日周末利率数据隔离验收：** 使用服务器 `tradingdatas` 身份、干净源码
   `main=5d054d09…`、现有 generic batch collector 和独立 SQLite root，对最近完成分区
@@ -105,14 +132,14 @@
   本轮未改动。
 - 正式 A 股 API：`tradingdatas-v1-internal.service` 为 active，固定只读接口仍是
   `GET /v1/catalog` 与 `POST /v1/query`（loopback `18082`）。
-- 正式 immutable `current`：`d5b2788208d55e9f7052783caf8447233cf01dfa`；18082 API
-  active，通用 provider-native timer 为 `enabled/active`。本次闭市切换仅将
-  `cn.dataset.moneyflow` 冻结为 `trade_date` 日分区、`[trade_date, ts_code]` identity、
-  `postclose_daily` 与单分区完整性合同；官方 source schema 仍为 v1，既有 QuickSync
-  response override 继续生成 runtime schema v2。没有修改分钟 collector、公共 API route 或
-  TradingAgent。target、直接回退点 `04fcf3a6af8cfe1c18b0420af11f4ccec6b21a86` 与 current
-  均已由 trusted manifest verifier
-  验证，目标 registry 也从冻结输入逐字节重编译。更早的回退链仍保留：
+- 正式 immutable `current`：`908092d47945948b473b958209acfd9c79bc9c80`；18082 API
+  active，通用 provider-native timer 为 `enabled/active`。908 相对直接回退点
+  `d5b2788208d55e9f7052783caf8447233cf01dfa` 只新增 catalog `identity_fields` 的通用
+  registry primary-key 投影，未改 registry、provider、SQLite、timer、公共 route 或
+  TradingAgent；二者均由 trusted manifest verifier 验证。`moneyflow` 的日分区、
+  `[trade_date, ts_code]` identity、`postclose_daily` 与单分区完整性合同来自 d5 基线，
+  不是 908 新增的数据合同。更早的回退链仍保留：
+  `04fcf3a6af8cfe1c18b0420af11f4ccec6b21a86`、
   `cb89620b7e20356a00c7ff3f06c357b401565113`、
   `0935b70aafca4f3bd269381aa2ee6bba8ac73f61`、`1f17708730172bc31fba3f849fa938da6e8a73fa`
   与经过验证的
