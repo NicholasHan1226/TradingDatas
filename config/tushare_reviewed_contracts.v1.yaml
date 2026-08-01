@@ -3588,3 +3588,106 @@ contracts:
       fixed_field_matches: {}
       reject_at_row_limit: true
     requested_fields: *id007
+  # Two repeatable, bounded 20260731 provider reads established non-empty,
+  # unique date identities without reaching the generic response cap.  These
+  # remain ordinary registry contracts: no source-specific collector, route,
+  # table, or schedule is introduced.
+  - dataset_id: cn.dataset.shibor
+    aliases: [tushare.shibor]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: shibor
+    source_document_url: https://tushare.pro/wctapi/documents/149.md
+    source_document_sha256: 5da20d91280755f887478ec44e8c05ca606b9b7b5cff26c00b96fb8d4b6a2ec1
+    schema_version: 1.0.0
+    fields:
+      - {name: date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: 'on', declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1w, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 2w, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1m, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 3m, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 6m, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 9m, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1y, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [date]
+    default_projection: [date, 'on', 1w, 2w, 1m, 3m, 6m, 9m, 1y]
+    as_of_field: date
+    as_of_format: yyyymmdd
+    range_field: date
+    partition_field: date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {date: '${window.date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [date], formats: {date: yyyymmdd}, range_start_key: date, range_end_key: date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: date, request_partition_key: date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [date, 'on', 1w, 2w, 1m, 3m, 6m, 9m, 1y]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
+  - dataset_id: cn.dataset.shibor_quote
+    aliases: [tushare.shibor_quote]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: shibor_quote
+    source_document_url: https://tushare.pro/wctapi/documents/150.md
+    source_document_sha256: e80d9cbe7826002e0296c0d9ca928f7d007dfa2d9af9b4090c879b47ed3e640d
+    schema_version: 1.0.0
+    fields:
+      - {name: date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: bank, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: on_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: on_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1w_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1w_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 2w_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 2w_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1m_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1m_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 3m_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 3m_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 6m_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 6m_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 9m_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 9m_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1y_b, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: 1y_a, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [date, bank]
+    default_projection: [date, bank, on_b, on_a, 1w_b, 1w_a, 2w_b, 2w_a, 1m_b, 1m_a, 3m_b, 3m_a, 6m_b, 6m_a, 9m_b, 9m_a, 1y_b, 1y_a]
+    as_of_field: date
+    as_of_format: yyyymmdd
+    range_field: date
+    partition_field: date
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template: {date: '${window.date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [date], formats: {date: yyyymmdd}, range_start_key: date, range_end_key: date, max_span_days: 1}
+    response_completeness: {strategy: single_partition_unique_primary_key, partition_field: date, request_partition_key: date, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [date, bank, on_b, on_a, 1w_b, 1w_a, 2w_b, 2w_a, 1m_b, 1m_a, 3m_b, 3m_a, 6m_b, 6m_a, 9m_b, 9m_a, 1y_b, 1y_a]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
