@@ -1,9 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 16:02 CST。
+最后更新：2026-08-01 16:20 CST。
 
 ## 当前运行面
 
+- **只读 onboarding 报告运行验收：** `main=93b8c23` 的报告代码已被构建为不切流的
+  immutable report-only release（131 个受 manifest 约束文件）；它没有成为 `current`。
+  报告运行时显式绑定正式 `d5b278…` 物理 registry 原始字节（SHA-256
+  `20f278e4…a6e082c7`）与同一 formal catalog version `v1-a057e9b7b5f1456d`，而没有
+  使用 93b 自带的较新 registry。以 `tradingagent` 身份串行抓取一次 catalog 和 99 个
+  query envelope（91 个读侧拒绝如实保留为未绑定），随后以 `tradingdatas` 身份只读打开
+  verified SQLite snapshot 生成 schema-v1 报告；没有 provider 调用、SQLite 写入、API/timer
+  或 current 切换。报告的 readiness 计数为 `contract_missing=65`、`stale=63`、
+  `observed_isolated_only=36`、`paused=21`、`locked=3`、`failed=2`，`formal_ready=0`、
+  `legal_empty=0`。这说明当前 snapshot 没有满足 receipt/time/provider/API 逐项绑定的正式
+  可消费项，不能将 HTTP 200 或 catalog 可见性误报为 ready。仓外、无 payload 的 report、
+  snapshot、acceptance summary 和 SHA-256 清单已保存为 release evidence；production
+  `d5b278…`、18082 API 与 30-symbol timer 均经 verifier/readback 保持不变。
 - 机器可读 onboarding 状态报告已正常合入 main/origin（`ad9dd31`）。它只读取 verified SQLite
   snapshot、registry 和可选的脱敏 formal API snapshot，
   不调用 provider、不写 DB、不触碰 18082、timer 或分钟运行面。报告把 `formal_ready` 与
