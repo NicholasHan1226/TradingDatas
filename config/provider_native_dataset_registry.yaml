@@ -33951,7 +33951,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_tdx_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -33988,8 +33988,51 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - close
+    - open
+    - high
+    - low
+    - pre_close
+    - change
+    - pct_change
+    - vol
+    - amount
+    - rise
+    - vol_ratio
+    - turnover_rate
+    - swing
+    - up_num
+    - down_num
+    - limit_up_num
+    - limit_down_num
+    - lu_days
+    - 3day
+    - 5day
+    - 10day
+    - 20day
+    - 60day
+    - mtd
+    - ytd
+    - 1year
+    - pe
+    - pb
+    - float_mv
+    - ab_total_mv
+    - float_share
+    - total_share
+    - bm_buy_net
+    - bm_buy_ratio
+    - bm_net
+    - bm_ratio
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -34003,13 +34046,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -34229,7 +34272,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -34269,10 +34314,10 @@ datasets:
   - bm_buy_ratio
   - bm_net
   - bm_ratio
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed

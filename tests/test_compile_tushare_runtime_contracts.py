@@ -575,6 +575,32 @@ def test_numeric_leading_provider_fields_are_preserved_in_query_schema() -> None
     ]
 
 
+def test_tdx_daily_review_binds_complete_single_day_identity() -> None:
+    compiled = compile_runtime_contract_bundle(
+        _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
+    )
+    contract = next(
+        item for item in compiled["contracts"] if item["api_name"] == "tdx_daily"
+    )
+
+    assert contract["primary_key"] == ["trade_date", "ts_code"]
+    assert contract["cadence_class"] == "on_demand"
+    assert contract["as_of_field"] == "trade_date"
+    assert contract["range_field"] == "trade_date"
+    assert contract["partition_field"] == "trade_date"
+    assert contract["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    assert len(contract["requested_fields"]) == 38
+    assert {"trade_date", "ts_code", "3day", "1year"}.issubset(
+        contract["requested_fields"]
+    )
+
+
 def test_documented_input_type_tokens_and_unknown_requiredness_are_preserved() -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
