@@ -746,12 +746,14 @@ def test_cli_writes_external_registry_and_preserves_release_files(
     assert completed.stdout == ""
     assert completed.stderr == ""
     loaded = load_dataset_registry(output)
+    active_evidence = _observations()["active_evidence"]
+    assert isinstance(active_evidence, dict)
     assert (
         sum(
             dataset.provider_bindings[0].activation_state == "active"
             for dataset in loaded.datasets
         )
-        == 101
+        == len(active_evidence)
     )
     # The checked-in target is already the current compiled registry.  The
     # external preactivation compile must be reproducible rather than mutate
