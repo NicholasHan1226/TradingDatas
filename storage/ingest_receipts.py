@@ -38,6 +38,7 @@ _ERROR_CODES = frozenset(
         "rate_limited",
         "resource_budget",
         "storage_failed",
+        "transport_error",
         "unmapped_dataset",
         "validation_failed",
     }
@@ -90,6 +91,16 @@ _WINDOWS_DRIVE_PATH_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])[A-Za-z]:(?=\S)", re.IGNORECASE
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
+_SAFE_PROVIDER_FAILURE_CODE = re.compile(r"-?(?:0|[1-9][0-9]{0,15})$")
+_PROVIDER_FAILURE_CLASSES = frozenset(
+    {
+        "permission_denied",
+        "provider_error",
+        "rate_limited",
+        "resource_budget",
+        "transport_error",
+    }
+)
 
 _FileIdentity = tuple[int, int, int]
 
@@ -434,6 +445,40 @@ class ProviderRequestIdentity:
 
 
 @dataclass(frozen=True)
+class ProviderFailureDiagnostic:
+    """The only safe provider failure detail eligible for a receipt.
+
+    Receipt diagnostics deliberately preserve a provider's numeric code and a
+    frozen, provider-neutral classification only.  They never carry a raw
+    message, response body, request parameter, URL, or credential-shaped text.
+    """
+
+    provider_code: int | str | None
+    provider_class: str
+
+    def __post_init__(self) -> None:
+        value = self.provider_code
+        if type(value) is int:
+            if value < -(10**15) or value > 10**15:
+                raise ValueError("provider failure code is outside the safe range")
+        elif type(value) is str:
+            if _SAFE_PROVIDER_FAILURE_CODE.fullmatch(value) is None:
+                raise ValueError("provider failure code is not safe")
+        elif value is not None:
+            raise TypeError("provider failure code must be an integer, string, or None")
+
+        provider_class = _require_text(self.provider_class, "provider failure class")
+        if provider_class not in _PROVIDER_FAILURE_CLASSES:
+            raise ValueError("provider failure class is not recognized")
+
+    def canonical_payload(self) -> dict[str, object]:
+        return {
+            "provider_class": self.provider_class,
+            "provider_code": self.provider_code,
+        }
+
+
+@dataclass(frozen=True)
 class IngestContext:
     attempt_id: str
     dataset_id: str
@@ -537,6 +582,7 @@ class ReceiptEvidence:
     request_identity: ProviderRequestIdentity
     target_table: str | None
     transaction_index: int
+    provider_failure: ProviderFailureDiagnostic | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -558,6 +604,15 @@ class ReceiptEvidence:
             raise ValueError("schema_version is not recognized")
         if not isinstance(self.request_identity, ProviderRequestIdentity):
             raise TypeError("request_identity must be ProviderRequestIdentity")
+        if self.provider_failure is not None and not isinstance(
+            self.provider_failure,
+            ProviderFailureDiagnostic,
+        ):
+            raise TypeError(
+                "provider_failure must be a ProviderFailureDiagnostic or None"
+            )
+        if self.provider_failure is not None and self.status != "failed":
+            raise ValueError("provider_failure requires failed receipt status")
         if self.target_table is not None and type(self.target_table) is not str:
             raise TypeError("target_table must be a string or None")
         _validated_target_table(self.target_table)
@@ -605,6 +660,15 @@ class ReceiptEvidence:
                 raise ValueError(
                     f"canonical_notes field {field_name} does not match evidence"
                 )
+        provider_failure = payload.get("provider_failure", missing)
+        if self.provider_failure is None:
+            if provider_failure is not missing:
+                raise ValueError("canonical_notes must not contain provider_failure")
+        elif (
+            type(provider_failure) is not dict
+            or provider_failure != self.provider_failure.canonical_payload()
+        ):
+            raise ValueError("canonical_notes provider_failure does not match evidence")
         count_payload = payload.get("counts")
         if type(count_payload) is not dict:
             raise ValueError("canonical_notes counts must be an object")
@@ -886,10 +950,11 @@ def _receipt_payload(
     status: str,
     counts: IngestCounts,
     errors: tuple[str, ...],
+    provider_failure: ProviderFailureDiagnostic | None,
     payload_fingerprint: str,
     finished_at: str,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "adapter_version": context.adapter_version,
         "attempt_id": context.attempt_id,
         "config_hash": context.config_hash,
@@ -912,6 +977,9 @@ def _receipt_payload(
         "target_table": target_table,
         "transaction_index": transaction_index,
     }
+    if provider_failure is not None:
+        payload["provider_failure"] = provider_failure.canonical_payload()
+    return payload
 
 
 def insert_ingest_receipt_with_evidence(
@@ -924,6 +992,7 @@ def insert_ingest_receipt_with_evidence(
     counts: IngestCounts,
     errors: Sequence[str],
     payload_fingerprint: str,
+    provider_failure: ProviderFailureDiagnostic | None = None,
 ) -> ReceiptEvidence:
     """Prebuild immutable evidence, then insert without owning the transaction."""
 
@@ -937,6 +1006,17 @@ def insert_ingest_receipt_with_evidence(
     normalized_status = _require_status(status)
     normalized_errors = _validated_errors(errors)
     _validate_status_errors(normalized_status, normalized_errors)
+    if provider_failure is not None and not isinstance(
+        provider_failure,
+        ProviderFailureDiagnostic,
+    ):
+        raise TypeError("provider_failure must be a ProviderFailureDiagnostic or None")
+    if provider_failure is not None and normalized_status != "failed":
+        raise ValueError("provider_failure requires failed receipt status")
+    if provider_failure is not None and normalized_errors != (
+        provider_failure.provider_class,
+    ):
+        raise ValueError("provider_failure must match the failed receipt error")
     if context.config_hash is None:
         if normalized_status != "failed":
             raise ValueError("config_hash is required for success and empty receipts")
@@ -958,6 +1038,7 @@ def insert_ingest_receipt_with_evidence(
         status=normalized_status,
         counts=counts,
         errors=normalized_errors,
+        provider_failure=provider_failure,
         payload_fingerprint=fingerprint,
         finished_at=finished_at,
     )
@@ -972,6 +1053,7 @@ def insert_ingest_receipt_with_evidence(
         canonical_notes=_canonical_json(payload).encode("utf-8"),
         schema_version=RECEIPT_SCHEMA_VERSION,
         request_identity=context.request_identity,
+        provider_failure=provider_failure,
         target_table=table,
         transaction_index=index,
     )
@@ -1033,6 +1115,7 @@ def insert_ingest_receipt(
     counts: IngestCounts,
     errors: Sequence[str],
     payload_fingerprint: str,
+    provider_failure: ProviderFailureDiagnostic | None = None,
 ) -> str:
     """Insert one receipt and return its canonical public identifier."""
 
@@ -1044,6 +1127,7 @@ def insert_ingest_receipt(
         status=status,
         counts=counts,
         errors=errors,
+        provider_failure=provider_failure,
         payload_fingerprint=payload_fingerprint,
     )
     return evidence.receipt_id
@@ -1055,6 +1139,7 @@ def write_terminal_receipt(
     context: IngestContext,
     status: str,
     errors: Sequence[str],
+    provider_failure: ProviderFailureDiagnostic | None = None,
 ) -> IngestResult:
     """Commit one ``empty`` or ``failed`` receipt-only transaction."""
 
@@ -1065,6 +1150,17 @@ def write_terminal_receipt(
         raise ValueError("terminal receipt status must be empty or failed")
     normalized_errors = _validated_errors(errors)
     _validate_status_errors(normalized_status, normalized_errors)
+    if provider_failure is not None and not isinstance(
+        provider_failure,
+        ProviderFailureDiagnostic,
+    ):
+        raise TypeError("provider_failure must be a ProviderFailureDiagnostic or None")
+    if provider_failure is not None and normalized_status != "failed":
+        raise ValueError("provider_failure requires failed receipt status")
+    if provider_failure is not None and normalized_errors != (
+        provider_failure.provider_class,
+    ):
+        raise ValueError("provider_failure must match the failed receipt error")
     counts = IngestCounts(
         returned=0,
         validated=0,
@@ -1103,6 +1199,7 @@ def write_terminal_receipt(
                 status=normalized_status,
                 counts=counts,
                 errors=normalized_errors,
+                provider_failure=provider_failure,
                 payload_fingerprint=empty_fingerprint,
             )
             receipt_id = evidence.receipt_id

@@ -2633,6 +2633,122 @@ def test_unexpected_provider_exception_cannot_leak_secret_material(
 
 
 @pytest.mark.parametrize(
+    ("provider_code", "error_code", "error_message", "expected_failure"),
+    [
+        (
+            -2001,
+            "permission_denied",
+            "permission denied",
+            {"provider_class": "permission_denied", "provider_code": -2001},
+        ),
+        (
+            None,
+            "transport_error",
+            "socket timed out",
+            {"provider_class": "transport_error", "provider_code": None},
+        ),
+        (
+            777,
+            "unexpected_provider_status",
+            "unrecognized provider condition",
+            {"provider_class": "provider_error", "provider_code": 777},
+        ),
+        (
+            40101,
+            "permission_denied",
+            "authorization: Bearer safe-test-only-secret",
+            {"provider_class": "provider_error", "provider_code": 40101},
+        ),
+    ],
+)
+def test_failed_provider_outcome_persists_only_safe_diagnostic_and_no_facts(
+    tmp_path: Path,
+    provider_code: int | None,
+    error_code: str,
+    error_message: str,
+    expected_failure: dict[str, object],
+) -> None:
+    db_path = tmp_path / "failed-provider-outcome.sqlite"
+    _database(db_path)
+    registry = _registry()
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=_FakeCollector(
+            ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=provider_code,
+                error_code=error_code,
+                error_message=error_message,
+            )
+        ),
+        dataset_id="cn.synthetic.runner",
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="failed-provider-diagnostic-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        notes = json.loads(
+            conn.execute("SELECT notes FROM market_ingest_runs").fetchone()[0]
+        )
+    assert result.status == "failed"
+    assert result.errors == (expected_failure["provider_class"],)
+    assert provider_fact_count(db_path) == 0
+    assert notes["provider_failure"] == expected_failure
+    rendered_notes = json.dumps(notes, sort_keys=True)
+    assert "safe-test-only-secret" not in rendered_notes
+    assert "error_message" not in rendered_notes
+    projection = load_dataset_runtime_projection(
+        db_path,
+        registry.resolve("cn.synthetic.runner"),
+        registry=registry,
+        now=datetime.now(timezone.utc),
+    )
+    assert projection.state == "failed"
+    assert projection.reasons == (expected_failure["provider_class"],)
+
+
+def test_success_provider_outcome_keeps_receipt_shape_without_failure_diagnostic(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "success-provider-outcome.sqlite"
+    _database(db_path)
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=_registry(),
+        collector=_FakeCollector(
+            ProviderCallOutcome(
+                state="success",
+                rows=(
+                    {
+                        "ts_code": "600000.SH",
+                        "trade_date": "20260717",
+                        "close": 12.5,
+                    },
+                ),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+            )
+        ),
+        dataset_id="cn.synthetic.runner",
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="success-provider-diagnostic-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        notes = json.loads(
+            conn.execute("SELECT notes FROM market_ingest_runs").fetchone()[0]
+        )
+    assert result.status == "success"
+    assert provider_fact_count(db_path) == 1
+    assert "provider_failure" not in notes
+
+
+@pytest.mark.parametrize(
     ("flag", "value"), [("--attempt-id", ""), ("--started-at", "")]
 )
 def test_explicit_empty_optional_identity_is_not_silently_replaced(

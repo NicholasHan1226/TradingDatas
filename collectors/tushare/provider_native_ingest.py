@@ -31,6 +31,7 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    ProviderFailureDiagnostic,
     ProviderRequestIdentity,
     make_provider_call_attempt_id,
     write_terminal_receipt,
@@ -67,6 +68,7 @@ _PROVIDER_ERROR_CODES = frozenset(
         "provider_error",
         "rate_limited",
         "resource_budget",
+        "transport_error",
     }
 )
 _RETRYABLE_PROVIDER_ERRORS = frozenset({"rate_limited"})
@@ -949,6 +951,23 @@ def _provider_error_code(outcome: ProviderCallOutcome) -> str:
     return "provider_error"
 
 
+def _provider_failure_diagnostic(
+    outcome: ProviderCallOutcome,
+) -> ProviderFailureDiagnostic:
+    """Project one failed generic transport outcome into safe receipt metadata."""
+
+    provider_code = outcome.provider_code
+    if type(provider_code) is not int and not (
+        type(provider_code) is str
+        and re.fullmatch(r"-?(?:0|[1-9][0-9]{0,15})", provider_code)
+    ):
+        provider_code = None
+    return ProviderFailureDiagnostic(
+        provider_code=provider_code,
+        provider_class=_provider_error_code(outcome),
+    )
+
+
 def _provider_call_context(
     *,
     dataset: DatasetDefinition,
@@ -1014,6 +1033,7 @@ def _persist_provider_call(
             context=call_context,
             status="failed",
             errors=(_provider_error_code(outcome),),
+            provider_failure=_provider_failure_diagnostic(outcome),
         )
     failure_context = _provider_call_context(
         dataset=dataset,
@@ -1143,6 +1163,11 @@ def _persist_failed_execution(
             context=context,
             status="failed",
             errors=(call_error,),
+            provider_failure=(
+                _provider_failure_diagnostic(call.outcome)
+                if call.outcome.state == "failed"
+                else None
+            ),
         )
         receipt_ids.extend(result.receipt_ids)
     return IngestResult(

@@ -13,6 +13,7 @@ from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
     IngestResult,
+    ProviderFailureDiagnostic,
     ProviderRequestIdentity,
     insert_ingest_receipt,
     make_receipt_id,
@@ -811,6 +812,67 @@ def test_terminal_receipt_commits_an_independent_receipt_only_transaction(
     assert notes["target_table"] is None
     assert notes["transaction_index"] == 0
     assert notes["errors"] == list(errors)
+    assert "provider_failure" not in notes
+
+
+def test_failed_terminal_receipt_persists_only_safe_provider_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: FINISHED_AT)
+    db_path = tmp_path / "failed-with-diagnostic.sqlite"
+    _file_db(db_path)
+
+    result = write_terminal_receipt(
+        db_path,
+        context=_context(attempt_id="terminal-provider-diagnostic-attempt"),
+        status="failed",
+        errors=("permission_denied",),
+        provider_failure=ProviderFailureDiagnostic(
+            provider_code=-2001,
+            provider_class="permission_denied",
+        ),
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT rows_read, rows_written, notes FROM market_ingest_runs"
+        ).fetchone()
+    assert result.status == "failed"
+    assert row[:2] == (0, 0)
+    assert json.loads(row[2])["provider_failure"] == {
+        "provider_class": "permission_denied",
+        "provider_code": -2001,
+    }
+
+
+def test_provider_failure_diagnostic_rejects_untrusted_code_or_class() -> None:
+    with pytest.raises(ValueError, match="safe|recognized"):
+        ProviderFailureDiagnostic(
+            provider_code="https://provider/error",
+            provider_class="provider_error",
+        )
+    with pytest.raises(ValueError, match="recognized"):
+        ProviderFailureDiagnostic(provider_code=500, provider_class="unknown")
+
+
+def test_terminal_provider_diagnostic_must_match_failed_error(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "mismatched-provider-diagnostic.sqlite"
+    _file_db(db_path)
+
+    with pytest.raises(ValueError, match="must match"):
+        write_terminal_receipt(
+            db_path,
+            context=_context(attempt_id="mismatched-provider-diagnostic-attempt"),
+            status="failed",
+            errors=("provider_error",),
+            provider_failure=ProviderFailureDiagnostic(
+                provider_code=None,
+                provider_class="transport_error",
+            ),
+        )
 
 
 def test_terminal_receipt_rejects_duplicate_without_replacing_first_row(

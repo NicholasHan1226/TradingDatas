@@ -26,6 +26,7 @@ from storage.ingest_receipts import (
     UNMAPPED_TUSHARE_ADAPTER_VERSION,
     IngestContext,
     IngestCounts,
+    ProviderFailureDiagnostic,
     ProviderRequestIdentity,
     make_unmapped_tushare_dataset_id,
     make_receipt_id,
@@ -77,6 +78,7 @@ _RECEIPT_PAYLOAD_KEYS = frozenset(
         "transaction_index",
     }
 )
+_OPTIONAL_RECEIPT_PAYLOAD_KEYS = frozenset({"provider_failure"})
 _RECEIPT_PAYLOAD_MARKERS = frozenset(
     {
         "adapter_version",
@@ -114,6 +116,7 @@ _ERROR_CODES = frozenset(
         "rate_limited",
         "resource_budget",
         "storage_failed",
+        "transport_error",
         "unmapped_dataset",
         "validation_failed",
     }
@@ -499,6 +502,34 @@ def _validate_errors(payload: Mapping[str, object], status: str) -> tuple[str, .
     return errors
 
 
+def _validate_provider_failure(
+    payload: Mapping[str, object],
+    *,
+    status: str,
+    errors: tuple[str, ...],
+) -> None:
+    """Validate optional, safe-only failure metadata without widening receipts."""
+
+    raw_failure = payload.get("provider_failure")
+    if raw_failure is None:
+        return
+    if status != "failed" or type(raw_failure) is not dict:
+        raise ValueError("receipt_provider_failure_invalid")
+    if set(raw_failure) != {"provider_code", "provider_class"}:
+        raise ValueError("receipt_provider_failure_invalid")
+    try:
+        failure = ProviderFailureDiagnostic(
+            provider_code=raw_failure["provider_code"],
+            provider_class=raw_failure["provider_class"],
+        )
+    except (TypeError, ValueError):
+        raise ValueError("receipt_provider_failure_invalid")
+    if raw_failure != failure.canonical_payload() or errors != (
+        failure.provider_class,
+    ):
+        raise ValueError("receipt_provider_failure_invalid")
+
+
 def _validate_request_identity(
     payload: Mapping[str, object],
 ) -> ProviderRequestIdentity:
@@ -830,7 +861,14 @@ def _validate_receipt_row(
             )
         return None
 
-    if set(payload) != _RECEIPT_PAYLOAD_KEYS or _canonical_json(payload) != notes:
+    if (
+        set(payload)
+        not in {
+            _RECEIPT_PAYLOAD_KEYS,
+            _RECEIPT_PAYLOAD_KEYS | _OPTIONAL_RECEIPT_PAYLOAD_KEYS,
+        }
+        or _canonical_json(payload) != notes
+    ):
         return _InvalidReceipt("receipt_payload_invalid", receipt_id, observed_at)
     if not _is_sha256(payload.get("payload_fingerprint")):
         return _InvalidReceipt("receipt_payload_invalid", receipt_id, observed_at)
@@ -900,6 +938,7 @@ def _validate_receipt_row(
         return _InvalidReceipt("receipt_envelope_mismatch", receipt_id, observed_at)
     try:
         errors = _validate_errors(payload, status)
+        _validate_provider_failure(payload, status=status, errors=errors)
     except ValueError as exc:
         return _InvalidReceipt(str(exc), receipt_id, observed_at)
 
