@@ -48,6 +48,17 @@ registry 声明 request template、variants、window、fanout、pagination、字
 
 同一 `dataset + provider + request_window` 的 request variants 是一个不可拆分的采集 cohort：一次 execution 必须覆盖 registry 中的 exact variant set，并让所有真实调用继续各自写入 `request_identity` receipt。任一 variant 缺失或真实失败时 cohort failed；至少一个 variant success 且其余合法 empty 时 cohort success；只有全部 variants empty 时才应用 dataset 的 `empty_data_policy`。scheduler 用显式 run root 派生每个 window 的 plan root，不以时间戳或随机 UUID 排序拼接独立 execution。
 
+### `cn.dataset.tdx_daily` provider profile
+
+`cn.dataset.tdx_daily` 是 Tushare `tdx_daily` 的 provider-native、按需读取合同：请求使用单个
+`trade_date=YYYYMMDD` 分区，默认投影固定为已复核的 38 个 provider 字段。其稳定 identity 为
+`[trade_date, ts_code]`，默认排序、筛选与分页均由 catalog 的通用 allowlist 和 limits 决定；
+消费者不得假设整表读取或自行拼接 cursor。每个请求分区必须以
+`single_partition_unique_primary_key` 完整性规则验证：主键非空、唯一、与请求日期一致且未触及
+行数上限，才可写入 success receipt。该合同的 `on_demand` cadence 表示不会被 timer 自动调度；
+`activation=active` 仅允许通用 collector 按显式有界请求执行，仍必须由实际 receipt、lineage 和
+读取时 freshness/quality 投影决定是否可消费。隔离验证或历史分区的成功不构成持续 fresh 保证。
+
 生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
 绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
 systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 `current` 即使在另一次
