@@ -1,8 +1,28 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 16:20 CST。
+最后更新：2026-08-01 16:40 CST。
 
 ## 当前运行面
+
+- **8 月 1 日隔离 probe 与周末运行快照：** 生产 `current` 仍为 `d5b278…`，formal
+  catalog 为 `v1-a057e9b7b5f1456d`，18082 API active、通用 collector timer
+  enabled/active；production registry 有 `101` 项 `active/active`、`69` 项
+  `paused/active`、`14` 项 `paused/locked`、`5` 项 `paused/excluded` 和 `1` 项
+  `paused/unknown`。以服务器 `tradingdatas` 服务身份、现役 immutable release 的同一通用
+  HTTPS probe 对 `trade_date=20260801` 的 `dc_concept_cons` 与 `fund_daily` 分别得到
+  provider `ok` 但 `valid_empty`（均 0 行）；二者仍不能证明非空 identity 或 response
+  completeness，保持 paused/NO-GO，未写 SQLite receipt、未改 registry、API、timer 或
+  current。`stk_nineturn` 已从该 YYYYMMDD 日频 wave 拆出；其权威请求值为
+  `YYYY-MM-DD HH:MM:SS`，独立、正确格式 probe 同样为 provider `ok`/`valid_empty`，没有
+  发出错误日期格式调用。三份无 payload evidence 的 SHA-256 分别为
+  `71a0eaf…577de2`、`d46b42d…2edf3d` 和 `97e8b73…a36ff`。
+- **分钟与跨市场读回口径：** 2026-08-01 是周六，当前 rt_min envelope 的
+  `stale/degraded` 是读时钟对 300 秒 SLA 的诚实投影，不得写成当日采集故障或实时可用。
+  最近交易日 2026-07-31 的 13:25、13:30、13:35、13:40 通过 UID987/formal 18082
+  精确读回均为 30 行、30 个唯一 `ts_code` 和单一 bar time；13:20 有 100 行，不能代替
+  冻结 30-symbol cohort。500 扩容仍 NO-GO。CNFutures 继续 NO-GO：`fut_basic` 当前
+  stale/degraded，`ft_mins` 与 `rt_fut_min` 未形成可消费 formal dataset；Crypto 18083
+  属于独立运行面，本轮没有触碰。
 
 - **只读 onboarding 报告运行验收：** `main=93b8c23` 的报告代码已被构建为不切流的
   immutable report-only release（131 个受 manifest 约束文件）；它没有成为 `current`。
