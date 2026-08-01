@@ -366,6 +366,7 @@ def _serialize_dataset(
         "filter_operators": filter_operators,
         "sortable_fields": [field.name for field in dataset.fields if field.sortable],
         "default_order": [f"{field_name}:asc" for field_name in dataset.primary_key],
+        "identity_fields": list(dataset.primary_key),
         "cadence": dataset.cadence_class,
         "timezone": dataset.timezone,
         "freshness_sla_seconds": dataset.freshness_sla_seconds,
