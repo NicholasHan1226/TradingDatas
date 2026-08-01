@@ -870,9 +870,15 @@ def _observation_index(
         api_name = _required_text(
             raw_api_name, "QuickSync observations.active_evidence key"
         )
-        if api_class.get(api_name) != "validated_contract_match":
+        # A numeric repair is eligible only after its repaired field names have
+        # already been checked against the declared contract below.  It is not
+        # equivalent to a schema subset: no field is dropped or inferred.
+        if api_class.get(api_name) not in {
+            "validated_contract_match",
+            "numeric_field_repaired",
+        }:
             raise ValueError(
-                "QuickSync active evidence requires validated_contract_match: "
+                "QuickSync active evidence requires a verified full-field contract: "
                 f"{api_name}"
             )
         active_evidence[api_name] = _safe_evidence_ref(

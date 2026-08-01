@@ -468,6 +468,8 @@ active_evidence:
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native
   research_report: server-evidence/20260722TQkgWsk-1def337-provider-native
   rt_min: mcp-evidence/20260727T161911Z-rt-min-5min-10-mainboard
+  shibor: server-evidence/20260801T-shibor-daily-reference-probe
+  shibor_quote: server-evidence/20260801T-shibor-daily-reference-probe
   sf_month: server-evidence/20260727T091112Z-periodic-window-probe-r2
   sge_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   share_float: server-evidence/20260722TQkgWsk-1def337-provider-native
@@ -489,6 +491,7 @@ active_evidence:
   suspend_d: server-evidence/20260722TQkgWsk-1def337-provider-native
   sw_daily: server-evidence/20260722T021932Z-815cbcf-sw2021-provider-native
   sz_daily_info: server-evidence/20260722TQkgWsk-1def337-provider-native
+  tdx_daily: server-evidence/20260801T154829Z-weekend-generic-probe
   tdx_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   tdx_member: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   ths_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
