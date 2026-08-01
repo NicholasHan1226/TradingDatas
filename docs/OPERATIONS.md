@@ -118,6 +118,12 @@ window 被明确放进该 manifest，才会采集。
 边界，并先完成 manifest plan readback；不得直接在 shell 绕过运行账号、临时创建第二个
 常驻 service，或启用 timer。
 
+## 只读 onboarding 与稀有分区审计
+
+`tools/report_dataset_onboarding_status.py` 只读取已验证的 SQLite 快照、runtime registry 与可选的脱敏 formal API snapshot；不得调用 provider、写数据库或触碰 API/timer。可选的 `config/readiness_partition_audit.v1.json` 预注册少量已经完成的精确分区，汇总 receipt、provider、行数、身份空值/重复、上限与 terminal-empty 事实。它不是采集 manifest，也不会激活、调度或提升数据集。
+
+普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、

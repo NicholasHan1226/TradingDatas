@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "partitions": [
+    {
+      "dataset_id": "cn.dataset.fund_div",
+      "purpose": "legal_empty_control",
+      "request_window": {"ann_date": "20260801"}
+    },
+    {
+      "dataset_id": "cn.dataset.fund_share",
+      "purpose": "nonempty_control",
+      "request_window": {"trade_date": "20260731"}
+    },
+    {
+      "dataset_id": "cn.dataset.limit_list_ths",
+      "purpose": "nonempty_control",
+      "request_window": {"trade_date": "20260731"}
+    },
+    {
+      "dataset_id": "cn.dataset.shibor",
+      "purpose": "rare_nonempty_control",
+      "request_window": {"date": "20260731"}
+    },
+    {
+      "dataset_id": "cn.dataset.shibor_quote",
+      "purpose": "rare_nonempty_control",
+      "request_window": {"date": "20260731"}
+    }
+  ]
+}
