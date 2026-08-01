@@ -2,6 +2,12 @@
 
 最后更新：2026-08-01 16:40 CST。
 
+> **2026-08-01 Tradings 退役路径复核：** 旧 `/opt/investment/SharedSignals` 已从活跃路径
+> 移至 root-only `/opt/investment/_archive/SharedSignals-retired-active-path-20260801/`，
+> 8082 继续关闭且无 SharedSignals unit/process。95GB 历史数据与 Git/receipt 证据未销毁，
+> 不得成为 TradingDatas fallback。MarketGraph API/cron 已单独暂停；18082、18083 与
+> TradingDatas collector timers 保持运行，registry/catalog/query 合同未改变。
+
 ## 当前运行面
 
 - **8 月 1 日隔离 probe 与周末运行快照：** 生产 `current` 仍为 `d5b278…`，formal
