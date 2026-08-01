@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 16:40 CST。
+最后更新：2026-08-01 23:27 CST。
 
 > **2026-08-01 Tradings 退役路径复核：** 旧 `/opt/investment/SharedSignals` 已从活跃路径
 > 移至 root-only `/opt/investment/_archive/SharedSignals-retired-active-path-20260801/`，
@@ -9,12 +9,28 @@
 > TradingDatas collector timers 保持运行，registry/catalog/query 合同未改变。
 > 旧源码入口 `/opt/investment/SharedSignalsV1Source` 也已在零 systemd/process/cron 引用
 > 后移入 root-only `/opt/investment/_archive/SharedSignalsV1Source-retired-20260801/`；新的
-> `/opt/investment/TradingDatasSource` 为 GitHub `main=051cc874…` 的干净源码入口。
+> `/opt/investment/TradingDatasSource` 为干净的 GitHub `main` 源码入口；本轮 code baseline
+> 为 `5d054d09…`，后续状态文档提交不改变运行代码。
 > 生产 `current=908092d…` 未随源码入口迁移切换。
 
 ## 当前运行面
 
-- **8 月 1 日隔离 probe 与周末运行快照：** 生产 `current` 仍为 `d5b278…`，formal
+- **8 月 1 日周末利率数据隔离验收：** 使用服务器 `tradingdatas` 身份、干净源码
+  `main=5d054d09…`、现有 generic batch collector 和独立 SQLite root，对最近完成分区
+  `date=20260731` 采集 `cn.dataset.shibor` 与 `cn.dataset.shibor_quote`。首次分别写入
+  `1/17` 行，主键 `[date]` 与 `[date, bank]` 均全量非空唯一；相同 batch 重放分别为
+  `1/17 unchanged`，没有重复事实。以 UID987 和既有只读凭据通过临时 loopback
+  `GET /v1/catalog` / `POST /v1/query` 双跑时，两项分别返回 `1/17` 行、terminal cursor、
+  same-observation replay 一致、receipt 存在且 lineage complete。由于读取发生在周六，
+  元数据按日级 SLA 如实为 `stale/degraded`，所以本轮只证明 provider→receipt→API 的
+  通用链路和幂等性，不把它们升级为 formal ready，也不切 production。首次临时 API 的
+  HTTP 503 已定位为隔离启动命令漏写 `read_model/` 的数据库路径，并非数据或合同失败；
+  正确路径复验通过，临时 18085 已关闭。root-only 证据位于
+  `/opt/investment/release-evidence/tradingdatas/20260801T152522Z-weekend-rate-5d054d0/`。
+  正式 `current=908092d…`、18082 API、production SQLite 和通用 timer 全程未改变。
+
+- **8 月 1 日隔离 probe 与周末运行快照：** 该轮 probe 开始时生产 `current` 为
+  `d5b278…`（之后仅 catalog `identity_fields` 投影发布到 `908092d…`），formal
   catalog 为 `v1-a057e9b7b5f1456d`，18082 API active、通用 collector timer
   enabled/active；production registry 有 `101` 项 `active/active`、`69` 项
   `paused/active`、`14` 项 `paused/locked`、`5` 项 `paused/excluded` 和 `1` 项
