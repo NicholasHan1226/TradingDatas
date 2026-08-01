@@ -68,6 +68,7 @@ ROW_KEYS = {
     "filter_operators",
     "sortable_fields",
     "default_order",
+    "identity_fields",
     "cadence",
     "timezone",
     "freshness_sla_seconds",
@@ -869,6 +870,7 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
     assert row["aliases"] == ["tushare.daily", "StraßeAlpha"]
     assert row["schema_major"] == 1
     assert row["default_fields"] == ["symbol", "value"]
+    assert row["identity_fields"] == ["symbol"]
     assert row["sortable_fields"] == ["symbol", "revision"]
     assert row["default_order"] == ["symbol:asc"]
     assert set(row["fields"][0]) == {
@@ -916,6 +918,43 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
         "raw receipt",
     ):
         assert forbidden not in wire
+
+
+def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable() -> None:
+    """Keep the public contract material aligned with TradingAgent's reader."""
+
+    row = {
+        "dataset_id": "cn.equity.daily",
+        "schema_major": 2,
+        "default_fields": ["ts_code", "trade_date", "close"],
+        "filter_operators": {
+            "trade_date": ["between", "eq"],
+            "ts_code": ["in", "eq"],
+        },
+        "default_order": ["ts_code:asc", "trade_date:asc"],
+        "limits": {"max_page_size": 500, "max_lookback_days": 36500},
+        "identity_fields": ["ts_code", "trade_date"],
+    }
+    material = {
+        **row,
+        "filter_operators": {
+            field: sorted(operators)
+            for field, operators in sorted(row["filter_operators"].items())
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            material,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert fingerprint == (
+        "2a64eade6402119d492ae339213af96865ad5125358ac45de576b5a71f1d9e07"
+    )
 
 
 def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
