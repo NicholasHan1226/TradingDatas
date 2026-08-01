@@ -1,9 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-01 05:57 CST。
+最后更新：2026-08-01 15:34 CST。
 
 ## 当前运行面
 
+- `cb_daily`、`dc_daily`、`dc_index`、`ft_limit`、`repo_daily`、`sge_daily` 与
+  `tdx_index` 的七项同形单日分区合同已正常合入 main/origin（`753587a`）。变更严格限于
+  六个 registry/config 及其生成物：不新增 route、collector、table、timer 或交易语义。
+  隔离的 `trade_date=20260731` 真实 QuickSync 预检分别得到
+  `308/1031/496/868/45/41/612` 行 success receipt；`[trade_date, ts_code]` 均非空、唯一且
+  未达到 10,000 行上限，`dc_index` 固定 `idx_type=行业板块`。独立 clean-overlay review
+  P0/P1=0，249 项编译、registry、request-observation、schedule 与 QuickSync 回归通过。
+  这仍只是候选/隔离证明：七项保持 `on_demand`，尚未切换 formal 18082/current；必须等待下一个
+  可用分区的正式 success receipt 和认证 API fresh readback，不能把 20260731 的旧分区写成
+  内部生产可消费数据。
 - `bak_basic`、`limit_list_d`、`ci_daily` 与 `ths_daily` 的四项同类单日分区合同已正常
   合入 main（PR #43，`ecf336b`）。修正后的候选只含 registry/config 及其生成物，不新增
   route、collector、table、timer 或交易语义。真实 QuickSync 隔离采集对
