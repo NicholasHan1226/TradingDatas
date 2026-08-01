@@ -920,7 +920,9 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
         assert forbidden not in wire
 
 
-def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable() -> None:
+def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable() -> (
+    None
+):
     """Keep the public contract material aligned with TradingAgent's reader."""
 
     row = {
@@ -1027,9 +1029,7 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
     aggregate_ids = [
         row["dataset_id"]
         for row in (
-            aggregate_first["data"]
-            + aggregate_second["data"]
-            + aggregate_third["data"]
+            aggregate_first["data"] + aggregate_second["data"] + aggregate_third["data"]
         )
     ]
     assert aggregate_ids == [
