@@ -4459,14 +4459,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -4561,7 +4561,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -4578,10 +4580,10 @@ contracts:
   - bond_over_rate
   - cb_value
   - cb_over_rate
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -4607,8 +4609,28 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - pre_close
+  - open
+  - high
+  - low
+  - close
+  - change
+  - pct_chg
+  - vol
+  - amount
+  - bond_value
+  - bond_over_rate
+  - cb_value
+  - cb_over_rate
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -9175,14 +9197,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -9256,7 +9278,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -9270,10 +9294,10 @@ contracts:
   - amount
   - swing
   - turnover_rate
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -9299,8 +9323,25 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - close
+  - open
+  - high
+  - low
+  - change
+  - pct_change
+  - vol
+  - amount
+  - swing
+  - turnover_rate
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -9346,14 +9387,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -9434,7 +9475,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -9449,10 +9492,10 @@ contracts:
   - down_num
   - idx_type
   - level
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -9479,8 +9522,26 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - name
+  - leading
+  - leading_code
+  - pct_change
+  - leading_pct
+  - total_mv
+  - turnover_rate
+  - up_num
+  - down_num
+  - idx_type
+  - level
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -13030,14 +13091,14 @@ contracts:
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -13083,7 +13144,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - trade_date
   - ts_code
@@ -13093,10 +13156,10 @@ contracts:
   - m_ratio
   - cont
   - exchange
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -13122,8 +13185,21 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ts_code
+  - name
+  - up_limit
+  - down_limit
+  - m_ratio
+  - cont
+  - exchange
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -26324,14 +26400,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -26405,7 +26481,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -26419,10 +26497,10 @@ contracts:
   - weight_r
   - amount
   - num
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -26448,8 +26526,25 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - repo_maturity
+  - pre_close
+  - open
+  - high
+  - low
+  - close
+  - weight
+  - weight_r
+  - amount
+  - num
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -28905,14 +29000,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -29000,7 +29095,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -29016,10 +29113,10 @@ contracts:
   - oi
   - settle_vol
   - settle_dire
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -29045,8 +29142,27 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - close
+  - open
+  - high
+  - low
+  - price_avg
+  - change
+  - pct_change
+  - vol
+  - amount
+  - oi
+  - settle_vol
+  - settle_dire
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -36166,14 +36282,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -36226,7 +36342,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -36237,10 +36355,10 @@ contracts:
   - float_share
   - total_mv
   - float_mv
-  as_of_field: null
-  range_field: null
-  partition_field: null
-  as_of_format: null
+  as_of_field: trade_date
+  range_field: trade_date
+  partition_field: trade_date
+  as_of_format: yyyymmdd
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -36266,8 +36384,22 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - name
+  - idx_type
+  - idx_count
+  - total_share
+  - float_share
+  - total_mv
+  - float_mv
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

@@ -83,7 +83,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: e8e5b9153d3befd528095a9eb2d7a3aca6c31177fe1adcbfe1fd6b6642957b8f
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: cb_factor_pro
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -192,18 +192,18 @@ entries:
 - api_name: dc_concept_cons
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
-  source_document_sha256: '087ea93f5535dcae2d1e8f135fc23c8028c129bafdf37aa7d7c91ce197816599'
+  source_document_sha256: 087ea93f5535dcae2d1e8f135fc23c8028c129bafdf37aa7d7c91ce197816599
   reason_code: doc_explicit_postclose_daily
 - api_name: dc_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 82cbb1d7e3395762c0b646750b36d29eda17eaf2a1e83f9fdf20cf1b7d2767c5
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: dc_index
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: ed98816f9c190aad075367be9e6affa50cd5609a43950aab28b99b1128c09304
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: dc_member
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -278,7 +278,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 3628ed88777bacc795ca812c0beabf7d7d68011b672de601222688f0bfa6ce9b
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: ft_mins
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -357,7 +357,7 @@ entries:
 - api_name: fut_mapping
   cadence_class: on_demand
   freshness_sla_seconds: 86400
-  source_document_sha256: '084495ddd4340fb4320c133717382d71ac8a4bc123a051d7799b028be236aed9'
+  source_document_sha256: 084495ddd4340fb4320c133717382d71ac8a4bc123a051d7799b028be236aed9
   reason_code: no_document_frequency_evidence
 - api_name: fut_settle
   cadence_class: on_demand
@@ -628,7 +628,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 9960bac40df42cceb4c7241d81eaed9b73dad16541b80a912eb8c252af926e97
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: report_rc
   cadence_class: postclose_daily
   freshness_sla_seconds: 86400
@@ -692,7 +692,7 @@ entries:
 - api_name: rt_min_daily
   cadence_class: session_minute
   freshness_sla_seconds: 300
-  source_document_sha256: '00059f93afb6de825c91f891edd3ac54c7e7d9b0bf6ec21a8baf0d311a4714d6'
+  source_document_sha256: 00059f93afb6de825c91f891edd3ac54c7e7d9b0bf6ec21a8baf0d311a4714d6
   reason_code: doc_explicit_session_minute
 - api_name: rt_sw_k
   cadence_class: on_demand
@@ -713,7 +713,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: e978faf8b69fbd0f353d734029617388232b0969744c31c5f9e1d60517f504bd
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: share_float
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -888,7 +888,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 4aeb7638b8cb73868aeaad2c6107dcb89a6c3165b7b2c2f60f1090681287a0a9
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: tdx_member
   cadence_class: on_demand
   freshness_sla_seconds: 86400

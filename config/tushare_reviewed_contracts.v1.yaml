@@ -2507,3 +2507,1084 @@ contracts:
     requested_fields: [ts_code, trade_date, close, open, high, low, pre_close, change, pct_chg, vol, amount]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # 2026-08-01 isolated provider preflight: bounded trade_date receipts verified
+  # non-null unique [trade_date, ts_code] identities below the generic attempt limit.
+  # This is a configuration-only generic data-plane candidate; no route or dataset code.
+  - dataset_id: cn.dataset.cb_daily
+    aliases:
+    - tushare.cb_daily
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: cb_daily
+    source_document_url: https://tushare.pro/wctapi/documents/187.md
+    source_document_sha256: e8e5b9153d3befd528095a9eb2d7a3aca6c31177fe1adcbfe1fd6b6642957b8f
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pre_close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: open
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: high
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: low
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pct_chg
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: vol
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: amount
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: bond_value
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: bond_over_rate
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: cb_value
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: cb_over_rate
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id001
+    - ts_code
+    - trade_date
+    - pre_close
+    - open
+    - high
+    - low
+    - close
+    - change
+    - pct_chg
+    - vol
+    - amount
+    - bond_value
+    - bond_over_rate
+    - cb_value
+    - cb_over_rate
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id001
+  - dataset_id: cn.dataset.dc_daily
+    aliases:
+    - tushare.dc_daily
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: dc_daily
+    source_document_url: https://tushare.pro/wctapi/documents/382.md
+    source_document_sha256: 82cbb1d7e3395762c0b646750b36d29eda17eaf2a1e83f9fdf20cf1b7d2767c5
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: open
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: high
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: low
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pct_change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: vol
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: amount
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: swing
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: turnover_rate
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id002
+    - ts_code
+    - trade_date
+    - close
+    - open
+    - high
+    - low
+    - change
+    - pct_change
+    - vol
+    - amount
+    - swing
+    - turnover_rate
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id002
+  - dataset_id: cn.dataset.dc_index
+    aliases:
+    - tushare.dc_index
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: dc_index
+    source_document_url: https://tushare.pro/wctapi/documents/362.md
+    source_document_sha256: ed98816f9c190aad075367be9e6affa50cd5609a43950aab28b99b1128c09304
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      idx_type: 行业板块
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: name
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: leading
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: leading_code
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pct_change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: leading_pct
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: total_mv
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: turnover_rate
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: up_num
+      declared_source_type: int
+      logical_type: integer
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: down_num
+      declared_source_type: int
+      logical_type: integer
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: idx_type
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: level
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id003
+    - ts_code
+    - trade_date
+    - name
+    - leading
+    - leading_code
+    - pct_change
+    - leading_pct
+    - total_mv
+    - turnover_rate
+    - up_num
+    - down_num
+    - idx_type
+    - level
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id003
+  - dataset_id: cn.dataset.ft_limit
+    aliases:
+    - tushare.ft_limit
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: ft_limit
+    source_document_url: https://tushare.pro/wctapi/documents/368.md
+    source_document_sha256: 3628ed88777bacc795ca812c0beabf7d7d68011b672de601222688f0bfa6ce9b
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: name
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: up_limit
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: down_limit
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: m_ratio
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: cont
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: exchange
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id004
+    - trade_date
+    - ts_code
+    - name
+    - up_limit
+    - down_limit
+    - m_ratio
+    - cont
+    - exchange
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id004
+  - dataset_id: cn.dataset.repo_daily
+    aliases:
+    - tushare.repo_daily
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: repo_daily
+    source_document_url: https://tushare.pro/wctapi/documents/256.md
+    source_document_sha256: 9960bac40df42cceb4c7241d81eaed9b73dad16541b80a912eb8c252af926e97
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: repo_maturity
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pre_close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: open
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: high
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: low
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: weight
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: weight_r
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: amount
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: num
+      declared_source_type: int
+      logical_type: integer
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id005
+    - ts_code
+    - trade_date
+    - repo_maturity
+    - pre_close
+    - open
+    - high
+    - low
+    - close
+    - weight
+    - weight_r
+    - amount
+    - num
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id005
+  - dataset_id: cn.dataset.sge_daily
+    aliases:
+    - tushare.sge_daily
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: sge_daily
+    source_document_url: https://tushare.pro/wctapi/documents/285.md
+    source_document_sha256: e978faf8b69fbd0f353d734029617388232b0969744c31c5f9e1d60517f504bd
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: close
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: open
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: high
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: low
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: price_avg
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: pct_change
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: vol
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: amount
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: oi
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: settle_vol
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: settle_dire
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id006
+    - ts_code
+    - trade_date
+    - close
+    - open
+    - high
+    - low
+    - price_avg
+    - change
+    - pct_change
+    - vol
+    - amount
+    - oi
+    - settle_vol
+    - settle_dire
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id006
+  - dataset_id: cn.dataset.tdx_index
+    aliases:
+    - tushare.tdx_index
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: tdx_index
+    source_document_url: https://tushare.pro/wctapi/documents/376.md
+    source_document_sha256: 4aeb7638b8cb73868aeaad2c6107dcb89a6c3165b7b2c2f60f1090681287a0a9
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: snapshot_or_date_range
+    request_template:
+      trade_date: ${window.trade_date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
+    schema_version: 1.0.0
+    fields:
+    - name: ts_code
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: trade_date
+      declared_source_type: str
+      logical_type: text
+      nullable: false
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: name
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: idx_type
+      declared_source_type: str
+      logical_type: text
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: idx_count
+      declared_source_type: int
+      logical_type: integer
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: total_share
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: float_share
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: total_mv
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    - name: float_mv
+      declared_source_type: float
+      logical_type: float
+      nullable: true
+      selectable: true
+      filterable: true
+      sortable: true
+    primary_key:
+    - trade_date
+    - ts_code
+    default_projection: &id007
+    - ts_code
+    - trade_date
+    - name
+    - idx_type
+    - idx_count
+    - total_share
+    - float_share
+    - total_mv
+    - float_mv
+    as_of_field: trade_date
+    as_of_format: yyyymmdd
+    range_field: trade_date
+    partition_field: trade_date
+    cadence_class: on_demand
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      partition_field: trade_date
+      request_partition_key: trade_date
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields: *id007
