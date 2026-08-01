@@ -1,6 +1,20 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 01:47 CST。
+最后更新：2026-08-02 04:07 CST。
+
+> **2026-08-02 `tdx_daily` 正式历史分区回读：** 生产代码基线
+> `main/origin=37742e09d62cc545369e77ee61d5ec04169a3466` 已构建并切为 immutable
+> `current=37742e09d62cc545369e77ee61d5ec04169a3466`；回退 release
+> `908092d47945948b473b958209acfd9c79bc9c80` 的 manifest 在精确清理其 manifest 外
+> Python 缓存后重新验证通过。一次 service-identity 的通用 `tdx_daily` 采集对
+> `trade_date=20260731` 得到 `returned=validated=committed=616`、一张 success receipt、
+> 无错误码。UID987 经正式 18082 对同一分区连续完成两次完整分页：各为两页、616 行、616 个
+> 非空唯一 `[trade_date, ts_code]`、terminal cursor，重放 identity digest 一致，且
+> receipt、完整 lineage、`data_through` 与 `observed_at` 均存在。该已完成历史日分区在
+> 周末读取时超过 86400 秒 freshness SLA，故 envelope 如实为
+> `stale/degraded/quality invalid`，唯一原因 `freshness_sla_exceeded`；这不是采集、
+> identity、receipt 或分页失败。18082 API 和既有 generic collector timer 均
+> `active/enabled`。TradingAgent 只能将本事实用作历史/观察证据，不得当作实时或执行证据。
 
 > **2026-08-01 Tradings 退役路径复核：** 旧 `/opt/investment/SharedSignals` 已从活跃路径
 > 移至 root-only `/opt/investment/_archive/SharedSignals-retired-active-path-20260801/`，
