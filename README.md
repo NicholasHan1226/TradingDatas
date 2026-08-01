@@ -136,6 +136,25 @@ git diff --check
 
 测试通过只证明当前候选。local main、GitHub、生产文件、生产 runtime、真实采集、内部 API readback 和消费者调用必须分别验证。
 
+## Onboarding 状态报告
+
+`tools/report_dataset_onboarding_status.py` 生成稳定排序、无敏感信息的机器可读状态报告，用于区分
+“已在 catalog 中”与“已经由正式 receipt/API 证明可消费”。它只读取已验证的 SQLite 快照和
+registry，绝不调用 provider 或写入数据库；可选的正式 catalog/query 响应快照也只作为受检输入，
+必须与 SQLite receipt、时间水位和 provider lineage 精确绑定，才能标记 `formal_ready`。
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/report_dataset_onboarding_status.py \
+  --db-path /trusted/read-only/provider_native.sqlite \
+  --now 2026-08-01T15:34:00+08:00 \
+  --api-snapshot /redacted/formal-api-snapshot.json \
+  --output /tmp/tradingdatas-onboarding-status.json
+```
+
+报告不会输出 token、SQLite 路径或 provider payload。没有正式 API 快照、或任何 `degraded`、receipt、
+时间/lineage 绑定不一致时，结果保持 `observed_isolated_only`，不能替代生产验收。
+
 外部账户、再分发、缓存和对外服务不属于当前开发计划；即使未来重新评估，也必须先完成独立的上游条款书面核验，不能由当前内部 API 或上游可调用性推导授权。
 
 ## 仓库
