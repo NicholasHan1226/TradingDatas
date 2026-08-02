@@ -113,10 +113,15 @@ facts + receipt transaction。manifest 不得含 token、provider API name、fie
 业务逻辑，也不进入仓库。`on_demand` 仍不会被 scheduler 自动计划：只有已验证的
 window 被明确放进该 manifest，才会采集。
 
-该 CLI 目前只是 release 内的通用执行能力，不构成已经上线的 production batch job。
-生产执行仍必须在 safe-release 中复用现有 `tradingdatas` systemd 身份、凭证加载和互斥
-边界，并先完成 manifest plan readback；不得直接在 shell 绕过运行账号、临时创建第二个
-常驻 service，或启用 timer。
+生产按需 batch 复用唯一的 `tradingdatas-provider-native-collect.service`，不创建第二个
+service 或 timer。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
+`tradingdatas` 账号拥有、`0600`、无链接且单链接的
+`/run/tradingdatas/on-demand-batch.json` 与 `/run/tradingdatas/on-demand.env`。后者只能
+逐字节指定该固定 batch 路径，不能含任何其它环境变量；手工启动同一 service 后，通用 dispatcher 先消费 selector，再以
+同一 `/run/tradingdatas/collect.lock` 串行执行 batch。无 selector 时 timer 保持原有 cadence
+planner 路径。无论成功、合法 empty、失败或 validation，batch 文件均在本轮结束时删除，
+避免下一次 timer 重放。batch 仍需先经过同 release 的 no-write plan，且不得含 token、
+provider API 名、字段或专用行为。
 
 ## 只读 onboarding 与稀有分区审计
 
