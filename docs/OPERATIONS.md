@@ -123,6 +123,10 @@ planner 路径。无论成功、合法 empty、失败或 validation，batch 文�
 避免下一次 timer 重放。batch 仍需先经过同 release 的 no-write plan，且不得含 token、
 provider API 名、字段或专用行为。
 
+按需 batch 的合法 empty 是当前窗口的有效采集事实，因此该 service 将 CLI 的 empty
+exit code `3` 与并发 busy code `75` 都视为完成；validation 与 provider failure 仍为失败，
+不会被该映射掩盖。
+
 ## 只读 onboarding 与稀有分区审计
 
 `tools/report_dataset_onboarding_status.py` 只读取已验证的 SQLite 快照、runtime registry 与可选的脱敏 formal API snapshot；不得调用 provider、写数据库或触碰 API/timer。可选的 `config/readiness_partition_audit.v1.json` 预注册少量已经完成的精确分区，汇总 receipt、provider、行数、身份空值/重复、上限与 terminal-empty 事实。它不是采集 manifest，也不会激活、调度或提升数据集。
