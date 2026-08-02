@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import inspect
 from pathlib import Path
 import subprocess
@@ -47,6 +48,98 @@ def _bundle() -> dict[str, object]:
 
 def _observations() -> dict[str, object]:
     return deepcopy(_read_yaml(OBSERVATIONS_PATH))
+
+
+def _partial_probe_evidence(
+    bundle: dict[str, object],
+    observations: dict[str, object],
+    *,
+    api_name: str,
+) -> dict[str, object]:
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    executable = sorted(
+        item["api_name"]
+        for item in contracts
+        if isinstance(item, dict) and item["probe_state"] == "executable"
+    )
+    api_names = sorted(
+        item["api_name"] for item in contracts if isinstance(item, dict)
+    )
+    transport_bytes = yaml.safe_dump(
+        observations,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=100,
+    ).encode("utf-8")
+    return {
+        "schema_version": "tradingdatas.quicksync.https_probe_evidence.v1",
+        "production_ready": False,
+        "raw_data_persisted": False,
+        "credential_persisted": False,
+        "request_values_persisted": False,
+        "commit": "a" * 40,
+        "request_plan_sha256": "b" * 64,
+        "official_contract_sha256": "c" * 64,
+        "transport_observations_sha256": hashlib.sha256(transport_bytes).hexdigest(),
+        "request_observations_sha256": "d" * 64,
+        "api_names_sha256": hashlib.sha256(
+            ("\n".join(api_names) + "\n").encode("utf-8")
+        ).hexdigest(),
+        "scheduled_partition": "20260731",
+        "run_clock": "2026-07-31T01:00:00+00:00",
+        "seed_authorities": [],
+        "scope": "executable",
+        "interface_count": 1,
+        "coverage": {
+            "planned": len(executable),
+            "executable": len(executable),
+            "blocked": 0,
+            "selected": 1,
+            "executed": 1,
+        },
+        "started_at": "2026-07-31T01:00:01+00:00",
+        "finished_at": "2026-07-31T01:00:02+00:00",
+        "retries": 0,
+        "concurrency": 1,
+        "rate_budget": {
+            "max_requests": 200,
+            "window_seconds": 60,
+            "authorizations": {
+                "authorized": 1,
+                "first_authorized_at_epoch": 1.0,
+                "last_authorized_at_epoch": 1.0,
+                "active_before_first": 0,
+                "active_after_last": 1,
+            },
+        },
+        "response_budget": {
+            "observed_bytes": 1,
+            "per_call_bytes": 1024,
+            "per_run_bytes": 1024,
+        },
+        "summary": {
+            "success": 0,
+            "valid_empty": 1,
+            "provider_failed_unclassified": 0,
+            "field_contract_mismatch": 0,
+        },
+        "transport": {"endpoint_host": "api.quicksync.cn", "scheme": "https"},
+        "results": [
+            {
+                "api_name": api_name,
+                "state": "valid_empty",
+                "provider_class": "ok",
+                "row_count": 0,
+                "response_bytes": 1,
+                "response_sha256": "e" * 64,
+                "response_redacted": False,
+                "fields": ["title"],
+                "elapsed_ms": 1.0,
+            }
+        ],
+    }
 
 
 def _trade_calendar(bundle: dict[str, object]) -> dict[str, object]:
@@ -444,6 +537,85 @@ def test_fresh_https_evidence_promotes_bounded_on_demand_local_event_window() ->
         if item["provider_bindings"][0]["api_name"] == "major_news"
     )
     assert paused_binding["activation_state"] == "paused"
+
+
+def test_partial_https_probe_promotes_only_the_verified_no_seed_event_candidate() -> None:
+    bundle = _bundle()
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    major_news = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["api_name"] == "major_news"
+    )
+    major_news["primary_key"] = ["src", "pub_time", "title"]
+    major_news["default_projection"] = ["src", "pub_time", "title"]
+    major_news["fanout"] = {
+        "strategy": "literal_values",
+        "parameter": "src",
+        "values": ["新浪财经"],
+        "batch_size": 1,
+    }
+    major_news["response_completeness"] = {
+        "strategy": "windowed_unique_primary_key",
+        "date_field": "pub_time",
+        "request_start_key": "start_date",
+        "request_end_key": "end_date",
+        "fanout_field": "src",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    major_news["requested_fields"] = ["src", "pub_time", "title"]
+    fields = major_news["fields"]
+    assert isinstance(fields, list)
+    for field in fields:
+        assert isinstance(field, dict)
+        if field["name"] in {"src", "pub_time", "title"}:
+            field["nullable"] = False
+
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=_partial_probe_evidence(
+            bundle, observations, api_name="major_news"
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        item["provider_bindings"][0]["api_name"]: item["provider_bindings"][0]
+        for item in registry["datasets"]
+    }
+
+    assert bindings["major_news"]["activation_state"] == "active"
+    assert bindings["daily"]["activation_state"] == "active"
+    assert bindings["news"]["activation_state"] == "paused"
+
+
+def test_partial_https_probe_rejects_redacted_or_seeded_candidate_evidence() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = _partial_probe_evidence(bundle, observations, api_name="major_news")
+    evidence["results"][0]["response_redacted"] = True  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="redacted"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+    seeded = _partial_probe_evidence(bundle, observations, api_name="major_news")
+    seeded["seed_authorities"] = [{}]
+
+    with pytest.raises(ValueError, match="may not resolve seed"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=seeded,
+            compilation_mode="preactivation_candidate",
+        )
 
 
 @pytest.mark.parametrize(

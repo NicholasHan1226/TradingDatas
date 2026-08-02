@@ -363,6 +363,49 @@ _ACTIVATION_EVIDENCE_ROOT_KEYS = frozenset(
         "results",
     }
 )
+_PARTIAL_PROBE_EVIDENCE_KEYS = frozenset(
+    {
+        "schema_version",
+        "production_ready",
+        "raw_data_persisted",
+        "credential_persisted",
+        "request_values_persisted",
+        "commit",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "transport_observations_sha256",
+        "request_observations_sha256",
+        "api_names_sha256",
+        "scheduled_partition",
+        "run_clock",
+        "seed_authorities",
+        "scope",
+        "interface_count",
+        "coverage",
+        "started_at",
+        "finished_at",
+        "retries",
+        "concurrency",
+        "rate_budget",
+        "response_budget",
+        "summary",
+        "transport",
+        "results",
+    }
+)
+_PARTIAL_PROBE_RESULT_KEYS = frozenset(
+    {
+        "api_name",
+        "state",
+        "provider_class",
+        "row_count",
+        "response_bytes",
+        "response_sha256",
+        "response_redacted",
+        "fields",
+        "elapsed_ms",
+    }
+)
 _ACTIVATION_EVIDENCE_KEYS = frozenset(
     {
         "schema_version",
@@ -948,6 +991,286 @@ def _observation_index(
             "response_contract_override": response_contract_overrides.get(api_name),
         }
     return result
+
+
+def _partial_probe_evidence_index(
+    document: Mapping[str, Any],
+    contracts: list[Mapping[str, Any]],
+    observations_document: Mapping[str, Any],
+    observations: Mapping[tuple[str, str], Mapping[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Project one bounded HTTPS probe into an immutable candidate registry.
+
+    This path is deliberately narrower than the historical full-gap evidence
+    wrapper: it accepts only a no-seed subset of already executable APIs and
+    never changes a formal compilation.  Existing active bindings remain
+    active; only fresh success or legal-empty results in the bounded subset may
+    add a candidate binding.
+    """
+
+    root = _mapping(deepcopy(document), "partial HTTPS probe evidence")
+    _reject_keys(root, _PARTIAL_PROBE_EVIDENCE_KEYS, "partial HTTPS probe evidence")
+    if (
+        _required_text(
+            root["schema_version"], "partial HTTPS probe evidence.schema_version"
+        )
+        != "tradingdatas.quicksync.https_probe_evidence.v1"
+    ):
+        raise ValueError("partial HTTPS probe evidence has unsupported schema")
+    for key in (
+        "production_ready",
+        "raw_data_persisted",
+        "credential_persisted",
+        "request_values_persisted",
+    ):
+        if _required_bool(root[key], f"partial HTTPS probe evidence.{key}"):
+            raise ValueError(f"partial HTTPS probe evidence.{key} must be false")
+    if _required_text(root["scope"], "partial HTTPS probe evidence.scope") != "executable":
+        raise ValueError("partial HTTPS probe evidence.scope must be executable")
+    if _required_non_negative_int(
+        root["retries"], "partial HTTPS probe evidence.retries"
+    ) != 0:
+        raise ValueError("partial HTTPS probe evidence retries must be zero")
+    if _required_positive_int(
+        root["concurrency"], "partial HTTPS probe evidence.concurrency"
+    ) != 1:
+        raise ValueError("partial HTTPS probe evidence concurrency must be one")
+    if root["seed_authorities"] != []:
+        raise ValueError("partial HTTPS probe evidence may not resolve seed bindings")
+
+    commit = _required_text(root["commit"], "partial HTTPS probe evidence.commit")
+    if _COMMIT_PATTERN.fullmatch(commit) is None:
+        raise ValueError("partial HTTPS probe evidence.commit must be a commit")
+    for key in (
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "request_observations_sha256",
+        "transport_observations_sha256",
+        "api_names_sha256",
+    ):
+        _required_sha256(root[key], f"partial HTTPS probe evidence.{key}")
+    _, run_at = _required_rfc3339(
+        root["run_clock"], "partial HTTPS probe evidence.run_clock"
+    )
+    started_at, started = _required_rfc3339(
+        root["started_at"], "partial HTTPS probe evidence.started_at"
+    )
+    finished_at, finished = _required_rfc3339(
+        root["finished_at"], "partial HTTPS probe evidence.finished_at"
+    )
+    if not run_at <= started <= finished:
+        raise ValueError("partial HTTPS probe evidence timestamps are not monotonic")
+    scheduled_partition = _required_text(
+        root["scheduled_partition"], "partial HTTPS probe evidence.scheduled_partition"
+    )
+    if (
+        re.fullmatch(r"[0-9]{8}", scheduled_partition) is None
+        or scheduled_partition != run_at.strftime("%Y%m%d")
+    ):
+        raise ValueError(
+            "partial HTTPS probe evidence scheduled_partition must match run_clock"
+        )
+
+    by_api = {contract["api_name"]: contract for contract in contracts}
+    expected_names = _api_names_sha256(set(by_api))
+    if root["api_names_sha256"] != expected_names:
+        raise ValueError("partial HTTPS probe evidence planned API set does not match")
+    stable_observations = yaml.safe_dump(
+        dict(observations_document),
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=100,
+    ).encode("utf-8")
+    if root["transport_observations_sha256"] != hashlib.sha256(
+        stable_observations
+    ).hexdigest():
+        raise ValueError("partial HTTPS probe evidence transport observations drifted")
+
+    executable_api_names = {
+        contract["api_name"] for contract in contracts if contract["probe_state"] == "executable"
+    }
+    coverage = _mapping(root["coverage"], "partial HTTPS probe evidence.coverage")
+    _reject_keys(coverage, _COVERAGE_KEYS, "partial HTTPS probe evidence.coverage")
+    coverage_counts = {
+        key: _required_non_negative_int(
+            coverage[key], f"partial HTTPS probe evidence.coverage.{key}"
+        )
+        for key in _COVERAGE_KEYS
+    }
+    interface_count = _required_positive_int(
+        root["interface_count"], "partial HTTPS probe evidence.interface_count"
+    )
+    if (
+        coverage_counts["planned"] != len(executable_api_names)
+        or coverage_counts["executable"] != len(executable_api_names)
+        or coverage_counts["blocked"] != 0
+        or coverage_counts["selected"] != interface_count
+        or coverage_counts["executed"] != interface_count
+    ):
+        raise ValueError("partial HTTPS probe evidence coverage is inconsistent")
+
+    rate_budget = _mapping(
+        root["rate_budget"], "partial HTTPS probe evidence.rate_budget"
+    )
+    _reject_keys(rate_budget, _RATE_BUDGET_KEYS, "partial HTTPS probe evidence.rate_budget")
+    max_requests = _required_positive_int(
+        rate_budget["max_requests"], "partial HTTPS probe evidence.rate_budget.max_requests"
+    )
+    _required_positive_int(
+        rate_budget["window_seconds"], "partial HTTPS probe evidence.rate_budget.window_seconds"
+    )
+    authorizations = _mapping(
+        rate_budget["authorizations"],
+        "partial HTTPS probe evidence.rate_budget.authorizations",
+    )
+    _reject_keys(
+        authorizations,
+        _AUTHORIZATION_KEYS,
+        "partial HTTPS probe evidence.rate_budget.authorizations",
+    )
+    if (
+        _required_non_negative_int(
+            authorizations["authorized"],
+            "partial HTTPS probe evidence.rate_budget.authorizations.authorized",
+        )
+        != interface_count
+        or _required_non_negative_int(
+            authorizations["active_before_first"],
+            "partial HTTPS probe evidence.rate_budget.authorizations.active_before_first",
+        )
+        > max_requests
+        or _required_non_negative_int(
+            authorizations["active_after_last"],
+            "partial HTTPS probe evidence.rate_budget.authorizations.active_after_last",
+        )
+        > max_requests
+    ):
+        raise ValueError("partial HTTPS probe evidence rate budget is inconsistent")
+    first_authorized = _required_finite_number(
+        authorizations["first_authorized_at_epoch"],
+        "partial HTTPS probe evidence.rate_budget.authorizations.first_authorized_at_epoch",
+    )
+    last_authorized = _required_finite_number(
+        authorizations["last_authorized_at_epoch"],
+        "partial HTTPS probe evidence.rate_budget.authorizations.last_authorized_at_epoch",
+    )
+    if first_authorized > last_authorized:
+        raise ValueError("partial HTTPS probe evidence authorization order is invalid")
+
+    transport = _mapping(root["transport"], "partial HTTPS probe evidence.transport")
+    _reject_keys(transport, _TRANSPORT_KEYS, "partial HTTPS probe evidence.transport")
+    if (
+        _required_text(transport["scheme"], "partial HTTPS probe evidence.transport.scheme")
+        != "https"
+        or _required_text(
+            transport["endpoint_host"], "partial HTTPS probe evidence.transport.endpoint_host"
+        )
+        != "api.quicksync.cn"
+    ):
+        raise ValueError("partial HTTPS probe evidence transport is not QuickSync HTTPS")
+
+    raw_results = _sequence(root["results"], "partial HTTPS probe evidence.results")
+    if len(raw_results) != interface_count:
+        raise ValueError("partial HTTPS probe evidence result count is inconsistent")
+    result_by_api: dict[str, dict[str, Any]] = {}
+    state_counts = {state: 0 for state in _PROBE_RESULT_STATES}
+    response_bytes_total = 0
+    for index, raw_result in enumerate(raw_results):
+        label = f"partial HTTPS probe evidence.results[{index}]"
+        result = _mapping(raw_result, label)
+        _reject_keys(result, _PARTIAL_PROBE_RESULT_KEYS, label)
+        api_name = _required_text(result["api_name"], f"{label}.api_name")
+        if api_name not in executable_api_names or api_name in result_by_api:
+            raise ValueError(f"{label}.api_name is not an executable unique API")
+        state = _required_text(result["state"], f"{label}.state")
+        if state not in _PROBE_RESULT_STATES:
+            raise ValueError(f"{label}.state is unsupported")
+        if _required_bool(result["response_redacted"], f"{label}.response_redacted"):
+            raise ValueError(f"{label} is redacted and cannot activate a candidate")
+        response_bytes = _required_non_negative_int(
+            result["response_bytes"], f"{label}.response_bytes"
+        )
+        _required_sha256(result["response_sha256"], f"{label}.response_sha256")
+        elapsed_ms = _required_finite_number(result["elapsed_ms"], f"{label}.elapsed_ms")
+        if elapsed_ms < 0:
+            raise ValueError(f"{label}.elapsed_ms must be non-negative")
+        result_by_api[api_name] = {
+            "state": state,
+            "row_count": _required_non_negative_int(result["row_count"], f"{label}.row_count"),
+            "fields": _string_list(result["fields"], f"{label}.fields", allow_empty=True),
+            "response_bytes": response_bytes,
+            "provider_class": _required_text(
+                result["provider_class"], f"{label}.provider_class"
+            ),
+        }
+        state_counts[state] += 1
+        response_bytes_total += response_bytes
+    if list(result_by_api) != sorted(result_by_api):
+        raise ValueError("partial HTTPS probe evidence results must be sorted")
+
+    summary = _mapping(root["summary"], "partial HTTPS probe evidence.summary")
+    _reject_keys(summary, _PROBE_SUMMARY_KEYS, "partial HTTPS probe evidence.summary")
+    if {
+        state: _required_non_negative_int(
+            summary[state], f"partial HTTPS probe evidence.summary.{state}"
+        )
+        for state in _PROBE_SUMMARY_KEYS
+    } != state_counts:
+        raise ValueError("partial HTTPS probe evidence summary is inconsistent")
+    response_budget = _mapping(
+        root["response_budget"], "partial HTTPS probe evidence.response_budget"
+    )
+    _reject_keys(
+        response_budget,
+        _RESPONSE_BUDGET_KEYS,
+        "partial HTTPS probe evidence.response_budget",
+    )
+    if (
+        _required_non_negative_int(
+            response_budget["observed_bytes"],
+            "partial HTTPS probe evidence.response_budget.observed_bytes",
+        )
+        != response_bytes_total
+        or _required_positive_int(
+            response_budget["per_call_bytes"],
+            "partial HTTPS probe evidence.response_budget.per_call_bytes",
+        )
+        < max((item["response_bytes"] for item in result_by_api.values()), default=0)
+        or _required_positive_int(
+            response_budget["per_run_bytes"],
+            "partial HTTPS probe evidence.response_budget.per_run_bytes",
+        )
+        < response_bytes_total
+    ):
+        raise ValueError("partial HTTPS probe evidence response budget is inconsistent")
+
+    projected: dict[tuple[str, str], dict[str, Any]] = {}
+    for contract in contracts:
+        api_name = contract["api_name"]
+        key = (contract["dataset_id"], contract["provider"])
+        baseline = observations[key]
+        result = result_by_api.get(api_name)
+        can_activate = (
+            result is not None
+            and result["state"] in _FRESH_ACTIVATION_STATES
+            and contract["ingest_contract_state"] == "ready"
+            and contract["fanout"]["strategy"] != "dataset_field"
+            and _activation_window_is_supported(contract)
+        )
+        active = baseline["activation_state"] == "active" or can_activate
+        projected[key] = {
+            **baseline,
+            "entitlement_state": "active" if active else baseline["entitlement_state"],
+            "activation_state": "active" if active else "paused",
+            "effective_probe_state": contract["probe_state"],
+            "effective_probe_block_reasons": list(contract["probe_block_reasons"]),
+            "effective_ingest_contract_state": contract["ingest_contract_state"],
+            "effective_ingest_contract_block_reasons": list(
+                contract["ingest_contract_block_reasons"]
+            ),
+        }
+    return projected
 
 
 def _activation_evidence_index(
@@ -2660,16 +2983,26 @@ def compile_provider_native_registry(
             f"{missing_input_contracts[0]}"
         )
     observations = _observation_index(observations_document, bundle["contracts"])
-    activation_evidence = (
-        _activation_evidence_index(
-            activation_evidence_document,
-            bundle["contracts"],
-            observations_document,
-            observations,
+    activation_evidence = {}
+    if compilation_mode == PREACTIVATION_COMPILATION_MODE:
+        assert activation_evidence_document is not None
+        raw_evidence = _mapping(
+            activation_evidence_document, "HTTPS activation evidence"
         )
-        if compilation_mode == PREACTIVATION_COMPILATION_MODE
-        else {}
-    )
+        if raw_evidence.get("schema_version") == "tradingdatas.quicksync.https_probe_evidence.v1":
+            activation_evidence = _partial_probe_evidence_index(
+                raw_evidence,
+                bundle["contracts"],
+                observations_document,
+                observations,
+            )
+        else:
+            activation_evidence = _activation_evidence_index(
+                raw_evidence,
+                bundle["contracts"],
+                observations_document,
+                observations,
+            )
     activation_index = (
         activation_evidence
         if compilation_mode == PREACTIVATION_COMPILATION_MODE
