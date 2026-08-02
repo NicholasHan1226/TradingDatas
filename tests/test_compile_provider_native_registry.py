@@ -446,6 +446,61 @@ def test_fresh_https_evidence_promotes_bounded_on_demand_local_event_window() ->
     assert paused_binding["activation_state"] == "paused"
 
 
+def test_partial_https_evidence_promotes_only_its_verified_cohort() -> None:
+    """A bounded probe cannot claim activation for unexecuted interfaces."""
+
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="major_news",
+            cohort_api_names={"major_news"},
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    assert bindings["major_news"]["activation_state"] == "active"
+    assert all(
+        bindings[api_name]["activation_state"] == "active"
+        for api_name in active_evidence
+    )
+    assert bindings["cb_basic"]["activation_state"] == "paused"
+
+
+def test_partial_https_evidence_rejects_executable_coverage_drift() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_activation_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+        cohort_api_names={"major_news"},
+    )
+    payload = evidence["evidence"]
+    assert isinstance(payload, dict)
+    coverage = payload["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["executable"] = int(coverage["executable"]) - 1
+    coverage["blocked"] = int(coverage["blocked"]) + 1
+
+    with pytest.raises(ValueError, match="executable coverage drifted"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
 @pytest.mark.parametrize(
     "api_name",
     ("cb_factor_pro", "fund_factor_pro", "idx_factor_pro"),

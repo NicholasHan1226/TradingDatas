@@ -303,6 +303,8 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    SHA-256，使用 `--start-index` 与 `--max-interfaces` 生成连续、不重叠的受控批次；每份
    evidence 都会保留完整 scope 的 `planned/executable` 数及该批的 `selected/executed` 数，
    不能把一个批次的成功写成全体接口成功。
+   当 `selected < executable` 时，该 evidence 只能提升其 `results` 中实际成功、且已具备
+   ingestion contract 的接口 cohort；它必须保留既有 active 集合，且绝不能提升未执行接口。
 
    若上游失败响应被 transport 判定为含敏感回显，probe 只可把它记录为失败，使用
    `response_redacted=true` 与 `response_sha256=null`；不会保存响应正文或降级为成功。

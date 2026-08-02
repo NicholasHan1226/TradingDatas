@@ -63,6 +63,7 @@ def build_synthetic_activation_evidence(
     observations_document: Mapping[str, object],
     *,
     promoted_api_name: str = "adj_factor",
+    cohort_api_names: set[str] | None = None,
 ) -> dict[str, object]:
     contracts = contracts_document["contracts"]
     active_evidence = observations_document["active_evidence"]
@@ -75,6 +76,13 @@ def build_synthetic_activation_evidence(
         for api_name, contract in by_api.items()
         if contract["probe_state"] == "executable"
     }
+    if cohort_api_names is not None and (
+        not cohort_api_names or not cohort_api_names < executable_api_names
+    ):
+        raise ValueError("synthetic activation cohort must be executable strict subset")
+    evidenced_api_names = (
+        executable_api_names if cohort_api_names is None else cohort_api_names
+    )
     ingest_ready_api_names = {
         api_name
         for api_name in executable_api_names
@@ -90,7 +98,7 @@ def build_synthetic_activation_evidence(
         "provider_failed_unclassified": 0,
         "field_contract_mismatch": 0,
     }
-    for api_name in sorted(executable_api_names):
+    for api_name in sorted(evidenced_api_names):
         state = "success" if api_name in fresh_api_names else "provider_failed_unclassified"
         source_result: dict[str, object] = {
             "api_name": api_name,
@@ -110,8 +118,8 @@ def build_synthetic_activation_evidence(
         )
         summary[state] += 1
 
-    candidate_api_names = fresh_api_names & ingest_ready_api_names
-    active_api_names = {
+    candidate_api_names = fresh_api_names & ingest_ready_api_names & evidenced_api_names
+    active_api_names = set(active_evidence) | {
         api_name
         for api_name in candidate_api_names
         if _activation_window_is_supported(by_api[api_name])
@@ -137,7 +145,7 @@ def build_synthetic_activation_evidence(
             transport_observations
         ).hexdigest(),
         "planned_api_names_sha256": _api_names_sha256(planned_api_names),
-        "executed_api_names_sha256": _api_names_sha256(executable_api_names),
+        "executed_api_names_sha256": _api_names_sha256(evidenced_api_names),
         "results_sha256": _canonical_json_sha256(
             [{key: value for key, value in result.items() if key != "result_sha256"} for result in results]
         ),
@@ -146,12 +154,12 @@ def build_synthetic_activation_evidence(
         "run_clock": "2000-01-01T00:00:00+00:00",
         "scheduled_partition": "20000101",
         "scope": "gaps",
-        "interface_count": len(executable_api_names),
+        "interface_count": len(evidenced_api_names),
         "coverage": {
             "planned": len(planned_api_names),
             "executable": len(executable_api_names),
-            "selected": len(executable_api_names),
-            "executed": len(executable_api_names),
+            "selected": len(evidenced_api_names),
+            "executed": len(evidenced_api_names),
             "blocked": len(planned_api_names - executable_api_names),
         },
         "summary": summary,
@@ -161,20 +169,20 @@ def build_synthetic_activation_evidence(
         },
         "concurrency": 1,
         "rate_budget": {
-            "max_requests": len(executable_api_names) + 1,
+            "max_requests": len(evidenced_api_names) + 1,
             "window_seconds": 60,
             "authorizations": {
                 "active_before_first": 0,
                 "active_after_last": 0,
-                "authorized": len(executable_api_names),
+                "authorized": len(evidenced_api_names),
                 "first_authorized_at_epoch": 1,
                 "last_authorized_at_epoch": 2,
             },
         },
         "response_budget": {
-            "observed_bytes": len(executable_api_names),
+            "observed_bytes": len(evidenced_api_names),
             "per_call_bytes": 16,
-            "per_run_bytes": len(executable_api_names) + 16,
+            "per_run_bytes": len(evidenced_api_names) + 16,
         },
         "retries": 0,
         "production_ready": False,
@@ -205,9 +213,9 @@ def build_synthetic_activation_evidence(
         "evidence": evidence,
         "seed_authorities": [],
         "plan_projection": {
-            "ingest_ready_count": len(ingest_ready_api_names),
+            "ingest_ready_count": len(ingest_ready_api_names & evidenced_api_names),
             "ingest_ready_api_names_sha256": _api_names_sha256(
-                ingest_ready_api_names
+                ingest_ready_api_names & evidenced_api_names
             ),
         },
         "activation_projection": {
