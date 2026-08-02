@@ -58,6 +58,14 @@ terminal page with unique bar identities and `ready/success/fresh/valid`,
 for the frozen cohort only; it does not authorize orders, accounts, or a
 runtime expansion beyond the versioned universe contract.
 
+The same production SQLite read model already contains at least the frozen
+180-day historical horizon for every bar dataset. On that date each had 52,957
+unique 5m identities from 2026-01-30 through the current bar, and a bounded
+historical formal query for 2026-02-03 returned terminal, receipt-bound,
+complete-lineage data for all ten. Do not rerun the frozen backfill merely to
+recreate this coverage: it is research/observation data, never proof of
+historical availability or real-time freshness.
+
 An explicit query `as_of` also bounds receipt authority: bar rows and envelope
 metadata can use only complete success receipts whose collection interval is at
 or before the requested cutoff and whose data watermark is at or before the

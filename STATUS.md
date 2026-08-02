@@ -1,6 +1,19 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 12:22 CST。
+最后更新：2026-08-02 12:40 CST。
+
+> **2026-08-02 Crypto historical-coverage verification:** The frozen
+> ten-symbol 5m cohort already has 52,957 non-duplicate, continuous bar
+> identities per symbol from 2026-01-30 through 2026-08-02 04:35 UTC. A
+> bounded, authenticated formal 18083 query over 2026-02-03 returned 12/12
+> unique bars for each symbol, terminal pagination, non-degraded
+> `ready/success/valid` metadata and complete receipt/lineage. The approved
+> 180-day backfill is therefore already satisfied; it is historical
+> observation/research coverage, not historical PIT or live-execution proof.
+> A redundant manual re-run was stopped after its shared collector lock caused
+> the 12:35 live cycle to fail closed. No facts were overwritten; the 12:40
+> timer cycle automatically recovered with a complete ten-symbol current
+> receipt. Do not repeat the full backfill while the live collector is active.
 
 > **2026-08-02 Crypto 10-symbol continuous readback:** Crypto remains a
 > separate internal runtime on formal 18083, with its own release, SQLite,
