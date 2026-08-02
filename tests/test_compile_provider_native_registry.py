@@ -1085,6 +1085,7 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         "snapshot_or_date_range",
         "entity_fanout",
         "event_or_intraday_window",
+        "dimension_fanout",
     }
     assert request_shapes.issubset(
         {
