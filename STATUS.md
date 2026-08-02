@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 18:59 CST。
+最后更新：2026-08-02 19:06 CST。
 
 > **2026-08-02 `research_report` nullable-author 合同修正已发布：** 不可变
 > production `current` 为发布代码
@@ -12,12 +12,15 @@
 > registry 由其物理 release 重编译后与 checked-in registry 一致；随后在短暂受控窗口内原子
 > 切换并恢复 18082 API 与既有 generic collector timer。
 >
-> UID987 的正式 18082 读回为 catalog HTTP 200、190 datasets、
-> `catalog_version=v1-e23dc83446ca082f`；该 dataset 公开
-> `schema_major=2` 与 `identity_fields=[trade_date,title,url]`。v2 尚未有正式采集 receipt，
-> 所以查询如实返回 0 行、`unobserved/degraded`、`no_recognized_receipt`，并没有把旧 v1 的
-> 已降级事实投影为 v2 成功。下一步只能在有效分区执行一次现有 generic collection，再以
-> receipt/lineage 完整的 formal 18082 readback 判断是否可用；在此之前它不构成实时、PIT、
+> 随后以现有唯一 generic collector 对 `trade_date=20260731` 做一次受控 on-demand
+> collection，得到 `returned=validated=committed=66` 和一张 success receipt；没有重试、
+> 专用 collector 或新增 timer。UID987 的正式 18082 两次同请求读回均为 HTTP 200、66 个
+> 非空唯一 `[trade_date,title,url]`、terminal cursor、相同 identity digest，且 receipt、
+> lineage、`data_through` 与 `observed_at` 完整。catalog 为 190 datasets、
+> `catalog_version=v1-e23dc83446ca082f`，该 dataset 公开 `schema_major=2` 与
+> `identity_fields=[trade_date,title,url]`。因为该历史分区在周末已超过 86400 秒 SLA，两个
+> envelope 都如实为 `stale/degraded/quality invalid`，唯一 evidence 是
+> `freshness_sla_exceeded`；这不是采集、identity、receipt 或分页失败，仍不能用作实时、PIT、
 > 策略或执行证据。A股分钟、Crypto、TradingAgent、凭证与真实交易均未改变。
 
 > **2026-08-02 `major_news` 正式按需闭环：** GitHub `main/origin` 与
