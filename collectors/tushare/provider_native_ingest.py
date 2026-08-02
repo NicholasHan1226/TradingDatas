@@ -621,7 +621,11 @@ def _execute_provider_requests(
                 binding.max_rows_per_attempt is None
                 or binding.max_payload_bytes_per_row is None
                 or binding.max_batch_bytes is None
-                or len(rows) > binding.max_rows_per_attempt
+                or (
+                    len(page_rows) > binding.max_rows_per_attempt
+                    if binding.fanout.strategy != "none"
+                    else len(rows) > binding.max_rows_per_attempt
+                )
                 or largest > binding.max_payload_bytes_per_row
                 or total > binding.max_batch_bytes
             ):
@@ -754,12 +758,16 @@ def _validate_response_completeness(
         for row_field, request_param in policy.fixed_field_matches.items():
             if row.get(row_field) != resolved_params[request_param]:
                 raise ValueError("provider response fixed field does not match request")
-    if (
-        policy.reject_at_row_limit
-        and binding.max_rows_per_attempt is not None
-        and len(rows) >= binding.max_rows_per_attempt
-    ):
-        raise ValueError("provider response reached the declared row limit")
+    if policy.reject_at_row_limit and binding.max_rows_per_attempt is not None:
+        reached_row_limit = (
+            any(
+                len(call.outcome.rows) >= binding.max_rows_per_attempt for call in calls
+            )
+            if binding.fanout.strategy != "none"
+            else len(rows) >= binding.max_rows_per_attempt
+        )
+        if reached_row_limit:
+            raise ValueError("provider response reached the declared row limit")
 
     if policy.strategy == "one_row_per_calendar_date":
         _validate_calendar_dates(

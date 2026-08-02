@@ -1683,6 +1683,69 @@ def test_windowed_unique_primary_key_allows_empty_fanout_partition() -> None:
         )
 
 
+def test_fanout_row_limit_is_applied_per_provider_call() -> None:
+    base = _registry()
+    dataset = replace(
+        base.resolve("cn.synthetic.runner"),
+        primary_key=("ts_code",),
+    )
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        fanout=FanoutPolicy(
+            strategy="literal_values",
+            parameter="src",
+            values=("source_a", "source_b"),
+            batch_size=1,
+        ),
+        response_completeness=ResponseCompletenessPolicy(
+            strategy="unique_primary_key_snapshot",
+            fixed_field_matches=MappingProxyType({}),
+            reject_at_row_limit=True,
+        ),
+        max_rows_per_attempt=2,
+    )
+    rows = (
+        {"ts_code": "000001.SZ"},
+        {"ts_code": "000002.SZ"},
+    )
+
+    def call(source: str, outcome_rows: tuple[dict[str, str], ...], index: int):
+        return native_ingest.ProviderCall(
+            identity=ProviderRequestIdentity(
+                request_variant=MappingProxyType({}),
+                fanout_parameter="src",
+                fanout_values=(source,),
+                page_offset=None,
+                page_index=0,
+            ),
+            outcome=ProviderCallOutcome("success", outcome_rows, 0, None, None),
+            call_index=index,
+            retry_index=0,
+        )
+
+    native_ingest._validate_response_completeness(  # noqa: SLF001
+        dataset,
+        binding,
+        rows,
+        request_window={},
+        resolved_params={},
+        calls=(call("source_a", (rows[0],), 0), call("source_b", (rows[1],), 1)),
+    )
+
+    with pytest.raises(ValueError, match="declared row limit"):
+        native_ingest._validate_response_completeness(  # noqa: SLF001
+            dataset,
+            binding,
+            rows,
+            request_window={},
+            resolved_params={},
+            calls=(
+                call("source_a", (rows[0], rows[0]), 0),
+                call("source_b", (rows[1],), 1),
+            ),
+        )
+
+
 def test_snapshot_data_through_uses_provider_bar_time_not_collection_start() -> None:
     registry = _strategy_registry("unique_primary_key_snapshot")
     original = registry.resolve("cn.synthetic.runner")
