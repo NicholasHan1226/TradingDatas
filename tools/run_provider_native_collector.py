@@ -61,12 +61,12 @@ def _consume_batch_selector() -> Iterator[Path | None]:
     if raw != str(ON_DEMAND_BATCH_FILE):
         raise OnDemandBatchError("on-demand batch path is invalid")
     _require_private_regular_file(ON_DEMAND_ENV_FILE, name="on-demand env file")
-    _require_private_regular_file(ON_DEMAND_BATCH_FILE, name="on-demand batch file")
     try:
         ON_DEMAND_ENV_FILE.unlink()
     except OSError as exc:
         raise OnDemandBatchError("on-demand env file cannot be consumed") from exc
     try:
+        _require_private_regular_file(ON_DEMAND_BATCH_FILE, name="on-demand batch file")
         yield ON_DEMAND_BATCH_FILE
     finally:
         try:

@@ -111,4 +111,4 @@ def test_on_demand_rejects_non_private_batch_file(
 
     assert runner.main() == 2
     assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
-    assert batch_file.exists()
+    assert not batch_file.exists()
