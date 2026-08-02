@@ -408,6 +408,9 @@ def test_fresh_https_evidence_promotes_bounded_on_demand_local_event_window() ->
             field["nullable"] = False
 
     observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    active_evidence.pop("major_news", None)
     registry = compile_provider_native_registry(
         bundle,
         observations_document=observations,
@@ -1082,6 +1085,7 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
         "snapshot_or_date_range",
         "entity_fanout",
         "event_or_intraday_window",
+        "dimension_fanout",
     }
     assert request_shapes.issubset(
         {
