@@ -340,6 +340,14 @@ def _load_completed_fanout_batches(
     policy = binding.fanout
     if policy is None or policy.strategy == "none":
         return (FanoutBatch(parameter=None, values=()),)
+    if policy.strategy == "literal_values":
+        if policy.parameter is None or policy.batch_size is None or not policy.values:
+            raise ValueError("literal fanout contract is incomplete")
+        return _stable_fanout_batches(
+            policy.values,
+            parameter=policy.parameter,
+            batch_size=policy.batch_size,
+        )
     if (
         policy.strategy != "dataset_field"
         or policy.parameter is None

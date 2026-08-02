@@ -36,6 +36,7 @@ normalization_policy:
   allowed_parameter_sources:
   - dataset_field
   - literal
+  - literal_values
   - run_clock
   - scheduled_partition
   allowed_transforms:

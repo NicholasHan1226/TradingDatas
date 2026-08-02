@@ -252,6 +252,7 @@ _FANOUT_KEYS = frozenset(
     {
         "strategy",
         "parameter",
+        "values",
         "source_dataset_id",
         "source_field",
         "batch_size",
@@ -1580,6 +1581,33 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
     if strategy == "none":
         _reject_keys(value, frozenset({"strategy"}), label)
         result = {"strategy": "none"}
+    elif strategy == "literal_values":
+        _reject_keys(
+            value,
+            _FANOUT_KEYS,
+            label,
+            required=frozenset({"strategy", "parameter", "values", "batch_size"}),
+        )
+        parameter = _required_text(value["parameter"], f"{label}.parameter")
+        if _SAFE_PARAMETER_NAME.fullmatch(parameter) is None:
+            raise ValueError(f"{label}.parameter must use provider field grammar")
+        raw_values = value["values"]
+        if not isinstance(raw_values, list) or not raw_values:
+            raise ValueError(f"{label}.values must be a non-empty list")
+        values = [_json_scalar(item, f"{label}.values[{index}]") for index, item in enumerate(raw_values)]
+        if any(item is None or (type(item) is str and not item) for item in values):
+            raise ValueError(f"{label}.values must be non-empty scalars")
+        identities = {(type(item).__name__, item) for item in values}
+        if len(identities) != len(values):
+            raise ValueError(f"{label}.values must be unique")
+        result = {
+            "strategy": strategy,
+            "parameter": parameter,
+            "values": values,
+            "batch_size": _required_positive_int(
+                value["batch_size"], f"{label}.batch_size"
+            ),
+        }
     elif strategy == "dataset_field":
         _reject_keys(
             value,
@@ -1639,10 +1667,17 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
             result["source_order"] = source_order
     else:
         raise ValueError(f"{label}.strategy is unsupported")
-    requires_fanout = request_shape in {"entity_fanout", "dimension_fanout"}
-    if requires_fanout != (result["strategy"] == "dataset_field"):
-        expected = "dataset_field" if requires_fanout else "none"
-        raise ValueError(f"{label} for {request_shape} requires strategy={expected}")
+    allowed_strategies = (
+        {"dataset_field"}
+        if request_shape == "entity_fanout"
+        else {"dataset_field", "literal_values"}
+        if request_shape == "dimension_fanout"
+        else {"none"}
+    )
+    if result["strategy"] not in allowed_strategies:
+        if request_shape == "entity_fanout":
+            raise ValueError(f"{label} for {request_shape} requires strategy=dataset_field")
+        raise ValueError(f"{label} has an incompatible strategy for {request_shape}")
     return result
 
 
