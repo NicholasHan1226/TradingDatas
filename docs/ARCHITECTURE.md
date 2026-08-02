@@ -46,7 +46,9 @@ registry 声明 request template、variants、window、fanout、pagination、字
 
 `dataset_field` 参数可以声明可选的正整数 `batch_size`，未声明时默认为 `1`；compiler 将该值原样投影到通用 fanout 合同。executor 对已验证的来源值做稳定去重和有界分批，同一批的多个值作为一个逗号分隔的 provider 参数发送。该能力只描述通用请求形状，不改变 entitlement、activation、receipt 或数据完整性门禁，也不允许按 dataset 或 API 增加执行分支。
 
-`dimension_fanout` 也可以声明 `literal_values`：这是 provider 合同中固定、有限的官方枚举（例如新闻来源），必须为非空、类型稳定且不重复的值，并由通用 executor 按声明的 `batch_size` 稳定分批。它不依赖 SQLite seed，也不能用于 `entity_fanout`。离线 HTTPS probe-plan 只取第一个声明值验证 transport 可达；所有枚举分片的真实调用、receipt 和完整性仍由运行时 cohort 决定，单值 probe 绝不构成完整性或 activation 证据。
+`dimension_fanout` 和 `event_or_intraday_window` 可以声明 `literal_values`：这是 provider 合同中固定、有限的官方枚举（例如新闻来源），必须为非空、类型稳定且不重复的值，并由通用 executor 按声明的 `batch_size` 稳定分批。它不依赖 SQLite seed，也不能用于 `entity_fanout`。离线 HTTPS probe-plan 只取第一个声明值验证 transport 可达；所有枚举分片的真实调用、receipt 和完整性仍由运行时 cohort 决定，单值 probe 绝不构成完整性或 activation 证据。
+
+`windowed_unique_primary_key` 是 event/intraday window 的通用完整性合同：每条非空事件必须具有唯一主键、落在请求时间窗内、并属于本次实际请求的枚举分片；每个分片可以合法为空。它不把“每个来源必须有数据”误判为完整性，也不会把越窗事件或未请求来源写成 success。
 
 同一 `dataset + provider + request_window` 的 request variants 是一个不可拆分的采集 cohort：一次 execution 必须覆盖 registry 中的 exact variant set，并让所有真实调用继续各自写入 `request_identity` receipt。任一 variant 缺失或真实失败时 cohort failed；至少一个 variant success 且其余合法 empty 时 cohort success；只有全部 variants empty 时才应用 dataset 的 `empty_data_policy`。scheduler 用显式 run root 派生每个 window 的 plan root，不以时间戳或随机 UUID 排序拼接独立 execution。
 

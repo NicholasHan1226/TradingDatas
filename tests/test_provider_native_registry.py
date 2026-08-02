@@ -946,6 +946,133 @@ def test_generic_registry_materializes_snapshot_and_single_partition_completenes
     assert partition_policy.response_completeness.request_partition_key == "trade_date"
 
 
+def test_windowed_primary_key_completeness_requires_event_source_fanout(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset(
+        fields=[
+            _field("src"),
+            _field("pub_time"),
+            _field("title"),
+        ],
+        primary_key=["src", "pub_time", "title"],
+        default_projection=["src", "pub_time", "title"],
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding["request_shape"] = "event_or_intraday_window"
+    binding["request_template"] = {
+        "start_time": "${window.start_time}",
+        "end_time": "${window.end_time}",
+    }
+    binding["request_window_policy"] = {
+        "required_keys": ["start_time", "end_time"],
+        "formats": {
+            "start_time": "local_datetime_seconds",
+            "end_time": "local_datetime_seconds",
+        },
+        "range_start_key": "start_time",
+        "range_end_key": "end_time",
+        "max_span_days": 1,
+    }
+    binding["fanout"] = {
+        "strategy": "literal_values",
+        "parameter": "src",
+        "values": ["source_a", "source_b"],
+        "batch_size": 1,
+    }
+    binding["requested_fields"] = ["src", "pub_time", "title"]
+    binding["response_completeness"] = {
+        "strategy": "windowed_unique_primary_key",
+        "date_field": "pub_time",
+        "request_start_key": "start_time",
+        "request_end_key": "end_time",
+        "fanout_field": "src",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset)).datasets[0]
+    policy = loaded.provider_bindings[0].response_completeness
+
+    assert policy is not None
+    assert policy.strategy == "windowed_unique_primary_key"
+    assert policy.date_field == "pub_time"
+    assert policy.fanout_field == "src"
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (
+            lambda binding: binding["response_completeness"].update(  # type: ignore[index]
+                fanout_field="missing"
+            ),
+            "window fields are undeclared",
+        ),
+        (
+            lambda binding: binding.update(fanout={"strategy": "none"}),
+            "windowed strategy requires fanout",
+        ),
+    ],
+)
+def test_windowed_primary_key_completeness_rejects_invalid_contract(
+    tmp_path: Path,
+    mutator: object,
+    message: str,
+) -> None:
+    dataset = generic_dataset(
+        fields=[_field("src"), _field("pub_time"), _field("title")],
+        primary_key=["src", "pub_time", "title"],
+        default_projection=["src", "pub_time", "title"],
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding.update(
+        request_shape="event_or_intraday_window",
+        request_template={
+            "start_time": "${window.start_time}",
+            "end_time": "${window.end_time}",
+        },
+        request_window_policy={
+            "required_keys": ["start_time", "end_time"],
+            "formats": {
+                "start_time": "local_datetime_seconds",
+                "end_time": "local_datetime_seconds",
+            },
+            "range_start_key": "start_time",
+            "range_end_key": "end_time",
+            "max_span_days": 1,
+        },
+        fanout={
+            "strategy": "literal_values",
+            "parameter": "src",
+            "values": ["source_a"],
+            "batch_size": 1,
+        },
+        requested_fields=["src", "pub_time", "title"],
+        response_completeness={
+            "strategy": "windowed_unique_primary_key",
+            "date_field": "pub_time",
+            "request_start_key": "start_time",
+            "request_end_key": "end_time",
+            "fanout_field": "src",
+            "fixed_field_matches": {},
+            "reject_at_row_limit": True,
+        },
+    )
+    mutator(binding)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
 @pytest.mark.parametrize(
     ("mutator", "message"),
     [

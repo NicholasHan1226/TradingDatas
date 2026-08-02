@@ -293,6 +293,7 @@ _RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
         "one_row_per_calendar_date",
         "unique_primary_key_snapshot",
         "single_partition_unique_primary_key",
+        "windowed_unique_primary_key",
     }
 )
 _ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
@@ -1300,6 +1301,17 @@ def _response_completeness_policy(
                 "reject_at_row_limit",
             }
         ),
+        "windowed_unique_primary_key": frozenset(
+            {
+                "strategy",
+                "date_field",
+                "request_start_key",
+                "request_end_key",
+                "fanout_field",
+                "fixed_field_matches",
+                "reject_at_row_limit",
+            }
+        ),
     }[strategy]
     allowed_keys = required_keys
     if strategy == "unique_primary_key_snapshot":
@@ -1334,6 +1346,30 @@ def _response_completeness_policy(
             )
         if request_end_key != request_window_policy.range_end_key:
             raise ValueError(f"{path}.request_end_key must equal the window range end")
+    elif strategy == "windowed_unique_primary_key":
+        date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
+        request_start_key = _provider_parameter_name(
+            value["request_start_key"], f"{path}.request_start_key"
+        )
+        request_end_key = _provider_parameter_name(
+            value["request_end_key"], f"{path}.request_end_key"
+        )
+        fanout_field = _provider_field_name(
+            value["fanout_field"], f"{path}.fanout_field"
+        )
+        if request_window_policy is None:
+            raise ValueError(f"{path} requires request_window_policy")
+        if request_start_key != request_window_policy.range_start_key:
+            raise ValueError(
+                f"{path}.request_start_key must equal the window range start"
+            )
+        if request_end_key != request_window_policy.range_end_key:
+            raise ValueError(f"{path}.request_end_key must equal the window range end")
+        if (
+            request_window_policy.formats[request_start_key]
+            != "local_datetime_seconds"
+        ):
+            raise ValueError(f"{path} requires local_datetime_seconds window values")
     elif strategy == "unique_primary_key_snapshot":
         if request_window_policy is not None:
             raise ValueError(
@@ -1590,11 +1626,19 @@ def _load_binding(
         if "pagination" not in value
         else _pagination_policy(value["pagination"], path=f"{path}.pagination")
     )
-    if request_shape in {"entity_fanout", "dimension_fanout"} and fanout is not None:
+    if request_shape in {
+        "entity_fanout",
+        "dimension_fanout",
+        "event_or_intraday_window",
+    } and fanout is not None:
         allowed_strategies = (
             frozenset({"dataset_field"})
             if request_shape == "entity_fanout"
-            else frozenset({"dataset_field", "literal_values"})
+            else (
+                frozenset({"dataset_field", "literal_values"})
+                if request_shape == "dimension_fanout"
+                else frozenset({"none", "literal_values"})
+            )
         )
         if fanout.strategy not in allowed_strategies:
             if request_shape == "entity_fanout":
@@ -2117,6 +2161,28 @@ def _load_dataset(
                         f"{binding_path}.primary_key must exactly contain completeness "
                         "date_field and fixed row fields"
                     )
+            elif completeness.strategy == "windowed_unique_primary_key":
+                date_field = completeness.date_field
+                fanout_field = completeness.fanout_field
+                if date_field not in fields_by_name or fanout_field not in fields_by_name:
+                    raise ValueError(
+                        f"{binding_path}.response_completeness window fields are undeclared"
+                    )
+                for field_name in (date_field, fanout_field):
+                    field_contract = fields_by_name[field_name]
+                    if field_contract.logical_type != "text" or field_contract.nullable:
+                        raise ValueError(
+                            f"{binding_path}.response_completeness window fields must be non-null text"
+                        )
+                    if field_name not in primary_key:
+                        raise ValueError(
+                            f"{binding_path}.response_completeness window fields must be in primary_key"
+                        )
+                if binding.fanout is None or binding.fanout.strategy == "none":
+                    raise ValueError(
+                        f"{binding_path}.response_completeness windowed strategy requires fanout"
+                    )
+                completeness_key_fields.update({date_field, fanout_field})
             elif completeness.strategy == "single_partition_unique_primary_key":
                 partition_field = completeness.partition_field
                 if partition_field not in fields_by_name:
