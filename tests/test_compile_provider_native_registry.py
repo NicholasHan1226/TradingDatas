@@ -362,6 +362,90 @@ def test_fresh_https_evidence_promotes_supported_non_daily_windows(
     }
 
 
+def test_fresh_https_evidence_promotes_bounded_on_demand_local_event_window() -> None:
+    """A proven event cohort is collectible without making it schedulable."""
+
+    bundle = _bundle()
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    major_news = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["api_name"] == "major_news"
+    )
+    major_news["primary_key"] = ["src", "pub_time", "title"]
+    major_news["default_projection"] = ["src", "pub_time", "title"]
+    major_news["request_shape"] = "event_or_intraday_window"
+    major_news["request_template"] = {
+        "start_date": "${window.start_date}",
+        "end_date": "${window.end_date}",
+    }
+    major_news["fanout"] = {
+        "strategy": "literal_values",
+        "parameter": "src",
+        "values": ["新浪财经"],
+        "batch_size": 1,
+    }
+    major_news["response_completeness"] = {
+        "strategy": "windowed_unique_primary_key",
+        "date_field": "pub_time",
+        "request_start_key": "start_date",
+        "request_end_key": "end_date",
+        "fanout_field": "src",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+    }
+    major_news["requested_fields"] = ["src", "pub_time", "title"]
+    fields = major_news["fields"]
+    assert isinstance(fields, list)
+    for field in fields:
+        assert isinstance(field, dict)
+        if field["name"] in {"src", "pub_time", "title"}:
+            field["nullable"] = False
+
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="major_news",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    dataset = next(
+        item
+        for item in registry["datasets"]
+        if item["provider_bindings"][0]["api_name"] == "major_news"
+    )
+    binding = dataset["provider_bindings"][0]
+
+    assert binding["activation_state"] == "active"
+    assert dataset["cadence_class"] == "on_demand"
+    assert set(binding["request_window_policy"]["formats"].values()) == {
+        "local_datetime_seconds"
+    }
+
+    major_news["cadence_class"] = "session_minute"
+    paused_registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="major_news",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    paused_binding = next(
+        item["provider_bindings"][0]
+        for item in paused_registry["datasets"]
+        if item["provider_bindings"][0]["api_name"] == "major_news"
+    )
+    assert paused_binding["activation_state"] == "paused"
+
+
 @pytest.mark.parametrize(
     "api_name",
     ("cb_factor_pro", "fund_factor_pro", "idx_factor_pro"),

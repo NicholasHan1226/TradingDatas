@@ -12,6 +12,33 @@ _AUTOMATIC_REQUEST_WINDOW_FORMATS = frozenset(
 )
 
 
+def _activation_window_is_supported(contract: Mapping[str, object]) -> bool:
+    """Mirror the compiler's structural preactivation eligibility rule."""
+
+    window = contract["request_window_policy"]
+    if window is None:
+        return True
+    assert isinstance(window, dict)
+    raw_formats = window["formats"]
+    assert isinstance(raw_formats, dict)
+    formats = set(raw_formats.values())
+    if formats <= _AUTOMATIC_REQUEST_WINDOW_FORMATS:
+        return True
+    fanout = contract["fanout"]
+    completeness = contract["response_completeness"]
+    primary_key = contract["primary_key"]
+    assert isinstance(fanout, dict)
+    assert isinstance(completeness, dict)
+    assert isinstance(primary_key, list)
+    return (
+        contract["cadence_class"] == "on_demand"
+        and formats == {"local_datetime_seconds"}
+        and bool(primary_key)
+        and fanout["strategy"] == "literal_values"
+        and completeness["strategy"] == "windowed_unique_primary_key"
+    )
+
+
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -87,11 +114,7 @@ def build_synthetic_activation_evidence(
     active_api_names = {
         api_name
         for api_name in candidate_api_names
-        if (
-            by_api[api_name]["request_window_policy"] is None
-            or set(by_api[api_name]["request_window_policy"]["formats"].values())
-            <= _AUTOMATIC_REQUEST_WINDOW_FORMATS
-        )
+        if _activation_window_is_supported(by_api[api_name])
     }
     paused_api_names = planned_api_names - active_api_names
     transport_observations = yaml.safe_dump(
