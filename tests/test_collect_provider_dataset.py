@@ -2760,6 +2760,32 @@ def test_singular_request_identity_reaches_typed_storage_receipt_handoff(
     assert notes["request_identity"] == request.canonical_payload()
 
 
+def test_literal_values_fanout_uses_registry_values_without_sqlite_source(
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    dataset = registry.resolve("cn.synthetic.runner")
+    binding = replace(
+        registry.provider_binding(dataset.dataset_id, "tushare"),
+        request_shape="dimension_fanout",
+        fanout=FanoutPolicy(
+            strategy="literal_values",
+            parameter="exchange",
+            values=("SZSE", "SSE"),
+            batch_size=1,
+        ),
+    )
+
+    assert native_ingest._load_completed_fanout_batches(
+        tmp_path / "unused.sqlite",
+        registry=registry,
+        binding=binding,
+    ) == (
+        native_ingest.FanoutBatch(parameter="exchange", values=("SSE",)),
+        native_ingest.FanoutBatch(parameter="exchange", values=("SZSE",)),
+    )
+
+
 def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

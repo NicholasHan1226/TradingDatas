@@ -459,6 +459,32 @@ def test_request_shape_fanout_and_pagination_materialize_strict_policies(
     )
 
 
+def test_dimension_literal_values_fanout_materializes_without_source_dataset(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset()
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding.update(  # type: ignore[union-attr]
+        request_shape="dimension_fanout",
+        fanout={
+            "strategy": "literal_values",
+            "parameter": "exchange",
+            "values": ["SSE", "SZSE"],
+            "batch_size": 1,
+        },
+    )
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset))
+    policy = loaded.resolve("cn.synthetic.native").provider_bindings[0]
+
+    assert policy.fanout == registry_module.FanoutPolicy(
+        strategy="literal_values",
+        parameter="exchange",
+        values=("SSE", "SZSE"),
+        batch_size=1,
+    )
+
+
 @pytest.mark.parametrize(
     ("mutator", "message"),
     [
@@ -469,6 +495,18 @@ def test_request_shape_fanout_and_pagination_materialize_strict_policies(
         (
             lambda binding: binding.update(
                 request_shape="entity_fanout", fanout={"strategy": "none"}
+            ),
+            "entity_fanout.*dataset_field",
+        ),
+        (
+            lambda binding: binding.update(
+                request_shape="entity_fanout",
+                fanout={
+                    "strategy": "literal_values",
+                    "parameter": "exchange",
+                    "values": ["SSE"],
+                    "batch_size": 1,
+                },
             ),
             "entity_fanout.*dataset_field",
         ),

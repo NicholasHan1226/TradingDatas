@@ -228,7 +228,13 @@ _NORMALIZATION_POLICY_KEYS = frozenset(
 )
 _REASON_CODE_KEYS = frozenset({"probe", "ingest_contract"})
 _PARAMETER_SOURCES = frozenset(
-    {"dataset_field", "literal", "run_clock", "scheduled_partition"}
+    {
+        "dataset_field",
+        "literal",
+        "literal_values",
+        "run_clock",
+        "scheduled_partition",
+    }
 )
 _PARAMETER_TRANSFORMS = frozenset(
     {
@@ -720,6 +726,26 @@ def _request_parameter(
         if isinstance(literal, str) and not literal:
             raise RuntimeContractCompilationError(f"{label}.value must not be blank")
         return {"source": source, "value": literal}
+    if source == "literal_values":
+        _exact_keys(value, frozenset({"source", "values", "batch_size"}), label)
+        raw_values = _list(value["values"], f"{label}.values")
+        if not raw_values:
+            raise RuntimeContractCompilationError(f"{label}.values must not be empty")
+        values = [
+            _request_parameter(
+                {"source": "literal", "value": item},
+                label=f"{label}.values[{index}]",
+            )["value"]
+            for index, item in enumerate(raw_values)
+        ]
+        identities = {(type(item).__name__, item) for item in values}
+        if len(identities) != len(values):
+            raise RuntimeContractCompilationError(f"{label}.values must be unique")
+        return {
+            "source": source,
+            "values": values,
+            "batch_size": _positive_int(value["batch_size"], f"{label}.batch_size"),
+        }
     if source == "dataset_field":
         required_keys = frozenset(
             {"source", "dataset_id", "field", "requires_fresh_success_receipt"}
@@ -965,14 +991,14 @@ def _request_observation_index(
             raise RuntimeContractCompilationError(
                 f"{label}.request_shape is unsupported"
             )
-        dataset_field_count = sum(
-            declaration["source"] == "dataset_field"
+        fanout_count = sum(
+            declaration["source"] in {"dataset_field", "literal_values"}
             for declaration in normalized_parameters.values()
         )
         requires_fanout = request_shape in {"entity_fanout", "dimension_fanout"}
-        if requires_fanout != (dataset_field_count == 1):
+        if requires_fanout != (fanout_count == 1):
             raise RuntimeContractCompilationError(
-                f"{label}.request_shape and dataset_field mapping are inconsistent"
+                f"{label}.request_shape and fanout mapping are inconsistent"
             )
         normalized_variants = _request_variants(
             entry.get("request_variants", [{}]),
@@ -1342,12 +1368,12 @@ def _request_execution_contract(
 ) -> dict[str, Any]:
     """Project one executable observation onto the existing generic data plane."""
 
-    blocked_dataset_fields = [
+    blocked_fanout_fields = [
         declaration
         for declaration in observation["parameters"].values()
-        if declaration["source"] == "dataset_field"
+        if declaration["source"] in {"dataset_field", "literal_values"}
     ]
-    if observation["probe_state"] == "blocked" and not blocked_dataset_fields:
+    if observation["probe_state"] == "blocked" and not blocked_fanout_fields:
         if reviewed_contract is not None:
             raise RuntimeContractCompilationError(
                 f"reviewed API cannot have a blocked probe: {observation['api_name']}"
@@ -1363,7 +1389,7 @@ def _request_execution_contract(
 
     template: dict[str, Any] = {}
     window_formats: dict[str, str] = {}
-    dataset_fields: list[tuple[str, Mapping[str, Any]]] = []
+    fanout_fields: list[tuple[str, Mapping[str, Any]]] = []
     pagination_values: dict[str, int] = {}
     for parameter, declaration in observation["parameters"].items():
         source = declaration["source"]
@@ -1378,29 +1404,37 @@ def _request_execution_contract(
             template[parameter] = f"${{window.{parameter}}}"
             window_formats[parameter] = declaration["transform"]
         else:
-            dataset_fields.append((parameter, declaration))
-    if dataset_fields:
-        if len(dataset_fields) != 1:
+            fanout_fields.append((parameter, declaration))
+    if fanout_fields:
+        if len(fanout_fields) != 1:
             raise RuntimeContractCompilationError(
-                f"{observation['api_name']} executable fanout must have one dataset field"
+                f"{observation['api_name']} executable fanout must have one source"
             )
-        parameter, declaration = dataset_fields[0]
-        fanout = {
-            "strategy": "dataset_field",
-            "parameter": parameter,
-            "source_dataset_id": declaration["dataset_id"],
-            "source_field": declaration["field"],
-            "batch_size": declaration["batch_size"],
-        }
-        for key in (
-            "source_equals",
-            "source_date_field",
-            "source_date_lte_days",
-            "max_values",
-            "source_order",
-        ):
-            if key in declaration:
-                fanout[key] = declaration[key]
+        parameter, declaration = fanout_fields[0]
+        if declaration["source"] == "literal_values":
+            fanout = {
+                "strategy": "literal_values",
+                "parameter": parameter,
+                "values": declaration["values"],
+                "batch_size": declaration["batch_size"],
+            }
+        else:
+            fanout = {
+                "strategy": "dataset_field",
+                "parameter": parameter,
+                "source_dataset_id": declaration["dataset_id"],
+                "source_field": declaration["field"],
+                "batch_size": declaration["batch_size"],
+            }
+            for key in (
+                "source_equals",
+                "source_date_field",
+                "source_date_lte_days",
+                "max_values",
+                "source_order",
+            ):
+                if key in declaration:
+                    fanout[key] = declaration[key]
     else:
         fanout = {"strategy": "none"}
     if pagination_values:
@@ -1736,6 +1770,28 @@ def _registered_seed_requirements(
             for parameter, declaration in observation["parameters"].items()
             if declaration["source"] == "dataset_field"
         ]
+        literal_declarations = [
+            (parameter, declaration)
+            for parameter, declaration in observation["parameters"].items()
+            if declaration["source"] == "literal_values"
+        ]
+        if literal_declarations:
+            if declarations or len(literal_declarations) != 1:
+                raise RuntimeContractCompilationError(
+                    f"{api_name} must declare exactly one fanout source"
+                )
+            parameter, declaration = literal_declarations[0]
+            expected_fanout = {
+                "strategy": "literal_values",
+                "parameter": parameter,
+                "values": declaration["values"],
+                "batch_size": declaration["batch_size"],
+            }
+            if dict(fanout) != expected_fanout:
+                raise RuntimeContractCompilationError(
+                    f"registered {api_name} literal fanout does not match request observation"
+                )
+            continue
         if not declarations:
             if fanout.get("strategy") != "none":
                 raise RuntimeContractCompilationError(
@@ -2027,6 +2083,11 @@ def compile_https_probe_plan(
                     params[parameter] = _render_probe_clock(
                         value, declaration["transform"]
                     )
+                elif source == "literal_values":
+                    # The HTTPS plan is one bounded transport probe per API, not
+                    # a collection cohort.  The runtime fanout remains the
+                    # authority for every declared value and completeness.
+                    params[parameter] = declaration["values"][0]
                 else:
                     params[parameter] = trusted_seeds[
                         (declaration["dataset_id"], declaration["field"])

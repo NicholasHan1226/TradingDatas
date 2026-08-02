@@ -161,6 +161,7 @@ _FANOUT_KEYS = frozenset(
     {
         "strategy",
         "parameter",
+        "values",
         "source_dataset_id",
         "source_field",
         "batch_size",
@@ -285,7 +286,7 @@ _REQUEST_SHAPES = frozenset(
         "event_or_intraday_window",
     }
 )
-_FANOUT_STRATEGIES = frozenset({"none", "dataset_field"})
+_FANOUT_STRATEGIES = frozenset({"none", "dataset_field", "literal_values"})
 _PAGINATION_STRATEGIES = frozenset({"none", "offset"})
 _RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
     {
@@ -398,6 +399,7 @@ class FanoutPolicy:
 
     strategy: str
     parameter: str | None = None
+    values: tuple[RequestScalar, ...] = ()
     source_dataset_id: str | None = None
     source_field: str | None = None
     batch_size: int | None = None
@@ -1084,6 +1086,27 @@ def _fanout_policy(raw: Any, *, path: str) -> FanoutPolicy:
             required=frozenset({"strategy"}),
         )
         return FanoutPolicy(strategy="none")
+    if strategy == "literal_values":
+        required = frozenset({"strategy", "parameter", "values", "batch_size"})
+        _reject_unknown_keys(value, required, path, required=required)
+        raw_values = value["values"]
+        if not isinstance(raw_values, list) or not raw_values:
+            raise ValueError(f"{path}.values must not be empty")
+        values = tuple(
+            _request_variant_scalar(item, f"{path}.values[{index}]")
+            for index, item in enumerate(raw_values)
+        )
+        identities = {(type(item).__name__, item) for item in values}
+        if len(identities) != len(values):
+            raise ValueError(f"{path}.values must be unique")
+        return FanoutPolicy(
+            strategy="literal_values",
+            parameter=_provider_parameter_name(
+                value["parameter"], f"{path}.parameter"
+            ),
+            values=values,
+            batch_size=_positive_int(value["batch_size"], f"{path}.batch_size"),
+        )
     required = frozenset(
         {"strategy", "parameter", "source_dataset_id", "source_field", "batch_size"}
     )
@@ -1568,9 +1591,18 @@ def _load_binding(
         else _pagination_policy(value["pagination"], path=f"{path}.pagination")
     )
     if request_shape in {"entity_fanout", "dimension_fanout"} and fanout is not None:
-        if fanout.strategy != "dataset_field":
+        allowed_strategies = (
+            frozenset({"dataset_field"})
+            if request_shape == "entity_fanout"
+            else frozenset({"dataset_field", "literal_values"})
+        )
+        if fanout.strategy not in allowed_strategies:
+            if request_shape == "entity_fanout":
+                raise ValueError(
+                    f"{path}.{request_shape} requires fanout.strategy=dataset_field"
+                )
             raise ValueError(
-                f"{path}.{request_shape} requires fanout.strategy=dataset_field"
+                f"{path}.{request_shape} requires a supported fanout strategy"
             )
     elif request_shape is not None and fanout is not None and fanout.strategy != "none":
         raise ValueError(f"{path}.{request_shape} requires fanout.strategy=none")
