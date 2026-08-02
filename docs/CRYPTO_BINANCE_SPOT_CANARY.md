@@ -50,6 +50,17 @@ base/quote asset, `PRICE_FILTER.tickSize`, `LOT_SIZE.stepSize`/`minQty`, and
 `MIN_NOTIONAL` or `NOTIONAL.minNotional`. They are factual constraints for a
 downstream simulator, not permission to trade.
 
+## Current quote snapshot candidate
+
+The optional `.book_ticker` contract reads Binance public `bookTicker` for the
+same frozen ten symbols. It exposes only `symbol`, `bid_price`, `bid_qty`,
+`ask_price`, and `ask_qty` as a current, receipt-bound snapshot. The upstream
+response has no provider event timestamp, so its time authority is the
+collection receipt's actual observation interval. It is not historical L1,
+order-book depth, a replayable market-time series, or execution evidence.
+It has no backfill and must remain on-demand until an isolated provider-to-API
+review proves the ten-symbol snapshot cohort.
+
 ## Evidence and shutdown
 
 Candidate proof uses its own database and evidence root below a caller-created

@@ -85,6 +85,11 @@ class BinanceSpotPublicCollector:
                     params,
                     expected_symbol=_api_symbol(api_name, "klines_"),
                 )
+            elif api_name.startswith("bookTicker_"):
+                rows = self._book_ticker(
+                    params,
+                    expected_symbol=_api_symbol(api_name, "bookTicker_"),
+                )
             elif api_name.startswith("exchangeInfo_"):
                 rows = self._exchange_info(
                     params,
@@ -184,6 +189,35 @@ class BinanceSpotPublicCollector:
                 }
             )
         return rows
+
+    def _book_ticker(
+        self,
+        params: dict[str, Any],
+        *,
+        expected_symbol: str,
+    ) -> list[dict[str, Any]]:
+        if params != {"symbol": expected_symbol}:
+            raise ValueError("public book ticker request does not match registry")
+        payload = self._get("/api/v3/ticker/bookTicker", {"symbol": expected_symbol})
+        required = ("symbol", "bidPrice", "bidQty", "askPrice", "askQty")
+        if (
+            type(payload) is not dict
+            or payload.get("symbol") != expected_symbol
+            or any(
+                type(payload.get(name)) is not str or not payload[name]
+                for name in required
+            )
+        ):
+            raise ValueError("Binance book ticker shape is invalid")
+        return [
+            {
+                "symbol": expected_symbol,
+                "bid_price": payload["bidPrice"],
+                "bid_qty": payload["bidQty"],
+                "ask_price": payload["askPrice"],
+                "ask_qty": payload["askQty"],
+            }
+        ]
 
     def _exchange_info(
         self,
