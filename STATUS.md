@@ -1,6 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 19:06 CST。
+最后更新：2026-08-02 20:25 CST。
+
+> **2026-08-02 event wave 正式历史分区闭环：** 复用同一个 generic on-demand batch，
+> 对已完成的 `20260731` 分区依次采集 `cn.dataset.anns_d`、`cn.dataset.cctv_news`、
+> `cn.dataset.irm_qa_sh` 与 `cn.dataset.irm_qa_sz`。无写入 plan 先通过；随后单个 service
+> batch 成功，四项各自写入一张 success receipt，返回/校验/提交分别为
+> `1514/1514/1514`、`15/15/15`、`326/326/326` 与 `6/6/6`。没有新增 route、collector、
+> timer、表或 provider 专用逻辑。
+>
+> UID987 经 formal 18082 对四项顺序全分页后再重放：`anns_d` 为四页 1514 个唯一
+> `[ann_date,ts_code,title,url]`，其余三项为一页、分别 15/326/6 个唯一 identity；全部
+> terminal cursor、重放 identity digest 一致、receipt/lineage/`data_through`/`observed_at`
+> 完整。读取发生在周末，四项都按 86400 秒 SLA 如实投影为
+> `stale/degraded/quality invalid`，唯一原因 `freshness_sla_exceeded`；这是历史分区的读时钟
+> 状态，不是 provider、校验、身份、分页或 receipt 失败。它们可作为 receipt-bound 历史观察，
+> 不能作为实时、PIT、策略或执行证据。
 
 > **2026-08-02 `research_report` nullable-author 合同修正已发布：** 不可变
 > production `current` 为发布代码
