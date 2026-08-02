@@ -311,8 +311,10 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    成功或有效空响应仍必须携带合法 SHA-256，否则整批 fail closed。
 
    HTTPS activation evidence 必须保存在仓外，由调用方先核对 sidecar SHA-256，再通过
-   显式 `--activation-evidence /outside/repository/path` 传入；仓库、release、CI fixture 和
-   formal 编译均不得内置或默认寻找真实 evidence。只有同时指定
+   显式 `--activation-evidence /outside/repository/path` 传入；现有 QuickSync probe 直接
+   写出的 evidence sidecar 可作为该输入，compiler 会重新计算其结果、cohort 与 activation
+   projection，不能信任调用方自报投影。仓库、release、CI fixture 和 formal 编译均不得内置
+   或默认寻找真实 evidence。只有同时指定
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。正式 release 的 activation 只来自同版本、已审查的
    `active_evidence` 配置；因此 active/paused 计数必须由 immutable target 的 compiler 和

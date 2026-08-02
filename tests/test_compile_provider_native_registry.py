@@ -18,7 +18,10 @@ from tools.compile_provider_native_registry import (
     load_upstream_contract_bundle,
     render_registry,
 )
-from tests.synthetic_activation_evidence import build_synthetic_activation_evidence
+from tests.synthetic_activation_evidence import (
+    build_synthetic_activation_evidence,
+    build_synthetic_raw_probe_evidence,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -493,6 +496,68 @@ def test_partial_https_evidence_rejects_executable_coverage_drift() -> None:
     coverage["blocked"] = int(coverage["blocked"]) + 1
 
     with pytest.raises(ValueError, match="executable coverage drifted"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_raw_probe_evidence(
+            bundle,
+            observations,
+            promoted_api_name="major_news",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["major_news"]["activation_state"] == "active"
+    assert bindings["cb_basic"]["activation_state"] == "paused"
+
+
+def test_raw_probe_evidence_rejects_redacted_results() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    results = evidence["results"]
+    assert isinstance(results, list)
+    assert isinstance(results[0], dict)
+    results[0]["response_redacted"] = True
+
+    with pytest.raises(ValueError, match="redacted results are not promotable"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_rejects_planned_api_binding_drift() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    evidence["api_names_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="planned API set does not match"):
         compile_provider_native_registry(
             bundle,
             observations_document=observations,
