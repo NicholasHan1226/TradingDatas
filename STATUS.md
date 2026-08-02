@@ -1,6 +1,26 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 13:24 CST。
+最后更新：2026-08-02 18:02 CST。
+
+> **2026-08-02 `major_news` 正式按需闭环：** GitHub `main/origin` 与
+> 18082 immutable `current` 均为 `4acfb6b8f57678c18261bf0d28a4517683ababbb`；已验证
+> rollback `bad65a77bd95b0ca0db0abfbe8626e160533acdc` 保留。该 release 让既有唯一
+> `tradingdatas-provider-native-collect.service` 在没有 selector 时保持原 cadence planner，
+> 在受控 selector 存在时以同一 `tradingdatas` 身份与 `/run/tradingdatas/collect.lock` 执行
+> 一次有界 on-demand batch；它不新增 timer、route 或数据集专用 collector。selector 与
+> batch 在结束时被消费，避免 timer 重放；合法 empty 仍被 systemd 视为完成，provider/
+> validation 失败则保持失败。
+>
+> 对 `cn.dataset.major_news` 的正式一分钟窗口 `2026-08-02 17:25:00..17:26:00 +08:00`，
+> service-identity generic collection 写入真实 receipt。UID987 经 formal 18082 两次相同
+> `POST /v1/query` 均返回 1 行、terminal cursor、相同 rows/metadata digest，
+> `ready/success/fresh/valid/non-degraded`，receipt
+> `receipt:53f2e49778690cdf0959bb8c7cd1a2fbb10aa26639c68d6d797904226fa61327` 与完整
+> Tushare/QuickSync lineage；`data_through=2026-08-02T17:26:00+08:00`，
+> `observed_at=2026-08-02T10:00:28.654706+00:00`。这是新闻/公告事件的只读、receipt-bound
+> observation evidence，可供 TradingAgent event shadow 使用；不等同历史 PIT、策略信号、
+> 订单、仓位或任何交易 authority。A股分钟、Crypto、TA timer、broker 与
+> `REAL_TRADING_ENABLED=false` 均未改变。
 
 > **2026-08-02 Crypto current best-bid/ask readback:** GitHub `main/origin`
 > `a60e5425c9119bf9fe24c1b08a070907db58febd` was built as the dedicated
