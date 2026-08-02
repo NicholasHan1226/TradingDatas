@@ -228,3 +228,74 @@ def build_synthetic_activation_evidence(
         },
         "results": results,
     }
+
+
+def build_synthetic_raw_probe_evidence(
+    contracts_document: Mapping[str, object],
+    observations_document: Mapping[str, object],
+    *,
+    promoted_api_name: str,
+) -> dict[str, object]:
+    """Return the external probe shape for one bounded activation cohort."""
+
+    wrapped = build_synthetic_activation_evidence(
+        contracts_document,
+        observations_document,
+        promoted_api_name=promoted_api_name,
+        cohort_api_names={promoted_api_name},
+    )
+    evidence = wrapped["evidence"]
+    results = wrapped["results"]
+    seeds = wrapped["seed_authorities"]
+    assert isinstance(evidence, dict)
+    assert isinstance(results, list)
+    assert isinstance(seeds, list)
+    raw_results: list[dict[str, object]] = []
+    for result in results:
+        assert isinstance(result, dict)
+        raw_results.append(
+            {
+                key: result[key]
+                for key in (
+                    "api_name",
+                    "state",
+                    "provider_class",
+                    "row_count",
+                    "response_bytes",
+                    "response_sha256",
+                    "fields",
+                    "elapsed_ms",
+                )
+            }
+            | {"response_redacted": False}
+        )
+    return {
+        "schema_version": evidence["schema_version"],
+        "production_ready": evidence["production_ready"],
+        "raw_data_persisted": evidence["raw_data_persisted"],
+        "credential_persisted": evidence["credential_persisted"],
+        "request_values_persisted": evidence["request_values_persisted"],
+        "commit": evidence["release_commit"],
+        "request_plan_sha256": evidence["request_plan_sha256"],
+        "official_contract_sha256": evidence["official_contract_sha256"],
+        "transport_observations_sha256": evidence[
+            "transport_observations_sha256"
+        ],
+        "request_observations_sha256": evidence["request_observations_sha256"],
+        "api_names_sha256": evidence["planned_api_names_sha256"],
+        "scheduled_partition": evidence["scheduled_partition"],
+        "run_clock": evidence["run_clock"],
+        "seed_authorities": seeds,
+        "scope": evidence["scope"],
+        "interface_count": evidence["interface_count"],
+        "coverage": evidence["coverage"],
+        "started_at": evidence["started_at"],
+        "finished_at": evidence["finished_at"],
+        "retries": evidence["retries"],
+        "concurrency": evidence["concurrency"],
+        "rate_budget": evidence["rate_budget"],
+        "response_budget": evidence["response_budget"],
+        "transport": evidence["transport"],
+        "summary": evidence["summary"],
+        "results": raw_results,
+    }

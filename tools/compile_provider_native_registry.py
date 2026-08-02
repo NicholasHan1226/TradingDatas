@@ -396,6 +396,49 @@ _ACTIVATION_EVIDENCE_KEYS = frozenset(
         "request_values_persisted",
     }
 )
+_RAW_PROBE_EVIDENCE_ROOT_KEYS = frozenset(
+    {
+        "schema_version",
+        "production_ready",
+        "raw_data_persisted",
+        "credential_persisted",
+        "request_values_persisted",
+        "commit",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "transport_observations_sha256",
+        "request_observations_sha256",
+        "api_names_sha256",
+        "scheduled_partition",
+        "run_clock",
+        "seed_authorities",
+        "scope",
+        "interface_count",
+        "coverage",
+        "started_at",
+        "finished_at",
+        "retries",
+        "concurrency",
+        "rate_budget",
+        "response_budget",
+        "transport",
+        "summary",
+        "results",
+    }
+)
+_RAW_PROBE_RESULT_KEYS = frozenset(
+    {
+        "api_name",
+        "state",
+        "provider_class",
+        "row_count",
+        "response_bytes",
+        "response_sha256",
+        "response_redacted",
+        "fields",
+        "elapsed_ms",
+    }
+)
 _PROBE_RESULT_KEYS = frozenset(
     {
         "api_name",
@@ -950,6 +993,119 @@ def _observation_index(
     return result
 
 
+def _normalize_raw_probe_evidence(
+    document: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Accept the probe tool's external sidecar without a second evidence writer."""
+
+    root = _mapping(deepcopy(document), "HTTPS activation evidence")
+    if root.get("schema_version") != "tradingdatas.quicksync.https_probe_evidence.v1":
+        return root, False
+    _reject_keys(
+        root,
+        _RAW_PROBE_EVIDENCE_ROOT_KEYS,
+        "raw HTTPS probe evidence",
+    )
+    raw_results = _sequence(root["results"], "raw HTTPS probe evidence.results")
+    normalized_results: list[dict[str, Any]] = []
+    for index, raw_result in enumerate(raw_results):
+        label = f"raw HTTPS probe evidence.results[{index}]"
+        result = _mapping(raw_result, label)
+        _reject_keys(result, _RAW_PROBE_RESULT_KEYS, label)
+        if result["response_redacted"] is not False:
+            raise ValueError("raw HTTPS probe evidence redacted results are not promotable")
+        normalized = {
+            key: result[key]
+            for key in (
+                "api_name",
+                "state",
+                "provider_class",
+                "row_count",
+                "response_bytes",
+                "response_sha256",
+                "fields",
+                "elapsed_ms",
+            )
+        }
+        normalized_results.append(
+            {
+                **normalized,
+                "result_sha256": _canonical_json_sha256(normalized),
+            }
+        )
+    if [item["api_name"] for item in normalized_results] != sorted(
+        item["api_name"] for item in normalized_results
+    ):
+        raise ValueError("raw HTTPS probe evidence results must be sorted")
+    evidence = {
+        "schema_version": root["schema_version"],
+        "source_sha256": _canonical_json_sha256(root),
+        "bindings_sha256": "",
+        "promotion_stage": "preactivation_candidate",
+        "release_commit": root["commit"],
+        "request_plan_sha256": root["request_plan_sha256"],
+        "official_contract_sha256": root["official_contract_sha256"],
+        "request_observations_sha256": root["request_observations_sha256"],
+        "transport_observations_sha256": root["transport_observations_sha256"],
+        "planned_api_names_sha256": root["api_names_sha256"],
+        "executed_api_names_sha256": _api_names_sha256(
+            {item["api_name"] for item in normalized_results}
+        ),
+        "results_sha256": _canonical_json_sha256(
+            [
+                {key: value for key, value in item.items() if key != "result_sha256"}
+                for item in normalized_results
+            ]
+        ),
+        "started_at": root["started_at"],
+        "finished_at": root["finished_at"],
+        "run_clock": root["run_clock"],
+        "scheduled_partition": root["scheduled_partition"],
+        "scope": root["scope"],
+        "interface_count": root["interface_count"],
+        "coverage": root["coverage"],
+        "summary": root["summary"],
+        "transport": root["transport"],
+        "concurrency": root["concurrency"],
+        "rate_budget": root["rate_budget"],
+        "response_budget": root["response_budget"],
+        "retries": root["retries"],
+        "production_ready": root["production_ready"],
+        "raw_data_persisted": root["raw_data_persisted"],
+        "credential_persisted": root["credential_persisted"],
+        "request_values_persisted": root["request_values_persisted"],
+    }
+    binding_keys = (
+        "source_sha256",
+        "release_commit",
+        "request_plan_sha256",
+        "official_contract_sha256",
+        "request_observations_sha256",
+        "transport_observations_sha256",
+        "planned_api_names_sha256",
+        "executed_api_names_sha256",
+        "run_clock",
+        "scheduled_partition",
+        "promotion_stage",
+    )
+    evidence["bindings_sha256"] = _canonical_json_sha256(
+        {key: evidence[key] for key in binding_keys}
+    )
+    return (
+        {
+            "version": 1,
+            "provider": PROVIDER,
+            "transport_service": "quicksync",
+            "evidence": evidence,
+            "seed_authorities": root["seed_authorities"],
+            "plan_projection": {},
+            "activation_projection": {},
+            "results": normalized_results,
+        },
+        True,
+    )
+
+
 def _activation_evidence_index(
     document: Mapping[str, Any] | None,
     contracts: Sequence[Mapping[str, Any]],
@@ -961,7 +1117,7 @@ def _activation_evidence_index(
     if observations_document is None or not observations:
         raise ValueError("HTTPS activation evidence requires QuickSync observations")
 
-    root = _mapping(deepcopy(document), "HTTPS activation evidence")
+    root, raw_probe_evidence = _normalize_raw_probe_evidence(document)
     _reject_keys(
         root,
         _ACTIVATION_EVIDENCE_ROOT_KEYS,
@@ -1404,24 +1560,25 @@ def _activation_evidence_index(
         if by_api[api_name]["ingest_contract_state"] == "ready"
         or api_name in dependency_resolved
     }
-    plan_projection = _mapping(
-        root["plan_projection"], "HTTPS activation evidence.plan_projection"
-    )
-    _reject_keys(
-        plan_projection,
-        _COUNT_HASH_KEYS,
-        "HTTPS activation evidence.plan_projection",
-    )
-    if _required_non_negative_int(
-        plan_projection["ingest_ready_count"],
-        "HTTPS activation evidence.plan_projection.ingest_ready_count",
-    ) != len(ingest_ready_api_names):
-        raise ValueError("HTTPS activation evidence ingest-ready count drifted")
-    if _required_sha256(
-        plan_projection["ingest_ready_api_names_sha256"],
-        "HTTPS activation evidence.plan_projection.ingest_ready_api_names_sha256",
-    ) != _api_names_sha256(ingest_ready_api_names):
-        raise ValueError("HTTPS activation evidence ingest-ready API set drifted")
+    if not raw_probe_evidence:
+        plan_projection = _mapping(
+            root["plan_projection"], "HTTPS activation evidence.plan_projection"
+        )
+        _reject_keys(
+            plan_projection,
+            _COUNT_HASH_KEYS,
+            "HTTPS activation evidence.plan_projection",
+        )
+        if _required_non_negative_int(
+            plan_projection["ingest_ready_count"],
+            "HTTPS activation evidence.plan_projection.ingest_ready_count",
+        ) != len(ingest_ready_api_names):
+            raise ValueError("HTTPS activation evidence ingest-ready count drifted")
+        if _required_sha256(
+            plan_projection["ingest_ready_api_names_sha256"],
+            "HTTPS activation evidence.plan_projection.ingest_ready_api_names_sha256",
+        ) != _api_names_sha256(ingest_ready_api_names):
+            raise ValueError("HTTPS activation evidence ingest-ready API set drifted")
 
     fresh_api_names = {
         api_name
@@ -1443,49 +1600,50 @@ def _activation_evidence_index(
         if _activation_window_is_supported(by_api[api_name])
     }
     paused_api_names = planned_api_names - active_api_names
-    activation_projection = _mapping(
-        root["activation_projection"],
-        "HTTPS activation evidence.activation_projection",
-    )
-    _reject_keys(
-        activation_projection,
-        _ACTIVATION_PROJECTION_KEYS,
-        "HTTPS activation evidence.activation_projection",
-    )
-    if (
-        _required_non_negative_int(
-            activation_projection["candidate_count"],
-            "HTTPS activation evidence.activation_projection.candidate_count",
+    if not raw_probe_evidence:
+        activation_projection = _mapping(
+            root["activation_projection"],
+            "HTTPS activation evidence.activation_projection",
         )
-        != len(candidate_api_names)
-        or _required_sha256(
-            activation_projection["candidate_api_names_sha256"],
-            "HTTPS activation evidence.activation_projection.candidate_api_names_sha256",
+        _reject_keys(
+            activation_projection,
+            _ACTIVATION_PROJECTION_KEYS,
+            "HTTPS activation evidence.activation_projection",
         )
-        != _api_names_sha256(candidate_api_names)
-        or
-        _required_non_negative_int(
-            activation_projection["active_count"],
-            "HTTPS activation evidence.activation_projection.active_count",
-        )
-        != len(active_api_names)
-        or _required_non_negative_int(
-            activation_projection["paused_count"],
-            "HTTPS activation evidence.activation_projection.paused_count",
-        )
-        != len(paused_api_names)
-        or _required_sha256(
-            activation_projection["active_api_names_sha256"],
-            "HTTPS activation evidence.activation_projection.active_api_names_sha256",
-        )
-        != _api_names_sha256(active_api_names)
-        or _required_sha256(
-            activation_projection["paused_api_names_sha256"],
-            "HTTPS activation evidence.activation_projection.paused_api_names_sha256",
-        )
-        != _api_names_sha256(paused_api_names)
-    ):
-        raise ValueError("HTTPS activation evidence activation projection drifted")
+        if (
+            _required_non_negative_int(
+                activation_projection["candidate_count"],
+                "HTTPS activation evidence.activation_projection.candidate_count",
+            )
+            != len(candidate_api_names)
+            or _required_sha256(
+                activation_projection["candidate_api_names_sha256"],
+                "HTTPS activation evidence.activation_projection.candidate_api_names_sha256",
+            )
+            != _api_names_sha256(candidate_api_names)
+            or
+            _required_non_negative_int(
+                activation_projection["active_count"],
+                "HTTPS activation evidence.activation_projection.active_count",
+            )
+            != len(active_api_names)
+            or _required_non_negative_int(
+                activation_projection["paused_count"],
+                "HTTPS activation evidence.activation_projection.paused_count",
+            )
+            != len(paused_api_names)
+            or _required_sha256(
+                activation_projection["active_api_names_sha256"],
+                "HTTPS activation evidence.activation_projection.active_api_names_sha256",
+            )
+            != _api_names_sha256(active_api_names)
+            or _required_sha256(
+                activation_projection["paused_api_names_sha256"],
+                "HTTPS activation evidence.activation_projection.paused_api_names_sha256",
+            )
+            != _api_names_sha256(paused_api_names)
+        ):
+            raise ValueError("HTTPS activation evidence activation projection drifted")
 
     if not previous_active <= active_api_names:
         raise ValueError("HTTPS activation evidence does not preserve fresh prior active set")
