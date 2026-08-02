@@ -1,6 +1,29 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 12:40 CST。
+最后更新：2026-08-02 13:24 CST。
+
+> **2026-08-02 Crypto current best-bid/ask readback:** GitHub `main/origin`
+> `a60e5425c9119bf9fe24c1b08a070907db58febd` was built as the dedicated
+> Crypto immutable release and atomically became
+> `/opt/investment/releases/tradingdatas-crypto/current`. The verified rollback
+> is `9bbf270fa91342b2ce3519de0c007d6f14d2525b`. The rollback verifier first
+> rejected two manifest-external Python cache files; their exact removal left
+> code, facts and receipts untouched, and the rollback release then verified.
+> Target and rollback manifests both verified before the switch. Existing 18083,
+> the closed-5m timer and the rules timer were restored; the next automatic
+> 13:20 CST closed-bar run returned `success`.
+>
+> The formal 18083 catalog now exposes ten frozen `.book_ticker` datasets.
+> One service-identity, on-demand collection wrote ten valid rows and ten
+> distinct success receipts through the ordinary provider-native transaction
+> path. A serial authenticated 18083 catalog/query check as `tradingagent`
+> asserted one row per dataset, `ready/success/fresh/valid/non-degraded`
+> metadata and complete receipt/lineage. This data is only a receipt-bound
+> current Binance best-bid/ask snapshot: the upstream response has no event
+> timestamp, so it is not historical L1, depth, replayable market-time series
+> or execution evidence. No book-ticker timer was added; existing 5m bars and
+> public-rule timers remain the only automatic Crypto collectors. A-share 18082,
+> TradingAgent execution, accounts and real trading were not changed.
 
 > **2026-08-02 Crypto historical-coverage verification:** The frozen
 > ten-symbol 5m cohort already has 52,957 non-duplicate, continuous bar
