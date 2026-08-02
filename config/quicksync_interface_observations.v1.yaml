@@ -452,6 +452,7 @@ active_evidence:
   margin: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   margin_detail: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   margin_secs: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  major_news: server-evidence/20260802T085240Z-major-news-gaps-probe
   moneyflow: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   moneyflow_cnt_ths: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   moneyflow_dc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
