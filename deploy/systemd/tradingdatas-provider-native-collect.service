@@ -21,7 +21,7 @@ EnvironmentFile=-/run/tradingdatas/on-demand.env
 Environment="PYTHONDONTWRITEBYTECODE=1"
 Environment="PYTHONUNBUFFERED=1"
 ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas/current/tools/run_provider_native_collector.py
-SuccessExitStatus=75
+SuccessExitStatus=3 75
 TimeoutStartSec=45min
 UMask=0077
 RuntimeDirectory=tradingdatas
