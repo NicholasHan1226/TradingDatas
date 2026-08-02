@@ -623,7 +623,7 @@ def _execute_provider_requests(
                 or binding.max_batch_bytes is None
                 or (
                     len(page_rows) > binding.max_rows_per_attempt
-                    if binding.fanout.strategy != "none"
+                    if binding.fanout is not None and binding.fanout.strategy != "none"
                     else len(rows) > binding.max_rows_per_attempt
                 )
                 or largest > binding.max_payload_bytes_per_row
@@ -763,7 +763,7 @@ def _validate_response_completeness(
             any(
                 len(call.outcome.rows) >= binding.max_rows_per_attempt for call in calls
             )
-            if binding.fanout.strategy != "none"
+            if binding.fanout is not None and binding.fanout.strategy != "none"
             else len(rows) >= binding.max_rows_per_attempt
         )
         if reached_row_limit:

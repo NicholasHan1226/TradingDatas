@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
@@ -144,6 +145,19 @@ def test_typed_variant_merge_preserves_scalar_type_and_window_value() -> None:
             {"trade_date": "20260720"},
             request_variant={"exchange": "SZSE", "limit": "100"},
         )
+
+
+def test_execution_treats_absent_fanout_as_one_response_budget() -> None:
+    binding = replace(_binding(), fanout=None)
+    execution = _execute(
+        _SequenceCollector(
+            [_success({"ts_code": "600000.SH", "trade_date": "20260720"})]
+        ),
+        binding,
+    )
+
+    assert execution.outcome.state == "success"
+    assert len(execution.outcome.rows) == 1
 
 
 def test_fanout_values_are_typed_stably_deduplicated_and_batched() -> None:
