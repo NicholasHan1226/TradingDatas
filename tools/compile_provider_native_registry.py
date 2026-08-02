@@ -2910,6 +2910,39 @@ def _load_yaml(path: Path, label: str) -> dict[str, Any]:
     return _mapping(raw, label)
 
 
+def _load_activation_evidence(
+    path: Path,
+    *,
+    observations_document: Mapping[str, Any],
+    observations_sha256: str,
+) -> dict[str, Any]:
+    """Bind raw probe sidecars to the exact input bytes before normalization.
+
+    The probe writes a byte hash because its request plan is created from the
+    file. The compiler uses the parsed canonical mapping internally. Validate
+    the former at the CLI boundary, then translate only that binding for the
+    existing deterministic compiler path.
+    """
+
+    evidence = _load_yaml(path, "HTTPS activation evidence")
+    if evidence.get("schema_version") != "tradingdatas.quicksync.https_probe_evidence.v1":
+        return evidence
+    if evidence.get("transport_observations_sha256") != observations_sha256:
+        raise ValueError("raw HTTPS probe evidence transport observations drifted")
+    stable_observations = yaml.safe_dump(
+        dict(observations_document),
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=100,
+    ).encode("utf-8")
+    normalized = deepcopy(evidence)
+    normalized["transport_observations_sha256"] = hashlib.sha256(
+        stable_observations
+    ).hexdigest()
+    return normalized
+
+
 def _atomic_write(path: Path, content: str) -> None:
     if not path.parent.is_dir():
         raise ValueError(f"output parent does not exist: {path.parent}")
@@ -2985,13 +3018,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(
             "preactivation candidate cannot overwrite the checked registry or write inside the repository"
         )
+    observations_bytes = args.observations.read_bytes()
+    observations_document = _load_yaml(args.observations, "QuickSync observations")
     registry = compile_provider_native_registry(
         _load_yaml(args.upstream_contracts, "upstream contract bundle"),
-        observations_document=_load_yaml(args.observations, "QuickSync observations"),
+        observations_document=observations_document,
         activation_evidence_document=(
             None
             if args.compilation_mode != PREACTIVATION_COMPILATION_MODE
-            else _load_yaml(args.activation_evidence, "HTTPS activation evidence")
+            else _load_activation_evidence(
+                args.activation_evidence,
+                observations_document=observations_document,
+                observations_sha256=hashlib.sha256(observations_bytes).hexdigest(),
+            )
         ),
         query_defaults=DEFAULT_QUERY_DEFAULTS,
         compilation_mode=args.compilation_mode,
