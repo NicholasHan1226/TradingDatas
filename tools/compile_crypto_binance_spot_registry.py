@@ -67,7 +67,13 @@ def _clone(template: dict[str, object], symbol: str, suffix: str) -> dict[str, o
     binding = bindings[0]
     if not isinstance(binding, dict):
         raise ValueError("Crypto registry template binding is invalid")
-    api_prefix = "klines_" if suffix == "5m" else "exchangeInfo_"
+    api_prefix = {
+        "5m": "klines_",
+        "rules": "exchangeInfo_",
+        "book_ticker": "bookTicker_",
+    }.get(suffix)
+    if api_prefix is None:
+        raise ValueError("Crypto registry template suffix is invalid")
     binding["api_name"] = api_prefix + lower
     binding["read_discriminator_value"] = (
         f"binance_spot_{lower}_{suffix.replace('.', '_')}"
@@ -90,11 +96,17 @@ def compile_registry(*, universe_path: Path, registry_path: Path) -> bytes:
     }
     bar = by_id.get("crypto.spot.binance.btcusdt.5m")
     rules = by_id.get("crypto.spot.binance.btcusdt.rules")
-    if not isinstance(bar, dict) or not isinstance(rules, dict):
+    book_ticker = by_id.get("crypto.spot.binance.btcusdt.book_ticker")
+    if (
+        not isinstance(bar, dict)
+        or not isinstance(rules, dict)
+        or not isinstance(book_ticker, dict)
+    ):
         raise ValueError("Crypto registry templates are missing")
     registry["datasets"] = [
         *(_clone(bar, symbol, "5m") for symbol in symbols),
         *(_clone(rules, symbol, "rules") for symbol in symbols),
+        *(_clone(book_ticker, symbol, "book_ticker") for symbol in symbols),
     ]
     return yaml.safe_dump(
         registry,

@@ -36,18 +36,24 @@ SYMBOLS = (
 )
 
 
-def test_canary_registry_freezes_ten_symbols_and_rule_sets() -> None:
+def test_canary_registry_freezes_ten_symbols_and_current_snapshot_sets() -> None:
     registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
-    assert len(registry.datasets) == 20
+    assert len(registry.datasets) == 30
     assert [item.dataset_id for item in registry.datasets] == [
         *(f"crypto.spot.binance.{symbol.lower()}.5m" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.rules" for symbol in SYMBOLS),
+        *(f"crypto.spot.binance.{symbol.lower()}.book_ticker" for symbol in SYMBOLS),
     ]
     bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
     assert bar.primary_key == ("symbol", "open_time")
     assert bar.as_of_field == "close_time"
     assert bar.timezone == "UTC"
     assert bar.freshness_sla_seconds == 600
+    book_ticker = registry.resolve("crypto.spot.binance.btcusdt.book_ticker")
+    assert book_ticker.primary_key == ("symbol",)
+    assert book_ticker.point_in_time == "current_snapshot"
+    assert book_ticker.as_of_field is None
+    assert book_ticker.backfill_policy == "disabled"
 
 
 def test_crypto_registry_compiler_is_deterministic_and_matches_checked_in_bytes() -> (
@@ -126,6 +132,42 @@ def test_binance_collector_accepts_a_frozen_non_canary_symbol(
     )
     assert outcome.state == "success"
     assert outcome.rows[0]["symbol"] == "SOLUSDT"
+
+
+def test_binance_collector_normalizes_book_ticker_without_a_provider_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = BinanceSpotPublicCollector()
+    monkeypatch.setattr(
+        collector,
+        "_get",
+        lambda path, query: {
+            "symbol": "SOLUSDT",
+            "bidPrice": "1.0",
+            "bidQty": "2.0",
+            "askPrice": "1.1",
+            "askQty": "3.0",
+        },
+    )
+    outcome = collector.collect_outcome("bookTicker_solusdt", {"symbol": "SOLUSDT"})
+    assert outcome.state == "success"
+    assert outcome.rows == (
+        {
+            "symbol": "SOLUSDT",
+            "bid_price": "1.0",
+            "bid_qty": "2.0",
+            "ask_price": "1.1",
+            "ask_qty": "3.0",
+        },
+    )
+
+
+def test_binance_collector_rejects_book_ticker_symbol_mismatch() -> None:
+    outcome = BinanceSpotPublicCollector().collect_outcome(
+        "bookTicker_btcusdt", {"symbol": "ETHUSDT"}
+    )
+    assert outcome.state == "failed"
+    assert outcome.error_code == "transport_error"
 
 
 def test_binance_transport_is_credential_free_and_market_data_only() -> None:

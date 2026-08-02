@@ -44,12 +44,15 @@ ETHUSDT remain the smaller rollback baseline; they are not a claim that the
 running cohort is limited to two symbols.
 
 The expansion contract freezes ten symbols in
-`config/crypto_binance_spot_universe.v1.yaml` and compiles twenty datasets:
-one bar and one public-rule dataset per symbol. Promotion requires all ten bar
-datasets and all ten rule datasets to pass independent authenticated
-catalog/query readback. A symbol failure is isolated and must not be hidden by
-another symbol's healthy envelope. Bounded 180-day backfill remains a separate
-one-shot operation and is never real-time/PIT evidence.
+`config/crypto_binance_spot_universe.v1.yaml` and compiles thirty datasets:
+one bar, one public-rule and one current book-ticker snapshot dataset per
+symbol. The book-ticker contract remains a separate on-demand candidate until
+it completes its own isolated review; it does not change the enabled bar or
+rules timers. Promotion requires every dataset in a promoted cohort to pass
+independent authenticated catalog/query readback. A symbol failure is isolated
+and must not be hidden by another symbol's healthy envelope. Bounded 180-day
+backfill remains a separate one-shot operation and is never real-time/PIT
+evidence.
 
 On 2026-08-02, authenticated formal `18083` readback verified two adjacent
 completed 5m windows for all ten bar datasets. Every dataset returned a

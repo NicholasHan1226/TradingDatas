@@ -62,6 +62,22 @@ def test_crypto_rules_plan_never_calls_provider_or_writes() -> None:
     assert result["will_write_database"] is False
 
 
+def test_crypto_book_ticker_plan_never_calls_provider_or_writes() -> None:
+    result = run(
+        db_path=Path("/private/tmp/unused.sqlite"),
+        lock_path=Path("/private/tmp/unused.lock"),
+        execute=False,
+        now=datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
+        collect_book_ticker=True,
+    )
+    assert result["state"] == "planned"
+    assert result["collection_kind"] == "book_ticker"
+    assert len(result["datasets"]) == 10
+    assert result["windows"] == [{}]
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+
+
 def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     api = (ROOT / "deploy/systemd/tradingdatas-crypto-v1-internal.service").read_text()
     collector = (

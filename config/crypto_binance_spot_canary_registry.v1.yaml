@@ -3022,3 +3022,1013 @@ datasets:
   empty_data_policy: forbidden
   required_scope: market_data
   quota_class: beta_standard
+- dataset_id: crypto.spot.binance.btcusdt.book_ticker
+  aliases:
+  - binance_spot.btcusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_btcusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_btcusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: BTCUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.ethusdt.book_ticker
+  aliases:
+  - binance_spot.ethusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_ethusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_ethusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: ETHUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.solusdt.book_ticker
+  aliases:
+  - binance_spot.solusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_solusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_solusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: SOLUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.xrpusdt.book_ticker
+  aliases:
+  - binance_spot.xrpusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_xrpusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_xrpusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: XRPUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.bnbusdt.book_ticker
+  aliases:
+  - binance_spot.bnbusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_bnbusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_bnbusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: BNBUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.dogeusdt.book_ticker
+  aliases:
+  - binance_spot.dogeusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_dogeusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_dogeusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: DOGEUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.adausdt.book_ticker
+  aliases:
+  - binance_spot.adausdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_adausdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_adausdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: ADAUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.trxusdt.book_ticker
+  aliases:
+  - binance_spot.trxusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_trxusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_trxusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: TRXUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.linkusdt.book_ticker
+  aliases:
+  - binance_spot.linkusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_linkusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_linkusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: LINKUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.spot.binance.avaxusdt.book_ticker
+  aliases:
+  - binance_spot.avaxusdt.book_ticker
+  domain: provider_data
+  market: CRYPTO_SPOT
+  entity_type: best_bid_ask_snapshot
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 600
+  provider_bindings:
+  - provider: binance_spot
+    api_name: bookTicker_avaxusdt
+    adapter_version: binance-spot-public.v1
+    read_discriminator_value: binance_spot_avaxusdt_book_ticker
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    request_shape: snapshot_or_date_range
+    request_template:
+      symbol: AVAXUSDT
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: false
+    requested_fields: []
+    max_batch_bytes: 262144
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: primary_key
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: bid_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: bid_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_price
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: ask_qty
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  default_projection:
+  - symbol
+  - bid_price
+  - bid_qty
+  - ask_price
+  - ask_qty
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  point_in_time: current_snapshot
+  backfill_policy: disabled
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard

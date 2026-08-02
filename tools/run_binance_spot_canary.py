@@ -62,6 +62,20 @@ def _rule_datasets(registry) -> tuple[str, ...]:
     return datasets
 
 
+def _book_ticker_datasets(registry) -> tuple[str, ...]:
+    datasets = tuple(
+        item.dataset_id
+        for item in registry.datasets
+        if item.dataset_id.startswith("crypto.spot.binance.")
+        and item.dataset_id.endswith(".book_ticker")
+    )
+    if len(datasets) != 10 or len(set(datasets)) != len(datasets):
+        raise RuntimeError(
+            "runtime registry must contain the frozen ten-symbol book-ticker cohort"
+        )
+    return datasets
+
+
 def _utc(value: datetime) -> str:
     return value.isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -122,15 +136,24 @@ def run(
     execute: bool,
     now: datetime,
     collect_rules: bool = False,
+    collect_book_ticker: bool = False,
     backfill_days: int | None = None,
 ) -> dict[str, object]:
     registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
-    if collect_rules and backfill_days is not None:
-        raise ValueError("public rules do not support historical backfill")
-    datasets = _rule_datasets(registry) if collect_rules else _bar_datasets(registry)
+    if collect_rules and collect_book_ticker:
+        raise ValueError("Crypto collector mode is ambiguous")
+    if (collect_rules or collect_book_ticker) and backfill_days is not None:
+        raise ValueError("current snapshots do not support historical backfill")
+    datasets = (
+        _rule_datasets(registry)
+        if collect_rules
+        else _book_ticker_datasets(registry)
+        if collect_book_ticker
+        else _bar_datasets(registry)
+    )
     windows = (
         ({},)
-        if collect_rules
+        if collect_rules or collect_book_ticker
         else (
             backfill_windows(now, days=backfill_days)
             if backfill_days is not None
@@ -140,7 +163,13 @@ def run(
     if not execute:
         return {
             "backfill_days": backfill_days,
-            "collection_kind": "rules" if collect_rules else "bars",
+            "collection_kind": (
+                "rules"
+                if collect_rules
+                else "book_ticker"
+                if collect_book_ticker
+                else "bars"
+            ),
             "datasets": list(datasets),
             "mode": "plan",
             "state": "planned",
@@ -181,7 +210,13 @@ def run(
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
             "backfill_days": backfill_days,
-            "collection_kind": "rules" if collect_rules else "bars",
+            "collection_kind": (
+                "rules"
+                if collect_rules
+                else "book_ticker"
+                if collect_book_ticker
+                else "bars"
+            ),
             "datasets": results,
             "mode": "execute",
             "state": "success",
@@ -200,6 +235,7 @@ def main() -> int:
     parser.add_argument("--lock-path", required=True, type=Path)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--rules", action="store_true")
+    parser.add_argument("--book-ticker", action="store_true")
     parser.add_argument("--backfill-days", type=int)
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
@@ -210,6 +246,7 @@ def main() -> int:
             execute=args.execute,
             now=now,
             collect_rules=args.rules,
+            collect_book_ticker=args.book_ticker,
             backfill_days=args.backfill_days,
         )
     except Exception:
