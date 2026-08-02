@@ -29,14 +29,16 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 | `tushare/collector.py` | 唯一 generic Tushare transport adapter；普通接口不得复制它 |
 | `tushare/provider_native_ingest.py` | registry 驱动的 provider-native SQLite/receipt 入口 |
 | `tushare/tushare_common.py` | Tushare 通用请求/响应与凭证边界 |
+| `binance/collector.py` | Binance public spot 的 provider-level 只读 adapter；不得加入账户、私钥或下单能力 |
 
 ### 子 Collector
 
 | 目录 | 市场 | 数据源 | 关键文件 |
 |------|------|--------|----------|
 | `tushare/` | 首期境内金融事实数据 | Tushare API | `collector.py`, `provider_native_ingest.py` |
+| `binance/` | 冻结的 Crypto spot canary | Binance public market data | `collector.py` |
 
-Crypto、预测市场、港股、美股及其历史 collector/cron 不在新代码树中。未来新闻、公告或舆情来源按新的 provider adapter 接入，不恢复旧 RSS/MarketGraph fallback。
+预测市场、港股、美股及其历史 collector/cron 不在新代码树中。Crypto 仅允许根层合同已批准的 Binance 公共现货隔离运行面；不得扩展为账户、订单、执行或共享 A 股运行面。未来新闻、公告或舆情来源按新的 provider adapter 接入，不恢复旧 RSS/MarketGraph fallback。
 
 ## 修改规则
 
@@ -46,7 +48,7 @@ Crypto、预测市场、港股、美股及其历史 collector/cron 不在新代�
 4. **事务事实**：数据和 success receipt 同 SQLite transaction；empty/failed 写 terminal receipt；provider failure 不能伪装为 empty。
 5. **数据不分析**：不产生 feature、factor、alpha、候选、预测、资金、持仓、风险、订单或建议；事实型资金/持仓排名仍只是 provider payload。
 6. **API 隔离**：外部消费者只能经 `GET /v1/catalog` 和 `POST /v1/query`；不得直连 provider、collector、SQLite 或 staging 文件。
-7. **首期市场**：只激活中国境内且当前账户确有权限的数据集。Crypto、预测市场、港股和美股保持 paused/excluded。
+7. **首期市场**：只激活中国境内且当前账户确有权限的数据集；根层合同明确批准的 Binance 公共现货 canary 例外，必须保持独立 release、SQLite、loopback API 和 timer。预测市场、港股和美股保持 paused/excluded。
 8. **调度安全**：安装或修改 cron/systemd 属于生产变更，必须另做 fresh inventory、锁/预算/回滚验收；不得在普通 onboarding 中顺手增加 cron。
 
 ## 运行方式
