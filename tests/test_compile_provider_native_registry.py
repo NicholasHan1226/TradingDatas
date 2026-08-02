@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import inspect
 from pathlib import Path
 import subprocess
@@ -544,6 +545,74 @@ def test_raw_probe_evidence_rejects_redacted_results() -> None:
             observations_document=observations,
             activation_evidence_document=evidence,
             compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_cli_binding_accepts_exact_observation_bytes(
+    tmp_path: Path,
+) -> None:
+    observations_path = tmp_path / "observations.yaml"
+    observations_path.write_text(
+        "# preserve the immutable source bytes used by the probe\n"
+        + yaml.safe_dump(_observations(), sort_keys=False),
+        encoding="utf-8",
+    )
+    observations = _read_yaml(observations_path)
+    evidence = build_synthetic_raw_probe_evidence(
+        _bundle(),
+        observations,
+        promoted_api_name="major_news",
+    )
+    evidence["transport_observations_sha256"] = hashlib.sha256(
+        observations_path.read_bytes()
+    ).hexdigest()
+    evidence_path = tmp_path / "raw-probe-evidence.yaml"
+    evidence_path.write_text(yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8")
+
+    normalized = compiler_module._load_activation_evidence(
+        evidence_path,
+        observations_document=observations,
+        observations_sha256=hashlib.sha256(observations_path.read_bytes()).hexdigest(),
+    )
+
+    expected_semantic_hash = hashlib.sha256(
+        yaml.safe_dump(
+            dict(observations),
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+            width=100,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert normalized["transport_observations_sha256"] == expected_semantic_hash
+
+
+def test_raw_probe_evidence_cli_binding_rejects_observation_byte_drift(
+    tmp_path: Path,
+) -> None:
+    observations_path = tmp_path / "observations.yaml"
+    observations_path.write_text(
+        yaml.safe_dump(_observations(), sort_keys=False), encoding="utf-8"
+    )
+    observations = _read_yaml(observations_path)
+    evidence = build_synthetic_raw_probe_evidence(
+        _bundle(),
+        observations,
+        promoted_api_name="major_news",
+    )
+    evidence["transport_observations_sha256"] = "0" * 64
+    evidence_path = tmp_path / "raw-probe-evidence.yaml"
+    evidence_path.write_text(yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError, match="raw HTTPS probe evidence transport observations drifted"
+    ):
+        compiler_module._load_activation_evidence(
+            evidence_path,
+            observations_document=observations,
+            observations_sha256=hashlib.sha256(
+                observations_path.read_bytes()
+            ).hexdigest(),
         )
 
 
