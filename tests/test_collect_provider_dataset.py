@@ -1569,6 +1569,120 @@ def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None
         )  # noqa: SLF001
 
 
+def test_windowed_unique_primary_key_allows_empty_fanout_partition() -> None:
+    policy = ResponseCompletenessPolicy(
+        strategy="windowed_unique_primary_key",
+        date_field="pub_time",
+        request_start_key="start_time",
+        request_end_key="end_time",
+        fanout_field="src",
+        fixed_field_matches=MappingProxyType({}),
+    )
+    base = _registry()
+    dataset = replace(
+        base.resolve("cn.synthetic.runner"),
+        fields=(
+            DatasetField("src", "text", False, True, True, True),
+            DatasetField("pub_time", "text", False, True, True, True),
+            DatasetField("title", "text", False, True, True, True),
+        ),
+        primary_key=("src", "pub_time", "title"),
+        default_projection=("src", "pub_time", "title"),
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        request_template=MappingProxyType(
+            {
+                "start_time": "${window.start_time}",
+                "end_time": "${window.end_time}",
+            }
+        ),
+        request_window_policy=RequestWindowPolicy(
+            required_keys=("start_time", "end_time"),
+            formats=MappingProxyType(
+                {
+                    "start_time": "local_datetime_seconds",
+                    "end_time": "local_datetime_seconds",
+                }
+            ),
+            range_start_key="start_time",
+            range_end_key="end_time",
+            max_span_days=1,
+        ),
+        fanout=FanoutPolicy(
+            strategy="literal_values",
+            parameter="src",
+            values=("source_a", "source_b"),
+            batch_size=1,
+        ),
+        response_completeness=policy,
+    )
+    row = {
+        "src": "source_a",
+        "pub_time": "2026-07-31 10:30:00",
+        "title": "one",
+    }
+    call = native_ingest.ProviderCall(
+        identity=ProviderRequestIdentity(
+            request_variant=MappingProxyType({}),
+            fanout_parameter="src",
+            fanout_values=("source_a",),
+            page_offset=None,
+            page_index=0,
+        ),
+        outcome=ProviderCallOutcome("success", (row,), 0, None, None),
+        call_index=0,
+        retry_index=0,
+    )
+    empty_call = replace(
+        call,
+        identity=replace(call.identity, fanout_values=("source_b",)),
+        outcome=ProviderCallOutcome("empty", (), 0, None, None),
+        call_index=1,
+    )
+    rows = (row,)
+    native_ingest._validate_windowed_unique_primary_keys(  # noqa: SLF001
+        dataset,
+        binding,
+        policy,
+        rows,
+        request_window={
+            "start_time": "2026-07-31 00:00:00",
+            "end_time": "2026-07-31 23:59:59",
+        },
+        calls=(call, empty_call),
+    )
+
+    with pytest.raises(ValueError, match="falls outside"):
+        native_ingest._validate_windowed_unique_primary_keys(  # noqa: SLF001
+            dataset,
+            binding,
+            policy,
+            ({**rows[0], "pub_time": "2026-08-01 00:00:00"},),
+            request_window={
+                "start_time": "2026-07-31 00:00:00",
+                "end_time": "2026-07-31 23:59:59",
+            },
+            calls=(call, empty_call),
+        )
+    with pytest.raises(ValueError, match="was not requested"):
+        native_ingest._validate_windowed_unique_primary_keys(  # noqa: SLF001
+            dataset,
+            binding,
+            policy,
+            ({**rows[0], "src": "other"},),
+            request_window={
+                "start_time": "2026-07-31 00:00:00",
+                "end_time": "2026-07-31 23:59:59",
+            },
+            calls=(call, empty_call),
+        )
+
+
 def test_snapshot_data_through_uses_provider_bar_time_not_collection_start() -> None:
     registry = _strategy_registry("unique_primary_key_snapshot")
     original = registry.resolve("cn.synthetic.runner")

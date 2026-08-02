@@ -224,6 +224,46 @@ def test_compiler_preserves_exact_fanout_snapshot_contract() -> None:
     }
 
 
+def test_compiler_normalizes_windowed_primary_key_completeness() -> None:
+    completeness = compiler_module._completeness(  # noqa: SLF001
+        {
+            "strategy": "windowed_unique_primary_key",
+            "date_field": "pub_time",
+            "request_start_key": "start_time",
+            "request_end_key": "end_time",
+            "fanout_field": "src",
+            "fixed_field_matches": {},
+            "reject_at_row_limit": True,
+        },
+        fields={"src", "pub_time", "title"},
+        template={
+            "start_time": "${window.start_time}",
+            "end_time": "${window.end_time}",
+        },
+        window={
+            "required_keys": ["start_time", "end_time"],
+            "formats": {
+                "start_time": "local_datetime_seconds",
+                "end_time": "local_datetime_seconds",
+            },
+            "range_start_key": "start_time",
+            "range_end_key": "end_time",
+            "max_span_days": 1,
+        },
+        label="synthetic.response_completeness",
+    )
+
+    assert completeness == {
+        "strategy": "windowed_unique_primary_key",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+        "date_field": "pub_time",
+        "request_start_key": "start_time",
+        "request_end_key": "end_time",
+        "fanout_field": "src",
+    }
+
+
 def test_numeric_leading_provider_fields_compile_without_per_api_code() -> None:
     registry = compile_provider_native_registry(_bundle())
     by_api = {

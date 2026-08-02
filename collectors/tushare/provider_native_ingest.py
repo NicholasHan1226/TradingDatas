@@ -24,6 +24,7 @@ from dataset_registry import (
     PaginationPolicy,
     ProviderBinding,
     RequestScalar,
+    decode_request_window_value,
     normalize_request_window,
 )
 from provider_ingest_contract import provider_ingest_config_hash
@@ -698,7 +699,17 @@ def _data_through(
         if binding.response_completeness is None
         else binding.response_completeness.snapshot_field
     )
-    for field_name in (dataset.as_of_field, dataset.partition_field, snapshot_field):
+    event_time_field = (
+        None
+        if binding.response_completeness is None
+        else binding.response_completeness.date_field
+    )
+    for field_name in (
+        dataset.as_of_field,
+        dataset.partition_field,
+        snapshot_field,
+        event_time_field,
+    ):
         values = _matching_values(dataset, outcome.rows, field_name)
         if values:
             try:
@@ -768,6 +779,15 @@ def _validate_response_completeness(
             policy,
             rows,
             resolved_params=resolved_params,
+        )
+    elif policy.strategy == "windowed_unique_primary_key":
+        _validate_windowed_unique_primary_keys(
+            dataset,
+            binding,
+            policy,
+            rows,
+            request_window=request_window,
+            calls=calls,
         )
     else:
         raise ValueError("provider response completeness strategy is unsupported")
@@ -839,6 +859,55 @@ def _validate_calendar_dates(
         observed_dates.add(normalized_date)
     if observed_dates != expected_dates:
         raise ValueError("provider response is missing a requested calendar date")
+
+
+def _validate_windowed_unique_primary_keys(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+    calls: Sequence[ProviderCall],
+) -> None:
+    """Validate a finite event window with legal-empty fanout partitions."""
+
+    if (
+        policy.date_field is None
+        or policy.fanout_field is None
+        or policy.request_start_key is None
+        or policy.request_end_key is None
+        or binding.request_window_policy is None
+    ):
+        raise ValueError("provider response windowed completeness contract is incomplete")
+    expected = {value for call in calls for value in call.identity.fanout_values}
+    if not expected:
+        raise ValueError("provider response windowed completeness has no fanout values")
+    window_format = binding.request_window_policy.formats[policy.request_start_key]
+    try:
+        start = decode_request_window_value(
+            request_window[policy.request_start_key], window_format
+        ).anchor
+        end = decode_request_window_value(
+            request_window[policy.request_end_key], window_format
+        ).anchor
+    except ValueError as exc:
+        raise ValueError("provider response windowed request values are invalid") from exc
+    _validate_unique_primary_keys(dataset, rows)
+    for row in rows:
+        fanout_value = row.get(policy.fanout_field)
+        if type(fanout_value) is not str or not fanout_value:
+            raise ValueError("provider response windowed fanout field is invalid")
+        if fanout_value not in expected:
+            raise ValueError("provider response windowed fanout value was not requested")
+        try:
+            event_time = decode_request_window_value(
+                row.get(policy.date_field), window_format
+            ).anchor
+        except ValueError as exc:
+            raise ValueError("provider response event time is invalid") from exc
+        if not (start <= event_time <= end):
+            raise ValueError("provider response event time falls outside the request window")
 
 
 def _usable_primary_key(

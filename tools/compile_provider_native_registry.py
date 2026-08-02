@@ -288,6 +288,7 @@ _COMPLETENESS_STRATEGIES = frozenset(
         "one_row_per_calendar_date",
         "unique_primary_key_snapshot",
         "single_partition_unique_primary_key",
+        "windowed_unique_primary_key",
     }
 )
 _BUDGET_KEYS = frozenset(
@@ -1672,6 +1673,8 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
         if request_shape == "entity_fanout"
         else {"dataset_field", "literal_values"}
         if request_shape == "dimension_fanout"
+        else {"none", "literal_values"}
+        if request_shape == "event_or_intraday_window"
         else {"none"}
     )
     if result["strategy"] not in allowed_strategies:
@@ -1850,6 +1853,41 @@ def _completeness(
         if partition not in fields or request_key not in window["required_keys"]:
             raise ValueError(f"{label} partition identity is not declared")
         result.update(partition_field=partition, request_partition_key=request_key)
+    elif strategy == "windowed_unique_primary_key":
+        required = {
+            "strategy",
+            "date_field",
+            "request_start_key",
+            "request_end_key",
+            "fanout_field",
+            "fixed_field_matches",
+        }
+        missing = sorted(required - set(value))
+        if missing:
+            raise ValueError(f"{label} is missing key(s): {', '.join(missing)}")
+        if window is None:
+            raise ValueError(f"{label} requires request_window_policy")
+        date_field = _required_text(value["date_field"], f"{label}.date_field")
+        fanout_field = _required_text(value["fanout_field"], f"{label}.fanout_field")
+        start = _required_text(value["request_start_key"], f"{label}.request_start_key")
+        end = _required_text(value["request_end_key"], f"{label}.request_end_key")
+        if date_field not in fields or fanout_field not in fields:
+            raise ValueError(f"{label} window identity is not declared")
+        if (
+            start != window["range_start_key"]
+            or end != window["range_end_key"]
+            or window["formats"][start] != "local_datetime_seconds"
+            or window["formats"][end] != "local_datetime_seconds"
+        ):
+            raise ValueError(
+                f"{label} requires local_datetime_seconds window range keys"
+            )
+        result.update(
+            date_field=date_field,
+            request_start_key=start,
+            request_end_key=end,
+            fanout_field=fanout_field,
+        )
     return result
 
 
@@ -2011,6 +2049,23 @@ def _normalized_contract(
                 "contract yyyymm or yyyymmdd primary-key partition field"
             )
         completeness_fields.add(partition_field)
+    elif (
+        completeness is not None
+        and completeness["strategy"] == "windowed_unique_primary_key"
+    ):
+        date_field = completeness["date_field"]
+        fanout_field = completeness["fanout_field"]
+        if (
+            date_field not in primary_key
+            or fanout_field not in primary_key
+            or fanout is None
+            or fanout["strategy"] == "none"
+        ):
+            raise ValueError(
+                f"{label}.response_completeness windowed contract requires fanout "
+                "and primary-key event time/source fields"
+            )
+        completeness_fields.update({date_field, fanout_field})
     if requested_fields:
         missing_completeness = sorted(completeness_fields - set(requested_fields))
         if missing_completeness:
