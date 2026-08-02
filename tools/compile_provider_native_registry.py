@@ -2654,6 +2654,14 @@ def _apply_observed_response_contract(
     normalized["requested_fields"] = [
         field for field in normalized["requested_fields"] if field not in missing
     ]
+    # A selectable field observed only in the QuickSync response extension
+    # must be requested explicitly.  Otherwise it appears in the public
+    # schema/default projection but is absent from every newly collected row.
+    normalized["requested_fields"].extend(
+        field["name"]
+        for field in override["additional_fields"]
+        if field["selectable"]
+    )
     normalized["reviewed_type_overrides"] = [
         item
         for item in normalized["reviewed_type_overrides"]
