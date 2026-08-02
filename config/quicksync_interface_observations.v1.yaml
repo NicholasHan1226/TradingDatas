@@ -40,7 +40,7 @@ response_contract_overrides:
     additional_fields: []
   dc_daily:
     evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
-    schema_version: 2.0.0
+    schema_version: 3.0.0
     missing_fields: []
     type_overrides: []
     additional_fields:

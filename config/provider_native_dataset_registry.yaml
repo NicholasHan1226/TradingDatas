@@ -8466,7 +8466,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 2.0.0
+  schema_version: 3.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -8535,6 +8535,7 @@ datasets:
     - amount
     - swing
     - turnover_rate
+    - category
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
