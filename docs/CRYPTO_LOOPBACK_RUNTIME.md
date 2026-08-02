@@ -43,6 +43,14 @@ bars per run. Its `observed_at` is the actual collection time. BTCUSDT and
 ETHUSDT remain the smaller rollback baseline; they are not a claim that the
 running cohort is limited to two symbols.
 
+For a terminal `provider_error` on one bar dataset, the collector records that
+failed receipt and makes exactly one immediate retry for that same requested
+closed-bar window. It never retries configuration, validation, or legal-empty
+outcomes, never substitutes another provider or bar, and a second failure
+leaves the dataset failed. This bounded recovery is only to preserve honest
+observation continuity during a brief public transport interruption; it does
+not relax the API metadata or TradingAgent evidence gate.
+
 The expansion contract freezes ten symbols in
 `config/crypto_binance_spot_universe.v1.yaml` and compiles thirty datasets:
 one bar, one public-rule and one current book-ticker snapshot dataset per
