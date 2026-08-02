@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 from datetime import datetime, timezone
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -15,7 +15,6 @@ from tools.compile_tushare_runtime_contracts import (
     compile_https_probe_plan,
     compile_runtime_contract_bundle,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = ROOT / "config" / "tushare_document_contracts.v1.yaml"
@@ -323,39 +322,23 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
 
 def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    observations["normalization_policy"]["allowed_parameter_sources"] = [
-        "dataset_field",
-        "literal",
-        "literal_values",
-        "run_clock",
-        "scheduled_partition",
-    ]
-    major_news = _entry(observations, "major_news")
-    major_news["request_shape"] = "dimension_fanout"
-    major_news["parameters"] = {
-        "end_date": {
-            "source": "run_clock",
-            "transform": "local_datetime_seconds",
-            "offset_seconds": 0,
-        },
-        "src": {
-            "source": "literal_values",
-            "values": ["新浪财经", "财联社"],
-            "batch_size": 1,
-        },
-        "start_date": {
-            "source": "run_clock",
-            "transform": "local_datetime_seconds",
-            "offset_seconds": -60,
-        },
-    }
 
     bundle = _compile(request_observations=observations)
 
     assert _contract(bundle, "major_news")["fanout"] == {
         "strategy": "literal_values",
         "parameter": "src",
-        "values": ["新浪财经", "财联社"],
+        "values": [
+            "新华网",
+            "凤凰财经",
+            "同花顺",
+            "新浪财经",
+            "华尔街见闻",
+            "中证网",
+            "财新网",
+            "第一财经",
+            "财联社",
+        ],
         "batch_size": 1,
     }
 
@@ -368,7 +351,7 @@ def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> No
     )
     major_news_probe = _entry(plan, "major_news")
     assert major_news_probe["probe_state"] == "executable"
-    assert major_news_probe["params"]["src"] == "新浪财经"
+    assert major_news_probe["params"]["src"] == "新华网"
 
 
 def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() -> None:

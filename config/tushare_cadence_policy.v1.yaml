@@ -508,7 +508,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: a467f14e2e8cdf109c9d8aebf93d26894661130bb34e96e08c6e893a71a57211
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: margin
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
