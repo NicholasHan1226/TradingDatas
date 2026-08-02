@@ -1,6 +1,6 @@
 # Binance Spot public-data canary
 
-This is an isolated, non-production TradingDatas canary. It does not change
+This is an isolated, non-trading Crypto runtime. It does not change
 the CN/Tushare registry, SQLite authority, 18082 service, release, or timer.
 It is selected only with `TRADINGDATAS_CANARY_MODE=binance_spot_v1`; arbitrary
 registry-path overrides remain rejected.

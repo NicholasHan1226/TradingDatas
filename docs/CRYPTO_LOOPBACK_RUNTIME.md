@@ -37,9 +37,11 @@ hash registry, salt, or a provider credential.
 ## Collector behavior and current proof
 
 The timer passed candidate review and server preflight before it was enabled.
-The current production baseline collects BTCUSDT and ETHUSDT through the
-existing provider-native receipt path, using two adjacent already-closed 5m
-bars per run. Its `observed_at` is the actual collection time.
+The current isolated production runtime collects the frozen ten-symbol cohort
+through the existing provider-native receipt path, using already-closed 5m
+bars per run. Its `observed_at` is the actual collection time. BTCUSDT and
+ETHUSDT remain the smaller rollback baseline; they are not a claim that the
+running cohort is limited to two symbols.
 
 The expansion contract freezes ten symbols in
 `config/crypto_binance_spot_universe.v1.yaml` and compiles twenty datasets:
@@ -48,6 +50,13 @@ datasets and all ten rule datasets to pass independent authenticated
 catalog/query readback. A symbol failure is isolated and must not be hidden by
 another symbol's healthy envelope. Bounded 180-day backfill remains a separate
 one-shot operation and is never real-time/PIT evidence.
+
+On 2026-08-02, authenticated formal `18083` readback verified two adjacent
+completed 5m windows for all ten bar datasets. Every dataset returned a
+terminal page with unique bar identities and `ready/success/fresh/valid`,
+`degraded=false`, plus a receipt and complete lineage. This is runtime evidence
+for the frozen cohort only; it does not authorize orders, accounts, or a
+runtime expansion beyond the versioned universe contract.
 
 An explicit query `as_of` also bounds receipt authority: bar rows and envelope
 metadata can use only complete success receipts whose collection interval is at

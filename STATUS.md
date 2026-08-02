@@ -1,6 +1,17 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 04:07 CST。
+最后更新：2026-08-02 12:22 CST。
+
+> **2026-08-02 Crypto 10-symbol continuous readback:** Crypto remains a
+> separate internal runtime on formal 18083, with its own release, SQLite,
+> service identity and timers; A-share 18082 was not touched. Authenticated
+> bounded queries verified two adjacent completed 5m windows for the frozen
+> BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT,
+> LINKUSDT and AVAXUSDT cohort. Each dataset returned a terminal page with 12
+> unique bar identities, `ready/success/fresh/valid/non-degraded` metadata and
+> complete receipt/lineage. The two most recent bar open times were 04:10 and
+> 04:15 UTC. This closes the earlier 10-symbol live-readback gap; it is
+> data-service evidence only, not an order, account or execution authority.
 
 > **2026-08-02 `tdx_daily` 正式历史分区回读：** 生产代码基线
 > `main/origin=37742e09d62cc545369e77ee61d5ec04169a3466` 已构建并切为 immutable
