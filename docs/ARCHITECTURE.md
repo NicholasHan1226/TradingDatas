@@ -152,7 +152,9 @@ provider/transport、schema major、quality/freshness/lineage 与 receipt 口径
   cadence 独立于盘中分钟行情约每 15 分钟采集，并以各自日期分区、公开 identity 和
   transaction receipt 判定完整性；`event_evidence_wave_1` 只用于有界验收，不新增专用
   route 或 collector。HTTP 200、旧 receipt 或空行数均不等于 ready，消费者仍须逐数据集
-  检查 `ready/fresh/valid/non-degraded`。
+  检查 `ready/fresh/valid/non-degraded`。`research_report` 的 v2 identity 为
+  `[trade_date, title, url]`；上游可为空的 `author` 仅为字段，不参与 identity，旧 v1
+  事实不会混入 v2 读取面。
 - 证券代码、合约、交易对或新闻对象的原生 identity 可以作为事实字段暴露。若 provider
   提供官方映射表，也可按原样作为 reference dataset 提供；平台不自行推断或维护跨市场
   entity graph。

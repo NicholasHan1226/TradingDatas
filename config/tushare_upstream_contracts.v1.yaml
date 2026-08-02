@@ -26983,7 +26983,7 @@ contracts:
   api_name: research_report
   source_document_url: https://tushare.pro/wctapi/documents/415.md
   source_document_sha256: ec6a52d71dc05d7b2f7bbbd2e60f997a1c290184fd674234bfde636cfaecdf9c
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: trade_date
     declared_source_type: str
@@ -27038,7 +27038,7 @@ contracts:
   - name: author
     declared_source_type: str
     logical_type: text
-    nullable: false
+    nullable: true
     selectable: true
     filterable: true
     sortable: true
@@ -27080,7 +27080,6 @@ contracts:
   primary_key:
   - trade_date
   - title
-  - author
   - url
   default_projection:
   - trade_date

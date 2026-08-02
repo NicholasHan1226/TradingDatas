@@ -412,29 +412,40 @@ def test_reviewed_dc_concept_contract_binds_real_day_partition_identity() -> Non
 
 
 @pytest.mark.parametrize(
-    ("api_name", "primary_key", "partition_field"),
+    ("api_name", "primary_key", "partition_field", "schema_version"),
     [
-        ("anns_d", ["ann_date", "ts_code", "title", "url"], "ann_date"),
-        ("cctv_news", ["date", "title", "content"], "date"),
+        (
+            "anns_d",
+            ["ann_date", "ts_code", "title", "url"],
+            "ann_date",
+            "1.0.0",
+        ),
+        ("cctv_news", ["date", "title", "content"], "date", "1.0.0"),
         (
             "irm_qa_sh",
             ["trade_date", "ts_code", "pub_time", "q", "a"],
             "trade_date",
+            "1.0.0",
         ),
         (
             "irm_qa_sz",
             ["trade_date", "ts_code", "pub_time", "q", "a"],
             "trade_date",
+            "1.0.0",
         ),
         (
             "research_report",
-            ["trade_date", "title", "author", "url"],
+            ["trade_date", "title", "url"],
             "trade_date",
+            "2.0.0",
         ),
     ],
 )
 def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
-    api_name: str, primary_key: list[str], partition_field: str
+    api_name: str,
+    primary_key: list[str],
+    partition_field: str,
+    schema_version: str,
 ) -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
@@ -442,6 +453,12 @@ def test_reviewed_news_and_disclosure_contracts_bind_observed_day_identities(
     contract = {item["api_name"]: item for item in compiled["contracts"]}[api_name]
 
     assert contract["primary_key"] == primary_key
+    assert contract["schema_version"] == schema_version
+    if api_name == "research_report":
+        author = next(
+            field for field in contract["fields"] if field["name"] == "author"
+        )
+        assert author["nullable"] is True
     assert contract["cadence_class"] == "event"
     # The generic event scheduler polls every 15 minutes, while date-only
     # provider partitions remain fresh for the trading day.

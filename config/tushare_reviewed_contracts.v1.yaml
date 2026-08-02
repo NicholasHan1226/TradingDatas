@@ -780,19 +780,22 @@ contracts:
     api_name: research_report
     source_document_url: https://tushare.pro/wctapi/documents/415.md
     source_document_sha256: ec6a52d71dc05d7b2f7bbbd2e60f997a1c290184fd674234bfde636cfaecdf9c
-    schema_version: 1.0.0
+    # v2 isolates the earlier author-null invalid rows from the corrected
+    # identity contract; new provider facts must be collected under this
+    # contract before they can be projected as healthy.
+    schema_version: 2.0.0
     fields:
       - {name: trade_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
       - {name: abstr, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
       - {name: report_type, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
-      - {name: author, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: author, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: ts_code, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: inst_csname, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: ind_name, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
       - {name: url, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
-    primary_key: [trade_date, title, author, url]
+    primary_key: [trade_date, title, url]
     default_projection: [trade_date, abstr, title, report_type, author, name, ts_code, inst_csname, ind_name, url]
     as_of_field: trade_date
     as_of_format: yyyymmdd
