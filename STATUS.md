@@ -2,8 +2,8 @@
 
 最后更新：2026-08-02 18:59 CST。
 
-> **2026-08-02 `research_report` nullable-author 合同修正已发布：** GitHub
-> `main/origin`、不可变 production `current` 均为
+> **2026-08-02 `research_report` nullable-author 合同修正已发布：** 不可变
+> production `current` 为发布代码
 > `983c5f63fee1c166db40859420f817b04cc639d9`；原
 > `4acfb6b8f57678c18261bf0d28a4517683ababbb` 已通过 manifest 验证并保留为回滚。
 > 本次只将 `cn.dataset.research_report` 升为 schema major `2`，其稳定 identity 改为
