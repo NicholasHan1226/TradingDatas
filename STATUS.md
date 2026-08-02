@@ -1,6 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 20:42 CST。
+最后更新：2026-08-02 20:47 CST。
+
+> **2026-08-02 Crypto 有界瞬态重试发布：** 独立 Crypto immutable
+> `current=557a2967bc9582ffef26bc412d702767e0ef5c17` 已从已验证 rollback
+> `a60e5425c9119bf9fe24c1b08a070907db58febd` 原子切换；两份 manifest 均通过验证。
+> 变更只影响 18083 的已关闭 5 分钟 Binance bar collector：某一 dataset/window 写入
+> terminal `provider_error` receipt 后，最多立即重试一次；配置、校验与合法 empty 永不
+> 重试，二次失败仍保持失败，不存在替代 provider、替代 bar 或交易 fallback。
+>
+> 切换后既有 18083 API、closed-5m timer 与 rules timer 均恢复。20:40 和 20:45 CST 两轮
+> 自然自动采集各为十标的 success；日志表明已执行新 release（每项 `retry_count=0`）。
+> UID987 对 BTCUSDT 的固定 13 根 terminal window 做同一 `as_of` 双读，结果均为
+> `ready/success/fresh/valid/non-degraded`、receipt/lineage 完整且 canonical replay 一致。
+> 本两轮没有触发真实 `provider_error`，因此这只证明新运行面、自然采集和回放正常；
+> 有界重试对短暂上游失败的在线恢复仍待未来真实 receipt 证据验证。A股 18082、其 timer、
+> TradingAgent 资金/订单与 `REAL_TRADING_ENABLED=false` 均未改变。
 
 > **2026-08-02 daily-reference wave 受控采集：** 对 `trade_date=20260731` 的
 > `cn.dataset.adj_factor`、`cn.dataset.margin`、`cn.dataset.margin_detail` 与
