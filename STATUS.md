@@ -1,6 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 20:25 CST。
+最后更新：2026-08-02 20:42 CST。
+
+> **2026-08-02 daily-reference wave 受控采集：** 对 `trade_date=20260731` 的
+> `cn.dataset.adj_factor`、`cn.dataset.margin`、`cn.dataset.margin_detail` 与
+> `cn.dataset.stk_limit` 先做同一 generic batch plan，再由现有 service 执行一次。结果为
+> `adj_factor=5548`、`stk_limit=7716` 的 success receipt，以及 `margin`、`margin_detail`
+> 各一张合法 empty receipt；没有 validation/provider error、专用 collector 或新的 timer。
+>
+> UID987 的 formal 18082 有界读回显示：前两项各首页 500 行且存在 next cursor，receipt 与
+> lineage 完整；它们在周末按 86400 秒 SLA 如实为 `stale/degraded`。后两项为 0 行、terminal
+> cursor、`state=empty`、`quality=valid`、`degraded=false`，receipt/lineage 完整，明确表示
+> provider 当前分区合法返回空，而不是采集失败。本轮没有执行两项大分区的全页重放，所以不能把
+> 这条有界 readback 表述为完整分页 API 验收；历史数据也不得作为实时或执行证据。
 
 > **2026-08-02 event wave 正式历史分区闭环：** 复用同一个 generic on-demand batch，
 > 对已完成的 `20260731` 分区依次采集 `cn.dataset.anns_d`、`cn.dataset.cctv_news`、
