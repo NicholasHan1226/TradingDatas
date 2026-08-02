@@ -325,7 +325,7 @@ def _prepare_rows(
     assert max_row_bytes is not None
     assert max_batch_bytes is not None
     assert max_depth is not None
-    if len(rows) > max_rows:
+    if binding.fanout.strategy == "none" and len(rows) > max_rows:
         raise ProviderNativeAdmissionError(
             "provider batch exceeds max_rows_per_attempt",
             error_code="resource_budget",

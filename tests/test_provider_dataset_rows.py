@@ -12,7 +12,7 @@ import pytest
 from collectors.tushare import tushare_common
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
 import storage.provider_dataset_rows as provider_rows_module
-from dataset_registry import load_dataset_registry
+from dataset_registry import FanoutPolicy, load_dataset_registry
 from storage.ingest_receipts import IngestContext, ProviderRequestIdentity
 from storage.provider_dataset_rows import (
     ProviderNativeAdmissionError,
@@ -539,6 +539,34 @@ def test_resource_budgets_fail_before_any_write(tmp_path: Path) -> None:
         assert (
             conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
         )
+
+
+def test_fanout_rows_may_exceed_one_provider_call_budget(tmp_path: Path) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+    binding = replace(
+        binding,
+        fanout=FanoutPolicy(
+            strategy="literal_values",
+            parameter="src",
+            values=("source_a", "source_b"),
+            batch_size=1,
+        ),
+        max_rows_per_attempt=1,
+    )
+    dataset = replace(dataset, provider_bindings=(binding,))
+
+    result = ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[_row(ts_code="000001.SZ"), _row(ts_code="000002.SZ")],
+        context=_context(dataset, binding),
+    )
+
+    assert result.status == "success"
+    assert result.counts.inserted == 2
 
 
 @pytest.mark.parametrize(
