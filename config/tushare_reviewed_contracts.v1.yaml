@@ -50,6 +50,51 @@ contracts:
     requested_fields: [month, broker, ts_code, name]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Every documented source is collected independently in an inclusive
+  # one-minute publication window.  Source shards may be legally empty, but
+  # each returned item must bind a non-null source/time/title identity and
+  # remain within the requested window.  The documented 400-row source cap is
+  # a fail-closed ceiling, never a completeness assertion for a wider window.
+  - dataset_id: cn.dataset.major_news
+    aliases: [tushare.major_news]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: major_news
+    source_document_url: https://tushare.pro/wctapi/documents/195.md
+    source_document_sha256: a467f14e2e8cdf109c9d8aebf93d26894661130bb34e96e08c6e893a71a57211
+    schema_version: 1.0.0
+    fields:
+      - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: content, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: pub_time, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: src, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+    primary_key: [src, pub_time, title]
+    default_projection: [title, content, pub_time, src]
+    as_of_field: null
+    as_of_format: null
+    range_field: null
+    partition_field: null
+    cadence_class: on_demand
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: dimension_fanout
+    request_template: {start_date: '${window.start_date}', end_date: '${window.end_date}'}
+    request_variants: [{}]
+    fanout: {strategy: literal_values, parameter: src, values: [新华网, 凤凰财经, 同花顺, 新浪财经, 华尔街见闻, 中证网, 财新网, 第一财经, 财联社], batch_size: 1}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [start_date, end_date], formats: {start_date: local_datetime_seconds, end_date: local_datetime_seconds}, range_start_key: start_date, range_end_key: end_date, max_span_days: 1}
+    response_completeness: {strategy: windowed_unique_primary_key, date_field: pub_time, request_start_key: start_date, request_end_key: end_date, fanout_field: src, fixed_field_matches: {}, reject_at_row_limit: true}
+    requested_fields: [title, content, pub_time, src]
+    budgets: {max_rows_per_attempt: 400, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []
   # Four verified date-partition responses share the existing generic daily
   # contract. Candidate receipts showed non-null unique trade_date/ts_code
   # identities and no transport cap; no dataset-specific runtime path is needed.

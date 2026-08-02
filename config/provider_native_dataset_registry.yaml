@@ -21040,14 +21040,26 @@ datasets:
     - name: end_date
       declared_source_type: str
       required: false
-    request_shape: event_or_intraday_window
+    request_shape: dimension_fanout
     request_template:
       end_date: ${window.end_date}
       start_date: ${window.start_date}
     request_variants:
     - {}
     fanout:
-      strategy: none
+      strategy: literal_values
+      parameter: src
+      values:
+      - 新华网
+      - 凤凰财经
+      - 同花顺
+      - 新浪财经
+      - 华尔街见闻
+      - 中证网
+      - 财新网
+      - 第一财经
+      - 财联社
+      batch_size: 1
     pagination:
       strategy: none
     request_window_policy:
@@ -21060,12 +21072,23 @@ datasets:
       range_start_key: start_date
       range_end_key: end_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: windowed_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      date_field: pub_time
+      request_start_key: start_date
+      request_end_key: end_date
+      fanout_field: src
+    requested_fields:
+    - title
+    - content
+    - pub_time
+    - src
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 400
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -21075,7 +21098,7 @@ datasets:
   fields:
   - name: title
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -21087,17 +21110,20 @@ datasets:
     sortable: true
   - name: pub_time
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: src
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - src
+  - pub_time
+  - title
   default_projection:
   - title
   - content

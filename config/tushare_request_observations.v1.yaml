@@ -13,10 +13,10 @@ provenance:
     sha256: 9933c2969e52c6afdb53e512e33628d0f72ae0610414bac286774edade1e8193
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 7507938189ce0d9bbdfbf406f3e99181184b092bda632ef380fd01cee61a7a9d
+    sha256: 8efefd36af167052f2916918419da78d2de2867131eaeec04a4a4287b133bbea
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 42ee0cd17ab10cd09b40338f22ce88838fd6dafd2e96e3c1bee2e00db0d8c341
+    sha256: 25bd480e72f865f9bef1c691efee23a5f4bd87fbfd6de0f122529e906ee03032
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -2036,7 +2036,7 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: event_or_intraday_window
+  request_shape: dimension_fanout
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
@@ -2047,6 +2047,19 @@ entries:
       source: run_clock
       transform: local_datetime_seconds
       offset_seconds: 0
+    src:
+      source: literal_values
+      values:
+      - 新华网
+      - 凤凰财经
+      - 同花顺
+      - 新浪财经
+      - 华尔街见闻
+      - 中证网
+      - 财新网
+      - 第一财经
+      - 财联社
+      batch_size: 1
     start_date:
       source: run_clock
       transform: local_datetime_seconds
