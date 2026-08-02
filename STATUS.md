@@ -1,6 +1,23 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 20:47 CST。
+最后更新：2026-08-02 21:37 CST。
+
+> **2026-08-02 `dc_daily` selectable response-field release 已回滚：** PR #75
+> 正常合入后，immutable `3df46e3f5277990224a4ae06f5b27a39a3e8d2e8`
+> 曾在目标/rollback manifest、物理 registry 重编译与无写 plan 都通过后，短暂成为
+> 18082 `current`。同一 generic on-demand collection 对 `trade_date=20260731` 成功写入
+> 1,031 行、并已消费 selector；但正式 query 随即读到 2,062 行对应 1,031 个
+> `[trade_date, ts_code]` identity：旧 append-only payload 没有 `category`，新 payload
+> 包含该字段。API 因而诚实输出 `missing_field:category` 与
+> `provider_dataset_quality_degraded`，不能作为 ready/valid 交接。
+>
+> 按停止线，未删除 facts、receipts 或证据，已用 trusted verifier 原子恢复
+> `current=983c5f63fee1c166db40859420f817b04cc639d9`；18082 与既有 generic timer
+> 均已恢复、`NRestarts=0`。根因不是 `dc_daily` 专用合同，而是 current query 将 metadata
+> 的 receipt cohort 与所有历史 append-only payload 混读。后续只能用独立的通用
+> receipt-scoped query projection 候选修复，并同时覆盖 current、stale、as_of、分页和
+> historical revision 语义；在该候选通过正式 readback 前，不得再次切换或宣传 PR #75
+> 为 production-ready。A股分钟、Crypto、TradingAgent 与真实交易均未改变。
 
 > **2026-08-02 Crypto 有界瞬态重试发布：** 独立 Crypto immutable
 > `current=557a2967bc9582ffef26bc412d702767e0ef5c17` 已从已验证 rollback
