@@ -1108,10 +1108,11 @@ def _activation_evidence_index(
     }
     if (
         coverage_counts["planned"] != len(contracts)
-        or coverage_counts["executable"] != interface_count
         or coverage_counts["selected"] != interface_count
         or coverage_counts["executed"] != interface_count
-        or coverage_counts["blocked"] != len(contracts) - interface_count
+        or not 1 <= interface_count <= coverage_counts["executable"]
+        or coverage_counts["blocked"]
+        != len(contracts) - coverage_counts["executable"]
     ):
         raise ValueError("HTTPS activation evidence coverage is inconsistent")
 
@@ -1389,7 +1390,13 @@ def _activation_evidence_index(
         for contract in contracts
         if contract["probe_state"] == "executable"
     } | dependency_resolved
-    if set(result_by_api) != executable_api_names:
+    if coverage_counts["executable"] != len(executable_api_names):
+        raise ValueError("HTTPS activation evidence executable coverage drifted")
+    cohort_evidence = interface_count < len(executable_api_names)
+    if cohort_evidence:
+        if not set(result_by_api) < executable_api_names:
+            raise ValueError("HTTPS activation evidence cohort is not a strict subset")
+    elif set(result_by_api) != executable_api_names:
         raise ValueError("HTTPS activation evidence executable API set is not closed")
     ingest_ready_api_names = {
         api_name
@@ -1422,7 +1429,15 @@ def _activation_evidence_index(
         if result["state"] in _FRESH_ACTIVATION_STATES
     }
     candidate_api_names = fresh_api_names & ingest_ready_api_names
-    active_api_names = {
+    previous_active = {
+        contract["api_name"]
+        for contract in contracts
+        if observations[(contract["dataset_id"], contract["provider"])][
+            "activation_state"
+        ]
+        == "active"
+    }
+    active_api_names = previous_active | {
         api_name
         for api_name in candidate_api_names
         if _activation_window_is_supported(by_api[api_name])
@@ -1472,14 +1487,6 @@ def _activation_evidence_index(
     ):
         raise ValueError("HTTPS activation evidence activation projection drifted")
 
-    previous_active = {
-        contract["api_name"]
-        for contract in contracts
-        if observations[(contract["dataset_id"], contract["provider"])][
-            "activation_state"
-        ]
-        == "active"
-    }
     if not previous_active <= active_api_names:
         raise ValueError("HTTPS activation evidence does not preserve fresh prior active set")
 
