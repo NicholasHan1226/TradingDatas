@@ -3,10 +3,36 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+import tools.run_binance_spot_canary as canary
+from storage.ingest_receipts import IngestCounts, IngestResult
 from tools.run_binance_spot_canary import backfill_windows, latest_closed_window, run
 
-
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _ingest_result(
+    *, status: str, receipt_id: str, errors: tuple[str, ...] = ()
+) -> IngestResult:
+    succeeded = status == "success"
+    return IngestResult(
+        status=status,
+        counts=IngestCounts(
+            returned=1 if succeeded else 0,
+            validated=1 if succeeded else 0,
+            inserted=1 if succeeded else 0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=1 if succeeded else 0,
+            count_semantics="exact_row_outcomes"
+            if succeeded
+            else "terminal_no_data_transaction",
+        ),
+        receipt_ids=(receipt_id,),
+        errors=errors,
+    )
 
 
 def test_crypto_collector_window_uses_only_two_closed_adjacent_bars() -> None:
@@ -76,6 +102,80 @@ def test_crypto_book_ticker_plan_never_calls_provider_or_writes() -> None:
     assert result["windows"] == [{}]
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
+
+
+def test_crypto_runner_retries_one_provider_error_and_preserves_both_receipts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    calls: list[tuple[str, str]] = []
+
+    def collect(*args, **kwargs):
+        del args
+        dataset_id = kwargs["dataset_id"]
+        attempt_id = kwargs["attempt_id"]
+        calls.append((dataset_id, attempt_id))
+        if (
+            dataset_id.endswith("ethusdt.5m")
+            and sum(item[0] == dataset_id for item in calls) == 1
+        ):
+            return _ingest_result(
+                status="failed",
+                receipt_id="receipt:eth-first-failure",
+                errors=("provider_error",),
+            )
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{dataset_id}:{len(calls)}",
+        )
+
+    monkeypatch.setattr(canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=datetime(2026, 8, 2, 12, 10, tzinfo=timezone.utc),
+    )
+
+    eth = next(
+        item for item in result["datasets"] if item["dataset_id"].endswith("ethusdt.5m")
+    )
+    assert result["state"] == "success"
+    assert eth["state"] == "success"
+    assert eth["retry_count"] == 1
+    assert eth["receipt_ids"][0] == "receipt:eth-first-failure"
+    assert len(eth["receipt_ids"]) == 2
+    assert sum(dataset_id.endswith("ethusdt.5m") for dataset_id, _ in calls) == 2
+    assert len({attempt_id for _, attempt_id in calls}) == len(calls)
+
+
+def test_crypto_runner_does_not_retry_non_provider_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def collect(*args, **kwargs):
+        del args
+        calls.append(kwargs["attempt_id"])
+        return _ingest_result(
+            status="failed",
+            receipt_id="receipt:validation-failure",
+            errors=("validation_failed",),
+        )
+
+    monkeypatch.setattr(canary, "collect_provider_native_dataset", collect)
+    attempts = canary._collect_with_one_provider_retry(
+        db_path=tmp_path / "unused.sqlite",
+        registry=object(),
+        collector=object(),
+        dataset_id="crypto.spot.binance.ethusdt.5m",
+        request_window={"open_time": "2026-08-02T12:00:00Z"},
+        now=datetime(2026, 8, 2, 12, 10, tzinfo=timezone.utc),
+    )
+
+    assert len(attempts) == 1
+    assert attempts[0].errors == ("validation_failed",)
+    assert len(calls) == 1
 
 
 def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:

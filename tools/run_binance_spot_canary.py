@@ -32,6 +32,7 @@ from dataset_registry import (  # noqa: E402
 )
 
 FIVE_MINUTES = timedelta(minutes=5)
+_MAX_DATASET_ATTEMPTS = 2
 
 
 def _bar_datasets(registry) -> tuple[str, ...]:
@@ -129,6 +130,44 @@ def _private_lock(path: Path):
     return descriptor
 
 
+def _collect_with_one_provider_retry(
+    *,
+    db_path: Path,
+    registry,
+    collector: BinanceSpotPublicCollector,
+    dataset_id: str,
+    request_window: dict[str, str],
+    now: datetime,
+):
+    """Persist a failed provider attempt, then retry it once if it is transient.
+
+    The generic ingest path persists every terminal attempt.  A single immediate
+    retry therefore preserves the failed receipt while allowing a brief public
+    transport interruption to recover before the consumer's 5-minute cutoff.
+    Config, validation, and legal-empty outcomes are never retried here.
+    """
+
+    attempts = []
+    for index in range(_MAX_DATASET_ATTEMPTS):
+        result = collect_provider_native_dataset(
+            db_path,
+            registry=registry,
+            collector=collector,
+            dataset_id=dataset_id,
+            request_window=request_window,
+            attempt_id=str(uuid.uuid4()),
+            started_at=_utc(now if index == 0 else datetime.now(timezone.utc)),
+        )
+        attempts.append(result)
+        if not (
+            result.status == "failed"
+            and result.errors == ("provider_error",)
+            and index + 1 < _MAX_DATASET_ATTEMPTS
+        ):
+            break
+    return tuple(attempts)
+
+
 def run(
     *,
     db_path: Path,
@@ -189,20 +228,24 @@ def run(
         results = []
         for window in windows:
             for dataset_id in datasets:
-                result = collect_provider_native_dataset(
-                    db_path,
+                attempts = _collect_with_one_provider_retry(
+                    db_path=db_path,
                     registry=registry,
                     collector=collector,
                     dataset_id=dataset_id,
                     request_window=window,
-                    attempt_id=str(uuid.uuid4()),
-                    started_at=_utc(now),
+                    now=now,
                 )
                 results.append(
                     {
                         "dataset_id": dataset_id,
-                        "receipt_ids": list(result.receipt_ids),
-                        "state": result.status,
+                        "receipt_ids": [
+                            receipt_id
+                            for attempt in attempts
+                            for receipt_id in attempt.receipt_ids
+                        ],
+                        "retry_count": len(attempts) - 1,
+                        "state": attempts[-1].status,
                         "window": window,
                     }
                 )
