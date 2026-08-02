@@ -555,6 +555,34 @@ def test_raw_probe_evidence_normalizes_sparse_probe_summary() -> None:
     assert bindings["major_news"]["activation_state"] == "active"
 
 
+def test_raw_probe_evidence_accepts_a_plan_subset_of_executable_contracts() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    coverage = evidence["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["executable"] = int(coverage["executable"]) - 1
+    coverage["blocked"] = int(coverage["blocked"]) + 1
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["major_news"]["activation_state"] == "active"
+    assert bindings["cb_basic"]["activation_state"] == "paused"
+
+
 def test_raw_probe_evidence_rejects_sparse_summary_count_drift() -> None:
     bundle = _bundle()
     observations = _observations()

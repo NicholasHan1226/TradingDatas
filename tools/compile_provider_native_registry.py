@@ -1563,14 +1563,24 @@ def _activation_evidence_index(
         for contract in contracts
         if contract["probe_state"] == "executable"
     } | dependency_resolved
-    if coverage_counts["executable"] != len(executable_api_names):
+    if (
+        not raw_probe_evidence
+        and coverage_counts["executable"] != len(executable_api_names)
+    ):
         raise ValueError("HTTPS activation evidence executable coverage drifted")
-    cohort_evidence = interface_count < len(executable_api_names)
-    if cohort_evidence:
-        if not set(result_by_api) < executable_api_names:
-            raise ValueError("HTTPS activation evidence cohort is not a strict subset")
-    elif set(result_by_api) != executable_api_names:
-        raise ValueError("HTTPS activation evidence executable API set is not closed")
+    if raw_probe_evidence:
+        if coverage_counts["executable"] > len(executable_api_names):
+            raise ValueError("HTTPS activation evidence executable coverage drifted")
+        cohort_evidence = interface_count < coverage_counts["executable"]
+        if not set(result_by_api) <= executable_api_names:
+            raise ValueError("HTTPS activation evidence result API is not executable")
+    else:
+        cohort_evidence = interface_count < len(executable_api_names)
+        if cohort_evidence:
+            if not set(result_by_api) < executable_api_names:
+                raise ValueError("HTTPS activation evidence cohort is not a strict subset")
+        elif set(result_by_api) != executable_api_names:
+            raise ValueError("HTTPS activation evidence executable API set is not closed")
     ingest_ready_api_names = {
         api_name
         for api_name in result_by_api
