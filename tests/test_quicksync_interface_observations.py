@@ -361,6 +361,9 @@ def test_observed_response_contract_deltas_are_small_and_schema_versioned() -> N
     assert "category" in {
         field["name"] for field in registry_by_api["dc_daily"]["fields"]
     }
+    assert "category" in registry_by_api["dc_daily"]["provider_bindings"][0][
+        "requested_fields"
+    ]
     assert {
         field["name"]: field["logical_type"]
         for field in registry_by_api["moneyflow"]["fields"]
