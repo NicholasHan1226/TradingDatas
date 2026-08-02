@@ -22491,7 +22491,7 @@ contracts:
   - name: title
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -22505,18 +22505,21 @@ contracts:
   - name: pub_time
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: src
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - src
+  - pub_time
+  - title
   default_projection:
   - title
   - content
@@ -22534,14 +22537,18 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: event_or_intraday_window
+  request_shape: dimension_fanout
   request_template:
     end_date: ${window.end_date}
     start_date: ${window.start_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: literal_values
+    parameter: src
+    values:
+    - 新浪财经
+    batch_size: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -22549,18 +22556,29 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: windowed_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    date_field: pub_time
+    request_start_key: start_date
+    request_end_key: end_date
+    fanout_field: src
+  requested_fields:
+  - title
+  - content
+  - pub_time
+  - src
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 400
   reviewed_type_overrides: []
   probe_state: executable
   probe_block_reasons: []

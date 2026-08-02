@@ -323,39 +323,13 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
 
 def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    observations["normalization_policy"]["allowed_parameter_sources"] = [
-        "dataset_field",
-        "literal",
-        "literal_values",
-        "run_clock",
-        "scheduled_partition",
-    ]
-    major_news = _entry(observations, "major_news")
-    major_news["request_shape"] = "dimension_fanout"
-    major_news["parameters"] = {
-        "end_date": {
-            "source": "run_clock",
-            "transform": "local_datetime_seconds",
-            "offset_seconds": 0,
-        },
-        "src": {
-            "source": "literal_values",
-            "values": ["新浪财经", "财联社"],
-            "batch_size": 1,
-        },
-        "start_date": {
-            "source": "run_clock",
-            "transform": "local_datetime_seconds",
-            "offset_seconds": -60,
-        },
-    }
 
     bundle = _compile(request_observations=observations)
 
     assert _contract(bundle, "major_news")["fanout"] == {
         "strategy": "literal_values",
         "parameter": "src",
-        "values": ["新浪财经", "财联社"],
+        "values": ["新浪财经"],
         "batch_size": 1,
     }
 
