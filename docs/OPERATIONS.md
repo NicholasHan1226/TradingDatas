@@ -117,7 +117,7 @@ window 被明确放进该 manifest，才会采集。
 service 或 timer。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
 `tradingdatas` 账号拥有、`0600`、无链接且单链接的
 `/run/tradingdatas/on-demand-batch.json` 与 `/run/tradingdatas/on-demand.env`。后者只能
-指定该固定 batch 路径；手工启动同一 service 后，通用 dispatcher 先消费 selector，再以
+逐字节指定该固定 batch 路径，不能含任何其它环境变量；手工启动同一 service 后，通用 dispatcher 先消费 selector，再以
 同一 `/run/tradingdatas/collect.lock` 串行执行 batch。无 selector 时 timer 保持原有 cadence
 planner 路径。无论成功、合法 empty、失败或 validation，batch 文件均在本轮结束时删除，
 避免下一次 timer 重放。batch 仍需先经过同 release 的 no-write plan，且不得含 token、

@@ -112,3 +112,21 @@ def test_on_demand_rejects_non_private_batch_file(
     assert runner.main() == 2
     assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
     assert not batch_file.exists()
+
+
+def test_on_demand_rejects_selector_file_with_extra_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file, batch_file, _ = _stage_selector(monkeypatch, tmp_path)
+    env_file.write_text(
+        f"TRADINGDATAS_ON_DEMAND_BATCH_FILE={batch_file}\n"
+        "TRADINGDATAS_DB_PATH=/tmp/other.sqlite\n",
+        encoding="utf-8",
+    )
+
+    assert runner.main() == 2
+    assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
+    assert env_file.exists()
+    assert batch_file.exists()

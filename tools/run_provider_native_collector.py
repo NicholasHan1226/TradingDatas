@@ -61,6 +61,14 @@ def _consume_batch_selector() -> Iterator[Path | None]:
     if raw != str(ON_DEMAND_BATCH_FILE):
         raise OnDemandBatchError("on-demand batch path is invalid")
     _require_private_regular_file(ON_DEMAND_ENV_FILE, name="on-demand env file")
+    expected_selector = f"{ON_DEMAND_BATCH_ENV}={ON_DEMAND_BATCH_FILE}\n".encode(
+        "utf-8"
+    )
+    try:
+        if ON_DEMAND_ENV_FILE.read_bytes() != expected_selector:
+            raise OnDemandBatchError("on-demand env file content is invalid")
+    except OSError as exc:
+        raise OnDemandBatchError("on-demand env file cannot be read") from exc
     try:
         ON_DEMAND_ENV_FILE.unlink()
     except OSError as exc:
