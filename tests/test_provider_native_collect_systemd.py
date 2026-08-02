@@ -8,7 +8,7 @@ SERVICE = ROOT / "deploy/systemd/tradingdatas-provider-native-collect.service"
 TIMER = ROOT / "deploy/systemd/tradingdatas-provider-native-collect.timer"
 
 
-def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
+def test_collector_unit_runs_only_the_generic_registry_collector() -> None:
     source = SERVICE.read_text(encoding="utf-8")
 
     assert "Type=oneshot" in source
@@ -21,14 +21,9 @@ def test_collector_unit_runs_only_the_generic_registry_scheduler() -> None:
     assert (
         "ExecStart=/opt/tradingdatas/venv/bin/python3 "
         "/opt/investment/releases/tradingdatas/current/"
-        "tools/run_provider_native_schedule.py "
+        "tools/run_provider_native_collector.py"
     ) in source
-    for argument in (
-        "--db-path /opt/investment-data/tradingdatas/read_model/provider_native.sqlite",
-        "--lock-path /run/tradingdatas/collect.lock",
-        "--execute",
-    ):
-        assert argument in source
+    assert "EnvironmentFile=-/run/tradingdatas/on-demand.env" in source
     for forbidden in (
         "TRADINGDATAS_ROOT",
         "TRADINGDATAS_REGISTRY_PATH",
