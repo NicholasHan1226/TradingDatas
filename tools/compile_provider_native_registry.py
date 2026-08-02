@@ -1008,17 +1008,24 @@ def _normalize_raw_probe_evidence(
     )
     raw_results = _sequence(root["results"], "raw HTTPS probe evidence.results")
     normalized_results: list[dict[str, Any]] = []
+    raw_summary_counts: dict[str, int] = {}
+    normalized_summary_counts = {state: 0 for state in _PROBE_SUMMARY_KEYS}
     for index, raw_result in enumerate(raw_results):
         label = f"raw HTTPS probe evidence.results[{index}]"
         result = _mapping(raw_result, label)
         _reject_keys(result, _RAW_PROBE_RESULT_KEYS, label)
         if result["response_redacted"] is not False:
             raise ValueError("raw HTTPS probe evidence redacted results are not promotable")
+        raw_state = _required_text(result["state"], f"{label}.state")
+        if raw_state not in _PROBE_RESULT_STATES:
+            raise ValueError(f"{label}.state is unsupported")
+        normalized_state = raw_state
+        raw_summary_counts[raw_state] = raw_summary_counts.get(raw_state, 0) + 1
+        normalized_summary_counts[normalized_state] += 1
         normalized = {
             key: result[key]
             for key in (
                 "api_name",
-                "state",
                 "provider_class",
                 "row_count",
                 "response_bytes",
@@ -1027,6 +1034,7 @@ def _normalize_raw_probe_evidence(
                 "elapsed_ms",
             )
         }
+        normalized["state"] = normalized_state
         normalized_results.append(
             {
                 **normalized,
@@ -1037,6 +1045,14 @@ def _normalize_raw_probe_evidence(
         item["api_name"] for item in normalized_results
     ):
         raise ValueError("raw HTTPS probe evidence results must be sorted")
+    raw_summary = _mapping(root["summary"], "raw HTTPS probe evidence.summary")
+    if not set(raw_summary).issubset(_PROBE_RESULT_STATES):
+        raise ValueError("raw HTTPS probe evidence summary is inconsistent")
+    for state in _PROBE_RESULT_STATES:
+        if _required_non_negative_int(
+            raw_summary.get(state, 0), f"raw HTTPS probe evidence.summary.{state}"
+        ) != raw_summary_counts.get(state, 0):
+            raise ValueError("raw HTTPS probe evidence summary is inconsistent")
     evidence = {
         "schema_version": root["schema_version"],
         "source_sha256": _canonical_json_sha256(root),
@@ -1064,7 +1080,7 @@ def _normalize_raw_probe_evidence(
         "scope": root["scope"],
         "interface_count": root["interface_count"],
         "coverage": root["coverage"],
-        "summary": root["summary"],
+        "summary": normalized_summary_counts,
         "transport": root["transport"],
         "concurrency": root["concurrency"],
         "rate_budget": root["rate_budget"],

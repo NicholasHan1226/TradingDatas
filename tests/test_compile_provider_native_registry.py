@@ -526,6 +526,61 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
     assert bindings["cb_basic"]["activation_state"] == "paused"
 
 
+def test_raw_probe_evidence_normalizes_sparse_probe_summary() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    results = evidence["results"]
+    assert isinstance(results, list)
+    assert isinstance(results[0], dict)
+    state = results[0]["state"]
+    assert isinstance(state, str)
+    evidence["summary"] = {state: 1}
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["major_news"]["activation_state"] == "active"
+
+
+def test_raw_probe_evidence_rejects_sparse_summary_count_drift() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    results = evidence["results"]
+    assert isinstance(results, list)
+    assert isinstance(results[0], dict)
+    state = results[0]["state"]
+    assert isinstance(state, str)
+    evidence["summary"] = {state: 2}
+
+    with pytest.raises(
+        ValueError, match="raw HTTPS probe evidence summary is inconsistent"
+    ):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
 def test_raw_probe_evidence_rejects_redacted_results() -> None:
     bundle = _bundle()
     observations = _observations()
