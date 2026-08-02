@@ -1,6 +1,24 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 18:02 CST。
+最后更新：2026-08-02 18:59 CST。
+
+> **2026-08-02 `research_report` nullable-author 合同修正已发布：** GitHub
+> `main/origin`、不可变 production `current` 均为
+> `983c5f63fee1c166db40859420f817b04cc639d9`；原
+> `4acfb6b8f57678c18261bf0d28a4517683ababbb` 已通过 manifest 验证并保留为回滚。
+> 本次只将 `cn.dataset.research_report` 升为 schema major `2`，其稳定 identity 改为
+> `[trade_date, title, url]`，并将上游可合法缺失的 `author` 声明为 nullable；未新增
+> route、collector、timer、表或交易语义。目标 release 与回滚 release 均逐字节验证，目标
+> registry 由其物理 release 重编译后与 checked-in registry 一致；随后在短暂受控窗口内原子
+> 切换并恢复 18082 API 与既有 generic collector timer。
+>
+> UID987 的正式 18082 读回为 catalog HTTP 200、190 datasets、
+> `catalog_version=v1-e23dc83446ca082f`；该 dataset 公开
+> `schema_major=2` 与 `identity_fields=[trade_date,title,url]`。v2 尚未有正式采集 receipt，
+> 所以查询如实返回 0 行、`unobserved/degraded`、`no_recognized_receipt`，并没有把旧 v1 的
+> 已降级事实投影为 v2 成功。下一步只能在有效分区执行一次现有 generic collection，再以
+> receipt/lineage 完整的 formal 18082 readback 判断是否可用；在此之前它不构成实时、PIT、
+> 策略或执行证据。A股分钟、Crypto、TradingAgent、凭证与真实交易均未改变。
 
 > **2026-08-02 `major_news` 正式按需闭环：** GitHub `main/origin` 与
 > 18082 immutable `current` 均为 `4acfb6b8f57678c18261bf0d28a4517683ababbb`；已验证
