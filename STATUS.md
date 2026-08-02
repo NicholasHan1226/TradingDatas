@@ -1,12 +1,11 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 22:19 CST。
+最后更新：2026-08-02 22:31 CST。
 
-> **2026-08-02 `dc_daily` complete-response v3 已完成隔离验收，尚未部署：** PR #75
+> **2026-08-02 `dc_daily` complete-response v3 已正式部署：** PR #75
 > 的 schema 2 selectable-field release 曾在正式 `trade_date=20260731` 读回时暴露
 > append-only 历史混读：1,031 个逻辑 identity 对应 2,062 行，旧 payload 不含
-> `category`，API 正确降级。该 target 已回滚，生产继续为
-> `current=983c5f63fee1c166db40859420f817b04cc639d9`；旧 facts、receipts 与证据均未删除。
+> `category`，API 正确降级。该 target 已回滚；旧 facts、receipts 与证据均未删除。
 >
 > 随后 PR #77 将完整响应合同升为 `cn.dataset.dc_daily schema_major=3`，而非修改所有
 > append-only dataset 的 global current-query 语义。旧 schema 2 保持历史审计可读；v3 用
@@ -16,10 +15,16 @@
 > `[trade_date, ts_code]` identity 唯一且 `category` 无缺失、`quick_check=ok`。临时 18084
 > 以 UID987/现有只读 scope 回读三页 1,031 行、terminal cursor、payload replay 一致、receipt
 > 与 lineage 完整；因为 20260731 已跨日级 SLA，metadata 诚实为 `stale/degraded`，不是质量或
-> 分页失败。18084 已停止；18082/current/timer、A股分钟、Crypto、TradingAgent 与真实交易均未改变。
+> 分页失败。18084 已停止。
 >
-> 下一门槛是下一可用日对 schema 3 的正式 on-demand receipt 与 18082 fresh/valid readback；
-> 在此之前，v3 仅为已合并、已隔离验证的候选合同，不宣称 production-ready。
+> 随后从 verified rollback `983c5f63fee1c166db40859420f817b04cc639d9` 原子切至 immutable
+> `current=2cd289db369ffebdb7b475ce71d45c9d5993eb48`；target 与 rollback manifest、target
+> physical registry byte-equality 均通过，18082 API 与既有 generic timer 已恢复 active/enabled。
+> 对同一 completed partition 的 formal generic on-demand collection 先通过 no-write plan，后写入
+> 一张 v3 success receipt。UID987 经正式 18082 catalog/query 全页双读得到三页 1,031 行、1,031 个
+> 唯一 `[trade_date,ts_code]`、零缺 `category`、terminal cursor、payload replay 一致，receipt 与
+> lineage 完整。周末读时钟使 envelope 继续如实为 `stale/degraded`，而非质量失败；下一可用日的新鲜
+> receipt/readback 才能使 v3 进入 fresh/valid 内部可消费集合。A股分钟、Crypto、TradingAgent 与真实交易均未改变。
 
 > **2026-08-02 Crypto 有界瞬态重试发布：** 独立 Crypto immutable
 > `current=557a2967bc9582ffef26bc412d702767e0ef5c17` 已从已验证 rollback
