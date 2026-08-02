@@ -42,7 +42,9 @@ registry 声明 request template、variants、window、fanout、pagination、字
 
 自动 cadence 统一支持 `yyyymmdd`、`yyyymm`、`yyyy_qn` 与 `yyyyww` 四种已验证窗口编码；它们
 都由同一个 planner 生成。`local_datetime_seconds` 只允许显式有界 one-shot，不能由 scheduler 猜测
-盘中窗口。窗口格式本身不构成 activation 证据，仍须经过 provider → SQLite receipt → query readback。
+盘中窗口。带非空主键、`literal_values` fanout 和 `windowed_unique_primary_key` 完整性规则的
+`on_demand` 事件合同可在 fresh activation evidence 后由通用 collector 按需执行；这不使其
+进入 scheduler。窗口格式本身不构成 activation 证据，仍须经过 provider → SQLite receipt → query readback。
 
 `dataset_field` 参数可以声明可选的正整数 `batch_size`，未声明时默认为 `1`；compiler 将该值原样投影到通用 fanout 合同。executor 对已验证的来源值做稳定去重和有界分批，同一批的多个值作为一个逗号分隔的 provider 参数发送。该能力只描述通用请求形状，不改变 entitlement、activation、receipt 或数据完整性门禁，也不允许按 dataset 或 API 增加执行分支。
 
