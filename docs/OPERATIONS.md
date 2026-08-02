@@ -376,7 +376,14 @@ SharedSignals service/timer 的 unit 均已移出 systemd 搜索路径并 `maske
 `marketgraph` 的 22 条非注释旧 SharedSignals 计划任务均已移除。TradingDatas 18082 仍为
 active，自己的 collector timer 继续 disabled。基础退役证据位于受限目录
 `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
-旧代码目录、挂载、SQLite 与历史证据未删除；若要物理删除，仍须先完成数据保留清单和单独批准。
+**2026-08-02 清理 readback：** 两条指向已不存在
+`/opt/investment/SharedSignals/...` 目标的旧 `/etc/fstab` bind-mount 条目已在备份
+`/etc/fstab.tradings-pre-sharedsignals-cleanup-20260802` 后删除并完成
+`daemon-reload`。相应 generated mount unit 现为 `not-found/inactive`。七个历史
+SharedSignals service/timer 保持 `masked/inactive`，不得删除 mask 或 unmask；这避免
+遗留 unit 被意外恢复。root-only
+`/opt/investment/_archive/SharedSignals-retired-active-path-20260801` 归档挂载、SQLite
+历史 facts/receipts 与退役证据继续保留，物理删除仍须单独数据保留批准。
 
 退役必须分项执行并保留证据：
 
