@@ -164,6 +164,24 @@ def test_fut_settle_projects_receipt_bound_day_identity_without_claiming_as_of()
     }
 
 
+def test_fut_basic_projects_contract_identity_and_deterministic_catalog_order() -> None:
+    """The M-contract consumer cannot paginate or replay an identity-less catalog."""
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    datasets = registry["datasets"]
+    assert isinstance(datasets, list)
+    contract = next(
+        item
+        for item in datasets
+        if isinstance(item, dict) and item["dataset_id"] == "cn.dataset.fut_basic"
+    )
+
+    assert contract["primary_key"] == ["ts_code"]
+    assert [f"{field}:asc" for field in contract["primary_key"]] == ["ts_code:asc"]
+
+
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     parameters = inspect.signature(compile_provider_native_registry).parameters
 
