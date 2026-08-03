@@ -66,15 +66,18 @@ def _mapping(value: object, label: str) -> Mapping[str, object]:
     return value
 
 
-def _source(value: object) -> dict[str, str]:
+def _source(value: object, *, schema_version: int) -> dict[str, str]:
     source = _mapping(value, "source")
-    if set(source) != {
+    source_keys = {
         "dataset_id",
         "provider",
         "receipt_id",
         "registry_sha256",
         "snapshot_sha256",
-    }:
+    }
+    if schema_version == 2:
+        source_keys.add("receipt_sha256")
+    if set(source) != source_keys:
         raise ValueError("source keys are invalid")
     dataset_id = _text(source["dataset_id"], "source.dataset_id")
     provider = _text(source["provider"], "source.provider")
@@ -83,13 +86,18 @@ def _source(value: object) -> dict[str, str]:
         raise ValueError("source must be the Tushare security master")
     if not receipt_id.startswith("receipt:"):
         raise ValueError("source.receipt_id is invalid")
-    return {
+    normalized = {
         "dataset_id": dataset_id,
         "provider": provider,
         "receipt_id": receipt_id,
         "registry_sha256": _sha256_text(source["registry_sha256"], "source.registry_sha256"),
         "snapshot_sha256": _sha256_text(source["snapshot_sha256"], "source.snapshot_sha256"),
     }
+    if schema_version == 2:
+        normalized["receipt_sha256"] = _sha256_text(
+            source["receipt_sha256"], "source.receipt_sha256"
+        )
+    return normalized
 
 
 def _selection(value: object) -> dict[str, object]:
@@ -159,15 +167,16 @@ def validate_universe_contract(document: Mapping[str, object]) -> dict[str, obje
         "symbols_sha256",
     }:
         raise ValueError("minute universe contract keys are invalid")
-    if document["schema_version"] != 1:
+    if type(document["schema_version"]) is not int or document["schema_version"] not in {1, 2}:
         raise ValueError("minute universe contract schema_version is invalid")
+    schema_version = document["schema_version"]
     universe_id = _text(document["universe_id"], "universe_id")
     if _UNIVERSE_ID.fullmatch(universe_id) is None:
         raise ValueError("universe_id is invalid")
     if document["batch_size"] != _BATCH_SIZE:
         raise ValueError("batch_size must be 100")
     as_of = _as_of(document["as_of"])
-    source = _source(document["source"])
+    source = _source(document["source"], schema_version=schema_version)
     selection = _selection(document["selection"])
     symbols, symbols_sha256 = _symbols(document["symbols"], document["symbols_sha256"])
     shards = [
@@ -175,7 +184,7 @@ def validate_universe_contract(document: Mapping[str, object]) -> dict[str, obje
         for index in range(_EXACT_SYMBOL_COUNT // _BATCH_SIZE)
     ]
     bound_contract = {
-        "schema_version": 1,
+        "schema_version": schema_version,
         "universe_id": universe_id,
         "as_of": as_of,
         "source": source,
@@ -186,7 +195,7 @@ def validate_universe_contract(document: Mapping[str, object]) -> dict[str, obje
     }
     universe_sha256 = _sha256(bound_contract)
     return {
-        "schema_version": 1,
+        "schema_version": schema_version,
         "universe_id": universe_id,
         "as_of": as_of,
         "source": source,

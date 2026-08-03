@@ -193,14 +193,28 @@ registry 合同中的值集合固定，仍不证明 receipt、freshness 或 API 
 
 ## 500 标的 minute universe 候选合同
 
-仓库当前不保存 500 标的名单。`tools/validate_cn_minute_universe.py` 只验证由受控、
-只读 security-master snapshot 导出的外部 YAML，并输出可供未来 registry/manifest 引用的
-hash-bound candidate reference；它不调用 provider、打开 SQLite 或修改当前 30 标的合同。
+仓库当前不保存 500 标的名单。`tools/generate_cn_minute_universe.py` 只接受外部已审核的
+security-master snapshot rows、其完整 success receipt、receipt/registry/snapshot SHA-256、
+UTC `as_of` 与精确旧选择规则；它以 `as_of` 的上海日期重放
+`market=主板`、`list_status=L`、`curr_type=CNY`、`list_date≤as_of−30天` 和 `stable_hash`，
+生成候选后立即交给 `tools/validate_cn_minute_universe.py`。两者均不调用 provider、打开
+SQLite 或修改当前 30 标的合同。
 
-输入必须包含 `universe_id`、UTC `as_of`、source 的 security-master receipt、registry SHA-256、
-snapshot SHA-256、选择规则、`symbols` 和其 canonical SHA-256。validator 强制精确 500 个
-唯一的 `.SH`/`.SZ` `ts_code`，并固定生成五个各 100 标的 shard。输入 snapshot 必须先由
-受控导出流程证明与 receipt/registry 绑定；历史动态 fanout 或 STATUS 中的候选描述不能替代它。
+生成器输入为单个外部 YAML：`universe_id`、UTC `as_of`、source、selection、完整 receipt 与
+`snapshot_rows`。source 必须携带 security-master 的 `receipt_id`、`receipt_sha256`、
+`registry_sha256` 与 `snapshot_sha256`；`receipt_id` 必须与成功 receipt 一致，`receipt_sha256`
+和 rows 由本地 canonical JSON 重算绑定，registry hash 保留为外部已审核 registry 的引用。validator
+强制精确 500 个唯一的 `.SH`/`.SZ`
+`ts_code`，并固定生成五个各 100 标的 shard。缺 snapshot、hash 不匹配或不足 500 个合格标的
+均 fail closed。生成器输出 receipt-hash-bound schema v2 candidate；既有 schema v1 validator
+输入仍可审计。历史动态 fanout 或 STATUS 中的候选描述不能替代输入。
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/generate_cn_minute_universe.py \
+  --input /path/to/reviewed-security-master-snapshot.yaml \
+  --output /tmp/cn-minute-universe-reference.json
+```
 
 ```bash
 uv run --python 3.12 --with-requirements requirements.txt \
