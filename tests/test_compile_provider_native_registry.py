@@ -138,6 +138,32 @@ def test_nonmarket_evidence_observations_project_reviewed_partition_identities(
     assert set(primary_key).issubset(binding["requested_fields"])
 
 
+def test_fut_settle_projects_receipt_bound_day_identity_without_claiming_as_of() -> None:
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    contracts = registry["datasets"]
+    assert isinstance(contracts, list)
+    contract = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["dataset_id"] == "cn.dataset.fut_settle"
+    )
+
+    assert contract["primary_key"] == ["trade_date", "ts_code"]
+    assert contract["as_of_field"] is None
+    assert contract["range_field"] is None
+    assert contract["partition_field"] is None
+    binding = contract["provider_bindings"][0]
+    assert binding["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+    }
+
+
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     parameters = inspect.signature(compile_provider_native_registry).parameters
 
