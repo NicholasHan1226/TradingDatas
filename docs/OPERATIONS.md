@@ -164,16 +164,34 @@ python3 tools/release_manifest.py build \
 
 ### Source 与 API readiness preflight
 
-每次服务器发布都先从 clean source checkout 执行受限的 `fetch origin main`，并读回
-`origin/main`、将要 archive 的 target commit 与 clean working tree。服务器只能使用独立、
-root-only 的只读 deploy key，以及严格校验的 GitHub host key；不得复用个人 SSH key、在
-Git config/环境变量中保存 token，或把 source checkout 当作运行中的 release。fetch 或 commit
-比对失败时停止在 staging 前，不能用本机已合入、旧 release 或已运行 API 猜测生产源码。
+每次发布必须读回 GitHub `main`、将要 archive 的 target commit 与 clean working tree。
+服务器可用时，先从 clean source checkout 执行受限的 `fetch origin main`；该通道只能使用独立、
+root-only 的只读 deploy key，以及严格校验的 GitHub host key，不得复用个人 GitHub key、在
+Git config/环境变量中保存 token，或把 source checkout 当作运行中的 release。若 fetch 或
+commit 比对失败，服务器 checkout 不能被当作 target；此时可使用已验证为 GitHub/main 的本地
+clean commit，传输它的受控 Git archive 与 manifest 到新的 immutable staging 目录。不得用旧
+release、已运行 API 或未经核对的本地文件猜测源码身份。
 
 重启 API 后，发布脚本必须在一个短、有界的循环内等待 loopback `/v1/catalog` 返回预期的
-匿名 `401`；连接被拒绝只表示 listener 尚未就绪，不能立即将已验证 target 回滚。循环超时、
+认证状态；连接被拒绝只表示 listener 尚未就绪，不能立即将已验证 target 回滚。循环超时、
 非预期认证状态或 service/timer 未恢复时才执行既定 rollback，并分别记录 pointer、unit 和
-HTTP readback。
+HTTP/consumer readback。
+
+### 发布通道选择（强制顺序）
+
+生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-root` 的
+immutable release staging -> manifest/rollback 验证 -> 原子 `current` 切换 -> service
+与消费者 readback**。目标 ECS 使用 `marketgraph-root`（严格 host-key 校验）进行 root-only
+release 操作；`marketgraph-server` 仅可用于最小权限诊断。服务器工作树能否从 GitHub 拉取，
+只是可选的源码同步能力，绝不能作为“是否可以发布”的前置条件或阻塞结论。
+
+当服务器 GitHub deploy key、known_hosts 或网络异常时，保留已审查本地 commit 的 Git archive
+与其 manifest，通过 `marketgraph-root` 写入一个**不存在的新 commit 目录**，再按本节验证；不得
+覆盖已有 release、复制未受 manifest 覆盖的文件，或把服务器 checkout 当作未经核对的发布源。
+Aliyun CLI 是 ECS 身份、实例状态和应急控制面的备选验证渠道，不替代 release manifest，也不
+改变 SSH host identity 的校验要求。每次发布记录必须分别写明：选择了哪条通道、GitHub/main
+状态、server checkout 状态、active release、rollback release、service/timer 与 HTTP/consumer
+readback，避免把任意单层状态合并成“已部署”。
 
 服务器 staging 完成且尚未切换 `current` 时，以 root owner 身份只读验证：
 
