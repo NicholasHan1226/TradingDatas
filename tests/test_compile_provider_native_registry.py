@@ -262,6 +262,19 @@ def test_fut_index_daily_projects_complete_day_identity_and_catalog_order() -> N
     assert contract["as_of_field"] is None
     assert contract["range_field"] is None
     assert contract["partition_field"] is None
+    assert contract["provider_bindings"][0]["requested_fields"] == [
+        "trade_date",
+        "ts_code",
+        "close",
+        "open",
+        "high",
+        "low",
+        "pre_close",
+        "change",
+        "pct_chg",
+        "vol",
+        "amount",
+    ]
     assert contract["provider_bindings"][0]["response_completeness"] == {"strategy": "single_partition_unique_primary_key", "fixed_field_matches": {}, "reject_at_row_limit": True, "partition_field": "trade_date", "request_partition_key": "trade_date"}
 
 
