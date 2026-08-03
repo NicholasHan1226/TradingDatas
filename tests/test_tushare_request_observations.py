@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ CADENCE_POLICY = ROOT / "config" / "tushare_cadence_policy.v1.yaml"
 REQUEST_OBSERVATIONS = ROOT / "config" / "tushare_request_observations.v1.yaml"
 TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 UPSTREAM_CONTRACTS = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
+PROVIDER_NATIVE_REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
 TEN_CODE_FANOUT_APIS = {
     "balancesheet",
@@ -288,6 +290,44 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
         "vol",
         "amount",
     ]
+
+
+def test_rt_min_canary_remains_a_frozen_consistent_30_symbol_contract() -> None:
+    registry = _yaml(PROVIDER_NATIVE_REGISTRY)
+    datasets = registry["datasets"]
+    assert isinstance(datasets, list)
+    dataset = next(item for item in datasets if item["dataset_id"] == "cn.dataset.rt_min")
+    bindings = dataset["provider_bindings"]
+    assert isinstance(bindings, list) and len(bindings) == 1
+    binding = bindings[0]
+
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    reviewed = _yaml(REVIEWED)
+    upstream = _yaml(UPSTREAM_CONTRACTS)
+    reviewed_contract = next(item for item in reviewed["contracts"] if item["api_name"] == "rt_min")
+    upstream_contract = next(item for item in upstream["contracts"] if item["api_name"] == "rt_min")
+
+    symbol_lists = [
+        binding["request_template"]["ts_code"],
+        _entry(observations, "rt_min")["parameters"]["ts_code"]["value"],
+        reviewed_contract["request_template"]["ts_code"],
+        upstream_contract["request_template"]["ts_code"],
+    ]
+    assert len(set(symbol_lists)) == 1
+    symbols = symbol_lists[0].split(",")
+    assert len(symbols) == len(set(symbols)) == 30
+    assert all(re.fullmatch(r"(?:0|3|6)\d{5}\.(?:SZ|SH)", symbol) for symbol in symbols)
+    assert [
+        binding["request_shape"],
+        _entry(observations, "rt_min")["request_shape"],
+        reviewed_contract["request_shape"],
+        upstream_contract["request_shape"],
+    ] == ["snapshot_or_date_range"] * 4
+    assert [
+        binding["fanout"]["strategy"],
+        reviewed_contract["fanout"]["strategy"],
+        upstream_contract["fanout"]["strategy"],
+    ] == ["none"] * 3
 
 
 def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> None:
