@@ -241,6 +241,23 @@ def test_fut_daily_projects_complete_day_identity_and_catalog_order() -> None:
     assert contract["range_field"] is None
     assert contract["partition_field"] is None
     binding = contract["provider_bindings"][0]
+    assert binding["requested_fields"] == [
+        "ts_code",
+        "trade_date",
+        "pre_close",
+        "pre_settle",
+        "open",
+        "high",
+        "low",
+        "close",
+        "settle",
+        "change1",
+        "change2",
+        "vol",
+        "amount",
+        "oi",
+        "oi_chg",
+    ]
     assert binding["response_completeness"] == {
         "strategy": "single_partition_unique_primary_key",
         "fixed_field_matches": {},
