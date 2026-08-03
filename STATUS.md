@@ -1,6 +1,27 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-03 20:44 CST。
+最后更新：2026-08-03 22:35 CST。
+
+> **2026-08-03 发布获取与接口窗口复核：** GitHub `origin/main` 已到
+> `c19cf8aa6661c3bac5909050ba7a4fde02f8bbb6`（含 500 标的冻结 cohort 的离线
+> 生成合同），而生产 `current` 仍为本节记录的 `e6b3123`。当前内部 API 的实际 unit 是
+> `tradingdatas-v1-internal.service`，状态 `active/running/enabled`，18082 仅监听
+> `127.0.0.1`；匿名 `/v1/catalog` 返回 401 是认证合同，不是服务故障。通用 collector
+> timer 也为 `active/waiting/enabled`。
+>
+> 尚未发布 #83 之后 main 的直接原因是服务器源码
+> `/opt/investment/TradingDatasSource` 停在 `983c5f6`，其 GitHub SSH remote 当前返回
+> `Permission denied (publickey)`，不能取得当前 main。故不能通过既定
+> source-to-immutable-release 流程构建更新；修复该部署获取路径需要单独的凭据或部署方式
+> 变更与 release preflight，不能由本地 PR、旧 receipt 或 API 进程替代。
+>
+> 数据集层面，`anns_d`、`cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report`、
+> `moneyflow`、`moneyflow_ths` 和 `rt_min` 在当前 release 都是
+> `active/executable/ready`；最近 collector 记录显示它们按各自 cadence 为 `not_due`，或在
+> 当前分区返回合法 `empty`，而非 provider/validation error。历史已完成分区超过 86400 秒
+> freshness SLA 时会正确投影为 `stale/degraded`，不能据此阻塞其它合同/config 开发，也不能
+> 声称当前 observed/stable。`cn.dataset.news` 仍有明确合同缺口：必填 `src` 未冻结可用
+> enum/默认值，故 `paused/blocked`；需以小批、受控真实 probe 固化该参数后才可激活。
 
 > **2026-08-03 冻结 30 标的 `rt_min` production release：** GitHub `main`
 > 的 `e6b3123da027399826a17e1c25152f0d793c14c4` 已从已验证 rollback
