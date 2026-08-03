@@ -24,6 +24,18 @@ Tushare / future providers
 
 TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单、成交或交易建议。消费者负责自己的加工与交易闭环。
 
+## 能力状态：先可开发，再观察，后稳定
+
+首期接口不再把开发、一次真实试读与稳定生产混成同一门禁：
+
+| 状态 | 最小证据 | 可做什么 | 不能声称什么 |
+|---|---|---|---|
+| `contract_ready` | registry/config、编译与失败测试 | 进入 capability manifest、TA 兼容测试、候选 PR | 上游权限、真实数据、生产可用 |
+| `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的一次性内部只读试用 | 连续健康、历史 PIT、自动调度 |
+| `stable` | 跨适用 cadence 连续成功，且适用 TA/Copilot 已 readback | 稳定生产能力声明与相应常规运行 | 覆盖所有无关消费者或未适用 cadence |
+
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；它只限制对应层级的运行声明和自动化。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。
+
 ## 普通数据集零代码接入
 
 普通 Tushare 数据集只能通过 registry/config 接入：

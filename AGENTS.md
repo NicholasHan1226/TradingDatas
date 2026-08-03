@@ -21,6 +21,16 @@ provider registry
 
 权威顺序固定为 registry、SQLite facts/receipts、runtime metadata、HTTP projection。HTTP 200、配置数量、JSON 缓存、日志、旧数据库和消费者状态都不是数据健康权威。
 
+## 能力分层与轻量门禁
+
+数据质量不降级，但开发、内部试用与稳定生产不得再共用一扇门：
+
+- `contract_ready`：registry/config、字段/主键、cadence、consumer applicability、编译与失败测试均通过。它允许进入 capability manifest、TA 的受控兼容测试和候选发布准备；不声称上游权限、receipt、API 或生产可用。
+- `observed`：在受控窗口取得一次真实 provider -> SQLite receipt -> 固定 `catalog/query` 回读。它允许明确标注为一次性、内部只读试用；单次结果不等于连续健康、历史 PIT 或自动调度。
+- `stable`：按该数据集适用 cadence 连续成功，且需要消费的 TA/Copilot 已完成受控 readback。它才是稳定生产能力的称谓；不要求无关消费者或尚未适用的 cadence 一并完成。
+
+`stable` 缺失只能阻止稳定生产声明、自动调度或相应发布切换，不能阻止后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。
+
 ## Tushare 复用
 
 - 普通接口复用统一 `api_name + params + fields -> fields/items` transport。
@@ -47,7 +57,7 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 - Binance 公共现货冻结的 10 个高流动性 USDT 标的只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，仅允许在隔离 Crypto 运行面接入；标的清单由版本化 universe 合同编译，不能由运行时临时扩张；
 - 港股、美股、其它加密资产、预测市场和 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
-- 每个激活数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence。
+- `activation`/稳定生产的每个数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence；`contract_ready` 候选只需保留上述缺口，不得被误标为已激活。
 
 ## QuickSync 权限与流控口径
 
