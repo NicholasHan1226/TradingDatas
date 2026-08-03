@@ -162,6 +162,22 @@ python3 tools/release_manifest.py build \
   --output /private/tmp/<commit>.release.json
 ```
 
+### 发布通道选择（强制顺序）
+
+生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-root` 的
+immutable release staging -> manifest/rollback 验证 -> 原子 `current` 切换 -> service
+与消费者 readback**。目标 ECS 使用 `marketgraph-root`（严格 host-key 校验）进行 root-only
+release 操作；`marketgraph-server` 仅可用于最小权限诊断。服务器工作树能否从 GitHub 拉取，
+只是可选的源码同步能力，绝不能作为“是否可以发布”的前置条件或阻塞结论。
+
+当服务器 GitHub deploy key、known_hosts 或网络异常时，保留已审查本地 commit 的 Git archive
+与其 manifest，通过 `marketgraph-root` 写入一个**不存在的新 commit 目录**，再按本节验证；不得
+覆盖已有 release、复制未受 manifest 覆盖的文件，或把服务器 checkout 当作未经核对的发布源。
+Aliyun CLI 是 ECS 身份、实例状态和应急控制面的备选验证渠道，不替代 release manifest，也不
+改变 SSH host identity 的校验要求。每次发布记录必须分别写明：选择了哪条通道、GitHub/main
+状态、server checkout 状态、active release、rollback release、service/timer 与 HTTP/consumer
+readback，避免把任意单层状态合并成“已部署”。
+
 服务器 staging 完成且尚未切换 `current` 时，以 root owner 身份只读验证：
 
 ```bash
