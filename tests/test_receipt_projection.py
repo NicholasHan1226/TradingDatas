@@ -29,6 +29,7 @@ from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     RuntimeProjectionError,
     load_interface_runtime_report,
+    project_catalog_runtime,
     project_dataset_runtime,
     project_dataset_runtime_evidence,
     project_registry_runtime,
@@ -1389,6 +1390,40 @@ def test_registry_projection_classifies_each_ingest_row_once(
     )
 
     assert calls == 3
+
+
+def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset()
+    binding = dataset.provider_bindings[0]
+    alternate = replace(
+        binding,
+        provider="alternate",
+        api_name="daily_alt",
+        read_discriminator_value="alternate_daily",
+    )
+    registry = DatasetRegistry(
+        (replace(dataset, provider_bindings=(binding, alternate)),)
+    )
+    calls: list[object] = []
+    original = projection_module._project_dataset_runtime
+
+    def counted(*args: object, **kwargs: object):
+        calls.append(kwargs.get("expected_binding"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(projection_module, "_project_dataset_runtime", counted)
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+
+    catalog = project_catalog_runtime(conn, registry, now=now)
+    full = project_registry_runtime(conn, registry, now=now)
+
+    assert catalog == {"datasets": full["datasets"]}
+    assert calls.count(None) == 2
+    assert calls.count(binding) == 1
+    assert calls.count(alternate) == 1
 
 
 def test_interface_projection_is_scoped_to_its_provider_binding(
