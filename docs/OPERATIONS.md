@@ -162,6 +162,19 @@ python3 tools/release_manifest.py build \
   --output /private/tmp/<commit>.release.json
 ```
 
+### Source 与 API readiness preflight
+
+每次服务器发布都先从 clean source checkout 执行受限的 `fetch origin main`，并读回
+`origin/main`、将要 archive 的 target commit 与 clean working tree。服务器只能使用独立、
+root-only 的只读 deploy key，以及严格校验的 GitHub host key；不得复用个人 SSH key、在
+Git config/环境变量中保存 token，或把 source checkout 当作运行中的 release。fetch 或 commit
+比对失败时停止在 staging 前，不能用本机已合入、旧 release 或已运行 API 猜测生产源码。
+
+重启 API 后，发布脚本必须在一个短、有界的循环内等待 loopback `/v1/catalog` 返回预期的
+匿名 `401`；连接被拒绝只表示 listener 尚未就绪，不能立即将已验证 target 回滚。循环超时、
+非预期认证状态或 service/timer 未恢复时才执行既定 rollback，并分别记录 pointer、unit 和
+HTTP readback。
+
 服务器 staging 完成且尚未切换 `current` 时，以 root owner 身份只读验证：
 
 ```bash

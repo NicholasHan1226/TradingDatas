@@ -1,19 +1,20 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-03 22:35 CST。
+最后更新：2026-08-03 22:52 CST。
 
-> **2026-08-03 发布获取与接口窗口复核：** GitHub `origin/main` 已到
-> `c19cf8aa6661c3bac5909050ba7a4fde02f8bbb6`（含 500 标的冻结 cohort 的离线
-> 生成合同），而生产 `current` 仍为本节记录的 `e6b3123`。当前内部 API 的实际 unit 是
+> **2026-08-03 发布获取修复与接口窗口复核：** 服务器 source 已使用独立、root-only、
+> GitHub read-only deploy key 完成 `fetch`，并 fast-forward 到本次发布目标
+> `83573f617341f75c978b944f203938bbc53cf1ae`；生产 `current` 已从 `e6b3123` 原子切到
+> 同一 commit。当前内部 API 的实际 unit 是
 > `tradingdatas-v1-internal.service`，状态 `active/running/enabled`，18082 仅监听
 > `127.0.0.1`；匿名 `/v1/catalog` 返回 401 是认证合同，不是服务故障。通用 collector
 > timer 也为 `active/waiting/enabled`。
 >
-> 尚未发布 #83 之后 main 的直接原因是服务器源码
-> `/opt/investment/TradingDatasSource` 停在 `983c5f6`，其 GitHub SSH remote 当前返回
-> `Permission denied (publickey)`，不能取得当前 main。故不能通过既定
-> source-to-immutable-release 流程构建更新；修复该部署获取路径需要单独的凭据或部署方式
-> 变更与 release preflight，不能由本地 PR、旧 receipt 或 API 进程替代。
+> 先前 source 停在 `983c5f6` 且 GitHub SSH 返回 `Permission denied (publickey)` 的阻塞
+> 已解除。新 preflight 必须先读取 source 的受限 SSH 命令、执行 `fetch origin main` 并读回
+> target commit；read-only key、严格 host verification、source checkout 与 immutable
+> release 分离。API restart 后必须以有界等待取得预期 401，再宣布 release 成功；单次立即
+> connect failure 会自动回滚，不能误判为 target 故障。
 >
 > 数据集层面，`anns_d`、`cctv_news`、`irm_qa_sh`、`irm_qa_sz`、`research_report`、
 > `moneyflow`、`moneyflow_ths` 和 `rt_min` 在当前 release 都是
