@@ -179,6 +179,24 @@ registry 合同中的值集合固定，仍不证明 receipt、freshness 或 API 
 `entity_scope.frozen=false` 表示 registry 仍依赖运行时 seed/fanout；500 标的候选只有在
 经审核的冻结 universe 合同、完整 receipt 和 formal API readback 都具备后，才可描述为可消费覆盖。
 
+## 500 标的 minute universe 候选合同
+
+仓库当前不保存 500 标的名单。`tools/validate_cn_minute_universe.py` 只验证由受控、
+只读 security-master snapshot 导出的外部 YAML，并输出可供未来 registry/manifest 引用的
+hash-bound candidate reference；它不调用 provider、打开 SQLite 或修改当前 30 标的合同。
+
+输入必须包含 `universe_id`、UTC `as_of`、source 的 security-master receipt、registry SHA-256、
+snapshot SHA-256、选择规则、`symbols` 和其 canonical SHA-256。validator 强制精确 500 个
+唯一的 `.SH`/`.SZ` `ts_code`，并固定生成五个各 100 标的 shard。输入 snapshot 必须先由
+受控导出流程证明与 receipt/registry 绑定；历史动态 fanout 或 STATUS 中的候选描述不能替代它。
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/validate_cn_minute_universe.py \
+  --universe /path/to/reviewed-cn-minute-universe.yaml \
+  --output /tmp/cn-minute-universe-reference.json
+```
+
 ## 仓库
 
 <https://github.com/NicholasHan1226/TradingDatas>
