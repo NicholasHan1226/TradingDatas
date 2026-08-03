@@ -104,6 +104,12 @@ dataset 的 `as_of_field`、`range_field`、`partition_field` 全部为空，则
 `freshness_watermark_unverified`。该完整性叠加层不改写客观 `runtime_state`；已具备
 完整性合同的数据集继续使用既有 `ready` / `empty`、freshness 与 valid 语义。
 
+当 SQLite 中存在格式与行级校验均有效、但 `config_hash` 不等于当前 active binding
+ingest contract 的 receipt，且没有任何当前合同 receipt 时，API 保持
+`runtime_state=unobserved`、`data=[]` 与不完整 lineage，并在 `reasons` 返回
+`active_config_receipt_mismatch`。这只标记 coverage gap：旧合同 receipt、历史行或
+HTTP 200 都不得被复用为当前合同的 observation。
+
 省略 `as_of` 时，`metadata.receipt_id` / `observed_at` 描述最新可信 run 的当前
 execution 状态；`metadata.data_through` 是所有 exact-complete success cohort 中的最大
 可信 dataset watermark，两者不要求来自同一个 receipt。后采旧 backfill 不得降低

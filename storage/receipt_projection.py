@@ -1602,6 +1602,7 @@ def _project_dataset_runtime(
         for receipt in receipts
         if _receipt_matches_active_config(receipt, dataset, expected_binding)
     ]
+    has_superseded_contract_receipt = len(authority_receipts) != len(receipts)
     successful = list(_complete_success_receipts(authority_receipts, dataset))
     last_success = _success_watermark_receipt(authority_receipts, dataset) or max(
         successful,
@@ -1642,7 +1643,11 @@ def _project_dataset_runtime(
             data_through=None,
             observed_at=None,
             receipt_id=None,
-            reasons=("no_recognized_receipt",),
+            reasons=(
+                "active_config_receipt_mismatch"
+                if has_superseded_contract_receipt
+                else "no_recognized_receipt",
+            ),
         )
 
     latest = _latest_run_terminal(dataset, authority_receipts)

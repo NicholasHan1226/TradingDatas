@@ -203,17 +203,26 @@ def test_crypto_rfc3339_asof_metadata_binds_exact_receipt_cutoff() -> None:
 
 
 @pytest.mark.parametrize(
-    ("state", "providers", "expected_service"),
+    ("state", "providers", "expected_service", "reasons"),
     (
-        pytest.param("success", ("tushare",), "quicksync", id="trusted-tushare"),
-        pytest.param("success", ("provider-a",), None, id="other-provider"),
-        pytest.param("unobserved", (), None, id="incomplete-lineage"),
+        pytest.param(
+            "success", ("tushare",), "quicksync", (), id="trusted-tushare"
+        ),
+        pytest.param("success", ("provider-a",), None, (), id="other-provider"),
+        pytest.param(
+            "unobserved",
+            (),
+            None,
+            ("active_config_receipt_mismatch",),
+            id="superseded-contract-incomplete-lineage",
+        ),
     ),
 )
 def test_runtime_lineage_binds_quicksync_transport_only_to_complete_tushare(
     state: str,
     providers: tuple[str, ...],
     expected_service: str | None,
+    reasons: tuple[str, ...],
 ) -> None:
     registry = load_dataset_registry()
     dataset = registry.resolve("cn.equity.daily")
@@ -253,7 +262,7 @@ def test_runtime_lineage_binds_quicksync_transport_only_to_complete_tushare(
             data_through="20260719" if complete else None,
             observed_at="2026-07-20T03:00:00+00:00" if complete else None,
             receipt_id="receipt-current" if complete else None,
-            reasons=() if complete else ("no_recognized_receipt",),
+            reasons=reasons,
         ),
         current_receipt_status="success" if complete else None,
         current_providers=providers,
@@ -270,6 +279,7 @@ def test_runtime_lineage_binds_quicksync_transport_only_to_complete_tushare(
         "watermark-test",
     )
     lineage = metadata["lineage"]
+    assert metadata["reasons"] == list(reasons)
     assert lineage["transport_service"] == expected_service
     if expected_service is None:
         assert lineage["transport_profile_id"] is None
