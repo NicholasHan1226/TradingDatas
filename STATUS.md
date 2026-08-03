@@ -1,6 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-02 22:31 CST。
+最后更新：2026-08-03 20:44 CST。
+
+> **2026-08-03 冻结 30 标的 `rt_min` production release：** GitHub `main`
+> 的 `e6b3123da027399826a17e1c25152f0d793c14c4` 已从已验证 rollback
+> `2cd289db369ffebdb7b475ce71d45c9d5993eb48` 原子切为 18082 的 immutable
+> `current`。target 和 rollback manifest 均由 trusted verifier 逐字节验证；首次
+> health probe 在 API listener 绑定前立即触发自动 rollback，未留下半切换状态；第二次在
+> 有界等待至第 4 秒取得预期匿名 `401` 后完成切换，并恢复既有
+> `tradingdatas-v1-internal.service` 与 generic collector timer 为 active/enabled。
+>
+> target physical registry 的 `cn.dataset.rt_min` 为 `freq=5MIN`、
+> `request_shape=snapshot_or_date_range`、`fanout.strategy=none`，含 30 个唯一
+> `ts_code`。这证明 production 代码与 30 标的静态合同已一致；匿名 `401` 只证明 API
+> 认证边界，尚不是数据 readback。下一自然交易日仍必须取得新的 30 标的 complete receipt、
+> freshness、精确 `as_of` catalog/query 全分页 readback，以及 TradingAgent 和
+> TradingCopilot 的受认证消费者读回；这些证据完成前不得称为 live/stable，也不得扩容。
+> A股真实交易、资金、订单、Crypto 与其它数据集均未改变。
 
 > **2026-08-02 `dc_daily` complete-response v3 已正式部署：** PR #75
 > 的 schema 2 selectable-field release 曾在正式 `trade_date=20260731` 读回时暴露
