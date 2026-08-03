@@ -486,7 +486,7 @@ def test_fut_index_daily_contract_requires_identity_and_completeness() -> None:
     )
 
 
-def test_fut_index_daily_requests_full_projection_and_marks_missing_fields_degraded(
+def test_fut_index_daily_rejects_response_schema_mismatch_before_persistence(
     tmp_path: Path,
 ) -> None:
     dataset, _ = _fut_index_daily_contract()
@@ -497,6 +497,7 @@ def test_fut_index_daily_requests_full_projection_and_marks_missing_fields_degra
             provider_code=0,
             error_code=None,
             error_message=None,
+            response_fields=("trade_date", "ts_code"),
         )
     )
     db_path = tmp_path / "fut-index-daily.sqlite"
@@ -512,7 +513,8 @@ def test_fut_index_daily_requests_full_projection_and_marks_missing_fields_degra
         started_at="2026-08-03T18:00:00+00:00",
     )
 
-    assert result.status == "success"
+    assert result.status == "failed"
+    assert result.errors == ("validation_failed",)
     assert collector.calls == [
         (
             "fut_index_daily",
@@ -521,21 +523,55 @@ def test_fut_index_daily_requests_full_projection_and_marks_missing_fields_degra
         )
     ]
     with sqlite3.connect(db_path) as conn:
-        quality_state, quality_issues = conn.execute(
-            "SELECT quality_state, quality_issues_json FROM provider_dataset_rows"
-        ).fetchone()
-    assert quality_state == "degraded"
-    assert set(json.loads(quality_issues)) >= {
-        "missing_field:close",
-        "missing_field:open",
-        "missing_field:high",
-        "missing_field:low",
-        "missing_field:pre_close",
-        "missing_field:change",
-        "missing_field:pct_chg",
-        "missing_field:vol",
-        "missing_field:amount",
+        assert conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone() == (0,)
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchall() == [
+            ("failed",)
+        ]
+
+
+def test_fut_index_daily_accepts_response_schema_covering_requested_fields(
+    tmp_path: Path,
+) -> None:
+    dataset, binding = _fut_index_daily_contract()
+    row = {
+        "trade_date": "20260803",
+        "ts_code": "NH001.CI",
+        "close": 101.0,
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "pre_close": 100.5,
+        "change": 0.5,
+        "pct_chg": 0.4975,
+        "vol": 1000.0,
+        "amount": 100000.0,
     }
+    collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(row,),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            response_fields=binding.requested_fields,
+        )
+    )
+    db_path = tmp_path / "fut-index-daily-complete.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml"),
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"trade_date": "20260803"},
+        attempt_id="fut-index-daily-complete-fields",
+        started_at="2026-08-03T18:00:00+00:00",
+    )
+
+    assert result.status == "success"
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone() == (1,)
 
 
 @pytest.mark.parametrize(("rows", "message"), (
