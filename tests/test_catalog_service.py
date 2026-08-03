@@ -299,7 +299,7 @@ def _install_fake_snapshot(
         }
 
     monkeypatch.setattr(catalog_module, "open_verified_read_model_snapshot", snapshot)
-    monkeypatch.setattr(catalog_module, "project_registry_runtime", project)
+    monkeypatch.setattr(catalog_module, "project_catalog_runtime", project)
     return calls
 
 
@@ -741,7 +741,7 @@ def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(
         return {"datasets": runtime}
 
     monkeypatch.setattr(catalog_module, "open_verified_read_model_snapshot", snapshot)
-    monkeypatch.setattr(catalog_module, "project_registry_runtime", project)
+    monkeypatch.setattr(catalog_module, "project_catalog_runtime", project)
     service = CatalogService(
         registry=registry,
         db_path=db_path,

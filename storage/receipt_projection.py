@@ -2208,17 +2208,18 @@ def _canonical_now(now: datetime) -> str:
     return now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def project_registry_runtime(
+def _project_registry_datasets(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     *,
     now: datetime,
-) -> dict[str, object]:
-    """Project every declared dataset and derive all summary fields from it."""
-
+) -> tuple[
+    tuple[DatasetRuntimeProjection, ...],
+    frozenset[str],
+    tuple[_ScannedIngestRunRow, ...],
+]:
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
-    generated_at = _canonical_now(now)
     known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
     rows = _scan_ingest_run_rows(conn)
     projections = tuple(
@@ -2230,6 +2231,46 @@ def project_registry_runtime(
             rows=rows,
         )
         for dataset in registry.datasets
+    )
+    return projections, known_dataset_ids, rows
+
+
+def project_catalog_runtime(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    *,
+    now: datetime,
+) -> dict[str, object]:
+    """Project only the dataset runtime rows required by ``GET /v1/catalog``.
+
+    Interface-level projections are for the broader runtime report and are not
+    part of the catalog response.  Keeping them out of this path preserves the
+    same dataset facts while avoiding a second receipt validation pass for each
+    provider binding.
+    """
+
+    projections, _known_dataset_ids, _rows = _project_registry_datasets(
+        conn, registry, now=now
+    )
+    return {
+        "datasets": {
+            projection.dataset_id: _projection_entry(projection)
+            for projection in projections
+        }
+    }
+
+
+def project_registry_runtime(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    *,
+    now: datetime,
+) -> dict[str, object]:
+    """Project every declared dataset and derive all summary fields from it."""
+
+    generated_at = _canonical_now(now)
+    projections, known_dataset_ids, rows = _project_registry_datasets(
+        conn, registry, now=now
     )
     state_counts = {
         state: sum(projection.state == state for projection in projections)

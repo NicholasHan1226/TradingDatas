@@ -30,7 +30,7 @@ from query_cursor import (
 from storage.receipt_projection import (
     RuntimeProjectionError,
     open_verified_read_model_snapshot,
-    project_registry_runtime,
+    project_catalog_runtime,
 )
 
 _RUNTIME_STATES = frozenset(
@@ -464,7 +464,7 @@ class CatalogService:
 
         with open_verified_read_model_snapshot(self._db_path) as conn:
             try:
-                report = project_registry_runtime(conn, self._registry, now=now)
+                report = project_catalog_runtime(conn, self._registry, now=now)
             except RuntimeProjectionError:
                 raise
             except (KeyError, TypeError, ValueError, sqlite3.Error):
