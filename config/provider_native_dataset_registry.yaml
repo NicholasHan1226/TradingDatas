@@ -26768,25 +26768,14 @@ datasets:
     - name: ts_code
       declared_source_type: str
       required: true
-    request_shape: entity_fanout
+    request_shape: snapshot_or_date_range
     request_template:
       freq: 5MIN
+      ts_code: 600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH
     request_variants:
     - {}
     fanout:
-      strategy: dataset_field
-      parameter: ts_code
-      source_dataset_id: cn.equity.security_master
-      source_field: ts_code
-      batch_size: 100
-      source_equals:
-        curr_type: CNY
-        list_status: L
-        market: 主板
-      source_date_field: list_date
-      source_date_lte_days: 30
-      max_values: 500
-      source_order: stable_hash
+      strategy: none
     pagination:
       strategy: none
     request_window_policy: null
@@ -26810,7 +26799,7 @@ datasets:
     max_batch_bytes: 4194304
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 600
+    max_rows_per_attempt: 100
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
