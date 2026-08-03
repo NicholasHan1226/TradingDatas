@@ -277,6 +277,37 @@ def test_projector_returns_unobserved_without_a_recognized_receipt() -> None:
     assert projection.reasons == ("no_recognized_receipt",)
 
 
+def test_projector_labels_valid_superseded_contract_receipts_as_unrecognized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prior 5-shard contract must remain denied but leave a precise gap."""
+
+    conn = _memory_db()
+    for shard in range(5):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=f"prior-contract-shard-{shard}",
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at="2026-07-15T00:01:00+00:00",
+            data_through="20260715",
+            config_hash="c" * 64,
+        )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "unobserved"
+    assert projection.degraded is True
+    assert projection.data_through is None
+    assert projection.receipt_id is None
+    assert projection.reasons == ("active_config_receipt_mismatch",)
+
+
 def test_validated_receipt_history_is_typed_and_immutable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
