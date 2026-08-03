@@ -21,7 +21,7 @@ response-contract delta 做字段子集、类型或新增字段修正，并递�
 major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.md)。消费者必须
 始终从 catalog 读取 schema major，不得把旧 schema 当作兼容回退。
 
-每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。
+每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。日分区的 receipt completeness 可以声明稳定 identity 并验证请求分区、唯一性和行数上限；若同一 dataset 的 `as_of_field`、`range_field` 与 `partition_field` 都是 `null`，这不声明业务时间水位或 PIT 可用性，消费者仍只能将其作为 receipt-bound current-partition 事实读取。
 
 ## POST /v1/query
 

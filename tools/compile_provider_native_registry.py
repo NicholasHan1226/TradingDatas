@@ -2255,16 +2255,25 @@ def _normalized_contract(
         and completeness["strategy"] == "single_partition_unique_primary_key"
     ):
         partition_field = completeness["partition_field"]
-        if (
+        has_invalid_business_time = (
             optional["as_of_field"] != partition_field
             or optional["range_field"] != partition_field
             or optional["partition_field"] != partition_field
             or as_of_format not in {"yyyymm", "yyyymmdd"}
-            or partition_field not in primary_key
-        ):
+        )
+        omits_business_time = (
+            optional["as_of_field"] is None
+            and optional["range_field"] is None
+            and optional["partition_field"] is None
+            and as_of_format is None
+        )
+        if (
+            has_invalid_business_time and not omits_business_time
+        ) or partition_field not in primary_key:
             raise ValueError(
                 f"{label}.response_completeness.partition_field must be the "
-                "contract yyyymm or yyyymmdd primary-key partition field"
+                "contract yyyymm or yyyymmdd primary-key partition field, or all "
+                "business-time fields must be null"
             )
         completeness_fields.add(partition_field)
     elif (

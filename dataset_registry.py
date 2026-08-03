@@ -2190,15 +2190,23 @@ def _load_dataset(
                         f"{binding_path}.response_completeness.partition_field is "
                         f"undeclared: {partition_field}"
                     )
-                if (
+                has_invalid_business_time = (
                     schema_contract.as_of_field != partition_field
                     or schema_contract.range_field != partition_field
                     or schema_contract.partition_field != partition_field
                     or schema_contract.as_of_format not in {"yyyymm", "yyyymmdd"}
-                ):
+                )
+                omits_business_time = (
+                    schema_contract.as_of_field is None
+                    and schema_contract.range_field is None
+                    and schema_contract.partition_field is None
+                    and schema_contract.as_of_format is None
+                )
+                if has_invalid_business_time and not omits_business_time:
                     raise ValueError(
                         f"{binding_path}.response_completeness.partition_field must "
-                        "be the dataset yyyymm or yyyymmdd as_of/range/partition field"
+                        "be the dataset yyyymm or yyyymmdd as_of/range/partition field, "
+                        "or all business-time fields must be null"
                     )
                 partition_contract = fields_by_name[partition_field]
                 if (
