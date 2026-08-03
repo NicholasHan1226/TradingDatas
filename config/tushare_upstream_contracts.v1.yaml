@@ -16068,8 +16068,21 @@ contracts:
     partition_field: trade_date
     request_partition_key: trade_date
   requested_fields:
-  - trade_date
   - ts_code
+  - trade_date
+  - pre_close
+  - pre_settle
+  - open
+  - high
+  - low
+  - close
+  - settle
+  - change1
+  - change2
+  - vol
+  - amount
+  - oi
+  - oi_chg
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16

@@ -407,6 +407,63 @@ def test_fut_daily_contract_requires_non_null_day_and_contract_identity() -> Non
     assert binding.response_completeness is not None
 
 
+def test_fut_daily_rejects_incomplete_requested_response_before_persistence(
+    tmp_path: Path,
+) -> None:
+    dataset, binding = _fut_daily_contract()
+    registry = DatasetRegistry(
+        (replace(dataset, provider_bindings=(replace(binding, activation_state="active"),)),)
+    )
+    response_fields = tuple(field for field in binding.requested_fields if field != "oi_chg")
+    row = {
+        field: (
+            "M2609.DCE"
+            if field == "ts_code"
+            else "20260803"
+            if field == "trade_date"
+            else 1.0
+        )
+        for field in response_fields
+    }
+    collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(row,),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            response_fields=response_fields,
+        )
+    )
+    db_path = tmp_path / "fut-daily-incomplete-fields.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"trade_date": "20260803"},
+        attempt_id="fut-daily-requested-fields",
+        started_at="2026-08-04T00:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("validation_failed",)
+    assert collector.calls == [
+        (
+            "fut_daily",
+            {"trade_date": "20260803"},
+            ",".join(binding.requested_fields),
+        )
+    ]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone() == (0,)
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchall() == [
+            ("failed",)
+        ]
+
+
 def test_fut_daily_contract_rejects_duplicate_trade_date_ts_code_identity() -> None:
     _, binding = _fut_daily_contract()
 
