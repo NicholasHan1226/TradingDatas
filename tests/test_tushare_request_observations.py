@@ -174,8 +174,8 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 140,
-        "probe_blocked": 50,
+        "probe_executable": 141,
+        "probe_blocked": 49,
         "ingest_contract_ready": 125,
         "ingest_contract_blocked": 65,
         "row_limit_ingest_contract_blocked": 15,
@@ -220,9 +220,12 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     ]
 
     news = _entry(observations, "news")
-    assert news["probe_state"] == "blocked"
-    assert news["unresolved_parameter_keys"] == ["src"]
-    assert "src" not in news["parameters"]
+    assert news["probe_state"] == "executable"
+    assert news["probe_block_reasons"] == []
+    assert news["unresolved_parameter_keys"] == []
+    assert news["parameters"]["src"] == {"source": "literal", "value": "sina"}
+    assert news["ingest_contract_state"] == "blocked"
+    assert news["ingest_contract_block_reasons"] == ["required_enum_unresolved"]
 
 
 def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
@@ -387,8 +390,12 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
     ]
 
     news = _contract(bundle, "news")
-    assert news["probe_state"] == "blocked"
-    assert news["request_template"] == {}
+    assert news["probe_state"] == "executable"
+    assert news["request_template"] == {
+        "end_date": "${window.end_date}",
+        "src": "sina",
+        "start_date": "${window.start_date}",
+    }
     assert news["request_variants"] == [{}]
 
 
@@ -485,8 +492,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 140,
-        "blocked": 50,
+        "executable": 141,
+        "blocked": 49,
         "ingest_contract_ready": 125,
         "ingest_contract_blocked": 65,
     }
@@ -497,9 +504,15 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     assert daily["fields"]
 
     news = _entry(plan, "news")
-    assert news["params"] == {}
-    assert news["probe_state"] == "blocked"
-    assert news["probe_block_reasons"]
+    assert news["params"] == {
+        "end_date": "2026-07-21 18:30:00",
+        "src": "sina",
+        "start_date": "2026-07-21 18:29:00",
+    }
+    assert news["probe_state"] == "executable"
+    assert news["probe_block_reasons"] == []
+    assert news["ingest_contract_state"] == "blocked"
+    assert news["ingest_contract_block_reasons"] == ["required_enum_unresolved"]
     assert news["scope_labels"] == ["all", "gaps"]
     assert all(
         entry["params"] == {} for entry in entries if entry["probe_state"] == "blocked"
@@ -543,8 +556,8 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 157,
-        "blocked": 33,
+        "executable": 158,
+        "blocked": 32,
         "ingest_contract_ready": 142,
         "ingest_contract_blocked": 48,
     }
@@ -667,8 +680,8 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 139
-    observations["counts"]["probe_blocked"] = 51
+    observations["counts"]["probe_executable"] = 140
+    observations["counts"]["probe_blocked"] = 50
     seed["schema_version"] = "2.0.0"
     with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
         _compile_plan(
@@ -885,7 +898,9 @@ def test_request_observation_contract_fails_closed(
             "request_anchor_unresolved"
         ]
     elif mutation == "blocked_without_reason":
-        _entry(observations, "news")["probe_block_reasons"] = []
+        item = _entry(observations, "news")
+        item["probe_state"] = "blocked"
+        item["probe_block_reasons"] = []
     else:
         _entry(observations, "news")["probe_block_reasons"] = [
             "required_parameter_unresolved",
