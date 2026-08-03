@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.compile_consumer_capability_manifest import (
     DEFAULT_PROFILE,
@@ -38,7 +39,7 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
     rt_min = next(item for item in manifest["datasets"] if item["dataset_id"] == "cn.dataset.rt_min")
 
     assert rt_min["cadence"] == "session_minute"
-    assert rt_min["request_shape"] == "entity_fanout"
+    assert rt_min["request_shape"] == "snapshot_or_date_range"
     assert rt_min["read_contract"] == {
         "identity_fields": ["ts_code", "time"],
         "freshness_sla_seconds": 300,
@@ -65,12 +66,15 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
         ],
     }
     assert rt_min["entity_scope"] == {
-        "kind": "dynamic_seed_dataset",
-        "frozen": False,
-        "source_dataset_id": "cn.equity.security_master",
-        "source_field": "ts_code",
-        "max_values": 500,
-        "batch_size": 100,
+        "kind": "versioned_literal_values",
+        "frozen": True,
+        "parameter": "ts_code",
+        "value_count": 30,
+        "values_sha256": "76eaa2219fc4884b14317fba0fd81d54a0b0c4affd498867a45efd40f8ba466f",
+        "batch_semantics": {
+            "request_count": 1,
+            "values_per_request": 30,
+        },
     }
     assert rt_min["consumer_applicability"] == [
         {
@@ -87,6 +91,25 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
     assert "ready" not in rt_min
     assert "live" not in rt_min
     assert "stable" not in rt_min
+
+
+def test_single_ts_code_request_template_is_not_a_frozen_universe(tmp_path: Path) -> None:
+    registry_document = yaml.safe_load(DEFAULT_REGISTRY.read_bytes())
+    assert isinstance(registry_document, dict)
+    datasets = registry_document["datasets"]
+    assert isinstance(datasets, list)
+    rt_min = next(item for item in datasets if item["dataset_id"] == "cn.dataset.rt_min")
+    assert isinstance(rt_min, dict)
+    binding = rt_min["provider_bindings"][0]
+    assert isinstance(binding, dict)
+    binding["request_template"]["ts_code"] = "600000.SH"
+    registry_path = tmp_path / "registry.yaml"
+    registry_path.write_text(yaml.safe_dump(registry_document, allow_unicode=True, sort_keys=False))
+
+    manifest = compile_manifest(profile_path=DEFAULT_PROFILE, registry_path=registry_path)
+    record = next(item for item in manifest["datasets"] if item["dataset_id"] == "cn.dataset.rt_min")
+
+    assert record["entity_scope"] == {"kind": "none"}
 
 
 def test_manifest_fails_closed_when_consumer_profile_does_not_match_registry_scope(

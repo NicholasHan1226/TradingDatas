@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
 
 from dataset_registry import (
     DatasetDefinition,
-    FanoutPolicy,
+    ProviderBinding,
     load_dataset_registry,
 )
 
@@ -111,7 +111,41 @@ def _load_profile(path: Path) -> tuple[str, tuple[dict[str, object], ...]]:
     return profile_id, tuple(normalized)
 
 
-def _entity_scope(fanout: FanoutPolicy | None) -> dict[str, object]:
+def _request_template_ts_code_scope(binding: ProviderBinding) -> dict[str, object] | None:
+    """Return a frozen scope only for an explicit multi-code literal request."""
+
+    if binding.fanout is not None and binding.fanout.strategy != "none":
+        return None
+    raw_value = binding.request_template.get("ts_code")
+    if type(raw_value) is not str or "," not in raw_value:
+        return None
+    values = tuple(raw_value.split(","))
+    if (
+        len(values) < 2
+        or any(not value or value != value.strip() for value in values)
+        or len(set(values)) != len(values)
+    ):
+        raise ValueError(
+            f"{binding.api_name} request_template.ts_code literal universe is invalid"
+        )
+    return {
+        "kind": "versioned_literal_values",
+        "frozen": True,
+        "parameter": "ts_code",
+        "value_count": len(values),
+        "values_sha256": hashlib.sha256(_canonical_json(list(values))).hexdigest(),
+        "batch_semantics": {
+            "request_count": 1,
+            "values_per_request": len(values),
+        },
+    }
+
+
+def _entity_scope(binding: ProviderBinding) -> dict[str, object]:
+    request_template_scope = _request_template_ts_code_scope(binding)
+    if request_template_scope is not None:
+        return request_template_scope
+    fanout = binding.fanout
     if fanout is None or fanout.strategy == "none":
         return {"kind": "none"}
     if fanout.strategy == "literal_values":
@@ -174,7 +208,7 @@ def compile_manifest(*, profile_path: Path, registry_path: Path) -> dict[str, ob
         )
         if len(request_shapes) != 1:
             raise ValueError(f"{dataset.dataset_id} must declare exactly one request_shape")
-        entity_scopes = [_entity_scope(binding.fanout) for binding in bindings]
+        entity_scopes = [_entity_scope(binding) for binding in bindings]
         if len({_canonical_json(scope) for scope in entity_scopes}) != 1:
             raise ValueError(f"{dataset.dataset_id} provider bindings disagree on entity scope")
         entity_scope = entity_scopes[0]

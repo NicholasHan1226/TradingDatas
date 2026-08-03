@@ -172,9 +172,12 @@ uv run --python 3.12 --with-requirements requirements.txt \
   --output /tmp/tradingdatas-consumer-capabilities.json
 ```
 
-`entity_scope.frozen=false` 表示 registry 仍依赖运行时 seed/fanout，尤其 `rt_min` 的
-`max_values=500` 只是候选上限而不是冻结 500 标的 cohort。只有经审核的版本化冻结
-universe 合同、完整 receipt 和 formal API readback 都具备后，才可将其描述为可消费覆盖。
+当 `request_template.ts_code` 是已声明的多代码 literal 时，清单会输出
+`entity_scope.kind=versioned_literal_values`、`frozen=true`、稳定的 values SHA-256 和
+单请求 batch semantics；普通单值 filter 不会被误判为 universe。`frozen=true` 只表示
+registry 合同中的值集合固定，仍不证明 receipt、freshness 或 API runtime 可消费。相反，
+`entity_scope.frozen=false` 表示 registry 仍依赖运行时 seed/fanout；500 标的候选只有在
+经审核的冻结 universe 合同、完整 receipt 和 formal API readback 都具备后，才可描述为可消费覆盖。
 
 ## 仓库
 
