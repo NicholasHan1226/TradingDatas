@@ -471,6 +471,71 @@ def test_fut_index_daily_contract_requires_identity_and_completeness() -> None:
     assert fields["ts_code"].nullable is False
     assert dataset.primary_key == ("trade_date", "ts_code")
     assert binding.response_completeness is not None
+    assert binding.requested_fields == (
+        "trade_date",
+        "ts_code",
+        "close",
+        "open",
+        "high",
+        "low",
+        "pre_close",
+        "change",
+        "pct_chg",
+        "vol",
+        "amount",
+    )
+
+
+def test_fut_index_daily_requests_full_projection_and_marks_missing_fields_degraded(
+    tmp_path: Path,
+) -> None:
+    dataset, _ = _fut_index_daily_contract()
+    collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=({"trade_date": "20260803", "ts_code": "NH001.CI"},),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    db_path = tmp_path / "fut-index-daily.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml"),
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"trade_date": "20260803"},
+        attempt_id="fut-index-daily-requested-fields",
+        started_at="2026-08-03T18:00:00+00:00",
+    )
+
+    assert result.status == "success"
+    assert collector.calls == [
+        (
+            "fut_index_daily",
+            {"trade_date": "20260803"},
+            "trade_date,ts_code,close,open,high,low,pre_close,change,pct_chg,vol,amount",
+        )
+    ]
+    with sqlite3.connect(db_path) as conn:
+        quality_state, quality_issues = conn.execute(
+            "SELECT quality_state, quality_issues_json FROM provider_dataset_rows"
+        ).fetchone()
+    assert quality_state == "degraded"
+    assert set(json.loads(quality_issues)) >= {
+        "missing_field:close",
+        "missing_field:open",
+        "missing_field:high",
+        "missing_field:low",
+        "missing_field:pre_close",
+        "missing_field:change",
+        "missing_field:pct_chg",
+        "missing_field:vol",
+        "missing_field:amount",
+    }
 
 
 @pytest.mark.parametrize(("rows", "message"), (

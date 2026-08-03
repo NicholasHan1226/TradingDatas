@@ -16389,6 +16389,15 @@ contracts:
   requested_fields:
   - trade_date
   - ts_code
+  - close
+  - open
+  - high
+  - low
+  - pre_close
+  - change
+  - pct_chg
+  - vol
+  - amount
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
