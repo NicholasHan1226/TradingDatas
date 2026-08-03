@@ -1,6 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-03 22:52 CST。
+最后更新：2026-08-03 23:00 CST。
+
+> **2026-08-03 Crypto catalog runtime projection release：** 已合入的 PR #89
+> `107483e8ca1e8cf86b81a456f931da6fcb9df2ca` 以本地 clean commit 的受控 Git archive
+> 和 manifest 经 `marketgraph-root` staged；服务器 GitHub checkout 没有被当作发布前置。
+> 18083 的 immutable `current` 已由 `557a2967bc9582ffef26bc412d702767e0ef5c17` 原子切至
+> `107483e…`，target 141 文件和 rollback 134 文件均经 trusted manifest verifier 逐字节
+> 验证。18083 API restart 后为 `active`，以 TradingAgent 身份认证的 `/v1/catalog` 读回
+> 30 个 datasets，耗时 4.62 秒；这修复了旧 catalog 在双重 runtime projection 下约 8.6 秒、
+> 超出消费者 8 秒读取界限的直接原因。
+>
+> 同一 release 上手工执行了一次 G5 closed-5m round-trip **模拟**：服务在 54 秒后以
+> `status=completed`、exit status 0 结束，记录 `market_data_access_attempt_count=1` 与新的
+> `fresh_query_catalog_version`；`REAL_TRADING_ENABLED=false`、无 broker、无资金执行权限。
+> 18083 service 与 G5 timer 均为 active。该证据证明一次真实 loopback
+> `TradingAgent -> TradingDatas -> receipt/query -> TradingAgent` 已越过原 catalog timeout，
+> 但不是多周期连续稳定性或真实交易证明；后续自然 timer receipt 仍须单独观察。
 
 > **2026-08-03 发布获取修复与接口窗口复核：** 服务器 source 已使用独立、root-only、
 > GitHub read-only deploy key 完成 `fetch`，并 fast-forward 到本次发布目标
