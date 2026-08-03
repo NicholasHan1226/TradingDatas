@@ -591,6 +591,157 @@ def test_fut_index_daily_contract_rejects_rows_at_declared_limit() -> None:
         _validate_fut_index_daily_rows(replace(binding, max_rows_per_attempt=2), ({"trade_date": "20260803", "ts_code": "NH001.CI"}, {"trade_date": "20260803", "ts_code": "NH002.CI"}))
 
 
+def _fut_weekly_monthly_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.fut_weekly_monthly")
+    return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
+
+
+def _validate_fut_weekly_monthly_rows(
+    binding: ProviderBinding,
+    rows: tuple[Mapping[str, object], ...],
+    *,
+    freq: str = "week",
+) -> None:
+    dataset, _ = _fut_weekly_monthly_contract()
+    native_ingest._validate_response_completeness(
+        dataset,
+        binding,
+        rows,
+        request_window={"trade_date": "20260803"},
+        resolved_params={"trade_date": "20260803", "freq": freq},
+        calls=(),
+    )
+
+
+def test_fut_weekly_monthly_contract_requires_frequency_scoped_day_identity() -> None:
+    dataset, binding = _fut_weekly_monthly_contract()
+    fields = {field.name: field for field in dataset.fields}
+
+    assert fields["trade_date"].nullable is False
+    assert fields["freq"].nullable is False
+    assert fields["ts_code"].nullable is False
+    assert dataset.primary_key == ("trade_date", "freq", "ts_code")
+    assert binding.request_variants == ({"freq": "week"}, {"freq": "month"})
+    assert binding.response_completeness is not None
+    assert binding.response_completeness.fixed_field_matches == {"freq": "freq"}
+    assert binding.requested_fields == (
+        "ts_code",
+        "trade_date",
+        "end_date",
+        "freq",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "settle",
+        "pre_settle",
+        "vol",
+        "amount",
+        "oi",
+        "oi_chg",
+        "exchange",
+        "change1",
+        "change2",
+    )
+
+
+def test_fut_weekly_monthly_rejects_response_schema_mismatch_before_persistence(
+    tmp_path: Path,
+) -> None:
+    dataset, _ = _fut_weekly_monthly_contract()
+    collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "trade_date": "20260803",
+                    "freq": "week",
+                    "ts_code": "M2609.DCE",
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+            response_fields=("trade_date", "freq", "ts_code"),
+        )
+    )
+    db_path = tmp_path / "fut-weekly-monthly.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=load_dataset_registry(
+            ROOT / "config" / "provider_native_dataset_registry.yaml"
+        ),
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"trade_date": "20260803"},
+        request_variant={"freq": "week"},
+        attempt_id="fut-weekly-monthly-requested-fields",
+        started_at="2026-08-03T18:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("validation_failed",)
+    assert collector.calls == [
+        (
+            "fut_weekly_monthly",
+            {"freq": "week", "trade_date": "20260803"},
+            "ts_code,trade_date,end_date,freq,open,high,low,close,pre_close,settle,pre_settle,vol,amount,oi,oi_chg,exchange,change1,change2",
+        )
+    ]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone() == (0,)
+        assert conn.execute("SELECT status FROM market_ingest_runs").fetchall() == [
+            ("failed",)
+        ]
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    (
+        (
+            (
+                {"trade_date": "20260803", "freq": "week", "ts_code": "M2609.DCE"},
+                {"trade_date": "20260803", "freq": "week", "ts_code": "M2609.DCE"},
+            ),
+            "duplicate primary key",
+        ),
+        (({"freq": "week", "ts_code": "M2609.DCE"},), "exact YYYYMMDD format"),
+        (
+            ({"trade_date": "20260804", "freq": "week", "ts_code": "M2609.DCE"},),
+            "partition does not match request",
+        ),
+        (
+            ({"trade_date": "20260803", "freq": "month", "ts_code": "M2609.DCE"},),
+            "fixed field does not match request",
+        ),
+    ),
+)
+def test_fut_weekly_monthly_contract_rejects_invalid_frequency_scoped_partition(
+    rows: tuple[Mapping[str, object], ...], message: str
+) -> None:
+    _, binding = _fut_weekly_monthly_contract()
+
+    with pytest.raises(ValueError, match=message):
+        _validate_fut_weekly_monthly_rows(binding, rows)
+
+
+def test_fut_weekly_monthly_contract_rejects_rows_at_declared_limit() -> None:
+    _, binding = _fut_weekly_monthly_contract()
+
+    with pytest.raises(ValueError, match="reached the declared row limit"):
+        _validate_fut_weekly_monthly_rows(
+            replace(binding, max_rows_per_attempt=2),
+            (
+                {"trade_date": "20260803", "freq": "week", "ts_code": "M2609.DCE"},
+                {"trade_date": "20260803", "freq": "week", "ts_code": "M2611.DCE"},
+            ),
+        )
+
+
 def _request_window_binding(
     format_name: str,
     *,
