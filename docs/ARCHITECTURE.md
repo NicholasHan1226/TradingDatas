@@ -21,6 +21,11 @@ JSON 缓存、日志、HTTP 200、静态接口数量、消费者状态和旧数�
 api_name + params + fields -> fields/items
 ```
 
+非空成功响应的 `fields` 必须覆盖 registry 声明的 `requested_fields`，才允许进入 facts；
+provider 忽略字段选择或漏回合同字段时，通用采集入口写入 terminal
+`validation_failed` receipt 且不持久化该批 rows。该门禁只验证响应 schema 覆盖，不合成缺失字段，
+也不把一次字段完整响应提升为 completeness、freshness 或 PIT 证据。
+
 当前身份分层固定为：
 
 - `provider=tushare`：dataset contract、provider-native schema 与原始 payload 的来源；

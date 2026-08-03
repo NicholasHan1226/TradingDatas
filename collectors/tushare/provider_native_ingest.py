@@ -1238,6 +1238,23 @@ def _persist_failed_execution(
     )
 
 
+def _validate_response_field_coverage(
+    binding: ProviderBinding,
+    calls: Sequence[ProviderCall],
+) -> None:
+    """Reject non-empty provider responses that omit requested contract fields."""
+
+    requested_fields = frozenset(binding.requested_fields)
+    if not requested_fields:
+        return
+    for call in calls:
+        outcome = call.outcome
+        if outcome.state != "success" or not outcome.rows:
+            continue
+        if not requested_fields.issubset(outcome.response_fields):
+            raise ValueError("provider response fields do not cover requested fields")
+
+
 def _persist_provider_execution(
     db_path: Path,
     *,
@@ -1300,8 +1317,9 @@ def _persist_provider_execution(
             errors=(),
         )
 
-    if binding.response_completeness is not None:
-        try:
+    try:
+        _validate_response_field_coverage(binding, execution.calls)
+        if binding.response_completeness is not None:
             _validate_response_completeness(
                 dataset,
                 binding,
@@ -1310,18 +1328,18 @@ def _persist_provider_execution(
                 resolved_params=resolved_params,
                 calls=execution.calls,
             )
-        except ValueError:
-            return _persist_failed_execution(
-                db_path,
-                dataset=dataset,
-                binding=binding,
-                calls=execution.calls,
-                normalized_window=normalized_window,
-                root_attempt_id=attempt_id,
-                started_at=started_at,
-                overall_error="validation_failed",
-                terminal_context=terminal_context,
-            )
+    except ValueError:
+        return _persist_failed_execution(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            calls=execution.calls,
+            normalized_window=normalized_window,
+            root_attempt_id=attempt_id,
+            started_at=started_at,
+            overall_error="validation_failed",
+            terminal_context=terminal_context,
+        )
 
     results = tuple(
         _persist_provider_call(
