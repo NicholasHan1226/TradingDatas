@@ -23,13 +23,14 @@ def _synthetic_symbols() -> list[str]:
 def _contract(symbols: list[str] | None = None) -> dict[str, object]:
     values = _synthetic_symbols() if symbols is None else symbols
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "universe_id": "cn-equity-mainboard-rt-min-500-v1",
         "as_of": "2026-08-03T00:00:00Z",
         "source": {
             "dataset_id": "cn.equity.security_master",
             "provider": "tushare",
             "receipt_id": "receipt:source-snapshot",
+            "receipt_sha256": "c" * 64,
             "registry_sha256": "a" * 64,
             "snapshot_sha256": "b" * 64,
         },
@@ -92,3 +93,22 @@ def test_validator_rejects_non_frozen_symbol_lists(
 
     with pytest.raises(ValueError, match=message):
         validate_universe_contract(contract)
+
+
+def test_validator_requires_a_receipt_hash_binding() -> None:
+    contract = _contract()
+    contract["source"].pop("receipt_sha256")  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="source keys are invalid"):
+        validate_universe_contract(contract)
+
+
+def test_validator_keeps_v1_contracts_readable_without_receipt_sha256() -> None:
+    contract = _contract()
+    contract["schema_version"] = 1
+    contract["source"].pop("receipt_sha256")  # type: ignore[index]
+
+    artifact = validate_universe_contract(contract)
+
+    assert artifact["schema_version"] == 1
+    assert "receipt_sha256" not in artifact["source"]
