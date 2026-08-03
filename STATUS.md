@@ -1,6 +1,16 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-03 23:00 CST。
+最后更新：2026-08-03 23:25 CST。
+
+> **2026-08-03 A 股分钟 cohort 扩容准备：** 当前生产 `cn.dataset.rt_min` 的正式
+> registry 仍为冻结 30 标的 rollback canary；本轮没有修改其 runtime、release、service、timer、
+> SQLite 或外部路由。新增的离线 capacity compiler 只能从 receipt-bound、immutable 的 500
+> universe 编译一个恰好 100 标的 `activation_state=paused` candidate，并输出包含来源 receipt、
+> universe hash、shard hash 与 consumer readback 门的 reference。若 base registry 的 30 标的
+> canary 漂移、universe/hash 不合法或 shard 越界，编译/回归会 fail closed。该能力目前仅为
+> **contract-ready**：尚无本轮 reviewed security-master snapshot、真实 100 标的 receipt、
+> catalog/query、TradingAgent 或 TradingCopilot consumer readback，故不是 live/stable，也未扩大
+> A 股采集范围。权威边界和下一步见 `docs/ASHARE_MINUTE_COHORTS.md`。
 
 > **2026-08-03 Crypto catalog runtime projection release：** 已合入的 PR #89
 > `107483e8ca1e8cf86b81a456f931da6fcb9df2ca` 以本地 clean commit 的受控 Git archive

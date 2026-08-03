@@ -200,6 +200,23 @@ UTC `as_of` 与精确旧选择规则；它以 `as_of` 的上海日期重放
 生成候选后立即交给 `tools/validate_cn_minute_universe.py`。两者均不调用 provider、打开
 SQLite 或修改当前 30 标的合同。
 
+从 receipt-bound 500 universe 编译单个 100 标的暂停候选时，使用：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/compile_cn_minute_capacity_registry.py \
+  --universe /path/to/reviewed-cn-minute-universe.yaml \
+  --base-registry config/provider_native_dataset_registry.yaml \
+  --shard-index 0 \
+  --registry-output /private/tmp/rt-min-shard-0.candidate.yaml \
+  --reference-output /private/tmp/rt-min-shard-0.reference.json
+```
+
+该工具只输出 `activation_state=paused` 的候选，且会拒绝任何偏离冻结 30 标的 rollback canary
+的 base registry。它不会调用 provider、修改 SQLite、替换 release 或启用 timer。真实试采和提升
+必须按 [A 股 5 分钟 cohort：事实源与扩容门](docs/ASHARE_MINUTE_COHORTS.md) 完成 receipt、API、
+TA 与 Copilot 的独立验收。
+
 生成器输入为单个外部 YAML：`universe_id`、UTC `as_of`、source、selection、完整 receipt 与
 `snapshot_rows`。source 必须携带 security-master 的 `receipt_id`、`receipt_sha256`、
 `registry_sha256` 与 `snapshot_sha256`；`receipt_id` 必须与成功 receipt 一致，`receipt_sha256`
