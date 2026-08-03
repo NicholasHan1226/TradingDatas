@@ -215,6 +215,41 @@ def test_fut_mapping_projects_complete_day_identity_and_catalog_order() -> None:
     }
 
 
+def test_fut_daily_projects_complete_day_identity_and_catalog_order() -> None:
+    """Frozen document 138 identifies a daily row by its day and contract."""
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    datasets = registry["datasets"]
+    assert isinstance(datasets, list)
+    contract = next(
+        item
+        for item in datasets
+        if isinstance(item, dict) and item["dataset_id"] == "cn.dataset.fut_daily"
+    )
+
+    fields = {field["name"]: field for field in contract["fields"]}
+    assert fields["trade_date"]["nullable"] is False
+    assert fields["ts_code"]["nullable"] is False
+    assert contract["primary_key"] == ["trade_date", "ts_code"]
+    assert [f"{field}:asc" for field in contract["primary_key"]] == [
+        "trade_date:asc",
+        "ts_code:asc",
+    ]
+    assert contract["as_of_field"] is None
+    assert contract["range_field"] is None
+    assert contract["partition_field"] is None
+    binding = contract["provider_bindings"][0]
+    assert binding["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "fixed_field_matches": {},
+        "reject_at_row_limit": True,
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+    }
+
+
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     parameters = inspect.signature(compile_provider_native_registry).parameters
 
