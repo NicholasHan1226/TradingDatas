@@ -25387,14 +25387,26 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: event_or_intraday_window
-  request_template: {}
+  request_template:
+    end_date: ${window.end_date}
+    src: sina
+    start_date: ${window.start_date}
   request_variants:
   - {}
   fanout:
     strategy: none
   pagination:
     strategy: none
-  request_window_policy: null
+  request_window_policy:
+    required_keys:
+    - start_date
+    - end_date
+    formats:
+      start_date: local_datetime_seconds
+      end_date: local_datetime_seconds
+    range_start_key: start_date
+    range_end_key: end_date
+    max_span_days: 1
   response_completeness: null
   requested_fields: []
   budgets:
@@ -25403,14 +25415,11 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
+  probe_state: executable
+  probe_block_reasons: []
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - required_enum_unresolved
-  - required_parameter_unresolved
 - dataset_id: cn.dataset.npr
   aliases:
   - tushare.npr

@@ -16,7 +16,7 @@ provenance:
     sha256: 246de798f9be113d628152fd8222b5d3ffd38e315e891bf1efa141771ae4db18
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: d6fda8bfc030407c76c18adffc0db34275eb93996db7c05d781d0eeb6e6912da
+    sha256: 0193a8ff3b077b34c029d36a8f31c22b60cbbd2329e84dacdec610e59eae3de7
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -68,8 +68,8 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 140
-  probe_blocked: 50
+  probe_executable: 141
+  probe_blocked: 49
   ingest_contract_ready: 125
   ingest_contract_blocked: 65
   row_limit_ingest_contract_blocked: 15
@@ -2353,21 +2353,22 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: event_or_intraday_window
-  probe_state: blocked
-  probe_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
+  probe_state: executable
+  probe_block_reasons: []
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - required_enum_unresolved
-  - required_parameter_unresolved
-  unresolved_parameter_keys:
-  - src
+  unresolved_parameter_keys: []
   parameters:
     end_date:
       source: run_clock
       transform: local_datetime_seconds
       offset_seconds: 0
+    src:
+      # Official news document 143.md names sina; this one-source probe does
+      # not establish the complete source enum or an ingest contract.
+      source: literal
+      value: sina
     start_date:
       source: run_clock
       transform: local_datetime_seconds
