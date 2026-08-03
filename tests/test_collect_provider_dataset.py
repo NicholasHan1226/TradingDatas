@@ -299,6 +299,83 @@ def test_fut_settle_contract_rejects_rows_at_declared_limit() -> None:
         )
 
 
+def _fut_mapping_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.fut_mapping")
+    return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
+
+
+def _validate_fut_mapping_rows(
+    binding: ProviderBinding,
+    rows: tuple[Mapping[str, object], ...],
+) -> None:
+    dataset, _ = _fut_mapping_contract()
+    native_ingest._validate_response_completeness(
+        dataset,
+        binding,
+        rows,
+        request_window={"trade_date": "20260803"},
+        resolved_params={"trade_date": "20260803"},
+        calls=(),
+    )
+
+
+def test_fut_mapping_contract_requires_non_null_day_and_continuous_contract_identity() -> None:
+    dataset, binding = _fut_mapping_contract()
+    fields = {field.name: field for field in dataset.fields}
+
+    assert fields["trade_date"].nullable is False
+    assert fields["ts_code"].nullable is False
+    assert dataset.primary_key == ("trade_date", "ts_code")
+    assert binding.response_completeness is not None
+
+
+def test_fut_mapping_contract_rejects_duplicate_trade_date_ts_code_identity() -> None:
+    _, binding = _fut_mapping_contract()
+
+    with pytest.raises(ValueError, match="duplicate primary key"):
+        _validate_fut_mapping_rows(
+            binding,
+            (
+                {"trade_date": "20260803", "ts_code": "M2609.DCE"},
+                {"trade_date": "20260803", "ts_code": "M2609.DCE"},
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    (
+        ({"ts_code": "M2609.DCE"}, "exact YYYYMMDD format"),
+        (
+            {"trade_date": "20260804", "ts_code": "M2609.DCE"},
+            "partition does not match request",
+        ),
+    ),
+)
+def test_fut_mapping_contract_rejects_missing_or_wrong_trade_date_partition(
+    row: Mapping[str, object], message: str
+) -> None:
+    _, binding = _fut_mapping_contract()
+
+    with pytest.raises(ValueError, match=message):
+        _validate_fut_mapping_rows(binding, (row,))
+
+
+def test_fut_mapping_contract_rejects_rows_at_declared_limit() -> None:
+    _, binding = _fut_mapping_contract()
+    bounded_binding = replace(binding, max_rows_per_attempt=2)
+
+    with pytest.raises(ValueError, match="reached the declared row limit"):
+        _validate_fut_mapping_rows(
+            bounded_binding,
+            (
+                {"trade_date": "20260803", "ts_code": "M2609.DCE"},
+                {"trade_date": "20260803", "ts_code": "M2611.DCE"},
+            ),
+        )
+
+
 def _request_window_binding(
     format_name: str,
     *,
