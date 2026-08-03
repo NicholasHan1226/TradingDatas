@@ -278,6 +278,58 @@ def test_fut_index_daily_projects_complete_day_identity_and_catalog_order() -> N
     assert contract["provider_bindings"][0]["response_completeness"] == {"strategy": "single_partition_unique_primary_key", "fixed_field_matches": {}, "reject_at_row_limit": True, "partition_field": "trade_date", "request_partition_key": "trade_date"}
 
 
+def test_fut_weekly_monthly_projects_frequency_scoped_day_identity_and_completeness() -> None:
+    """Frozen document 337 identifies a week/month row by frequency, day and contract."""
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    contract = next(
+        item
+        for item in registry["datasets"]
+        if isinstance(item, dict)
+        and item["dataset_id"] == "cn.dataset.fut_weekly_monthly"
+    )
+    fields = {field["name"]: field for field in contract["fields"]}
+
+    assert fields["trade_date"]["nullable"] is False
+    assert fields["freq"]["nullable"] is False
+    assert fields["ts_code"]["nullable"] is False
+    assert contract["primary_key"] == ["trade_date", "freq", "ts_code"]
+    assert contract["as_of_field"] is None
+    assert contract["range_field"] is None
+    assert contract["partition_field"] is None
+    binding = contract["provider_bindings"][0]
+    assert binding["request_variants"] == [{"freq": "week"}, {"freq": "month"}]
+    assert binding["requested_fields"] == [
+        "ts_code",
+        "trade_date",
+        "end_date",
+        "freq",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "settle",
+        "pre_settle",
+        "vol",
+        "amount",
+        "oi",
+        "oi_chg",
+        "exchange",
+        "change1",
+        "change2",
+    ]
+    assert binding["response_completeness"] == {
+        "strategy": "single_partition_unique_primary_key",
+        "fixed_field_matches": {"freq": "freq"},
+        "reject_at_row_limit": True,
+        "partition_field": "trade_date",
+        "request_partition_key": "trade_date",
+    }
+
+
 def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
     parameters = inspect.signature(compile_provider_native_registry).parameters
 
