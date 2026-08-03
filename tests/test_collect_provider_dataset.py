@@ -453,6 +453,43 @@ def test_fut_daily_contract_rejects_rows_at_declared_limit() -> None:
         )
 
 
+def _fut_index_daily_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.fut_index_daily")
+    return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
+
+
+def _validate_fut_index_daily_rows(binding: ProviderBinding, rows: tuple[Mapping[str, object], ...]) -> None:
+    dataset, _ = _fut_index_daily_contract()
+    native_ingest._validate_response_completeness(dataset, binding, rows, request_window={"trade_date": "20260803"}, resolved_params={"trade_date": "20260803"}, calls=())
+
+
+def test_fut_index_daily_contract_requires_identity_and_completeness() -> None:
+    dataset, binding = _fut_index_daily_contract()
+    fields = {field.name: field for field in dataset.fields}
+    assert fields["trade_date"].nullable is False
+    assert fields["ts_code"].nullable is False
+    assert dataset.primary_key == ("trade_date", "ts_code")
+    assert binding.response_completeness is not None
+
+
+@pytest.mark.parametrize(("rows", "message"), (
+    (({"trade_date": "20260803", "ts_code": "NH001.CI"}, {"trade_date": "20260803", "ts_code": "NH001.CI"}), "duplicate primary key"),
+    (({"ts_code": "NH001.CI"},), "exact YYYYMMDD format"),
+    (({"trade_date": "20260804", "ts_code": "NH001.CI"},), "partition does not match request"),
+))
+def test_fut_index_daily_contract_rejects_duplicate_or_wrong_partition(rows: tuple[Mapping[str, object], ...], message: str) -> None:
+    _, binding = _fut_index_daily_contract()
+    with pytest.raises(ValueError, match=message):
+        _validate_fut_index_daily_rows(binding, rows)
+
+
+def test_fut_index_daily_contract_rejects_rows_at_declared_limit() -> None:
+    _, binding = _fut_index_daily_contract()
+    with pytest.raises(ValueError, match="reached the declared row limit"):
+        _validate_fut_index_daily_rows(replace(binding, max_rows_per_attempt=2), ({"trade_date": "20260803", "ts_code": "NH001.CI"}, {"trade_date": "20260803", "ts_code": "NH002.CI"}))
+
+
 def _request_window_binding(
     format_name: str,
     *,
