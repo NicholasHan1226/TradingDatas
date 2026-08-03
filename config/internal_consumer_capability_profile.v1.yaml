@@ -1,0 +1,9 @@
+version: 1
+profile_id: tradingdatas-internal-consumer-capabilities.v1
+consumers:
+  - consumer_id: tradingagent
+    access_mode: api_read_only
+    markets: [CN]
+    required_scopes: [market_data]
+    data_classifications: [objective_factual]
+    runtime_readiness_required: [formal_ready]

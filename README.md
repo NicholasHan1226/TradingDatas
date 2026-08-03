@@ -159,6 +159,23 @@ query envelope 的 dataset、`degraded`、receipt、时间/lineage 任一绑定�
 
 外部账户、再分发、缓存和对外服务不属于当前开发计划；即使未来重新评估，也必须先完成独立的上游条款书面核验，不能由当前内部 API 或上游可调用性推导授权。
 
+## 内部消费者合同能力清单
+
+`tools/compile_consumer_capability_manifest.py` 从当前 registry 与受审 consumer profile
+编译稳定排序的机器可读清单，供 TradingAgent 在调用固定 API 前发现 dataset、cadence、
+request shape、identity、freshness SLA、可读字段、默认 projection、entity scope 和合同层适用性。它不会打开 SQLite、调用 provider 或断言
+`ready`、`live`、`stable`；这些状态只能由上节的 receipt/API 绑定 onboarding 报告证明。
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/compile_consumer_capability_manifest.py \
+  --output /tmp/tradingdatas-consumer-capabilities.json
+```
+
+`entity_scope.frozen=false` 表示 registry 仍依赖运行时 seed/fanout，尤其 `rt_min` 的
+`max_values=500` 只是候选上限而不是冻结 500 标的 cohort。只有经审核的版本化冻结
+universe 合同、完整 receipt 和 formal API readback 都具备后，才可将其描述为可消费覆盖。
+
 ## 仓库
 
 <https://github.com/NicholasHan1226/TradingDatas>
