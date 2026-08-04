@@ -586,6 +586,60 @@ def test_fut_index_daily_rejects_response_schema_mismatch_before_persistence(
         ]
 
 
+def test_fut_index_daily_rejects_row_missing_requested_field_before_persistence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset, binding = _fut_index_daily_contract()
+    row = {
+        "trade_date": "20260803",
+        "ts_code": "NH001.CI",
+        "close": 101.0,
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "pre_close": 100.5,
+        "change": 0.5,
+        "pct_chg": 0.4975,
+        "vol": 1000.0,
+    }
+    complete_row = {field: 1.0 for field in binding.requested_fields}
+    complete_row["trade_date"] = "20260803"
+    complete_row["ts_code"] = "NH001.CI"
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=(complete_row,),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+        response_fields=binding.requested_fields,
+    )
+    object.__setattr__(outcome, "rows", (MappingProxyType(row),))
+    monkeypatch.setattr(ProviderCallOutcome, "validate_invariants", lambda _self: None)
+    collector = _FakeCollector(outcome)
+    db_path = tmp_path / "fut-index-daily-row-missing-field.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml"),
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"trade_date": "20260803"},
+        attempt_id="fut-index-daily-row-missing-field",
+        started_at="2026-08-04T00:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("validation_failed",)
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone() == (0,)
+        receipt = conn.execute("SELECT status, notes FROM market_ingest_runs").fetchone()
+    assert receipt is not None
+    assert receipt[0] == "failed"
+    assert json.loads(receipt[1])["errors"] == ["validation_failed"]
+
+
 def test_fut_index_daily_accepts_response_schema_covering_requested_fields(
     tmp_path: Path,
 ) -> None:
