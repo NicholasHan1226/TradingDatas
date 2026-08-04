@@ -778,7 +778,7 @@ def _validate_response_completeness(
     elif policy.strategy == "unique_primary_key_snapshot":
         _validate_unique_primary_keys(dataset, rows)
         if policy.fanout_field is not None:
-            _validate_fanout_snapshot(policy, rows, calls=calls)
+            _validate_fanout_snapshot(binding, policy, rows, calls=calls)
         elif policy.snapshot_field is not None:
             _validate_homogeneous_snapshot_field(policy.snapshot_field, rows)
     elif policy.strategy == "single_partition_unique_primary_key":
@@ -802,6 +802,7 @@ def _validate_response_completeness(
 
 
 def _validate_fanout_snapshot(
+    binding: ProviderBinding,
     policy: Any,
     rows: tuple[Mapping[str, Any], ...],
     *,
@@ -814,6 +815,8 @@ def _validate_fanout_snapshot(
     if policy.fanout_field is None or policy.snapshot_field is None:
         raise ValueError("provider response fanout snapshot contract is incomplete")
     expected = {value for call in calls for value in call.identity.fanout_values}
+    if not expected:
+        expected = set(_template_snapshot_cohort(binding, policy, calls=calls))
     if not expected:
         raise ValueError("provider response fanout snapshot has no requested values")
     observed: set[str] = set()
@@ -833,6 +836,36 @@ def _validate_fanout_snapshot(
         raise ValueError("provider response fanout coverage is incomplete")
     if len(snapshots) != 1:
         raise ValueError("provider response fanout snapshot time is inconsistent")
+
+
+def _template_snapshot_cohort(
+    binding: ProviderBinding,
+    policy: Any,
+    *,
+    calls: Sequence[ProviderCall],
+) -> tuple[str, ...]:
+    """Return only an explicit static snapshot cohort from the raw template."""
+
+    if not calls or any(call.identity.fanout_values for call in calls):
+        return ()
+    field_name = policy.fanout_field
+    if type(field_name) is not str or not field_name:
+        return ()
+    raw_values = binding.request_template.get(field_name)
+    if (
+        type(raw_values) is not str
+        or not raw_values
+        or "," not in raw_values
+        or "${" in raw_values
+    ):
+        return ()
+    values = tuple(raw_values.split(","))
+    if (
+        any(not value or value.strip() != value for value in values)
+        or len(set(values)) != len(values)
+    ):
+        return ()
+    return values
 
 
 def _validate_calendar_dates(

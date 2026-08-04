@@ -2148,6 +2148,7 @@ def test_snapshot_accepts_unique_primary_keys_below_provider_cap(
 
 
 def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None:
+    binding = _registry().provider_binding("cn.synthetic.runner", "tushare")
     policy = ResponseCompletenessPolicy(
         strategy="unique_primary_key_snapshot",
         fixed_field_matches=MappingProxyType({}),
@@ -2180,16 +2181,100 @@ def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None
         {"ts_code": "000001.SZ", "time": "2026-07-28 15:00:00"},
         {"ts_code": "000002.SZ", "time": "2026-07-28 15:00:00"},
     )
-    native_ingest._validate_fanout_snapshot(policy, rows, calls=(call("000001.SZ"), call("000002.SZ")))  # noqa: SLF001
+    native_ingest._validate_fanout_snapshot(  # noqa: SLF001
+        binding,
+        policy,
+        rows,
+        calls=(call("000001.SZ"), call("000002.SZ")),
+    )
 
+    with pytest.raises(ValueError, match="has no requested values"):
+        native_ingest._validate_fanout_snapshot(  # noqa: SLF001
+            binding,
+            policy,
+            rows,
+            calls=(),
+        )
     with pytest.raises(ValueError, match="fanout coverage is incomplete"):
-        native_ingest._validate_fanout_snapshot(policy, rows[:1], calls=(call("000001.SZ"), call("000002.SZ")))  # noqa: SLF001
+        native_ingest._validate_fanout_snapshot(  # noqa: SLF001
+            binding,
+            policy,
+            rows[:1],
+            calls=(call("000001.SZ"), call("000002.SZ")),
+        )
     with pytest.raises(ValueError, match="snapshot time is inconsistent"):
         native_ingest._validate_fanout_snapshot(
+            binding,
             policy,
             (rows[0], {"ts_code": "000002.SZ", "time": "2026-07-28 14:55:00"}),
             calls=(call("000001.SZ"), call("000002.SZ")),
         )  # noqa: SLF001
+
+
+def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.rt_min")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    expected = tuple(binding.request_template["ts_code"].split(","))
+    assert len(expected) == 30
+    assert len(set(expected)) == 30
+
+    bar_end = "2026-08-04 14:55:00"
+    complete_rows = tuple(
+        {"ts_code": symbol, "freq": "5MIN", "time": bar_end}
+        for symbol in expected
+    )
+    call = native_ingest.ProviderCall(
+        identity=ProviderRequestIdentity(
+            request_variant=MappingProxyType({}),
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=None,
+            page_index=0,
+        ),
+        outcome=ProviderCallOutcome("success", complete_rows, 0, None, None),
+        call_index=0,
+        retry_index=0,
+    )
+
+    def validate(rows: tuple[dict[str, str], ...]) -> None:
+        native_ingest._validate_response_completeness(  # noqa: SLF001
+            dataset,
+            binding,
+            rows,
+            request_window={},
+            resolved_params=dict(binding.request_template),
+            calls=(call,),
+        )
+
+    validate(complete_rows)
+    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
+        validate(complete_rows[:-1])
+    with pytest.raises(ValueError, match="duplicate primary key"):
+        validate(complete_rows[:-1] + (complete_rows[0],))
+    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
+        validate((*complete_rows[:-1], {**complete_rows[-1], "ts_code": "999999.SZ"}))
+    with pytest.raises(ValueError, match="fixed field does not match request"):
+        validate(({**complete_rows[0], "freq": "1MIN"}, *complete_rows[1:]))
+    with pytest.raises(ValueError, match="snapshot time is inconsistent"):
+        validate(
+            (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
+        )
+    dynamic_binding = replace(
+        binding,
+        request_template=MappingProxyType(
+            {"freq": "5MIN", "ts_code": "600000.SH,${window.ts_code}"}
+        ),
+    )
+    with pytest.raises(ValueError, match="has no requested values"):
+        native_ingest._validate_response_completeness(  # noqa: SLF001
+            dataset,
+            dynamic_binding,
+            complete_rows,
+            request_window={},
+            resolved_params=dict(dynamic_binding.request_template),
+            calls=(call,),
+        )
 
 
 def test_windowed_unique_primary_key_allows_empty_fanout_partition() -> None:
