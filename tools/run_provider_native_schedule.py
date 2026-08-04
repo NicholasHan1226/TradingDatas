@@ -132,6 +132,8 @@ class DatasetResult:
     provider: str
     state: str
     exit_code: int
+    error_codes: tuple[str, ...] = ()
+    receipt_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -152,15 +154,21 @@ class ScheduleResult:
     def public_payload(self) -> dict[str, object]:
         planned = sum(item.state == "planned" for item in self.executed)
         terminal = len(self.executed) - planned
+        datasets = []
+        for item in self.executed:
+            dataset = {
+                "dataset_id": item.dataset_id,
+                "provider": item.provider,
+                "state": item.state,
+            }
+            if item.state not in _SUCCESS_STATES | {"planned"}:
+                if item.error_codes:
+                    dataset["error_codes"] = list(item.error_codes)
+                if item.receipt_ids:
+                    dataset["receipt_ids"] = list(item.receipt_ids)
+            datasets.append(dataset)
         return {
-            "datasets": [
-                {
-                    "dataset_id": item.dataset_id,
-                    "provider": item.provider,
-                    "state": item.state,
-                }
-                for item in self.executed
-            ],
+            "datasets": datasets,
             "mode": self.mode,
             "skipped": [
                 {
@@ -252,8 +260,22 @@ def _in_process_executor(
     if result.status == "empty":
         return DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
     if set(result.errors) & _VALIDATION_ERROR_CODES:
-        return DatasetResult(plan.dataset_id, plan.provider, "validation", 2)
-    return DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
+        return DatasetResult(
+            plan.dataset_id,
+            plan.provider,
+            "validation",
+            2,
+            error_codes=result.errors,
+            receipt_ids=result.receipt_ids,
+        )
+    return DatasetResult(
+        plan.dataset_id,
+        plan.provider,
+        "failed",
+        4,
+        error_codes=result.errors,
+        receipt_ids=result.receipt_ids,
+    )
 
 
 def run_schedule(
