@@ -115,7 +115,13 @@ def main() -> int:
                 )
             return _run_on_demand(batch_file)
     except OnDemandBatchError:
-        print('{"mode":"execute","state":"validation"}')
+        print(
+            run_provider_native_schedule.validation_payload(
+                mode="execute",
+                phase="dispatcher",
+                reason="selector_validation",
+            )
+        )
         return 2
 
 

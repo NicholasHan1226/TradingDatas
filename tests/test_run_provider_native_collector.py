@@ -98,7 +98,10 @@ def test_on_demand_rejects_selector_outside_runtime_directory(
     monkeypatch.setenv(runner.ON_DEMAND_BATCH_ENV, "/tmp/untrusted.json")
 
     assert runner.main() == 2
-    assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
+    assert capsys.readouterr().out == (
+        '{"mode":"execute","phase":"dispatcher",'
+        '"reason":"selector_validation","state":"validation"}\n'
+    )
 
 
 def test_on_demand_rejects_non_private_batch_file(
@@ -110,7 +113,10 @@ def test_on_demand_rejects_non_private_batch_file(
     batch_file.chmod(0o644)
 
     assert runner.main() == 2
-    assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
+    assert capsys.readouterr().out == (
+        '{"mode":"execute","phase":"dispatcher",'
+        '"reason":"selector_validation","state":"validation"}\n'
+    )
     assert not batch_file.exists()
 
 
@@ -127,6 +133,9 @@ def test_on_demand_rejects_selector_file_with_extra_environment(
     )
 
     assert runner.main() == 2
-    assert capsys.readouterr().out == '{"mode":"execute","state":"validation"}\n'
+    assert capsys.readouterr().out == (
+        '{"mode":"execute","phase":"dispatcher",'
+        '"reason":"selector_validation","state":"validation"}\n'
+    )
     assert env_file.exists()
     assert batch_file.exists()

@@ -1478,8 +1478,105 @@ def test_missing_or_wrong_collector_secret_fails_before_registry_or_provider_cal
 
     output = capsys.readouterr().out
     assert code == 2
-    assert json.loads(output)["state"] == "validation"
+    assert json.loads(output) == {
+        "mode": "execute",
+        "phase": "preplan",
+        "reason": "credential_validation",
+        "state": "validation",
+    }
     assert "secret" not in output.casefold()
+
+
+def test_main_reports_registry_load_without_receipt_or_exception_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(scheduler, "_validated_collector_credentials", lambda: None)
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtime_dataset_registry",
+        lambda: (_ for _ in ()).throw(ValueError("registry private detail")),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "load_schedule",
+        lambda *args, **kwargs: pytest.fail("registry failure must stop first"),
+    )
+
+    code = scheduler.main(["--execute", "--lock-path", str(tmp_path / "schedule.lock")])
+
+    output = capsys.readouterr().out
+    assert code == 2
+    assert json.loads(output) == {
+        "mode": "execute",
+        "phase": "preplan",
+        "reason": "registry_load",
+        "state": "validation",
+    }
+    assert "private" not in output
+
+
+def test_main_reports_schedule_load_without_receipt_or_exception_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(scheduler, "_validated_collector_credentials", lambda: None)
+    monkeypatch.setattr(scheduler, "load_runtime_dataset_registry", _active_registry)
+    monkeypatch.setattr(
+        scheduler,
+        "load_schedule",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("schedule private detail")),
+    )
+
+    code = scheduler.main(["--execute", "--lock-path", str(tmp_path / "schedule.lock")])
+
+    output = capsys.readouterr().out
+    assert code == 2
+    assert json.loads(output) == {
+        "mode": "execute",
+        "phase": "preplan",
+        "reason": "schedule_load",
+        "state": "validation",
+    }
+    assert "private" not in output
+
+
+def test_main_reports_schedule_run_without_receipt_or_exception_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(scheduler, "_validated_collector_credentials", lambda: None)
+    monkeypatch.setattr(scheduler, "load_runtime_dataset_registry", _active_registry)
+    monkeypatch.setattr(scheduler, "load_schedule", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        scheduler,
+        "run_schedule",
+        lambda **kwargs: (_ for _ in ()).throw(ValueError("run private detail")),
+    )
+
+    code = scheduler.main(["--execute", "--lock-path", str(tmp_path / "schedule.lock")])
+
+    output = capsys.readouterr().out
+    assert code == 2
+    assert json.loads(output) == {
+        "mode": "execute",
+        "phase": "schedule_run",
+        "reason": "schedule_run",
+        "state": "validation",
+    }
+    assert "private" not in output
+
+
+def test_top_level_validation_payload_rejects_unrecognized_provenance() -> None:
+    with pytest.raises(ValueError, match="unrecognized validation provenance"):
+        scheduler.validation_payload(
+            mode="execute",
+            phase="preplan",
+            reason="exception_text_must_not_escape",
+        )
 
 
 def test_schedule_config_has_no_dataset_or_provider_api_lists() -> None:

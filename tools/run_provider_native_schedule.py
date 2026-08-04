@@ -120,6 +120,15 @@ _FORBIDDEN_COLLECTOR_CREDENTIALS = frozenset(
     }
 )
 _CURRENT_ONLY_ACTIVATION_WAVE = "pilot_existing"
+_TOP_LEVEL_VALIDATION_PROVENANCE = frozenset(
+    {
+        ("dispatcher", "selector_validation"),
+        ("preplan", "credential_validation"),
+        ("preplan", "registry_load"),
+        ("preplan", "schedule_load"),
+        ("schedule_run", "schedule_run"),
+    }
+)
 
 
 class ScheduleBusyError(RuntimeError):
@@ -422,6 +431,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def validation_payload(*, mode: str, phase: str, reason: str) -> str:
+    """Return a fixed, non-sensitive top-level validation payload."""
+    if (phase, reason) not in _TOP_LEVEL_VALIDATION_PROVENANCE:
+        raise ValueError("unrecognized validation provenance")
+    return json.dumps(
+        {
+            "mode": mode,
+            "phase": phase,
+            "reason": reason,
+            "state": "validation",
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if (
@@ -442,40 +467,75 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 2
-    try:
-        if args.execute:
+    if args.execute:
+        try:
             _validated_collector_credentials()
-        with exclusive_schedule_lock(args.lock_path):
-            result = run_schedule(
-                registry=(
-                    None
-                    if args.activation_wave is not None
-                    else load_runtime_dataset_registry()
-                ),
-                schedule=(
-                    None
-                    if args.activation_wave is not None
-                    else load_schedule(args.schedule_config)
-                ),
-                db_path=args.db_path,
-                now=_now(args.now),
-                execute=args.execute,
-                activation_wave=args.activation_wave,
-                schedule_source_path=args.schedule_config,
-                current_only=args.current_only,
+        except Exception:
+            print(
+                validation_payload(
+                    mode="execute",
+                    phase="preplan",
+                    reason="credential_validation",
+                )
             )
+            return 2
+    try:
+        with exclusive_schedule_lock(args.lock_path):
+            if args.activation_wave is None:
+                try:
+                    registry = load_runtime_dataset_registry()
+                except Exception:
+                    print(
+                        validation_payload(
+                            mode="execute" if args.execute else "plan",
+                            phase="preplan",
+                            reason="registry_load",
+                        )
+                    )
+                    return 2
+                try:
+                    schedule = load_schedule(args.schedule_config)
+                except Exception:
+                    print(
+                        validation_payload(
+                            mode="execute" if args.execute else "plan",
+                            phase="preplan",
+                            reason="schedule_load",
+                        )
+                    )
+                    return 2
+            else:
+                registry = None
+                schedule = None
+            try:
+                result = run_schedule(
+                    registry=registry,
+                    schedule=schedule,
+                    db_path=args.db_path,
+                    now=_now(args.now),
+                    execute=args.execute,
+                    activation_wave=args.activation_wave,
+                    schedule_source_path=args.schedule_config,
+                    current_only=args.current_only,
+                )
+            except Exception:
+                print(
+                    validation_payload(
+                        mode="execute" if args.execute else "plan",
+                        phase="schedule_run",
+                        reason="schedule_run",
+                    )
+                )
+                return 2
     except ScheduleBusyError:
         print('{"mode":"execute","state":"busy"}')
         return 75
     except Exception:
         print(
-            json.dumps(
-                {
-                    "mode": "execute" if args.execute else "plan",
-                    "state": "validation",
-                },
-                separators=(",", ":"),
-                sort_keys=True,
+            validation_payload(
+                mode="execute" if args.execute else "plan",
+                phase="schedule_run",
+                reason="schedule_run",
             )
         )
         return 2
