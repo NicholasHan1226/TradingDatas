@@ -238,6 +238,60 @@ def _fut_settle_contract() -> tuple[DatasetDefinition, ProviderBinding]:
     return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
 
 
+def _broker_recommend_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.broker_recommend")
+    return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
+
+
+def _validate_broker_recommend_rows(
+    binding: ProviderBinding,
+    rows: tuple[Mapping[str, object], ...],
+) -> None:
+    dataset, _ = _broker_recommend_contract()
+    native_ingest._validate_response_completeness(
+        dataset,
+        binding,
+        rows,
+        request_window={"month": "202608"},
+        resolved_params={"month": "202608"},
+        calls=(),
+    )
+
+
+def test_broker_recommend_contract_accepts_matching_month_partition() -> None:
+    _, binding = _broker_recommend_contract()
+
+    _validate_broker_recommend_rows(
+        binding,
+        (
+            {
+                "month": "202608",
+                "broker": "broker-a",
+                "ts_code": "600000.SH",
+                "name": "example",
+            },
+        ),
+    )
+
+
+def test_broker_recommend_contract_rejects_mismatched_month_partition() -> None:
+    _, binding = _broker_recommend_contract()
+
+    with pytest.raises(ValueError, match="partition does not match request"):
+        _validate_broker_recommend_rows(
+            binding,
+            (
+                {
+                    "month": "202607",
+                    "broker": "broker-a",
+                    "ts_code": "600000.SH",
+                    "name": "example",
+                },
+            ),
+        )
+
+
 def _validate_fut_settle_rows(
     binding: ProviderBinding,
     rows: tuple[Mapping[str, object], ...],

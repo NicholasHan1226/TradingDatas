@@ -784,6 +784,7 @@ def _validate_response_completeness(
     elif policy.strategy == "single_partition_unique_primary_key":
         _validate_single_partition(
             dataset,
+            binding,
             policy,
             rows,
             resolved_params=resolved_params,
@@ -1007,6 +1008,7 @@ def _validate_homogeneous_snapshot_field(
 
 def _validate_single_partition(
     dataset: DatasetDefinition,
+    binding: ProviderBinding,
     policy: Any,
     rows: tuple[Mapping[str, Any], ...],
     *,
@@ -1014,13 +1016,37 @@ def _validate_single_partition(
 ) -> None:
     if policy.partition_field is None or policy.request_partition_key is None:
         raise ValueError("provider response partition contract is incomplete")
-    expected = _strict_yyyymmdd(resolved_params[policy.request_partition_key])
-    expected_value = expected.strftime("%Y%m%d")
+    if binding.request_window_policy is None:
+        raise ValueError("provider response partition request format is missing")
+    format_name = binding.request_window_policy.formats.get(
+        policy.request_partition_key
+    )
+    expected_value = _strict_partition_value(
+        resolved_params[policy.request_partition_key], format_name
+    )
     for row in rows:
-        actual = _strict_yyyymmdd(row.get(policy.partition_field))
-        if actual.strftime("%Y%m%d") != expected_value:
+        actual_value = _strict_partition_value(
+            row.get(policy.partition_field), format_name
+        )
+        if actual_value != expected_value:
             raise ValueError("provider response partition does not match request")
     _validate_unique_primary_keys(dataset, rows)
+
+
+def _strict_partition_value(value: object, format_name: object) -> str:
+    if format_name == "yyyymmdd":
+        return _strict_yyyymmdd(value).strftime("%Y%m%d")
+    if format_name == "yyyymm":
+        if type(value) is not str or re.fullmatch(r"[0-9]{6}", value) is None:
+            raise ValueError("provider response partition must use exact YYYYMM format")
+        try:
+            datetime.strptime(value, "%Y%m")
+        except ValueError as exc:
+            raise ValueError(
+                "provider response partition must use exact YYYYMM format"
+            ) from exc
+        return value
+    raise ValueError("provider response partition format is unsupported")
 
 
 def _context(
