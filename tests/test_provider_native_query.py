@@ -853,6 +853,92 @@ def test_native_query_dataset_quality_is_visible_when_page_is_clean(
     }
 
 
+def test_current_exact_partition_uses_only_projected_receipt_cohort(
+    native_harness: dict[str, object],
+) -> None:
+    conn = native_harness["conn"]
+    conn.execute("DELETE FROM provider_dataset_rows")
+    conn.execute(
+        "CREATE INDEX provider_dataset_rows_partition_idx "
+        "ON provider_dataset_rows(dataset_id, provider, schema_major, "
+        "partition_value, row_key)"
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="older-degraded-duplicate",
+        payload={
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "big": 1,
+        },
+        issues=(
+            "missing_field:note",
+            "time_format_mismatch:trade_date:yyyymmdd",
+        ),
+        receipt_id="receipt-older-degraded",
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="current-valid-duplicate",
+        payload={
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "note": "current full-field row",
+            "big": 2,
+        },
+        receipt_id="receipt-current",
+    )
+    conn.commit()
+
+    exact = _execute(
+        native_harness,
+        _request(
+            fields=("symbol", "trade_date", "note", "big"),
+            filters={"trade_date": {"eq": "20260716"}},
+        ),
+    )
+    non_exact = _execute(
+        native_harness,
+        _request(fields=("symbol", "trade_date", "note", "big")),
+    )
+
+    assert exact["data"] == [
+        {
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "note": "current full-field row",
+            "big": 2,
+        }
+    ]
+    assert exact["metadata"]["degraded"] is False
+    assert exact["metadata"]["quality"] == {
+        "state": "valid",
+        "valid": True,
+        "evidence": [],
+    }
+    assert non_exact["data"] == [
+        {
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "note": "current full-field row",
+            "big": 2,
+        },
+        {"symbol": "DUP", "trade_date": "20260716", "big": 1},
+    ]
+    assert non_exact["metadata"]["degraded"] is True
+    assert non_exact["metadata"]["quality"] == {
+        "state": "degraded",
+        "valid": False,
+        "evidence": [
+            "missing_field:note",
+            "provider_dataset_quality_degraded",
+            "time_format_mismatch:trade_date:yyyymmdd",
+        ],
+    }
+
+
 def test_native_query_returns_current_rows_for_exact_invalid_data_through_failure(
     native_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
@@ -1357,6 +1443,7 @@ def test_native_query_missing_quality_index_fails_closed(
 
 def test_native_partition_filter_uses_partition_index_within_vm_budget(
     native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
@@ -1402,6 +1489,34 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
         rows,
     )
     conn.commit()
+
+    current_receipt_ids = tuple(
+        f"receipt:provider-a:partition-{index:05d}" for index in range(10)
+    )
+    original_project = query_module.project_dataset_runtime_evidence
+
+    def current_partition_authority(
+        *args: object, **kwargs: object
+    ) -> DatasetRuntimeEvidence:
+        evidence = original_project(*args, **kwargs)
+        return replace(
+            evidence,
+            projection=replace(
+                evidence.projection,
+                receipt_id=current_receipt_ids[0],
+            ),
+            current_providers=("provider-a",),
+            last_success_receipt_id=current_receipt_ids[0],
+            last_success_providers=("provider-a",),
+            current_receipt_ids=current_receipt_ids,
+            last_success_receipt_ids=current_receipt_ids,
+        )
+
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        current_partition_authority,
+    )
 
     dataset = native_harness["dataset"]
     registry = DatasetRegistry(

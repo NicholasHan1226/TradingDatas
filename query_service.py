@@ -1023,6 +1023,39 @@ def _provider_native_valid_type_predicate(
     return f"({absent_or_null} OR {valid_value})"
 
 
+def _provider_native_receipt_predicate(
+    permitted_receipt_ids: tuple[str, ...] | None,
+) -> tuple[str | None, list[object]]:
+    if permitted_receipt_ids is None:
+        return None, []
+    if (
+        type(permitted_receipt_ids) is not tuple
+        or not permitted_receipt_ids
+        or len(set(permitted_receipt_ids)) != len(permitted_receipt_ids)
+        or any(
+            type(receipt_id) is not str
+            or not receipt_id
+            or receipt_id != receipt_id.strip()
+            for receipt_id in permitted_receipt_ids
+        )
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    return (
+        (
+            f"{_quote_identifier('receipt_id')} IN "
+            "(SELECT value FROM json_each(?) WHERE type = 'text')"
+        ),
+        [
+            json.dumps(
+                list(permitted_receipt_ids),
+                ensure_ascii=True,
+                allow_nan=False,
+                separators=(",", ":"),
+            )
+        ],
+    )
+
+
 def _provider_native_validate_operation_fields(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
@@ -1031,6 +1064,7 @@ def _provider_native_validate_operation_fields(
     prepared: _PreparedQuery,
     *,
     dataset_degraded: bool,
+    permitted_receipt_ids: tuple[str, ...] | None = None,
 ) -> None:
     if type(dataset_degraded) is not bool:
         raise QueryServiceUnavailable("query service is unavailable")
@@ -1045,6 +1079,12 @@ def _provider_native_validate_operation_fields(
     if options.latest_partition and dataset.partition_field is not None:
         names.add(dataset.partition_field)
     isolation, params = _provider_native_isolation(dataset)
+    receipt_predicate, receipt_params = _provider_native_receipt_predicate(
+        permitted_receipt_ids
+    )
+    if receipt_predicate is not None:
+        isolation.append(receipt_predicate)
+        params.extend(receipt_params)
     degraded_predicate = f"{_quote_identifier('quality_state')} = 'degraded'"
     indexed_table = (
         f"main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)} INDEXED BY "
@@ -1077,8 +1117,16 @@ def _provider_native_validate_operation_fields(
 def _provider_native_dataset_quality_degraded(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
+    *,
+    permitted_receipt_ids: tuple[str, ...] | None = None,
 ) -> bool:
     isolation, params = _provider_native_isolation(dataset)
+    receipt_predicate, receipt_params = _provider_native_receipt_predicate(
+        permitted_receipt_ids
+    )
+    if receipt_predicate is not None:
+        isolation.append(receipt_predicate)
+        params.extend(receipt_params)
     table = (
         f"main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)} INDEXED BY "
         f"{_quote_identifier(_PROVIDER_NATIVE_QUALITY_INDEX)}"
@@ -1903,6 +1951,10 @@ class QueryService:
             if not authorized:
                 raise QueryAccessDenied("query access is denied")
             try:
+                request_partition = _exact_request_partition_evidence(
+                    dataset,
+                    validated_request,
+                )
                 evidence = project_dataset_runtime_evidence(
                     conn,
                     dataset,
@@ -1914,13 +1966,24 @@ class QueryService:
                         if prepared.as_of.resolved_as_of is None
                         else datetime.fromisoformat(prepared.as_of.resolved_as_of)
                     ),
-                    request_partition=_exact_request_partition_evidence(
-                        dataset,
-                        validated_request,
-                    ),
+                    request_partition=request_partition,
                 )
+                current_partition_receipt_ids: tuple[str, ...] | None = None
+                if (
+                    request_partition is not None
+                    and prepared.as_of.resolved_as_of is None
+                ):
+                    current_partition_receipt_ids = evidence.current_receipt_ids
+                    if not current_partition_receipt_ids:
+                        raise QueryServiceUnavailable(
+                            "query service is unavailable"
+                        )
                 provider_native_dataset_degraded = (
-                    _provider_native_dataset_quality_degraded(conn, dataset)
+                    _provider_native_dataset_quality_degraded(
+                        conn,
+                        dataset,
+                        permitted_receipt_ids=current_partition_receipt_ids,
+                    )
                 )
                 _provider_native_validate_operation_fields(
                     conn,
@@ -1929,6 +1992,7 @@ class QueryService:
                     validated_options,
                     prepared,
                     dataset_degraded=provider_native_dataset_degraded,
+                    permitted_receipt_ids=current_partition_receipt_ids,
                 )
                 predicates, params = _base_predicates(
                     validated_request,
@@ -1936,6 +2000,14 @@ class QueryService:
                     dataset,
                     prepared,
                 )
+                current_receipt_predicate, current_receipt_params = (
+                    _provider_native_receipt_predicate(
+                        current_partition_receipt_ids
+                    )
+                )
+                if current_receipt_predicate is not None:
+                    predicates.append(current_receipt_predicate)
+                    params.extend(current_receipt_params)
                 if prepared.as_of.resolved_as_of is not None:
                     if not evidence.as_of_success_receipt_ids:
                         raise QueryServiceUnavailable(
@@ -2104,6 +2176,11 @@ class QueryService:
                                 prepared.as_of.resolved_as_of is not None
                                 and row_receipt_id
                                 not in evidence.as_of_success_receipt_ids
+                            )
+                            or (
+                                current_partition_receipt_ids is not None
+                                and row_receipt_id
+                                not in current_partition_receipt_ids
                             )
                         ):
                             raise QueryServiceUnavailable(
