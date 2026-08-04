@@ -20,6 +20,7 @@ import storage.ingest_receipts as receipt_module
 from storage.ingest_receipts import (
     IngestContext,
     IngestCounts,
+    IngestResult,
     ProviderRequestIdentity,
     insert_ingest_receipt,
     make_provider_call_attempt_id,
@@ -611,6 +612,129 @@ def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     assert [identity.plan_index for identity in identities if identity] == list(
         range(len(captured))
     )
+
+
+def test_terminal_failure_payload_preserves_ingest_receipt_and_error_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = scheduler.ScheduledRun(
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+    )
+    ingest_result = IngestResult(
+        status="failed",
+        counts=IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics="terminal_no_data_transaction",
+        ),
+        receipt_ids=("receipt:failed-validation-attempt",),
+        errors=("validation_failed",),
+    )
+    monkeypatch.setattr(scheduler, "TushareCollector", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        scheduler,
+        "collect_provider_native_dataset",
+        lambda *_args, **_kwargs: ingest_result,
+    )
+
+    result = scheduler._in_process_executor(
+        plan,
+        registry=_active_registry(),
+        db_path=Path("/not-used-by-mocked-collector.sqlite"),
+        started_at="2026-07-20T09:00:00Z",
+        attempt_id="11111111-1111-4111-8111-111111111111:000001",
+        rate_ledger=scheduler.RuntimeRateBudgetLedger(
+            scheduler.load_schedule(SCHEDULE_CONFIG)
+        ),
+    )
+
+    assert result.state == "validation"
+    assert result.error_codes == ("validation_failed",)
+    assert result.receipt_ids == ("receipt:failed-validation-attempt",)
+    assert scheduler.ScheduleResult(1, "execute", (result,), ()).public_payload()[
+        "datasets"
+    ] == [
+        {
+            "dataset_id": "cn.equity.daily",
+            "provider": "tushare",
+            "state": "validation",
+            "error_codes": ["validation_failed"],
+            "receipt_ids": ["receipt:failed-validation-attempt"],
+        }
+    ]
+
+
+def test_caught_unknown_exception_has_no_fabricated_terminal_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    plan = scheduler.ScheduledRun(
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+    )
+    monkeypatch.setattr(scheduler, "_plan_runs", lambda **_kwargs: ((plan,), ()))
+
+    def raise_unknown(_plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        raise RuntimeError("untrusted exception")
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=raise_unknown,
+    )
+
+    assert result.executed == (
+        scheduler.DatasetResult("cn.equity.daily", "tushare", "failed", 4),
+    )
+    assert scheduler.ScheduleResult(1, "execute", result.executed, ()).public_payload()[
+        "datasets"
+    ] == [
+        {
+            "dataset_id": "cn.equity.daily",
+            "provider": "tushare",
+            "state": "failed",
+        }
+    ]
+
+
+def test_success_empty_planned_and_skipped_payloads_remain_compatible() -> None:
+    payload = scheduler.ScheduleResult(
+        0,
+        "plan",
+        (
+            scheduler.DatasetResult("cn.success", "tushare", "success", 0),
+            scheduler.DatasetResult("cn.empty", "tushare", "empty", 3),
+            scheduler.DatasetResult("cn.planned", "tushare", "planned", 0),
+        ),
+        (scheduler.SkippedResult("cn.skipped", "tushare", "not_due"),),
+    ).public_payload()
+
+    assert payload["datasets"] == [
+        {"dataset_id": "cn.success", "provider": "tushare", "state": "success"},
+        {"dataset_id": "cn.empty", "provider": "tushare", "state": "empty"},
+        {"dataset_id": "cn.planned", "provider": "tushare", "state": "planned"},
+    ]
+    assert payload["skipped"] == [
+        {"dataset_id": "cn.skipped", "provider": "tushare", "state": "not_due"}
+    ]
 
 
 def test_paused_and_locked_bindings_never_reach_executor(tmp_path: Path) -> None:
