@@ -939,6 +939,87 @@ def test_current_exact_partition_uses_only_projected_receipt_cohort(
     }
 
 
+def test_current_exact_request_partition_scopes_null_business_partition_receipts(
+    native_harness: dict[str, object],
+) -> None:
+    conn = native_harness["conn"]
+    conn.execute("DELETE FROM provider_dataset_rows")
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="historical-degraded-duplicate",
+        payload={
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "big": 1,
+        },
+        issues=(
+            "missing_field:note",
+            "time_format_mismatch:trade_date:yyyymmdd",
+        ),
+        receipt_id="receipt-historical-degraded",
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="current-valid-duplicate",
+        payload={
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "note": "current full-field row",
+            "big": 2,
+        },
+        receipt_id="receipt-current",
+    )
+    conn.commit()
+
+    dataset = replace(native_harness["dataset"], partition_field=None)
+    registry = DatasetRegistry(
+        (dataset,),
+        query_defaults=native_harness["registry"].query_defaults,
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+
+    def execute(request: QueryRequest) -> dict[str, object]:
+        return service.execute(
+            request,
+            access=native_harness["access"],
+            now=NOW,
+            request_id="request-null-business-partition",
+        )
+
+    exact = execute(
+        _request(
+            fields=("symbol", "trade_date", "note", "big"),
+            filters={"trade_date": {"eq": "20260716"}},
+        )
+    )
+    non_exact = execute(_request(fields=("symbol", "trade_date", "note", "big")))
+
+    assert exact["data"] == [
+        {
+            "symbol": "DUP",
+            "trade_date": "20260716",
+            "note": "current full-field row",
+            "big": 2,
+        }
+    ]
+    assert exact["metadata"]["state"] == "ready"
+    assert exact["metadata"]["degraded"] is False
+    assert exact["metadata"]["quality"] == {
+        "state": "valid",
+        "valid": True,
+        "evidence": [],
+    }
+    assert len(non_exact["data"]) == 2
+    assert non_exact["metadata"]["degraded"] is True
+    assert non_exact["metadata"]["quality"]["state"] == "degraded"
+
+
 def test_native_query_returns_current_rows_for_exact_invalid_data_through_failure(
     native_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,

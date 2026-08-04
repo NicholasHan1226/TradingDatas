@@ -1349,12 +1349,6 @@ def _exact_request_partition_evidence(
     unbounded query cannot accidentally inherit one partition's receipt.
     """
 
-    partition_field = dataset.partition_field
-    if partition_field is None:
-        return None
-    clause = request.filters.get(partition_field)
-    if not isinstance(clause, MappingProxyType) or tuple(clause) != ("eq",):
-        return None
     active_bindings = tuple(
         binding
         for binding in dataset.provider_bindings
@@ -1366,10 +1360,25 @@ def _exact_request_partition_evidence(
     if not policies or any(
         policy is None
         or policy.strategy != "single_partition_unique_primary_key"
-        or policy.partition_field != partition_field
+        or policy.partition_field is None
         or policy.request_partition_key is None
         for policy in policies
     ):
+        return None
+    policy_partition_fields = {
+        policy.partition_field for policy in policies if policy is not None
+    }
+    if len(policy_partition_fields) != 1:
+        return None
+    policy_partition_field = next(iter(policy_partition_fields))
+    partition_field = dataset.partition_field or policy_partition_field
+    if (
+        dataset.partition_field is not None
+        and dataset.partition_field != policy_partition_field
+    ):
+        return None
+    clause = request.filters.get(partition_field)
+    if not isinstance(clause, MappingProxyType) or tuple(clause) != ("eq",):
         return None
     request_keys = {
         policy.request_partition_key for policy in policies if policy is not None
@@ -1955,6 +1964,14 @@ class QueryService:
                     dataset,
                     validated_request,
                 )
+                if (
+                    prepared.as_of.resolved_as_of is not None
+                    and dataset.partition_field is None
+                ):
+                    # Null business partitions gain current-cohort scoping in
+                    # this compatibility path only; historical queries retain
+                    # their established explicit-as_of receipt semantics.
+                    request_partition = None
                 evidence = project_dataset_runtime_evidence(
                     conn,
                     dataset,
