@@ -1253,6 +1253,8 @@ def _validate_response_field_coverage(
             continue
         if not requested_fields.issubset(outcome.response_fields):
             raise ValueError("provider response fields do not cover requested fields")
+        if any(not requested_fields.issubset(row) for row in outcome.rows):
+            raise ValueError("provider response row fields do not cover requested fields")
 
 
 def _persist_provider_execution(
