@@ -481,6 +481,62 @@ def test_planner_renders_each_runtime_window_from_partition_frequency(
     assert dict(plans[0].request_window) == {"period": expected}
 
 
+def test_broker_recommend_retained_month_partition_is_covered_for_planning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime(2026, 8, 4, 18, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 8, 4): True})
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.dataset.broker_recommend",
+            status="success",
+            started_at="2026-08-04T09:45:10Z",
+            finished_at="2026-08-04T09:45:20Z",
+            request_window={"month": "202608"},
+            row_count=1,
+            data_through="202608",
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.dataset.broker_recommend",
+            receipt,
+            "202608",
+            {"month": "202608", "broker": "fixture", "ts_code": "000001.SZ"},
+        )
+        conn.commit()
+
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset({"cn.dataset.broker_recommend"}),
+    )
+
+    assert all(plan.dataset_id != "cn.dataset.broker_recommend" for plan in plans)
+    assert any(
+        item.dataset_id == "cn.dataset.broker_recommend" and item.state == "not_due"
+        for item in skips
+    )
+    broker = registry.resolve("cn.dataset.broker_recommend").provider_bindings[0]
+    assert cadence_planner._fact_partition("202608", broker) == date(2026, 8, 1)
+    with pytest.raises(ValueError):
+        cadence_planner._fact_partition("2026-08", broker)
+    daily = registry.resolve("cn.equity.daily").provider_bindings[0]
+    assert cadence_planner._fact_partition("20260804", daily) == date(2026, 8, 4)
+    with pytest.raises(ValueError):
+        cadence_planner._fact_partition("202608", daily)
+
+
 @pytest.mark.parametrize(
     ("format_name", "window", "first", "last", "count"),
     [

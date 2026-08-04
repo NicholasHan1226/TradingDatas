@@ -601,6 +601,37 @@ def _partition(value: object) -> date:
     return parsed
 
 
+def _fact_partition_format(binding: ProviderBinding) -> str | None:
+    policy = binding.request_window_policy
+    completeness = binding.response_completeness
+    if policy is None or completeness is None:
+        return None
+    key = completeness.request_partition_key
+    return policy.formats.get(key)
+
+
+def _month_anchor(value: object) -> date:
+    if type(value) is not str:
+        raise ValueError
+    parsed = datetime.strptime(value, "%Y%m").date()
+    if parsed.strftime("%Y%m") != value:
+        raise ValueError
+    return date(parsed.year, parsed.month, 1)
+
+
+def _fact_partition(value: object, binding: ProviderBinding) -> date:
+    """Parse a retained fact partition using its declared request format."""
+    if _fact_partition_format(binding) == "yyyymm":
+        return _month_anchor(value)
+    return _partition(value)
+
+
+def _planning_anchor(day: date, binding: ProviderBinding) -> date:
+    if _fact_partition_format(binding) == "yyyymm":
+        return date(day.year, day.month, 1)
+    return day
+
+
 def _active_binding(dataset: DatasetDefinition) -> ProviderBinding:
     bindings = tuple(
         item
@@ -1039,11 +1070,14 @@ def _dataset_plans(
     )
     end = available + timedelta(days=future_horizon_days)
     calendar = _calendar(registry, state, policy)
-    desired = _desired(start, end, policy, calendar)
+    desired = tuple(
+        _planning_anchor(day, binding)
+        for day in _desired(start, end, policy, calendar)
+    )
     if policy.calendar is not None and not calendar:
         return (), "calendar_unavailable"
     covered = {
-        _partition(fact.partition_value)
+        _fact_partition(fact.partition_value, binding)
         for fact in current.facts
         if fact.partition_value is not None
     }
@@ -1073,7 +1107,8 @@ def _dataset_plans(
     current_days = {
         day
         for day in needed
-        if day >= available and (future_horizon_days or day == available)
+        if day >= _planning_anchor(available, binding)
+        and (future_horizon_days or day == _planning_anchor(available, binding))
     }
     backfill_days = missing - current_days
     correction_days = overlap - missing - current_days
