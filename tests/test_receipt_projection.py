@@ -2102,6 +2102,50 @@ def test_exact_request_partition_uses_its_own_receipt_authority(
     assert empty_partition.projection.receipt_id == empty_receipt
 
 
+def test_exact_request_partition_keeps_all_success_receipts_for_accumulated_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated success runs of one partition keep every complete success
+    receipt as current read authority so delta-accumulated rows stay
+    queryable instead of being scoped to only the latest run's receipts."""
+
+    conn = _memory_db()
+    dataset = _dataset(freshness_sla_seconds=3 * 86_400)
+    first_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-partition-success-1",
+        started_at="2026-07-14T00:00:00+00:00",
+        finished_at="2026-07-14T00:01:00+00:00",
+        data_through="20260714",
+        request_window={"trade_date": "20260714"},
+        dataset=dataset,
+    )
+    second_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-partition-success-2",
+        started_at="2026-07-14T01:00:00+00:00",
+        finished_at="2026-07-14T01:01:00+00:00",
+        data_through="20260714",
+        request_window={"trade_date": "20260714"},
+        dataset=dataset,
+    )
+    now = datetime(2026, 7, 14, 2, 0, tzinfo=timezone.utc)
+
+    historical = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=now,
+        request_partition=("trade_date", "20260714"),
+    )
+
+    assert historical.projection.state == "success"
+    assert set(historical.current_receipt_ids) == {first_receipt, second_receipt}
+
+
 def test_superseded_config_receipt_cannot_advance_current_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

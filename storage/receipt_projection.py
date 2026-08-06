@@ -2142,6 +2142,21 @@ def project_dataset_runtime_evidence(
         current_receipt_ids = tuple(
             sorted({receipt.receipt_id for receipt in current_execution})
         )
+        if request_partition is not None and successful:
+            # Exact-partition rows accumulate across repeated complete success
+            # runs of the same partition (delta upserts keep their original
+            # receipt binding).  Include every complete success receipt so the
+            # partition-scoped read authority covers accumulated valid rows,
+            # not only the latest run's terminal receipts.
+            current_receipt_ids = tuple(
+                sorted(
+                    {
+                        receipt.receipt_id
+                        for receipt in current_execution
+                    }
+                    | {receipt.receipt_id for receipt in successful}
+                )
+            )
         current_provider_config_hashes = tuple(
             sorted(
                 {
