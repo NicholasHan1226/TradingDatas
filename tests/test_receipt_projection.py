@@ -1951,6 +1951,36 @@ def test_postclose_date_partition_stays_fresh_through_its_local_day(
     assert projection.degraded is False
 
 
+def test_event_cadence_date_partition_stays_fresh_through_its_local_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A date-only success watermark is fresh until end of its data day."""
+
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-event-day",
+        started_at="2026-07-15T02:00:00+00:00",
+        finished_at="2026-07-15T02:01:00+00:00",
+        data_through="20260715",
+    )
+    dataset = replace(
+        _dataset(freshness_sla_seconds=3_600),
+        cadence_class="event",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 16, 30, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+
+
 def test_empty_receipt_uses_receipt_observation_for_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1502,11 +1502,15 @@ def _data_through_in_utc(value: str, timezone_name: str) -> datetime:
 
 
 def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datetime:
-    """Use the end of a date-only post-close partition for freshness checks."""
+    """Use the end of a date-only partition for freshness checks.
+
+    A date-only success watermark means the data covers through that trade
+    date. Measuring freshness from local midnight would make any daily
+    dataset stale as soon as the next day begins, regardless of cadence
+    class, so date-only watermarks always reference the end of their date.
+    """
 
     data_through_utc = _data_through_in_utc(value, dataset.timezone)
-    if dataset.cadence_class != "postclose_daily":
-        return data_through_utc
     try:
         dataset_timezone = ZoneInfo(dataset.timezone)
     except ZoneInfoNotFoundError:
