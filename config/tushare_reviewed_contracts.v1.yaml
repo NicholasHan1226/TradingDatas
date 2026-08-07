@@ -1914,7 +1914,7 @@ contracts:
     partition_field: null
     cadence_class: session_minute
     timezone: Asia/Shanghai
-    freshness_sla_seconds: 300
+    freshness_sla_seconds: 600
     point_in_time: append_only
     backfill_policy: provider_limited
     empty_data_policy: allowed

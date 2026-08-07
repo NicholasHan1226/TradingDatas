@@ -686,7 +686,7 @@ entries:
   reason_code: ambiguous_insufficient_document_frequency
 - api_name: rt_min
   cadence_class: session_minute
-  freshness_sla_seconds: 300
+  freshness_sla_seconds: 600
   source_document_sha256: ede04579484e3a509dfd2e5afadebaebfb069eb02fc46c739e345911fded1e00
   reason_code: reviewed_contract_exact
 - api_name: rt_min_daily
