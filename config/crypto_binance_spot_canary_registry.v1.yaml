@@ -10,7 +10,7 @@ query_defaults:
   max_order_terms: 8
   max_catalog_search_chars: 128
   cursor_ttl_seconds: 900
-  sqlite_progress_steps: 1000000
+  sqlite_progress_steps: 1000000000
 datasets:
 - dataset_id: crypto.spot.binance.btcusdt.5m
   aliases:
