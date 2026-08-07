@@ -351,7 +351,11 @@ DEFAULT_QUERY_DEFAULTS = QueryDefaults(
     max_order_terms=8,
     max_catalog_search_chars=128,
     cursor_ttl_seconds=900,
-    sqlite_progress_steps=1_000_000,
+    # The crypto as_of path passes every eligible historical receipt into a
+    # json_each IN-list, so its VM-step cost grows with the receipt count and
+    # exhausted the old 1M budget on 2026-08-07 (~2.4k receipts). The bounded
+    # stopgap raises the cap; the structural fix bounds the receipt set.
+    sqlite_progress_steps=50_000_000,
 )
 
 
