@@ -185,7 +185,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -364,7 +364,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -543,7 +543,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -722,7 +722,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -901,7 +901,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -1080,7 +1080,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -1259,7 +1259,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -1438,7 +1438,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -1617,7 +1617,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
@@ -1796,7 +1796,7 @@ datasets:
   as_of_field: close_time
   as_of_format: rfc3339
   range_field: open_time
-  partition_field: null
+  partition_field: open_time
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: forbidden
