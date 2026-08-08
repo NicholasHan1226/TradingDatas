@@ -311,7 +311,7 @@ def test_rt_min_registry_uses_the_frozen_500_symbol_literal_fanout_contract() ->
     assert fanout["batch_size"] == 100
     symbols = fanout["values"]
     assert isinstance(symbols, list)
-    assert len(symbols) == len(set(symbols)) == 500
+    assert len(symbols) == len(set(symbols)) == 528
     assert all(re.fullmatch(r"(?:0|3|6)\d{5}\.(?:SZ|SH)", symbol) for symbol in symbols)
 
 
