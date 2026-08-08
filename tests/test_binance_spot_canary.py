@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+import sqlite3
 from types import MappingProxyType
 
 import pytest
@@ -14,7 +16,12 @@ from dataset_registry import (
 )
 from provider_transport import provider_transport_profile
 from query_contract import QueryExecutionOptions, QueryRequest
-from query_service import _base_predicates, _prepare_query, _validate_filter_clause
+from query_service import (
+    _base_predicates,
+    _prepare_query,
+    _validate_filter_clause,
+    _where_clause,
+)
 from tools.compile_crypto_binance_spot_registry import (
     DEFAULT_REGISTRY,
     DEFAULT_UNIVERSE,
@@ -203,6 +210,109 @@ def test_rfc3339_open_time_between_normalizes_to_provider_row_order() -> None:
     )
     assert operator == "between"
     assert values == ("2026-07-28T08:40:00.000Z", "2026-07-28T09:40:00.000Z")
+
+
+def test_partition_field_open_time_between_binds_provider_row_order() -> None:
+    """Lock the partition-index range path and its boundary format contract.
+
+    The 5m bar datasets declare ``partition_field: open_time``; a between
+    filter must therefore render against the persisted ``partition_value``
+    column with canonical RFC3339-millisecond operands.  A row whose
+    partition_value uses any other spelling (for example a backfill written as
+    ``+00:00``) compares outside the exact window boundary and is silently
+    excluded, which is the failure mode that stalled the crypto lane in the
+    2026-08-08 partition-field experiment.
+    """
+
+    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
+    assert bar.partition_field == "open_time"
+
+    request = QueryRequest(
+        dataset_id=bar.dataset_id,
+        schema_major=bar.schema_major,
+        fields=("symbol", "open_time"),
+        filters=MappingProxyType(
+            {
+                "symbol": MappingProxyType({"eq": "BTCUSDT"}),
+                "open_time": MappingProxyType(
+                    {
+                        "between": (
+                            "2026-07-28T08:40:00+00:00",
+                            "2026-07-28T08:45:00+00:00",
+                        )
+                    }
+                ),
+            }
+        ),
+        as_of="2026-07-28T08:49:59.999+00:00",
+        order=("symbol:asc", "open_time:asc"),
+        limit=10,
+        cursor=None,
+    )
+    prepared = _prepare_query(
+        request,
+        QueryExecutionOptions(),
+        bar,
+        registry,
+        now=datetime(2026, 7, 28, 8, 50, tzinfo=timezone.utc),
+    )
+    predicates, params = _base_predicates(request, QueryExecutionOptions(), bar, prepared)
+    rendered = _where_clause(predicates)
+    assert '"partition_value" BETWEEN ? AND ?' in rendered
+    assert params[:3] == [bar.dataset_id, "binance_spot", 1]
+    assert params[3:5] == ["2026-07-28T08:40:00.000Z", "2026-07-28T08:45:00.000Z"]
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE provider_dataset_rows ("
+        "dataset_id TEXT NOT NULL, provider TEXT NOT NULL, "
+        "schema_major INTEGER NOT NULL, ingested_schema_version TEXT NOT NULL, "
+        "row_key TEXT NOT NULL, observed_at TEXT, partition_value TEXT, "
+        "payload_json TEXT NOT NULL, payload_hash TEXT NOT NULL, "
+        "quality_state TEXT NOT NULL, quality_issues_json TEXT NOT NULL, "
+        "collected_at TEXT NOT NULL, receipt_id TEXT NOT NULL, "
+        "revision INTEGER NOT NULL, "
+        "PRIMARY KEY(dataset_id, provider, schema_major, row_key)"
+        ") WITHOUT ROWID"
+    )
+    for row_key, open_time, partition_value in (
+        ("canonical", "2026-07-28T08:40:00.000Z", "2026-07-28T08:40:00.000Z"),
+        ("noncanonical", "2026-07-28T08:40:00.000Z", "2026-07-28T08:40:00+00:00"),
+    ):
+        payload = json.dumps(
+            {
+                "symbol": "BTCUSDT",
+                "open_time": open_time,
+                "close_time": "2026-07-28T08:44:59.999Z",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        conn.execute(
+            "INSERT INTO provider_dataset_rows VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+            (
+                bar.dataset_id,
+                "binance_spot",
+                1,
+                "1.0.0",
+                row_key,
+                open_time,
+                partition_value,
+                payload,
+                "a" * 64,
+                "valid",
+                "[]",
+                "2026-07-28T08:50:00Z",
+                f"receipt:{row_key}",
+            ),
+        )
+    conn.commit()
+    matched = conn.execute(
+        f"SELECT row_key FROM main.provider_dataset_rows{rendered}",
+        params,
+    ).fetchall()
+    assert [row[0] for row in matched] == ["canonical"]
 
 
 def _bar_request(
