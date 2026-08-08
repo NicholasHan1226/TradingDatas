@@ -167,7 +167,7 @@ class BinanceSpotPublicCollector:
                 or not isinstance(item[6], int)
             ):
                 raise ValueError("Binance kline shape is invalid")
-            if item[0] < start_ms or item[0] > end_ms or item[6] >= now_ms:
+            if item[0] < start_ms or item[0] >= end_ms or item[6] >= now_ms:
                 continue
             rows.append(
                 {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
 from types import MappingProxyType
@@ -134,11 +134,74 @@ def test_binance_collector_accepts_a_frozen_non_canary_symbol(
             "symbol": "SOLUSDT",
             "interval": "5m",
             "start_open_time": "2026-07-28T08:00:00Z",
-            "end_open_time": "2026-07-28T08:00:00Z",
+            "end_open_time": "2026-07-28T08:05:00Z",
         },
     )
     assert outcome.state == "success"
     assert outcome.rows[0]["symbol"] == "SOLUSDT"
+
+
+def test_binance_kline_window_excludes_the_next_bar_at_window_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A kline response must not leak the bar whose open equals the window end.
+
+    Binance ``endTime`` is inclusive of the bar that opens exactly at
+    ``end_open_time`` (its close lands inside ``end_ms + 299_999``).  The
+    collector must drop that next bar, otherwise its row is attributed to the
+    previous window's receipt and the runtime cohort rejects it as a
+    multi-window execution (the 2026-08-08 crypto incident failure mode).
+    """
+
+    def _to_ms(value: datetime) -> int:
+        return int(value.timestamp() * 1000)
+
+    start = datetime(2026, 7, 28, 4, 40, tzinfo=timezone.utc)
+    end = start + timedelta(minutes=5)
+    payload = [
+        [
+            _to_ms(start),
+            "1.0",
+            "1.1",
+            "0.9",
+            "1.05",
+            "100",
+            _to_ms(end) - 1,
+            "105",
+            10,
+            "50",
+            "52.5",
+            "0",
+        ],
+        [
+            _to_ms(end),
+            "1.2",
+            "1.3",
+            "1.1",
+            "1.25",
+            "200",
+            _to_ms(end) + 299_999,
+            "210",
+            20,
+            "100",
+            "105",
+            "0",
+        ],
+    ]
+    collector = BinanceSpotPublicCollector()
+    monkeypatch.setattr(collector, "_get", lambda path, query: payload)
+    outcome = collector.collect_outcome(
+        "klines_btcusdt",
+        {
+            "symbol": "BTCUSDT",
+            "interval": "5m",
+            "start_open_time": "2026-07-28T04:40:00Z",
+            "end_open_time": "2026-07-28T04:45:00Z",
+        },
+    )
+    assert outcome.state == "success"
+    assert len(outcome.rows) == 1
+    assert outcome.rows[0]["open_time"] == "2026-07-28T04:40:00.000Z"
 
 
 def test_binance_collector_normalizes_book_ticker_without_a_provider_timestamp(
