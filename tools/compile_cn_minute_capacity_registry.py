@@ -77,9 +77,18 @@ def _validate_rollback_canary(registry: Mapping[str, object]) -> None:
     binding = _rt_min_binding(registry)
     template = binding.get("request_template")
     if not isinstance(template, dict) or template != {"freq": "5MIN", "ts_code": _ROLLBACK_CANARY}:
-        raise ValueError("base registry frozen 30-symbol rollback canary has drifted")
-    if binding.get("request_variants") != [{}] or binding.get("fanout") != {"strategy": "none"}:
-        raise ValueError("base registry frozen 30-symbol rollback canary has drifted")
+        raise ValueError("base registry frozen 30-symbol rollback canary template has drifted")
+    fanout = binding.get("fanout")
+    if (
+        not isinstance(fanout, dict)
+        or fanout.get("strategy") != "literal_values"
+        or fanout.get("parameter") != "ts_code"
+        or fanout.get("batch_size") != 100
+        or not isinstance(fanout.get("values"), list)
+        or len(fanout["values"]) != 528
+        or len(set(fanout["values"])) != 528
+    ):
+        raise ValueError("base registry rt_min frozen 528-symbol union fanout has drifted")
 
 
 def compile_capacity_candidate(
