@@ -47,9 +47,9 @@ cadences:
     rate_budget_class: intraday
     retry:
       max_attempts: 3
-      base_delay_seconds: 15
+      base_delay_seconds: 10
       max_delay_seconds: 120
-      jitter_seconds: 15
+      jitter_seconds: 5
   postclose_daily:
     automatic: true
     availability_after_local: "16:30"
