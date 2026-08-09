@@ -87,9 +87,11 @@ must also overlap the collection interval from the requested lower bound to the
 explicit cutoff. This keeps the lineage cohort bounded as receipt history grows.
 The BTC/ETH rolling as-of read also recognizes the immediately preceding
 `partition_field=null` receipt hash after `open_time` became the declared
-partition field. This compatibility is historical-lineage-only: current
-projection health still requires the active hash, and all provider/request/row
-contracts remain unchanged.
+partition field. Before an active-hash success exists at the requested cutoff,
+the bounded historical envelope is rebuilt from that predecessor cohort. This
+compatibility is historical-lineage-only: current projection health still
+requires the active hash, and all provider/request/row contracts remain
+unchanged.
 Omitting `as_of` retains the current projection.
 
 For append-only bars, an identical row re-observed in the next overlapping

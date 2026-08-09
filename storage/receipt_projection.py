@@ -2159,9 +2159,54 @@ def project_dataset_runtime_evidence(
             ):
                 scoped_rows.append(row)
         rows = tuple(scoped_rows)
+    projection_dataset = dataset
+    if receipt_collection_window is not None and (
+        dataset.point_in_time == "append_only"
+        and dataset.as_of_format == "rfc3339"
+        and dataset.range_field is not None
+        and dataset.partition_field == dataset.range_field
+    ):
+        projection_receipts, projection_invalid = _trusted_receipts_for_evidence(
+            dataset,
+            now=projection_now,
+            known_dataset_ids=known_dataset_ids,
+            rows=rows,
+            expected_binding=provider_binding,
+        )
+        if projection_invalid:
+            raise RuntimeProjectionError(
+                "receipt authority contains invalid evidence"
+            )
+        active_successes = _complete_success_receipts(
+            [
+                receipt
+                for receipt in projection_receipts
+                if _receipt_matches_active_config(
+                    receipt,
+                    dataset,
+                    provider_binding,
+                )
+            ],
+            dataset,
+        )
+        predecessor_successes = _complete_success_receipts(
+            [
+                receipt
+                for receipt in projection_receipts
+                if _receipt_matches_partition_declaration_predecessor(
+                    receipt,
+                    dataset,
+                    provider_binding,
+                )
+            ],
+            dataset,
+        )
+        if not active_successes and predecessor_successes:
+            projection_dataset = replace(dataset, partition_field=None)
+
     projection = _project_dataset_runtime(
         conn,
-        dataset,
+        projection_dataset,
         now=projection_now,
         known_dataset_ids=known_dataset_ids,
         rows=rows,
@@ -2177,7 +2222,11 @@ def project_dataset_runtime_evidence(
     authority_receipts = [
         receipt
         for receipt in receipts
-        if _receipt_matches_active_config(receipt, dataset, provider_binding)
+        if _receipt_matches_active_config(
+            receipt,
+            projection_dataset,
+            provider_binding,
+        )
     ]
     successful = list(_complete_success_receipts(authority_receipts, dataset))
     as_of_authority_receipts = authority_receipts

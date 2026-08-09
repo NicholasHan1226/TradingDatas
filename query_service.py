@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 import hashlib
 import json
@@ -1562,6 +1562,8 @@ def _runtime_metadata(
     prepared: _PreparedQuery,
     evidence: DatasetRuntimeEvidence,
     watermark: str,
+    *,
+    historical_partition_compatibility: bool = False,
 ) -> tuple[dict[str, object], bool]:
     projection = evidence.projection
     if projection.dataset_id != dataset.dataset_id or projection.state not in {
@@ -1784,10 +1786,33 @@ def _runtime_metadata(
         for binding in dataset.provider_bindings
         if binding.provider in providers
     }
-    transport_profile_proven = (
-        transport_profile is not None
-        and provider_config_hashes == expected_provider_config_hashes
-    )
+    if historical_partition_compatibility:
+        predecessor = replace(dataset, partition_field=None)
+        compatible_provider_config_hashes = {
+            *expected_provider_config_hashes,
+            *{
+                (
+                    binding.provider,
+                    provider_ingest_config_hash(predecessor, binding),
+                )
+                for binding in dataset.provider_bindings
+                if binding.provider in providers
+            },
+        }
+        transport_profile_proven = bool(
+            transport_profile is not None
+            and provider_config_hashes
+            and provider_config_hashes.issubset(
+                compatible_provider_config_hashes
+            )
+            and {provider for provider, _config_hash in provider_config_hashes}
+            == providers
+        )
+    else:
+        transport_profile_proven = (
+            transport_profile is not None
+            and provider_config_hashes == expected_provider_config_hashes
+        )
     transport_profile_unverified = bool(
         providers & {TUSHARE_DATA_PROVIDER, BINANCE_SPOT_DATA_PROVIDER}
     ) and not transport_profile_proven
@@ -2010,6 +2035,11 @@ class QueryService:
                     # this compatibility path only; historical queries retain
                     # their established explicit-as_of receipt semantics.
                     request_partition = None
+                receipt_collection_window = _as_of_receipt_collection_window(
+                    validated_request,
+                    dataset,
+                    prepared,
+                )
                 evidence = project_dataset_runtime_evidence(
                     conn,
                     dataset,
@@ -2021,11 +2051,7 @@ class QueryService:
                         if prepared.as_of.resolved_as_of is None
                         else datetime.fromisoformat(prepared.as_of.resolved_as_of)
                     ),
-                    receipt_collection_window=_as_of_receipt_collection_window(
-                        validated_request,
-                        dataset,
-                        prepared,
-                    ),
+                    receipt_collection_window=receipt_collection_window,
                     request_partition=request_partition,
                 )
                 current_partition_receipt_ids: tuple[str, ...] | None = None
@@ -2161,6 +2187,9 @@ class QueryService:
                     prepared,
                     evidence,
                     watermark,
+                    historical_partition_compatibility=(
+                        receipt_collection_window is not None
+                    ),
                 )
                 rows: list[tuple[object, ...]] = []
                 if allow_rows and not (

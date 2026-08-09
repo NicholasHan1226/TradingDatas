@@ -723,9 +723,20 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
         ),
     )
 
-    assert evidence.projection.state == "unobserved"
-    assert evidence.projection.reasons == ("active_config_receipt_mismatch",)
+    assert evidence.projection.state == "success"
+    assert evidence.projection.reasons == ()
+    assert evidence.current_provider_config_hashes == (
+        (binding.provider, provider_ingest_config_hash(predecessor, binding)),
+    )
     assert evidence.as_of_success_receipt_ids == (receipt_id,)
+
+    current = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+    )
+    assert current.projection.state == "unobserved"
+    assert current.projection.reasons == ("active_config_receipt_mismatch",)
 
 
 def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit(
