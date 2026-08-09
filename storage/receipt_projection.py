@@ -12,7 +12,7 @@ import sys
 import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -1355,6 +1355,39 @@ def _receipt_matches_active_config(
     )
 
 
+def _receipt_matches_partition_declaration_predecessor(
+    receipt: _Receipt,
+    dataset: DatasetDefinition,
+    expected_binding: ProviderBinding | None,
+) -> bool:
+    """Accept the pre-partition hash only for bounded historical row lineage.
+
+    Declaring an append-only RFC3339 range field as ``partition_field`` changed
+    the receipt config hash even though the provider request, payload, primary
+    key, and row JSON stayed identical. Historical as-of reads may therefore
+    retain the immediately preceding ``partition_field=None`` receipts. Current
+    projection authority continues to require the active config hash.
+    """
+
+    if (
+        dataset.point_in_time != "append_only"
+        or dataset.as_of_format != "rfc3339"
+        or dataset.range_field is None
+        or dataset.partition_field != dataset.range_field
+    ):
+        return False
+    predecessor = replace(dataset, partition_field=None)
+    bindings = (
+        (expected_binding,)
+        if expected_binding is not None
+        else dataset.provider_bindings
+    )
+    return any(
+        receipt.config_hash == provider_ingest_config_hash(predecessor, binding)
+        for binding in bindings
+    )
+
+
 def _attempt_context_failures(
     receipts: list[_Receipt],
 ) -> tuple[_InvalidReceipt, ...]:
@@ -2147,7 +2180,21 @@ def project_dataset_runtime_evidence(
         if _receipt_matches_active_config(receipt, dataset, provider_binding)
     ]
     successful = list(_complete_success_receipts(authority_receipts, dataset))
-    as_of_successful = successful
+    as_of_authority_receipts = authority_receipts
+    if receipt_collection_window is not None:
+        as_of_authority_receipts = [
+            receipt
+            for receipt in receipts
+            if _receipt_matches_active_config(receipt, dataset, provider_binding)
+            or _receipt_matches_partition_declaration_predecessor(
+                receipt,
+                dataset,
+                provider_binding,
+            )
+        ]
+    as_of_successful = list(
+        _complete_success_receipts(as_of_authority_receipts, dataset)
+    )
     if receipt_collection_window is not None:
         receipt_window_start, receipt_window_end = (
             value.astimezone(timezone.utc) for value in receipt_collection_window
@@ -2156,7 +2203,7 @@ def project_dataset_runtime_evidence(
         cutoff = evidence_as_of.astimezone(timezone.utc)
         as_of_successful = [
             receipt
-            for receipt in successful
+            for receipt in as_of_successful
             if receipt.started_sort <= receipt_window_end
             and receipt.finished_sort >= receipt_window_start
             and receipt.finished_sort <= cutoff

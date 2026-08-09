@@ -16,7 +16,12 @@ import pytest
 
 import storage.ingest_receipts as receipt_module
 import storage.receipt_projection as projection_module
-from dataset_registry import DatasetDefinition, DatasetRegistry, load_dataset_registry
+from dataset_registry import (
+    BINANCE_SPOT_CANARY_REGISTRY_PATH,
+    DatasetDefinition,
+    DatasetRegistry,
+    load_dataset_registry,
+)
 from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
     IngestContext,
@@ -92,7 +97,7 @@ def _insert_receipt(
     context = IngestContext(
         attempt_id=attempt_id,
         dataset_id=dataset_id,
-        provider="tushare",
+        provider=binding.provider,
         provider_api=provider_api,
         request_window=request_window or {"trade_date": "20260715"},
         config_hash=(
@@ -682,6 +687,45 @@ def test_asof_receipt_collection_window_bounds_more_than_2000_successes(
     )
 
     assert evidence.as_of_success_receipt_ids == (relevant_receipt,)
+
+
+def test_asof_window_accepts_partition_declaration_predecessor_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = load_dataset_registry(
+        BINANCE_SPOT_CANARY_REGISTRY_PATH
+    ).resolve("crypto.spot.binance.btcusdt.5m")
+    binding = dataset.provider_bindings[0]
+    predecessor = replace(dataset, partition_field=None)
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-asof-partition-predecessor",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through="2026-07-15T00:09:59.999+00:00",
+        dataset_id=dataset.dataset_id,
+        provider_api=binding.api_name,
+        config_hash=provider_ingest_config_hash(predecessor, binding),
+        dataset=dataset,
+    )
+
+    evidence = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+        evidence_as_of=datetime(2026, 7, 15, 0, 15, tzinfo=timezone.utc),
+        receipt_collection_window=(
+            datetime(2026, 7, 15, 0, 5, tzinfo=timezone.utc),
+            datetime(2026, 7, 15, 0, 15, tzinfo=timezone.utc),
+        ),
+    )
+
+    assert evidence.projection.state == "unobserved"
+    assert evidence.projection.reasons == ("active_config_receipt_mismatch",)
+    assert evidence.as_of_success_receipt_ids == (receipt_id,)
 
 
 def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit(
