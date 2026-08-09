@@ -39,10 +39,10 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
     rt_min = next(item for item in manifest["datasets"] if item["dataset_id"] == "cn.dataset.rt_min")
 
     assert rt_min["cadence"] == "session_minute"
-    assert rt_min["request_shape"] == "snapshot_or_date_range"
+    assert rt_min["request_shape"] == "event_or_intraday_window"
     assert rt_min["read_contract"] == {
         "identity_fields": ["ts_code", "time"],
-        "freshness_sla_seconds": 300,
+        "freshness_sla_seconds": 600,
         "readable_fields": [
             "ts_code",
             "freq",
@@ -68,13 +68,9 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
     assert rt_min["entity_scope"] == {
         "kind": "versioned_literal_values",
         "frozen": True,
-        "parameter": "ts_code",
-        "value_count": 30,
-        "values_sha256": "76eaa2219fc4884b14317fba0fd81d54a0b0c4affd498867a45efd40f8ba466f",
-        "batch_semantics": {
-            "request_count": 1,
-            "values_per_request": 30,
-        },
+        "batch_size": 100,
+        "value_count": 528,
+        "values_sha256": "e460371e9b8a282f8da59a4239b5c61fe844f6f02ac604b9b7c0512df375abdb",
     }
     assert rt_min["consumer_applicability"] == [
         {
@@ -103,6 +99,7 @@ def test_single_ts_code_request_template_is_not_a_frozen_universe(tmp_path: Path
     binding = rt_min["provider_bindings"][0]
     assert isinstance(binding, dict)
     binding["request_template"]["ts_code"] = "600000.SH"
+    binding["fanout"] = {"strategy": "none"}
     registry_path = tmp_path / "registry.yaml"
     registry_path.write_text(yaml.safe_dump(registry_document, allow_unicode=True, sort_keys=False))
 

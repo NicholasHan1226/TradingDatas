@@ -99,6 +99,16 @@ def _failed(code: str) -> ProviderCallOutcome:
     )
 
 
+def _empty() -> ProviderCallOutcome:
+    return ProviderCallOutcome(
+        state="empty",
+        rows=(),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+
 def _execute(
     collector: _SequenceCollector,
     binding: ProviderBinding,
@@ -393,6 +403,28 @@ def test_retries_only_rate_limited_provider_outcomes() -> None:
     )
     assert execution.outcome.state == "failed"
     assert len(transport.calls) == 1
+
+
+def test_retries_empty_provider_outcomes_until_data_or_attempt_budget() -> None:
+    """An empty response may be a transient provider publishing lag."""
+
+    late = _SequenceCollector([_empty(), _success({"id": 1})])
+    execution = _execute(
+        late,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+    assert execution.outcome.state == "success"
+    assert len(late.calls) == 2
+
+    exhausted = _SequenceCollector([_empty(), _empty()])
+    execution = _execute(
+        exhausted,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+    assert execution.outcome.state == "empty"
+    assert len(exhausted.calls) == 2
 
 
 def test_public_rate_window_outcome_is_retried_by_ingest(monkeypatch) -> None:

@@ -493,6 +493,7 @@ def _collect_with_retry(
     requested_fields: str | None,
     scan_budget: SensitiveScanBudget,
     retry: RetrySettings,
+    retry_empty: bool,
     sleep: Callable[[float], None],
     identity: ProviderRequestIdentity,
     first_call_index: int,
@@ -524,8 +525,11 @@ def _collect_with_retry(
             )
         )
         if (
-            outcome.state != "failed"
-            or outcome.error_code not in _RETRYABLE_PROVIDER_ERRORS
+            (outcome.state != "failed" and not (retry_empty and outcome.state == "empty"))
+            or (
+                outcome.state == "failed"
+                and outcome.error_code not in _RETRYABLE_PROVIDER_ERRORS
+            )
             or retry_index + 1 == retry.max_attempts
         ):
             return tuple(calls)
@@ -606,6 +610,7 @@ def _execute_provider_requests(
                 requested_fields=requested_fields,
                 scan_budget=scan_budget,
                 retry=retry,
+                retry_empty=pagination.strategy == "none",
                 sleep=sleep,
                 identity=identity,
                 first_call_index=first_call_index + len(calls),
