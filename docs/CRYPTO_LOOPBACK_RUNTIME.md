@@ -82,6 +82,9 @@ metadata can use only complete success receipts whose collection interval is at
 or before the requested cutoff and whose data watermark is at or before the
 resolved cutoff. A later collection is excluded even when its bar timestamps
 are historical; if no matching receipt exists, the query fails closed.
+For the fixed RFC3339 `open_time between` window, eligible success receipts
+must also overlap the collection interval from the requested lower bound to the
+explicit cutoff. This keeps the lineage cohort bounded as receipt history grows.
 Omitting `as_of` retains the current projection.
 
 For append-only bars, an identical row re-observed in the next overlapping

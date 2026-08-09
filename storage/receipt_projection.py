@@ -1980,6 +1980,7 @@ def project_dataset_runtime_evidence(
     provider_binding: ProviderBinding | None = None,
     evidence_as_of: datetime | None = None,
     data_through_as_of: datetime | None = None,
+    receipt_collection_window: tuple[datetime, datetime] | None = None,
     request_partition: tuple[str, str] | None = None,
 ) -> DatasetRuntimeEvidence:
     """Return one projection and typed lineage evidence from one receipt scan.
@@ -1987,8 +1988,10 @@ def project_dataset_runtime_evidence(
     ``evidence_as_of`` is an observation cutoff, not a provider-row timestamp.
     When present, only complete receipt executions whose collection interval and
     data watermark are at or before their respective cutoffs can attest to
-    returned rows. ``data_through_as_of`` defaults to ``evidence_as_of``.
-    Omitting both preserves the current read projection exactly.  An exact
+    returned rows. ``data_through_as_of`` defaults to ``evidence_as_of``. An
+    optional ``receipt_collection_window`` bounds the success IDs exposed to
+    an as-of row query to collection intervals overlapping that window.
+    Omitting all cutoffs preserves the current read projection exactly. An exact
     ``request_partition`` narrows receipt authority to the matching immutable
     request window.  It is deliberately opt-in: unbounded/range queries keep
     the dataset-wide fail-closed projection.
@@ -2016,6 +2019,30 @@ def project_dataset_runtime_evidence(
         raise ValueError(
             "data_through_as_of requires a timezone-aware evidence_as_of"
         )
+    if receipt_collection_window is not None:
+        if (
+            evidence_as_of is None
+            or type(receipt_collection_window) is not tuple
+            or len(receipt_collection_window) != 2
+            or any(
+                not isinstance(value, datetime)
+                or value.tzinfo is None
+                or value.utcoffset() is None
+                for value in receipt_collection_window
+            )
+        ):
+            raise ValueError(
+                "receipt_collection_window requires two aware datetimes and "
+                "evidence_as_of"
+            )
+        receipt_window_start, receipt_window_end = (
+            value.astimezone(timezone.utc) for value in receipt_collection_window
+        )
+        if (
+            receipt_window_start > receipt_window_end
+            or receipt_window_end > evidence_as_of.astimezone(timezone.utc)
+        ):
+            raise ValueError("receipt_collection_window is outside evidence_as_of")
     if request_partition is not None and (
         type(request_partition) is not tuple
         or len(request_partition) != 2
@@ -2120,6 +2147,20 @@ def project_dataset_runtime_evidence(
         if _receipt_matches_active_config(receipt, dataset, provider_binding)
     ]
     successful = list(_complete_success_receipts(authority_receipts, dataset))
+    as_of_successful = successful
+    if receipt_collection_window is not None:
+        receipt_window_start, receipt_window_end = (
+            value.astimezone(timezone.utc) for value in receipt_collection_window
+        )
+        assert evidence_as_of is not None
+        cutoff = evidence_as_of.astimezone(timezone.utc)
+        as_of_successful = [
+            receipt
+            for receipt in successful
+            if receipt.started_sort <= receipt_window_end
+            and receipt.finished_sort >= receipt_window_start
+            and receipt.finished_sort <= cutoff
+        ]
     last_success = _success_watermark_receipt(authority_receipts, dataset) or max(
         successful,
         key=_success_sort_key,
@@ -2209,7 +2250,7 @@ def project_dataset_runtime_evidence(
         as_of_success_receipt_ids=(
             ()
             if evidence_as_of is None
-            else tuple(sorted({receipt.receipt_id for receipt in successful}))
+            else tuple(sorted({receipt.receipt_id for receipt in as_of_successful}))
         ),
     )
 

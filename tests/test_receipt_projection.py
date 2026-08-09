@@ -84,6 +84,7 @@ def _insert_receipt(
     provider_api: str = "daily",
     config_hash: str | None = None,
     dataset: DatasetDefinition | None = None,
+    commit: bool = True,
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
     dataset = _dataset() if dataset is None else dataset
@@ -145,7 +146,8 @@ def _insert_receipt(
         errors=errors,
         payload_fingerprint=PAYLOAD_FINGERPRINT,
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return receipt_id
 
 
@@ -637,6 +639,49 @@ def test_asof_evidence_excludes_later_receipt_and_binds_internal_metadata(
     assert historical.current_receipt_ids == (first_receipt,)
     assert historical.last_success_receipt_ids == (first_receipt,)
     assert historical.as_of_success_receipt_ids == (first_receipt,)
+
+
+def test_asof_receipt_collection_window_bounds_more_than_2000_successes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    for index in range(2_001):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=f"attempt-asof-old-{index}",
+            started_at="2026-07-14T23:00:00+00:00",
+            finished_at="2026-07-14T23:01:00+00:00",
+            data_through="2026-07-14T23:00:00+00:00",
+            dataset=dataset,
+            commit=False,
+        )
+    conn.commit()
+    relevant_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-asof-window-relevant",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through="2026-07-15T00:10:00+00:00",
+        dataset=dataset,
+    )
+
+    evidence = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
+        evidence_as_of=datetime(2026, 7, 15, 0, 15, tzinfo=timezone.utc),
+        receipt_collection_window=(
+            datetime(2026, 7, 15, 0, 5, tzinfo=timezone.utc),
+            datetime(2026, 7, 15, 0, 15, tzinfo=timezone.utc),
+        ),
+    )
+
+    assert evidence.as_of_success_receipt_ids == (relevant_receipt,)
 
 
 def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit(

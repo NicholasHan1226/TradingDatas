@@ -1338,6 +1338,44 @@ def _evidence_as_of(prepared: _PreparedQuery) -> datetime | None:
     return cutoff
 
 
+def _as_of_receipt_collection_window(
+    request: QueryRequest,
+    dataset: DatasetDefinition,
+    prepared: _PreparedQuery,
+) -> tuple[datetime, datetime] | None:
+    """Bound lineage for an RFC3339 rolling-window as-of query."""
+
+    if (
+        prepared.as_of.resolved_as_of is None
+        or dataset.as_of_format != "rfc3339"
+        or dataset.range_field is None
+    ):
+        return None
+    clause = request.filters.get(dataset.range_field)
+    if not isinstance(clause, MappingProxyType) or tuple(clause) != ("between",):
+        return None
+    raw_values = clause["between"]
+    if type(raw_values) is not tuple or len(raw_values) != 2:
+        raise QueryServiceUnavailable("query service is unavailable")
+    range_values = _range_filter_values(
+        dataset,
+        raw_values,
+        name=f"filters.{dataset.range_field}.between",
+    )
+    if len(range_values) != 2 or not all(
+        isinstance(value, datetime) for value in range_values
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    window_start = range_values[0].astimezone(timezone.utc)
+    cutoff = _evidence_as_of(prepared)
+    if cutoff is None:
+        raise QueryServiceUnavailable("query service is unavailable")
+    cutoff = cutoff.astimezone(timezone.utc)
+    if window_start > cutoff:
+        return None
+    return window_start, cutoff
+
+
 def _exact_request_partition_evidence(
     dataset: DatasetDefinition,
     request: QueryRequest,
@@ -1982,6 +2020,11 @@ class QueryService:
                         None
                         if prepared.as_of.resolved_as_of is None
                         else datetime.fromisoformat(prepared.as_of.resolved_as_of)
+                    ),
+                    receipt_collection_window=_as_of_receipt_collection_window(
+                        validated_request,
+                        dataset,
+                        prepared,
                     ),
                     request_partition=request_partition,
                 )
