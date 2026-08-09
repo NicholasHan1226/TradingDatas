@@ -7,7 +7,9 @@ from typing import Any
 
 import pytest
 
+from collectors.tushare import collector as collector_module
 from collectors.tushare import tushare_common
+from collectors.tushare.collector import RequestBudgetExceeded, TushareCollector
 from collectors.tushare.provider_native_ingest import (
     FanoutBatch,
     RetrySettings,
@@ -20,6 +22,7 @@ from collectors.tushare.tushare_common import (
     SensitiveScanBudget,
 )
 from dataset_registry import FanoutPolicy, PaginationPolicy, ProviderBinding
+from tools import run_provider_native_schedule as scheduler
 
 
 def _binding(
@@ -110,10 +113,11 @@ def _empty() -> ProviderCallOutcome:
 
 
 def _execute(
-    collector: _SequenceCollector,
+    collector: Any,
     binding: ProviderBinding,
     *,
     retry: RetrySettings = RetrySettings(),
+    retry_empty: bool = False,
 ):
     _, params = _resolved_request(
         binding,
@@ -129,6 +133,7 @@ def _execute(
         requested_fields=None,
         scan_budget=SensitiveScanBudget(max_depth=16, max_nodes=10_000),
         retry=retry,
+        retry_empty=retry_empty,
         sleep=lambda _seconds: None,
     )
 
@@ -243,6 +248,7 @@ def test_executor_sends_one_fanout_batch_as_one_comma_parameter() -> None:
         requested_fields=None,
         scan_budget=SensitiveScanBudget(max_depth=16, max_nodes=10_000),
         retry=RetrySettings(),
+        retry_empty=False,
         sleep=lambda _seconds: None,
     )
 
@@ -288,6 +294,7 @@ def test_fanout_row_budget_is_applied_per_provider_call() -> None:
         requested_fields=None,
         scan_budget=SensitiveScanBudget(max_depth=16, max_nodes=10_000),
         retry=RetrySettings(),
+        retry_empty=False,
         sleep=lambda _seconds: None,
     )
 
@@ -405,26 +412,102 @@ def test_retries_only_rate_limited_provider_outcomes() -> None:
     assert len(transport.calls) == 1
 
 
-def test_retries_empty_provider_outcomes_until_data_or_attempt_budget() -> None:
-    """An empty response may be a transient provider publishing lag."""
-
-    late = _SequenceCollector([_empty(), _success({"id": 1})])
+def test_allowed_empty_provider_outcome_terminates_without_retry() -> None:
+    collector = _SequenceCollector([_empty()])
     execution = _execute(
-        late,
+        collector,
         _binding(),
-        retry=RetrySettings(max_attempts=2),
+        retry=RetrySettings(max_attempts=3),
+        retry_empty=False,
     )
-    assert execution.outcome.state == "success"
-    assert len(late.calls) == 2
 
-    exhausted = _SequenceCollector([_empty(), _empty()])
-    execution = _execute(
-        exhausted,
-        _binding(),
-        retry=RetrySettings(max_attempts=2),
-    )
     assert execution.outcome.state == "empty"
-    assert len(exhausted.calls) == 2
+    assert len(collector.calls) == 1
+    assert [call.retry_index for call in execution.calls] == [0]
+
+
+def test_forbidden_empty_provider_outcome_retains_bounded_retry() -> None:
+    collector = _SequenceCollector([_empty(), _empty(), _empty()])
+    execution = _execute(
+        collector,
+        _binding(),
+        retry=RetrySettings(max_attempts=3),
+        retry_empty=True,
+    )
+
+    assert execution.outcome.state == "empty"
+    assert len(collector.calls) == 3
+    assert [call.retry_index for call in execution.calls] == [0, 1, 2]
+
+
+def test_seven_allowed_empty_event_plans_use_seven_shared_budget_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_delegations: list[str] = []
+
+    def empty_provider(api_name: str, *_args: object) -> ProviderCallOutcome:
+        provider_delegations.append(api_name)
+        return _empty()
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", empty_provider)
+    schedule = scheduler.load_schedule()
+    ledger = scheduler.RuntimeRateBudgetLedger(schedule)
+    assert schedule.rate_budgets["event"].account_requests_per_run == 12
+
+    for index in range(7):
+        api_name = f"synthetic_event_{index}"
+        plan = scheduler.ScheduledRun(
+            dataset_id=f"cn.synthetic.event_{index}",
+            provider="tushare",
+            provider_api=api_name,
+            cadence_class="event",
+            request_window={"trade_date": "20260720"},
+            rate_budget_class="event",
+        )
+        collector = TushareCollector(
+            request_gate=lambda requested_api, plan=plan: ledger.consume(
+                plan, requested_api
+            )
+        )
+
+        execution = _execute(
+            collector,
+            replace(_binding(), api_name=api_name),
+            retry=RetrySettings(max_attempts=3),
+            retry_empty=False,
+        )
+
+        assert execution.outcome.state == "empty"
+        assert len(execution.calls) == 1
+
+    assert provider_delegations == [f"synthetic_event_{index}" for index in range(7)]
+
+
+def test_pre_provider_resource_budget_rejection_remains_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_delegations = 0
+
+    def provider(*_args: object) -> ProviderCallOutcome:
+        nonlocal provider_delegations
+        provider_delegations += 1
+        return _empty()
+
+    def reject(_api_name: str) -> None:
+        raise RequestBudgetExceeded("provider request budget exhausted")
+
+    monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider)
+    execution = _execute(
+        TushareCollector(request_gate=reject),
+        _binding(),
+        retry=RetrySettings(max_attempts=3),
+        retry_empty=False,
+    )
+
+    assert execution.outcome.state == "failed"
+    assert execution.outcome.error_code == "resource_budget"
+    assert len(execution.calls) == 1
+    assert provider_delegations == 0
 
 
 def test_public_rate_window_outcome_is_retried_by_ingest(monkeypatch) -> None:

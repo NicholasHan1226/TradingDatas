@@ -566,6 +566,7 @@ def _execute_provider_requests(
     requested_fields: str | None,
     scan_budget: SensitiveScanBudget,
     retry: RetrySettings,
+    retry_empty: bool,
     first_call_index: int = 0,
     sleep: Callable[[float], None] = time.sleep,
 ) -> ProviderExecution:
@@ -610,7 +611,7 @@ def _execute_provider_requests(
                 requested_fields=requested_fields,
                 scan_budget=scan_budget,
                 retry=retry,
-                retry_empty=pagination.strategy == "none",
+                retry_empty=retry_empty and pagination.strategy == "none",
                 sleep=sleep,
                 identity=identity,
                 first_call_index=first_call_index + len(calls),
@@ -1600,6 +1601,7 @@ def collect_provider_native_dataset(
             requested_fields=requested_fields,
             scan_budget=scan_budget,
             retry=retry,
+            retry_empty=dataset.empty_data_policy == "forbidden",
             first_call_index=next_call_index,
         )
         next_call_index += len(execution.calls)
