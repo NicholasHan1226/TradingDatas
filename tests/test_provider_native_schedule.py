@@ -793,6 +793,92 @@ def test_success_empty_planned_and_skipped_payloads_remain_compatible() -> None:
     ]
 
 
+def test_invalid_receipt_skip_exposes_reasons_without_blocking_unrelated_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    invalid_reasons = (
+        "receipt_counts_invalid",
+        "receipt_timestamp_in_future",
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType({}),
+        MappingProxyType({("cn.equity.daily", "tushare"): invalid_reasons}),
+    )
+    unrelated_plan = scheduler.ScheduledRun(
+        dataset_id="cn.dataset.anns_d",
+        provider="tushare",
+        provider_api="anns_d",
+        cadence_class="event",
+        request_window={"start_date": "20260720", "end_date": "20260720"},
+    )
+    planner_skips = (
+        cadence_planner.PlannerSkip(
+            "cn.equity.daily", "tushare", "invalid_receipt_authority"
+        ),
+        cadence_planner.PlannerSkip("cn.equity.security_master", "tushare", "not_due"),
+    )
+    monkeypatch.setattr(
+        scheduler, "load_planner_state", lambda *_args, **_kwargs: state
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_plan_runs",
+        lambda **_kwargs: ((unrelated_plan,), planner_skips),
+    )
+    calls: list[str] = []
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        calls.append(plan.dataset_id)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+    )
+
+    assert calls == ["cn.dataset.anns_d"]
+    assert result.exit_code == 0
+    assert result.executed == (
+        scheduler.DatasetResult("cn.dataset.anns_d", "tushare", "success", 0),
+    )
+    assert result.skipped == (
+        scheduler.SkippedResult(
+            "cn.equity.daily",
+            "tushare",
+            "invalid_receipt_authority",
+            invalid_reasons,
+        ),
+        scheduler.SkippedResult("cn.equity.security_master", "tushare", "not_due"),
+    )
+    assert result.public_payload()["skipped"] == [
+        {
+            "dataset_id": "cn.equity.daily",
+            "provider": "tushare",
+            "reasons": list(invalid_reasons),
+            "state": "invalid_receipt_authority",
+        },
+        {
+            "dataset_id": "cn.equity.security_master",
+            "provider": "tushare",
+            "state": "not_due",
+        },
+    ]
+    assert result.public_payload()["summary"] == {
+        "failed": 0,
+        "planned": 0,
+        "skipped": 2,
+        "terminal": 1,
+    }
+
+
 def test_paused_and_locked_bindings_never_reach_executor(tmp_path: Path) -> None:
     registry = load_dataset_registry(TARGET_REGISTRY)
     datasets = []
@@ -1100,6 +1186,13 @@ def test_tampered_success_receipt_blocks_only_its_dataset(
     )
 
     assert result.mode == "plan"
+    invalid_skip = next(
+        item
+        for item in result.skipped
+        if item.dataset_id == "cn.equity.daily"
+        and item.state == "invalid_receipt_authority"
+    )
+    assert invalid_skip.reasons == ("receipt_counts_invalid",)
     assert any(
         item.dataset_id == "cn.equity.daily"
         and item.state == "invalid_receipt_authority"
@@ -1209,6 +1302,13 @@ def test_weak_receipt_envelope_blocks_only_its_dataset(
     )
 
     assert result.mode == "plan"
+    invalid_skip = next(
+        item
+        for item in result.skipped
+        if item.dataset_id == "cn.equity.daily"
+        and item.state == "invalid_receipt_authority"
+    )
+    assert invalid_skip.reasons == ("unknown_receipt_schema",)
     assert any(
         item.dataset_id == "cn.equity.daily"
         and item.state == "invalid_receipt_authority"

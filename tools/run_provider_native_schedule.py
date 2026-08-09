@@ -150,6 +150,7 @@ class SkippedResult:
     dataset_id: str
     provider: str
     state: str
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -176,17 +177,20 @@ class ScheduleResult:
                 if item.receipt_ids:
                     dataset["receipt_ids"] = list(item.receipt_ids)
             datasets.append(dataset)
+        skipped = []
+        for item in self.skipped:
+            skip = {
+                "dataset_id": item.dataset_id,
+                "provider": item.provider,
+                "state": item.state,
+            }
+            if item.state == "invalid_receipt_authority" and item.reasons:
+                skip["reasons"] = list(item.reasons)
+            skipped.append(skip)
         return {
             "datasets": datasets,
             "mode": self.mode,
-            "skipped": [
-                {
-                    "dataset_id": item.dataset_id,
-                    "provider": item.provider,
-                    "state": item.state,
-                }
-                for item in self.skipped
-            ],
+            "skipped": skipped,
             "summary": {
                 "failed": sum(
                     item.state not in _SUCCESS_STATES | {"planned"}
@@ -345,10 +349,17 @@ def run_schedule(
         )
     ):
         raise ValueError("current-only plan escaped selection")
-    skipped = tuple(
-        SkippedResult(item.dataset_id, item.provider, item.state)
-        for item in planner_skips
-    )
+    skipped_results = []
+    for item in planner_skips:
+        reasons = ()
+        if item.state == "invalid_receipt_authority":
+            dataset = registry.resolve(item.dataset_id)
+            binding = registry.provider_binding(item.dataset_id, item.provider)
+            reasons = state.invalid_reasons(dataset, binding)
+        skipped_results.append(
+            SkippedResult(item.dataset_id, item.provider, item.state, reasons)
+        )
+    skipped = tuple(skipped_results)
     if not execute:
         planned = tuple(
             DatasetResult(plan.dataset_id, plan.provider, "planned", 0)
