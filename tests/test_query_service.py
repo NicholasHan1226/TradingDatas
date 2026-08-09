@@ -136,6 +136,14 @@ def test_crypto_rfc3339_asof_metadata_binds_exact_receipt_cutoff() -> None:
         registry,
         now=datetime(2026, 7, 28, 9, 45, 30, tzinfo=timezone.utc),
     )
+    assert query_module._as_of_receipt_collection_window(  # noqa: SLF001
+        request,
+        dataset,
+        prepared,
+    ) == (
+        datetime(2026, 7, 28, 8, 40, tzinfo=timezone.utc),
+        datetime(2026, 7, 28, 9, 44, 59, 999000, tzinfo=timezone.utc),
+    )
     binding = dataset.provider_bindings[0]
     receipt_id = "receipt-before-asof"
     evidence = DatasetRuntimeEvidence(

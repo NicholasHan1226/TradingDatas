@@ -119,6 +119,9 @@ execution 状态；`metadata.data_through` 是所有 exact-complete success coho
 lineage 与 cursor watermark 均从该
 有界 receipt authority 重建。若截止点前没有匹配的完整 success receipt，查询以 503
 fail closed，不能把后采 receipt、当前 metadata 或无 lineage 的历史行拼入结果。
+当 RFC3339 数据集同时使用 range field 的 `between` 与显式 `as_of` 时，允许绑定行的
+success receipt 还必须与 `[range 下界, requested_as_of]` collection window 重叠；这样
+固定滚动窗口的 lineage 与 SQLite 查询成本不随无关历史 receipt 总数增长。
 对声明 `snapshot_field` 的 cohort，watermark 必须取 provider 返回的该 snapshot 值，
 不能以 collector 的开始时间代替；同时声明 `fanout_field` 时，所有请求值必须恰好出现
 一次且共享同一 snapshot，否则该 cohort 只能形成 failed receipt。
