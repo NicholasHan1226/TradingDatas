@@ -698,6 +698,19 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
     ).resolve("crypto.spot.binance.btcusdt.5m")
     binding = dataset.provider_bindings[0]
     predecessor = replace(dataset, partition_field=None)
+    active_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-asof-active-before-predecessor",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-14T23:59:59.999+00:00",
+        dataset_id=dataset.dataset_id,
+        provider_api=binding.api_name,
+        config_hash=provider_ingest_config_hash(dataset, binding),
+        dataset=dataset,
+    )
     receipt_id = _insert_receipt(
         monkeypatch,
         conn,
@@ -735,8 +748,9 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
         dataset,
         now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
     )
-    assert current.projection.state == "unobserved"
-    assert current.projection.reasons == ("active_config_receipt_mismatch",)
+    assert current.projection.state == "stale"
+    assert current.projection.receipt_id == active_receipt_id
+    assert current.projection.data_through == "2026-07-14T23:59:59.999+00:00"
 
 
 def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit(

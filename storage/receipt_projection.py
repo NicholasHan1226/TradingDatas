@@ -2177,31 +2177,40 @@ def project_dataset_runtime_evidence(
             raise RuntimeProjectionError(
                 "receipt authority contains invalid evidence"
             )
-        active_successes = _complete_success_receipts(
-            [
-                receipt
-                for receipt in projection_receipts
-                if _receipt_matches_active_config(
-                    receipt,
-                    dataset,
-                    provider_binding,
-                )
-            ],
+        active_receipts = [
+            receipt
+            for receipt in projection_receipts
+            if _receipt_matches_active_config(
+                receipt,
+                dataset,
+                provider_binding,
+            )
+        ]
+        predecessor_receipts = [
+            receipt
+            for receipt in projection_receipts
+            if _receipt_matches_partition_declaration_predecessor(
+                receipt,
+                dataset,
+                provider_binding,
+            )
+        ]
+        active_watermark = _success_watermark_receipt(active_receipts, dataset)
+        predecessor_watermark = _success_watermark_receipt(
+            predecessor_receipts,
             dataset,
         )
-        predecessor_successes = _complete_success_receipts(
-            [
-                receipt
-                for receipt in projection_receipts
-                if _receipt_matches_partition_declaration_predecessor(
-                    receipt,
-                    dataset,
-                    provider_binding,
-                )
-            ],
-            dataset,
-        )
-        if not active_successes and predecessor_successes:
+        if predecessor_watermark is not None and (
+            active_watermark is None
+            or _data_through_in_utc(
+                predecessor_watermark.data_through,
+                dataset.timezone,
+            )
+            > _data_through_in_utc(
+                active_watermark.data_through,
+                dataset.timezone,
+            )
+        ):
             projection_dataset = replace(dataset, partition_field=None)
 
     projection = _project_dataset_runtime(
