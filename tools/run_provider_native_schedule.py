@@ -12,12 +12,13 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import fcntl
 import json
 import os
 from pathlib import Path
+import sqlite3
 import sys
 from typing import Callable, Iterator
 import uuid
@@ -42,6 +43,10 @@ from collectors.tushare.provider_native_ingest import (  # noqa: E402
 from collectors.tushare.tushare_common import read_tushare_config  # noqa: E402
 from runtime_paths import provider_native_sqlite_path  # noqa: E402
 from storage.ingest_receipts import make_schedule_plan_attempt_id  # noqa: E402
+from storage.receipt_projection import (  # noqa: E402
+    ReceiptJournalEntry,
+    validated_receipt_journal_entries_by_dataset,
+)
 from tools.provider_native_cadence_planner import (  # noqa: E402
     Schedule,
     ScheduledRun,
@@ -143,6 +148,7 @@ class DatasetResult:
     exit_code: int
     error_codes: tuple[str, ...] = ()
     receipt_ids: tuple[str, ...] = ()
+    receipt_provenance: tuple[ReceiptJournalEntry, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -176,6 +182,28 @@ class ScheduleResult:
                     dataset["error_codes"] = list(item.error_codes)
                 if item.receipt_ids:
                     dataset["receipt_ids"] = list(item.receipt_ids)
+            if item.receipt_provenance:
+                provenance = []
+                for entry in item.receipt_provenance:
+                    row: dict[str, object] = {
+                        "receipt_id": entry.receipt_id,
+                        "status": entry.status,
+                        "counts": (
+                            None
+                            if entry.counts is None
+                            else {
+                                "returned": entry.counts.returned,
+                                "validated": entry.counts.validated,
+                                "rejected": entry.counts.rejected,
+                                "committed": entry.counts.committed,
+                            }
+                        ),
+                        "error_layer": entry.error_layer,
+                        "error_codes": list(entry.error_codes),
+                        "validation_reasons": list(entry.validation_reasons),
+                    }
+                    provenance.append(row)
+                dataset["receipt_provenance"] = provenance
             datasets.append(dataset)
         skipped = []
         for item in self.skipped:
@@ -239,6 +267,38 @@ def _validated_collector_credentials() -> None:
         raise ValueError("collector credentials are unavailable") from exc
 
 
+def _read_receipt_provenance(
+    db_path: Path,
+    *,
+    registry: DatasetRegistry,
+    receipt_ids_by_dataset: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[ReceiptJournalEntry, ...]]:
+    """Read selected persisted receipts in one bounded authority snapshot."""
+
+    selected = {
+        dataset_id: receipt_ids
+        for dataset_id, receipt_ids in receipt_ids_by_dataset.items()
+        if receipt_ids
+    }
+    if not selected:
+        return {}
+    try:
+        db_uri = f"file:{db_path}?mode=ro"
+        with sqlite3.connect(db_uri, uri=True) as conn:
+            return dict(
+                validated_receipt_journal_entries_by_dataset(
+                    conn,
+                    registry,
+                    selected,
+                    now=datetime.now(timezone.utc),
+                )
+            )
+    except (OSError, sqlite3.Error, RuntimeError, TypeError, ValueError):
+        # Provenance is observability only.  A readback failure must not turn a
+        # persisted provider outcome into a different scheduler result.
+        return {}
+
+
 def _in_process_executor(
     plan: ScheduledRun,
     *,
@@ -269,9 +329,19 @@ def _in_process_executor(
         ),
     )
     if result.status == "success":
-        return DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+        return DatasetResult(
+            plan.dataset_id,
+            plan.provider,
+            "success",
+            0,
+        )
     if result.status == "empty":
-        return DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+        return DatasetResult(
+            plan.dataset_id,
+            plan.provider,
+            "empty",
+            3,
+        )
     if set(result.errors) & _VALIDATION_ERROR_CODES:
         return DatasetResult(
             plan.dataset_id,
@@ -397,6 +467,26 @@ def run_schedule(
         ):
             result = DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
         results.append(result)
+    receipt_ids_by_dataset = {
+        item.dataset_id: item.receipt_ids
+        for item in results
+        if item.receipt_ids
+    }
+    provenance_by_dataset = _read_receipt_provenance(
+        db_path,
+        registry=registry,
+        receipt_ids_by_dataset=receipt_ids_by_dataset,
+    )
+    results = [
+        replace(
+            item,
+            receipt_provenance=provenance_by_dataset.get(
+                item.dataset_id,
+                item.receipt_provenance,
+            ),
+        )
+        for item in results
+    ]
     failed = any(item.state not in _SUCCESS_STATES for item in results)
     return ScheduleResult(1 if failed else 0, "execute", tuple(results), skipped, plans)
 

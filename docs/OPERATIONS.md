@@ -41,7 +41,9 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只
 请求当前可用日期，不能因日历预取而创建未来数据 receipt。
 
-当前 `standard` budget 每轮最多 64 个账号/上游请求、同一 provider API 最多 16 个请求。
+`session_minute` 的最小成功间隔为 240 秒：五分钟 timer 在上一个窗口于临界时刻完成
+（例如完成后 265 秒触发下一次）时，仍会规划下一窗口；失败重试、开市日历、窗口和预算
+规则不变。当前 `standard` budget 每轮最多 64 个账号/上游请求、同一 provider API 最多 16 个请求。
 这是在已观测到的 QuickSync 200 request-start/minute 下保留的保守下限，并非对上游额度的
 猜测或扩权；runner 仍是串行、每五分钟最多运行一次。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
@@ -53,6 +55,8 @@ release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
+
+对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。该字段不包含 receipt payload、provider rows、请求凭据或本机路径，且不替代 SQLite receipt authority。
 
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用

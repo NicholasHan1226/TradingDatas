@@ -290,6 +290,23 @@ class ValidatedReceiptHistoryEntry:
 
 
 @dataclass(frozen=True)
+class ReceiptJournalEntry:
+    """Secret-free provenance for one persisted receipt row.
+
+    Counts and error codes are taken only from a receipt that passed the
+    existing authority validator.  Invalid rows expose their stable
+    validation reason but never expose untrusted counts or payload fields.
+    """
+
+    receipt_id: str
+    status: Literal["success", "empty", "failed", "invalid"]
+    counts: IngestCounts | None
+    error_layer: str | None
+    error_codes: tuple[str, ...]
+    validation_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ValidatedReceiptHistories:
     """Dataset-scoped planner authority derived from immutable receipts.
 
@@ -314,6 +331,7 @@ class _Receipt:
     data_through: str | None
     request_window: Mapping[str, str]
     transaction_index: int
+    counts: IngestCounts
     errors: tuple[str, ...]
     started_sort: datetime
     finished_sort: datetime
@@ -987,6 +1005,7 @@ def _validate_receipt_row(
         data_through=data_through,
         request_window=MappingProxyType(dict(sorted(request_window.items()))),
         transaction_index=transaction_index,
+        counts=counts,
         errors=errors,
         started_sort=started_sort,
         finished_sort=finished_sort,
@@ -1944,6 +1963,135 @@ def validated_receipt_histories_by_dataset(
             dict(sorted(failures_by_dataset.items()))
         ),
     )
+
+
+def _receipt_error_layer(
+    error_codes: tuple[str, ...],
+    validation_reasons: tuple[str, ...],
+) -> str | None:
+    if validation_reasons:
+        return "receipt_validation"
+    if "resource_budget" in error_codes:
+        return "request_resource_budget"
+    if "rate_limited" in error_codes:
+        return "transport_retry"
+    if "validation_failed" in error_codes:
+        return "ingest_validation"
+    if any(code in {"provider_error", "permission_denied"} for code in error_codes):
+        return "provider_response"
+    if "storage_failed" in error_codes:
+        return "storage"
+    if "config_error" in error_codes:
+        return "configuration"
+    return None
+
+
+def _journal_entries_for_rows(
+    registry: DatasetRegistry,
+    dataset_id: str,
+    receipt_ids: tuple[str, ...],
+    *,
+    now: datetime,
+    rows: tuple[_ScannedIngestRunRow, ...],
+) -> tuple[ReceiptJournalEntry, ...]:
+    dataset = registry.resolve(dataset_id)
+    wanted = frozenset(receipt_ids)
+    receipts, rejected = _trusted_receipts_for_evidence(
+        dataset,
+        now=now,
+        known_dataset_ids=frozenset(item.dataset_id for item in registry.datasets),
+        rows=rows,
+        expected_binding=None,
+    )
+    invalid_reasons: dict[str, set[str]] = {}
+    for invalid in rejected:
+        if invalid.receipt_id in wanted:
+            invalid_reasons.setdefault(invalid.receipt_id, set()).add(
+                invalid.reason  # type: ignore[arg-type]
+            )
+    entries: list[ReceiptJournalEntry] = []
+    for receipt in receipts:
+        if receipt.receipt_id not in wanted or receipt.receipt_id in invalid_reasons:
+            continue
+        entries.append(
+            ReceiptJournalEntry(
+                receipt_id=receipt.receipt_id,
+                status=receipt.status,  # type: ignore[arg-type]
+                counts=receipt.counts,
+                error_layer=_receipt_error_layer(receipt.errors, ()),
+                error_codes=receipt.errors,
+                validation_reasons=(),
+            )
+        )
+    for receipt_id, reason_set in invalid_reasons.items():
+        reasons = tuple(sorted(reason_set))
+        entries.append(
+            ReceiptJournalEntry(
+                receipt_id=receipt_id,
+                status="invalid",
+                counts=None,
+                error_layer=_receipt_error_layer((), reasons),
+                error_codes=(),
+                validation_reasons=reasons,
+            )
+        )
+    return tuple(sorted(entries, key=lambda entry: entry.receipt_id))
+
+
+def validated_receipt_journal_entries_by_dataset(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    receipt_ids_by_dataset: Mapping[str, tuple[str, ...]],
+    *,
+    now: datetime,
+) -> Mapping[str, tuple[ReceiptJournalEntry, ...]]:
+    """Project selected receipt rows from one bounded authority snapshot."""
+
+    if not isinstance(receipt_ids_by_dataset, Mapping):
+        raise TypeError("receipt_ids_by_dataset must be a mapping")
+    known_dataset_ids = {dataset.dataset_id for dataset in registry.datasets}
+    if any(dataset_id not in known_dataset_ids for dataset_id in receipt_ids_by_dataset):
+        raise ValueError("receipt_ids_by_dataset contains an undeclared dataset")
+    if any(
+        type(receipt_ids) is not tuple
+        or any(type(receipt_id) is not str or not receipt_id for receipt_id in receipt_ids)
+        for receipt_ids in receipt_ids_by_dataset.values()
+    ):
+        raise TypeError("receipt_ids_by_dataset values must be tuples of receipt IDs")
+    rows = _scan_ingest_run_rows(conn)
+    return MappingProxyType(
+        {
+            dataset_id: _journal_entries_for_rows(
+                registry,
+                dataset_id,
+                receipt_ids,
+                now=now,
+                rows=rows,
+            )
+            for dataset_id, receipt_ids in receipt_ids_by_dataset.items()
+            if receipt_ids
+        }
+    )
+
+
+def validated_receipt_journal_entries(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset_id: str,
+    receipt_ids: tuple[str, ...],
+    *,
+    now: datetime,
+) -> tuple[ReceiptJournalEntry, ...]:
+    """Project selected receipt rows without exposing receipt payloads."""
+
+    if type(dataset_id) is not str or not dataset_id:
+        raise TypeError("dataset_id must be a non-empty string")
+    return validated_receipt_journal_entries_by_dataset(
+        conn,
+        registry,
+        {dataset_id: receipt_ids},
+        now=now,
+    ).get(dataset_id, ())
 
 
 def validated_receipt_history(

@@ -32,7 +32,10 @@ cadences:
       date_field: cal_date
       open_field: is_open
       open_values: [1]
-    minimum_interval_seconds: 270
+    # The five-minute timer can start 265 seconds after a collector that
+    # completed near the end of its slot.  Keep one bounded slot of slack so
+    # the next scheduler tick still plans the next session-minute window.
+    minimum_interval_seconds: 240
     failure_retry_seconds: 120
     correction_overlap_days: 0
     correction_overlap_bars: 1
