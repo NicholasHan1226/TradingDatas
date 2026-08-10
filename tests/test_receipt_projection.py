@@ -28,16 +28,19 @@ from storage.ingest_receipts import (
     IngestCounts,
     ProviderRequestIdentity,
     insert_ingest_receipt,
+    make_provider_call_attempt_id,
     make_schedule_plan_attempt_id,
 )
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
+    ReceiptJournalEntry,
     RuntimeProjectionError,
     load_interface_runtime_report,
     project_catalog_runtime,
     project_dataset_runtime,
     project_dataset_runtime_evidence,
     project_registry_runtime,
+    validated_receipt_journal_entries,
 )
 from storage.schema import SCHEMA_SQL
 
@@ -349,6 +352,148 @@ def test_validated_receipt_history_is_typed_and_immutable(
         entry.status = "failed"  # type: ignore[misc]
     with pytest.raises(TypeError):
         entry.request_window["trade_date"] = "20260716"  # type: ignore[index]
+
+
+def test_receipt_journal_entries_redact_invalid_counts_and_keep_reason_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="journal-tampered",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    _tamper_notes(conn, receipt_id, "counts.validated", 0)
+    base = load_dataset_registry()
+    registry = DatasetRegistry((_dataset(),), query_defaults=base.query_defaults)
+
+    entries = validated_receipt_journal_entries(
+        conn,
+        registry,
+        "cn.equity.daily",
+        (receipt_id,),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert entries == (
+        ReceiptJournalEntry(
+            receipt_id=receipt_id,
+            status="invalid",
+            counts=None,
+            error_layer="receipt_validation",
+            error_codes=(),
+            validation_reasons=("receipt_counts_invalid",),
+        ),
+    )
+
+
+def test_receipt_journal_invalid_attempt_context_dominates_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    first = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="shared-attempt",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        request_window={"trade_date": "20260715"},
+        request_identity=ProviderRequestIdentity(
+            request_variant={"probe": "a"},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=None,
+            page_index=0,
+        ),
+    )
+    second = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="shared-attempt",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:02:00+00:00",
+        data_through="20260715",
+        request_window={"trade_date": "20260716"},
+        request_identity=ProviderRequestIdentity(
+            request_variant={"probe": "b"},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=None,
+            page_index=0,
+        ),
+    )
+    base = load_dataset_registry()
+    registry = DatasetRegistry((_dataset(),), query_defaults=base.query_defaults)
+
+    entries = validated_receipt_journal_entries(
+        conn,
+        registry,
+        "cn.equity.daily",
+        (first, second),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(entries) == 2
+    by_id = {entry.receipt_id: entry for entry in entries}
+    assert by_id[first].status == "success"
+    assert by_id[first].counts is not None
+    assert by_id[second].status == "invalid"
+    assert by_id[second].counts is None
+    assert by_id[second].validation_reasons == ("receipt_attempt_inconsistent",)
+
+
+def test_receipt_journal_invalid_execution_context_dominates_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    root = "execution-root"
+    first = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=root,
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    second = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=make_provider_call_attempt_id(
+            root,
+            call_index=0,
+            retry_index=0,
+        ),
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:02:00+00:00",
+        data_through="20260715",
+    )
+    base = load_dataset_registry()
+    registry = DatasetRegistry((_dataset(),), query_defaults=base.query_defaults)
+
+    entries = validated_receipt_journal_entries(
+        conn,
+        registry,
+        "cn.equity.daily",
+        (first, second),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(entries) == 2
+    by_id = {entry.receipt_id: entry for entry in entries}
+    assert by_id[first].status == "success"
+    assert by_id[first].counts is not None
+    assert by_id[second].status == "invalid"
+    assert by_id[second].counts is None
+    assert by_id[second].validation_reasons == ("receipt_execution_inconsistent",)
 
 
 @pytest.mark.parametrize(

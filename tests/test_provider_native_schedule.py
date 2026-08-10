@@ -132,6 +132,7 @@ def _canonical_receipt(
     request_variant: dict[str, str] | None = None,
     config_hash: str | None = None,
     data_through: str = "20260720",
+    errors: tuple[str, ...] | None = None,
 ) -> str:
     dataset = _active_registry().resolve(dataset_id)
     binding = dataset.provider_bindings[0]
@@ -174,7 +175,7 @@ def _canonical_receipt(
             count_semantics="terminal_no_data_transaction",
         )
         target_table = None
-        errors = ("provider_error",)
+        errors = errors or ("provider_error",)
     window = request_window or {}
     receipt_id = insert_ingest_receipt(
         conn,
@@ -727,6 +728,200 @@ def test_terminal_failure_payload_preserves_ingest_receipt_and_error_code(
             "receipt_ids": ["receipt:failed-validation-attempt"],
         }
     ]
+
+
+def test_terminal_failure_payload_projects_persisted_receipt_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        receipt_id = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.equity.daily",
+            status="failed",
+            started_at="2026-07-20T08:00:00Z",
+            finished_at="2026-07-20T08:01:00Z",
+        )
+
+    plan = scheduler.ScheduledRun(
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_plan_runs",
+        lambda **_kwargs: ((plan,), ()),
+    )
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=lambda _plan: scheduler.DatasetResult(
+            "cn.equity.daily",
+            "tushare",
+            "failed",
+            4,
+            error_codes=("provider_error",),
+            receipt_ids=(receipt_id,),
+        ),
+    )
+
+    dataset = result.public_payload()["datasets"][0]
+    assert dataset["receipt_provenance"] == [
+        {
+            "receipt_id": receipt_id,
+            "status": "failed",
+            "counts": {
+                "returned": 0,
+                "validated": 0,
+                "rejected": 0,
+                "committed": 0,
+            },
+            "error_layer": "provider_response",
+            "error_codes": ["provider_error"],
+            "validation_reasons": [],
+        }
+    ]
+
+
+def test_validation_failed_provenance_keeps_layer_generic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        receipt_id = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.equity.daily",
+            status="failed",
+            started_at="2026-07-20T08:00:00Z",
+            finished_at="2026-07-20T08:01:00Z",
+            errors=("validation_failed",),
+        )
+
+    provenance = scheduler._read_receipt_provenance(
+        db_path,
+        registry=registry,
+        receipt_ids_by_dataset={"cn.equity.daily": (receipt_id,)},
+    )["cn.equity.daily"][0]
+    assert provenance.error_layer == "ingest_validation"
+    assert provenance.error_codes == ("validation_failed",)
+
+
+def test_schedule_provenance_uses_one_authority_scan_for_multiple_datasets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.equity.daily",
+            provider="tushare",
+            provider_api="daily",
+            cadence_class="postclose_daily",
+            request_window={"trade_date": "20260720"},
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.anns_d",
+            provider="tushare",
+            provider_api="anns_d",
+            cadence_class="event",
+            request_window={"trade_date": "20260720"},
+        ),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_plan_runs",
+        lambda **_kwargs: (plans, ()),
+    )
+    scan_calls: list[object] = []
+    monkeypatch.setattr(
+        scheduler,
+        "validated_receipt_journal_entries_by_dataset",
+        lambda *_args, **_kwargs: scan_calls.append(object()) or {},
+        raising=False,
+    )
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        return scheduler.DatasetResult(
+            plan.dataset_id,
+            plan.provider,
+            "failed",
+            4,
+            error_codes=("provider_error",),
+            receipt_ids=(f"receipt:{plan.dataset_id}",),
+        )
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+    )
+
+    assert result.exit_code == 1
+    assert len(scan_calls) == 1
+
+
+def test_provenance_read_failure_keeps_collector_result_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    plan = scheduler.ScheduledRun(
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+    )
+    monkeypatch.setattr(scheduler, "_plan_runs", lambda **_kwargs: ((plan,), ()))
+    monkeypatch.setattr(
+        scheduler,
+        "validated_receipt_journal_entries_by_dataset",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.Error("read failed")),
+    )
+
+    receipt_id = "receipt:opaque"
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=lambda _plan: scheduler.DatasetResult(
+            "cn.equity.daily",
+            "tushare",
+            "failed",
+            4,
+            error_codes=("provider_error",),
+            receipt_ids=(receipt_id,),
+        ),
+    )
+
+    dataset = result.public_payload()["datasets"][0]
+    assert dataset["state"] == "failed"
+    assert dataset["error_codes"] == ["provider_error"]
+    assert dataset["receipt_ids"] == [receipt_id]
+    assert "receipt_provenance" not in dataset
 
 
 def test_caught_unknown_exception_has_no_fabricated_terminal_provenance(
@@ -2493,6 +2688,51 @@ def test_minute_canary_is_due_before_the_next_jittered_timer_tick(
         schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
         state=state,
         now=datetime(2026, 7, 28, 10, 50, 4, tzinfo=ZoneInfo("Asia/Shanghai")),
+        selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+        current_only=True,
+    )
+
+    assert [plan.dataset_id for plan in plans] == ["cn.dataset.rt_min"]
+    assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
+
+
+def test_session_minute_plans_after_collection_completes_265_seconds_before_tick(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late normal completion must not suppress the next session slot."""
+
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.dataset.rt_min",
+            status="success",
+            started_at="2026-07-28T01:35:01Z",
+            finished_at="2026-07-28T01:35:36Z",
+            request_window={},
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.dataset.rt_min",
+            receipt,
+            "2026-07-28 09:35:00",
+            {"ts_code": "600000.SH", "time": "2026-07-28 09:35:00"},
+        )
+        conn.commit()
+
+    now = datetime(2026, 7, 28, 9, 40, 1, tzinfo=ZoneInfo("Asia/Shanghai"))
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=now,
         selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
         current_only=True,
     )
