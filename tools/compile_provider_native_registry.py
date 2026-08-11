@@ -1244,8 +1244,13 @@ def _activation_evidence_index(
         {key: evidence[key] for key in binding_keys}
     ):
         raise ValueError("HTTPS activation evidence bindings_sha256 drifted")
-    if _required_text(evidence["scope"], "HTTPS activation evidence.evidence.scope") != "gaps":
-        raise ValueError("HTTPS activation evidence.evidence.scope must be gaps")
+    scope = _required_text(
+        evidence["scope"], "HTTPS activation evidence.evidence.scope"
+    )
+    if scope not in {"gaps", "executable"}:
+        raise ValueError(
+            "HTTPS activation evidence.evidence.scope must be gaps or executable"
+        )
 
     by_api = {contract["api_name"]: contract for contract in contracts}
     by_dataset = {contract["dataset_id"]: contract for contract in contracts}
@@ -1282,13 +1287,20 @@ def _activation_evidence_index(
         )
         for key in _COVERAGE_KEYS
     }
+    expected_planned = (
+        len(contracts) if scope == "gaps" else coverage_counts["executable"]
+    )
+    expected_blocked = (
+        0
+        if scope == "executable"
+        else len(contracts) - coverage_counts["executable"]
+    )
     if (
-        coverage_counts["planned"] != len(contracts)
+        coverage_counts["planned"] != expected_planned
         or coverage_counts["selected"] != interface_count
         or coverage_counts["executed"] != interface_count
         or not 1 <= interface_count <= coverage_counts["executable"]
-        or coverage_counts["blocked"]
-        != len(contracts) - coverage_counts["executable"]
+        or coverage_counts["blocked"] != expected_blocked
     ):
         raise ValueError("HTTPS activation evidence coverage is inconsistent")
 

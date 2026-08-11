@@ -738,6 +738,97 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
     assert bindings["cb_basic"]["activation_state"] == "paused"
 
 
+def test_raw_probe_evidence_executable_scope_promotes_fresh_eligible_api_only() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="cb_basic",
+    )
+    evidence["scope"] = "executable"
+    coverage = evidence["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["planned"] = coverage["executable"]
+    coverage["blocked"] = 0
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["cb_basic"]["activation_state"] == "active"
+    # The raw result is a strict executable subset; unrelated prior active
+    # evidence remains active even though it is absent from this cohort.
+    assert bindings["major_news"]["activation_state"] == "active"
+    assert bindings["cn_schedule"]["activation_state"] == "paused"
+
+
+def test_raw_probe_evidence_executable_scope_rejects_non_executable_result_api() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="cb_basic",
+    )
+    evidence["scope"] = "executable"
+    coverage = evidence["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["planned"] = coverage["executable"]
+    coverage["blocked"] = 0
+    result = evidence["results"][0]
+    assert isinstance(result, dict)
+    source_result = {
+        key: result[key]
+        for key in (
+            "api_name",
+            "state",
+            "provider_class",
+            "row_count",
+            "response_bytes",
+            "response_sha256",
+            "fields",
+            "elapsed_ms",
+        )
+    }
+    source_result["api_name"] = "balancesheet"
+    result.update(source_result)
+
+    with pytest.raises(ValueError, match="result API is not executable"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_rejects_unknown_scope() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="cb_basic",
+    )
+    evidence["scope"] = "all"
+
+    with pytest.raises(ValueError, match="scope must be gaps or executable"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
 def test_raw_probe_evidence_accepts_asia_shanghai_partition_for_utc_previous_day() -> None:
     bundle = _bundle()
     observations = _observations()
