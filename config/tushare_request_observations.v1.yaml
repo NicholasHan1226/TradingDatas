@@ -10,7 +10,7 @@ provenance:
     sha256: 2cbc2b0012c8920b5cdcc89e9587a46bc4001d510c04990c00d39f502cff73da
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 5cb9000c784d77e8d19d022f6ef6d6e09892345bc0dc7c892fb940c3146ebadc
+    sha256: 11c35af3140f3f58a6b00b8c5a9a0d737977b8fcee8827cb57db15f988e39e9a
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 7f8927aec1cde80d7e6ffa8895df8f53518451f1a70e2a2b4488372947d99372

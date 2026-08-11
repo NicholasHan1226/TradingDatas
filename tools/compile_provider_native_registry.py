@@ -947,12 +947,16 @@ def _observation_index(
         api_name = _required_text(
             raw_api_name, "QuickSync observations.active_evidence key"
         )
-        # A numeric repair is eligible only after its repaired field names have
-        # already been checked against the declared contract below.  It is not
-        # equivalent to a schema subset: no field is dropped or inferred.
+        # External activation evidence may establish a current executable
+        # request/result binding even when the reviewed observation matrix is
+        # a bounded schema subset or a legal empty response.  Those classes
+        # remain fail-closed for quality/permission/credential/unsupported
+        # observations and do not alter the declared field contract.
         if api_class.get(api_name) not in {
             "validated_contract_match",
             "numeric_field_repaired",
+            "schema_subset",
+            "empty",
         }:
             raise ValueError(
                 "QuickSync active evidence requires a verified full-field contract: "

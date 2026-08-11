@@ -251,7 +251,7 @@ def test_only_reviewed_formal_datasets_are_active_and_candidates_remain_paused()
         assert binding["activation_state"] == "paused"
 
 
-def test_fail_closed_state_classes_map_without_becoming_active() -> None:
+def test_fail_closed_state_classes_map_except_explicit_wave4_evidence() -> None:
     registry = _compiled()
     bindings = _bindings(registry)
     classifications = _observations()["classifications"]
@@ -263,11 +263,15 @@ def test_fail_closed_state_classes_map_without_becoming_active() -> None:
         "credential_rejected": "unknown",
         "unsupported": "excluded",
     }
+    explicitly_empty_active = {"stk_alert", "stk_high_shock"}
     for classification, entitlement in expected.items():
         for api_name in classifications[classification]:
             binding = bindings[api_name]["provider_bindings"][0]  # type: ignore[index]
             assert binding["entitlement_state"] == entitlement
-            assert binding["activation_state"] == "paused"
+            if classification == "empty" and api_name in explicitly_empty_active:
+                assert binding["activation_state"] == "active"
+            else:
+                assert binding["activation_state"] == "paused"
 
 
 def test_schema_subset_removes_only_observed_non_structural_fields() -> None:
@@ -428,12 +432,12 @@ def test_numeric_repair_can_activate_only_after_declared_field_validation() -> N
         assert binding["activation_state"] == "active"
 
 
-def test_numeric_repair_without_explicit_evidence_remains_paused() -> None:
+def test_numeric_repair_with_wave4_evidence_is_active() -> None:
     registry = _compiled()
     binding = _bindings(registry)["shibor_lpr"]["provider_bindings"][0]  # type: ignore[index]
 
     assert binding["entitlement_state"] == "active"
-    assert binding["activation_state"] == "paused"
+    assert binding["activation_state"] == "active"
 
 
 def test_structural_schema_field_cannot_be_removed() -> None:

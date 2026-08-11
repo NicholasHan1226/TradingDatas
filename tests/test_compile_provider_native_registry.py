@@ -689,7 +689,7 @@ def test_partial_https_evidence_promotes_only_its_verified_cohort() -> None:
         bindings[api_name]["activation_state"] == "active"
         for api_name in active_evidence
     )
-    assert bindings["cb_basic"]["activation_state"] == "paused"
+    assert bindings["forecast"]["activation_state"] == "paused"
 
 
 def test_partial_https_evidence_rejects_executable_coverage_drift() -> None:
@@ -735,7 +735,7 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
         for dataset in registry["datasets"]
     }
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["cb_basic"]["activation_state"] == "paused"
+    assert bindings["forecast"]["activation_state"] == "paused"
 
 
 def test_raw_probe_evidence_executable_scope_promotes_fresh_eligible_api_only() -> None:
@@ -767,7 +767,7 @@ def test_raw_probe_evidence_executable_scope_promotes_fresh_eligible_api_only() 
     # The raw result is a strict executable subset; unrelated prior active
     # evidence remains active even though it is absent from this cohort.
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["cn_schedule"]["activation_state"] == "paused"
+    assert bindings["forecast"]["activation_state"] == "paused"
 
 
 def test_raw_probe_evidence_executable_scope_rejects_non_executable_result_api() -> None:
@@ -932,7 +932,7 @@ def test_raw_probe_evidence_accepts_a_plan_subset_of_executable_contracts() -> N
         for dataset in registry["datasets"]
     }
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["cb_basic"]["activation_state"] == "paused"
+    assert bindings["forecast"]["activation_state"] == "paused"
 
 
 def test_raw_probe_evidence_rejects_sparse_summary_count_drift() -> None:
@@ -1164,6 +1164,60 @@ def test_formal_mode_does_not_validate_or_depend_on_activation_evidence() -> Non
     active_evidence = _observations()["active_evidence"]
     assert isinstance(active_evidence, dict)
     assert active == set(active_evidence)
+
+
+def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    wave4_ref = "server-evidence/ashare-wave4-current-exact11-20260812T0345CST"
+    wave4_exact8 = {
+        "cb_basic",
+        "cn_schedule",
+        "fund_factor_pro",
+        "shibor_lpr",
+        "st",
+        "stk_alert",
+        "stk_factor",
+        "stk_high_shock",
+    }
+    assert {
+        api_name for api_name, evidence_ref in active_evidence.items()
+        if evidence_ref == wave4_ref
+    } == wave4_exact8
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=observations
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    active = {
+        api_name
+        for api_name, binding in bindings.items()
+        if binding["activation_state"] == "active"
+    }
+    assert len(active) == 113
+    assert len(bindings) - len(active) == 77
+    assert wave4_exact8 <= active
+    assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
+    assert "forecast" not in active_evidence
+    assert "pledge_detail" not in active_evidence
+    assert "stk_nineturn" not in active_evidence
+
+
+def test_active_evidence_remains_fail_closed_for_blocked_observation_classes() -> None:
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    for api_name in ("fund_company", "cb_price_chg", "fut_weekly_detail", "rt_etf_min"):
+        with pytest.raises(ValueError, match="verified full-field contract"):
+            candidate = deepcopy(observations)
+            candidate["active_evidence"][api_name] = "server-evidence/test"  # type: ignore[index]
+            _ = compile_provider_native_registry(
+                _bundle(), observations_document=candidate
+            )
 
 
 def test_preactivation_mode_requires_explicit_activation_evidence() -> None:
