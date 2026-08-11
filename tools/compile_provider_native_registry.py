@@ -1592,6 +1592,7 @@ def _activation_evidence_index(
         root["seed_authorities"], "HTTPS activation evidence.seed_authorities"
     )
     seed_keys: set[tuple[str, str, str]] = set()
+    raw_seed_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
     seed_order: list[tuple[str, str]] = []
     for index, raw_seed in enumerate(raw_seed_authorities):
         label = f"HTTPS activation evidence.seed_authorities[{index}]"
@@ -1621,9 +1622,64 @@ def _activation_evidence_index(
         if seed_key in seed_keys:
             raise ValueError("HTTPS activation evidence seed authorities duplicate")
         seed_keys.add(seed_key)
+        raw_seed_by_key[seed_key] = {
+            "dataset_id": dataset_id,
+            "field": field,
+            "schema_version": schema_version,
+            "receipt_id": receipt_id,
+            # Keep the original text for the formal authority comparison.  The
+            # parsed instant above is only used for the future-date guard.
+            "data_through": seed["data_through"],
+        }
         seed_order.append((dataset_id, field))
     if seed_order != sorted(seed_order):
         raise ValueError("HTTPS activation evidence seed authorities must be sorted")
+
+    # A dependency producer may already be formally bound in the repository
+    # without being repeated as a result in each dependent probe sidecar.  A
+    # raw sidecar may reuse that authority only when every binding field is an
+    # exact match and the formal authority explicitly names the dependent API.
+    # This keeps external receipt claims fail-closed and does not infer rows.
+    formal_seed_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+    formal_seed_authorities = _sequence(
+        observations_document["dependency_seed_authorities"],
+        "QuickSync observations.dependency_seed_authorities",
+    )
+    for index, raw_formal_seed in enumerate(formal_seed_authorities):
+        label = f"QuickSync observations.dependency_seed_authorities[{index}]"
+        formal_seed = _mapping(raw_formal_seed, label)
+        key = (
+            _required_text(formal_seed["dataset_id"], f"{label}.dataset_id"),
+            _required_text(formal_seed["field"], f"{label}.field"),
+            _required_text(
+                formal_seed["schema_version"], f"{label}.schema_version"
+            ),
+        )
+        formal_seed_by_key[key] = {
+            "receipt_id": _required_text(
+                formal_seed["receipt_id"], f"{label}.receipt_id"
+            ),
+            "data_through": _required_text(
+                formal_seed["data_through"], f"{label}.data_through"
+            ),
+            "dependent_api_names": set(
+                _string_list(
+                    formal_seed["dependent_api_names"],
+                    f"{label}.dependent_api_names",
+                )
+            ),
+        }
+    if raw_probe_evidence:
+        for key, raw_seed in raw_seed_by_key.items():
+            formal_seed = formal_seed_by_key.get(key)
+            if formal_seed is None or any(
+                raw_seed[field] != formal_seed[field]
+                for field in ("receipt_id", "data_through")
+            ):
+                raise ValueError(
+                    "HTTPS activation evidence seed authority does not match "
+                    "formal dependency seed authority"
+                )
 
     dependency_resolved: set[str] = set()
     for api_name, contract in by_api.items():
@@ -1645,7 +1701,27 @@ def _activation_evidence_index(
             source["schema_version"],
         )
         if seed_key in seed_keys:
+            formal_seed = formal_seed_by_key.get(seed_key)
+            if formal_seed is None:
+                raise ValueError(
+                    "HTTPS activation evidence seed authority does not match "
+                    "formal dependency seed authority"
+                )
+            if api_name not in formal_seed["dependent_api_names"]:
+                if api_name in result_by_api:
+                    raise ValueError(
+                        "HTTPS activation evidence dependent API is not formally listed"
+                    )
+                continue
             source_result = result_by_api.get(source["api_name"])
+            if source_result is None and raw_probe_evidence:
+                # The formal authority makes every explicitly listed
+                # dependent request-shape executable.  Activation still
+                # requires that the dependent API appear as a fresh result;
+                # omitted siblings (for example a later batch member) remain
+                # paused in the candidate projection.
+                dependency_resolved.add(api_name)
+                continue
             if source_result is None or source_result["state"] not in _FRESH_ACTIVATION_STATES:
                 raise ValueError(
                     "HTTPS activation evidence seed producer is not fresh eligible"
@@ -1657,6 +1733,33 @@ def _activation_evidence_index(
         for contract in contracts
         if contract["probe_state"] == "executable"
     } | dependency_resolved
+    if raw_probe_evidence:
+        # The frozen executable-scope plan may contain every request-shape
+        # dependent of a seed, while formal dependency authority intentionally
+        # resolves only the explicitly listed safe siblings.  Keep those
+        # plan-admissible names available for the result-subset/coverage check;
+        # only ``dependency_resolved`` can make a contract ingest-ready or
+        # active, and an unlisted dependent result is rejected above.
+        for contract in contracts:
+            if set(contract["probe_block_reasons"]) != {
+                "dependency_seed_receipt_unresolved"
+            } or set(contract["ingest_contract_block_reasons"]) != {
+                "dependency_seed_receipt_unresolved"
+            }:
+                continue
+            fanout = contract["fanout"]
+            if fanout["strategy"] != "dataset_field":
+                continue
+            source = by_dataset.get(fanout["source_dataset_id"])
+            if source is None:
+                continue
+            seed_key = (
+                fanout["source_dataset_id"],
+                fanout["source_field"],
+                source["schema_version"],
+            )
+            if seed_key in seed_keys:
+                executable_api_names.add(contract["api_name"])
     if (
         not raw_probe_evidence
         and coverage_counts["executable"] != len(executable_api_names)

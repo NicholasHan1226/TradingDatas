@@ -97,6 +97,11 @@ receipt、来源字段/schema 与明确列出的依赖 API；编译器仅把这�
 fail-closed，不会因为同一 source dataset 自动扩张。receipt payload、provider rows 和 token
 不写入仓库；receipt_id 与 data_through 作为不可变 authority binding 保留。Controller 发布前
 必须用同一 registry/compiler、collector receipt 与 catalog/query 做有界 readback。
+raw HTTPS sidecar 可以引用已经 formal 注册的 dependency seed authority，而不必在同一批次再次
+把 seed producer 作为 result 发出；compiler 仍逐字段精确比较 dataset、field、schema、receipt_id
+与 data_through，并要求 dependent API 已在 authority 的显式清单中。不匹配、未列出的 sibling
+或缺少 fresh result 的 API 都保持 fail-closed/paused，不会由 seed authority 推断 provider rows
+或扩大 activation。
 只读 plan 可按以下方式检查：
 
 ```bash

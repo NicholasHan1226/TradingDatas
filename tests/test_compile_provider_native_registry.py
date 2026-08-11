@@ -738,6 +738,150 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
     assert bindings["forecast"]["activation_state"] == "paused"
 
 
+def _raw_cb_dependent_evidence(
+    *, api_name: str = "cb_rate", state: str = "success"
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """Build a seed-bound raw cohort without embedding provider rows."""
+
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="cb_basic",
+    )
+    authorities = observations["dependency_seed_authorities"]
+    assert isinstance(authorities, list)
+    evidence["seed_authorities"] = [
+        {
+            key: authorities[0][key]
+            for key in ("dataset_id", "field", "schema_version", "receipt_id", "data_through")
+        }
+    ]
+    evidence["run_clock"] = "2026-08-11T22:13:40+00:00"
+    evidence["started_at"] = "2026-08-11T22:13:41+00:00"
+    evidence["finished_at"] = "2026-08-11T22:13:42+00:00"
+    evidence["scheduled_partition"] = "20260812"
+
+    results = evidence["results"]
+    assert isinstance(results, list) and len(results) == 1
+    result = results[0]
+    assert isinstance(result, dict)
+    result["api_name"] = api_name
+    result["state"] = state
+    if state == "valid_empty":
+        result["row_count"] = 0
+    source_result = {
+        key: result[key]
+        for key in (
+            "api_name",
+            "state",
+            "provider_class",
+            "row_count",
+            "response_bytes",
+            "response_sha256",
+            "fields",
+            "elapsed_ms",
+        )
+    }
+    summary = evidence["summary"]
+    assert isinstance(summary, dict)
+    for key in summary:
+        summary[key] = 1 if key == state else 0
+    return bundle, observations, evidence
+
+
+def test_raw_probe_evidence_reuses_exact_formal_seed_for_listed_dependent() -> None:
+    bundle, observations, evidence = _raw_cb_dependent_evidence()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["cb_rate"]["activation_state"] == "active"
+    assert bindings["cb_rate"]["probe_state"] == "executable"
+    assert bindings["top10_cb_holders"]["activation_state"] == "paused"
+    assert bindings["cb_price_chg"]["activation_state"] == "paused"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("receipt_id", "receipt:0000000000000000000000000000000000000000000000000000000000000000"),
+        ("data_through", "2026-08-11T21:22:20.352479Z"),
+        ("schema_version", "9.9.9"),
+        ("field", "wrong_field"),
+    ],
+)
+def test_raw_probe_evidence_rejects_nonmatching_formal_seed_binding(
+    field: str, value: str
+) -> None:
+    bundle, observations, evidence = _raw_cb_dependent_evidence()
+    seed = evidence["seed_authorities"][0]
+    assert isinstance(seed, dict)
+    seed[field] = value
+    with pytest.raises(
+        ValueError,
+        match="(?:does not match formal dependency seed|does not match source dataset)",
+    ):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_rejects_unlisted_dependent_api() -> None:
+    bundle, observations, evidence = _raw_cb_dependent_evidence()
+    authorities = observations["dependency_seed_authorities"]
+    assert isinstance(authorities, list)
+    dependents = authorities[0]["dependent_api_names"]
+    assert isinstance(dependents, list)
+    authorities[0]["dependent_api_names"] = [
+        name for name in dependents if name != "cb_rate"
+    ]
+    transport_observations = yaml.safe_dump(
+        dict(observations),
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=100,
+    ).encode("utf-8")
+    evidence["transport_observations_sha256"] = hashlib.sha256(
+        transport_observations
+    ).hexdigest()
+    with pytest.raises(ValueError, match="dependent API is not formally listed"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
+def test_raw_probe_evidence_keeps_formal_empty_dependent_result_promotable() -> None:
+    bundle, observations, evidence = _raw_cb_dependent_evidence(
+        api_name="cb_share", state="valid_empty"
+    )
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["cb_share"]["activation_state"] == "active"
+
+
 def test_raw_probe_evidence_executable_scope_promotes_fresh_eligible_api_only() -> None:
     bundle = _bundle()
     observations = _observations()
