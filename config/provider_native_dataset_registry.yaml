@@ -3636,7 +3636,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cb_basic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -7387,7 +7387,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cn_schedule
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -13291,7 +13291,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_factor_pro
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -13333,7 +13333,7 @@ datasets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 9459
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -27946,7 +27946,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_shibor_lpr
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -28388,7 +28388,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_st
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -28505,7 +28505,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_alert
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -29057,7 +29057,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_factor
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -31019,7 +31019,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_stk_high_shock
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

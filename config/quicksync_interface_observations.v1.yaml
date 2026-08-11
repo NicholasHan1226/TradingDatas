@@ -501,3 +501,11 @@ active_evidence:
   trade_cal: server-evidence/20260718T123044-4088a2d
   weekly: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   wz_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  cb_basic: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  cn_schedule: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  fund_factor_pro: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  shibor_lpr: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  st: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  stk_alert: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  stk_factor: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  stk_high_shock: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
