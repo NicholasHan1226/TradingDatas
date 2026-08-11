@@ -53,7 +53,7 @@ DEFAULT_QUERY_DEFAULTS = {
     "max_lookback_days": 36_500,
     "max_selected_fields": 100,
     "max_filter_terms": 16,
-    "max_in_values": 100,
+    "max_in_values": 500,
     "max_order_terms": 8,
     "max_catalog_search_chars": 128,
     "cursor_ttl_seconds": 900,
@@ -1819,14 +1819,20 @@ def _fanout(raw: object, request_shape: str, label: str) -> dict[str, Any]:
         identities = {(type(item).__name__, item) for item in values}
         if len(identities) != len(values):
             raise ValueError(f"{label}.values must be unique")
-        result = {
-            "strategy": strategy,
-            "parameter": parameter,
-            "values": values,
-            "batch_size": _required_positive_int(
-                value["batch_size"], f"{label}.batch_size"
-            ),
-        }
+        batch_size = _required_positive_int(
+            value["batch_size"], f"{label}.batch_size"
+        )
+        result = {"strategy": strategy}
+        # Preserve the declared source-key order in the compiled mapping.
+        # The checked registry intentionally keeps large fanout values compact,
+        # while other literal fanouts retain their existing order.
+        for key in value:
+            if key == "parameter":
+                result["parameter"] = parameter
+            elif key == "values":
+                result["values"] = values
+            elif key == "batch_size":
+                result["batch_size"] = batch_size
     elif strategy == "dataset_field":
         _reject_keys(
             value,
@@ -2911,13 +2917,37 @@ def compile_provider_native_registry(
 def render_registry(registry: Mapping[str, Any]) -> str:
     """Render the registry with stable key and dataset ordering."""
 
-    return yaml.safe_dump(
+    rendered = yaml.safe_dump(
         dict(registry),
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=False,
         width=100,
     )
+    # Keep very large literal fanouts on one deterministic line.  This is the
+    # repository's established representation for bounded cohorts (the normal
+    # small literal fanouts remain block lists), and avoids a formatting-only
+    # drift when the compiler starts sourcing a large cohort from contracts.
+    lines = rendered.splitlines()
+    compacted: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == "values:" and index + 1 < len(lines):
+            indent = line[: len(line) - len(line.lstrip())]
+            values: list[str] = []
+            cursor = index + 1
+            item_prefix = f"{indent}- "
+            while cursor < len(lines) and lines[cursor].startswith(item_prefix):
+                values.append(lines[cursor][len(item_prefix) :])
+                cursor += 1
+            if len(values) > 100:
+                compacted.append(f"{indent}values: [{', '.join(values)}]")
+                index = cursor
+                continue
+        compacted.append(line)
+        index += 1
+    return "\n".join(compacted) + "\n"
 
 
 class _DuplicateKeySafeLoader(yaml.SafeLoader):

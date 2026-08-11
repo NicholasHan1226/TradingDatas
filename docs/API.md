@@ -172,10 +172,10 @@ watermark；SLA 内返回 `runtime_state=empty`、`degraded=false`、
 watermark 或 lineage 投影，也不能把当前已验证分区降级。只有读取方实际使用历史 fallback 时，才会把
 该 fallback cohort 一并纳入 lineage 校验。
 
-`cn.dataset.rt_min` 的正式首批合同固定为 `freq=5MIN` 的 30 只沪深主板 canary。代码列表是
-registry 中冻结的多代码 request，不依赖 security-master fanout；其身份为 `[ts_code, time]`。
-500 只动态分片只属于隔离压力候选，在完整 cohort、receipt 和 fresh review 通过前不属于正式
-catalog/query 生产合同。首批 30 只也不是中证500成分、研究代表性样本或交易 Universe。
+`cn.dataset.rt_min` 的 registry 输入固定为 `freq=5MIN` 的 30 只沪深主板 request template，
+并绑定冻结的 500 只压力 cohort；两者去重并集为 528 个 `ts_code`。该 500+30 绑定用于正式
+compiler/registry 的可重建 authority，首批实际激活、完整 cohort receipt 和 catalog/query
+供应仍须由独立 release/readback 门禁确认。它不是中证500成分、研究代表性样本或交易 Universe。
 本平台把 provider 返回的
 `time` 解释为该 5 分钟 bar 的结束时间；
 上游字段说明仅称其为“交易时间”，因此这是本平台基于已验证 5 分钟返回形状冻结的

@@ -181,12 +181,14 @@ _REQUEST_OBSERVATION_ENTRY_KEYS = frozenset(
         "ingest_contract_block_reasons",
         "unresolved_parameter_keys",
         "parameters",
+        "fanout",
         "row_limit_observation",
         "request_variants",
     }
 )
 _REQUEST_OBSERVATION_REQUIRED_ENTRY_KEYS = _REQUEST_OBSERVATION_ENTRY_KEYS - {
-    "request_variants"
+    "request_variants",
+    "fanout",
 }
 _REQUEST_OBSERVATION_PROVENANCE_REQUIRED_KEYS = frozenset(
     {
@@ -824,6 +826,39 @@ def _request_parameter(
     return {"source": source, "transform": transform, "offset_seconds": offset}
 
 
+def _request_fanout(
+    raw: object,
+    *,
+    parameters: Mapping[str, Mapping[str, Any]],
+    label: str,
+) -> dict[str, Any]:
+    value = _mapping(raw, label)
+    _exact_keys(value, frozenset({"parameter", "values", "batch_size"}), label)
+    parameter = _text(value["parameter"], f"{label}.parameter")
+    if parameter not in parameters:
+        raise RuntimeContractCompilationError(
+            f"{label}.parameter must name a mapped provider parameter"
+        )
+    if parameters[parameter]["source"] != "literal":
+        raise RuntimeContractCompilationError(
+            f"{label}.parameter must retain the literal request template"
+        )
+    normalized = _request_parameter(
+        {
+            "source": "literal_values",
+            "values": value["values"],
+            "batch_size": value["batch_size"],
+        },
+        label=f"{label}.values",
+    )
+    return {
+        "strategy": "literal_values",
+        "parameter": parameter,
+        "values": normalized["values"],
+        "batch_size": normalized["batch_size"],
+    }
+
+
 def _request_observation_index(
     raw: Mapping[str, Any],
     *,
@@ -938,6 +973,13 @@ def _request_observation_index(
             )
             for parameter in sorted(parameters)
         }
+        normalized_fanout = None
+        if "fanout" in entry:
+            normalized_fanout = _request_fanout(
+                entry["fanout"],
+                parameters=normalized_parameters,
+                label=f"{label}.fanout",
+            )
         required_true = {
             name for name, required in official_inputs.items() if required == "Y"
         }
@@ -995,8 +1037,17 @@ def _request_observation_index(
             declaration["source"] in {"dataset_field", "literal_values"}
             for declaration in normalized_parameters.values()
         )
+        if normalized_fanout is not None:
+            if fanout_count:
+                raise RuntimeContractCompilationError(
+                    f"{api_name} cannot combine parameter fanout and entry fanout"
+                )
+            fanout_count = 1
         requires_fanout = request_shape in {"entity_fanout", "dimension_fanout"}
-        if requires_fanout != (fanout_count == 1):
+        allows_optional_fanout = request_shape == "event_or_intraday_window"
+        if (requires_fanout and fanout_count != 1) or (
+            not requires_fanout and not allows_optional_fanout and fanout_count != 0
+        ):
             raise RuntimeContractCompilationError(
                 f"{label}.request_shape and fanout mapping are inconsistent"
             )
@@ -1019,6 +1070,8 @@ def _request_observation_index(
             "row_limit_observation": deepcopy(row_limit),
             "request_variants": normalized_variants,
         }
+        if normalized_fanout is not None:
+            normalized[api_name]["fanout"] = normalized_fanout
     if ordered_api_names != sorted(ordered_api_names):
         raise RuntimeContractCompilationError("request observation APIs must be sorted")
     if set(normalized) != set(documents_by_api):
@@ -1405,7 +1458,10 @@ def _request_execution_contract(
             window_formats[parameter] = declaration["transform"]
         else:
             fanout_fields.append((parameter, declaration))
-    if fanout_fields:
+    declared_fanout = observation.get("fanout")
+    if declared_fanout is not None:
+        fanout = deepcopy(declared_fanout)
+    elif fanout_fields:
         if len(fanout_fields) != 1:
             raise RuntimeContractCompilationError(
                 f"{observation['api_name']} executable fanout must have one source"
@@ -1793,6 +1849,13 @@ def _registered_seed_requirements(
                 )
             continue
         if not declarations:
+            declared_fanout = observation.get("fanout")
+            if declared_fanout is not None:
+                if dict(fanout) != dict(declared_fanout):
+                    raise RuntimeContractCompilationError(
+                        f"registered {api_name} fanout does not match request observation"
+                    )
+                continue
             if fanout.get("strategy") != "none":
                 raise RuntimeContractCompilationError(
                     f"registered {api_name} fanout does not match request observation"
@@ -2161,12 +2224,34 @@ def compile_https_probe_plan(
 
 
 def render_contract_bundle(bundle: Mapping[str, Any]) -> str:
-    return yaml.safe_dump(
+    rendered = yaml.safe_dump(
         deepcopy(dict(bundle)),
         allow_unicode=True,
         sort_keys=False,
         width=1000,
     )
+    # Preserve the checked runtime contract representation for large bounded
+    # cohorts while leaving ordinary lists in PyYAML's stable block form.
+    lines = rendered.splitlines()
+    compacted: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == "values:" and index + 1 < len(lines):
+            indent = line[: len(line) - len(line.lstrip())]
+            item_prefix = f"{indent}- "
+            values: list[str] = []
+            cursor = index + 1
+            while cursor < len(lines) and lines[cursor].startswith(item_prefix):
+                values.append(lines[cursor][len(item_prefix) :])
+                cursor += 1
+            if len(values) > 100:
+                compacted.append(f"{indent}values: [{','.join(values)}]")
+                index = cursor
+                continue
+        compacted.append(line)
+        index += 1
+    return "\n".join(compacted) + "\n"
 
 
 def _read_authority_bytes(path: Path, label: str) -> bytes:
