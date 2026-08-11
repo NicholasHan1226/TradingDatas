@@ -27,6 +27,7 @@ from storage.sqlite_authority_lock import sqlite_authority_lock
 
 RECEIPT_SCHEMA_VERSION = "tradingdatas.ingest_receipt.v1"
 UNMAPPED_TUSHARE_ADAPTER_VERSION = "unresolved.v1"
+VALIDATION_FANOUT_COVERAGE_INCOMPLETE = "validation_fanout_coverage_incomplete"
 
 _RECEIPT_STATUSES = frozenset({"success", "empty", "failed"})
 _TERMINAL_STATUSES = frozenset({"empty", "failed"})
@@ -40,6 +41,7 @@ _ERROR_CODES = frozenset(
         "storage_failed",
         "unmapped_dataset",
         "validation_failed",
+        VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
     }
 )
 _SENSITIVE_NAME_FRAGMENTS = (

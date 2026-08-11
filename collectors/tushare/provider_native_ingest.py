@@ -33,6 +33,7 @@ from storage.ingest_receipts import (
     IngestCounts,
     IngestResult,
     ProviderRequestIdentity,
+    VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
     make_provider_call_attempt_id,
     write_terminal_receipt,
 )
@@ -1263,14 +1264,23 @@ def _persist_failed_execution(
     started_at: str,
     overall_error: str,
     terminal_context: IngestContext,
+    validation_reason_code: str | None = None,
 ) -> IngestResult:
+    def receipt_errors(call_error: str) -> tuple[str, ...]:
+        if (
+            validation_reason_code is not None
+            and call_error == "validation_failed"
+        ):
+            return (call_error, validation_reason_code)
+        return (call_error,)
+
     receipt_ids: list[str] = []
     if not calls:
         result = write_terminal_receipt(
             db_path,
             context=terminal_context,
             status="failed",
-            errors=(overall_error,),
+            errors=receipt_errors(overall_error),
         )
         receipt_ids.extend(result.receipt_ids)
     for call in calls:
@@ -1292,14 +1302,14 @@ def _persist_failed_execution(
             db_path,
             context=context,
             status="failed",
-            errors=(call_error,),
+            errors=receipt_errors(call_error),
         )
         receipt_ids.extend(result.receipt_ids)
     return IngestResult(
         status="failed",
         counts=_zero_counts(),
         receipt_ids=tuple(receipt_ids),
-        errors=(overall_error,),
+        errors=receipt_errors(overall_error),
     )
 
 
@@ -1395,7 +1405,12 @@ def _persist_provider_execution(
                 resolved_params=resolved_params,
                 calls=execution.calls,
             )
-    except ValueError:
+    except ValueError as exc:
+        validation_reason_code = (
+            VALIDATION_FANOUT_COVERAGE_INCOMPLETE
+            if str(exc) == "provider response fanout coverage is incomplete"
+            else None
+        )
         return _persist_failed_execution(
             db_path,
             dataset=dataset,
@@ -1406,6 +1421,7 @@ def _persist_provider_execution(
             started_at=started_at,
             overall_error="validation_failed",
             terminal_context=terminal_context,
+            validation_reason_code=validation_reason_code,
         )
 
     results = tuple(

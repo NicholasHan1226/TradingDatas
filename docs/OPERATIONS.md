@@ -58,6 +58,11 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。该字段不包含 receipt payload、provider rows、请求凭据或本机路径，且不替代 SQLite receipt authority。
 
+严格 fanout 覆盖缺口在公开采集路径中保留顶层 `validation_failed`，并附带脱敏的
+`validation_fanout_coverage_incomplete` reason code；scheduler 的 `error_layer` 仍为
+`ingest_validation`，不会暴露 fanout 值、provider rows、摘要或路径。该 reason code 只
+表示合并后的实际返回行未覆盖合同请求集；允许空结果和禁止空结果继续遵循各自既有策略。
+
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用
 `/run/tradingdatas/collect.lock`；这种调用绕过 systemd，运行账号无权创建 `/run` 子目录。
