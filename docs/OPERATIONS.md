@@ -94,9 +94,9 @@ Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed
 receipt、来源字段/schema 与明确列出的依赖 API；编译器仅把这些依赖标为
 `probe_state=executable`、`ingest_contract_state=ready`，仍保持 `activation_state=paused`。
 未列出的 sibling、缺少 receipt authority 或其它未解析 requiredness/anchor 的 API 继续
-fail-closed，不会因为同一 source dataset 自动扩张。receipt、provider rows 和 token 不写入
-仓库；Controller 发布前必须用同一 registry/compiler、collector receipt 与 catalog/query
-做有界 readback。
+fail-closed，不会因为同一 source dataset 自动扩张。receipt payload、provider rows 和 token
+不写入仓库；receipt_id 与 data_through 作为不可变 authority binding 保留。Controller 发布前
+必须用同一 registry/compiler、collector receipt 与 catalog/query 做有界 readback。
 只读 plan 可按以下方式检查：
 
 ```bash

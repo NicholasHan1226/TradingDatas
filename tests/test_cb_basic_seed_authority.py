@@ -51,7 +51,7 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
                 "receipt_id": (
                     "receipt:ce0ebc07db361e0bba68ee970521b623003b4171299e36027f4a02d082c357d9"
                 ),
-            "data_through": "2026-08-11T21:22:23.287010Z",
+                "data_through": "2026-08-11T21:22:19.352479Z",
             "dependent_api_names": sorted(TARGET_APIS),
         }
     ]

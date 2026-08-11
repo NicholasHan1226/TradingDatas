@@ -514,7 +514,7 @@ dependency_seed_authorities:
     field: ts_code
     schema_version: 1.0.0
     receipt_id: receipt:ce0ebc07db361e0bba68ee970521b623003b4171299e36027f4a02d082c357d9
-    data_through: '2026-08-11T21:22:23.287010Z'
+    data_through: '2026-08-11T21:22:19.352479Z'
     dependent_api_names:
       - cb_rate
       - cb_rating
