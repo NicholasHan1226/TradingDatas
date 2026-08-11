@@ -89,6 +89,14 @@ redaction 均不变。
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
 延迟伪装成实时数据。500 只候选与其它扩容在独立 worktree/release 审核，未通过前不得加入
 正式 registry、release 或 timer。
+
+正式 registry 还可以声明受审的 `dependency_seed_authorities`。它只绑定已持久化
+receipt、来源字段/schema 与明确列出的依赖 API；编译器仅把这些依赖标为
+`probe_state=executable`、`ingest_contract_state=ready`，仍保持 `activation_state=paused`。
+未列出的 sibling、缺少 receipt authority 或其它未解析 requiredness/anchor 的 API 继续
+fail-closed，不会因为同一 source dataset 自动扩张。receipt、provider rows 和 token 不写入
+仓库；Controller 发布前必须用同一 registry/compiler、collector receipt 与 catalog/query
+做有界 readback。
 只读 plan 可按以下方式检查：
 
 ```bash
