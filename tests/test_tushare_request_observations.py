@@ -259,11 +259,15 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
             "offset_seconds": 0,
         },
     }
-    assert _entry(observations, "rt_min")["request_shape"] == "snapshot_or_date_range"
+    assert _entry(observations, "rt_min")["request_shape"] == "event_or_intraday_window"
     assert _entry(observations, "rt_min")["parameters"] == {
         "freq": {"source": "literal", "value": "5MIN"},
         "ts_code": {"source": "literal", "value": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH"},
     }
+    observation_fanout = _entry(observations, "rt_min")["fanout"]
+    assert observation_fanout["parameter"] == "ts_code"
+    assert observation_fanout["batch_size"] == 100
+    assert len(observation_fanout["values"]) == 528
 
     bundle = _compile()
     assert _contract(bundle, "daily")["request_template"] == {
@@ -281,7 +285,11 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     }
     rt_min = _contract(bundle, "rt_min")
     assert rt_min["request_template"] == {"freq": "5MIN", "ts_code": "600000.SH,000001.SZ,600519.SH,601318.SH,000858.SZ,002594.SZ,601988.SH,600036.SH,000333.SZ,601899.SH,000837.SZ,000938.SZ,000963.SZ,002049.SZ,002050.SZ,002294.SZ,002422.SZ,002436.SZ,002472.SZ,002747.SZ,002979.SZ,600161.SH,600196.SH,600276.SH,600410.SH,600521.SH,600566.SH,600602.SH,600845.SH,601138.SH"}
-    assert rt_min["fanout"] == {"strategy": "none"}
+    assert rt_min["request_shape"] == "event_or_intraday_window"
+    assert rt_min["fanout"]["strategy"] == "literal_values"
+    assert rt_min["fanout"]["parameter"] == "ts_code"
+    assert rt_min["fanout"]["batch_size"] == 100
+    assert len(rt_min["fanout"]["values"]) == 528
     assert rt_min["primary_key"] == ["ts_code", "time"]
     assert rt_min["default_projection"] == [
         "ts_code",
@@ -317,6 +325,14 @@ def test_rt_min_registry_uses_the_frozen_500_plus_official_30_union() -> None:
     assert len(set(symbols) - set(official_symbols)) == 498
     assert len(symbols) == len(set(symbols)) == 528
     assert all(re.fullmatch(r"(?:0|3|6)\d{5}\.(?:SZ|SH)", symbol) for symbol in symbols)
+
+
+def test_rt_min_observation_fanout_mismatch_fails_closed() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    _entry(observations, "rt_min")["fanout"]["parameter"] = "unknown"
+
+    with pytest.raises(RuntimeContractCompilationError, match="mapped provider parameter"):
+        _compile(request_observations=observations)
 
 
 def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> None:
