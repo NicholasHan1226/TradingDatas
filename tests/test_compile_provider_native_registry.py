@@ -738,6 +738,55 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
     assert bindings["cb_basic"]["activation_state"] == "paused"
 
 
+def test_raw_probe_evidence_accepts_asia_shanghai_partition_for_utc_previous_day() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    evidence["run_clock"] = "2026-08-11T19:15:55+00:00"
+    evidence["started_at"] = "2026-08-11T19:16:00+00:00"
+    evidence["finished_at"] = "2026-08-11T19:16:01+00:00"
+    evidence["scheduled_partition"] = "20260812"
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    assert bindings["major_news"]["activation_state"] == "active"
+
+
+def test_raw_probe_evidence_rejects_asia_shanghai_local_date_mismatch() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    evidence["run_clock"] = "2026-08-11T19:15:55+00:00"
+    evidence["started_at"] = "2026-08-11T19:16:00+00:00"
+    evidence["finished_at"] = "2026-08-11T19:16:01+00:00"
+    evidence["scheduled_partition"] = "20260811"
+
+    with pytest.raises(ValueError, match="scheduled_partition must match run_clock"):
+        compile_provider_native_registry(
+            bundle,
+            observations_document=observations,
+            activation_evidence_document=evidence,
+            compilation_mode="preactivation_candidate",
+        )
+
+
 def test_raw_probe_evidence_normalizes_sparse_probe_summary() -> None:
     bundle = _bundle()
     observations = _observations()
