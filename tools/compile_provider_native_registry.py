@@ -22,6 +22,7 @@ from pathlib import Path, PurePosixPath
 import re
 import tempfile
 from typing import Any, Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -43,6 +44,7 @@ COMPILATION_MODES = frozenset(
 )
 
 PROVIDER = "tushare"
+ASHARE_MARKET_TIMEZONE = ZoneInfo("Asia/Shanghai")
 PROVIDER_ADAPTER_VERSION = "tushare-provider-native.v1"
 READ_ADAPTER_VERSION = "provider-native-json.v1"
 PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
@@ -1219,7 +1221,8 @@ def _activation_evidence_index(
     )
     if (
         re.fullmatch(r"[0-9]{8}", scheduled_partition) is None
-        or scheduled_partition != run_at.strftime("%Y%m%d")
+        or scheduled_partition
+        != run_at.astimezone(ASHARE_MARKET_TIMEZONE).strftime("%Y%m%d")
     ):
         raise ValueError(
             "HTTPS activation evidence scheduled_partition must match run_clock"
