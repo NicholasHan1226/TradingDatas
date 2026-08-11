@@ -16,6 +16,8 @@ OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 TARGET_APIS = {"cb_rate", "cb_rating", "cb_share", "top10_cb_holders"}
 BATCH_A_APIS = {"cb_rate", "cb_rating", "cb_share"}
 BATCH_A_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
+BATCH_B_APIS = {"top10_cb_holders"}
+BATCH_B_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
 
 
 def _yaml(path: Path) -> dict[str, object]:
@@ -64,18 +66,21 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
         for api, dataset in bindings.items()
         if dataset["provider_bindings"][0]["probe_state"] == "executable"  # type: ignore[index]
         and dataset["provider_bindings"][0]["activation_state"] == "paused"  # type: ignore[index]
-    } & TARGET_APIS == {"top10_cb_holders"}
+    } & TARGET_APIS == set()
     for api in TARGET_APIS:
         binding = bindings[api]["provider_bindings"][0]
         assert binding["probe_state"] == "executable"
         assert binding["probe_block_reasons"] == []
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
-        assert binding["activation_state"] == ("active" if api in BATCH_A_APIS else "paused")
+        assert binding["activation_state"] == (
+            "active" if api in BATCH_A_APIS | BATCH_B_APIS else "paused"
+        )
 
     active_evidence = observations["active_evidence"]
     assert isinstance(active_evidence, dict)
     assert {api for api in BATCH_A_APIS if active_evidence[api] == BATCH_A_REF} == BATCH_A_APIS
+    assert {api for api in BATCH_B_APIS if active_evidence[api] == BATCH_B_REF} == BATCH_B_APIS
 
     for api in (
         "cb_price_chg",
@@ -111,8 +116,8 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 116
-    assert len(bindings) - active_count == 74
+    assert active_count == 117
+    assert len(bindings) - active_count == 73
 
 
 def test_cb_basic_seed_authority_rejects_ineligible_dependent() -> None:

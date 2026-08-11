@@ -93,7 +93,7 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert isinstance(activation_projection, dict)
     active_evidence = _observations()["active_evidence"]
     assert isinstance(active_evidence, dict)
-    assert activation_projection["candidate_count"] == len(active_evidence) - 3
+    assert activation_projection["candidate_count"] == len(active_evidence) - 4
     assert activation_projection["active_count"] == len(active_evidence)
     assert activation_projection["paused_count"] == len(_contracts()["contracts"]) - len(
         active_evidence

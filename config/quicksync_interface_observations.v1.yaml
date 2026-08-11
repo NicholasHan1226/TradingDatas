@@ -512,6 +512,7 @@ active_evidence:
   cb_rate: server-evidence/ashare-wave5-exact4-20260812T0618Z
   cb_rating: server-evidence/ashare-wave5-exact4-20260812T0618Z
   cb_share: server-evidence/ashare-wave5-exact4-20260812T0618Z
+  top10_cb_holders: server-evidence/ashare-wave5-exact4-20260812T0618Z
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code
