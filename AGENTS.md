@@ -6,6 +6,8 @@ TradingDatas 是一个类似 Tushare 的 provider-neutral 金融数据平台。T
 
 当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情是独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 
+在 Finance 产品架构中，TradingDatas 只负责跨市场数据接口接入、稳定采集、规范化落库、持续积累、lineage/receipt 和固定 API 供应。TradingAgent/Quant Core 是终局个人自动量化交易系统；TradingCopilot 只是过渡性的 A 股实盘辅助与观察工具。TradingDatas 不把消费者串成 `TD -> TA -> Copilot`，也不因某个消费者、某个数据集的稳定性或未来市场计划冻结其它独立数据接口接入。
+
 TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金、持仓、风控、订单、成交、执行回执或交易建议；不直接 import TradingAgent/MarketGraph 业务代码，不共享数据库，不做跨系统事务或 callback。
 
 ## 不可漂移的数据链
@@ -77,6 +79,8 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 普通接口接入按同一批次推进：先批量探测并分类权限/参数/空响应，再按 data class 批量冻结 cadence 与 window，随后用同一个 runner 做有界入库和 API readback。不得为单个 API 单独创建任务流、测试栈、service、timer、route 或发布流程。
 
+当前交付采用广度优先：valid rows 与 receipts 立即保留和积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级该 dataset 并形成后续修正，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的 dataset 显式暂停。稳定性继续按 dataset 独立积累，不能被用作延迟全部接口接入的全局门禁。
+
 ## clean-slate 与退役
 
 当前代码树不保留旧 SharedSignals 公共 route、双注册表、opening gate、旧 Crypto 路由/采集器、预测市场、DuckDB、邮件、旧 cron、旧 reader 或交易式控制。新的 Binance 公共数据切片只能通过独立 provider-level adapter 和隔离运行面接入；Git 历史承担旧实现追溯。
@@ -107,6 +111,7 @@ registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并�
 ## Git、发布与删除
 
 - 开工先检查 branch、status、remote、HEAD 与并行 worktree。
+- GitHub 传输优先使用 Nicholas 已登录的 `gh` HTTPS 凭据链：先核对 `gh auth status`，仓库 `origin` 固定为 `https://github.com/NicholasHan1226/TradingDatas.git`。若 `git@github.com` 的 SSH/22 端口失败一次，不重复重试或上报为长期 blocker；立即验证 HTTPS `git ls-remote`，切换现有 remote 后 fetch。不得输出 token，也不得另建凭据或绕过 host-key 校验。
 - 不覆盖他人改动，不使用 `git add .`、force push、历史重写或破坏性 reset。
 - local、GitHub、production files、runtime、真实 provider receipt、API readback 和消费者调用分别验证。
 - 删除旧代码/文档必须确认它不属于新运行面；删除生产 service/cron 必须先完成新系统切换与回滚证明。
