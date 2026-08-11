@@ -509,6 +509,9 @@ active_evidence:
   stk_alert: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
   stk_factor: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
   stk_high_shock: server-evidence/ashare-wave4-current-exact11-20260812T0345CST
+  cb_rate: server-evidence/ashare-wave5-exact4-20260812T0618Z
+  cb_rating: server-evidence/ashare-wave5-exact4-20260812T0618Z
+  cb_share: server-evidence/ashare-wave5-exact4-20260812T0618Z
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code

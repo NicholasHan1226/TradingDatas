@@ -88,7 +88,16 @@ def build_synthetic_activation_evidence(
         for api_name in executable_api_names
         if by_api[api_name]["ingest_contract_state"] == "ready"
     }
-    fresh_api_names = {*active_evidence, promoted_api_name}
+    formal_dependent_names = {
+        api_name
+        for authority in observations_document.get("dependency_seed_authorities", [])
+        for api_name in authority["dependent_api_names"]
+    }
+    # The generic synthetic sidecar does not carry dependency-seed proof. Keep
+    # those newly formalized dependents in the prior-active projection, but do
+    # not invent their executable results in this unrelated fixture.
+    synthetic_active_evidence = set(active_evidence) - formal_dependent_names
+    fresh_api_names = {*synthetic_active_evidence, promoted_api_name}
     assert fresh_api_names <= ingest_ready_api_names
 
     results: list[dict[str, object]] = []
