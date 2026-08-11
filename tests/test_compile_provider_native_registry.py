@@ -809,7 +809,7 @@ def test_raw_probe_evidence_reuses_exact_formal_seed_for_listed_dependent() -> N
     }
     assert bindings["cb_rate"]["activation_state"] == "active"
     assert bindings["cb_rate"]["probe_state"] == "executable"
-    assert bindings["top10_cb_holders"]["activation_state"] == "paused"
+    assert bindings["top10_cb_holders"]["activation_state"] == "active"
     assert bindings["cb_price_chg"]["activation_state"] == "paused"
 
 
@@ -1346,8 +1346,8 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 116
-    assert len(bindings) - len(active) == 74
+    assert len(active) == 117
+    assert len(bindings) - len(active) == 73
     assert wave4_exact8 <= active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
     assert "forecast" not in active_evidence
@@ -1375,11 +1375,37 @@ def test_wave5_batch_a_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 116
-    assert len(bindings) - len(active) == 74
+    assert len(active) == 117
+    assert len(bindings) - len(active) == 73
     assert batch_a <= active
-    assert not active & {"top10_cb_holders", "cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
-    assert active_evidence.get("top10_cb_holders") != batch_a_ref
+    assert "top10_cb_holders" in active
+    assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
+    assert active_evidence.get("top10_cb_holders") == batch_a_ref
+
+
+def test_wave5_batch_b_top10_active_evidence_is_formal_and_fail_closed() -> None:
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    batch_b_ref = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
+    assert active_evidence.get("top10_cb_holders") == batch_b_ref
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=observations
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    active = {
+        api_name
+        for api_name, binding in bindings.items()
+        if binding["activation_state"] == "active"
+    }
+    assert len(active) == 117
+    assert len(bindings) - len(active) == 73
+    assert "top10_cb_holders" in active
+    assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
 
 
 def test_active_evidence_remains_fail_closed_for_blocked_observation_classes() -> None:
