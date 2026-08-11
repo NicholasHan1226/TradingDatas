@@ -24,6 +24,7 @@ from provider_ingest_contract import provider_ingest_config_hash
 from storage.ingest_receipts import (
     RECEIPT_SCHEMA_VERSION,
     UNMAPPED_TUSHARE_ADAPTER_VERSION,
+    VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
     IngestContext,
     IngestCounts,
     ProviderRequestIdentity,
@@ -116,6 +117,7 @@ _ERROR_CODES = frozenset(
         "storage_failed",
         "unmapped_dataset",
         "validation_failed",
+        VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
     }
 )
 _MAX_INGEST_RUN_SCAN_ROWS = 100_000

@@ -808,7 +808,10 @@ def test_validation_failed_provenance_keeps_layer_generic(
             status="failed",
             started_at="2026-07-20T08:00:00Z",
             finished_at="2026-07-20T08:01:00Z",
-            errors=("validation_failed",),
+            errors=(
+                "validation_failed",
+                "validation_fanout_coverage_incomplete",
+            ),
         )
 
     provenance = scheduler._read_receipt_provenance(
@@ -817,7 +820,11 @@ def test_validation_failed_provenance_keeps_layer_generic(
         receipt_ids_by_dataset={"cn.equity.daily": (receipt_id,)},
     )["cn.equity.daily"][0]
     assert provenance.error_layer == "ingest_validation"
-    assert provenance.error_codes == ("validation_failed",)
+    assert provenance.error_codes == (
+        "validation_failed",
+        "validation_fanout_coverage_incomplete",
+    )
+    assert provenance.validation_reasons == ()
 
 
 def test_schedule_provenance_uses_one_authority_scan_for_multiple_datasets(

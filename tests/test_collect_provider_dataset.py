@@ -232,6 +232,38 @@ def _strategy_registry(
     return DatasetRegistry((dataset,))
 
 
+def _fanout_snapshot_registry(
+    *, empty_data_policy: str = "forbidden"
+) -> DatasetRegistry:
+    base = _registry(empty_data_policy=empty_data_policy)
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = base.provider_binding(dataset.dataset_id, "tushare")
+    response = ResponseCompletenessPolicy(
+        strategy="unique_primary_key_snapshot",
+        fixed_field_matches=MappingProxyType({}),
+        fanout_field="ts_code",
+        snapshot_field="trade_date",
+        reject_at_row_limit=True,
+    )
+    replacement = replace(
+        binding,
+        request_template=MappingProxyType({"list_status": "L"}),
+        request_window_policy=None,
+        request_shape="entity_fanout",
+        fanout=FanoutPolicy(
+            strategy="literal_values",
+            parameter="symbol",
+            values=("600000.SH", "000001.SZ"),
+            batch_size=1,
+        ),
+        response_completeness=response,
+        max_rows_per_attempt=10,
+    )
+    return DatasetRegistry(
+        (replace(dataset, provider_bindings=(replacement,)),)
+    )
+
+
 def _fut_settle_contract() -> tuple[DatasetDefinition, ProviderBinding]:
     registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
     dataset = registry.resolve("cn.dataset.fut_settle")
@@ -1019,6 +1051,25 @@ class _VariantOutcomeCollector:
         status = params["list_status"]
         self.calls.append(status)
         return self.outcomes[status]
+
+
+class _FanoutOutcomeCollector:
+    def __init__(self, outcomes: Mapping[str, ProviderCallOutcome]) -> None:
+        self.outcomes = outcomes
+        self.calls: list[str] = []
+
+    def collect_outcome(
+        self,
+        _api_name: str,
+        params: dict[str, str],
+        _fields: str | None = None,
+        *,
+        scan_budget: object | None = None,
+    ) -> ProviderCallOutcome:
+        assert scan_budget is not None
+        symbol = params["symbol"]
+        self.calls.append(symbol)
+        return self.outcomes[symbol]
 
 
 def _variant_success(symbol: str) -> ProviderCallOutcome:
@@ -2263,6 +2314,119 @@ def test_fanout_snapshot_requires_every_requested_value_at_one_bar_end() -> None
             (rows[0], {"ts_code": "000002.SZ", "time": "2026-07-28 14:55:00"}),
             calls=(call("000001.SZ"), call("000002.SZ")),
         )  # noqa: SLF001
+
+
+def test_public_fanout_coverage_reason_code_preserves_empty_policies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-20T08:01:00+00:00",
+    )
+    partial_registry = _fanout_snapshot_registry(empty_data_policy="allowed")
+    partial_collector = _FanoutOutcomeCollector(
+        {
+            "600000.SH": ProviderCallOutcome(
+                state="success",
+                rows=(
+                    {
+                        "ts_code": "600000.SH",
+                        "trade_date": "20260720",
+                        "close": 12.5,
+                    },
+                ),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+            ),
+            "000001.SZ": _variant_empty(),
+        }
+    )
+    partial_db = tmp_path / "partial.sqlite"
+    _database(partial_db)
+
+    partial = native_ingest.collect_provider_native_dataset(
+        partial_db,
+        registry=partial_registry,
+        collector=partial_collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="public-partial-fanout",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+
+    assert partial.status == "failed"
+    assert partial.errors == (
+        "validation_failed",
+        "validation_fanout_coverage_incomplete",
+    )
+    assert provider_fact_count(partial_db) == 0
+    with sqlite3.connect(partial_db) as conn:
+        receipts = [
+            json.loads(notes)
+            for (notes,) in conn.execute(
+                "SELECT notes FROM market_ingest_runs ORDER BY run_id"
+            )
+        ]
+    assert len(receipts) == 2
+    assert {tuple(receipt["errors"]) for receipt in receipts} == {
+        ("validation_failed", "validation_fanout_coverage_incomplete"),
+    }
+    partial_projection = load_dataset_runtime_projection(
+        partial_db,
+        partial_registry.resolve("cn.synthetic.runner"),
+        registry=partial_registry,
+        now=datetime(2026, 7, 20, 9, tzinfo=timezone.utc),
+    )
+    assert partial_projection.state == "failed"
+    assert partial_projection.reasons == (
+        "validation_failed",
+        "validation_fanout_coverage_incomplete",
+    )
+
+    empty_registry = _fanout_snapshot_registry(empty_data_policy="allowed")
+    empty_collector = _FanoutOutcomeCollector(
+        {"600000.SH": _variant_empty(), "000001.SZ": _variant_empty()}
+    )
+    empty_db = tmp_path / "allowed-empty.sqlite"
+    _database(empty_db)
+    empty = native_ingest.collect_provider_native_dataset(
+        empty_db,
+        registry=empty_registry,
+        collector=empty_collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="public-allowed-empty-fanout",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+    assert empty.status == "empty"
+    assert empty.errors == ()
+    assert provider_fact_count(empty_db) == 0
+    with sqlite3.connect(empty_db) as conn:
+        assert conn.execute(
+            "SELECT status, COUNT(*) FROM market_ingest_runs GROUP BY status"
+        ).fetchall() == [("empty", 2)]
+
+    forbidden_registry = _fanout_snapshot_registry(empty_data_policy="forbidden")
+    forbidden_collector = _FanoutOutcomeCollector(
+        {"600000.SH": _variant_empty(), "000001.SZ": _variant_empty()}
+    )
+    forbidden_db = tmp_path / "forbidden-empty.sqlite"
+    _database(forbidden_db)
+    forbidden = native_ingest.collect_provider_native_dataset(
+        forbidden_db,
+        registry=forbidden_registry,
+        collector=forbidden_collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="public-forbidden-empty-fanout",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+    assert forbidden.status == "failed"
+    assert forbidden.errors == ("validation_failed",)
+    assert provider_fact_count(forbidden_db) == 0
 
 
 def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
