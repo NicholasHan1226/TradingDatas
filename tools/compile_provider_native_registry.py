@@ -161,6 +161,7 @@ _OBSERVATION_ROOT_KEYS = frozenset(
         "matrix_evidence",
         "classifications",
         "active_evidence",
+        "dependency_seed_authorities",
         "response_contract_overrides",
     }
 )
@@ -457,6 +458,7 @@ _PROBE_RESULT_KEYS = frozenset(
 _SEED_AUTHORITY_KEYS = frozenset(
     {"dataset_id", "field", "schema_version", "receipt_id", "data_through"}
 )
+_FORMAL_SEED_AUTHORITY_KEYS = _SEED_AUTHORITY_KEYS | {"dependent_api_names"}
 _COUNT_HASH_KEYS = frozenset(
     {"ingest_ready_count", "ingest_ready_api_names_sha256"}
 )
@@ -914,6 +916,7 @@ def _observation_index(
             api_class[api_name] = classification
 
     by_api = {contract["api_name"]: contract for contract in contracts}
+    by_dataset = {contract["dataset_id"]: contract for contract in contracts}
     if set(api_class) != set(by_api):
         missing = sorted(set(by_api) - set(api_class))
         extra = sorted(set(api_class) - set(by_api))
@@ -934,6 +937,66 @@ def _observation_index(
     response_contract_overrides = _response_contract_override_index(
         root["response_contract_overrides"], by_api
     )
+
+    formal_seed_authorities = _sequence(
+        root["dependency_seed_authorities"],
+        "QuickSync observations.dependency_seed_authorities",
+    )
+    formal_seed_keys: set[tuple[str, str, str]] = set()
+    for index, raw_seed in enumerate(formal_seed_authorities):
+        label = f"QuickSync observations.dependency_seed_authorities[{index}]"
+        seed = _mapping(raw_seed, label)
+        _reject_keys(seed, _FORMAL_SEED_AUTHORITY_KEYS, label)
+        dataset_id = _required_text(seed["dataset_id"], f"{label}.dataset_id")
+        field = _required_text(seed["field"], f"{label}.field")
+        schema_version = _required_text(
+            seed["schema_version"], f"{label}.schema_version"
+        )
+        source = by_dataset.get(dataset_id)
+        if source is None:
+            raise ValueError(f"{label}.dataset_id is not in the contract bundle")
+        if schema_version != source["schema_version"]:
+            raise ValueError(f"{label}.schema_version does not match source dataset")
+        if field not in {item["name"] for item in source["fields"]}:
+            raise ValueError(f"{label}.field does not match source dataset")
+        receipt_id = _required_text(seed["receipt_id"], f"{label}.receipt_id")
+        if _RECEIPT_ID_PATTERN.fullmatch(receipt_id) is None:
+            raise ValueError(f"{label}.receipt_id is invalid")
+        _required_rfc3339(seed["data_through"], f"{label}.data_through")
+        dependents = _string_list(
+            seed["dependent_api_names"], f"{label}.dependent_api_names"
+        )
+        if not dependents:
+            raise ValueError(f"{label}.dependent_api_names must not be empty")
+        if dependents != sorted(dependents) or len(set(dependents)) != len(dependents):
+            raise ValueError(f"{label}.dependent_api_names must be sorted and unique")
+        for api_name in dependents:
+            contract = by_api.get(api_name)
+            if contract is None:
+                raise ValueError(f"{label}.dependent_api_names contains unknown API")
+            fanout = contract["fanout"]
+            if (
+                set(contract["probe_block_reasons"])
+                != {"dependency_seed_receipt_unresolved"}
+                or set(contract["ingest_contract_block_reasons"])
+                != {"dependency_seed_receipt_unresolved"}
+                or fanout["strategy"] != "dataset_field"
+                or fanout["source_dataset_id"] != dataset_id
+                or fanout["source_field"] != field
+            ):
+                raise ValueError(
+                    f"{label}.dependent_api_names contains an ineligible API: {api_name}"
+                )
+        seed_key = (dataset_id, field, schema_version)
+        if seed_key in formal_seed_keys:
+            raise ValueError("QuickSync dependency seed authorities duplicate")
+        formal_seed_keys.add(seed_key)
+
+    if formal_seed_authorities != sorted(
+        formal_seed_authorities,
+        key=lambda item: (item["dataset_id"], item["field"], item["schema_version"]),
+    ):
+        raise ValueError("QuickSync dependency seed authorities must be sorted")
 
     numeric_fields = grouped["numeric_field_repaired"]
     schema_fields = grouped["schema_subset"]
@@ -996,6 +1059,18 @@ def _observation_index(
             "schema_missing_fields": list(schema_fields.get(api_name, [])),
             "response_contract_override": response_contract_overrides.get(api_name),
         }
+    for raw_seed in formal_seed_authorities:
+        for api_name in raw_seed["dependent_api_names"]:
+            contract = by_api[api_name]
+            observation_key = (contract["dataset_id"], contract["provider"])
+            result[observation_key].update(
+                {
+                    "effective_probe_state": "executable",
+                    "effective_probe_block_reasons": [],
+                    "effective_ingest_contract_state": "ready",
+                    "effective_ingest_contract_block_reasons": [],
+                }
+            )
     return result
 
 
@@ -1707,16 +1782,24 @@ def _activation_evidence_index(
             ),
             "activation_state": "active" if api_name in active_api_names else "paused",
             "effective_probe_state": (
-                "executable" if resolved else contract["probe_state"]
+                "executable"
+                if resolved or baseline.get("effective_probe_state") == "executable"
+                else contract["probe_state"]
             ),
             "effective_probe_block_reasons": (
-                [] if resolved else list(contract["probe_block_reasons"])
+                []
+                if resolved or baseline.get("effective_probe_state") == "executable"
+                else list(contract["probe_block_reasons"])
             ),
             "effective_ingest_contract_state": (
-                "ready" if resolved else contract["ingest_contract_state"]
+                "ready"
+                if resolved or baseline.get("effective_ingest_contract_state") == "ready"
+                else contract["ingest_contract_state"]
             ),
             "effective_ingest_contract_block_reasons": (
-                [] if resolved else list(contract["ingest_contract_block_reasons"])
+                []
+                if resolved or baseline.get("effective_ingest_contract_state") == "ready"
+                else list(contract["ingest_contract_block_reasons"])
             ),
         }
     del started_at, finished_at, run_clock

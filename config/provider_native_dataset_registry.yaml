@@ -5340,12 +5340,10 @@ datasets:
     read_discriminator_value: tushare_cb_rate
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -5442,12 +5440,10 @@ datasets:
     read_discriminator_value: tushare_cb_rating
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -5530,12 +5526,10 @@ datasets:
     read_discriminator_value: tushare_cb_share
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -35039,12 +35033,10 @@ datasets:
     read_discriminator_value: tushare_top10_cb_holders
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
