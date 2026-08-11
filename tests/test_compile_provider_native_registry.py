@@ -758,6 +758,10 @@ def _raw_cb_dependent_evidence(
             for key in ("dataset_id", "field", "schema_version", "receipt_id", "data_through")
         }
     ]
+    coverage = evidence["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["executable"] += len(authorities[0]["dependent_api_names"])
+    coverage["blocked"] -= len(authorities[0]["dependent_api_names"])
     evidence["run_clock"] = "2026-08-11T22:13:40+00:00"
     evidence["started_at"] = "2026-08-11T22:13:41+00:00"
     evidence["finished_at"] = "2026-08-11T22:13:42+00:00"
@@ -1342,13 +1346,40 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 113
-    assert len(bindings) - len(active) == 77
+    assert len(active) == 116
+    assert len(bindings) - len(active) == 74
     assert wave4_exact8 <= active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
     assert "forecast" not in active_evidence
     assert "pledge_detail" not in active_evidence
     assert "stk_nineturn" not in active_evidence
+
+
+def test_wave5_batch_a_active_evidence_is_formal_and_fail_closed() -> None:
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    batch_a_ref = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
+    batch_a = {"cb_rate", "cb_rating", "cb_share"}
+    assert {api_name for api_name in batch_a if active_evidence[api_name] == batch_a_ref} == batch_a
+
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=observations
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    active = {
+        api_name
+        for api_name, binding in bindings.items()
+        if binding["activation_state"] == "active"
+    }
+    assert len(active) == 116
+    assert len(bindings) - len(active) == 74
+    assert batch_a <= active
+    assert not active & {"top10_cb_holders", "cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
+    assert active_evidence.get("top10_cb_holders") != batch_a_ref
 
 
 def test_active_evidence_remains_fail_closed_for_blocked_observation_classes() -> None:
