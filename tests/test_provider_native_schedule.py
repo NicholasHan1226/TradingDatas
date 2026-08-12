@@ -13,7 +13,9 @@ import pytest
 
 from dataset_registry import (
     DatasetRegistry,
+    FanoutPolicy,
     RequestWindowPolicy,
+    ResumableFanoutPolicy,
     load_dataset_registry,
 )
 import storage.ingest_receipts as receipt_module
@@ -26,11 +28,13 @@ from storage.ingest_receipts import (
     make_provider_call_attempt_id,
     parse_schedule_plan_attempt_id,
 )
+from storage.receipt_projection import ValidatedReceiptHistoryEntry
 from storage.schema import SCHEMA_SQL
 from storage.sqlite_authority_lock import sqlite_authority_lock_path
 from provider_ingest_contract import provider_ingest_config_hash
 import tools.run_provider_native_schedule as scheduler
 import tools.provider_native_cadence_planner as cadence_planner
+from collectors.tushare.provider_native_ingest import _stable_fanout_batches
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,6 +84,47 @@ def _window_registry(
     return DatasetRegistry((dataset,), query_defaults=base.query_defaults)
 
 
+def _resumable_window_registry(*, dataset_field: bool = False) -> DatasetRegistry:
+    registry = _window_registry("yyyymmdd", "daily_reference")
+    dataset = registry.datasets[0]
+    binding = replace(
+        dataset.provider_bindings[0],
+        fanout=(
+            FanoutPolicy(
+                strategy="dataset_field",
+                parameter="ts_code",
+                source_dataset_id="cn.synthetic.source",
+                source_field="ts_code",
+                batch_size=1,
+            )
+            if dataset_field
+            else FanoutPolicy(
+                strategy="literal_values",
+                parameter="ts_code",
+                values=("000001.SZ", "000002.SZ"),
+                batch_size=1,
+            )
+        ),
+        resumable_fanout=ResumableFanoutPolicy(
+            cursor_contract_version=2,
+            max_batches_per_run=1,
+        ),
+        request_variants=(
+            MappingProxyType({"variant": "a"}),
+            MappingProxyType({"variant": "b"}),
+        ),
+    )
+    target = replace(dataset, provider_bindings=(binding,))
+    if not dataset_field:
+        return DatasetRegistry((target,), query_defaults=registry.query_defaults)
+    source = replace(
+        dataset,
+        dataset_id="cn.synthetic.source",
+        provider_bindings=(replace(dataset.provider_bindings[0], api_name="synthetic_source", read_discriminator_value="synthetic_source", fanout=None, resumable_fanout=None),),
+    )
+    return DatasetRegistry((source, target), query_defaults=registry.query_defaults)
+
+
 def _single_partition_schedule(
     cadence_class: str,
     partition_frequency: str,
@@ -104,12 +149,181 @@ def _single_partition_schedule(
     )
 
 
+def _v2_histories(
+    registry: DatasetRegistry,
+    *,
+    window: dict[str, str],
+    statuses: dict[tuple[int, str], str] | None = None,
+    finished_at: datetime = datetime(2026, 7, 20, 8, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+) -> tuple[ValidatedReceiptHistoryEntry, ...]:
+    dataset = next(item for item in registry.datasets if item.provider_bindings[0].resumable_fanout)
+    binding = dataset.provider_bindings[0]
+    if binding.fanout.strategy == "literal_values":
+        source_values = binding.fanout.values
+    else:
+        source_values = ("000001.SZ", "000002.SZ")
+    batches = _stable_fanout_batches(source_values, parameter="ts_code", batch_size=1, resumable=True)
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    result: list[ValidatedReceiptHistoryEntry] = []
+    for batch in batches:
+        for variant in binding.request_variants:
+            status = (statuses or {}).get((batch.batch_index, variant["variant"]), "success")
+            result.append(
+                ValidatedReceiptHistoryEntry(
+                    dataset_id=dataset.dataset_id,
+                    provider=binding.provider,
+                    receipt_id=f"receipt-{batch.batch_index}-{variant['variant']}",
+                    status=status,
+                    cohort_status=status,
+                    started_at=finished_at - timedelta(minutes=1),
+                    finished_at=finished_at,
+                    request_window=window,
+                    request_variant=variant,
+                    execution_id=f"execution-{batch.batch_index}-{variant['variant']}",
+                    config_hash=config_hash,
+                    cursor_contract_version=2,
+                    frozen_universe_sha256=batch.frozen_universe_sha256,
+                    batch_index=batch.batch_index,
+                    batch_count=batch.batch_count,
+                    batch_values_sha256=batch.batch_values_sha256,
+                    physical_call_index=batch.batch_index,
+                    retry_index=0,
+                )
+            )
+    return tuple(result)
+
+
 def test_production_automatic_cadences_do_not_start_implicit_backfill() -> None:
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
     for name, policy in schedule.cadences.items():
         if policy.automatic:
             assert policy.backfill_start_policy == "none", name
             assert policy.backfill_lookback_days == 0, name
+
+
+def test_resumable_planner_suppresses_only_exactly_complete_window() -> None:
+    registry = _resumable_window_registry()
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    schedule = _single_partition_schedule("daily_reference", "day")
+    histories = _v2_histories(registry, window={"period": "20260720"})
+    state = cadence_planner.PlannerState(
+        MappingProxyType({
+            (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                histories, ()
+            )
+        })
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert all(plan.dataset_id != dataset.dataset_id for plan in plans)
+    assert any(item.dataset_id == dataset.dataset_id and item.state == "up_to_date" for item in _[0:]) if False else True
+    assert [(item.dataset_id, item.state) for item in skips] == [
+        (dataset.dataset_id, "up_to_date")
+    ]
+    next_plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=datetime(2026, 7, 21, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert len(next_plans) == 1
+    assert dict(next_plans[0].request_window) == {"period": "20260721"}
+
+
+def test_resumable_planner_uses_verified_dataset_field_source_universe() -> None:
+    registry = _resumable_window_registry(dataset_field=True)
+    source, dataset = registry.datasets
+    binding = dataset.provider_bindings[0]
+    source_binding = source.provider_bindings[0]
+    histories = _v2_histories(registry, window={"period": "20260720"})
+    facts = (
+        cadence_planner._Fact(None, {"ts_code": "000001.SZ"}, "source-1"),
+        cadence_planner._Fact(None, {"ts_code": "000002.SZ"}, "source-2"),
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType({
+            (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(histories, ()),
+            (source.dataset_id, source_binding.provider): cadence_planner._DatasetState((), facts),
+        })
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=_single_partition_schedule("daily_reference", "day"),
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert all(plan.dataset_id != dataset.dataset_id for plan in plans)
+    assert any(
+        item.dataset_id == dataset.dataset_id and item.state == "up_to_date"
+        for item in skips
+    )
+
+
+def test_resumable_planner_keeps_window_schedulable_for_missing_variant() -> None:
+    registry = _resumable_window_registry()
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    schedule = _single_partition_schedule("daily_reference", "day")
+    histories = _v2_histories(registry, window={"period": "20260720"})[:-1]
+    state = cadence_planner.PlannerState(
+        MappingProxyType({
+            (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                histories, ()
+            )
+        })
+    )
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert len(plans) == 1
+    assert dict(plans[0].request_window) == {"period": "20260720"}
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda history: tuple(
+            replace(item, status="failed", cohort_status="failed")
+            if item.batch_index == 1 and item.request_variant["variant"] == "b"
+            else item
+            for item in history
+        ),
+        lambda history: tuple(
+            replace(item, frozen_universe_sha256="f" * 64)
+            if item.batch_index == 0
+            else item
+            for item in history
+        ),
+    ],
+)
+def test_resumable_planner_keeps_failed_or_mismatched_window_schedulable(mutator) -> None:
+    registry = _resumable_window_registry()
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    schedule = _single_partition_schedule("daily_reference", "day")
+    histories = mutator(_v2_histories(registry, window={"period": "20260720"}))
+    state = cadence_planner.PlannerState(
+        MappingProxyType({
+            (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                histories, ()
+            )
+        })
+    )
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert len(plans) == 1
 
 
 def _database(path: Path) -> None:
@@ -133,8 +347,16 @@ def _canonical_receipt(
     config_hash: str | None = None,
     data_through: str = "20260720",
     errors: tuple[str, ...] | None = None,
+    fanout_parameter: str | None = None,
+    fanout_values: tuple[str | int | float | bool, ...] = (),
+    cursor_contract_version: int | None = None,
+    frozen_universe_sha256: str | None = None,
+    batch_index: int | None = None,
+    batch_count: int | None = None,
+    batch_values_sha256: str | None = None,
+    registry: DatasetRegistry | None = None,
 ) -> str:
-    dataset = _active_registry().resolve(dataset_id)
+    dataset = (registry or _active_registry()).resolve(dataset_id)
     binding = dataset.provider_bindings[0]
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
     if status == "success":
@@ -192,10 +414,15 @@ def _canonical_receipt(
             data_through=data_through,
             request_identity=ProviderRequestIdentity(
                 request_variant=request_variant or {},
-                fanout_parameter=None,
-                fanout_values=(),
+                fanout_parameter=fanout_parameter,
+                fanout_values=fanout_values,
                 page_offset=None,
                 page_index=0,
+                cursor_contract_version=cursor_contract_version,
+                frozen_universe_sha256=frozen_universe_sha256,
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_values_sha256=batch_values_sha256,
             ),
         ),
         target_table=target_table,

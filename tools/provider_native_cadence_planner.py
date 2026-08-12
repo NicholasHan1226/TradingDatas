@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 from types import MappingProxyType
@@ -789,6 +790,7 @@ def _latest_available(now: datetime, policy: CadencePolicy) -> date:
 def _session_window_state(
     registry: DatasetRegistry,
     state: PlannerState,
+    now: datetime,
     policy: CadencePolicy,
     local_now: datetime,
 ) -> str | None:
@@ -944,6 +946,189 @@ def _latest(
     )
 
 
+def _resumable_window_completed_at(
+    receipts: Sequence[ValidatedReceiptHistoryEntry],
+    *,
+    registry: DatasetRegistry,
+    state: PlannerState,
+    now: datetime,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+) -> datetime | None:
+    """Return completion time only for one exact, variant-complete v2 window."""
+
+    if binding.resumable_fanout is None:
+        return None
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    candidates = tuple(
+        item
+        for item in receipts
+        if (
+            item.dataset_id == dataset.dataset_id
+            and item.provider == binding.provider
+            and item.config_hash == config_hash
+            and dict(item.request_window) == dict(request_window)
+            and item.cursor_contract_version == 2
+            and item.frozen_universe_sha256 is not None
+            and item.batch_index is not None
+            and item.batch_count is not None
+            and item.batch_values_sha256 is not None
+        )
+    )
+    if not candidates:
+        return None
+    universes = {item.frozen_universe_sha256 for item in candidates}
+    counts = {item.batch_count for item in candidates}
+    if len(universes) != 1 or len(counts) != 1:
+        return None
+    universe_sha = next(iter(universes))
+    batch_count = next(iter(counts))
+    if (
+        type(universe_sha) is not str
+        or not _SHA256.fullmatch(universe_sha)
+        or type(batch_count) is not int
+        or batch_count <= 0
+    ):
+        return None
+    fanout = binding.fanout
+    if (
+        fanout is None
+        or fanout.strategy not in {"literal_values", "dataset_field"}
+        or fanout.parameter is None
+        or fanout.batch_size is None
+    ):
+        return None
+    try:
+        from collectors.tushare.provider_native_ingest import _stable_fanout_batches
+
+        if fanout.strategy == "literal_values":
+            values = fanout.values
+        else:
+            if fanout.source_dataset_id is None or fanout.source_field is None:
+                return None
+            source = registry.resolve(fanout.source_dataset_id)
+            source_binding = next(
+                (
+                    item
+                    for item in source.provider_bindings
+                    if item.provider == binding.provider
+                    and item.entitlement_state == "active"
+                    and item.activation_state == "active"
+                ),
+                None,
+            )
+            if source_binding is None:
+                return None
+            source_facts = state.get(source, source_binding).facts
+            source_field = next(
+                (field for field in source.fields if field.name == fanout.source_field),
+                None,
+            )
+            if source_field is None:
+                return None
+            cutoff = None
+            if fanout.source_date_lte_days is not None:
+                cutoff = now.astimezone(ZoneInfo(source.timezone)).date() - timedelta(
+                    days=fanout.source_date_lte_days
+                )
+            values_list: list[RequestScalar] = []
+            for fact in source_facts:
+                if any(fact.payload.get(key) != value for key, value in fanout.source_equals):
+                    continue
+                if cutoff is not None:
+                    if fanout.source_date_field is None:
+                        return None
+                    raw_date = fact.payload.get(fanout.source_date_field)
+                    if type(raw_date) is not str or len(raw_date) != 8 or not raw_date.isdigit():
+                        return None
+                    try:
+                        listed = datetime.strptime(raw_date, "%Y%m%d").date()
+                    except ValueError:
+                        return None
+                    if listed > cutoff:
+                        continue
+                value = fact.payload.get(fanout.source_field)
+                if source_field.logical_type == "text":
+                    valid = type(value) is str and bool(value)
+                elif source_field.logical_type == "integer":
+                    valid = type(value) is int
+                else:
+                    valid = type(value) in {int, float} and (
+                        type(value) is not float or math.isfinite(value)
+                    )
+                if not valid:
+                    return None
+                values_list.append(value)
+            if fanout.max_values is not None:
+                values_list = values_list[: fanout.max_values]
+            values = tuple(values_list)
+        expected_batches = _stable_fanout_batches(
+            values,
+            parameter=fanout.parameter,
+            batch_size=fanout.batch_size,
+            max_values=fanout.max_values,
+            source_order=fanout.source_order,
+            resumable=True,
+        )
+    except (TypeError, ValueError):
+        return None
+    if not expected_batches or len(expected_batches) != batch_count:
+        return None
+    if expected_batches[0].frozen_universe_sha256 != universe_sha:
+        return None
+    expected_variants = {
+        _canonical_json(dict(variant)) for variant in binding.request_variants
+    }
+    if not expected_variants:
+        expected_variants = {_canonical_json({})}
+    latest: dict[tuple[int, str, str], ValidatedReceiptHistoryEntry] = {}
+    for item in candidates:
+        assert item.batch_index is not None
+        assert item.batch_values_sha256 is not None
+        if not 0 <= item.batch_index < batch_count or not _SHA256.fullmatch(
+            item.batch_values_sha256
+        ):
+            return None
+        variant_key = _canonical_json(dict(item.request_variant))
+        if variant_key not in expected_variants:
+            return None
+        identity = (item.batch_index, item.batch_values_sha256, variant_key)
+        previous = latest.get(identity)
+        key = (
+            item.finished_at,
+            item.retry_index if item.retry_index is not None else -1,
+            item.physical_call_index if item.physical_call_index is not None else -1,
+            item.receipt_id,
+        )
+        if previous is None or key > (
+            previous.finished_at,
+            previous.retry_index if previous.retry_index is not None else -1,
+            previous.physical_call_index if previous.physical_call_index is not None else -1,
+            previous.receipt_id,
+        ):
+            latest[identity] = item
+    completed_at: list[datetime] = []
+    for batch_index in range(batch_count):
+        expected_values_sha = expected_batches[batch_index].batch_values_sha256
+        if expected_values_sha is None:
+            return None
+        values = {
+            values_sha
+            for (index, values_sha, _variant), item in latest.items()
+            if index == batch_index
+        }
+        if values != {expected_values_sha}:
+            return None
+        values_sha = next(iter(values))
+        for variant_key in expected_variants:
+            item = latest.get((batch_index, values_sha, variant_key))
+            if item is None or item.status not in {"success", "empty"}:
+                return None
+            completed_at.append(item.finished_at)
+    return max(completed_at)
+
+
 def _chunks(days: Sequence[date], span: int) -> tuple[tuple[date, date], ...]:
     if not days:
         return ()
@@ -1039,11 +1224,24 @@ def _dataset_plans(
     current = state.get(dataset, binding)
     now_utc = now.astimezone(timezone.utc)
     local_now = now.astimezone(ZoneInfo(dataset.timezone))
-    session_state = _session_window_state(registry, state, policy, local_now)
+    session_state = _session_window_state(registry, state, now, policy, local_now)
     if session_state is not None:
         return (), session_state
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
+        resumable_finished = _resumable_window_completed_at(
+            current.receipts,
+            registry=registry,
+            state=state,
+            now=now,
+            dataset=dataset,
+            binding=binding,
+            request_window={},
+        )
+        if resumable_finished is not None:
+            age = (now_utc - resumable_finished).total_seconds()
+            if age < policy.minimum_interval_seconds:
+                return (), "not_due"
         if latest is not None:
             age = (now_utc - latest.finished_at).total_seconds()
             healthy = latest.status == "empty" or any(
@@ -1130,6 +1328,17 @@ def _dataset_plans(
     for priority, chunk_start, chunk_end in demands:
         request_window = _window(binding, chunk_start, chunk_end)
         prior = _latest(current.receipts, request_window)
+        resumable_finished = _resumable_window_completed_at(
+            current.receipts,
+            registry=registry,
+            state=state,
+            now=now,
+            dataset=dataset,
+            binding=binding,
+            request_window=request_window,
+        )
+        if resumable_finished is not None:
+            continue
         correction_only = not any(
             day in missing for day in _window_dates(binding, request_window)
         )
