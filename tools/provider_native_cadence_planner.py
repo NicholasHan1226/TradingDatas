@@ -1277,7 +1277,14 @@ def _dataset_plans(
             if receipt.execution_id == execution_id
         )
         cohort = _latest(members)
-        if cohort is not None and cohort.status == "empty":
+        # A resumable fanout window is covered only by the exact v2
+        # batch/variant completion check below.  One valid-empty physical
+        # batch must not make the entire request window appear covered.
+        if (
+            cohort is not None
+            and cohort.status == "empty"
+            and binding.resumable_fanout is None
+        ):
             covered.update(_window_dates(binding, cohort.request_window))
     missing = set(desired) - covered
     overlap: set[date] = (
