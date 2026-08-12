@@ -527,7 +527,7 @@ dependency_seed_authorities:
   - dataset_id: cn.equity.security_master
     field: ts_code
     schema_version: 2.0.0
-    receipt_id: receipt:69b0f5687e623eb4aa4929513b70033c39381b4cda025917693fbc8c09752a2d
+    receipt_id: receipt:653392e20e8ec6de05bc8729d2802d529e51ecf47dd261f82cb0a1938ca0a115
     data_through: '2026-08-11T10:35:04.025706+00:00'
     dependent_api_names:
       - balancesheet
