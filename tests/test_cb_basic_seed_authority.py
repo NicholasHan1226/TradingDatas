@@ -18,6 +18,17 @@ BATCH_A_APIS = {"cb_rate", "cb_rating", "cb_share"}
 BATCH_A_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
 BATCH_B_APIS = {"top10_cb_holders"}
 BATCH_B_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
+WAVE7_FINANCIAL_APIS = {
+    "balancesheet",
+    "cashflow",
+    "express",
+    "fina_audit",
+    "fina_indicator",
+    "fina_mainbz",
+    "income",
+}
+WAVE7_FINANCIAL_REF = "server-evidence/ashare-wave7-financial-exact7-20260812T1815CST"
+WAVE7_TRADEDAY_APIS = {"cyq_chips", "cyq_perf", "daily_basic"}
 SECURITY_MASTER_DEPENDENTS = {
     "balancesheet",
     "cashflow",
@@ -113,12 +124,18 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert binding["probe_block_reasons"] == []
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
-        assert binding["activation_state"] == "paused"
+        assert binding["activation_state"] == (
+            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
+        )
 
     active_evidence = observations["active_evidence"]
     assert isinstance(active_evidence, dict)
     assert {api for api in BATCH_A_APIS if active_evidence[api] == BATCH_A_REF} == BATCH_A_APIS
     assert {api for api in BATCH_B_APIS if active_evidence[api] == BATCH_B_REF} == BATCH_B_APIS
+    assert {
+        api for api in WAVE7_FINANCIAL_APIS
+        if active_evidence.get(api) == WAVE7_FINANCIAL_REF
+    } == WAVE7_FINANCIAL_APIS
 
     for api in (
         "cb_price_chg",
@@ -154,8 +171,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 117
-    assert len(bindings) - active_count == 73
+    assert active_count == 133
+    assert len(bindings) - active_count == 57
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
