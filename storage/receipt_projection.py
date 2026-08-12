@@ -294,6 +294,8 @@ class ValidatedReceiptHistoryEntry:
     batch_index: int | None = None
     batch_count: int | None = None
     batch_values_sha256: str | None = None
+    physical_call_index: int | None = None
+    retry_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1974,6 +1976,8 @@ def validated_receipt_histories_by_dataset(
                 batch_index=receipt.batch_index,
                 batch_count=receipt.batch_count,
                 batch_values_sha256=receipt.batch_values_sha256,
+                physical_call_index=receipt.physical_call_index,
+                retry_index=receipt.retry_index,
             )
             for receipt in receipts
         )

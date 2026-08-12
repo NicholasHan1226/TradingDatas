@@ -13,6 +13,7 @@ from collectors.tushare.collector import RequestBudgetExceeded, TushareCollector
 from collectors.tushare.provider_native_ingest import (
     FanoutBatch,
     RetrySettings,
+    _select_resumable_fanout_batches,
     _execute_provider_requests,
     _resolved_request,
     _stable_fanout_batches,
@@ -21,8 +22,19 @@ from collectors.tushare.tushare_common import (
     ProviderCallOutcome,
     SensitiveScanBudget,
 )
-from dataset_registry import FanoutPolicy, PaginationPolicy, ProviderBinding
+from dataset_registry import (
+    DatasetDefinition,
+    DatasetField,
+    FanoutPolicy,
+    PaginationPolicy,
+    ProviderBinding,
+    ReadModelAdapter,
+    ResumableFanoutPolicy,
+)
+from storage.receipt_projection import ValidatedReceiptHistoryEntry
+from datetime import datetime, timezone
 from tools import run_provider_native_schedule as scheduler
+from provider_ingest_contract import provider_ingest_config_hash
 
 
 def _binding(
@@ -61,6 +73,25 @@ def _binding(
         max_payload_bytes_per_row=4_096,
         max_batch_bytes=max_batch_bytes,
         max_nesting_depth=8,
+    )
+
+
+def _synthetic_dataset(binding: ProviderBinding) -> DatasetDefinition:
+    return DatasetDefinition(
+        dataset_id="cn.synthetic",
+        aliases=(), domain="equity", market="ashare", entity_type="equity",
+        data_classification="reference", schema_version="1.0.0",
+        fields=(DatasetField("ts_code", "text", False, True, True, True),),
+        primary_key=("ts_code",), default_projection=("ts_code",),
+        as_of_field=None, as_of_format=None, range_field=None, partition_field=None,
+        cadence_class="daily_reference", timezone="Asia/Shanghai",
+        freshness_sla_seconds=3600, max_page_size=100, max_lookback_days=30,
+        point_in_time="snapshot", backfill_policy="none", empty_data_policy="allowed",
+        required_scope="ashare", quota_class="standard", provider_bindings=(binding,),
+        read_model_adapter=ReadModelAdapter(
+            adapter_version="synthetic.v1", primary_table="provider_dataset_rows",
+            fixed_field_filters=(),
+        ),
     )
 
 
@@ -231,6 +262,125 @@ def test_resumable_fanout_batch_identity_is_deterministic_and_legacy_is_unchange
         FanoutBatch(parameter="ts_code", values=("000001.SZ", "600000.SH")),
         FanoutBatch(parameter="ts_code", values=("601899.SH",)),
     )
+
+
+def _history_for_batch(batch: FanoutBatch, *, status: str, dataset_id: str = "cn.synthetic", config_hash: str = "c" * 64):
+    return ValidatedReceiptHistoryEntry(
+        dataset_id=dataset_id,
+        provider="tushare",
+        receipt_id=f"receipt-{batch.batch_index}-{status}",
+        status=status,
+        cohort_status=status,
+        started_at=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 8, 13, 0, 1, tzinfo=timezone.utc),
+        request_window={"trade_date": "20260813"},
+        request_variant={"exchange": "SSE", "limit": 100},
+        execution_id=f"execution-{batch.batch_index}",
+        config_hash=config_hash,
+        cursor_contract_version=2,
+        frozen_universe_sha256=batch.frozen_universe_sha256,
+        batch_index=batch.batch_index,
+        batch_count=batch.batch_count,
+        batch_values_sha256=batch.batch_values_sha256,
+        physical_call_index=batch.batch_index,
+        retry_index=0,
+    )
+
+
+def test_resumable_selection_skips_completed_and_retries_only_failed_batch() -> None:
+    batches = _stable_fanout_batches(
+        ("000001.SZ", "000002.SZ", "600000.SH"),
+        parameter="ts_code",
+        batch_size=1,
+        resumable=True,
+    )
+    policy = ResumableFanoutPolicy(cursor_contract_version=2, max_batches_per_run=1)
+    binding = replace(_binding(fanout=FanoutPolicy(
+        strategy="literal_values", parameter="ts_code", values=("000001.SZ", "000002.SZ", "600000.SH"), batch_size=1,
+    )), resumable_fanout=policy, request_variants=(MappingProxyType({"exchange": "SSE", "limit": 100}),))
+    dataset = _synthetic_dataset(binding)
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    histories = (
+        _history_for_batch(batches[0], status="success", config_hash=config_hash),
+        _history_for_batch(batches[1], status="failed", config_hash=config_hash),
+    )
+    selected = _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=histories,
+    )
+    assert selected == (batches[1],)
+    assert _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260814"}, histories=histories,
+    ) == (batches[0],)
+    complete_histories = tuple(
+        _history_for_batch(batch, status="success", config_hash=config_hash)
+        for batch in batches
+    )
+    assert _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=complete_histories,
+    ) == ()
+    assert _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=histories,
+    ) == _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=histories,
+    )
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda item: replace(item, dataset_id="cn.other"),
+        lambda item: replace(item, provider="other-provider"),
+        lambda item: replace(item, request_window={"trade_date": "20260814"}),
+        lambda item: replace(item, config_hash="d" * 64),
+        lambda item: replace(item, frozen_universe_sha256="e" * 64),
+        lambda item: replace(item, cursor_contract_version=None),
+    ],
+)
+def test_resumable_selection_ignores_mismatched_or_legacy_receipt(mutator) -> None:
+    batches = _stable_fanout_batches(
+        ("000001.SZ", "000002.SZ"), parameter="ts_code", batch_size=1, resumable=True
+    )
+    binding = replace(
+        _binding(
+            fanout=FanoutPolicy(
+                strategy="literal_values", parameter="ts_code",
+                values=("000001.SZ", "000002.SZ"), batch_size=1,
+            )
+        ),
+        resumable_fanout=ResumableFanoutPolicy(),
+        request_variants=(MappingProxyType({"exchange": "SSE", "limit": 100}),),
+    )
+    dataset = _synthetic_dataset(binding)
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    receipt = _history_for_batch(batches[0], status="success", config_hash=config_hash)
+    assert _select_resumable_fanout_batches(
+        batches,
+        dataset=dataset,
+        binding=binding,
+        request_window={"trade_date": "20260813"},
+        histories=(mutator(receipt),),
+    ) == (batches[0],)
+
+
+def test_absent_resumable_policy_keeps_all_legacy_batches() -> None:
+    batches = _stable_fanout_batches(
+        ("000001.SZ", "000002.SZ"), parameter="ts_code", batch_size=1
+    )
+    binding = _binding(
+        fanout=FanoutPolicy(
+            strategy="literal_values", parameter="ts_code",
+            values=("000001.SZ", "000002.SZ"), batch_size=1,
+        )
+    )
+    assert _select_resumable_fanout_batches(
+        batches, dataset=_synthetic_dataset(binding), binding=binding,
+        request_window={"trade_date": "20260813"}, histories=(),
+    ) == batches
 
 
 def test_executor_passes_complete_cursor_identity_to_each_physical_call() -> None:
