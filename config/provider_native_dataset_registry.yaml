@@ -7470,7 +7470,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cyq_chips
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -7580,7 +7580,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cyq_perf
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -7739,7 +7739,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_daily_basic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

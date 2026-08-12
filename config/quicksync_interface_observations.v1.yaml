@@ -520,6 +520,9 @@ active_evidence:
   fina_indicator: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
   fina_mainbz: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
   income: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  cyq_chips: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
+  cyq_perf: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
+  daily_basic: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code
