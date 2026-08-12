@@ -8212,7 +8212,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8375,7 +8375,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -8602,7 +8602,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only

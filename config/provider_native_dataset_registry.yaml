@@ -7461,7 +7461,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -7571,7 +7571,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -7730,7 +7730,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: postclose_daily
+  cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
