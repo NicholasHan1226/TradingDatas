@@ -1452,6 +1452,21 @@ def test_wave7_tradedate_exact3_evidence_is_formal_and_fail_closed() -> None:
     assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
+def test_wave7_high_fanout_exact3_remains_active_but_is_on_demand() -> None:
+    registry = compile_provider_native_registry(_bundle(), observations_document=_observations())
+    datasets = {
+        dataset["provider_bindings"][0]["api_name"]: dataset
+        for dataset in registry["datasets"]
+    }
+    exact3 = {"cyq_chips", "cyq_perf", "daily_basic"}
+    assert {api for api in exact3 if datasets[api]["cadence_class"] == "on_demand"} == exact3
+    assert {
+        api
+        for api in exact3
+        if datasets[api]["provider_bindings"][0]["activation_state"] == "active"
+    } == exact3
+
+
 def test_wave7_nowindow_exact5_evidence_is_formal_and_fail_closed() -> None:
     observations = _observations()
     active_evidence = observations["active_evidence"]
