@@ -1265,6 +1265,7 @@ def _persist_failed_execution(
     overall_error: str,
     terminal_context: IngestContext,
     validation_reason_code: str | None = None,
+    preserve_nonfailed_calls: bool = False,
 ) -> IngestResult:
     def receipt_errors(call_error: str) -> tuple[str, ...]:
         if (
@@ -1275,6 +1276,7 @@ def _persist_failed_execution(
         return (call_error,)
 
     receipt_ids: list[str] = []
+    persisted_results: list[IngestResult] = []
     if not calls:
         result = write_terminal_receipt(
             db_path,
@@ -1283,7 +1285,28 @@ def _persist_failed_execution(
             errors=receipt_errors(overall_error),
         )
         receipt_ids.extend(result.receipt_ids)
+        persisted_results.append(result)
     for call in calls:
+        preserve_call = preserve_nonfailed_calls and (
+            call.outcome.state == "success"
+            or (
+                call.outcome.state == "empty"
+                and dataset.empty_data_policy == "allowed"
+            )
+        )
+        if preserve_call:
+            result = _persist_provider_call(
+                db_path,
+                dataset=dataset,
+                binding=binding,
+                provider_call=call,
+                normalized_window=normalized_window,
+                root_attempt_id=root_attempt_id,
+                started_at=started_at,
+            )
+            receipt_ids.extend(result.receipt_ids)
+            persisted_results.append(result)
+            continue
         call_error = (
             _provider_error_code(call.outcome)
             if call.outcome.state == "failed"
@@ -1305,9 +1328,23 @@ def _persist_failed_execution(
             errors=receipt_errors(call_error),
         )
         receipt_ids.extend(result.receipt_ids)
+        persisted_results.append(result)
+    partial_successes = tuple(
+        result
+        for result in persisted_results
+        if result.status == "success"
+    )
+    counts = (
+        _aggregate_counts(
+            partial_successes,
+            count_semantics="aggregate_partial_physical_call_transactions",
+        )
+        if preserve_nonfailed_calls and partial_successes
+        else _zero_counts()
+    )
     return IngestResult(
         status="failed",
-        counts=_zero_counts(),
+        counts=counts,
         receipt_ids=tuple(receipt_ids),
         errors=receipt_errors(overall_error),
     )
@@ -1359,6 +1396,7 @@ def _persist_provider_execution(
             started_at=started_at,
             overall_error=error_code,
             terminal_context=terminal_context,
+            preserve_nonfailed_calls=True,
         )
     if execution.outcome.state == "empty":
         if enforce_empty_policy and dataset.empty_data_policy == "forbidden":

@@ -2429,6 +2429,43 @@ def test_public_fanout_coverage_reason_code_preserves_empty_policies(
     assert provider_fact_count(forbidden_db) == 0
 
 
+def test_public_fanout_provider_failure_preserves_prior_success_sibling(
+    tmp_path: Path,
+) -> None:
+    registry = _fanout_snapshot_registry(empty_data_policy="allowed")
+    collector = _FanoutOutcomeCollector(
+        {
+            "000001.SZ": _variant_success("000001.SZ"),
+            "600000.SH": _variant_failed(),
+        }
+    )
+    db_path = tmp_path / "partial-provider-failure.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id="cn.synthetic.runner",
+        request_window={},
+        attempt_id="018f47de-0000-7000-8000-000000000099",
+        started_at="2026-07-20T08:00:00+00:00",
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("permission_denied",)
+    assert result.counts.committed == 1
+    assert len(result.receipt_ids) == 2
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT status, rows_written FROM market_ingest_runs ORDER BY started_at, run_id"
+        ).fetchall()
+        assert sorted(rows) == [("failed", 0), ("success", 1)]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM provider_dataset_rows"
+        ).fetchone()[0] == 1
+
+
 def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
     registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
     dataset = registry.resolve("cn.dataset.rt_min")
