@@ -7461,7 +7461,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -7501,6 +7501,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy:
@@ -7571,7 +7574,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -7611,6 +7614,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy:
@@ -7730,7 +7736,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -7770,6 +7776,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy:
