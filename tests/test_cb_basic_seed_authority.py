@@ -125,7 +125,7 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
         assert binding["activation_state"] == (
-            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
+            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
         )
 
     active_evidence = observations["active_evidence"]
@@ -171,8 +171,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 132
-    assert len(bindings) - active_count == 58
+    assert active_count == 133
+    assert len(bindings) - active_count == 57
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:

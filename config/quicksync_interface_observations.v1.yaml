@@ -528,6 +528,7 @@ active_evidence:
   stk_rewards: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   top10_floatholders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   top10_holders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  pledge_stat: server-evidence/ashare-wave7-pledge-stat-single-20260812T1947CST
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code
