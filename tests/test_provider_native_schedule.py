@@ -235,6 +235,33 @@ def test_resumable_planner_suppresses_only_exactly_complete_window() -> None:
     assert dict(next_plans[0].request_window) == {"period": "20260721"}
 
 
+def test_resumable_empty_batch_does_not_cover_remaining_window_batches() -> None:
+    registry = _resumable_window_registry()
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    schedule = _single_partition_schedule("daily_reference", "day")
+    histories = tuple(
+        replace(item, status="empty", cohort_status="empty")
+        for item in _v2_histories(registry, window={"period": "20260720"})
+        if item.batch_index == 0
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType({
+            (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                histories, ()
+            )
+        })
+    )
+    plans, _ = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert len(plans) == 1
+    assert dict(plans[0].request_window) == {"period": "20260720"}
+
+
 def test_resumable_no_window_preserves_legacy_periodic_cadence() -> None:
     base = _active_registry().resolve("cn.equity.security_master")
     binding = replace(
