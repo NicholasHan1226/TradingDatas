@@ -53,11 +53,13 @@ registry 声明 request template、variants、window、fanout、pagination、字
 
 `dataset_field` 参数可以声明可选的正整数 `batch_size`，未声明时默认为 `1`；compiler 将该值原样投影到通用 fanout 合同。executor 对已验证的来源值做稳定去重和有界分批，同一批的多个值作为一个逗号分隔的 provider 参数发送。该能力只描述通用请求形状，不改变 entitlement、activation、receipt 或数据完整性门禁，也不允许按 dataset 或 API 增加执行分支。
 
-绑定可选的 `resumable_fanout` v2 仅声明游标身份透传：编译后的 binding 和
-`ScheduledRun` 将其传到现有物理 `FanoutBatch`，并由每个请求的 receipt identity
-及只读 history projection 保留 `cursor_contract_version`、冻结 universe SHA、
-batch index/count 和 batch-values SHA。缺少该字段时仍使用旧 identity；此阶段不改变
-批次选择、跳过、重试或窗口行为。
+绑定可选的 `resumable_fanout` v2 由编译后的 binding 透传到现有物理
+`FanoutBatch`，每个请求的 receipt identity 及只读 history projection 保留
+`cursor_contract_version`、冻结 universe SHA、batch index/count 和 batch-values SHA。
+启用该 binding 时，通用 collector 只选择精确 identity 下的失败批次（按预算重试），
+否则选择确定性排序中的下一个未完成批次；成功或合法空批次会被跳过，同一请求窗口
+完成后返回空选择，下一适用窗口重新从 batch 0 开始。缺少该字段时仍使用旧 identity
+及旧的全 fanout 行为。
 
 `dimension_fanout` 和 `event_or_intraday_window` 可以声明 `literal_values`：这是 provider 合同中固定、有限的官方枚举（例如新闻来源），必须为非空、类型稳定且不重复的值，并由通用 executor 按声明的 `batch_size` 稳定分批。它不依赖 SQLite seed，也不能用于 `entity_fanout`。离线 HTTPS probe-plan 只取第一个声明值验证 transport 可达；所有枚举分片的真实调用、receipt 和完整性仍由运行时 cohort 决定，单值 probe 绝不构成完整性或 activation 证据。
 

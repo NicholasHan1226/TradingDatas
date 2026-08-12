@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
@@ -45,7 +46,10 @@ from storage.provider_dataset_rows import (
 )
 from storage.receipt_projection import (
     RuntimeProjectionError,
+    ValidatedReceiptHistoryEntry,
+    open_verified_read_model_snapshot,
     validated_success_receipt_ids,
+    validated_receipt_histories_by_dataset,
 )
 from storage.sqlite_authority_lock import (
     SqliteAuthorityLockError,
@@ -358,11 +362,34 @@ def _source_binding(
     return selected[0]
 
 
+def _resumable_histories(
+    db_path: Path,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+) -> tuple[ValidatedReceiptHistoryEntry, ...]:
+    """Read receipt history for one binding without making it provider state."""
+
+    try:
+        with open_verified_read_model_snapshot(db_path) as conn:
+            histories = validated_receipt_histories_by_dataset(
+                conn,
+                registry,
+                now=datetime.now(timezone.utc),
+            )
+    except (RuntimeProjectionError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
+        raise ValueError("resumable receipt authority is unavailable") from exc
+    if dataset.dataset_id in histories.failures_by_dataset:
+        raise ValueError("resumable receipt authority is invalid")
+    return histories.entries_by_dataset.get(dataset.dataset_id, ())
+
+
 def _load_completed_fanout_batches(
     db_path: Path,
     *,
     registry: DatasetRegistry,
+    dataset: DatasetDefinition | None = None,
     binding: ProviderBinding,
+    request_window: Mapping[str, str] | None = None,
 ) -> tuple[FanoutBatch, ...]:
     policy = binding.fanout
     if policy is None or policy.strategy == "none":
@@ -370,11 +397,23 @@ def _load_completed_fanout_batches(
     if policy.strategy == "literal_values":
         if policy.parameter is None or policy.batch_size is None or not policy.values:
             raise ValueError("literal fanout contract is incomplete")
-        return _stable_fanout_batches(
+        batches = _stable_fanout_batches(
             policy.values,
             parameter=policy.parameter,
             batch_size=policy.batch_size,
             resumable=binding.resumable_fanout is not None,
+        )
+        if binding.resumable_fanout is None:
+            return batches
+        if dataset is None:
+            raise ValueError("resumable fanout requires dataset identity")
+        histories = _resumable_histories(db_path, registry, dataset)
+        return _select_resumable_fanout_batches(
+            batches,
+            dataset=dataset,
+            binding=binding,
+            request_window=request_window or {},
+            histories=histories,
         )
     if (
         policy.strategy != "dataset_field"
@@ -488,7 +527,18 @@ def _load_completed_fanout_batches(
         source_order=policy.source_order,
         resumable=binding.resumable_fanout is not None,
     )
-    if not batches:
+    if binding.resumable_fanout is not None:
+        if dataset is None:
+            raise ValueError("resumable fanout requires dataset identity")
+        histories = _resumable_histories(db_path, registry, dataset)
+        batches = _select_resumable_fanout_batches(
+            batches,
+            dataset=dataset,
+            binding=binding,
+            request_window=request_window or {},
+            histories=histories,
+        )
+    if not batches and binding.resumable_fanout is None:
         raise ValueError("fanout source has no completed values")
     return batches
 
@@ -497,6 +547,100 @@ def _fanout_parameter_value(values: tuple[RequestScalar, ...]) -> RequestScalar:
     if len(values) == 1:
         return values[0]
     return ",".join(str(value) for value in values)
+
+
+def _resumable_batch_state(
+    batch: FanoutBatch,
+    *,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+    histories: Sequence[ValidatedReceiptHistoryEntry],
+) -> str:
+    """Classify one v2 batch from receipts for one exact request identity."""
+
+    if (
+        batch.cursor_contract_version != 2
+        or batch.frozen_universe_sha256 is None
+        or batch.batch_index is None
+        or batch.batch_count is None
+        or batch.batch_values_sha256 is None
+    ):
+        return "pending"
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    candidates = tuple(
+        item
+        for item in histories
+        if (
+            item.dataset_id == dataset.dataset_id
+            and item.provider == binding.provider
+            and item.config_hash == config_hash
+            and dict(item.request_window) == dict(request_window)
+            and item.cursor_contract_version == 2
+            and item.frozen_universe_sha256 == batch.frozen_universe_sha256
+            and item.batch_index == batch.batch_index
+            and item.batch_count == batch.batch_count
+            and item.batch_values_sha256 == batch.batch_values_sha256
+        )
+    )
+    variants = binding.request_variants or (MappingProxyType({}),)
+    states: list[str] = []
+    for variant in variants:
+        variant_receipts = tuple(
+            item for item in candidates if dict(item.request_variant) == dict(variant)
+        )
+        if not variant_receipts:
+            states.append("pending")
+            continue
+        latest = max(
+            variant_receipts,
+            key=lambda item: (
+                item.finished_at,
+                item.retry_index if item.retry_index is not None else -1,
+                item.physical_call_index if item.physical_call_index is not None else -1,
+                item.receipt_id,
+            ),
+        )
+        states.append("failed" if latest.status == "failed" else latest.status)
+    if any(state == "failed" for state in states):
+        return "failed"
+    if all(state in {"success", "empty"} for state in states):
+        return "complete"
+    return "pending"
+
+
+def _select_resumable_fanout_batches(
+    batches: Sequence[FanoutBatch],
+    *,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+    histories: Sequence[ValidatedReceiptHistoryEntry],
+) -> tuple[FanoutBatch, ...]:
+    """Select only failed batches or the next pending batches, deterministically."""
+
+    policy = binding.resumable_fanout
+    if policy is None:
+        return tuple(batches)
+    states = tuple(
+        _resumable_batch_state(
+            batch,
+            dataset=dataset,
+            binding=binding,
+            request_window=request_window,
+            histories=histories,
+        )
+        for batch in batches
+    )
+    failed = tuple(
+        batch for batch, state in zip(batches, states, strict=True) if state == "failed"
+    )
+    if failed:
+        return failed[: policy.max_batches_per_run]
+    pending = tuple(
+        batch for batch, state in zip(batches, states, strict=True) if state == "pending"
+    )
+    return pending[: policy.max_batches_per_run]
 
 
 def _resource_failure(
@@ -1661,7 +1805,9 @@ def collect_provider_native_dataset(
         fanout_batches = _load_completed_fanout_batches(
             db_path,
             registry=registry,
+            dataset=dataset,
             binding=binding,
+            request_window=normalized_window,
         )
     except (TypeError, ValueError):
         return write_terminal_receipt(
