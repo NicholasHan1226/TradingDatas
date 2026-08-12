@@ -834,7 +834,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_balancesheet
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -892,7 +892,7 @@ datasets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 5922
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -2853,7 +2853,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_cashflow
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -2917,7 +2917,7 @@ datasets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 8792
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -10177,7 +10177,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_express
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -10363,7 +10363,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_audit
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -10500,7 +10500,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_indicator
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -10552,7 +10552,7 @@ datasets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 5438
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
@@ -11690,7 +11690,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fina_mainbz
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -17675,7 +17675,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_income
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -17736,7 +17736,7 @@ datasets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 9832
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows

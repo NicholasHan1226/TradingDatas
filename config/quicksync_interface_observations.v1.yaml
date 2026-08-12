@@ -513,6 +513,13 @@ active_evidence:
   cb_rating: server-evidence/ashare-wave5-exact4-20260812T0618Z
   cb_share: server-evidence/ashare-wave5-exact4-20260812T0618Z
   top10_cb_holders: server-evidence/ashare-wave5-exact4-20260812T0618Z
+  balancesheet: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  cashflow: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  express: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  fina_audit: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  fina_indicator: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  fina_mainbz: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
+  income: server-evidence/ashare-wave7-financial-exact7-20260812T1815CST
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code

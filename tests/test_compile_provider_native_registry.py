@@ -1346,8 +1346,8 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 117
-    assert len(bindings) - len(active) == 73
+    assert len(active) == 124
+    assert len(bindings) - len(active) == 66
     assert wave4_exact8 <= active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
     assert "forecast" not in active_evidence
@@ -1375,8 +1375,8 @@ def test_wave5_batch_a_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 117
-    assert len(bindings) - len(active) == 73
+    assert len(active) == 124
+    assert len(bindings) - len(active) == 66
     assert batch_a <= active
     assert "top10_cb_holders" in active
     assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
@@ -1402,10 +1402,36 @@ def test_wave5_batch_b_top10_active_evidence_is_formal_and_fail_closed() -> None
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 117
-    assert len(bindings) - len(active) == 73
+    assert len(active) == 124
+    assert len(bindings) - len(active) == 66
     assert "top10_cb_holders" in active
     assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
+
+
+def test_wave7_financial_exact7_valid_empty_evidence_is_formal_and_fail_closed() -> None:
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    wave7_ref = "server-evidence/ashare-wave7-financial-exact7-20260812T1815CST"
+    wave7_exact7 = {
+        "balancesheet",
+        "cashflow",
+        "express",
+        "fina_audit",
+        "fina_indicator",
+        "fina_mainbz",
+        "income",
+    }
+    assert {api for api in wave7_exact7 if active_evidence.get(api) == wave7_ref} == wave7_exact7
+    registry = compile_provider_native_registry(_bundle(), observations_document=observations)
+    bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
+    active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
+    assert len(bindings) == 190
+    assert len(active) == 124
+    assert len(bindings) - len(active) == 66
+    assert wave7_exact7 <= active
+    assert not active & {"pledge_stat", "cyq_chips", "cyq_perf", "daily_basic", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"}
+    assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
 def test_active_evidence_remains_fail_closed_for_blocked_observation_classes() -> None:
