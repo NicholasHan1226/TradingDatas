@@ -524,3 +524,25 @@ dependency_seed_authorities:
       - cb_rating
       - cb_share
       - top10_cb_holders
+  - dataset_id: cn.equity.security_master
+    field: ts_code
+    schema_version: 2.0.0
+    receipt_id: receipt:69b0f5687e623eb4aa4929513b70033c39381b4cda025917693fbc8c09752a2d
+    data_through: '2026-08-11T10:35:04.025706+00:00'
+    dependent_api_names:
+      - balancesheet
+      - cashflow
+      - cyq_chips
+      - cyq_perf
+      - daily_basic
+      - express
+      - fina_audit
+      - fina_indicator
+      - fina_mainbz
+      - income
+      - pledge_stat
+      - rt_min_daily
+      - stk_mins
+      - stk_rewards
+      - top10_floatholders
+      - top10_holders

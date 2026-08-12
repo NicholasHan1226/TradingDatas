@@ -835,12 +835,10 @@ datasets:
     read_discriminator_value: tushare_balancesheet
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -2856,12 +2854,10 @@ datasets:
     read_discriminator_value: tushare_cashflow
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -7475,12 +7471,10 @@ datasets:
     read_discriminator_value: tushare_cyq_chips
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -7587,12 +7581,10 @@ datasets:
     read_discriminator_value: tushare_cyq_perf
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -7748,12 +7740,10 @@ datasets:
     read_discriminator_value: tushare_daily_basic
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -10188,12 +10178,10 @@ datasets:
     read_discriminator_value: tushare_express
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -10376,12 +10364,10 @@ datasets:
     read_discriminator_value: tushare_fina_audit
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -10515,12 +10501,10 @@ datasets:
     read_discriminator_value: tushare_fina_indicator
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -11707,12 +11691,10 @@ datasets:
     read_discriminator_value: tushare_fina_mainbz
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -17694,12 +17676,10 @@ datasets:
     read_discriminator_value: tushare_income
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -24758,12 +24738,10 @@ datasets:
     read_discriminator_value: tushare_pledge_stat
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -26906,12 +26884,10 @@ datasets:
     read_discriminator_value: tushare_rt_min_daily
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -31684,12 +31660,10 @@ datasets:
     read_discriminator_value: tushare_stk_mins
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -32127,12 +32101,10 @@ datasets:
     read_discriminator_value: tushare_stk_rewards
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -35142,12 +35114,10 @@ datasets:
     read_discriminator_value: tushare_top10_floatholders
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -35284,12 +35254,10 @@ datasets:
     read_discriminator_value: tushare_top10_holders
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:

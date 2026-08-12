@@ -18,6 +18,28 @@ BATCH_A_APIS = {"cb_rate", "cb_rating", "cb_share"}
 BATCH_A_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
 BATCH_B_APIS = {"top10_cb_holders"}
 BATCH_B_REF = "server-evidence/ashare-wave5-exact4-20260812T0618Z"
+SECURITY_MASTER_DEPENDENTS = {
+    "balancesheet",
+    "cashflow",
+    "cyq_chips",
+    "cyq_perf",
+    "daily_basic",
+    "express",
+    "fina_audit",
+    "fina_indicator",
+    "fina_mainbz",
+    "income",
+    "pledge_stat",
+    "rt_min_daily",
+    "stk_mins",
+    "stk_rewards",
+    "top10_floatholders",
+    "top10_holders",
+}
+SECURITY_MASTER_RECEIPT = (
+    "receipt:69b0f5687e623eb4aa4929513b70033c39381b4cda025917693fbc8c09752a2d"
+)
+SECURITY_MASTER_DATA_THROUGH = "2026-08-11T10:35:04.025706+00:00"
 
 
 def _yaml(path: Path) -> dict[str, object]:
@@ -44,7 +66,7 @@ def _bindings(registry: dict[str, object]) -> dict[str, dict[str, object]]:
     }
 
 
-def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
+def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
     observations = _yaml(OBSERVATIONS_PATH)
     authorities = observations["dependency_seed_authorities"]
     assert authorities == [
@@ -57,7 +79,15 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
             ),
             "data_through": "2026-08-11T21:22:19.352479Z",
             "dependent_api_names": sorted(TARGET_APIS),
-        }
+        },
+        {
+            "dataset_id": "cn.equity.security_master",
+            "field": "ts_code",
+            "schema_version": "2.0.0",
+            "receipt_id": SECURITY_MASTER_RECEIPT,
+            "data_through": SECURITY_MASTER_DATA_THROUGH,
+            "dependent_api_names": sorted(SECURITY_MASTER_DEPENDENTS),
+        },
     ]
 
     bindings = _bindings(_compiled(observations))
@@ -76,6 +106,14 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
         assert binding["activation_state"] == (
             "active" if api in BATCH_A_APIS | BATCH_B_APIS else "paused"
         )
+
+    for api in SECURITY_MASTER_DEPENDENTS:
+        binding = bindings[api]["provider_bindings"][0]
+        assert binding["probe_state"] == "executable"
+        assert binding["probe_block_reasons"] == []
+        assert binding["ingest_contract_state"] == "ready"
+        assert binding["ingest_contract_block_reasons"] == []
+        assert binding["activation_state"] == "paused"
 
     active_evidence = observations["active_evidence"]
     assert isinstance(active_evidence, dict)
@@ -105,7 +143,7 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
         if (
             set(contract["probe_block_reasons"])
             == {"dependency_seed_receipt_unresolved"}
-            and api not in TARGET_APIS
+            and api not in TARGET_APIS | SECURITY_MASTER_DEPENDENTS
         ):
             binding = bindings[api]["provider_bindings"][0]
             assert binding["activation_state"] == "paused"
@@ -118,6 +156,55 @@ def test_cb_basic_seed_receipt_resolves_only_exact_four_candidates() -> None:
     )
     assert active_count == 117
     assert len(bindings) - active_count == 73
+
+
+def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
+    observations = _yaml(OBSERVATIONS_PATH)
+    authorities = deepcopy(observations["dependency_seed_authorities"])
+    assert isinstance(authorities, list)
+    security_authority = authorities[1]
+    assert isinstance(security_authority, dict)
+
+    security_authority["receipt_id"] = "receipt:not-a-sha256"
+    observations["dependency_seed_authorities"] = authorities
+    with pytest.raises(ValueError, match="receipt_id is invalid"):
+        _compiled(observations)
+
+    observations = _yaml(OBSERVATIONS_PATH)
+    authorities = deepcopy(observations["dependency_seed_authorities"])
+    assert isinstance(authorities, list)
+    security_authority = authorities[1]
+    assert isinstance(security_authority, dict)
+    security_authority["data_through"] = "not-rfc3339"
+    observations["dependency_seed_authorities"] = authorities
+    with pytest.raises(ValueError, match="data_through must be RFC3339"):
+        _compiled(observations)
+
+    observations = _yaml(OBSERVATIONS_PATH)
+    authorities = deepcopy(observations["dependency_seed_authorities"])
+    assert isinstance(authorities, list)
+    security_authority = authorities[1]
+    assert isinstance(security_authority, dict)
+    security_authority["dependent_api_names"] = sorted(
+        [*security_authority["dependent_api_names"], "cb_price_chg"]
+    )
+    observations["dependency_seed_authorities"] = authorities
+    with pytest.raises(ValueError, match="ineligible API: cb_price_chg"):
+        _compiled(observations)
+
+    for key, value, message in (
+        ("field", "bond_short_name", "field does not match source dataset"),
+        ("schema_version", "1.0.0", "schema_version does not match source dataset"),
+    ):
+        observations = _yaml(OBSERVATIONS_PATH)
+        authorities = deepcopy(observations["dependency_seed_authorities"])
+        assert isinstance(authorities, list)
+        security_authority = authorities[1]
+        assert isinstance(security_authority, dict)
+        security_authority[key] = value
+        observations["dependency_seed_authorities"] = authorities
+        with pytest.raises(ValueError, match=message):
+            _compiled(observations)
 
 
 def test_cb_basic_seed_authority_rejects_ineligible_dependent() -> None:
