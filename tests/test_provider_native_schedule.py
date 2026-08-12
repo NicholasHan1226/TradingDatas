@@ -235,6 +235,31 @@ def test_resumable_planner_suppresses_only_exactly_complete_window() -> None:
     assert dict(next_plans[0].request_window) == {"period": "20260721"}
 
 
+def test_resumable_no_window_preserves_legacy_periodic_cadence() -> None:
+    base = _active_registry().resolve("cn.equity.security_master")
+    binding = replace(
+        base.provider_bindings[0],
+        fanout=FanoutPolicy(
+            strategy="literal_values", parameter="ts_code",
+            values=("000001.SZ", "000002.SZ"), batch_size=1,
+        ),
+        resumable_fanout=ResumableFanoutPolicy(),
+        request_window_policy=None,
+    )
+    dataset = replace(base, dataset_id="cn.synthetic.no_window", provider_bindings=(binding,))
+    registry = DatasetRegistry((dataset,), query_defaults=_active_registry().query_defaults)
+    histories = _v2_histories(_resumable_window_registry(), window={"period": "20260720"})
+    state = cadence_planner.PlannerState(MappingProxyType({}))
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert len(plans) == 1
+    assert not skips
+
+
 def test_resumable_planner_uses_verified_dataset_field_source_universe() -> None:
     registry = _resumable_window_registry(dataset_field=True)
     source, dataset = registry.datasets

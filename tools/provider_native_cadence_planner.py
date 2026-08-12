@@ -1229,19 +1229,6 @@ def _dataset_plans(
         return (), session_state
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
-        resumable_finished = _resumable_window_completed_at(
-            current.receipts,
-            registry=registry,
-            state=state,
-            now=now,
-            dataset=dataset,
-            binding=binding,
-            request_window={},
-        )
-        if resumable_finished is not None:
-            age = (now_utc - resumable_finished).total_seconds()
-            if age < policy.minimum_interval_seconds:
-                return (), "not_due"
         if latest is not None:
             age = (now_utc - latest.finished_at).total_seconds()
             healthy = latest.status == "empty" or any(
