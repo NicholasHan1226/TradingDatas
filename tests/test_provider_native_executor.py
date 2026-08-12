@@ -216,6 +216,54 @@ def test_fanout_stable_hash_order_is_bounded_without_code_order_bias() -> None:
     )
 
 
+def test_resumable_fanout_batch_identity_is_deterministic_and_legacy_is_unchanged() -> None:
+    values = ("600000.SH", "000001.SZ", "601899.SH")
+    first = _stable_fanout_batches(
+        values, parameter="ts_code", batch_size=2, resumable=True
+    )
+    second = _stable_fanout_batches(
+        tuple(reversed(values)), parameter="ts_code", batch_size=2, resumable=True
+    )
+    assert first == second
+    assert [(item.batch_index, item.batch_count) for item in first] == [(0, 2), (1, 2)]
+    assert all(item.cursor_contract_version == 2 for item in first)
+    assert _stable_fanout_batches(values, parameter="ts_code", batch_size=2) == (
+        FanoutBatch(parameter="ts_code", values=("000001.SZ", "600000.SH")),
+        FanoutBatch(parameter="ts_code", values=("601899.SH",)),
+    )
+
+
+def test_executor_passes_complete_cursor_identity_to_each_physical_call() -> None:
+    batch = FanoutBatch(
+        parameter="ts_code",
+        values=("000001.SZ",),
+        cursor_contract_version=2,
+        frozen_universe_sha256="a" * 64,
+        batch_index=0,
+        batch_count=1,
+        batch_values_sha256="b" * 64,
+    )
+    # Exercise the physical-call path directly with the v2 batch identity.
+    _, params = _resolved_request(
+        _binding(), {"trade_date": "20260720"},
+        request_variant={"exchange": "SZSE", "limit": 100},
+    )
+    physical = _execute_provider_requests(
+        collector=_SequenceCollector([_success({"ts_code": "000001.SZ"})]),
+        binding=_binding(),
+        base_params=params,
+        request_variant={"exchange": "SZSE", "limit": 100},
+        fanout_batches=(batch,),
+        requested_fields=None,
+        scan_budget=SensitiveScanBudget(max_depth=16, max_nodes=10_000),
+        retry=RetrySettings(),
+        retry_empty=False,
+        sleep=lambda _seconds: None,
+    )
+    assert physical.calls[0].identity.cursor_contract_version == 2
+    assert physical.calls[0].identity.frozen_universe_sha256 == "a" * 64
+
+
 def test_executor_sends_one_fanout_batch_as_one_comma_parameter() -> None:
     codes = tuple(f"0000{index:02d}.SZ" for index in range(1, 11))
     binding = _binding(

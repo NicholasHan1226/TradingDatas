@@ -944,6 +944,61 @@ def test_asof_evidence_does_not_treat_collection_time_backfill_as_historical_pit
     assert current.projection.observed_at == "2026-07-20T00:01:00+00:00"
 
 
+def test_projector_round_trips_complete_cursor_v2_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    identity = ProviderRequestIdentity(
+        request_variant={}, fanout_parameter="ts_code",
+        fanout_values=("000001.SZ",), page_offset=None, page_index=0,
+        cursor_contract_version=2, frozen_universe_sha256="a" * 64,
+        batch_index=0, batch_count=2, batch_values_sha256="b" * 64,
+    )
+    receipt_id = _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="cursor-roundtrip",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00", request_identity=identity,
+    )
+    base = load_dataset_registry()
+    histories = projection_module.validated_receipt_histories_by_dataset(
+        conn, DatasetRegistry((_dataset(),), query_defaults=base.query_defaults),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+    entry = histories.entries_by_dataset["cn.equity.daily"][0]
+    assert entry.receipt_id == receipt_id
+    assert entry.cursor_contract_version == 2
+    assert entry.frozen_universe_sha256 == "a" * 64
+    assert (entry.batch_index, entry.batch_count) == (0, 2)
+    assert entry.batch_values_sha256 == "b" * 64
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"cursor_contract_version": 2},
+        {
+            "cursor_contract_version": 1,
+            "frozen_universe_sha256": "a" * 64,
+            "batch_index": 0,
+            "batch_count": 1,
+            "batch_values_sha256": "b" * 64,
+        },
+    ],
+)
+def test_projector_rejects_incomplete_or_malformed_cursor_identity(extra) -> None:
+    raw = {
+        "request_variant": {},
+        "fanout_parameter": "ts_code",
+        "fanout_values": ["000001.SZ"],
+        "page_offset": None,
+        "page_index": 0,
+    }
+    raw.update(extra)
+    with pytest.raises(ValueError, match="receipt_request_identity_invalid"):
+        projection_module._validate_request_identity({"request_identity": raw})
+
+
 def test_projector_binds_complete_singular_provider_request_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

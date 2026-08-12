@@ -125,6 +125,7 @@ _CONTRACT_KEYS = frozenset(
         "pagination",
         "request_window_policy",
         "response_completeness",
+        "resumable_fanout",
         "requested_fields",
         "budgets",
         "reviewed_type_overrides",
@@ -137,6 +138,7 @@ _CONTRACT_KEYS = frozenset(
 _CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {
     "request_window_policy",
     "known_future_horizon_days",
+    "resumable_fanout",
 }
 _FIELD_KEYS = frozenset(
     {
@@ -2144,6 +2146,21 @@ def _pagination(raw: object, label: str) -> dict[str, Any]:
     }
 
 
+def _resumable_fanout(raw: object, label: str) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    value = _mapping(raw, label)
+    _reject_keys(value, frozenset({"cursor_contract_version", "max_batches_per_run"}), label)
+    if value.get("cursor_contract_version") != 2:
+        raise ValueError(f"{label}.cursor_contract_version must be 2")
+    return {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": _required_positive_int(
+            value.get("max_batches_per_run"), f"{label}.max_batches_per_run"
+        ),
+    }
+
+
 def _window_policy(
     raw: object, template: Mapping[str, str], label: str
 ) -> dict[str, Any] | None:
@@ -2403,6 +2420,11 @@ def _normalized_contract(
         value["request_variants"], template, f"{label}.request_variants"
     )
     fanout = _fanout(value["fanout"], request_shape, f"{label}.fanout")
+    resumable_fanout = _resumable_fanout(
+        value.get("resumable_fanout"), f"{label}.resumable_fanout"
+    )
+    if resumable_fanout is not None and fanout["strategy"] == "none":
+        raise ValueError(f"{label}.resumable_fanout requires a non-empty fanout")
     pagination = _pagination(value["pagination"], f"{label}.pagination")
     window = _window_policy(
         value.get("request_window_policy"), template, f"{label}.request_window_policy"
@@ -2657,6 +2679,7 @@ def _normalized_contract(
         "request_template": template,
         "request_variants": variants,
         "fanout": fanout,
+        **({"resumable_fanout": resumable_fanout} if resumable_fanout is not None else {}),
         "pagination": pagination,
         "request_window_policy": window,
         "response_completeness": completeness,
@@ -2989,6 +3012,7 @@ def _compiled_dataset(
         "request_template": deepcopy(contract["request_template"]),
         "request_variants": deepcopy(contract["request_variants"]),
         "fanout": deepcopy(contract["fanout"]),
+        **({"resumable_fanout": deepcopy(contract["resumable_fanout"])} if contract.get("resumable_fanout") is not None else {}),
         "pagination": deepcopy(contract["pagination"]),
         "request_window_policy": deepcopy(contract["request_window_policy"]),
         "response_completeness": deepcopy(contract["response_completeness"]),

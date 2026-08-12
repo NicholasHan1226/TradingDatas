@@ -103,6 +103,11 @@ class FanoutBatch:
 
     parameter: str | None
     values: tuple[RequestScalar, ...]
+    cursor_contract_version: int | None = None
+    frozen_universe_sha256: str | None = None
+    batch_index: int | None = None
+    batch_count: int | None = None
+    batch_values_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.parameter is None:
@@ -262,6 +267,7 @@ def _stable_fanout_batches(
     batch_size: int,
     max_values: int | None = None,
     source_order: str = "lexical",
+    resumable: bool = False,
 ) -> tuple[FanoutBatch, ...]:
     """Deduplicate typed source values and produce stable bounded batches."""
 
@@ -307,9 +313,28 @@ def _stable_fanout_batches(
         if len(ordered) < max_values:
             raise ValueError("fanout source has fewer values than max_values")
         ordered = ordered[:max_values]
+    if not resumable:
+        return tuple(
+            FanoutBatch(parameter=parameter, values=ordered[index : index + batch_size])
+            for index in range(0, len(ordered), batch_size)
+        )
+    universe_sha = hashlib.sha256(
+        json.dumps(list(ordered), ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    batches = tuple(ordered[index : index + batch_size] for index in range(0, len(ordered), batch_size))
     return tuple(
-        FanoutBatch(parameter=parameter, values=ordered[index : index + batch_size])
-        for index in range(0, len(ordered), batch_size)
+        FanoutBatch(
+            parameter=parameter,
+            values=values,
+            cursor_contract_version=2,
+            frozen_universe_sha256=universe_sha,
+            batch_index=index,
+            batch_count=len(batches),
+            batch_values_sha256=hashlib.sha256(
+                json.dumps(list(values), ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            ).hexdigest(),
+        )
+        for index, values in enumerate(batches)
     )
 
 
@@ -349,6 +374,7 @@ def _load_completed_fanout_batches(
             policy.values,
             parameter=policy.parameter,
             batch_size=policy.batch_size,
+            resumable=binding.resumable_fanout is not None,
         )
     if (
         policy.strategy != "dataset_field"
@@ -460,6 +486,7 @@ def _load_completed_fanout_batches(
         batch_size=policy.batch_size,
         max_values=policy.max_values,
         source_order=policy.source_order,
+        resumable=binding.resumable_fanout is not None,
     )
     if not batches:
         raise ValueError("fanout source has no completed values")
@@ -516,6 +543,11 @@ def _collect_with_retry(
             fanout_values=identity.fanout_values,
             page_offset=identity.page_offset,
             page_index=identity.page_index,
+            cursor_contract_version=identity.cursor_contract_version,
+            frozen_universe_sha256=identity.frozen_universe_sha256,
+            batch_index=identity.batch_index,
+            batch_count=identity.batch_count,
+            batch_values_sha256=identity.batch_values_sha256,
         )
         calls.append(
             ProviderCall(
@@ -604,6 +636,11 @@ def _execute_provider_requests(
                 fanout_values=batch.values,
                 page_offset=page_offset,
                 page_index=page_index,
+                cursor_contract_version=batch.cursor_contract_version,
+                frozen_universe_sha256=batch.frozen_universe_sha256,
+                batch_index=batch.batch_index,
+                batch_count=batch.batch_count,
+                batch_values_sha256=batch.batch_values_sha256,
             )
             attempt_calls = _collect_with_retry(
                 collector=collector,

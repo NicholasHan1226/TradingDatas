@@ -364,6 +364,11 @@ class ProviderRequestIdentity:
     fanout_values: tuple[ProviderRequestScalar, ...]
     page_offset: int | None
     page_index: int
+    cursor_contract_version: int | None = None
+    frozen_universe_sha256: str | None = None
+    batch_index: int | None = None
+    batch_count: int | None = None
+    batch_values_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_variant, Mapping):
@@ -410,6 +415,31 @@ class ProviderRequestIdentity:
         if self.page_offset is not None and (type(self.page_offset) is not int):
             raise TypeError("page_offset must be an integer or None")
         _require_nonnegative_int(self.page_index, "page_index")
+        cursor_values = (
+            self.cursor_contract_version,
+            self.frozen_universe_sha256,
+            self.batch_index,
+            self.batch_count,
+            self.batch_values_sha256,
+        )
+        if all(value is None for value in cursor_values):
+            return
+        if self.cursor_contract_version != 2:
+            raise ValueError("cursor_contract_version must be 2")
+        if (
+            type(self.frozen_universe_sha256) is not str
+            or _HASH_PATTERN.fullmatch(self.frozen_universe_sha256) is None
+            or type(self.batch_values_sha256) is not str
+            or _HASH_PATTERN.fullmatch(self.batch_values_sha256) is None
+        ):
+            raise ValueError("cursor hashes must be SHA-256")
+        _require_nonnegative_int(self.batch_index, "batch_index")
+        if type(self.batch_count) is not int or self.batch_count <= 0:
+            raise ValueError("batch_count must be positive")
+        if self.batch_index >= self.batch_count:
+            raise ValueError("batch_index must be less than batch_count")
+        if any(value is None for value in cursor_values):
+            raise ValueError("cursor identity is incomplete")
 
     @classmethod
     def trivial(cls) -> ProviderRequestIdentity:
@@ -426,13 +456,24 @@ class ProviderRequestIdentity:
     def canonical_payload(self) -> dict[str, object]:
         """Return the JSON-compatible identity bound into receipt evidence."""
 
-        return {
+        payload = {
             "fanout_parameter": self.fanout_parameter,
             "fanout_values": list(self.fanout_values),
             "page_index": self.page_index,
             "page_offset": self.page_offset,
             "request_variant": dict(self.request_variant),
         }
+        if self.cursor_contract_version is not None:
+            payload.update(
+                {
+                    "batch_count": self.batch_count,
+                    "batch_index": self.batch_index,
+                    "batch_values_sha256": self.batch_values_sha256,
+                    "cursor_contract_version": self.cursor_contract_version,
+                    "frozen_universe_sha256": self.frozen_universe_sha256,
+                }
+            )
+        return payload
 
 
 @dataclass(frozen=True)

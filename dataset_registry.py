@@ -146,6 +146,7 @@ _BINDING_KEYS = frozenset(
         "max_payload_bytes_per_row",
         "max_batch_bytes",
         "max_nesting_depth",
+        "resumable_fanout",
     }
 )
 _REQUEST_WINDOW_POLICY_KEYS = frozenset(
@@ -193,6 +194,7 @@ _RESPONSE_COMPLETENESS_KEYS = frozenset(
         "reject_at_row_limit",
     }
 )
+_RESUMABLE_FANOUT_KEYS = frozenset({"cursor_contract_version", "max_batches_per_run"})
 _BINDING_REQUIRED_KEYS = frozenset(
     {
         "provider",
@@ -416,6 +418,14 @@ class FanoutPolicy:
 
 
 @dataclass(frozen=True)
+class ResumableFanoutPolicy:
+    """Optional v2 cursor identity declaration; selection is a later stage."""
+
+    cursor_contract_version: int = 2
+    max_batches_per_run: int = 1
+
+
+@dataclass(frozen=True)
 class PaginationPolicy:
     """Provider-neutral upstream pagination declaration."""
 
@@ -467,6 +477,7 @@ class ProviderBinding:
     max_payload_bytes_per_row: int | None = None
     max_batch_bytes: int | None = None
     max_nesting_depth: int | None = None
+    resumable_fanout: ResumableFanoutPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -1199,6 +1210,21 @@ def _pagination_policy(raw: Any, *, path: str) -> PaginationPolicy:
     )
 
 
+def _resumable_fanout_policy(raw: Any, *, path: str) -> ResumableFanoutPolicy | None:
+    if raw is None:
+        return None
+    value = _mapping(raw, path)
+    _reject_unknown_keys(value, _RESUMABLE_FANOUT_KEYS, path, required=_RESUMABLE_FANOUT_KEYS)
+    if value["cursor_contract_version"] != 2:
+        raise ValueError(f"{path}.cursor_contract_version must be 2")
+    return ResumableFanoutPolicy(
+        cursor_contract_version=2,
+        max_batches_per_run=_positive_int(
+            value["max_batches_per_run"], f"{path}.max_batches_per_run"
+        ),
+    )
+
+
 def _request_window_policy(
     raw: Any,
     *,
@@ -1625,6 +1651,11 @@ def _load_binding(
         if "fanout" not in value
         else _fanout_policy(value["fanout"], path=f"{path}.fanout")
     )
+    resumable_fanout = _resumable_fanout_policy(
+        value.get("resumable_fanout"), path=f"{path}.resumable_fanout"
+    )
+    if resumable_fanout is not None and (fanout is None or fanout.strategy == "none"):
+        raise ValueError(f"{path}.resumable_fanout requires a non-empty fanout")
     pagination = (
         None
         if "pagination" not in value
@@ -1709,6 +1740,7 @@ def _load_binding(
         request_template=request_template,
         request_variants=request_variants,
         fanout=fanout,
+        resumable_fanout=resumable_fanout,
         pagination=pagination,
         request_window_policy=request_window_policy,
         response_completeness=response_completeness,

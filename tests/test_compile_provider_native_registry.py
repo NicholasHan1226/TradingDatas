@@ -64,6 +64,34 @@ def _trade_calendar(bundle: dict[str, object]) -> dict[str, object]:
     return contract
 
 
+def test_optional_resumable_fanout_projects_binding_identity_without_activation_behavior() -> None:
+    bundle = _bundle()
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    contract = next(
+        item
+        for item in contracts
+        if isinstance(item, dict)
+        and isinstance(item.get("fanout"), dict)
+        and item["fanout"].get("strategy") == "literal_values"
+    )
+    contract["resumable_fanout"] = {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    compiled = compile_provider_native_registry(
+        bundle, observations_document=_observations()
+    )
+    projected = next(
+        item for item in compiled["datasets"] if item["dataset_id"] == contract["dataset_id"]
+    )
+    binding = projected["provider_bindings"][0]
+    assert binding["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+
 def test_disclosure_date_observation_projects_reviewed_identity_without_missing_field() -> (
     None
 ):
