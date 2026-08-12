@@ -523,6 +523,11 @@ active_evidence:
   cyq_chips: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
   cyq_perf: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
   daily_basic: server-evidence/ashare-wave7-tradedate-exact3-20260812T1851CST
+  rt_min_daily: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  stk_mins: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  stk_rewards: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  top10_floatholders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  top10_holders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
 dependency_seed_authorities:
   - dataset_id: cn.dataset.cb_basic
     field: ts_code
