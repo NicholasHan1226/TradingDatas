@@ -289,6 +289,11 @@ class ValidatedReceiptHistoryEntry:
     request_variant: Mapping[str, object]
     execution_id: str
     config_hash: str | None
+    cursor_contract_version: int | None = None
+    frozen_universe_sha256: str | None = None
+    batch_index: int | None = None
+    batch_count: int | None = None
+    batch_values_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -346,6 +351,11 @@ class _Receipt:
     request_variant: Mapping[str, object]
     request_identity_context: str
     execution_context: str
+    cursor_contract_version: int | None
+    frozen_universe_sha256: str | None
+    batch_index: int | None
+    batch_count: int | None
+    batch_values_sha256: str | None
 
 
 @dataclass(frozen=True)
@@ -530,8 +540,19 @@ def _validate_request_identity(
         "page_offset",
         "request_variant",
     }
-    if type(raw_identity) is not dict or set(raw_identity) != expected_keys:
+    if type(raw_identity) is not dict or not expected_keys.issubset(raw_identity):
         raise ValueError("receipt_request_identity_invalid")
+    cursor_keys = {
+        "batch_count",
+        "batch_index",
+        "batch_values_sha256",
+        "cursor_contract_version",
+        "frozen_universe_sha256",
+    }
+    extra = set(raw_identity) - expected_keys
+    if extra and extra != cursor_keys:
+        raise ValueError("receipt_request_identity_invalid")
+    cursor = {key: raw_identity.get(key) for key in cursor_keys} if extra else {}
     try:
         identity = ProviderRequestIdentity(
             request_variant=raw_identity["request_variant"],
@@ -539,6 +560,7 @@ def _validate_request_identity(
             fanout_values=raw_identity["fanout_values"],
             page_offset=raw_identity["page_offset"],
             page_index=raw_identity["page_index"],
+            **cursor,
         )
     except (TypeError, ValueError):
         raise ValueError("receipt_request_identity_invalid") from None
@@ -1043,6 +1065,11 @@ def _validate_receipt_row(
         ),
         request_identity_context=request_identity_context,
         execution_context=execution_context,
+        cursor_contract_version=context.request_identity.cursor_contract_version,
+        frozen_universe_sha256=context.request_identity.frozen_universe_sha256,
+        batch_index=context.request_identity.batch_index,
+        batch_count=context.request_identity.batch_count,
+        batch_values_sha256=context.request_identity.batch_values_sha256,
     )
 
 
@@ -1942,6 +1969,11 @@ def validated_receipt_histories_by_dataset(
                 request_variant=receipt.request_variant,
                 execution_id=receipt.execution_id,
                 config_hash=receipt.config_hash,
+                cursor_contract_version=receipt.cursor_contract_version,
+                frozen_universe_sha256=receipt.frozen_universe_sha256,
+                batch_index=receipt.batch_index,
+                batch_count=receipt.batch_count,
+                batch_values_sha256=receipt.batch_values_sha256,
             )
             for receipt in receipts
         )

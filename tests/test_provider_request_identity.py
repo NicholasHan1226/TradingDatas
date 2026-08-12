@@ -177,3 +177,39 @@ def test_trivial_provider_request_identity_is_explicit_and_canonical() -> None:
         "page_offset": None,
         "request_variant": {},
     }
+
+
+def test_cursor_v2_identity_is_complete_and_canonical():
+    identity = ProviderRequestIdentity(
+        request_variant={"listed": True},
+        fanout_parameter="ts_code",
+        fanout_values=("000001.SZ",),
+        page_offset=None,
+        page_index=0,
+        cursor_contract_version=2,
+        frozen_universe_sha256="a" * 64,
+        batch_index=1,
+        batch_count=3,
+        batch_values_sha256="b" * 64,
+    )
+    payload = identity.canonical_payload()
+    assert payload["cursor_contract_version"] == 2
+    assert payload["batch_index"] == 1
+    assert payload["batch_count"] == 3
+    assert ProviderRequestIdentity(**payload).canonical_payload() == payload
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"cursor_contract_version": 2},
+    {"cursor_contract_version": 1, "frozen_universe_sha256": "a" * 64, "batch_index": 0, "batch_count": 1, "batch_values_sha256": "b" * 64},
+    {"cursor_contract_version": 2, "frozen_universe_sha256": "a" * 63, "batch_index": 0, "batch_count": 1, "batch_values_sha256": "b" * 64},
+    {"cursor_contract_version": 2, "frozen_universe_sha256": "a" * 64, "batch_index": 2, "batch_count": 2, "batch_values_sha256": "b" * 64},
+])
+def test_cursor_v2_identity_rejects_incomplete_or_malformed(kwargs):
+    values = {
+        "request_variant": {}, "fanout_parameter": "ts_code",
+        "fanout_values": ("000001.SZ",), "page_offset": None, "page_index": 0,
+    }
+    values.update(kwargs)
+    with pytest.raises((TypeError, ValueError)):
+        ProviderRequestIdentity(**values)

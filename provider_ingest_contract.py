@@ -71,6 +71,14 @@ def provider_ingest_config_hash(
                 "batch_size": binding.fanout.batch_size,
             }
         ),
+        **(
+            {"resumable_fanout": {
+                "cursor_contract_version": binding.resumable_fanout.cursor_contract_version,
+                "max_batches_per_run": binding.resumable_fanout.max_batches_per_run,
+            }}
+            if binding.resumable_fanout is not None
+            else {}
+        ),
         "pagination": (
             None
             if binding.pagination is None

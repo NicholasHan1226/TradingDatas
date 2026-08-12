@@ -19,6 +19,7 @@ from dataset_registry import (
     DatasetDefinition,
     DatasetRegistry,
     ProviderBinding,
+    ResumableFanoutPolicy,
     RequestScalar,
     encode_request_window_value,
     normalize_request_window,
@@ -165,6 +166,7 @@ class ScheduledRun:
     rate_budget_class: str = "standard"
     retry: RetryPolicy = RetryPolicy(1, 0, 0, 0)
     retry_jitter_seconds: int = 0
+    resumable_fanout: ResumableFanoutPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -1020,6 +1022,7 @@ def _runs(
             rate_budget_class=policy.rate_budget_class,
             retry=policy.retry,
             retry_jitter_seconds=jitter,
+            resumable_fanout=binding.resumable_fanout,
         ),
     )
 
