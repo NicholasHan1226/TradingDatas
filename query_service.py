@@ -47,6 +47,7 @@ from storage.receipt_projection import (
     RuntimeProjectionError,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
+    validated_receipt_histories_by_dataset,
     validated_row_receipt_proofs,
 )
 
@@ -1588,6 +1589,89 @@ def _exact_request_partition_evidence(
     return next(iter(request_keys)), values[0]
 
 
+def _exact_session_minute_slot(
+    dataset: DatasetDefinition,
+    request: QueryRequest,
+    *,
+    now: datetime,
+) -> datetime | None:
+    """Resolve an explicit historical slot for a no-window minute dataset."""
+
+    if not (
+        dataset.cadence_class == "session_minute"
+        and dataset.partition_field is None
+        and dataset.as_of_field is None
+        and dataset.range_field is None
+    ):
+        return None
+    clause = request.filters.get("time")
+    if not isinstance(clause, MappingProxyType) or tuple(clause) != ("eq",):
+        return None
+    active_bindings = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    if (
+        not any(field.name == "time" for field in dataset.fields)
+        or not active_bindings
+        or any(
+            binding.response_completeness is None
+            or binding.response_completeness.snapshot_field != "time"
+            for binding in active_bindings
+        )
+    ):
+        raise QueryServiceUnavailable("query service is unavailable")
+    try:
+        normalized = _normalize_data_through(clause["eq"], dataset)
+        slot = datetime.fromisoformat(normalized)
+    except (TypeError, ValueError, QueryServiceUnavailable):
+        raise QueryServiceUnavailable("query service is unavailable") from None
+    if slot.tzinfo is None or slot.utcoffset() is None or slot > now:
+        raise QueryServiceUnavailable("query service is unavailable")
+    return slot
+
+
+def _exact_session_minute_receipt_ids(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    slot: datetime,
+    *,
+    now: datetime,
+) -> tuple[str, ...]:
+    histories = validated_receipt_histories_by_dataset(conn, registry, now=now)
+    if dataset.dataset_id in histories.failures_by_dataset:
+        raise RuntimeProjectionError("receipt history authority is invalid")
+    slot_value = slot.isoformat(
+        timespec="microseconds" if slot.microsecond else "seconds"
+    )
+    entries = [
+        entry
+        for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
+        if entry.status == "success"
+        and entry.cohort_status == "success"
+        and entry.request_window == {}
+        and entry.data_through is not None
+        and _normalize_data_through(entry.data_through, dataset) == slot_value
+        and entry.finished_at <= now
+    ]
+    executions = {entry.execution_id for entry in entries}
+    providers = {entry.provider for entry in entries}
+    configs = {entry.config_hash for entry in entries}
+    data_throughs = {
+        _normalize_data_through(entry.data_through, dataset) for entry in entries
+    }
+    if (
+        len(executions) != 1
+        or len(providers) != 1
+        or len(configs) != 1
+        or data_throughs != {slot_value}
+    ):
+        return ()
+    return tuple(sorted(entry.receipt_id for entry in entries))
+
+
 def _execution_query_hash(
     request: QueryRequest,
     options: QueryExecutionOptions,
@@ -2185,6 +2269,11 @@ class QueryService:
                     dataset,
                     validated_request,
                 )
+                exact_session_minute_slot = _exact_session_minute_slot(
+                    dataset,
+                    validated_request,
+                    now=validated_now,
+                )
                 if (
                     prepared.as_of.resolved_as_of is not None
                     and dataset.partition_field is None
@@ -2212,6 +2301,17 @@ class QueryService:
                     receipt_collection_window=receipt_collection_window,
                     request_partition=request_partition,
                 )
+                exact_session_minute_receipt_ids = None
+                if exact_session_minute_slot is not None:
+                    exact_session_minute_receipt_ids = _exact_session_minute_receipt_ids(
+                        conn,
+                        self._registry,
+                        dataset,
+                        exact_session_minute_slot,
+                        now=validated_now,
+                    )
+                    if not exact_session_minute_receipt_ids:
+                        raise QueryServiceUnavailable("query service is unavailable")
                 current_partition_receipt_ids: tuple[str, ...] | None = None
                 if (
                     request_partition is not None
@@ -2222,6 +2322,8 @@ class QueryService:
                         raise QueryServiceUnavailable(
                             "query service is unavailable"
                         )
+                if exact_session_minute_receipt_ids is not None:
+                    current_partition_receipt_ids = exact_session_minute_receipt_ids
                 provider_native_dataset_degraded = (
                     _provider_native_dataset_quality_degraded(
                         conn,
@@ -2349,6 +2451,10 @@ class QueryService:
                         receipt_collection_window is not None
                     ),
                 )
+                if exact_session_minute_receipt_ids is not None:
+                    # Keep the latest runtime state in metadata, but scope row
+                    # selection to the independently validated historical slot.
+                    allow_rows = True
                 rows: list[tuple[object, ...]] = []
                 if allow_rows and not (
                     validated_options.latest_partition and resolved_partition is None
