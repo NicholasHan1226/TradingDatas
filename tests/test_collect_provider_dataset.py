@@ -2221,7 +2221,9 @@ def test_response_completeness_failure_writes_only_failed_receipt(
             "SELECT status, notes FROM market_ingest_runs"
         ).fetchall()
         assert [row[0] for row in receipt_rows] == ["failed"]
-        assert json.loads(receipt_rows[0][1])["data_through"] is None
+        receipt = json.loads(receipt_rows[0][1])
+        assert receipt["data_through"] is None
+        assert receipt["errors"] == ["validation_failed", "response_completeness"]
 
 
 def test_snapshot_accepts_unique_primary_keys_below_provider_cap(
@@ -3345,6 +3347,65 @@ def test_provider_admission_failure_uses_validation_exit_code(
         )
 
 
+def test_validation_receipt_persists_allowlisted_predicate_without_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _registry()
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        requested_fields=("ts_code",),
+    )
+    registry = DatasetRegistry((replace(dataset, provider_bindings=(binding,)),))
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=(({"ts_code": "600000.SH"}),),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+        response_fields=(),
+    )
+    db_path = tmp_path / "validation-predicate.sqlite"
+    _database(db_path)
+    monkeypatch.setattr(
+        ingest_receipts,
+        "_utc_now",
+        lambda: "2026-07-17T01:01:00+00:00",
+    )
+    monkeypatch.setattr(
+        native_ingest,
+        "_validate_response_field_coverage",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            native_ingest.ProviderValidationError(
+                "Authorization: Bearer SECRET_TOKEN response-body-marker",
+                predicate=ingest_receipts.VALIDATION_RESPONSE_FIELD_COVERAGE,
+            )
+        ),
+    )
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=_FakeCollector(outcome),
+        dataset_id=dataset.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="validation-predicate",
+        started_at="2026-07-17T01:00:00+00:00",
+    )
+    assert result.status == "failed"
+    with sqlite3.connect(db_path) as conn:
+        notes_text = conn.execute("SELECT notes FROM market_ingest_runs").fetchone()[0]
+    notes = json.loads(notes_text)
+    assert notes["errors"] == ["validation_failed", "response_field_coverage"]
+    assert all(
+        forbidden not in notes_text
+        for forbidden in (
+            "Authorization",
+            "Bearer",
+            "SECRET_TOKEN",
+            "response-body-marker",
+        )
+    )
 def test_paused_dataset_is_rejected_before_provider_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

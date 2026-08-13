@@ -25,6 +25,8 @@ from storage.ingest_receipts import (
     RECEIPT_SCHEMA_VERSION,
     UNMAPPED_TUSHARE_ADAPTER_VERSION,
     VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+    VALIDATION_RESPONSE_FIELD_COVERAGE,
+    VALIDATION_RESPONSE_COMPLETENESS,
     IngestContext,
     IngestCounts,
     ProviderRequestIdentity,
@@ -118,6 +120,8 @@ _ERROR_CODES = frozenset(
         "unmapped_dataset",
         "validation_failed",
         VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+        VALIDATION_RESPONSE_FIELD_COVERAGE,
+        VALIDATION_RESPONSE_COMPLETENESS,
     }
 )
 _MAX_INGEST_RUN_SCAN_ROWS = 100_000
