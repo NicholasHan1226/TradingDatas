@@ -47,6 +47,7 @@ from storage.receipt_projection import (
     RuntimeProjectionError,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
+    validated_row_receipt_proofs,
 )
 
 
@@ -187,6 +188,7 @@ def _revalidate_request(request: object) -> QueryRequest:
         order = request.order
         limit = request.limit
         cursor = request.cursor
+        include_receipt_proofs = request.include_receipt_proofs
     except AttributeError:
         raise QueryValidationError("request is invalid") from None
     if (
@@ -198,6 +200,8 @@ def _revalidate_request(request: object) -> QueryRequest:
         raise QueryValidationError("dataset_id must be a canonical dataset identifier")
     if type(schema_major) is not int or schema_major <= 0:
         raise QueryValidationError("schema_major must be a positive integer")
+    if type(include_receipt_proofs) is not bool:
+        raise QueryValidationError("include_receipt_proofs must be a boolean")
 
     if type(fields) is not tuple:
         raise QueryValidationError("fields must be a tuple")
@@ -322,6 +326,7 @@ def _revalidate_request(request: object) -> QueryRequest:
     object.__setattr__(snapshot, "order", owned_order)
     object.__setattr__(snapshot, "limit", limit)
     object.__setattr__(snapshot, "cursor", cursor)
+    object.__setattr__(snapshot, "include_receipt_proofs", include_receipt_proofs)
     return snapshot
 
 
@@ -792,6 +797,115 @@ def _canonical_json_bytes(value: object) -> bytes:
 
 def _digest(value: object) -> str:
     return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _row_receipt_proof_semantic_key(
+    dataset: DatasetDefinition,
+    provider: str,
+    schema_major: int,
+    row_key: str,
+) -> str:
+    """Return a deterministic, payload-free identity for one read-model row."""
+
+    return _digest(
+        {
+            "dataset_id": dataset.dataset_id,
+            "provider": provider,
+            "schema_major": schema_major,
+            "row_key": row_key,
+        }
+    )
+
+
+def _row_receipt_proof_metadata(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    rows: tuple[tuple[object, ...], ...],
+    *,
+    now: datetime,
+) -> list[dict[str, object]]:
+    """Build opt-in per-row proof metadata from B1's validated receipt join."""
+
+    if not rows:
+        return []
+    receipt_ids = tuple(dict.fromkeys(row[5] for row in rows))
+    if any(type(receipt_id) is not str or not receipt_id for receipt_id in receipt_ids):
+        raise QueryServiceUnavailable("query service is unavailable")
+    proofs = validated_row_receipt_proofs(
+        conn,
+        registry,
+        dataset,
+        receipt_ids,
+        now=now,
+    )
+    cohort_identity: tuple[object, ...] | None = None
+    output: list[dict[str, object]] = []
+    for row in rows:
+        provider = row[1]
+        row_key = row[2]
+        receipt_id = row[5]
+        if (
+            type(provider) is not str
+            or type(row_key) is not str
+            or type(receipt_id) is not str
+        ):
+            raise QueryServiceUnavailable("query service is unavailable")
+        proof = proofs.get(receipt_id)
+        if (
+            proof is None
+            or proof.dataset_id != dataset.dataset_id
+            or proof.provider != provider
+            or proof.receipt_id != receipt_id
+            or proof.status != "success"
+            or not proof.request_window
+            or proof.data_through is None
+            or proof.finished_at.tzinfo is None
+            or proof.finished_at.utcoffset() is None
+        ):
+            raise QueryServiceUnavailable("query service is unavailable")
+        payload = _parse_provider_native_payload(row[0])
+        if dataset.partition_field is not None:
+            partition_value = payload.get(dataset.partition_field)
+            window_value = proof.request_window.get(dataset.partition_field)
+            if window_value is not None and partition_value != window_value:
+                raise QueryServiceUnavailable("query service is unavailable")
+        identity = (
+            proof.execution_id,
+            tuple(sorted(proof.request_window.items())),
+            proof.config_hash,
+            proof.data_through,
+        )
+        if cohort_identity is None:
+            cohort_identity = identity
+        elif identity != cohort_identity:
+            raise QueryServiceUnavailable("query service is unavailable")
+        row_identity_sha256 = _row_receipt_proof_semantic_key(
+            dataset,
+            provider,
+            _schema_major(dataset),
+            row_key,
+        )
+        if any(item["row_identity_sha256"] == row_identity_sha256 for item in output):
+            raise QueryServiceUnavailable("query service is unavailable")
+        output.append({
+            "page_index": len(output),
+            "row_identity_sha256": row_identity_sha256,
+            "dataset_id": proof.dataset_id,
+            "provider": proof.provider,
+            "source": proof.provider,
+            "receipt_id": proof.receipt_id,
+            "status": proof.status,
+            "execution_id": proof.execution_id,
+            "config_hash": proof.config_hash,
+            "request_window": dict(proof.request_window),
+            "data_through": proof.data_through,
+            "finished_at": proof.finished_at.astimezone(timezone.utc).isoformat(
+                timespec="microseconds" if proof.finished_at.microsecond else "seconds"
+            ),
+            "receipt_proof_sha256": proof.receipt_proof_sha256,
+        })
+    return output
 
 
 def _quote_identifier(value: str) -> str:
@@ -2313,6 +2427,14 @@ class QueryService:
                     dataset_degraded=provider_native_dataset_degraded,
                     page_issues=page_quality_issues,
                 )
+                if validated_request.include_receipt_proofs:
+                    metadata["row_receipt_proofs"] = _row_receipt_proof_metadata(
+                        conn,
+                        self._registry,
+                        dataset,
+                        tuple(selected_rows),
+                        now=validated_now,
+                    )
 
                 next_cursor = None
                 if has_more:
