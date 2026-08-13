@@ -2340,7 +2340,12 @@ def validated_row_receipt_proofs(
     if len(set(requested)) != len(requested):
         raise ValueError("receipt_ids must be unique")
     _canonical_now(now)
-    histories = validated_receipt_histories_by_dataset(conn, registry, now=now)
+    histories = validated_receipt_history_for_dataset(
+        conn,
+        registry,
+        dataset,
+        now=now,
+    )
     if dataset.dataset_id in histories.failures_by_dataset:
         raise RuntimeProjectionError("receipt authority contains invalid evidence")
     by_id = {
