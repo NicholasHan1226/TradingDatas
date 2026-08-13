@@ -35,6 +35,8 @@ from storage.ingest_receipts import (
     IngestResult,
     ProviderRequestIdentity,
     VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+    VALIDATION_RESPONSE_FIELD_COVERAGE,
+    VALIDATION_RESPONSE_COMPLETENESS,
     make_provider_call_attempt_id,
     write_terminal_receipt,
 )
@@ -146,6 +148,14 @@ class ProviderCall:
 class ProviderExecution:
     outcome: ProviderCallOutcome
     calls: tuple[ProviderCall, ...]
+
+
+class ProviderValidationError(ValueError):
+    """Validation failure carrying only a safe, allow-listed predicate."""
+
+    def __init__(self, message: str, *, predicate: str) -> None:
+        super().__init__(message)
+        self.predicate = predicate
 
 
 class _Collector(Protocol):
@@ -938,6 +948,30 @@ def _validate_response_completeness(
     resolved_params: Mapping[str, str],
     calls: Sequence[ProviderCall],
 ) -> None:
+    try:
+        _validate_response_completeness_impl(
+            dataset, binding, rows,
+            request_window=request_window,
+            resolved_params=resolved_params,
+            calls=calls,
+        )
+    except ProviderValidationError:
+        raise
+    except ValueError as exc:
+        raise ProviderValidationError(
+            str(exc), predicate=VALIDATION_RESPONSE_COMPLETENESS
+        ) from exc
+
+
+def _validate_response_completeness_impl(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+    resolved_params: Mapping[str, str],
+    calls: Sequence[ProviderCall],
+) -> None:
     policy = binding.response_completeness
     if policy is None:
         raise ValueError("provider response completeness contract is missing")
@@ -1022,7 +1056,10 @@ def _validate_fanout_snapshot(
         observed.add(value)
         snapshots.add(snapshot)
     if observed != expected:
-        raise ValueError("provider response fanout coverage is incomplete")
+        raise ProviderValidationError(
+            "provider response fanout coverage is incomplete",
+            predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+        )
     if len(snapshots) != 1:
         raise ValueError("provider response fanout snapshot time is inconsistent")
 
@@ -1456,6 +1493,11 @@ def _persist_failed_execution(
             return (call_error, validation_reason_code)
         return (call_error,)
 
+    def result_errors() -> tuple[str, ...]:
+        if validation_reason_code == VALIDATION_FANOUT_COVERAGE_INCOMPLETE:
+            return (overall_error, validation_reason_code)
+        return (overall_error,)
+
     receipt_ids: list[str] = []
     persisted_results: list[IngestResult] = []
     if not calls:
@@ -1527,7 +1569,7 @@ def _persist_failed_execution(
         status="failed",
         counts=counts,
         receipt_ids=tuple(receipt_ids),
-        errors=receipt_errors(overall_error),
+        errors=result_errors(),
     )
 
 
@@ -1545,9 +1587,15 @@ def _validate_response_field_coverage(
         if outcome.state != "success" or not outcome.rows:
             continue
         if not requested_fields.issubset(outcome.response_fields):
-            raise ValueError("provider response fields do not cover requested fields")
+            raise ProviderValidationError(
+                "provider response fields do not cover requested fields",
+                predicate=VALIDATION_RESPONSE_FIELD_COVERAGE,
+            )
         if any(not requested_fields.issubset(row) for row in outcome.rows):
-            raise ValueError("provider response row fields do not cover requested fields")
+            raise ProviderValidationError(
+                "provider response row fields do not cover requested fields",
+                predicate=VALIDATION_RESPONSE_FIELD_COVERAGE,
+            )
 
 
 def _persist_provider_execution(
@@ -1624,12 +1672,22 @@ def _persist_provider_execution(
                 resolved_params=resolved_params,
                 calls=execution.calls,
             )
-    except ValueError as exc:
-        validation_reason_code = (
-            VALIDATION_FANOUT_COVERAGE_INCOMPLETE
-            if str(exc) == "provider response fanout coverage is incomplete"
-            else None
+    except ProviderValidationError as exc:
+        validation_reason_code = exc.predicate
+        return _persist_failed_execution(
+            db_path,
+            dataset=dataset,
+            binding=binding,
+            calls=execution.calls,
+            normalized_window=normalized_window,
+            root_attempt_id=attempt_id,
+            started_at=started_at,
+            overall_error="validation_failed",
+            terminal_context=terminal_context,
+            validation_reason_code=validation_reason_code,
         )
+    except ValueError:
+        validation_reason_code = None
         return _persist_failed_execution(
             db_path,
             dataset=dataset,
