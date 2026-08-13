@@ -141,6 +141,18 @@ _RECEIPT_QUERY_BY_DATASET = _RECEIPT_QUERY.replace(
     "FROM market_ingest_runs\nLIMIT ?",
     "FROM market_ingest_runs\nWHERE source = ?\nLIMIT ?",
 )
+
+
+def _receipt_query_by_run_ids(receipt_ids: tuple[str, ...]) -> str:
+    if not receipt_ids:
+        raise ValueError("receipt_ids must be non-empty")
+    placeholders = ",".join("?" for _ in receipt_ids)
+    return _RECEIPT_QUERY.replace(
+        "FROM market_ingest_runs\nLIMIT ?",
+        f"FROM market_ingest_runs\nWHERE run_id IN ({placeholders})",
+    )
+
+
 _INGEST_RUN_CONTRACT = get_table("market_ingest_runs")
 _INGEST_RUN_PRIMARY_KEY_POSITIONS = {
     name: index for index, name in enumerate(_INGEST_RUN_CONTRACT.primary_key, start=1)
@@ -690,6 +702,28 @@ def _scan_ingest_run_rows(
     if len(raw_rows) == scan_limit:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
+
+
+def _scan_ingest_run_rows_by_ids(
+    conn: sqlite3.Connection,
+    receipt_ids: tuple[str, ...],
+) -> tuple[_ScannedIngestRunRow, ...]:
+    """Read only the bounded immutable receipt IDs requested by a row query."""
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not receipt_ids or len(receipt_ids) != len(set(receipt_ids)):
+        raise ValueError("receipt_ids must be unique and non-empty")
+    rows = tuple(
+        tuple(row)
+        for row in conn.execute(
+            _receipt_query_by_run_ids(receipt_ids),
+            receipt_ids,
+        ).fetchall()
+    )
+    if {row[1] for row in rows} != set(receipt_ids) or len(rows) != len(receipt_ids):
+        raise RuntimeProjectionError("row receipt authority is incomplete")
+    return tuple(_classify_ingest_run_row(row) for row in rows)
 
 
 def _is_valid_unmapped_tushare_attempt(
@@ -2344,17 +2378,18 @@ def validated_row_receipt_proofs(
     if len(set(requested)) != len(requested):
         raise ValueError("receipt_ids must be unique")
     _canonical_now(now)
-    histories = validated_receipt_history_for_dataset(
-        conn,
-        registry,
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
+    entries, failures = _validated_history_for_dataset_rows(
         dataset,
+        known_dataset_ids=known_dataset_ids,
+        rows=_scan_ingest_run_rows_by_ids(conn, requested),
         now=now,
     )
-    if dataset.dataset_id in histories.failures_by_dataset:
+    if failures:
         raise RuntimeProjectionError("receipt authority contains invalid evidence")
     by_id = {
         entry.receipt_id: entry
-        for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
+        for entry in entries
     }
     result: dict[str, ValidatedRowReceiptProof] = {}
     for receipt_id in requested:

@@ -842,6 +842,158 @@ def test_validated_row_receipt_proofs_join_same_execution_and_replay(
     assert all(len(proof.receipt_proof_sha256) == 64 for proof in first_result.values())
 
 
+def test_validated_row_receipt_proofs_uses_only_bounded_run_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="bounded-proof",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        dataset=dataset,
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=load_dataset_registry().query_defaults)
+
+    def fail_global_scan(*args: object, **kwargs: object) -> tuple[object, ...]:
+        raise AssertionError("global receipt scan must not be used by row proofs")
+
+    monkeypatch.setattr(projection_module, "_scan_ingest_run_rows", fail_global_scan)
+    result = validated_row_receipt_proofs(
+        conn,
+        registry,
+        dataset,
+        (receipt_id,),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+    assert tuple(result) == (receipt_id,)
+    assert result[receipt_id].status == "success"
+
+
+def test_validated_row_receipt_proofs_bounded_ids_survive_large_registry_and_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The row-proof join must not scan 190 datasets of unrelated receipts."""
+
+    conn = _memory_db()
+    target = _dataset(timezone_name="UTC")
+    base_binding = target.provider_bindings[0]
+    unrelated: list[DatasetDefinition] = []
+    for index in range(189):
+        dataset_id = f"cn.synthetic.unrelated.{index:03d}"
+        binding = replace(
+            base_binding,
+            api_name=f"daily_unrelated_{index:03d}",
+            read_discriminator_value=f"daily_unrelated_{index:03d}",
+        )
+        unrelated.append(
+            replace(
+                target,
+                dataset_id=dataset_id,
+                aliases=(f"synthetic.unrelated.{index:03d}",),
+                provider_bindings=(binding,),
+            )
+        )
+    registry = DatasetRegistry(
+        (target, *unrelated),
+        query_defaults=load_dataset_registry().query_defaults,
+    )
+    selected: list[str] = []
+    for page_index in range(6):
+        selected.append(
+            _insert_receipt(
+                monkeypatch,
+                conn,
+                status="success",
+                attempt_id=make_provider_call_attempt_id(
+                    "selected-proof-execution", call_index=page_index, retry_index=0
+                ),
+                started_at="2026-07-15T00:00:00+00:00",
+                finished_at=f"2026-07-15T00:0{page_index + 1}:00+00:00",
+                data_through="20260715",
+                transaction_index=page_index,
+                request_identity=ProviderRequestIdentity(
+                    request_variant={},
+                    fanout_parameter=None,
+                    fanout_values=(),
+                    page_offset=page_index,
+                    page_index=page_index,
+                ),
+                dataset=target,
+                dataset_id=target.dataset_id,
+            )
+        )
+    for receipt_index in range(240):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=f"target-unselected-{receipt_index:03d}",
+            started_at="2026-07-14T00:00:00+00:00",
+            finished_at="2026-07-14T00:01:00+00:00",
+            data_through="20260714",
+            dataset=target,
+            dataset_id=target.dataset_id,
+            provider_api=target.provider_bindings[0].api_name,
+            commit=False,
+        )
+    for dataset_index, dataset in enumerate(unrelated):
+        for receipt_index in range(240):
+            _insert_receipt(
+                monkeypatch,
+                conn,
+                status="success",
+                attempt_id=f"unrelated-{dataset_index:03d}-{receipt_index:02d}",
+                started_at="2026-07-14T00:00:00+00:00",
+                finished_at="2026-07-14T00:01:00+00:00",
+                data_through="20260714",
+                dataset=dataset,
+                dataset_id=dataset.dataset_id,
+                provider_api=dataset.provider_bindings[0].api_name,
+                commit=False,
+            )
+    conn.commit()
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+
+    budget = registry.query_defaults.sqlite_progress_steps
+
+    def with_unchanged_budget(call):
+        steps = 0
+
+        def interrupt_at_budget() -> int:
+            nonlocal steps
+            steps += 1_000
+            return int(steps > budget)
+
+        conn.set_progress_handler(interrupt_at_budget, 1_000)
+        try:
+            return call()
+        finally:
+            conn.set_progress_handler(None, 0)
+
+    with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+        with_unchanged_budget(lambda: projection_module._scan_ingest_run_rows(conn))
+
+    first_five = with_unchanged_budget(
+        lambda: validated_row_receipt_proofs(
+            conn, registry, target, tuple(selected[:5]), now=now
+        )
+    )
+    all_six = with_unchanged_budget(
+        lambda: validated_row_receipt_proofs(
+            conn, registry, target, tuple(selected), now=now
+        )
+    )
+
+    assert tuple(first_five) == tuple(sorted(selected[:5]))
+    assert tuple(all_six) == tuple(sorted(selected))
+    assert all(proof.execution_id == "selected-proof-execution" for proof in all_six.values())
+
+
 def test_validated_row_receipt_proofs_fail_closed_for_missing_or_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -857,6 +1009,37 @@ def test_validated_row_receipt_proofs_fail_closed_for_missing_or_failed(
     for bad_ids in ((failed_id,), ("missing-receipt",)):
         with pytest.raises(RuntimeProjectionError):
             validated_row_receipt_proofs(conn, registry, dataset, bad_ids, now=now)
+
+
+def test_validated_row_receipt_proofs_fail_closed_for_malformed_selected_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="malformed-selected-proof",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        dataset=dataset,
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes = ? WHERE run_id = ?",
+        ("{\"malformed\":", receipt_id),
+    )
+    conn.commit()
+    registry = DatasetRegistry((dataset,), query_defaults=load_dataset_registry().query_defaults)
+    with pytest.raises(RuntimeProjectionError):
+        validated_row_receipt_proofs(
+            conn,
+            registry,
+            dataset,
+            (receipt_id,),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
 
 
 def test_validated_row_receipt_proofs_reject_wrong_dataset_and_bounds(
@@ -894,6 +1077,42 @@ def test_validated_row_receipt_proofs_reject_wrong_dataset_and_bounds(
             registry,
             wrong_provider_dataset,
             (receipt_id,),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+    other_dataset = replace(
+        dataset,
+        dataset_id="cn.equity.other",
+        aliases=("tushare.other",),
+        provider_bindings=(
+            replace(
+                dataset.provider_bindings[0],
+                api_name="daily.other",
+                read_discriminator_value="daily.other",
+            ),
+        ),
+    )
+    registry_with_other = DatasetRegistry(
+        (dataset, other_dataset),
+        query_defaults=load_dataset_registry().query_defaults,
+    )
+    other_receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="wrong-dataset-receipt",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        dataset=other_dataset,
+        dataset_id=other_dataset.dataset_id,
+        commit=True,
+    )
+    with pytest.raises(RuntimeProjectionError):
+        validated_row_receipt_proofs(
+            conn,
+            registry_with_other,
+            dataset,
+            (other_receipt_id,),
             now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
         )
     now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
