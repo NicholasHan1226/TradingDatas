@@ -27,6 +27,7 @@ from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     DatasetRuntimeProjection,
     ValidatedReceiptHistories,
+    validated_receipt_history_for_dataset,
 )
 import storage.ingest_receipts as receipt_module
 from storage.ingest_receipts import (
@@ -584,7 +585,9 @@ def _minute_dataset(base: DatasetDefinition) -> DatasetDefinition:
     )
 
 
-def _minute_service_harness(native_harness: dict[str, object]) -> tuple[DatasetDefinition, DatasetRegistry, QueryService]:
+def _minute_service_harness(
+    native_harness: dict[str, object],
+) -> tuple[DatasetDefinition, DatasetRegistry, QueryService]:
     minute = _minute_dataset(native_harness["dataset"])
     registry = DatasetRegistry((minute,), query_defaults=native_harness["registry"].query_defaults)
     return minute, registry, QueryService(
@@ -592,6 +595,33 @@ def _minute_service_harness(native_harness: dict[str, object]) -> tuple[DatasetD
         registry=registry,
         cursor_codec=SignedCursorCodec(SIGNING_KEY),
     )
+
+
+def _large_minute_service_harness(
+    native_harness: dict[str, object],
+) -> tuple[DatasetDefinition, DatasetRegistry]:
+    minute = _minute_dataset(native_harness["dataset"])
+    unrelated = tuple(
+        replace(
+            minute,
+            dataset_id=f"cn.native.unrelated.{index:03d}",
+            aliases=(),
+            provider_bindings=tuple(
+                replace(
+                    binding,
+                    api_name=f"{binding.api_name}.unrelated.{index:03d}",
+                    read_discriminator_value=f"{binding.read_discriminator_value}.unrelated.{index:03d}",
+                )
+                for binding in minute.provider_bindings
+            ),
+        )
+        for index in range(189)
+    )
+    registry = DatasetRegistry(
+        (minute, *unrelated),
+        query_defaults=native_harness["registry"].query_defaults,
+    )
+    return minute, registry
 
 
 def test_opt_in_query_returns_each_row_receipt_proof_from_real_receipts(
@@ -739,6 +769,67 @@ def test_explicit_no_window_slot_selects_prior_success_over_latest_failed_cohort
     assert [row["symbol"] for row in second_page["data"]] == [f"SLOT_{i:02d}" for i in range(3, 6)]
     assert [item["receipt_id"] for item in first_page["metadata"]["row_receipt_proofs"]] == slot_receipts[:3]
     assert [item["receipt_id"] for item in second_page["metadata"]["row_receipt_proofs"]] == slot_receipts[3:]
+
+
+def test_target_history_uses_source_filter_with_large_registry(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    minute, registry = _large_minute_service_harness(native_harness)
+    slot = "2026-08-13 09:40:00"
+    slot_receipts: list[str] = []
+    for call_index in range(6):
+        slot_receipts.append(
+            _insert_native_success_receipt(
+                monkeypatch,
+                conn,
+                minute,
+                execution_id="slot-success",
+                call_index=call_index,
+                page_offset=call_index,
+                request_window={},
+                data_through=slot,
+                started_at="2026-08-13T01:39:00+00:00",
+                finished_at=f"2026-08-13T01:40:{call_index:02d}+00:00",
+            )
+        )
+    for dataset_index, unrelated_dataset in enumerate(registry.datasets[1:]):
+        for call_index in range(20):
+            _insert_native_success_receipt(
+                monkeypatch,
+                conn,
+                unrelated_dataset,
+                execution_id=f"unrelated-{dataset_index:03d}",
+                call_index=call_index,
+                page_offset=call_index,
+                request_window={},
+                data_through=slot,
+                started_at="2026-08-13T01:39:00+00:00",
+                finished_at=f"2026-08-13T01:40:{call_index % 60:02d}+00:00",
+            )
+    conn.execute(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "receipt:unrelated-malformed",
+            "2026-08-13T01:39:00+00:00",
+            "2026-08-13T01:40:00+00:00",
+            "success",
+            registry.datasets[1].dataset_id,
+            1,
+            1,
+            "{",
+        ),
+    )
+    conn.commit()
+    histories = validated_receipt_history_for_dataset(
+        conn,
+        registry,
+        minute,
+        now=datetime(2026, 8, 13, 4, 0, tzinfo=timezone.utc),
+    )
+    assert not histories.failures_by_dataset
+    assert tuple(entry.receipt_id for entry in histories.entries_by_dataset[minute.dataset_id]) == tuple(slot_receipts)
 
 
 @pytest.mark.parametrize("kind", ("missing", "failed_only"))
@@ -912,7 +1003,7 @@ def test_explicit_no_window_slot_rejects_target_dataset_authority_failure(
     )
     monkeypatch.setattr(
         query_module,
-        "validated_receipt_histories_by_dataset",
+        "validated_receipt_history_for_dataset",
         lambda *args, **kwargs: histories,
     )
     with pytest.raises(QueryServiceUnavailable):

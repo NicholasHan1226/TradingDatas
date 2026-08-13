@@ -133,6 +133,10 @@ SELECT typeof(run_id), run_id,
 FROM market_ingest_runs
 LIMIT ?
 """
+_RECEIPT_QUERY_BY_DATASET = _RECEIPT_QUERY.replace(
+    "FROM market_ingest_runs\nLIMIT ?",
+    "FROM market_ingest_runs\nWHERE source = ?\nLIMIT ?",
+)
 _INGEST_RUN_CONTRACT = get_table("market_ingest_runs")
 _INGEST_RUN_PRIMARY_KEY_POSITIONS = {
     name: index for index, name in enumerate(_INGEST_RUN_CONTRACT.primary_key, start=1)
@@ -661,15 +665,24 @@ def _classify_ingest_run_row(row: _IngestRunRow) -> _ScannedIngestRunRow:
 
 def _scan_ingest_run_rows(
     conn: sqlite3.Connection,
+    *,
+    dataset_id: str | None = None,
 ) -> tuple[_ScannedIngestRunRow, ...]:
     """Read one bounded, unfiltered authority snapshot or fail closed."""
 
     if not isinstance(conn, sqlite3.Connection):
         raise TypeError("conn must be sqlite3.Connection")
     scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
-    raw_rows = tuple(
-        tuple(row) for row in conn.execute(_RECEIPT_QUERY, (scan_limit,)).fetchall()
-    )
+    if dataset_id is None:
+        cursor = conn.execute(_RECEIPT_QUERY, (scan_limit,))
+    else:
+        if type(dataset_id) is not str or not dataset_id:
+            raise TypeError("dataset_id must be a non-empty string")
+        cursor = conn.execute(
+            _RECEIPT_QUERY_BY_DATASET,
+            (dataset_id, scan_limit),
+        )
+    raw_rows = tuple(tuple(row) for row in cursor.fetchall())
     if len(raw_rows) == scan_limit:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
@@ -1959,6 +1972,57 @@ def _trusted_receipts_for_evidence(
     return current_receipts, invalid
 
 
+def _validated_history_for_dataset_rows(
+    dataset: DatasetDefinition,
+    *,
+    known_dataset_ids: frozenset[str],
+    rows: tuple[_ScannedIngestRunRow, ...],
+    now: datetime,
+) -> tuple[tuple[ValidatedReceiptHistoryEntry, ...], tuple[str, ...]]:
+    receipts, rejected = _trusted_receipts_for_evidence(
+        dataset,
+        now=now,
+        known_dataset_ids=known_dataset_ids,
+        rows=rows,
+        expected_binding=None,
+    )
+    if rejected:
+        return (), tuple(sorted({item.reason for item in rejected}))
+    by_execution: dict[str, list[_Receipt]] = {}
+    for receipt in receipts:
+        by_execution.setdefault(receipt.execution_id, []).append(receipt)
+    cohort_statuses = {
+        execution_id: _variant_cohort_terminal(dataset, members).status
+        for execution_id, members in by_execution.items()
+    }
+    entries = tuple(
+        ValidatedReceiptHistoryEntry(
+            dataset_id=dataset.dataset_id,
+            provider=receipt.provider,
+            receipt_id=receipt.receipt_id,
+            status=receipt.status,  # type: ignore[arg-type]
+            cohort_status=cohort_statuses[receipt.execution_id],
+            started_at=receipt.started_sort,
+            finished_at=receipt.finished_sort,
+            request_window=receipt.request_window,
+            request_variant=receipt.request_variant,
+            execution_id=receipt.execution_id,
+            config_hash=receipt.config_hash,
+            cursor_contract_version=receipt.cursor_contract_version,
+            frozen_universe_sha256=receipt.frozen_universe_sha256,
+            batch_index=receipt.batch_index,
+            batch_count=receipt.batch_count,
+            batch_values_sha256=receipt.batch_values_sha256,
+            physical_call_index=receipt.physical_call_index,
+            retry_index=receipt.retry_index,
+            data_through=receipt.data_through,
+            receipt_proof_sha256=_receipt_proof_sha256(receipt, dataset.dataset_id),
+        )
+        for receipt in receipts
+    )
+    return tuple(sorted(entries, key=lambda entry: (entry.provider, entry.finished_at, entry.receipt_id))), ()
+
+
 def validated_receipt_histories_by_dataset(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
@@ -1972,55 +2036,21 @@ def validated_receipt_histories_by_dataset(
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
     _canonical_now(now)
-    known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
     rows = _scan_ingest_run_rows(conn)
     entries_by_dataset: dict[str, tuple[ValidatedReceiptHistoryEntry, ...]] = {}
     failures_by_dataset: dict[str, tuple[str, ...]] = {}
     for dataset in registry.datasets:
-        receipts, rejected = _trusted_receipts_for_evidence(
+        entries, failures = _validated_history_for_dataset_rows(
             dataset,
-            now=now,
             known_dataset_ids=known_dataset_ids,
             rows=rows,
-            expected_binding=None,
+            now=now,
         )
-        if rejected:
-            failures_by_dataset[dataset.dataset_id] = tuple(
-                sorted({item.reason for item in rejected})
-            )
-            continue
-        by_execution: dict[str, list[_Receipt]] = {}
-        for receipt in receipts:
-            by_execution.setdefault(receipt.execution_id, []).append(receipt)
-        cohort_statuses = {
-            execution_id: _variant_cohort_terminal(dataset, members).status
-            for execution_id, members in by_execution.items()
-        }
-        entries_by_dataset[dataset.dataset_id] = tuple(
-            ValidatedReceiptHistoryEntry(
-                dataset_id=dataset.dataset_id,
-                provider=receipt.provider,
-                receipt_id=receipt.receipt_id,
-                status=receipt.status,  # type: ignore[arg-type]
-                cohort_status=cohort_statuses[receipt.execution_id],
-                started_at=receipt.started_sort,
-                finished_at=receipt.finished_sort,
-                request_window=receipt.request_window,
-                request_variant=receipt.request_variant,
-                execution_id=receipt.execution_id,
-                config_hash=receipt.config_hash,
-                cursor_contract_version=receipt.cursor_contract_version,
-                frozen_universe_sha256=receipt.frozen_universe_sha256,
-                batch_index=receipt.batch_index,
-                batch_count=receipt.batch_count,
-                batch_values_sha256=receipt.batch_values_sha256,
-                physical_call_index=receipt.physical_call_index,
-                retry_index=receipt.retry_index,
-                data_through=receipt.data_through,
-                receipt_proof_sha256=_receipt_proof_sha256(receipt, dataset.dataset_id),
-            )
-            for receipt in receipts
-        )
+        if failures:
+            failures_by_dataset[dataset.dataset_id] = failures
+        else:
+            entries_by_dataset[dataset.dataset_id] = entries
     return ValidatedReceiptHistories(
         entries_by_dataset=MappingProxyType(
             {
@@ -2040,6 +2070,46 @@ def validated_receipt_histories_by_dataset(
         failures_by_dataset=MappingProxyType(
             dict(sorted(failures_by_dataset.items()))
         ),
+    )
+
+
+def validated_receipt_history_for_dataset(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    *,
+    now: datetime,
+) -> ValidatedReceiptHistories:
+    """Validate one dataset without scanning unrelated receipt histories."""
+
+    if not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    _canonical_now(now)
+    validated_now = now
+    try:
+        registered_dataset = registry.resolve(dataset.dataset_id)
+    except KeyError:
+        raise RuntimeProjectionError("dataset is not registered") from None
+    if registered_dataset != dataset:
+        raise RuntimeProjectionError("dataset definition is not the registered authority")
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
+    rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+    entries, failures = _validated_history_for_dataset_rows(
+        dataset,
+        known_dataset_ids=known_dataset_ids,
+        rows=rows,
+        now=validated_now,
+    )
+    if failures:
+        return ValidatedReceiptHistories(
+            entries_by_dataset=MappingProxyType({}),
+            failures_by_dataset=MappingProxyType({dataset.dataset_id: failures}),
+        )
+    return ValidatedReceiptHistories(
+        entries_by_dataset=MappingProxyType({dataset.dataset_id: entries}),
+        failures_by_dataset=MappingProxyType({}),
     )
 
 

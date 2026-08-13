@@ -47,6 +47,7 @@ from storage.receipt_projection import (
     RuntimeProjectionError,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
+    validated_receipt_history_for_dataset,
     validated_receipt_histories_by_dataset,
     validated_row_receipt_proofs,
 )
@@ -1640,7 +1641,12 @@ def _exact_session_minute_receipt_ids(
     *,
     now: datetime,
 ) -> tuple[str, ...]:
-    histories = validated_receipt_histories_by_dataset(conn, registry, now=now)
+    histories = validated_receipt_history_for_dataset(
+        conn,
+        registry,
+        dataset,
+        now=now,
+    )
     if dataset.dataset_id in histories.failures_by_dataset:
         raise RuntimeProjectionError("receipt history authority is invalid")
     slot_value = slot.isoformat(
