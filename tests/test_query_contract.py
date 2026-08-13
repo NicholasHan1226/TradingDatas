@@ -86,6 +86,16 @@ def test_query_request_accepts_scalar_and_operator_filters() -> None:
     )
 
 
+def test_query_request_receipt_proof_opt_in_is_explicit_and_typed() -> None:
+    contract = _contract()
+    assert contract.parse_query_request(_payload()).include_receipt_proofs is False
+    assert contract.parse_query_request(
+        _payload(include_receipt_proofs=True)
+    ).include_receipt_proofs is True
+    with pytest.raises(contract.QueryValidationError):
+        contract.parse_query_request(_payload(include_receipt_proofs=1))
+
+
 def test_query_request_accepts_numeric_leading_provider_fields() -> None:
     contract = _contract()
 

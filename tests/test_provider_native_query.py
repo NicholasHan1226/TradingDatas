@@ -24,6 +24,14 @@ from query_contract import QueryAccessContext, QueryExecutionOptions, QueryReque
 from query_cursor import SignedCursorCodec
 from query_service import QueryService, QueryServiceUnavailable
 from storage.receipt_projection import DatasetRuntimeEvidence, DatasetRuntimeProjection
+import storage.ingest_receipts as receipt_module
+from storage.ingest_receipts import (
+    IngestContext,
+    IngestCounts,
+    ProviderRequestIdentity,
+    insert_ingest_receipt,
+    make_provider_call_attempt_id,
+)
 
 
 NOW = datetime(2026, 7, 17, 4, 0, tzinfo=timezone.utc)
@@ -162,6 +170,13 @@ def _create_table(conn: sqlite3.Connection) -> None:
         "CREATE INDEX provider_dataset_rows_quality_idx "
         "ON provider_dataset_rows(dataset_id, provider, schema_major, quality_state)"
     )
+    conn.execute(
+        "CREATE TABLE market_ingest_runs ("
+        "run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, "
+        "finished_at TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, "
+        "rows_read INTEGER NOT NULL, rows_written INTEGER NOT NULL, notes TEXT NOT NULL"
+        ")"
+    )
 
 
 def _insert_row(
@@ -199,6 +214,117 @@ def _insert_row(
             "2026-07-17T03:00:00+00:00",
             receipt_id or f"receipt:{provider}:{row_key}",
         ),
+    )
+
+
+def _insert_native_success_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    *,
+    execution_id: str,
+    call_index: int,
+    page_offset: int,
+    request_window: dict[str, str] | None = None,
+    provider: str = "provider-a",
+    config_hash: str | None = None,
+    data_through: str | None = "20260715",
+) -> str:
+    finished_at = f"2026-07-17T03:0{call_index + 1}:00+00:00"
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
+    binding = next(item for item in dataset.provider_bindings if item.provider == provider)
+    context = IngestContext(
+        attempt_id=make_provider_call_attempt_id(
+            execution_id,
+            call_index=call_index,
+            retry_index=0,
+        ),
+        dataset_id=dataset.dataset_id,
+        provider=provider,
+        provider_api=binding.api_name,
+        request_window=request_window or {"trade_date": "20260715"},
+        config_hash=config_hash or _synthetic_ingest_config_hash(dataset, binding),
+        adapter_version=binding.adapter_version,
+        started_at="2026-07-17T03:00:00+00:00",
+        data_through=data_through,
+        request_identity=ProviderRequestIdentity(
+            request_variant={},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=page_offset,
+            page_index=call_index,
+        ),
+    )
+    counts = IngestCounts(
+        returned=1,
+        validated=1,
+        inserted=1,
+        updated=0,
+        unchanged=0,
+        rejected=0,
+        committed=1,
+        count_semantics="exact_row_outcomes",
+    )
+    return insert_ingest_receipt(
+        conn,
+        context=context,
+        target_table="provider_dataset_rows",
+        transaction_index=call_index,
+        status="success",
+        counts=counts,
+        errors=(),
+        payload_fingerprint="b" * 64,
+    )
+
+
+def _insert_native_failed_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    *,
+    execution_id: str,
+    call_index: int,
+) -> str:
+    binding = next(item for item in dataset.provider_bindings if item.provider == "provider-a")
+    context = IngestContext(
+        attempt_id=make_provider_call_attempt_id(
+            execution_id, call_index=call_index, retry_index=0
+        ),
+        dataset_id=dataset.dataset_id,
+        provider="provider-a",
+        provider_api=binding.api_name,
+        request_window={"trade_date": "20260715"},
+        config_hash=_synthetic_ingest_config_hash(dataset, binding),
+        adapter_version=binding.adapter_version,
+        started_at="2026-07-17T03:00:00+00:00",
+        data_through="20260715",
+        request_identity=ProviderRequestIdentity(
+            request_variant={},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=call_index,
+            page_index=call_index,
+        ),
+    )
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: "2026-07-17T03:03:00+00:00")
+    return insert_ingest_receipt(
+        conn,
+        context=context,
+        target_table=None,
+        transaction_index=call_index,
+        status="failed",
+        counts=IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics="terminal_no_data_transaction",
+        ),
+        errors=("provider_error",),
+        payload_fingerprint="c" * 64,
     )
 
 
@@ -360,6 +486,7 @@ def _request(
     as_of: str | None = None,
     limit: int = 10,
     cursor: str | None = None,
+    include_receipt_proofs: bool = False,
 ) -> QueryRequest:
     return QueryRequest(
         dataset_id="cn.native.query",
@@ -370,6 +497,7 @@ def _request(
         order=order,
         limit=limit,
         cursor=cursor,
+        include_receipt_proofs=include_receipt_proofs,
     )
 
 
@@ -386,6 +514,217 @@ def _execute(
         request_id="request-native",
         options=options,
     )
+
+
+def _proof_evidence(receipt_ids: tuple[str, ...]) -> DatasetRuntimeEvidence:
+    return DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id="cn.native.query",
+            state="success",
+            degraded=False,
+            data_through="20260715",
+            observed_at="2026-07-17T03:02:00+00:00",
+            receipt_id=receipt_ids[-1],
+            reasons=(),
+        ),
+        current_receipt_status="success",
+        current_providers=("provider-a",),
+        last_success_receipt_id=receipt_ids[-1],
+        last_success_providers=("provider-a",),
+        last_success_data_through="20260715",
+        current_receipt_ids=tuple(sorted(receipt_ids)),
+        last_success_receipt_ids=tuple(sorted(receipt_ids)),
+    )
+
+
+def test_opt_in_query_returns_each_row_receipt_proof_from_real_receipts(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    first = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="proof-execution", call_index=0, page_offset=0
+    )
+    second = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="proof-execution", call_index=1, page_offset=1
+    )
+    _insert_row(conn, provider="provider-a", row_key="proof-a", payload={"symbol": "PROOF_A", "trade_date": "20260715"}, receipt_id=first)
+    _insert_row(conn, provider="provider-a", row_key="proof-b", payload={"symbol": "PROOF_B", "trade_date": "20260715"}, receipt_id=second)
+    conn.commit()
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: _proof_evidence((first, second)))
+    request = _request(
+        fields=("symbol",),
+        filters={"symbol": {"in": ["PROOF_A", "PROOF_B"]}},
+        limit=10,
+    )
+    legacy = _execute(native_harness, request)
+    opt_in = _execute(native_harness, replace(request, include_receipt_proofs=True))
+    explicit_false = _execute(native_harness, replace(request, include_receipt_proofs=False))
+    assert "row_receipt_proofs" not in legacy["metadata"]
+    assert query_module._canonical_json_bytes(legacy) == query_module._canonical_json_bytes(explicit_false)
+    proofs = opt_in["metadata"]["row_receipt_proofs"]
+    assert len(opt_in["data"]) == len(proofs) == 2
+    assert [row["symbol"] for row in opt_in["data"]] == ["PROOF_A", "PROOF_B"]
+    assert [item["page_index"] for item in proofs] == [0, 1]
+    assert [item["receipt_id"] for item in proofs] == [first, second]
+    assert [item["provider"] for item in proofs] == ["provider-a", "provider-a"]
+    assert all(item["source"] == item["provider"] for item in proofs)
+    assert all(item["row_identity_sha256"] for item in proofs)
+
+    first_page = _execute(
+        native_harness,
+        replace(request, include_receipt_proofs=True, limit=1),
+    )
+    second_page = _execute(
+        native_harness,
+        replace(
+            request,
+            include_receipt_proofs=True,
+            limit=1,
+            cursor=first_page["next_cursor"],
+        ),
+    )
+    assert [row["symbol"] for row in first_page["data"]] == ["PROOF_A"]
+    assert [item["page_index"] for item in first_page["metadata"]["row_receipt_proofs"]] == [0]
+    assert [row["symbol"] for row in second_page["data"]] == ["PROOF_B"]
+    assert [item["page_index"] for item in second_page["metadata"]["row_receipt_proofs"]] == [0]
+    assert first_page["metadata"]["row_receipt_proofs"][0]["receipt_id"] == first
+    assert second_page["metadata"]["row_receipt_proofs"][0]["receipt_id"] == second
+
+
+def test_opt_in_query_rejects_row_provider_mismatch_and_cross_window(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    first = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="proof-mismatch", call_index=0, page_offset=0
+    )
+    second = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="proof-other-window", call_index=1, page_offset=1, request_window={"trade_date": "20260716"}
+    )
+    _insert_row(conn, provider="provider-b", row_key="proof-provider-mismatch", payload={"symbol": "MISMATCH_PROVIDER", "trade_date": "20260715"}, receipt_id=first)
+    _insert_row(conn, provider="provider-a", row_key="proof-cross-window", payload={"symbol": "MISMATCH_WINDOW", "trade_date": "20260716"}, receipt_id=second)
+    conn.commit()
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: _proof_evidence((first, second)))
+    request = _request(
+        fields=("symbol",),
+        filters={"symbol": {"in": ["MISMATCH_PROVIDER", "MISMATCH_WINDOW"]}},
+        limit=10,
+        include_receipt_proofs=True,
+    )
+    with pytest.raises(QueryServiceUnavailable):
+        _execute(native_harness, request)
+
+
+@pytest.mark.parametrize("failure_kind", ("missing", "failed"))
+def test_opt_in_query_rejects_missing_or_failed_receipt_proof(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    receipt_id = (
+        "receipt:missing-proof"
+        if failure_kind == "missing"
+        else _insert_native_failed_receipt(
+            monkeypatch, conn, dataset, execution_id="proof-failed", call_index=0
+        )
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key=f"proof-{failure_kind}",
+        payload={"symbol": f"MISSING_{failure_kind.upper()}", "trade_date": "20260715"},
+        receipt_id=receipt_id,
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: _proof_evidence((receipt_id,)),
+    )
+    request = _request(
+        fields=("symbol",),
+        filters={"symbol": {"in": [f"MISSING_{failure_kind.upper()}"]}},
+        include_receipt_proofs=True,
+    )
+    with pytest.raises(QueryServiceUnavailable):
+        _execute(native_harness, request)
+
+
+def test_opt_in_query_accepts_single_receipt_and_rejects_cross_execution_config_data_through(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    receipt_id = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="single-proof", call_index=0, page_offset=0
+    )
+    _insert_row(
+        conn,
+        provider="provider-a",
+        row_key="proof-single",
+        payload={"symbol": "SINGLE_PROOF", "trade_date": "20260715"},
+        receipt_id=receipt_id,
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: _proof_evidence((receipt_id,)),
+    )
+    response = _execute(
+        native_harness,
+        _request(
+            fields=("symbol",),
+            filters={"symbol": {"in": ["SINGLE_PROOF"]}},
+            include_receipt_proofs=True,
+        ),
+    )
+    assert len(response["data"]) == len(response["metadata"]["row_receipt_proofs"]) == 1
+
+    for suffix, kwargs in (
+        ("execution", {"config_hash": None}),
+        ("config", {"config_hash": "d" * 64}),
+        ("through", {"data_through": "20260716"}),
+    ):
+        other = _insert_native_success_receipt(
+            monkeypatch,
+            conn,
+            dataset,
+            execution_id=f"other-{suffix}-proof",
+            call_index=1,
+            page_offset=1,
+            **kwargs,
+        )
+        symbol = f"MISMATCH_{suffix.upper()}"
+        _insert_row(
+            conn,
+            provider="provider-a",
+            row_key=f"proof-{suffix}",
+            payload={"symbol": symbol, "trade_date": "20260715"},
+            receipt_id=other,
+        )
+        conn.commit()
+        monkeypatch.setattr(
+            query_module,
+            "project_dataset_runtime_evidence",
+            lambda *args, ids=(receipt_id, other), **kwargs: _proof_evidence(ids),
+        )
+        with pytest.raises(QueryServiceUnavailable):
+            _execute(
+                native_harness,
+                _request(
+                    fields=("symbol",),
+                    filters={"symbol": {"in": ["SINGLE_PROOF", symbol]}},
+                    include_receipt_proofs=True,
+                ),
+            )
 
 
 def _failed_success_evidence(

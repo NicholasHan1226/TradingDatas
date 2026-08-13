@@ -30,6 +30,7 @@ _REQUEST_KEYS = frozenset(
         "order",
         "limit",
         "cursor",
+        "include_receipt_proofs",
     }
 )
 _REQUEST_REQUIRED_KEYS = frozenset({"dataset_id", "schema_major"})
@@ -121,6 +122,7 @@ class QueryRequest:
     order: tuple[str, ...] | None
     limit: int
     cursor: str | None
+    include_receipt_proofs: bool = False
 
     def __post_init__(self) -> None:
         defaults = _QUERY_DEFAULTS
@@ -159,6 +161,8 @@ class QueryRequest:
             if self.cursor is None
             else _canonical_non_empty_string(self.cursor, "cursor")
         )
+        if type(self.include_receipt_proofs) is not bool:
+            raise QueryValidationError("include_receipt_proofs must be a boolean")
 
         object.__setattr__(self, "dataset_id", dataset_id)
         object.__setattr__(self, "schema_major", schema_major)
@@ -168,6 +172,7 @@ class QueryRequest:
         object.__setattr__(self, "order", order)
         object.__setattr__(self, "limit", limit)
         object.__setattr__(self, "cursor", cursor)
+        object.__setattr__(self, "include_receipt_proofs", self.include_receipt_proofs)
 
 
 @dataclass(frozen=True)
@@ -510,6 +515,9 @@ def parse_query_request(payload: object) -> QueryRequest:
         if raw_cursor is None
         else _canonical_non_empty_string(raw_cursor, "cursor")
     )
+    include_receipt_proofs = payload.get("include_receipt_proofs", False)
+    if type(include_receipt_proofs) is not bool:
+        raise QueryValidationError("include_receipt_proofs must be a boolean")
     return QueryRequest(
         dataset_id=dataset_id,
         schema_major=schema_major,
@@ -519,6 +527,7 @@ def parse_query_request(payload: object) -> QueryRequest:
         order=order,
         limit=limit,
         cursor=cursor,
+        include_receipt_proofs=include_receipt_proofs,
     )
 
 
@@ -571,6 +580,10 @@ def normalized_query_hash(
             "resolved_partition": resolved_partition,
         },
     }
+    # Keep the legacy request hash byte-identical unless the explicit opt-in
+    # changes the response contract.
+    if request.include_receipt_proofs:
+        payload["include_receipt_proofs"] = True
     return sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
