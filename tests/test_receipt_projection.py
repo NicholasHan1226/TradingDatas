@@ -41,6 +41,7 @@ from storage.receipt_projection import (
     project_dataset_runtime_evidence,
     project_registry_runtime,
     validated_receipt_journal_entries,
+    validated_row_receipt_proofs,
 )
 from storage.schema import SCHEMA_SQL
 
@@ -789,6 +790,119 @@ def test_asof_evidence_excludes_later_receipt_and_binds_internal_metadata(
     assert historical.current_receipt_ids == (first_receipt,)
     assert historical.last_success_receipt_ids == (first_receipt,)
     assert historical.as_of_success_receipt_ids == (first_receipt,)
+
+
+def test_validated_row_receipt_proofs_join_same_execution_and_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    first = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=make_provider_call_attempt_id("shared-proof-execution", call_index=0, retry_index=0),
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        request_identity=ProviderRequestIdentity(
+            request_variant={}, fanout_parameter=None,
+            fanout_values=(), page_offset=0, page_index=0,
+        ),
+        dataset=dataset,
+    )
+    second = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=make_provider_call_attempt_id("shared-proof-execution", call_index=1, retry_index=0),
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:02:00+00:00",
+        data_through="20260715",
+        transaction_index=1,
+        request_identity=ProviderRequestIdentity(
+            request_variant={}, fanout_parameter=None,
+            fanout_values=(), page_offset=1, page_index=1,
+        ),
+        dataset=dataset,
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=load_dataset_registry().query_defaults)
+    now = datetime(2026, 7, 15, 3, tzinfo=timezone.utc)
+    first_result = validated_row_receipt_proofs(
+        conn, registry, dataset, (first, second), now=now
+    )
+    second_result = validated_row_receipt_proofs(
+        conn, registry, dataset, (second, first), now=now
+    )
+    assert tuple(first_result) == tuple(sorted((first, second)))
+    assert dict(first_result) == dict(second_result)
+    assert all(proof.execution_id == "shared-proof-execution" for proof in first_result.values())
+    assert all(proof.data_through == "20260715" for proof in first_result.values())
+    assert all(len(proof.receipt_proof_sha256) == 64 for proof in first_result.values())
+
+
+def test_validated_row_receipt_proofs_fail_closed_for_missing_or_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    failed_id = _insert_receipt(
+        monkeypatch, conn, status="failed", attempt_id="failed-proof",
+        started_at="2026-07-15T00:00:00+00:00", finished_at="2026-07-15T00:01:00+00:00",
+        data_through=None, dataset=dataset,
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=load_dataset_registry().query_defaults)
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    for bad_ids in ((failed_id,), ("missing-receipt",)):
+        with pytest.raises(RuntimeProjectionError):
+            validated_row_receipt_proofs(conn, registry, dataset, bad_ids, now=now)
+
+
+def test_validated_row_receipt_proofs_reject_wrong_dataset_and_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset(timezone_name="UTC")
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="wrong-dataset-proof",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        dataset=dataset,
+    )
+    registry = DatasetRegistry((dataset,), query_defaults=load_dataset_registry().query_defaults)
+    wrong_dataset = replace(dataset, dataset_id="cn.equity.other")
+    with pytest.raises(RuntimeProjectionError):
+        validated_row_receipt_proofs(
+            conn,
+            registry,
+            wrong_dataset,
+            (receipt_id,),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+    wrong_provider_dataset = replace(
+        dataset,
+        provider_bindings=(replace(dataset.provider_bindings[0], provider="other-provider"),),
+    )
+    with pytest.raises(RuntimeProjectionError):
+        validated_row_receipt_proofs(
+            conn,
+            registry,
+            wrong_provider_dataset,
+            (receipt_id,),
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    with pytest.raises(ValueError):
+        validated_row_receipt_proofs(conn, registry, dataset, (), now=now)
+    with pytest.raises(ValueError):
+        validated_row_receipt_proofs(conn, registry, dataset, (receipt_id, receipt_id), now=now)
+    over_bound = tuple(f"receipt-{index}" for index in range(registry.query_defaults.max_page_size + 1))
+    with pytest.raises(ValueError):
+        validated_row_receipt_proofs(conn, registry, dataset, over_bound, now=now)
 
 
 def test_asof_receipt_collection_window_bounds_more_than_2000_successes(
