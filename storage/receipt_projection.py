@@ -2463,7 +2463,15 @@ def project_dataset_runtime_evidence(
         if registry is not None
         else frozenset({dataset.dataset_id})
     )
-    rows = _scan_ingest_run_rows(conn)
+    if registry is not None:
+        try:
+            if registry.resolve(dataset.dataset_id) != dataset:
+                raise RuntimeProjectionError("dataset definition is not the registered authority")
+        except KeyError:
+            raise RuntimeProjectionError("dataset is not registered") from None
+        rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+    else:
+        rows = _scan_ingest_run_rows(conn)
     projection_now = now
     if evidence_as_of is not None:
         cutoff = evidence_as_of.astimezone(timezone.utc)
