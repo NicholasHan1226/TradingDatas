@@ -680,6 +680,114 @@ def test_opt_in_query_returns_each_row_receipt_proof_from_real_receipts(
     assert second_page["metadata"]["row_receipt_proofs"][0]["receipt_id"] == second
 
 
+def test_b2_full_query_uses_target_receipt_history_under_large_registry(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    base = _minute_dataset(native_harness["dataset"])
+    unrelated = tuple(
+        replace(
+            base,
+            dataset_id=f"cn.native.unrelated.{index:03d}",
+            aliases=(),
+            provider_bindings=tuple(
+                replace(
+                    binding,
+                    api_name=f"{binding.api_name}.unrelated.{index:03d}",
+                    read_discriminator_value=f"{binding.read_discriminator_value}.unrelated.{index:03d}",
+                )
+                for binding in base.provider_bindings
+            ),
+        )
+        for index in range(189)
+    )
+    registry = DatasetRegistry(
+        (base, *unrelated),
+        query_defaults=native_harness["registry"].query_defaults,
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    slot = "2026-08-13 09:40:00"
+    receipt_ids: list[str] = []
+    for call_index in range(6):
+        receipt_ids.append(
+            _insert_native_success_receipt(
+                monkeypatch,
+                conn,
+                base,
+                execution_id="slot-success",
+                call_index=call_index,
+                page_offset=call_index,
+                request_window={},
+                data_through=slot,
+                started_at="2026-08-13T01:39:00+00:00",
+                finished_at=f"2026-08-13T01:40:{call_index:02d}+00:00",
+            )
+        )
+    for index in range(30):
+        _insert_row(
+            conn,
+            dataset_id=base.dataset_id,
+            provider="provider-a",
+            row_key=f"slot-{index:02d}",
+            payload={"symbol": f"SLOT_{index:02d}", "time": slot},
+            receipt_id=receipt_ids[index % 5],
+        )
+    for index, dataset in enumerate(unrelated):
+        _insert_native_success_receipt(
+            monkeypatch,
+            conn,
+            dataset,
+            execution_id=f"unrelated-{index:03d}",
+            call_index=0,
+            page_offset=0,
+            request_window={},
+            data_through=slot,
+            started_at="2026-08-13T01:39:00+00:00",
+            finished_at="2026-08-13T01:40:00+00:00",
+        )
+    conn.execute(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("receipt:unrelated-malformed", "2026-08-13T01:39:00+00:00", "2026-08-13T01:40:00+00:00", "success", unrelated[0].dataset_id, 1, 1, "{"),
+    )
+    later_failed = _insert_native_failed_receipt(
+        monkeypatch, conn, base, execution_id="slot-later-failed", call_index=0,
+        request_window={}, data_through="2026-08-13 11:10:00",
+        started_at="2026-08-13T03:09:00+00:00", finished_at="2026-08-13T03:10:00+00:00",
+    )
+    conn.commit()
+    latest = replace(
+        _proof_evidence((later_failed,)),
+        projection=replace(_proof_evidence((later_failed,)).projection, dataset_id=base.dataset_id, state="failed", degraded=True),
+        current_receipt_status="failed", current_receipt_ids=(later_failed,),
+        last_success_receipt_ids=tuple(sorted(receipt_ids)),
+    )
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: latest)
+    request = QueryRequest(
+        dataset_id=base.dataset_id, schema_major=1, fields=("symbol", "time"),
+        filters={"time": {"eq": slot}}, as_of=None,
+        order=("time:asc", "symbol:asc"), limit=10, cursor=None, include_receipt_proofs=True,
+    )
+    now = datetime(2026, 8, 13, 4, 0, tzinfo=timezone.utc)
+    response = service.execute(request, access=native_harness["access"], now=now, request_id="b2-full")
+    proofs = response["metadata"]["row_receipt_proofs"]
+    assert len(response["data"]) == len(proofs) == 10
+    assert [row["symbol"] for row in response["data"]] == [f"SLOT_{i:02d}" for i in range(10)]
+    assert [item["receipt_id"] for item in proofs] == [receipt_ids[i % 5] for i in range(10)]
+    first = response
+    second = service.execute(replace(request, cursor=first["next_cursor"]), access=native_harness["access"], now=now, request_id="b2-page-2")
+    third = service.execute(replace(request, cursor=second["next_cursor"]), access=native_harness["access"], now=now, request_id="b2-page-3")
+    assert len(first["data"]) == len(first["metadata"]["row_receipt_proofs"]) == 10
+    assert len(second["data"]) == len(second["metadata"]["row_receipt_proofs"]) == 10
+    assert len(third["data"]) == len(third["metadata"]["row_receipt_proofs"]) == 10
+    assert [row["symbol"] for row in second["data"]] == [f"SLOT_{i:02d}" for i in range(10, 20)]
+    assert [row["symbol"] for row in third["data"]] == [f"SLOT_{i:02d}" for i in range(20, 30)]
+
+
 def test_explicit_no_window_slot_selects_prior_success_over_latest_failed_cohort(
     native_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
