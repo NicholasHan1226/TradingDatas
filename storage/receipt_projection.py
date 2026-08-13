@@ -296,6 +296,24 @@ class ValidatedReceiptHistoryEntry:
     batch_values_sha256: str | None = None
     physical_call_index: int | None = None
     retry_index: int | None = None
+    data_through: str | None = None
+    receipt_proof_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class ValidatedRowReceiptProof:
+    """Secret-free immutable facts joined to one provider row receipt."""
+
+    receipt_id: str
+    dataset_id: str
+    provider: str
+    status: Literal["success"]
+    execution_id: str
+    config_hash: str | None
+    request_window: Mapping[str, str]
+    data_through: str | None
+    finished_at: datetime
+    receipt_proof_sha256: str
 
 
 @dataclass(frozen=True)
@@ -415,6 +433,25 @@ def _canonical_json(value: Mapping[str, object]) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _receipt_proof_sha256(receipt: _Receipt, dataset_id: str) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "dataset_id": dataset_id,
+                "provider": receipt.provider,
+                "receipt_id": receipt.receipt_id,
+                "execution_id": receipt.execution_id,
+                "config_hash": receipt.config_hash,
+                "data_through": receipt.data_through,
+                "started_at": receipt.started_at,
+                "finished_at": receipt.finished_at,
+                "request_window": dict(receipt.request_window),
+                "request_variant": dict(receipt.request_variant),
+            }
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _is_sha256(value: object) -> bool:
@@ -1978,6 +2015,8 @@ def validated_receipt_histories_by_dataset(
                 batch_values_sha256=receipt.batch_values_sha256,
                 physical_call_index=receipt.physical_call_index,
                 retry_index=receipt.retry_index,
+                data_through=receipt.data_through,
+                receipt_proof_sha256=_receipt_proof_sha256(receipt, dataset.dataset_id),
             )
             for receipt in receipts
         )
@@ -2188,6 +2227,81 @@ def validated_success_receipt_ids(
         receipt.receipt_id
         for receipt in _complete_success_receipts(receipts, dataset)
     )
+
+
+def validated_row_receipt_proofs(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    receipt_ids: object,
+    *,
+    now: datetime,
+) -> Mapping[str, ValidatedRowReceiptProof]:
+    """Join bounded provider row receipt IDs to validated immutable facts.
+
+    The helper never reads provider payloads and never selects a latest receipt
+    as a substitute for a row's own receipt. Any missing, failed, or mismatched
+    authority rejects the bounded join. ``receipt_proof_sha256`` is derived
+    only from validated dataset/provider/receipt/execution/config/window,
+    data-through, timestamps, and request-variant facts; credentials, raw
+    provider values, and payloads are excluded.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    try:
+        registered_dataset = registry.resolve(dataset.dataset_id)
+    except KeyError:
+        raise RuntimeProjectionError("dataset is not registered") from None
+    if registered_dataset != dataset:
+        raise RuntimeProjectionError("dataset definition is not the registered authority")
+    if type(receipt_ids) not in {tuple, list, set, frozenset}:
+        raise TypeError("receipt_ids must be a bounded collection")
+    requested = tuple(receipt_ids)
+    if not requested or len(requested) > registry.query_defaults.max_page_size:
+        raise ValueError("receipt_ids exceeds bounded query page size")
+    if any(type(receipt_id) is not str or not receipt_id for receipt_id in requested):
+        raise ValueError("receipt_ids must contain non-empty strings")
+    if len(set(requested)) != len(requested):
+        raise ValueError("receipt_ids must be unique")
+    _canonical_now(now)
+    histories = validated_receipt_histories_by_dataset(conn, registry, now=now)
+    if dataset.dataset_id in histories.failures_by_dataset:
+        raise RuntimeProjectionError("receipt authority contains invalid evidence")
+    by_id = {
+        entry.receipt_id: entry
+        for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
+    }
+    result: dict[str, ValidatedRowReceiptProof] = {}
+    for receipt_id in requested:
+        entry = by_id.get(receipt_id)
+        if (
+            entry is None
+            or entry.dataset_id != dataset.dataset_id
+            or entry.status != "success"
+            or entry.cohort_status != "success"
+            or type(entry.receipt_proof_sha256) is not str
+            or not _is_sha256(entry.receipt_proof_sha256)
+            or type(entry.finished_at) is not datetime
+        ):
+            raise RuntimeProjectionError("row receipt proof is unavailable")
+        result[receipt_id] = ValidatedRowReceiptProof(
+            receipt_id=entry.receipt_id,
+            dataset_id=entry.dataset_id,
+            provider=entry.provider,
+            status="success",
+            execution_id=entry.execution_id,
+            config_hash=entry.config_hash,
+            request_window=MappingProxyType(dict(entry.request_window)),
+            data_through=entry.data_through,
+            finished_at=entry.finished_at,
+            receipt_proof_sha256=entry.receipt_proof_sha256,
+        )
+    return MappingProxyType(dict(sorted(result.items())))
 
 
 def project_dataset_runtime_evidence(
