@@ -841,6 +841,27 @@ def _row_receipt_proof_metadata(
     )
     cohort_identity: tuple[object, ...] | None = None
     output: list[dict[str, object]] = []
+    no_window = dataset.cadence_class == "session_minute" and (
+        dataset.partition_field is None
+        and dataset.as_of_field is None
+        and dataset.range_field is None
+    )
+    active_bindings = tuple(
+        binding
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    if (
+        not no_window
+        or not any(field.name == "time" for field in dataset.fields)
+        or not active_bindings
+        or any(
+            binding.response_completeness is None
+            or binding.response_completeness.snapshot_field != "time"
+            for binding in active_bindings
+        )
+    ) and no_window:
+        raise QueryServiceUnavailable("query service is unavailable")
     for row in rows:
         provider = row[1]
         row_key = row[2]
@@ -858,14 +879,37 @@ def _row_receipt_proof_metadata(
             or proof.provider != provider
             or proof.receipt_id != receipt_id
             or proof.status != "success"
-            or not proof.request_window
             or proof.data_through is None
             or proof.finished_at.tzinfo is None
             or proof.finished_at.utcoffset() is None
         ):
             raise QueryServiceUnavailable("query service is unavailable")
         payload = _parse_provider_native_payload(row[0])
-        if dataset.partition_field is not None:
+        if no_window:
+            if proof.request_window:
+                raise QueryServiceUnavailable("query service is unavailable")
+            try:
+                through = datetime.fromisoformat(
+                    _normalize_data_through(proof.data_through, dataset)
+                )
+                event_time = datetime.fromisoformat(
+                    _normalize_data_through(payload.get("time"), dataset)
+                )
+            except (TypeError, ValueError, QueryServiceUnavailable, ZoneInfoNotFoundError):
+                raise QueryServiceUnavailable("query service is unavailable") from None
+            if (
+                through.tzinfo is None
+                or through.utcoffset() is None
+                or event_time.tzinfo is None
+                or event_time.utcoffset() is None
+                or through > now
+                or event_time > now
+                or event_time != through
+            ):
+                raise QueryServiceUnavailable("query service is unavailable")
+        elif not proof.request_window:
+            raise QueryServiceUnavailable("query service is unavailable")
+        elif dataset.partition_field is not None:
             partition_value = payload.get(dataset.partition_field)
             window_value = proof.request_window.get(dataset.partition_field)
             if window_value is not None and partition_value != window_value:

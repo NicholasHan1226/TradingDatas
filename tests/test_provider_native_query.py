@@ -242,7 +242,11 @@ def _insert_native_success_receipt(
         dataset_id=dataset.dataset_id,
         provider=provider,
         provider_api=binding.api_name,
-        request_window=request_window or {"trade_date": "20260715"},
+        request_window=(
+            {"trade_date": "20260715"}
+            if request_window is None
+            else request_window
+        ),
         config_hash=config_hash or _synthetic_ingest_config_hash(dataset, binding),
         adapter_version=binding.adapter_version,
         started_at="2026-07-17T03:00:00+00:00",
@@ -537,6 +541,35 @@ def _proof_evidence(receipt_ids: tuple[str, ...]) -> DatasetRuntimeEvidence:
     )
 
 
+def _minute_dataset(base: DatasetDefinition) -> DatasetDefinition:
+    fields = (*base.fields, DatasetField("time", "text", False, True, True, True))
+    bindings = tuple(
+        replace(
+            binding,
+            requested_fields=tuple(field.name for field in fields),
+            response_completeness=replace(
+                binding.response_completeness,
+                snapshot_field="time",
+            ),
+        )
+        for binding in base.provider_bindings
+    )
+    return replace(
+        base,
+        dataset_id="cn.native.minute",
+        aliases=("tushare.native_minute",),
+        fields=fields,
+        primary_key=("symbol", "time"),
+        default_projection=("symbol", "time"),
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+        cadence_class="session_minute",
+        provider_bindings=bindings,
+    )
+
+
 def test_opt_in_query_returns_each_row_receipt_proof_from_real_receipts(
     native_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
@@ -725,6 +758,176 @@ def test_opt_in_query_accepts_single_receipt_and_rejects_cross_execution_config_
                     include_receipt_proofs=True,
                 ),
             )
+
+
+def test_opt_in_no_window_session_minute_requires_exact_closed_slot_time(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    minute = _minute_dataset(native_harness["dataset"])
+    registry = DatasetRegistry(
+        (minute,), query_defaults=native_harness["registry"].query_defaults
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    first = _insert_native_success_receipt(
+        monkeypatch, conn, minute, execution_id="minute-proof", call_index=0, page_offset=0,
+        request_window={},
+        data_through="2026-07-17 11:40:00",
+    )
+    _insert_row(
+        conn,
+        dataset_id=minute.dataset_id,
+        provider="provider-a",
+        row_key="minute-a",
+        payload={"symbol": "MINUTE_A", "time": "2026-07-17 11:40:00"},
+        receipt_id=first,
+    )
+    conn.commit()
+    evidence = replace(_proof_evidence((first,)), projection=replace(
+        _proof_evidence((first,)).projection, dataset_id=minute.dataset_id,
+    ))
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: evidence)
+    request = QueryRequest(
+        dataset_id=minute.dataset_id,
+        schema_major=1,
+        fields=("symbol", "time"),
+        filters={"symbol": {"in": ["MINUTE_A"]}},
+        as_of=None,
+        order=("time:asc", "symbol:asc"),
+        limit=10,
+        cursor=None,
+        include_receipt_proofs=True,
+    )
+    result = service.execute(
+        request,
+        access=native_harness["access"],
+        now=NOW,
+        request_id="request-minute-proof",
+    )
+    assert result["data"][0]["time"] == "2026-07-17 11:40:00"
+    assert result["metadata"]["row_receipt_proofs"][0]["receipt_id"] == first
+
+    _insert_row(
+        conn,
+        dataset_id=minute.dataset_id,
+        provider="provider-a",
+        row_key="minute-b",
+        payload={"symbol": "MINUTE_B", "time": "2026-07-17T03:41:00+00:00"},
+        receipt_id=first,
+    )
+    conn.commit()
+    with pytest.raises(QueryServiceUnavailable):
+        service.execute(
+            replace(request, filters={"symbol": {"in": ["MINUTE_A", "MINUTE_B"]}}),
+            access=native_harness["access"],
+            now=NOW,
+            request_id="request-minute-proof-mismatch",
+        )
+
+
+@pytest.mark.parametrize(
+    "variant",
+    ("wrong_cadence", "missing_snapshot", "future", "missing_data_through", "row_mismatch"),
+)
+def test_opt_in_no_window_session_minute_fail_closed_boundaries(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    conn = native_harness["conn"]
+    minute = _minute_dataset(native_harness["dataset"])
+    if variant == "wrong_cadence":
+        minute = replace(minute, cadence_class="postclose_daily")
+    elif variant == "missing_snapshot":
+        minute = replace(
+            minute,
+            provider_bindings=tuple(
+                replace(binding, response_completeness=replace(binding.response_completeness, snapshot_field=None))
+                for binding in minute.provider_bindings
+            ),
+        )
+    registry = DatasetRegistry((minute,), query_defaults=native_harness["registry"].query_defaults)
+    service = QueryService(db_path=native_harness["service"]._db_path, registry=registry, cursor_codec=SignedCursorCodec(SIGNING_KEY))
+    through = (
+        "2026-07-17 13:00:00"
+        if variant == "future"
+        else None
+        if variant == "missing_data_through"
+        else "2026-07-17 11:40:00"
+    )
+    receipt = _insert_native_success_receipt(
+        monkeypatch, conn, minute, execution_id=f"negative-{variant}", call_index=0,
+        page_offset=0, request_window={}, data_through=through,
+    )
+    row_time = (
+        "2026-07-17 11:41:00"
+        if variant == "row_mismatch"
+        else "2026-07-17 11:40:00"
+    )
+    _insert_row(conn, dataset_id=minute.dataset_id, provider="provider-a", row_key=f"negative-{variant}",
+                payload={"symbol": f"NEG_{variant.upper()}", "time": row_time}, receipt_id=receipt)
+    conn.commit()
+    evidence = replace(_proof_evidence((receipt,)), projection=replace(_proof_evidence((receipt,)).projection, dataset_id=minute.dataset_id))
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: evidence)
+    request = QueryRequest(dataset_id=minute.dataset_id, schema_major=1, fields=("symbol", "time"),
+                           filters={"symbol": {"in": [f"NEG_{variant.upper()}"]}}, as_of=None,
+                           order=("time:asc", "symbol:asc"), limit=10, cursor=None, include_receipt_proofs=True)
+    with pytest.raises(QueryServiceUnavailable):
+        service.execute(request, access=native_harness["access"], now=NOW, request_id=f"negative-{variant}")
+
+
+def test_opt_in_no_window_session_minute_rejects_same_execution_data_through_mismatch(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    minute = _minute_dataset(native_harness["dataset"])
+    registry = DatasetRegistry((minute,), query_defaults=native_harness["registry"].query_defaults)
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    first = _insert_native_success_receipt(
+        monkeypatch, conn, minute, execution_id="same-execution", call_index=0,
+        page_offset=0, request_window={}, data_through="2026-07-17 11:40:00",
+    )
+    second = _insert_native_success_receipt(
+        monkeypatch, conn, minute, execution_id="same-execution", call_index=1,
+        page_offset=1, request_window={}, data_through="2026-07-17 11:41:00",
+    )
+    _insert_row(
+        conn, dataset_id=minute.dataset_id, provider="provider-a", row_key="through-a",
+        payload={"symbol": "THROUGH_A", "time": "2026-07-17 11:40:00"}, receipt_id=first,
+    )
+    _insert_row(
+        conn, dataset_id=minute.dataset_id, provider="provider-a", row_key="through-b",
+        payload={"symbol": "THROUGH_B", "time": "2026-07-17 11:41:00"}, receipt_id=second,
+    )
+    conn.commit()
+    evidence = replace(
+        _proof_evidence((first, second)),
+        projection=replace(_proof_evidence((first, second)).projection, dataset_id=minute.dataset_id),
+    )
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *args, **kwargs: evidence)
+    request = QueryRequest(
+        dataset_id=minute.dataset_id,
+        schema_major=1,
+        fields=("symbol", "time"),
+        filters={"symbol": {"in": ["THROUGH_A", "THROUGH_B"]}},
+        as_of=None,
+        order=("time:asc", "symbol:asc"),
+        limit=10,
+        cursor=None,
+        include_receipt_proofs=True,
+    )
+    with pytest.raises(QueryServiceUnavailable):
+        service.execute(request, access=native_harness["access"], now=NOW, request_id="same-execution-through")
 
 
 def _failed_success_evidence(
