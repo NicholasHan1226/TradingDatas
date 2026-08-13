@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
@@ -2149,6 +2150,43 @@ def test_primary_connection_is_closed_when_lightweight_verifier_open_fails(
             pass
     with pytest.raises(sqlite3.ProgrammingError):
         primary.execute("SELECT 1")
+
+
+def test_snapshot_reader_waits_for_bounded_writer_release(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "tradingdatas.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    conn.close()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with projection_module.sqlite_authority_lock(db_path, mode="exclusive", create=True, timeout=0.0):
+            future = executor.submit(_snapshot_select_one, db_path)
+            time.sleep(0.05)
+        assert future.result(timeout=1.0) == (1,)
+
+
+def test_snapshot_reader_lock_wait_beyond_bound_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "tradingdatas.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(projection_module, "_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS", 0.1)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with projection_module.sqlite_authority_lock(db_path, mode="exclusive", create=True, timeout=0.0):
+            future = executor.submit(_snapshot_select_one, db_path)
+            with pytest.raises(RuntimeProjectionError, match="timed out|projection failed closed"):
+                future.result(timeout=1.0)
+
+
+def _snapshot_select_one(db_path: Path) -> tuple[object, ...]:
+    with projection_module.open_verified_read_model_snapshot(db_path) as conn:
+        return tuple(conn.execute("SELECT 1").fetchone())
 
 
 def test_backwards_receipt_chronology_fails_closed(

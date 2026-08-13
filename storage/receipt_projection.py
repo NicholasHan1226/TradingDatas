@@ -168,6 +168,7 @@ _EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO = tuple(
     ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
+_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 1.0
 _FileIdentity = tuple[int, int, int]
 _IngestRunRow = tuple[object, ...]
 
@@ -3205,7 +3206,7 @@ def open_verified_read_model_snapshot(db_path: Path):
             db_path,
             mode="shared",
             create=False,
-            timeout=0.0,
+            timeout=_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS,
         ):
             conn, binding = _open_receipt_database_ro(db_path)
             try:
