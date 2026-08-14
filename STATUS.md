@@ -1,6 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-03 23:25 CST。
+最后更新：2026-08-14 23:00 CST。
+
+> **2026-08-14 当前交付摘要（`observed_at=2026-08-14T23:00+08:00`）：** 本地主检出、
+> GitHub `main`、普通服务器源码与 immutable effective release 均为
+> `4131e0774ade68f963e2a781cf1cab855d6519e4`。`tradingdatas-v1-internal.service` 为
+> active；`tradingdatas-provider-native-collect.timer` 为 enabled/active，23:00:03—23:00:57
+> 的自然 collector 以 `Result=success/ExecMainStatus=0` 结束，下一 reservation 为 23:05。
+> PR #148 只把已有真实观测的七个 dataset 编入 breadth wave，并补充 manifest 精确文件
+> 校验规则；它没有增加专用 collector、route、table、service/timer，也不把一次观测扩大成
+> `stable`。各 dataset 仍独立按 `contract_ready → observed → stable` 累积证据。
+
+> 以下 2026-08-03 等条目是带日期的历史运行记录，不得覆盖上面的当前摘要，也不得替代
+> 本轮 receipt/API/consumer readback。当前 release、服务和 timer 事实每轮仍需重新核验。
 
 > **2026-08-03 A 股分钟 cohort 扩容准备：** 当前生产 `cn.dataset.rt_min` 的正式
 > registry 仍为冻结 30 标的 rollback canary；本轮没有修改其 runtime、release、service、timer、
