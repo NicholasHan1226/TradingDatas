@@ -1,15 +1,22 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-14 23:00 CST。
+最后更新：2026-08-15 02:48 CST。
 
-> **2026-08-14 当前交付摘要（`observed_at=2026-08-14T23:00+08:00`）：** 本地主检出、
-> GitHub `main`、普通服务器源码与 immutable effective release 均为
-> `4131e0774ade68f963e2a781cf1cab855d6519e4`。`tradingdatas-v1-internal.service` 为
-> active；`tradingdatas-provider-native-collect.timer` 为 enabled/active，23:00:03—23:00:57
-> 的自然 collector 以 `Result=success/ExecMainStatus=0` 结束，下一 reservation 为 23:05。
-> PR #148 只把已有真实观测的七个 dataset 编入 breadth wave，并补充 manifest 精确文件
-> 校验规则；它没有增加专用 collector、route、table、service/timer，也不把一次观测扩大成
-> `stable`。各 dataset 仍独立按 `contract_ready → observed → stable` 累积证据。
+> **2026-08-15 当前分层事实（`observed_at=2026-08-15T02:48+08:00`）：** GitHub
+> `main` 与普通服务器源码均为
+> `dabe0dc081d3a06e811939abeb6525a8148fb8d9`；immutable effective release 仍为
+> `e6dc519101174ba6158ce3e8d180eefee385c9ff`。本地 canonical checkout 正由外部协作者
+> 使用且存在未交接改动，不参与本次验收，协作者交还前不声称本地与其他层已同步。
+>
+> 同一次有界读回 `observed_at=2026-08-14T18:23:44Z`：自然 collector 于
+> 02:20:11—02:21:04 CST 以 `Result=success/ExecMainStatus=0` 结束，`terminal=11`、
+> `success=3`、`valid_empty=8`、`failed=0`、`pending=false`、`planned=0`、
+> `committed=943`、`receipt_count=11`；数据库共 6,891,918 行，最新采集时间为
+> `2026-08-14T18:20:13Z`。`tradingdatas-v1-internal.service` 为 active，匿名
+> catalog 返回 401；collector 当时 inactive/success，timer 为 enabled/active。该证据只证明
+> `e6dc519` 这一运行层的本轮健康采集，不代表所有 dataset 已达 `stable`，
+> 也没有手工重放 provider。PR #152 只修正 source compiler 的可重现投影；生成的
+> runtime 字节未变，因此未切换 release。
 
 > 以下 2026-08-03 等条目是带日期的历史运行记录，不得覆盖上面的当前摘要，也不得替代
 > 本轮 receipt/API/consumer readback。当前 release、服务和 timer 事实每轮仍需重新核验。

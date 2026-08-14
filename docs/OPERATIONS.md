@@ -49,9 +49,9 @@ dataset。只有新的有界证据证明完整 cohort 可在相同全局门禁�
 
 `session_minute` 的最小成功间隔为 240 秒：五分钟 timer 在上一个窗口于临界时刻完成
 （例如完成后 265 秒触发下一次）时，仍会规划下一窗口；失败重试、开市日历、窗口和预算
-规则不变。当前 `standard` budget 每轮最多 64 个账号/上游请求、同一 provider API 最多 16 个请求。
-这是在已观测到的 QuickSync 200 request-start/minute 下保留的保守下限，并非对上游额度的
-猜测或扩权；runner 仍是串行、每五分钟最多运行一次。发布前必须在目标 release 上证明完整
+规则不变。当前 `standard` budget 每轮最多 12 个账号请求、12 个 provider 请求，
+同一 provider API 最多 6 个请求。runner 仍是串行、每五分钟最多运行一次；历史
+QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
 
@@ -273,7 +273,7 @@ systemd 仅从 `current` 启动入口脚本。入口立即解析到同一物理 
 registry 与 schedule 不接受 `/current/config/...` 环境覆盖；execute 模式也拒绝非本物理
 release 的 `--schedule-config`，避免代码/配置跨版本混配。
 
-当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。2026-07-21 CST（证据时间 2026-07-20Z）的健康单一 HTTPS 节点小响应实测为并发 4、210/210 request starts 在一分钟内成功；当前 `main` 代码采用更保守的保护门禁 200 次/60 秒、并发 4。它不代表供应商合同额度或已部署 production 配置；混合大响应、每日额度和 DNS failover 仍未知。timer 仅在 target release 的 preflight、rollback 与 server readback 通过后显式启用，单个接口成功不会自动扩权。
+当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。2026-07-21 CST（证据时间 2026-07-20Z）的单一 HTTPS 节点小响应探测曾取得并发 4、210/210 request starts 在一分钟内成功；该历史探测只是 transport 观测，不是当前 scheduler budget、供应商合同额度或已部署 production 配置。当前 scheduler 仍以本文上述每轮账号/provider/API `12/12/6` 为绑定上限；混合大响应、每日额度和 DNS failover 仍未知。timer 仅在 target release 的 preflight、rollback 与 server readback 通过后显式启用，单个接口成功不会自动扩权。
 
 ## 运行顺序
 
