@@ -913,6 +913,66 @@ def test_request_observation_contract_fails_closed(
         _compile(request_observations=observations)
 
 
+def test_optional_resumable_fanout_is_deterministic_and_absent_is_unchanged() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    target = _entry(observations, "cyq_chips")
+
+    policy = target.pop("resumable_fanout")
+    without_policy = _compile(request_observations=observations)
+    assert "resumable_fanout" not in _contract(without_policy, "cyq_chips")
+
+    target["resumable_fanout"] = policy
+    first = _compile(request_observations=observations)
+    second = _compile(request_observations=deepcopy(observations))
+
+    assert first == second
+    assert _contract(first, "cyq_chips")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("policy", "api_name", "message"),
+    [
+        (
+            {
+                "cursor_contract_version": 2,
+                "max_batches_per_run": 1,
+                "unknown": True,
+            },
+            "cyq_chips",
+            "resumable_fanout keys invalid",
+        ),
+        (
+            {"cursor_contract_version": 1, "max_batches_per_run": 1},
+            "cyq_chips",
+            "cursor_contract_version must be 2",
+        ),
+        (
+            {"cursor_contract_version": 2, "max_batches_per_run": 0},
+            "cyq_chips",
+            "max_batches_per_run must be a positive integer",
+        ),
+        (
+            {"cursor_contract_version": 2, "max_batches_per_run": 1},
+            "daily",
+            "requires a non-empty fanout",
+        ),
+    ],
+)
+def test_optional_resumable_fanout_fails_closed(
+    policy: dict[str, object],
+    api_name: str,
+    message: str,
+) -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    _entry(observations, api_name)["resumable_fanout"] = policy
+
+    with pytest.raises(RuntimeContractCompilationError, match=message):
+        _compile(request_observations=observations)
+
+
 def test_request_observation_source_bytes_and_api_set_are_bound() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
     observations["provenance"]["official_contracts"]["sha256"] = "f" * 64
