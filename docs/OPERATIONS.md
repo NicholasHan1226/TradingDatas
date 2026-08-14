@@ -166,6 +166,11 @@ Git HEAD 的 commit、tree 和全部 tracked blob 生成，保存在 release 目
 Git tree，并从 release 实际字节重算每个 Git blob 与 SHA256；manifest 本身也必须匹配
 `--expected-uid/--expected-gid` 且不可被 group/world 写入。
 
+发布前的一致性检查只比较 manifest 声明的精确 Git tree 文件及其 mode/blob/hash，不能先
+对普通服务器 worktree 做整目录相等比较。现役 worktree 中未纳入 manifest 的缓存、运行输出
+或其它已登记未跟踪资产必须原样保留并单独报告；它们既不能进入 release，也不能因发布而被
+清理。只有 manifest 声明文件发生漂移才阻断该 release。
+
 生产 release 内的任何 Python 诊断都必须同时设置
 `PYTHONDONTWRITEBYTECODE=1` 并使用 `python3 -B`；只读诊断也不能在 immutable release
 生成 `__pycache__` 或 `.pyc`。诊断前后都要运行 trusted `verify-current`，并检查 release
