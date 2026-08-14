@@ -3516,6 +3516,69 @@ def test_breadth_observed_20260815_b2_dry_run_plans_each_dataset(
     }
 
 
+def test_breadth_observed_20260815_fund_portfolio_is_contract_ready() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "breadth_observed_20260815_fund_portfolio",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset({"cn.dataset.fund_portfolio"})
+    dataset = registry.resolve("cn.dataset.fund_portfolio")
+    binding = dataset.provider_bindings[0]
+    assert dataset.market == "CN"
+    assert dataset.cadence_class == "quarterly_reporting"
+    assert binding.entitlement_state == "active"
+    assert binding.activation_state == "active"
+    assert binding.probe_state == "executable"
+    assert binding.probe_block_reasons == ()
+    assert binding.ingest_contract_state == "ready"
+    assert binding.ingest_contract_block_reasons == ()
+    assert binding.fanout is not None
+    assert binding.fanout.strategy == "none"
+    assert binding.fanout.source_dataset_id is None
+    assert binding.request_window_policy is not None
+    assert binding.request_window_policy.required_keys == ("ann_date",)
+    assert dict(binding.request_window_policy.formats) == {"ann_date": "yyyymmdd"}
+    assert binding.request_template == {"ann_date": "${window.ann_date}"}
+
+
+def test_breadth_observed_20260815_fund_portfolio_dry_run_plans_exactly_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 8, 14): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 8, 14, 21, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="breadth_observed_20260815_fund_portfolio",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert len(result.plans) == 1
+    plan = result.plans[0]
+    assert plan.dataset_id == "cn.dataset.fund_portfolio"
+    assert plan.cadence_class == "quarterly_reporting"
+    assert dict(plan.request_window) == {"ann_date": "20260814"}
+
+
 def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()

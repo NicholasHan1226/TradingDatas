@@ -31,6 +31,9 @@ waves:
     - cn.dataset.stk_auction_o
     - cn.dataset.sw_daily
     - cn.dataset.weekly
+  breadth_observed_20260815_fund_portfolio:
+    dataset_ids:
+    - cn.dataset.fund_portfolio
   direct_wave_1:
     dataset_ids:
     - cn.dataset.adj_factor
