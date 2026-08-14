@@ -3440,6 +3440,82 @@ def test_breadth_observed_20260815_dry_run_plans_each_dataset(
     }
 
 
+def test_breadth_observed_20260815_b2_is_hash_bound_and_contract_ready() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+    expected_windows = {
+        "cn.dataset.cn_m": ("monthly", "m"),
+        "cn.dataset.daily_basic": ("postclose_daily", "trade_date"),
+        "cn.dataset.etf_share_size": ("daily_reference", "trade_date"),
+        "cn.dataset.index_monthly": ("monthly", "trade_date"),
+        "cn.dataset.report_rc": ("postclose_daily", "report_date"),
+        "cn.dataset.sf_month": ("monthly", "m"),
+        "cn.dataset.stk_auction_c": ("postclose_daily", "trade_date"),
+        "cn.dataset.stk_auction_o": ("postclose_daily", "trade_date"),
+        "cn.dataset.sw_daily": ("postclose_daily", "trade_date"),
+        "cn.dataset.weekly": ("weekly", "trade_date"),
+    }
+
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "breadth_observed_20260815_b2",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset(expected_windows)
+    for dataset_id, (cadence, window_key) in expected_windows.items():
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == cadence
+        assert binding.entitlement_state == "active"
+        assert binding.activation_state == "active"
+        assert binding.probe_state == "executable"
+        assert binding.ingest_contract_state == "ready"
+        assert binding.request_window_policy is not None
+        assert binding.request_window_policy.required_keys == (window_key,)
+        assert binding.request_template[window_key] == f"${{window.{window_key}}}"
+
+
+def test_breadth_observed_20260815_b2_dry_run_plans_each_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 8, 14): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 8, 14, 19, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="breadth_observed_20260815_b2",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == {
+        "cn.dataset.cn_m",
+        "cn.dataset.daily_basic",
+        "cn.dataset.etf_share_size",
+        "cn.dataset.index_monthly",
+        "cn.dataset.report_rc",
+        "cn.dataset.sf_month",
+        "cn.dataset.stk_auction_c",
+        "cn.dataset.stk_auction_o",
+        "cn.dataset.sw_daily",
+        "cn.dataset.weekly",
+    }
+
+
 def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()
