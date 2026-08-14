@@ -138,7 +138,7 @@ class TushareCollector:
                 rows=(),
                 provider_code=None,
                 error_code="resource_budget",
-                error_message="provider request resource budget exceeded",
+                error_message="local rate budget exceeded",
                 scan_budget=scan_budget,
             )
         except Exception as exc:

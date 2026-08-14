@@ -266,7 +266,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     }
     observation_fanout = _entry(observations, "rt_min")["fanout"]
     assert observation_fanout["parameter"] == "ts_code"
-    assert observation_fanout["batch_size"] == 100
+    assert observation_fanout["batch_size"] == 300
     assert len(observation_fanout["values"]) == 528
 
     bundle = _compile()
@@ -288,7 +288,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     assert rt_min["request_shape"] == "event_or_intraday_window"
     assert rt_min["fanout"]["strategy"] == "literal_values"
     assert rt_min["fanout"]["parameter"] == "ts_code"
-    assert rt_min["fanout"]["batch_size"] == 100
+    assert rt_min["fanout"]["batch_size"] == 300
     assert len(rt_min["fanout"]["values"]) == 528
     assert rt_min["primary_key"] == ["ts_code", "time"]
     assert rt_min["default_projection"] == [
@@ -316,7 +316,7 @@ def test_rt_min_registry_uses_the_frozen_500_plus_official_30_union() -> None:
     fanout = binding["fanout"]
     assert fanout["strategy"] == "literal_values"
     assert fanout["parameter"] == "ts_code"
-    assert fanout["batch_size"] == 100
+    assert fanout["batch_size"] == 300
     symbols = fanout["values"]
     assert isinstance(symbols, list)
     official_symbols = binding["request_template"]["ts_code"].split(",")

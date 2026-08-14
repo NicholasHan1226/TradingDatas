@@ -704,6 +704,7 @@ def test_pre_provider_resource_budget_rejection_remains_fail_closed(
 
     assert execution.outcome.state == "failed"
     assert execution.outcome.error_code == "resource_budget"
+    assert execution.outcome.error_message == "local rate budget exceeded"
     assert len(execution.calls) == 1
     assert provider_delegations == 0
 
