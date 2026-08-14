@@ -12,6 +12,13 @@ waves:
     - cn.dataset.index_classify
     - cn.dataset.moneyflow_dc
     - cn.dataset.stk_holdernumber
+  breadth_observed_20260815:
+    dataset_ids:
+    - cn.dataset.margin
+    - cn.dataset.margin_detail
+    - cn.dataset.margin_secs
+    - cn.dataset.moneyflow_ind_dc
+    - cn.dataset.moneyflow_mkt_dc
   direct_wave_1:
     dataset_ids:
     - cn.dataset.adj_factor
