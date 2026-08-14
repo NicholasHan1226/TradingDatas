@@ -3370,6 +3370,76 @@ def test_activation_wave_option_is_exposed_by_the_cli() -> None:
     assert args.current_only is True
 
 
+def test_breadth_observed_20260815_is_hash_bound_and_contract_ready() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "breadth_observed_20260815",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset(
+        {
+            "cn.dataset.margin",
+            "cn.dataset.margin_detail",
+            "cn.dataset.margin_secs",
+            "cn.dataset.moneyflow_ind_dc",
+            "cn.dataset.moneyflow_mkt_dc",
+        }
+    )
+    for dataset_id in wave.dataset_ids:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class in {"daily_reference", "postclose_daily"}
+        assert dataset.primary_key
+        assert dataset.partition_field == "trade_date"
+        assert binding.entitlement_state == "active"
+        assert binding.activation_state == "active"
+        assert binding.ingest_contract_state == "ready"
+        assert binding.request_window_policy is not None
+        assert binding.response_completeness is not None
+        assert binding.response_completeness.strategy == (
+            "single_partition_unique_primary_key"
+        )
+
+
+def test_breadth_observed_20260815_dry_run_plans_each_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 8, 14): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 8, 14, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="breadth_observed_20260815",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == {
+        "cn.dataset.margin",
+        "cn.dataset.margin_detail",
+        "cn.dataset.margin_secs",
+        "cn.dataset.moneyflow_ind_dc",
+        "cn.dataset.moneyflow_mkt_dc",
+    }
+
+
 def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()
