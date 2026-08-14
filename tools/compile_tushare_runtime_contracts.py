@@ -182,6 +182,7 @@ _REQUEST_OBSERVATION_ENTRY_KEYS = frozenset(
         "unresolved_parameter_keys",
         "parameters",
         "fanout",
+        "resumable_fanout",
         "row_limit_observation",
         "request_variants",
     }
@@ -189,6 +190,7 @@ _REQUEST_OBSERVATION_ENTRY_KEYS = frozenset(
 _REQUEST_OBSERVATION_REQUIRED_ENTRY_KEYS = _REQUEST_OBSERVATION_ENTRY_KEYS - {
     "request_variants",
     "fanout",
+    "resumable_fanout",
 }
 _REQUEST_OBSERVATION_PROVENANCE_REQUIRED_KEYS = frozenset(
     {
@@ -859,6 +861,25 @@ def _request_fanout(
     }
 
 
+def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, int]:
+    value = _mapping(raw, label)
+    _exact_keys(
+        value,
+        frozenset({"cursor_contract_version", "max_batches_per_run"}),
+        label,
+    )
+    if value["cursor_contract_version"] != 2:
+        raise RuntimeContractCompilationError(
+            f"{label}.cursor_contract_version must be 2"
+        )
+    return {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": _positive_int(
+            value["max_batches_per_run"], f"{label}.max_batches_per_run"
+        ),
+    }
+
+
 def _request_observation_index(
     raw: Mapping[str, Any],
     *,
@@ -980,6 +1001,12 @@ def _request_observation_index(
                 parameters=normalized_parameters,
                 label=f"{label}.fanout",
             )
+        normalized_resumable_fanout = None
+        if "resumable_fanout" in entry:
+            normalized_resumable_fanout = _request_resumable_fanout(
+                entry["resumable_fanout"],
+                label=f"{label}.resumable_fanout",
+            )
         required_true = {
             name for name, required in official_inputs.items() if required == "Y"
         }
@@ -1051,6 +1078,10 @@ def _request_observation_index(
             raise RuntimeContractCompilationError(
                 f"{label}.request_shape and fanout mapping are inconsistent"
             )
+        if normalized_resumable_fanout is not None and fanout_count != 1:
+            raise RuntimeContractCompilationError(
+                f"{label}.resumable_fanout requires a non-empty fanout"
+            )
         normalized_variants = _request_variants(
             entry.get("request_variants", [{}]),
             parameters=normalized_parameters,
@@ -1072,6 +1103,8 @@ def _request_observation_index(
         }
         if normalized_fanout is not None:
             normalized[api_name]["fanout"] = normalized_fanout
+        if normalized_resumable_fanout is not None:
+            normalized[api_name]["resumable_fanout"] = normalized_resumable_fanout
     if ordered_api_names != sorted(ordered_api_names):
         raise RuntimeContractCompilationError("request observation APIs must be sorted")
     if set(normalized) != set(documents_by_api):
@@ -1493,6 +1526,7 @@ def _request_execution_contract(
                     fanout[key] = declaration[key]
     else:
         fanout = {"strategy": "none"}
+    resumable_fanout = observation.get("resumable_fanout")
     if pagination_values:
         if set(pagination_values) != {"limit", "offset"}:
             raise RuntimeContractCompilationError(
@@ -1529,6 +1563,11 @@ def _request_execution_contract(
         "request_template": dict(sorted(template.items())),
         "request_variants": deepcopy(observation["request_variants"]),
         "fanout": fanout,
+        **(
+            {"resumable_fanout": deepcopy(resumable_fanout)}
+            if resumable_fanout is not None
+            else {}
+        ),
         "pagination": pagination,
         "request_window_policy": window_policy,
     }
@@ -1540,6 +1579,7 @@ def _request_execution_contract(
         "request_variants",
         "fanout",
         "pagination",
+        *(("resumable_fanout",) if resumable_fanout is not None else ()),
     ):
         if reviewed_contract[key] != projected[key]:
             raise RuntimeContractCompilationError(
@@ -1569,7 +1609,11 @@ def _with_request_observation(
         observation,
         reviewed_contract=contract if contract.get("primary_key") else None,
     )
-    result = deepcopy(dict(contract))
+    result: dict[str, Any] = {}
+    for key, value in contract.items():
+        result[key] = deepcopy(value)
+        if key == "fanout" and "resumable_fanout" in execution:
+            result["resumable_fanout"] = deepcopy(execution["resumable_fanout"])
     result.update(execution)
     result.update(
         probe_state=observation["probe_state"],

@@ -668,6 +668,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: cyq_perf
   scope_labels:
@@ -693,6 +696,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: daily
   scope_labels:
@@ -735,6 +741,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: daily_info
   scope_labels:
