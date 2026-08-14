@@ -28,11 +28,17 @@ one-shot manifest 明确选择，且继续受同一 transport budget 约束。�
 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
 planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
-receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。固定 30 只沪深主板
-`cn.dataset.rt_min` 5MIN 是其中一个受控 canary：每轮保留实际 bar time、observed_at 和 receipt；
-上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究或交易 Universe。500 只压力 canary
-只存在于隔离候选，未通过完整 cohort 证明和 fresh review 前不得进入 production registry、release
-或 timer。`session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
+receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。受审沪深主板
+`cn.dataset.rt_min` 5MIN 是其中一个受控 canary：当前 registry 的 528 个冻结代码以每批 300
+拆为两个确定性请求；这只证明配置在 intraday 每轮账号/provider 12、单 API 6 次的本地门禁内，
+不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime 已接纳。每轮仍须保留
+实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行可用。它不是研究
+或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 10，在当前单 API 6 次
+门禁下保持 dataset-local `paused`；这不撤销它的 executable/ingest-ready 合同，也不阻断其它
+dataset。只有新的有界证据证明完整 cohort 可在相同全局门禁内完成，才可恢复其精确
+`active_evidence` 并重编 registry。回滚时把 `rt_min` batch_size 恢复为 100、恢复该 evidence，
+重编 registry 并更新 activation-wave 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
+`session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
 不为某个 dataset、provider 或消费者增加专用分支。
@@ -84,11 +90,11 @@ closed。波次外的 active dataset 以
 redaction 均不变。
 
 省略 `--activation-wave` 时保持完整 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
-`pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。固定 30 只
-主板的 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
+`pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
+`cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
-延迟伪装成实时数据。500 只候选与其它扩容在独立 worktree/release 审核，未通过前不得加入
-正式 registry、release 或 timer。
+延迟伪装成实时数据。上述 528-code / 300-per-batch 只是受审的 registry 请求形状；真实供应能力
+仍须由目标 release 的 provider、receipt、catalog/query 与 consumer fresh readback 分层证明。
 
 正式 registry 还可以声明受审的 `dependency_seed_authorities`。它只绑定已持久化
 receipt、来源字段/schema 与明确列出的依赖 API；编译器仅把这些依赖标为
