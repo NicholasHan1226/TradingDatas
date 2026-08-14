@@ -29,6 +29,12 @@
 
 ## Phase 1 — 全量 Tushare 合同与采集
 
+这里的“全量”是产品分母与滚动 backlog，不是一次性上线门禁。每个 dataset 独立沿
+`contract_ready → observed → stable` 前进；已安全落库的行、receipt 和可消费查询立即保留，
+单项 empty/partial/429/5xx、权限或稳定性缺口只限制该 dataset/capability。Phase 1 未覆盖完
+不能阻断下一独立接口、已覆盖子集的消费者或各市场 Factor/Strategy MVP；全分母完成只用于
+宣称该阶段覆盖完成。
+
 - 固定官方能力目录版本；
 - 合并官方目录与当前 transport/tool 能力快照，冻结首期境内只读产品分母；当前
   scope v2 为 222 个 dataset，其中已有合同子集 190 个、新增待合同/权限证明 32 个；
