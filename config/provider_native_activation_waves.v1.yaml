@@ -19,6 +19,18 @@ waves:
     - cn.dataset.margin_secs
     - cn.dataset.moneyflow_ind_dc
     - cn.dataset.moneyflow_mkt_dc
+  breadth_observed_20260815_b2:
+    dataset_ids:
+    - cn.dataset.cn_m
+    - cn.dataset.daily_basic
+    - cn.dataset.etf_share_size
+    - cn.dataset.index_monthly
+    - cn.dataset.report_rc
+    - cn.dataset.sf_month
+    - cn.dataset.stk_auction_c
+    - cn.dataset.stk_auction_o
+    - cn.dataset.sw_daily
+    - cn.dataset.weekly
   direct_wave_1:
     dataset_ids:
     - cn.dataset.adj_factor
