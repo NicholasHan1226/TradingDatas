@@ -1,6 +1,17 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 00:55 CST。
+最后更新：2026-08-16 01:35 CST。
+
+> **2026-08-16 USDM 切片生产评审：网络层阻断，timer 维持 disabled
+>（`observed_at≈2026-08-15T17:30Z`）：** release `63c2632` 已切换，受控真实采集
+> 首轮失败。逐层诊断确认根因在网络而非代码：服务器解析 `fapi.binance.com` 仅得
+> IPv6（无可用路由）；用真实 IPv4 实测 TCP 443 可连通但 TLS 握手被 RST——
+> SNI 级阻断，现货 `data-api.binance.vision` 不受影响的唯一区别是 SNI 名称。
+> 旁证：公共 dump 站 `data.binance.vision` 可达（HTTP 200），futures `metrics`
+> 日度 zip（含 5m OI）可下载，`fundingRate` 无 dump（404，仅 API 提供）。
+> 结论：在 owner 决定网络路线（代理/中继，涉及治理与合规）或接受 dump 降级方案
+> （OI 日更、无 funding rate）之前，USDM 切片保持 contract_ready、timer disabled；
+> 现货 bars/rules/book-ticker 采集与 API 未受影响。
 
 > **2026-08-16 Crypto book-ticker timer 定时不确定性消除：** 首小时生产观测发现
 > 两类拒收（TradingAgent 侧 `crypto_spread_watermark_invalid`，fail-closed 按设计
