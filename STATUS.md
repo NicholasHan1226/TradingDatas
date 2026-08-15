@@ -1,6 +1,15 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-15 23:55 CST。
+最后更新：2026-08-16 00:55 CST。
+
+> **2026-08-16 Crypto book-ticker timer 定时不确定性消除：** 首小时生产观测发现
+> 两类拒收（TradingAgent 侧 `crypto_spread_watermark_invalid`，fail-closed 按设计
+> 生效、bar 链无损）：(1) `*:0/5:20`+10s 抖动与 bars 采集（`:00`+10s 抖动起跑、
+> 最慢 25s）窗口重叠撞 collect 锁，整轮失败；(2) Binance 公共端点偶发慢响应
+> （首笔 7.6s、整轮 39s）使 9 个 symbol 的 receipt 完成时刻越过消费者 `:55`
+> cutoff。timer 改为 `*:0/5:40`、`RandomizedDelaySec=0`：bars 最坏 `:10+:25s`
+> 结束，确定性错开；正常采集 `:45-:50` 完成仍留 cutoff 余量。上游慢响应造成的
+> 偶发缺槽接受为可见噪声，下一槽自愈。采集语义与隔离合同不变。
 
 > **2026-08-15 Crypto book-ticker timer cadence 对齐消费者 cutoff：** timer 从
 > `*:2/5:30` 前移到 `*:0/5:20`。TradingAgent 观测槽的 watermark 要求证据
