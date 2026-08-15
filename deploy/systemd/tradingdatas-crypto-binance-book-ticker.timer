@@ -2,7 +2,7 @@
 Description=Refresh isolated TradingDatas Crypto book-ticker snapshots every five minutes
 
 [Timer]
-OnCalendar=*-*-* *:2/5:30
+OnCalendar=*-*-* *:0/5:20
 AccuracySec=1s
 RandomizedDelaySec=10s
 Persistent=true
