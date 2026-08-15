@@ -54,16 +54,14 @@ not relax the API metadata or TradingAgent evidence gate.
 The expansion contract freezes ten symbols in
 `config/crypto_binance_spot_universe.v1.yaml` and compiles thirty datasets:
 one bar, one public-rule and one current book-ticker snapshot dataset per
-symbol. The book-ticker cohort completed its isolated provider-to-API review
-on 2026-08-15 (ten success receipts plus authenticated `18083` readback
-returning `ready/success/fresh/valid`, `degraded=false` for every dataset) and
-is now collected every five minutes by its own dedicated
-`tradingdatas-crypto-binance-book-ticker.timer`; it does not change the
-enabled bar or rules timers. Every collection keeps only the latest
-receipt-bound snapshot per symbol; it is not a replayable history. A symbol
-failure is isolated and must not be hidden by another symbol's healthy
-envelope. Bounded 180-day backfill remains a separate one-shot operation and
-is never real-time/PIT evidence.
+symbol. The source tree provides a dedicated
+`tradingdatas-crypto-binance-book-ticker.timer` for five-minute collection;
+installation, enablement and runtime effectiveness remain separate release
+gates and do not change the enabled bar or rules timers. Every collection
+keeps only the latest receipt-bound snapshot per symbol; it is not a
+replayable history. A symbol failure is isolated and must not be hidden by
+another symbol's healthy envelope. Bounded 180-day backfill remains a separate
+one-shot operation and is never real-time/PIT evidence.
 
 On 2026-08-02, authenticated formal `18083` readback verified two adjacent
 completed 5m windows for all ten bar datasets. Every dataset returned a
