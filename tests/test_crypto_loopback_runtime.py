@@ -192,9 +192,24 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     rules_timer = (
         ROOT / "deploy/systemd/tradingdatas-crypto-binance-rules.timer"
     ).read_text()
+    book_ticker_service = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-book-ticker.service"
+    ).read_text()
+    book_ticker_timer = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-book-ticker.timer"
+    ).read_text()
     profile = (ROOT / "deploy/crypto/tradingdatas_crypto_internal.env").read_text()
 
-    units = api + collector + timer + rules_service + rules_timer + profile
+    units = (
+        api
+        + collector
+        + timer
+        + rules_service
+        + rules_timer
+        + book_ticker_service
+        + book_ticker_timer
+        + profile
+    )
     assert "127.0.0.1:18082" not in units
     assert "18083" in profile
     assert "tradingdatas-crypto" in units
@@ -205,6 +220,8 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     assert "tradingdatas-crypto-binance-collect.service" in timer
     assert "tradingdatas-crypto-binance-rules.service" in rules_timer
     assert "--rules --execute" in rules_service
+    assert "tradingdatas-crypto-binance-book-ticker.service" in book_ticker_timer
+    assert "--book-ticker --execute" in book_ticker_service
     assert "quicksync" not in units.lower()
 
 
