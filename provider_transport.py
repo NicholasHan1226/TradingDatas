@@ -13,12 +13,32 @@ QUICKSYNC_TUSHARE_API_URL = "https://api.quicksync.cn"
 BINANCE_SPOT_DATA_PROVIDER = "binance_spot"
 BINANCE_SPOT_TRANSPORT_SERVICE = "binance_public_market_data"
 BINANCE_SPOT_PUBLIC_API_URL = "https://data-api.binance.vision"
+BINANCE_USDM_DATA_PROVIDER = "binance_usdm"
+BINANCE_USDM_TRANSPORT_SERVICE = "binance_usdm_public_market_data"
+BINANCE_USDM_PUBLIC_API_URL = "https://fapi.binance.com"
 
 
 def provider_transport_profile(provider: str) -> dict[str, object]:
     """Return one credential-free, code-pinned provider transport profile."""
 
-    if provider == BINANCE_SPOT_DATA_PROVIDER:
+    if provider == BINANCE_USDM_DATA_PROVIDER:
+        payload: dict[str, object] = {
+            "data_provider": BINANCE_USDM_DATA_PROVIDER,
+            "endpoint": BINANCE_USDM_PUBLIC_API_URL,
+            "profile_id": "binance-usdm-public-market-data.v1",
+            "redirects_allowed": False,
+            "connection_mode": "public_https",
+            "canonical_host": "fapi.binance.com",
+            "host_header": "fapi.binance.com",
+            "sni_server_name": "fapi.binance.com",
+            "certificate_hostname": "fapi.binance.com",
+            "pre_send_node_failover": False,
+            "post_send_replay": False,
+            "credential_mode": "none",
+            "market_data_only": True,
+            "transport_service": BINANCE_USDM_TRANSPORT_SERVICE,
+        }
+    elif provider == BINANCE_SPOT_DATA_PROVIDER:
         payload: dict[str, object] = {
             "data_provider": BINANCE_SPOT_DATA_PROVIDER,
             "endpoint": BINANCE_SPOT_PUBLIC_API_URL,

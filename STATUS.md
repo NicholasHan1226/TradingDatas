@@ -11,6 +11,24 @@
 > 结束，确定性错开；正常采集 `:45-:50` 完成仍留 cutoff 余量。上游慢响应造成的
 > 偶发缺槽接受为可见噪声，下一槽自愈。采集语义与隔离合同不变。
 
+> **2026-08-15 Binance USDⓈ-M 永续公共只读切片 contract_ready 候选
+>（代码层事实，无生产变更）：** 根合同首期范围已扩展加入同一冻结 10 个
+> USDT 标的的 Binance USDⓈ-M 永续 funding rate 与 open interest 公共只读历史。
+> 新 provider adapter `binance_usdm`（`https://fapi.binance.com`，无 key、无账户、
+> 拒 redirect）接入 `fundingRate` 与 `openInterestHist` 两个公共历史 endpoint；
+> 冻结 universe 合同不变，单一 pinned canary registry（原
+> `crypto_binance_spot_canary_registry.v1.yaml` 更名为
+> `crypto_binance_canary_registry.v1.yaml`，因 18083 隔离 API 只能服务一份
+> pinned registry）由同一确定性编译器扩为 50 个 dataset（30 现货 + 20 永续候选），
+> schema_major=1、append_only + payload_hash 幂等积累。新增 candidate runner
+> `tools/run_binance_usdm_canary.py`（无 provider/symbol 输入、共享
+> `/run/tradingdatas-crypto/collect.lock`、一次 provider 重试）与
+> `tradingdatas-crypto-binance-usdm-collect.{service,timer}` unit 对（与现货
+> 采集错峰两分钟）。本条只声明 **contract_ready**：没有真实 provider receipt、
+> catalog/query readback 或连续 cadence 证据，不是 observed/stable；USDM timer
+> 必须保持 disabled，直到生产评审完成真实采集与 authenticated readback 后才可启用。
+> 本次没有 release、service/timer 拓扑、数据库或交易权限变更。
+
 > **2026-08-15 Crypto book-ticker timer cadence 对齐消费者 cutoff：** timer 从
 > `*:2/5:30` 前移到 `*:0/5:20`。TradingAgent 观测槽的 watermark 要求证据
 > `observed_at ≤ bar 收盘 +55s`；原对齐下最新快照（`:02:30`）晚于 cutoff，会被

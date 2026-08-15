@@ -11,7 +11,7 @@ import pytest
 import collectors.tushare.tushare_common as tushare_common
 from catalog_service import DatasetQueryability, is_initial_release_eligible
 from dataset_registry import (
-    BINANCE_SPOT_CANARY_REGISTRY_PATH,
+    BINANCE_CANARY_REGISTRY_PATH,
     DatasetRegistry,
     load_dataset_registry,
     load_runtime_dataset_registry,
@@ -109,7 +109,7 @@ def test_provider_local_minute_snapshot_data_through_normalizes_to_dataset_timez
 
 
 def test_crypto_rfc3339_asof_metadata_binds_exact_receipt_cutoff() -> None:
-    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
     dataset = registry.resolve("crypto.spot.binance.btcusdt.5m")
     request = QueryRequest(
         dataset_id=dataset.dataset_id,

@@ -24,8 +24,12 @@ import yaml
 PROVIDER_NATIVE_DATASET_REGISTRY_PATH = (
     Path(__file__).resolve().parent / "config" / "provider_native_dataset_registry.yaml"
 )
-BINANCE_SPOT_CANARY_REGISTRY_PATH = (
-    Path(__file__).resolve().parent / "config" / "crypto_binance_spot_canary_registry.v1.yaml"
+# The isolated Crypto runtime serves exactly one pinned registry.  It covers
+# both the Binance public Spot cohort and the Binance public USDⓈ-M perpetual
+# funding-rate/open-interest cohort; ``binance_spot_v1`` remains its frozen
+# environment identity.
+BINANCE_CANARY_REGISTRY_PATH = (
+    Path(__file__).resolve().parent / "config" / "crypto_binance_canary_registry.v1.yaml"
 )
 DATASET_REGISTRY_PATH = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
 DATASET_REGISTRY_PATH_ENV = "TRADINGDATAS_REGISTRY_PATH"
@@ -2401,7 +2405,7 @@ def runtime_dataset_registry_path() -> Path:
     if canary_mode == BINANCE_SPOT_CANARY_MODE:
         if raw_path is not None:
             raise ValueError("canary registry does not accept a path override")
-        expected = BINANCE_SPOT_CANARY_REGISTRY_PATH
+        expected = BINANCE_CANARY_REGISTRY_PATH
     else:
         expected = PROVIDER_NATIVE_DATASET_REGISTRY_PATH
     if raw_path is None:

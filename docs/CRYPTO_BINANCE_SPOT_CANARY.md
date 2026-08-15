@@ -20,8 +20,11 @@ liquid USDT Spot symbols with at least 180 days of public 5m history:
 BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT,
 LINKUSDT and AVAXUSDT. BTCUSDT and ETHUSDT remain first as the rollback
 baseline. The deterministic registry compiler emits one `.5m` and one
-`.rules` dataset per symbol; runtime collection cannot add a symbol that is
-absent from the compiled registry.
+`.rules` dataset per symbol into the single pinned canary registry
+`config/crypto_binance_canary_registry.v1.yaml`; runtime collection cannot
+add a symbol that is absent from the compiled registry. The same registry and
+universe also cover the USDⓈ-M perpetual funding-rate and open-interest
+candidate cohort documented in `CRYPTO_BINANCE_USDM_CANARY.md`.
 
 The bar datasets accept only their named symbol, `5m`, and a caller-supplied
 UTC RFC3339 open-time range. One physical request is bounded to three days and
