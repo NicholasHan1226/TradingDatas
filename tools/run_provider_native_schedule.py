@@ -247,10 +247,13 @@ class RuntimeRateBudgetLedger:
         account_key = plan.rate_budget_class
         provider_key = (plan.rate_budget_class, plan.provider)
         api_key = (plan.rate_budget_class, plan.provider, plan.provider_api)
+        api_limit = budget.api_overrides.get(
+            plan.provider_api, budget.api_requests_per_run
+        )
         if (
             self._account[account_key] >= budget.account_requests_per_run
             or self._provider[provider_key] >= budget.provider_requests_per_run
-            or self._api[api_key] >= budget.api_requests_per_run
+            or self._api[api_key] >= api_limit
         ):
             raise RequestBudgetExceeded("provider request budget exhausted")
         self._account[account_key] += 1
