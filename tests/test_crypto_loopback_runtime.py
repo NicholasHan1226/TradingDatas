@@ -204,6 +204,12 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     usdm_timer = (
         ROOT / "deploy/systemd/tradingdatas-crypto-binance-usdm-collect.timer"
     ).read_text()
+    oi_dump_service = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-oi-dump-collect.service"
+    ).read_text()
+    oi_dump_timer = (
+        ROOT / "deploy/systemd/tradingdatas-crypto-binance-oi-dump-collect.timer"
+    ).read_text()
     profile = (ROOT / "deploy/crypto/tradingdatas_crypto_internal.env").read_text()
 
     units = (
@@ -216,6 +222,8 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
         + book_ticker_timer
         + usdm_service
         + usdm_timer
+        + oi_dump_service
+        + oi_dump_timer
         + profile
     )
     assert "127.0.0.1:18082" not in units
@@ -234,6 +242,10 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     assert "OnCalendar=*-*-* *:2/5:00" in usdm_timer
     assert "tools/run_binance_usdm_canary.py" in usdm_service
     assert "/run/tradingdatas-crypto/collect.lock" in usdm_service
+    assert "tradingdatas-crypto-binance-oi-dump-collect.service" in oi_dump_timer
+    assert "OnCalendar=*-*-* 00:37:00" in oi_dump_timer
+    assert "tools/run_binance_oi_dump_canary.py" in oi_dump_service
+    assert "/run/tradingdatas-crypto/collect.lock" in oi_dump_service
     assert "quicksync" not in units.lower()
 
 

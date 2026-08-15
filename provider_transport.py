@@ -16,6 +16,9 @@ BINANCE_SPOT_PUBLIC_API_URL = "https://data-api.binance.vision"
 BINANCE_USDM_DATA_PROVIDER = "binance_usdm"
 BINANCE_USDM_TRANSPORT_SERVICE = "binance_usdm_public_market_data"
 BINANCE_USDM_PUBLIC_API_URL = "https://fapi.binance.com"
+BINANCE_USDM_DUMP_DATA_PROVIDER = "binance_usdm_dump"
+BINANCE_USDM_DUMP_TRANSPORT_SERVICE = "binance_usdm_public_metrics_dump"
+BINANCE_USDM_DUMP_PUBLIC_DATA_URL = "https://data.binance.vision"
 
 
 def provider_transport_profile(provider: str) -> dict[str, object]:
@@ -37,6 +40,23 @@ def provider_transport_profile(provider: str) -> dict[str, object]:
             "credential_mode": "none",
             "market_data_only": True,
             "transport_service": BINANCE_USDM_TRANSPORT_SERVICE,
+        }
+    elif provider == BINANCE_USDM_DUMP_DATA_PROVIDER:
+        payload = {
+            "data_provider": BINANCE_USDM_DUMP_DATA_PROVIDER,
+            "endpoint": BINANCE_USDM_DUMP_PUBLIC_DATA_URL,
+            "profile_id": "binance-usdm-public-metrics-dump.v1",
+            "redirects_allowed": False,
+            "connection_mode": "public_https",
+            "canonical_host": "data.binance.vision",
+            "host_header": "data.binance.vision",
+            "sni_server_name": "data.binance.vision",
+            "certificate_hostname": "data.binance.vision",
+            "pre_send_node_failover": False,
+            "post_send_replay": False,
+            "credential_mode": "none",
+            "market_data_only": True,
+            "transport_service": BINANCE_USDM_DUMP_TRANSPORT_SERVICE,
         }
     elif provider == BINANCE_SPOT_DATA_PROVIDER:
         payload: dict[str, object] = {

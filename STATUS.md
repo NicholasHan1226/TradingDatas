@@ -1,6 +1,33 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 01:35 CST。
+最后更新：2026-08-16 01:51 CST。
+
+> **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
+> contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的
+> `fapi.binance.com` SNI 级阻断，owner 批准 dump 降级方案：open interest 改用
+> 已实测可达的 `https://data.binance.vision` 日度 metrics zip
+>（`futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-YYYY-MM-DD.zip`，单 CSV、
+> 8 列、288 个 5m 行、行序乱序、UTC 日结后发布）日更积累；funding rate 无
+> dump（404）仍不可得。dataset 复用决策：喂同一批
+> `crypto.perp.binance.<symbol>.open_interest` dataset（schema、主键
+> [symbol, timestamp]、append_only + payload_hash 幂等均不变），新增第二个
+> provider binding `binance_usdm_dump`（active），原 fapi binding 置
+> `activation_state: paused` 以满足 ingest 恰好一个 active binding 的约束，
+> 不产生新 dataset 家族。新 provider-level adapter
+> `collectors/binance/oi_dump_collector.py`（transport 为批量文件下载而非 REST
+> JSON API，符合新增 adapter 条件；拒 redirect、校验 zip 成员名/表头/完整 288
+> 行 5m 网格/symbol，行映射到既有 OI schema；dump 独有的 long/short ratio 列只
+> 做形状校验不入本 dataset）。新 candidate runner
+> `tools/run_binance_oi_dump_canary.py`（无 provider/symbol 输入、共享
+> `/run/tradingdatas-crypto/collect.lock`、plan/execute、窗口=最近已完整 UTC
+> 日、一次 provider 重试）与
+> `tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` unit 对（每日
+> UTC 00:37，与 5 分钟 timer 错峰共享锁）。本条只声明 **contract_ready**：
+> dump timer 必须保持 disabled，直到隔离生产评审完成真实 provider → SQLite
+> receipt → authenticated catalog/query readback（observed）与连续 cadence
+> 证据（stable）后才可启用。fapi binding 暂停期间，已 disabled 的
+> `run_binance_usdm_canary.py` 的 open interest 半侧不再可执行（funding rate
+> 半侧不变）。本次没有 release、service/timer 启用、数据库或交易权限变更。
 
 > **2026-08-16 USDM 切片生产评审：网络层阻断，timer 维持 disabled
 >（`observed_at≈2026-08-15T17:30Z`）：** release `63c2632` 已切换，受控真实采集
