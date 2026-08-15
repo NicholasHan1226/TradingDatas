@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-15 22:40 CST。
+最后更新：2026-08-15 23:55 CST。
+
+> **2026-08-15 Crypto book-ticker timer cadence 对齐消费者 cutoff：** timer 从
+> `*:2/5:30` 前移到 `*:0/5:20`。TradingAgent 观测槽的 watermark 要求证据
+> `observed_at ≤ bar 收盘 +55s`；原对齐下最新快照（`:02:30`）晚于 cutoff，会被
+> 消费者按 PIT 纪律逐槽拒收。bars 采集于 `:00` 起跑约 5 秒结束，`:00:20`（+10s
+> 抖动）无锁冲突，快照 `observed_at ≤ :00:40` 落在 cutoff 内。采集语义、unit
+> 隔离与 readback 证据不变。
 
 > **2026-08-15 Crypto book-ticker 晋级为 5 分钟自动采集
 >（`observed_at=2026-08-15T14:29Z`）：** 十个 `.book_ticker` 数据集完成隔离
