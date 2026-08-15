@@ -453,14 +453,12 @@ SharedSignals service/timer 的 unit 均已移出 systemd 搜索路径并 `maske
 `marketgraph` 的 22 条非注释旧 SharedSignals 计划任务均已移除。TradingDatas 18082 仍为
 active，自己的 collector timer 继续 disabled。基础退役证据位于受限目录
 `/opt/investment/release-evidence/tradingdatas/20260729T124623Z-sharedsignals-runtime-retirement`。
-**2026-08-02 清理 readback：** 两条指向已不存在
-`/opt/investment/SharedSignals/...` 目标的旧 `/etc/fstab` bind-mount 条目已在备份
-`/etc/fstab.tradings-pre-sharedsignals-cleanup-20260802` 后删除并完成
-`daemon-reload`。相应 generated mount unit 现为 `not-found/inactive`。七个历史
-SharedSignals service/timer 保持 `masked/inactive`，不得删除 mask 或 unmask；这避免
-遗留 unit 被意外恢复。root-only
-`/opt/investment/_archive/SharedSignals-retired-active-path-20260801` 归档挂载、SQLite
-历史 facts/receipts 与退役证据继续保留，物理删除仍须单独数据保留批准。
+旧 SharedSignals 的代码、runtime、release candidate、systemd unit/override 与 active-path
+归档已经完成退役和物理清理，不再是可用 rollback 或恢复入口，也不得重新创建旧 unit、cron、
+provider route 或 SQLite 直读。TradingDatas 回滚只允许切换到已验证的 immutable release。
+历史 Tushare 数据归档与退役证据是独立的数据保留范围；未取得单独批准前继续只读保留，不能因
+代码/runtime 已清理而一并删除。具体删除时间、路径清单、数量、服务状态和 readback 属于带
+`observed_at` 的运行事实，记录在 `STATUS.md`，不复制为长期运行合同。
 
 退役必须分项执行并保留证据：
 

@@ -1,6 +1,29 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-15 02:48 CST。
+最后更新：2026-08-15 21:25 CST。
+
+> **2026-08-15 SharedSignals 物理清理核验与 source 纠偏
+>（`observed_at=2026-08-15T13:24:51Z`）：** 当前服务器上
+> `/opt/investment/sharedsignals-runtime`、`releases/sharedsignals-v1`、
+> `_archive/SharedSignalsV1Source-retired-20260801`、
+> `_archive/SharedSignals-retired-active-path-20260801` 均不存在；顶层没有
+> `SharedSignals-release-candidate-*`，systemd 搜索路径和 unit-file 列表也没有
+> SharedSignals 条目。历史 Tushare 数据归档
+> `_archive/sharedsignals_retired_data_tushare_20260709T044641Z` 仍存在，未获单独数据删除
+> 授权；删除前清单 `/tmp/sharedsignals-delete-inventory-20260815T130057.txt` 仍存在，
+> SHA-256 为 `be469407bdf42992ba62317ef0fdb11af6844e176e213277faf5ed0226a1ff0e`，
+> 共 9,477 行。`tradingdatas-v1-internal.service` 为 active/success/exit0，collector timer
+> 为 enabled/active；这只证明当前服务层未因旧运行面清理而中断，不代表所有 dataset
+> stable，也不授权删除历史数据。
+>
+> 本地 canonical checkout 继续在受保护的 KimiCode 候选分支 `release-full-universe`
+> `18f1c9f`，不作为 source/release authority。GitHub `main` 与 ordinary server source
+> 已分别读回 `68398f00c0beb404cc3c0f5a7be93bac8568c3bd`；服务器候选分支仍保留
+> `18f1c9f`。immutable effective release 仍为
+> `e6dc519101174ba6158ce3e8d180eefee385c9ff`，本次没有 provider、数据库、release、
+> service/timer 拓扑或交易权限变更。原始未合并文档提交 `dc0e361` 已保存在
+> `archive/td-sharedsignals-delete-record-20260815T2125CST`；其中带日期的数量和删除现场
+> 未复制进长期 `docs/OPERATIONS.md`，只前向保留已验证的稳定退役行为与本条运行记录。
 
 > **2026-08-15 当前分层事实（`observed_at=2026-08-15T02:48+08:00`）：** GitHub
 > `main` 与普通服务器源码均为
