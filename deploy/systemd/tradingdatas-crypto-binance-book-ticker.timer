@@ -2,9 +2,9 @@
 Description=Refresh isolated TradingDatas Crypto book-ticker snapshots every five minutes
 
 [Timer]
-OnCalendar=*-*-* *:0/5:20
+OnCalendar=*-*-* *:0/5:40
 AccuracySec=1s
-RandomizedDelaySec=10s
+RandomizedDelaySec=0
 Persistent=true
 Unit=tradingdatas-crypto-binance-book-ticker.service
 
