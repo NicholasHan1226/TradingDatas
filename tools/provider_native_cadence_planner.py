@@ -112,6 +112,7 @@ class RateBudget:
     account_requests_per_run: int
     provider_requests_per_run: int
     api_requests_per_run: int
+    api_overrides: Mapping[str, int] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -404,21 +405,49 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
     for raw_name, raw in raw_budgets.items():
         name = _text(raw_name, "rate budget name")
         value = _mapping(raw, f"rate budget {name}")
-        if set(value) != {
+        allowed = {
             "account_requests_per_run",
             "provider_requests_per_run",
             "api_requests_per_run",
-        }:
+            "api_overrides",
+        }
+        if not {
+            "account_requests_per_run",
+            "provider_requests_per_run",
+            "api_requests_per_run",
+        } <= set(value) or not set(value) <= allowed:
             raise ValueError("rate budget keys are invalid")
-        budgets[name] = RateBudget(
-            *(
-                _integer(value[key], key, positive=True)
-                for key in (
-                    "account_requests_per_run",
-                    "provider_requests_per_run",
-                    "api_requests_per_run",
-                )
+        overrides_raw = value.get("api_overrides") or {}
+        overrides = _mapping(
+            overrides_raw, f"rate budget {name}.api_overrides"
+        )
+        normalized_overrides: dict[str, int] = {}
+        for raw_api, raw_limit in overrides.items():
+            api_name = _text(
+                raw_api, f"rate budget {name}.api_overrides key"
             )
+            normalized_overrides[api_name] = _integer(
+                raw_limit,
+                f"rate budget {name}.api_overrides.{api_name}",
+                positive=True,
+            )
+        budgets[name] = RateBudget(
+            _integer(
+                value["account_requests_per_run"],
+                "account_requests_per_run",
+                positive=True,
+            ),
+            _integer(
+                value["provider_requests_per_run"],
+                "provider_requests_per_run",
+                positive=True,
+            ),
+            _integer(
+                value["api_requests_per_run"],
+                "api_requests_per_run",
+                positive=True,
+            ),
+            MappingProxyType(normalized_overrides),
         )
     raw_cadences = _mapping(root["cadences"], "schedule.cadences")
     if set(raw_cadences) != CADENCE_CLASSES:
@@ -1425,10 +1454,13 @@ def plan_runs(
         budget = schedule.rate_budgets[plan.rate_budget_class]
         provider_key = (plan.rate_budget_class, plan.provider)
         api_key = (plan.rate_budget_class, plan.provider, plan.provider_api)
+        api_limit = budget.api_overrides.get(
+            plan.provider_api, budget.api_requests_per_run
+        )
         if (
             account[plan.rate_budget_class] >= budget.account_requests_per_run
             or provider[provider_key] >= budget.provider_requests_per_run
-            or api[api_key] >= budget.api_requests_per_run
+            or api[api_key] >= api_limit
         ):
             skips.append(PlannerSkip(plan.dataset_id, plan.provider, "rate_budget"))
             continue
