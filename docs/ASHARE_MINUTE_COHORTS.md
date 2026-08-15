@@ -2,6 +2,11 @@
 
 本文件只说明 `cn.dataset.rt_min` 的消费覆盖与扩容证据。它不定义交易 Universe、下单、仓位或自动化投资建议。
 
+当前 registry authority 是冻结的 5,963 个 `ts_code`，以每批 300 拆成 20 个 batch；cursor
+contract v2 每轮最多选择 6 个 batch，完整窗口按 receipt-bound continuation 形成
+`6+6+6+2`。本文件中的 500/100 分片和 30 只 canary 仅保留为历史回滚与诊断证据，不替代
+当前 full-universe 配置。
+
 ## 事实源优先级
 
 1. 生产状态：immutable release、systemd、SQLite receipt、受认证 catalog/query 读回；
@@ -15,9 +20,9 @@
 
 | 层级 | 允许的状态 | 当前含义 |
 | --- | --- | --- |
-| 30 只回滚 canary | 生产合同 | 30 个冻结代码、单个 5MIN 请求；仍需下一交易日 fresh receipt 与消费者读回才成为 live/stable。 |
-| 100 只 shard | candidate → ready → live → stable | 离线编译器仅产生 `paused` candidate。启用前需要独立 activation evidence；启用后还需完整同快照 receipt、catalog/query、TA、Copilot 的顺序读回。 |
-| 500 只 cohort | candidate → ready → live → stable | 五个冻结 100 shard 必须在同一窗口完整返回、无重复、恰好覆盖 500 且 `time` 相同；不以五次互不关联的成功拼接为 500 live。 |
+| 5,963 只 full universe | candidate → ready → live → stable | 20 个冻结 batch 必须按 cursor v2 receipt-bound 续接；成功批次保留，失败批次只在该 dataset 内重试，不跨 universe/config 复用。 |
+| 500 只历史 cohort | rollback/diagnostic | 五个冻结 100 shard 的旧证据，仅用于回滚与审计，不声明当前 full-universe 覆盖。 |
+| 30 只历史 canary | rollback/diagnostic | 旧 30 个代码的独立回滚面，不改变当前 5,963 代码 authority。 |
 
 `ready` 表示合同、配置和测试均通过；`live` 需要真实有界 receipt 与 catalog/query 回读；`stable` 需要跨适用 cadence 的连续成功，并已有需要它的消费者回读。
 

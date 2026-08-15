@@ -34,7 +34,10 @@ from storage.sqlite_authority_lock import sqlite_authority_lock_path
 from provider_ingest_contract import provider_ingest_config_hash
 import tools.run_provider_native_schedule as scheduler
 import tools.provider_native_cadence_planner as cadence_planner
-from collectors.tushare.provider_native_ingest import _stable_fanout_batches
+from collectors.tushare.provider_native_ingest import (
+    _select_resumable_fanout_batches,
+    _stable_fanout_batches,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,7 +87,13 @@ def _window_registry(
     return DatasetRegistry((dataset,), query_defaults=base.query_defaults)
 
 
-def _resumable_window_registry(*, dataset_field: bool = False) -> DatasetRegistry:
+def _resumable_window_registry(
+    *,
+    dataset_field: bool = False,
+    values: tuple[str, ...] = ("000001.SZ", "000002.SZ"),
+    max_batches_per_run: int = 1,
+    batch_size: int = 1,
+) -> DatasetRegistry:
     registry = _window_registry("yyyymmdd", "daily_reference")
     dataset = registry.datasets[0]
     binding = replace(
@@ -101,13 +110,13 @@ def _resumable_window_registry(*, dataset_field: bool = False) -> DatasetRegistr
             else FanoutPolicy(
                 strategy="literal_values",
                 parameter="ts_code",
-                values=("000001.SZ", "000002.SZ"),
-                batch_size=1,
+                values=values,
+                batch_size=batch_size,
             )
         ),
         resumable_fanout=ResumableFanoutPolicy(
             cursor_contract_version=2,
-            max_batches_per_run=1,
+            max_batches_per_run=max_batches_per_run,
         ),
         request_variants=(
             MappingProxyType({"variant": "a"}),
@@ -162,7 +171,12 @@ def _v2_histories(
         source_values = binding.fanout.values
     else:
         source_values = ("000001.SZ", "000002.SZ")
-    batches = _stable_fanout_batches(source_values, parameter="ts_code", batch_size=1, resumable=True)
+    batches = _stable_fanout_batches(
+        source_values,
+        parameter="ts_code",
+        batch_size=binding.fanout.batch_size,
+        resumable=True,
+    )
     config_hash = provider_ingest_config_hash(dataset, binding)
     result: list[ValidatedReceiptHistoryEntry] = []
     for batch in batches:
@@ -376,6 +390,78 @@ def test_resumable_planner_keeps_failed_or_mismatched_window_schedulable(mutator
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
     )
     assert len(plans) == 1
+
+
+def test_resumable_fanout_continues_6_6_6_2_and_retries_only_bound_dataset() -> None:
+    values = tuple(f"{index:04d}.SZ" for index in range(20))
+    registry = _resumable_window_registry(
+        values=values,
+        max_batches_per_run=6,
+        batch_size=1,
+    )
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    batches = _stable_fanout_batches(
+        values,
+        parameter="ts_code",
+        batch_size=1,
+        resumable=True,
+    )
+    all_successes = _v2_histories(registry, window={"period": "20260720"})
+    histories: tuple[ValidatedReceiptHistoryEntry, ...] = ()
+    observed: list[list[int]] = []
+    for expected in ([0, 1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11], [12, 13, 14, 15, 16, 17], [18, 19]):
+        selected = _select_resumable_fanout_batches(
+            batches,
+            dataset=dataset,
+            binding=binding,
+            request_window={"period": "20260720"},
+            histories=histories,
+        )
+        indices = [item.batch_index for item in selected]
+        observed.append(indices)
+        assert indices == expected
+        histories += tuple(
+            item for item in all_successes if item.batch_index in set(expected)
+        )
+    assert observed == [[0, 1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11], [12, 13, 14, 15, 16, 17], [18, 19]]
+    assert _select_resumable_fanout_batches(
+        batches,
+        dataset=dataset,
+        binding=binding,
+        request_window={"period": "20260720"},
+        histories=histories,
+    ) == ()
+
+    failed_retry = tuple(
+        replace(item, status="failed", cohort_status="failed", retry_index=1)
+        if item.batch_index == 3 and item.request_variant["variant"] == "a"
+        else item
+        for item in all_successes
+    )
+    assert [
+        item.batch_index
+        for item in _select_resumable_fanout_batches(
+            batches,
+            dataset=dataset,
+            binding=binding,
+            request_window={"period": "20260720"},
+            histories=failed_retry,
+        )
+    ] == [3]
+
+    for field, replacement in (("config_hash", "c" * 64), ("frozen_universe_sha256", "d" * 64)):
+        mismatched = (replace(all_successes[0], **{field: replacement}),)
+        assert [
+            item.batch_index
+            for item in _select_resumable_fanout_batches(
+                batches,
+                dataset=dataset,
+                binding=binding,
+                request_window={"period": "20260720"},
+                histories=mismatched,
+            )
+        ] == [0, 1, 2, 3, 4, 5]
 
 
 def _database(path: Path) -> None:
