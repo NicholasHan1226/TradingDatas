@@ -996,6 +996,50 @@ def test_runtime_rate_budget_counts_actual_calls_across_datasets_and_apis() -> N
         ledger.consume(overflow, overflow.provider_api)
 
 
+def test_api_override_is_specific_and_does_not_widen_global_budgets() -> None:
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    intraday = schedule.rate_budgets["intraday"]
+
+    assert intraday.account_requests_per_run == 12
+    assert intraday.provider_requests_per_run == 12
+    assert intraday.api_requests_per_run == 6
+    assert dict(intraday.api_overrides) == {"rt_min": 60, "rt_min_daily": 60}
+
+    bounded = replace(
+        schedule,
+        rate_budgets={
+            **schedule.rate_budgets,
+            "intraday": replace(
+                intraday,
+                account_requests_per_run=100,
+                provider_requests_per_run=100,
+                api_requests_per_run=1,
+                api_overrides=MappingProxyType({"special_api": 2}),
+            ),
+        },
+    )
+    ledger = scheduler.RuntimeRateBudgetLedger(bounded)
+
+    def plan(api_name: str, index: int) -> scheduler.ScheduledRun:
+        return scheduler.ScheduledRun(
+            dataset_id=f"cn.synthetic.{api_name}.{index}",
+            provider="tushare",
+            provider_api=api_name,
+            cadence_class="postclose_daily",
+            request_window={},
+            rate_budget_class="intraday",
+        )
+
+    ledger.consume(plan("special_api", 0), "special_api")
+    ledger.consume(plan("special_api", 1), "special_api")
+    with pytest.raises(scheduler.RequestBudgetExceeded):
+        ledger.consume(plan("special_api", 2), "special_api")
+
+    ledger.consume(plan("default_api", 0), "default_api")
+    with pytest.raises(scheduler.RequestBudgetExceeded):
+        ledger.consume(plan("default_api", 1), "default_api")
+
+
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
