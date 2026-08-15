@@ -288,7 +288,13 @@ def _install_fake_snapshot(
         assert db_path == harness["db_path"]
         yield harness["conn"]
 
-    def project(conn: sqlite3.Connection, registry: DatasetRegistry, *, now: datetime):
+    def project(
+        conn: sqlite3.Connection,
+        registry: DatasetRegistry,
+        *,
+        now: datetime,
+        validation_cache: dict | None = None,
+    ):
         calls["projection"] = int(calls["projection"]) + 1
         calls["now"] = now
         assert conn is harness["conn"]
@@ -734,6 +740,7 @@ def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(
         projected_registry: DatasetRegistry,
         *,
         now: datetime,
+        validation_cache: dict | None = None,
     ) -> dict[str, object]:
         assert snapshot_conn is conn
         assert projected_registry is registry

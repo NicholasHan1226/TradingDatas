@@ -2114,6 +2114,131 @@ def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
     assert calls.count(alternate) == 1
 
 
+def test_catalog_projection_memoizes_own_dataset_receipt_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shared cache revalidates only receipts written since the prior call."""
+
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="memoized-validation-1",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    cache: dict = {}
+    calls = 0
+    original = projection_module._validate_receipt_row
+
+    def counted(*args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(projection_module, "_validate_receipt_row", counted)
+
+    first = project_catalog_runtime(conn, registry, now=now, validation_cache=cache)
+    assert calls == 1
+    second = project_catalog_runtime(conn, registry, now=now, validation_cache=cache)
+    assert calls == 1
+    assert first == second
+
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="memoized-validation-2",
+        started_at="2026-07-15T01:00:00+00:00",
+        finished_at="2026-07-15T01:01:00+00:00",
+        data_through="20260715",
+    )
+    later = datetime(2026, 7, 15, 2, tzinfo=timezone.utc)
+    third = project_catalog_runtime(conn, registry, now=later, validation_cache=cache)
+    assert calls == 2
+    assert third["datasets"][dataset.dataset_id]["observed_at"] != (
+        first["datasets"][dataset.dataset_id]["observed_at"]
+    )
+
+
+def test_catalog_projection_memoized_cache_revalidates_rewritten_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cache key binds row content, so a recycled run_id is revalidated."""
+
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="memoized-rewrite-1",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    cache: dict = {}
+    calls = 0
+    original = projection_module._validate_receipt_row
+
+    def counted(*args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(projection_module, "_validate_receipt_row", counted)
+
+    first = project_catalog_runtime(conn, registry, now=now, validation_cache=cache)
+    assert calls == 1
+    assert first["datasets"][dataset.dataset_id]["state"] == "success"
+
+    _tamper_notes(conn, receipt_id, "status", "failed")
+    second = project_catalog_runtime(conn, registry, now=now, validation_cache=cache)
+    assert calls == 2
+    assert second["datasets"][dataset.dataset_id]["state"] != "success"
+
+
+def test_catalog_projection_without_cache_keeps_direct_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers without a cache keep the per-request validation behavior."""
+
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="uncached-validation-1",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    calls = 0
+    original = projection_module._validate_receipt_row
+
+    def counted(*args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(projection_module, "_validate_receipt_row", counted)
+
+    first = project_catalog_runtime(conn, registry, now=now)
+    second = project_catalog_runtime(conn, registry, now=now)
+    assert calls == 2
+    assert first == second
+
+
 def test_interface_projection_is_scoped_to_its_provider_binding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

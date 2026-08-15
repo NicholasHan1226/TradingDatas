@@ -403,7 +403,7 @@ def _serialize_dataset(
 class CatalogService:
     """List access-visible registry datasets from one verified SQLite snapshot."""
 
-    __slots__ = ("_registry", "_db_path", "_cursor_codec")
+    __slots__ = ("_registry", "_db_path", "_cursor_codec", "_validation_cache")
 
     def __init__(
         self,
@@ -424,6 +424,9 @@ class CatalogService:
         self._registry = registry
         self._db_path = canonical_path
         self._cursor_codec = cursor_codec
+        # Memo for immutable receipt-row validation; see
+        # storage.receipt_projection._validate_receipt_row_memoized.
+        self._validation_cache: dict = {}
 
     def list_datasets(
         self,
@@ -464,7 +467,12 @@ class CatalogService:
 
         with open_verified_read_model_snapshot(self._db_path) as conn:
             try:
-                report = project_catalog_runtime(conn, self._registry, now=now)
+                report = project_catalog_runtime(
+                    conn,
+                    self._registry,
+                    now=now,
+                    validation_cache=self._validation_cache,
+                )
             except RuntimeProjectionError:
                 raise
             except (KeyError, TypeError, ValueError, sqlite3.Error):
