@@ -9,6 +9,13 @@ rate_budgets:
     account_requests_per_run: 12
     provider_requests_per_run: 12
     api_requests_per_run: 6
+    # Per-provider-api request ceilings from bounded QuickSync probing
+    # (2026-08-15, non-trading window).  Each interface tolerated 60 serial
+    # requests/minute without a rate-limit response, so 60 is a conservative
+    # observed lower bound, not the exact provider ceiling.
+    api_overrides:
+      rt_min: 60
+      rt_min_daily: 60
   low_frequency:
     account_requests_per_run: 16
     provider_requests_per_run: 16
