@@ -18,7 +18,7 @@ import pytest
 import storage.ingest_receipts as receipt_module
 import storage.receipt_projection as projection_module
 from dataset_registry import (
-    BINANCE_SPOT_CANARY_REGISTRY_PATH,
+    BINANCE_CANARY_REGISTRY_PATH,
     DatasetDefinition,
     DatasetRegistry,
     load_dataset_registry,
@@ -1173,7 +1173,7 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
 ) -> None:
     conn = _memory_db()
     dataset = load_dataset_registry(
-        BINANCE_SPOT_CANARY_REGISTRY_PATH
+        BINANCE_CANARY_REGISTRY_PATH
     ).resolve("crypto.spot.binance.btcusdt.5m")
     binding = dataset.provider_bindings[0]
     predecessor = replace(dataset, partition_field=None)

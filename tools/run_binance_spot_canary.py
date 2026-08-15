@@ -26,8 +26,8 @@ from collectors.tushare.provider_native_ingest import (  # noqa: E402
     collect_provider_native_dataset,
 )
 from dataset_registry import (  # noqa: E402
+    BINANCE_CANARY_REGISTRY_PATH,
     BINANCE_SPOT_CANARY_MODE,
-    BINANCE_SPOT_CANARY_REGISTRY_PATH,
     load_dataset_registry,
 )
 
@@ -178,7 +178,7 @@ def run(
     collect_book_ticker: bool = False,
     backfill_days: int | None = None,
 ) -> dict[str, object]:
-    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
     if collect_rules and collect_book_ticker:
         raise ValueError("Crypto collector mode is ambiguous")
     if (collect_rules or collect_book_ticker) and backfill_days is not None:

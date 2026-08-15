@@ -7,15 +7,15 @@ import pytest
 
 from collectors.binance.collector import BinanceSpotPublicCollector, _RejectRedirects
 from dataset_registry import (
+    BINANCE_CANARY_REGISTRY_PATH,
     BINANCE_SPOT_CANARY_MODE,
-    BINANCE_SPOT_CANARY_REGISTRY_PATH,
     load_dataset_registry,
     runtime_dataset_registry_path,
 )
 from provider_transport import provider_transport_profile
 from query_contract import QueryExecutionOptions, QueryRequest
 from query_service import _base_predicates, _prepare_query, _validate_filter_clause
-from tools.compile_crypto_binance_spot_registry import (
+from tools.compile_crypto_binance_canary_registry import (
     DEFAULT_REGISTRY,
     DEFAULT_UNIVERSE,
     compile_registry,
@@ -37,12 +37,14 @@ SYMBOLS = (
 
 
 def test_canary_registry_freezes_ten_symbols_and_current_snapshot_sets() -> None:
-    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
-    assert len(registry.datasets) == 30
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
+    assert len(registry.datasets) == 50
     assert [item.dataset_id for item in registry.datasets] == [
         *(f"crypto.spot.binance.{symbol.lower()}.5m" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.rules" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.book_ticker" for symbol in SYMBOLS),
+        *(f"crypto.perp.binance.{symbol.lower()}.funding_rate" for symbol in SYMBOLS),
+        *(f"crypto.perp.binance.{symbol.lower()}.open_interest" for symbol in SYMBOLS),
     ]
     bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
     assert bar.primary_key == ("symbol", "open_time")
@@ -75,9 +77,9 @@ def test_canary_mode_selects_only_the_pinned_registry(
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", BINANCE_SPOT_CANARY_MODE)
     monkeypatch.delenv("TRADINGDATAS_REGISTRY_PATH", raising=False)
-    assert runtime_dataset_registry_path() == BINANCE_SPOT_CANARY_REGISTRY_PATH
+    assert runtime_dataset_registry_path() == BINANCE_CANARY_REGISTRY_PATH
     monkeypatch.setenv(
-        "TRADINGDATAS_REGISTRY_PATH", str(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+        "TRADINGDATAS_REGISTRY_PATH", str(BINANCE_CANARY_REGISTRY_PATH)
     )
     with pytest.raises(ValueError, match="does not accept a path override"):
         runtime_dataset_registry_path()
@@ -185,7 +187,7 @@ def test_binance_transport_rejects_redirects() -> None:
 
 
 def test_rfc3339_open_time_between_normalizes_to_provider_row_order() -> None:
-    bar = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH).resolve(
+    bar = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH).resolve(
         "crypto.spot.binance.btcusdt.5m"
     )
     open_time = next(field for field in bar.fields if field.name == "open_time")
@@ -210,7 +212,7 @@ def _bar_request(
     filters: MappingProxyType[str, MappingProxyType[str, object]],
     as_of: str | None,
 ) -> tuple[QueryRequest, object, object]:
-    registry = load_dataset_registry(BINANCE_SPOT_CANARY_REGISTRY_PATH)
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
     bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
     request = QueryRequest(
         dataset_id=bar.dataset_id,

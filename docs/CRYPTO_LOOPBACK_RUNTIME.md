@@ -19,6 +19,8 @@ trading authority.
 | timer | `tradingdatas-crypto-binance-collect.timer`, enabled for isolated 5-minute collection |
 | rule unit | `tradingdatas-crypto-binance-rules.service` |
 | rule timer | `tradingdatas-crypto-binance-rules.timer`, daily public-rule refresh |
+| USDM candidate unit | `tradingdatas-crypto-binance-usdm-collect.service` |
+| USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer`, staggered two minutes after the bar timer; must stay disabled until the candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
 | lock | `/run/tradingdatas-crypto/collect.lock` |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`
@@ -52,14 +54,22 @@ observation continuity during a brief public transport interruption; it does
 not relax the API metadata or TradingAgent evidence gate.
 
 The expansion contract freezes ten symbols in
-`config/crypto_binance_spot_universe.v1.yaml` and compiles thirty datasets:
-one bar, one public-rule and one current book-ticker snapshot dataset per
-symbol. The source tree provides a dedicated
+`config/crypto_binance_spot_universe.v1.yaml` and compiles fifty datasets
+into the single pinned canary registry: one bar, one public-rule and one
+current book-ticker snapshot dataset per symbol for the Spot cohort, plus one
+funding-rate and one open-interest dataset per symbol for the USDⓈ-M
+perpetual candidate cohort documented in
+`CRYPTO_BINANCE_USDM_CANARY.md`. The source tree provides a dedicated
 `tradingdatas-crypto-binance-book-ticker.timer` for five-minute collection;
 installation, enablement and runtime effectiveness remain separate release
-gates and do not change the enabled bar or rules timers. Every collection
-keeps only the latest receipt-bound snapshot per symbol; it is not a
-replayable history. A symbol failure is isolated and must not be hidden by
+gates and do not change the enabled bar or rules timers. Every book-ticker
+collection keeps only the latest receipt-bound snapshot per symbol; it is not
+a replayable history. The USDⓈ-M candidate shares this data root, SQLite,
+release and loopback API, and its collector takes the same `collect.lock` so
+writers stay serial; its timer ships disabled and must not be enabled before
+the candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed. Promotion
+requires every dataset in a promoted cohort to pass independent authenticated
+catalog/query readback. A symbol failure is isolated and must not be hidden by
 another symbol's healthy envelope. Bounded 180-day backfill remains a separate
 one-shot operation and is never real-time/PIT evidence.
 
@@ -116,6 +126,8 @@ disabled-timer readback before activation, and A-share isolation readback.
 
 Rollback is: disable and stop both
 `tradingdatas-crypto-binance-collect.timer` and
-`tradingdatas-crypto-binance-rules.timer`, then stop
+`tradingdatas-crypto-binance-rules.timer` — and
+`tradingdatas-crypto-binance-usdm-collect.timer` as well if it has been
+enabled after its candidate gate — then stop
 `tradingdatas-crypto-v1-internal.service`. Do not delete Crypto facts
 or receipts, and do not stop, reload, reconfigure, or restart A-share units.

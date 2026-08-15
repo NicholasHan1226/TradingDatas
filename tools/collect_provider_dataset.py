@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
 from collectors.binance.collector import BinanceSpotPublicCollector  # noqa: E402
+from collectors.binance.usdm_collector import BinanceUsdmPublicCollector  # noqa: E402
 from collectors.tushare import provider_native_ingest  # noqa: E402
 from dataset_registry import (  # noqa: E402
     DatasetDefinition,
@@ -421,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
         collectors = {
             "tushare": TushareCollector(),
             "binance_spot": BinanceSpotPublicCollector(),
+            "binance_usdm": BinanceUsdmPublicCollector(),
         }
         results = tuple(
             provider_native_ingest.collect_provider_native_dataset(

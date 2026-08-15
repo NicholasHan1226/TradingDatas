@@ -1,0 +1,12 @@
+[Unit]
+Description=Wake isolated TradingDatas Crypto USDM funding-rate and open-interest collection
+
+[Timer]
+OnCalendar=*-*-* *:2/5:00
+AccuracySec=1s
+RandomizedDelaySec=15s
+Persistent=true
+Unit=tradingdatas-crypto-binance-usdm-collect.service
+
+[Install]
+WantedBy=timers.target

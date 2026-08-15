@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Expand the frozen Binance Spot registry from one reviewed symbol template."""
+"""Expand the frozen Binance canary registry from reviewed symbol templates.
+
+The same versioned universe freezes the ten USDT symbols for both the public
+Spot cohort and the public USDⓈ-M perpetual funding-rate/open-interest
+cohort; the deterministic compiler emits every dataset from its checked-in
+BTCUSDT template.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +19,22 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_UNIVERSE = ROOT / "config" / "crypto_binance_spot_universe.v1.yaml"
-DEFAULT_REGISTRY = ROOT / "config" / "crypto_binance_spot_canary_registry.v1.yaml"
+DEFAULT_REGISTRY = ROOT / "config" / "crypto_binance_canary_registry.v1.yaml"
 _SYMBOL = re.compile(r"[A-Z0-9]{2,16}USDT")
+
+# suffix -> (dataset-id infix, alias prefix, provider API prefix)
+_DATASET_KINDS = {
+    "5m": ("crypto.spot.binance.", "binance_spot.", "klines_"),
+    "rules": ("crypto.spot.binance.", "binance_spot.", "exchangeInfo_"),
+    "book_ticker": ("crypto.spot.binance.", "binance_spot.", "bookTicker_"),
+    "funding_rate": ("crypto.perp.binance.", "binance_usdm.", "fundingRate_"),
+    "open_interest": (
+        "crypto.perp.binance.",
+        "binance_usdm.",
+        "openInterestHist_",
+    ),
+}
+_DATASET_KIND_ORDER = ("5m", "rules", "book_ticker", "funding_rate", "open_interest")
 
 
 def _document(path: Path) -> dict[str, object]:
@@ -57,26 +77,24 @@ def _symbols(path: Path) -> tuple[str, ...]:
 
 
 def _clone(template: dict[str, object], symbol: str, suffix: str) -> dict[str, object]:
+    kind = _DATASET_KINDS.get(suffix)
+    if kind is None:
+        raise ValueError("Crypto registry template suffix is invalid")
+    dataset_prefix, alias_prefix, api_prefix = kind
     item = deepcopy(template)
     lower = symbol.lower()
-    item["dataset_id"] = f"crypto.spot.binance.{lower}.{suffix}"
-    item["aliases"] = [f"binance_spot.{lower}.{suffix}"]
+    item["dataset_id"] = f"{dataset_prefix}{lower}.{suffix}"
+    item["aliases"] = [f"{alias_prefix}{lower}.{suffix}"]
     bindings = item["provider_bindings"]
     if not isinstance(bindings, list) or len(bindings) != 1:
         raise ValueError("Crypto registry template binding is invalid")
     binding = bindings[0]
     if not isinstance(binding, dict):
         raise ValueError("Crypto registry template binding is invalid")
-    api_prefix = {
-        "5m": "klines_",
-        "rules": "exchangeInfo_",
-        "book_ticker": "bookTicker_",
-    }.get(suffix)
-    if api_prefix is None:
-        raise ValueError("Crypto registry template suffix is invalid")
     binding["api_name"] = api_prefix + lower
+    provider_prefix = alias_prefix.rstrip(".")
     binding["read_discriminator_value"] = (
-        f"binance_spot_{lower}_{suffix.replace('.', '_')}"
+        f"{provider_prefix}_{lower}_{suffix.replace('.', '_')}"
     )
     request = binding["request_template"]
     if not isinstance(request, dict):
@@ -94,19 +112,17 @@ def compile_registry(*, universe_path: Path, registry_path: Path) -> bytes:
     by_id = {
         item.get("dataset_id"): item for item in datasets if isinstance(item, dict)
     }
-    bar = by_id.get("crypto.spot.binance.btcusdt.5m")
-    rules = by_id.get("crypto.spot.binance.btcusdt.rules")
-    book_ticker = by_id.get("crypto.spot.binance.btcusdt.book_ticker")
-    if (
-        not isinstance(bar, dict)
-        or not isinstance(rules, dict)
-        or not isinstance(book_ticker, dict)
-    ):
-        raise ValueError("Crypto registry templates are missing")
+    templates: dict[str, dict[str, object]] = {}
+    for suffix in _DATASET_KIND_ORDER:
+        dataset_prefix = _DATASET_KINDS[suffix][0]
+        template = by_id.get(f"{dataset_prefix}btcusdt.{suffix}")
+        if not isinstance(template, dict):
+            raise ValueError("Crypto registry templates are missing")
+        templates[suffix] = template
     registry["datasets"] = [
-        *(_clone(bar, symbol, "5m") for symbol in symbols),
-        *(_clone(rules, symbol, "rules") for symbol in symbols),
-        *(_clone(book_ticker, symbol, "book_ticker") for symbol in symbols),
+        _clone(templates[suffix], symbol, suffix)
+        for suffix in _DATASET_KIND_ORDER
+        for symbol in symbols
     ]
     return yaml.safe_dump(
         registry,
