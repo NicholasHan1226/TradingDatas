@@ -173,9 +173,12 @@ watermark 或 lineage 投影，也不能把当前已验证分区降级。只有�
 该 fallback cohort 一并纳入 lineage 校验。
 
 `cn.dataset.rt_min` 的 registry 输入固定为 `freq=5MIN` 的 30 只沪深主板 request template，
-并绑定冻结的 500 只压力 cohort；两者去重并集为 528 个 `ts_code`。该 500+30 绑定用于正式
-compiler/registry 的可重建 authority，首批实际激活、完整 cohort receipt 和 catalog/query
-供应仍须由独立 release/readback 门禁确认。它不是中证500成分、研究代表性样本或交易 Universe。
+并绑定当前冻结的完整 5,963 个 `ts_code`。该 immutable fanout 以每批 300 拆成 20 批，使用
+resumable cursor v2（每轮最多 6 批），由匹配 dataset/provider、config、universe 与 batch
+identity 的 success/empty receipt 续接；失败只在该 dataset 内重试，不能跨 universe/config
+复用 receipt。该绑定用于正式 compiler/registry 的可重建 authority，实际激活、完整 cohort
+receipt 和 catalog/query 供应仍须由独立 release/readback 门禁确认。它不是中证500成分、研究
+代表性样本或交易 Universe。
 本平台把 provider 返回的
 `time` 解释为该 5 分钟 bar 的结束时间；
 上游字段说明仅称其为“交易时间”，因此这是本平台基于已验证 5 分钟返回形状冻结的
@@ -183,10 +186,11 @@ compiler/registry 的可重建 authority，首批实际激活、完整 cohort re
 `vol` 单位为股，`amount` 单位为人民币元。只允许通过同一 catalog/query API 读取；盘后
 可读到的最后一根 bar 不得被描述为 300 秒内的实时新鲜数据。
 
-500 只 canary 仅在同一轮的全部五个分片都返回、恰好覆盖冻结的 500 个 `ts_code`、无
-重复且所有行具有同一个 `time` 时才投影为 `ready`。任一分片失败、缺代码、重复代码或
-bar 时间不一致都只写失败 receipt 并使该数据集 fail-closed；不会把部分分片或上一轮数据
-伪装成完整 500 只快照。现行 30 只生产 canary 保留为独立回滚点。
+完整 universe 仅在同一 request window 的 20 个 batch receipt 均通过 identity、schema、
+时间与行完整性校验时才投影为该窗口的 `ready`；任一 batch 失败、缺代码、重复代码或
+bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批次供 cursor v2 续接，不把部分
+结果伪装成完整覆盖。旧 500/30 分片仍可作为独立回滚与诊断证据，但不改变当前 5,963
+代码的 registry authority。
 
 ## 禁止接口
 

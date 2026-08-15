@@ -10,7 +10,10 @@ import sys
 import pytest
 import yaml
 
-from collectors.tushare.provider_native_ingest import _provider_scan_budget
+from collectors.tushare.provider_native_ingest import (
+    _provider_scan_budget,
+    _stable_fanout_batches,
+)
 from dataset_registry import load_dataset_registry
 import tools.compile_provider_native_registry as compiler_module
 from tools.compile_provider_native_registry import (
@@ -90,6 +93,31 @@ def test_optional_resumable_fanout_projects_binding_identity_without_activation_
         "cursor_contract_version": 2,
         "max_batches_per_run": 1,
     }
+
+
+def test_rt_min_full_universe_is_exact_and_resumable_in_generated_registry() -> None:
+    registry = load_dataset_registry(TARGET_PATH)
+    binding = registry.provider_binding("cn.dataset.rt_min", "tushare")
+    assert binding.fanout is not None
+    assert binding.fanout.strategy == "literal_values"
+    assert binding.fanout.parameter == "ts_code"
+    assert binding.fanout.batch_size == 300
+    assert len(binding.fanout.values) == 5963
+    assert binding.fanout.values == tuple(sorted(binding.fanout.values))
+    assert binding.resumable_fanout is not None
+    assert binding.resumable_fanout.cursor_contract_version == 2
+    assert binding.resumable_fanout.max_batches_per_run == 6
+    batches = _stable_fanout_batches(
+        binding.fanout.values,
+        parameter="ts_code",
+        batch_size=300,
+        resumable=True,
+    )
+    assert len(batches) == 20
+    assert [len(item.values) for item in batches] == [300] * 19 + [263]
+    assert batches[0].frozen_universe_sha256 == (
+        "70f42a1f6f211f2aa74dc46c19de5eb89009235bcfe22935cec61734cfb36b29"
+    )
 
 
 def test_disclosure_date_observation_projects_reviewed_identity_without_missing_field() -> (
@@ -464,7 +492,11 @@ def test_compiler_preserves_exact_fanout_snapshot_contract() -> None:
         "snapshot_field": "time",
     }
     assert binding["fanout"]["batch_size"] == 300
-    assert len(binding["fanout"]["values"]) == 528
+    assert len(binding["fanout"]["values"]) == 5963
+    assert binding["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 6,
+    }
 
 
 def test_compiler_normalizes_windowed_primary_key_completeness() -> None:
