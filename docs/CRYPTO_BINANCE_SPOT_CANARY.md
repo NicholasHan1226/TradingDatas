@@ -58,13 +58,12 @@ same frozen ten symbols. It exposes only `symbol`, `bid_price`, `bid_qty`,
 response has no provider event timestamp, so its time authority is the
 collection receipt's actual observation interval. It is not historical L1,
 order-book depth, a replayable market-time series, or execution evidence.
-It has no backfill. On 2026-08-15 the ten-symbol snapshot cohort passed its
-isolated provider-to-API review: one service-identity on-demand collection
-wrote ten success receipts, and authenticated `18083` readback returned
-`ready/success/fresh/valid`, `degraded=false` for every dataset. The cohort is
-now collected every five minutes by the dedicated
-`tradingdatas-crypto-binance-book-ticker.timer`; each collection still keeps
-only the latest receipt-bound snapshot per symbol.
+It has no backfill. The source tree provides a dedicated
+`tradingdatas-crypto-binance-book-ticker.timer` for five-minute collection;
+installation and enablement remain a separate immutable-release decision.
+Runtime effectiveness requires fresh unit, receipt and authenticated `18083`
+readback recorded in `STATUS.md`. Each collection keeps only the latest
+receipt-bound snapshot per symbol.
 
 ## Evidence and shutdown
 

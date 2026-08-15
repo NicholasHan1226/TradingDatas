@@ -2,14 +2,16 @@
 
 最后更新：2026-08-15 22:40 CST。
 
-> **2026-08-15 Crypto book-ticker 晋级为 5 分钟自动采集
->（`observed_at=2026-08-15T14:29Z`）：** 十个 `.book_ticker` 数据集完成隔离
-> provider-to-API review：一次 service-identity 按需采集写入十张独立 success
-> receipt，随后以 `tradingagent` 身份做认证 18083 query readback，每个数据集返回
-> `ready/fresh/valid`、`degraded=false`，`data_through` 等于采集时刻。据此新增专用
-> `tradingdatas-crypto-binance-book-ticker.service/.timer`（`*:2/5:30`，与 bars、rules
-> timer 错开，共用同一把 collect 锁），每次采集仍只保留每个 symbol 最新一张
-> receipt-bound 快照，不积累历史序列。bar/rules timer、A股 18082、交易权限均未改变。
+> **2026-08-15 Crypto book-ticker 5 分钟采集源码候选
+>（候选证据 `observed_at=2026-08-15T14:29Z`）：** Kimi 候选记录十个
+> `.book_ticker` 数据集完成一次隔离 provider-to-API review：service-identity
+> 按需采集写入十张独立 success receipt，随后以 `tradingagent` 身份做认证
+> 18083 query readback，每个数据集返回 `ready/fresh/valid`、`degraded=false`。
+> 源码候选新增专用 `tradingdatas-crypto-binance-book-ticker.service/.timer`
+>（`*:2/5:30`，与 bars、rules timer 错开，共用同一把 collect 锁）。本记录不表示
+> unit 已安装、启用或 runtime-effective；这些层仍需 Controller 的 immutable release、
+> unit readback 和自然运行证据。每次采集只保留每个 symbol 最新一张 receipt-bound
+> 快照，不积累历史序列；bar/rules timer、A股 18082、交易权限均未改变。
 
 > **2026-08-15 SharedSignals 物理清理核验与 source 纠偏
 >（`observed_at=2026-08-15T13:24:51Z`）：** 当前服务器上
