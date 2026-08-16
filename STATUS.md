@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 20:50 CST。
+最后更新：2026-08-16 21:15 CST。
+
+> **2026-08-16 OI 503 根因更正（read-model 快照在并发写下间歇降级）：** 上条
+> "查询层过滤缺陷"为误判。实测直接调用 query service 用 symbol filter 成功、HTTP
+> 路径重启后也成功；间歇 503 的公共因子是 premium 历史回填正在写同一 SQLite——
+> API 的只读快照校验在写争用下偶发 service_unavailable（catalog 与 query 均中招）。
+> 属 read-model 快照隔离在并发写下的健壮性缺口，非 OI 过滤缺陷；持久修方向：快照
+> 校验容忍并发 writer WAL 或回填降低写频率。正式 OI 预筛复算待回填结束后再跑。
 
 > **2026-08-16 OI 查询层过滤缺陷（后续发现，未修）：** 去重后 OI 简单
 > `limit:N` 带显式 order/fields 可读，但带 `symbol` filter 的 query 返回 503
