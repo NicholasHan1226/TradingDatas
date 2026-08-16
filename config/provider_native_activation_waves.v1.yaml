@@ -1,7 +1,7 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "2a5b701e2454f6de9007fa66619bfc6d9f45f3b17036e53a3861cc779abba785"
-  schedule_sha256: "6ca25a470c8349c7984a4fce5441528044ba7afa06fd9e096aae9f249a215353"
+  runtime_registry_sha256: "be915645a7b19f0063ee77785526b40c54aaafcca55c6c1b45cd7fddda9820f3"
+  schedule_sha256: "9e5797f1b2931562aa3ec9ef25a02c12740b8e2d7d567071a315cb39f8ce9375"
 waves:
   breadth_observed_20260814:
     dataset_ids:
@@ -72,6 +72,10 @@ waves:
     - cn.dataset.irm_qa_sh
     - cn.dataset.irm_qa_sz
     - cn.dataset.research_report
+  event_news_flash_20260816:
+    dataset_ids:
+    - cn.dataset.major_news
+    - cn.dataset.news
   pilot_existing:
     dataset_ids:
     - cn.dataset.rt_min

@@ -30,12 +30,18 @@ def _activation_window_is_supported(contract: Mapping[str, object]) -> bool:
     assert isinstance(fanout, dict)
     assert isinstance(completeness, dict)
     assert isinstance(primary_key, list)
-    return (
+    if formats != {"local_datetime_seconds"} or not bool(primary_key):
+        return False
+    if (
         contract["cadence_class"] == "on_demand"
-        and formats == {"local_datetime_seconds"}
-        and bool(primary_key)
         and fanout["strategy"] == "literal_values"
         and completeness["strategy"] == "windowed_unique_primary_key"
+    ):
+        return True
+    return (
+        contract["cadence_class"] == "event"
+        and fanout["strategy"] == "none"
+        and completeness["strategy"] == "event_stream_unique_primary_key"
     )
 
 

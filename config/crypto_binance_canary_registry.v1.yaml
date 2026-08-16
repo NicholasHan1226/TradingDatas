@@ -4044,10 +4044,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_btcusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_btcusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_btcusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4146,10 +4146,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_ethusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_ethusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_ethusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4248,10 +4248,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_solusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_solusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_solusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4350,10 +4350,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_xrpusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_xrpusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_xrpusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4452,10 +4452,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_bnbusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_bnbusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_bnbusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4554,10 +4554,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_dogeusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_dogeusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_dogeusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4656,10 +4656,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_adausdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_adausdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_adausdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4758,10 +4758,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_trxusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_trxusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_trxusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4860,10 +4860,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_linkusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_linkusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_linkusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable
@@ -4962,10 +4962,10 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
-  - provider: binance_usdm
+  - provider: binance_usdm_relay
     api_name: fundingRate_avaxusdt
-    adapter_version: binance-usdm-public.v1
-    read_discriminator_value: binance_usdm_avaxusdt_funding_rate
+    adapter_version: binance-usdm-via-sg-relay.v1
+    read_discriminator_value: binance_usdm_relay_avaxusdt_funding_rate
     entitlement_state: active
     activation_state: active
     probe_state: executable

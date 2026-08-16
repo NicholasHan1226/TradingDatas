@@ -157,45 +157,6 @@ def _release(lock) -> None:
         lock.close()
 
 
-def _collect_day(
-    *,
-    db_path: Path,
-    registry,
-    collector: BinanceUsdmMetricsDumpCollector,
-    collection_kind: str,
-    dataset_ids,
-    day: str,
-    now: datetime,
-) -> list[dict[str, object]]:
-    results = []
-    for dataset_id in dataset_ids:
-        attempts = _collect_with_one_provider_retry(
-            db_path=db_path,
-            registry=registry,
-            collector=collector,
-            dataset_id=dataset_id,
-            request_window={"date": day},
-            now=now,
-        )
-        results.append(
-            {
-                "collection_kind": collection_kind,
-                "dataset_id": dataset_id,
-                "receipt_ids": [
-                    receipt_id
-                    for attempt in attempts
-                    for receipt_id in attempt.receipt_ids
-                ],
-                "retry_count": len(attempts) - 1,
-                "state": attempts[-1].status,
-                "window": {"date": day},
-            }
-        )
-    if any(item["state"] != "success" for item in results):
-        raise RuntimeError("one or more Crypto dataset collections failed")
-    return results
-
-
 def _require_canary_mode() -> None:
     if (
         __import__("os").environ.get("TRADINGDATAS_CANARY_MODE")
@@ -325,12 +286,15 @@ def _run_backfill(
     registry,
     collector: BinanceUsdmMetricsDumpCollector,
     collection_kind: str,
+    probe,
     datasets: tuple[str, ...],
     now: datetime,
 ) -> dict[str, object]:
     days = backfill_windows(now, days=_BACKFILL_DAYS)
     collected = 0
     receipt_count = 0
+    unpublished_count = 0
+    failed_count = 0
     for day in days:
         pending = tuple(
             dataset_id
@@ -341,27 +305,70 @@ def _run_backfill(
             continue
         # One bounded batch per day: the shared store lock is released between
         # days so the five-minute collectors interleave instead of starving.
+        # Unpublished zips (pre-listing days, publication gaps) are skipped
+        # without an ingest attempt; a provider error after a positive probe
+        # is recorded and the day continues, so one bad day never aborts the
+        # remaining horizon.  Non-provider (contract/validation) failures
+        # still raise fail closed.
+        day_results: list[dict[str, object]] = []
         lock = _blocking_lock(lock_path)
         try:
-            results = _collect_day(
-                db_path=db_path,
-                registry=registry,
-                collector=collector,
-                collection_kind=collection_kind,
-                dataset_ids=pending,
-                day=day,
-                now=now,
-            )
+            for dataset_id in pending:
+                symbol = _dataset_symbol(dataset_id)
+                if not probe(symbol, day):
+                    day_results.append(
+                        {
+                            "collection_kind": collection_kind,
+                            "dataset_id": dataset_id,
+                            "receipt_ids": [],
+                            "retry_count": 0,
+                            "state": "unpublished",
+                            "window": {"date": day},
+                        }
+                    )
+                    continue
+                attempts = _collect_with_one_provider_retry(
+                    db_path=db_path,
+                    registry=registry,
+                    collector=collector,
+                    dataset_id=dataset_id,
+                    request_window={"date": day},
+                    now=now,
+                )
+                last = attempts[-1]
+                day_results.append(
+                    {
+                        "collection_kind": collection_kind,
+                        "dataset_id": dataset_id,
+                        "receipt_ids": [
+                            receipt_id
+                            for attempt in attempts
+                            for receipt_id in attempt.receipt_ids
+                        ],
+                        "retry_count": len(attempts) - 1,
+                        "state": last.status,
+                        "window": {"date": day},
+                    }
+                )
+                if last.status != "success" and last.errors != ("provider_error",):
+                    raise RuntimeError("daily-dump backfill hit a non-provider failure")
         finally:
             _release(lock)
-        collected += 1
-        receipt_count += sum(len(item["receipt_ids"]) for item in results)
+        if any(item["state"] == "success" for item in day_results):
+            collected += 1
+        receipt_count += sum(len(item["receipt_ids"]) for item in day_results)
+        unpublished_count += sum(
+            1 for item in day_results if item["state"] == "unpublished"
+        )
+        failed_count += sum(1 for item in day_results if item["state"] == "failed")
     return {
         "backfill_days": _BACKFILL_DAYS,
         "collected_day_count": collected,
+        "failed_attempt_count": failed_count,
         "mode": "execute",
         "receipt_count": receipt_count,
         "state": "success",
+        "unpublished_skip_count": unpublished_count,
         "window_count": len(days),
     }
 
@@ -403,6 +410,7 @@ def run(
         }
     _require_canary_mode()
     collector = BinanceUsdmMetricsDumpCollector()
+    probe = lambda symbol, day: collector.probe_published(symbol=symbol, day=day)  # noqa: E731
     if days is not None:
         return _run_backfill(
             db_path=db_path,
@@ -410,6 +418,7 @@ def run(
             registry=registry,
             collector=collector,
             collection_kind="open_interest",
+            probe=probe,
             datasets=datasets,
             now=now,
         )
@@ -419,7 +428,7 @@ def run(
         registry=registry,
         collector=collector,
         collection_kind="open_interest",
-        probe=lambda symbol, day: collector.probe_published(symbol=symbol, day=day),
+        probe=probe,
         datasets=datasets,
         now=now,
     )

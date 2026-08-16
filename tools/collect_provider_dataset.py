@@ -28,7 +28,10 @@ if str(ROOT) not in sys.path:
 
 from collectors.tushare.collector import TushareCollector  # noqa: E402
 from collectors.binance.collector import BinanceSpotPublicCollector  # noqa: E402
-from collectors.binance.usdm_collector import BinanceUsdmPublicCollector  # noqa: E402
+from collectors.binance.usdm_collector import (
+    BinanceUsdmPublicCollector,
+    BinanceUsdmRelayCollector,
+)  # noqa: E402
 from collectors.binance.oi_dump_collector import (  # noqa: E402
     BinanceUsdmMetricsDumpCollector,
 )
@@ -428,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
             "binance_spot": BinanceSpotPublicCollector(),
             "binance_usdm": BinanceUsdmPublicCollector(),
             "binance_usdm_dump": BinanceUsdmMetricsDumpCollector(),
+            "binance_usdm_relay": BinanceUsdmRelayCollector(),
             "firecrawl": FirecrawlWebCollector(),
         }
         results = tuple(

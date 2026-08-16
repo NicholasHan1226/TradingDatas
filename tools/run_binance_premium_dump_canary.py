@@ -16,7 +16,10 @@ open-interest dump runner: ``tools/run_binance_oi_dump_canary.py`` provides
 the shared implementation, and this runner only binds the premium-index
 dataset family, probe path, and collection kind.  ``--backfill-days`` runs the
 same frozen 198-day horizon aligned with the bar history, in per-day batches
-that release the shared store lock between days.
+that release the shared store lock between days; per (day, symbol) an
+unpublished zip is skipped without a receipt, a provider error after a
+positive probe is recorded and the day continues, and only non-provider
+(contract/validation) failures abort the run fail closed.
 """
 
 from __future__ import annotations
@@ -88,6 +91,9 @@ def run(
         }
     _require_canary_mode()
     collector = BinanceUsdmMetricsDumpCollector()
+    probe = lambda symbol, day: collector.probe_premium_index_published(  # noqa: E731
+        symbol=symbol, day=day
+    )
     if days is not None:
         return _run_backfill(
             db_path=db_path,
@@ -95,6 +101,7 @@ def run(
             registry=registry,
             collector=collector,
             collection_kind="premium_index",
+            probe=probe,
             datasets=datasets,
             now=now,
         )
@@ -104,9 +111,7 @@ def run(
         registry=registry,
         collector=collector,
         collection_kind="premium_index",
-        probe=lambda symbol, day: collector.probe_premium_index_published(
-            symbol=symbol, day=day
-        ),
+        probe=probe,
         datasets=datasets,
         now=now,
     )

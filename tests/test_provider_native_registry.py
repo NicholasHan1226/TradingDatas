@@ -1073,6 +1073,96 @@ def test_windowed_primary_key_completeness_rejects_invalid_contract(
         load_dataset_registry(write_registry(tmp_path, dataset))
 
 
+def test_event_stream_completeness_materializes_without_fanout(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset(
+        fields=[_field("datetime"), _field("title"), _field("content")],
+        primary_key=["datetime", "title"],
+        default_projection=["datetime", "title", "content"],
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding.update(
+        request_shape="event_or_intraday_window",
+        request_template={
+            "start_time": "${window.start_time}",
+            "end_time": "${window.end_time}",
+        },
+        request_window_policy={
+            "required_keys": ["start_time", "end_time"],
+            "formats": {
+                "start_time": "local_datetime_seconds",
+                "end_time": "local_datetime_seconds",
+            },
+            "range_start_key": "start_time",
+            "range_end_key": "end_time",
+            "max_span_days": 1,
+        },
+        fanout={"strategy": "none"},
+        requested_fields=["datetime", "title", "content"],
+        response_completeness={
+            "strategy": "event_stream_unique_primary_key",
+            "date_field": "datetime",
+            "request_start_key": "start_time",
+            "request_end_key": "end_time",
+            "fixed_field_matches": {},
+            "reject_at_row_limit": True,
+        },
+    )
+
+    loaded = load_dataset_registry(write_registry(tmp_path, dataset)).datasets[0]
+    policy = loaded.provider_bindings[0].response_completeness
+
+    assert policy is not None
+    assert policy.strategy == "event_stream_unique_primary_key"
+    assert policy.date_field == "datetime"
+    assert policy.fanout_field is None
+    assert policy.reject_at_row_limit is True
+
+
+def test_event_stream_completeness_rejects_non_datetime_window(
+    tmp_path: Path,
+) -> None:
+    dataset = generic_dataset(
+        fields=[_field("datetime"), _field("title")],
+        primary_key=["datetime", "title"],
+        default_projection=["datetime", "title"],
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = dataset["provider_bindings"][0]  # type: ignore[index]
+    binding.update(
+        request_shape="event_or_intraday_window",
+        request_template={"trade_date": "${window.trade_date}"},
+        request_window_policy={
+            "required_keys": ["trade_date"],
+            "formats": {"trade_date": "yyyymmdd"},
+            "range_start_key": "trade_date",
+            "range_end_key": "trade_date",
+            "max_span_days": 1,
+        },
+        fanout={"strategy": "none"},
+        requested_fields=["datetime", "title"],
+        response_completeness={
+            "strategy": "event_stream_unique_primary_key",
+            "date_field": "datetime",
+            "request_start_key": "trade_date",
+            "request_end_key": "trade_date",
+            "fixed_field_matches": {},
+            "reject_at_row_limit": True,
+        },
+    )
+
+    with pytest.raises(ValueError, match="local_datetime_seconds"):
+        load_dataset_registry(write_registry(tmp_path, dataset))
+
+
 @pytest.mark.parametrize(
     ("mutator", "message"),
     [

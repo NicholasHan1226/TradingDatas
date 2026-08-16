@@ -464,6 +464,7 @@ active_evidence:
   monthly: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   namechange: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   new_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  news: server-evidence/20260815T184500Z-news-flash-bounded-weekend-collect
   repo_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   report_rc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native

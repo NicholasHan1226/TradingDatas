@@ -77,7 +77,7 @@ contracts:
     as_of_format: null
     range_field: null
     partition_field: null
-    cadence_class: on_demand
+    cadence_class: event
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -3817,10 +3817,10 @@ contracts:
     reviewed_type_overrides: []
   # Bounded QuickSync probe on 2026-08-16 returned 114 rows for a one-hour
   # start/end window with the documented sina source literal.  The response
-  # carries no source column, so no windowed fanout completeness contract is
-  # expressible with the generic strategies; identity is the non-null event
-  # time plus title, and the contract stays paused until fresh activation
-  # evidence exists.
+  # carries no source column, so the generic windowed fanout contract is not
+  # expressible; the event-stream strategy still asserts in-window event
+  # times and unique [datetime, title] keys for every row while deliberately
+  # claiming no row-count completeness.
   - dataset_id: cn.dataset.news
     aliases: [tushare.news]
     domain: provider_data
@@ -3857,7 +3857,7 @@ contracts:
     fanout: {strategy: none}
     pagination: {strategy: none}
     request_window_policy: {required_keys: [start_date, end_date], formats: {start_date: local_datetime_seconds, end_date: local_datetime_seconds}, range_start_key: start_date, range_end_key: end_date, max_span_days: 1}
-    response_completeness: null
+    response_completeness: {strategy: event_stream_unique_primary_key, date_field: datetime, request_start_key: start_date, request_end_key: end_date, fixed_field_matches: {}, reject_at_row_limit: true}
     requested_fields: [datetime, content, title, channels]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []

@@ -33,8 +33,20 @@ separate provider-level adapter, `collectors/binance/oi_dump_collector.py`).
 The original `binance_usdm` open-interest binding stays in the registry as
 `activation_state: paused` so exactly one binding is active; if the fapi
 transport is ever restored, reactivating it is a deliberate registry decision,
-not an automatic fallback.  Funding rate has no dump (404 on the dump host)
-and remains unavailable until the fapi network path is resolved.
+not an automatic fallback.
+
+Funding rate has no dump (404 on the dump host), so it now rides the
+owner-approved Singapore relay: `sg-relay-tunnel.service` maintains an SSH
+L4 tunnel exposing a loopback SOCKS5 endpoint (`127.0.0.1:17890`) on the
+production host.  The `binance_usdm_relay` provider (`transport profile
+binance-usdm-via-sg-relay.v1`) speaks plain SOCKS5 CONNECT to that loopback
+endpoint and then negotiates TLS end-to-end with `fapi.binance.com` — SNI,
+Host and certificate verification are unchanged, so the relay can only drop
+traffic, never read or modify it.  There is deliberately no direct-egress
+fallback and no relay fallback to direct.  All ten `funding_rate` bindings
+moved to this provider with `activation_state: active`; collection stays
+gated by the disabled USDM timer until the production review (controlled
+collection plus authenticated readback) completes.
 
 The dump binding downloads
 `data/futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-YYYY-MM-DD.zip`, whose
@@ -65,7 +77,7 @@ is already ingested is skipped without a provider call and reported
 unpublished, the dataset is reported `pending_publication` and the run
 succeeds; if older missing days also fail, that is an outage and the run
 fails honestly.  Contract or validation drift is never treated as
-publication lag and stops the run fail closed.  It shares `/run/tradingdatas-crypto/collect.lock` with
+publication lag and stops the run fail closed.  It shares `/opt/investment-data/tradingdatas-crypto/collect.lock` with
 the Spot and USDM collectors, records a terminal receipt per attempt, and
 makes one immediate retry on a provider error; with the whole lookback
 exhausted by provider errors the outcome follows the
@@ -112,9 +124,9 @@ so no new provider-level adapter was added.
 each funding rate from the interest rate and this premium-index series through
 a clamped formula; the premium index is the main observable driver of funding
 pressure and is collected here strictly as a proxy input for that pressure.
-Funding rate itself still has no dump and remains unavailable until the fapi
-network path is resolved.  Consumers must not treat a premium-index row as a
-realized or predicted funding rate.
+Funding rate itself has no dump; it is collected separately through the
+owner-approved SG relay described above.  Consumers must not treat a
+premium-index row as a realized or predicted funding rate.
 
 The binding downloads
 `data/futures/um/daily/premiumIndexKlines/<SYMBOL>/5m/<SYMBOL>-5m-YYYY-MM-DD.zip`
@@ -137,7 +149,10 @@ selection, the HEAD publication probe (`probe_premium_index_published`) with
 honest failure on contract drift or multi-day outage, and the frozen one-shot
 `--backfill-days 198` horizon (same 2026-01-30 alignment as open interest)
 with per-day batches that release the shared
-`/run/tradingdatas-crypto/collect.lock` between days.  The unit pair
+`/opt/investment-data/tradingdatas-crypto/collect.lock` between days; per
+(day, symbol) an unpublished zip is skipped without a receipt and a provider
+error after a positive probe is recorded without aborting the horizon, while
+non-provider failures still stop the run fail closed.  The unit pair
 `tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` fires every
 two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`), staggered off both
 the five-minute timers and the `00/2:37:00` open-interest dump timer.  Like
@@ -179,7 +194,7 @@ symbol, one trailing 48-hour funding-rate window ending at the latest
 realized eight-hour funding boundary (deduplication covers the overlap; a new
 funding row appears only every eight hours) and the two latest closed
 five-minute open-interest boundaries. It shares
-`/run/tradingdatas-crypto/collect.lock` with the Spot collector so writers on
+`/opt/investment-data/tradingdatas-crypto/collect.lock` with the Spot collector so writers on
 the same isolated SQLite stay serial; its timer is staggered two minutes
 after the Spot bar timer. A lock-busy or provider failure is an honest failed
 run retried by the next timer tick; the funding window self-heals, while a

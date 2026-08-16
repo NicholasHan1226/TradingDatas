@@ -1,6 +1,34 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 14:05 CST。
+最后更新：2026-08-16 15:35 CST。
+
+
+> **2026-08-16 funding rate 经 SG 中继接入（代码层事实，timer 仍 disabled）：**
+> owner 提供并批准 Singapore 中继。生产主机新增 `sg-relay-tunnel.service`
+> （SSH L4 隧道 → loopback SOCKS5 `127.0.0.1:17890`），实测 `fapi.binance.com`
+> ping/fundingRate/openInterestHist 全 200。新 provider `binance_usdm_relay`
+> （stdlib 最小 SOCKS5 客户端 + 端到端 TLS，SNI/证书校验不变，无双向 fallback），
+> 10 个 funding_rate binding 切至该 provider 并保持 active；usdm runner 按
+> binding provider 路由 collector，dump-bound 的 open_interest 显式
+> `skipped_foreign_binding` 而不再失败。120 项定向测试全绿。生产评审（受控
+> 采集 + 认证 readback）通过前 USDM timer 保持 disabled。mihomo 旧代理
+> 已按 owner 指示停用并归档（`clash.removed-20260816`）。
+
+
+> **2026-08-16 Crypto 采集共享锁迁往持久路径：** systemd RuntimeDirectory 在多
+> unit 共享、长短任务混用时会在任一引用 unit 停止时移除目录，长任务（OI 回填）
+> 的 `a+` 建锁随即 FileNotFoundError。四个现役 crypto 采集 unit（含 disabled 的
+> usdm）的 `--lock-path` 统一迁往 `/opt/investment-data/tradingdatas-crypto/
+> collect.lock`（数据根内，ReadWritePaths 已覆盖）；写串行语义不变。文档同步。
+
+> **2026-08-16 OI 回填健壮性修正（代码层事实）：** 首次 198 天回填在第 1 天
+> （2026-01-30）即中止——早期日期部分 symbol 的 zip 不存在（未上线/发布缺口），
+> 单 symbol 失败整批 raise。回填路径改为与回看同一探测语义：probe 未发布则跳过
+> 该 (日, symbol) 且不写 receipt；探测成功但采集失败记 provider_error 并继续当日
+> 其它 symbol；非 provider 类失败仍 fail-closed 中止。汇总输出新增
+> `unpublished_skip_count`/`failed_attempt_count`。`_collect_day` 死代码移除。
+> 新增回填跳过回归测试，23 项全绿。
+
 
 > **2026-08-16 premium index dump 采集切片冻结为 contract_ready 候选（代码层
 > 事实，无生产变更）：** 实测 `data.binance.vision` 存在 USDⓈ-M 日度
@@ -16,8 +44,9 @@
 > profile，未新增 provider adapter。**语义边界：premium index 是 funding
 > 压力的主要可观测驱动（funding rate 由利率与溢价指数经 clamp 公式得出），
 > 不是 funding rate 本身；funding rate 仍无 dump、不可得。** runner 复用
-> OI dump runner 共享实现（`_run_lookback`/`_run_backfill`/`_collect_day`
-> 参数化 collection_kind/probe/collector，OI 行为不变），7 天回看 +
+> OI dump runner 共享实现（`_run_lookback`/`_run_backfill` 参数化
+> collection_kind/probe/collector，合并 main 的回填逐 (日,symbol) 探测跳过
+> 语义后 OI 行为不变），7 天回看 +
 > 发布探测（`probe_premium_index_published`）+ 冻结 `--backfill-days 198`
 > 与 OI/bar 历史对齐 + 按日放锁；新 unit 对
 > `tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` 错峰
@@ -44,6 +73,19 @@
 > `pending_publication`（无 receipt），最新日以外多日未发布/失败仍判定中断、
 > 诚实失败。测试 22+65 全绿。本变更随下次 crypto release 生效。
 
+> **2026-08-16 `news`/`major_news` 快讯激活（代码层事实，待部署）：**
+> 新增第五种通用 response_completeness 策略 `event_stream_unique_primary_key`
+> （内容流窗口：断言每行事件时间在请求窗内且主键唯一，不声明行数完备性），
+> 覆盖新闻快讯/舆情/监管页等无 fanout 回显的时间窗内容源。`cn.dataset.news`
+> 采用该策略并登记 `active_evidence`
+> （`server-evidence/20260815T184500Z-news-flash-bounded-weekend-collect`，
+> 周末两窗有界 execute 共 721 行 success receipt 已在生产库）；
+> `major_news` cadence 由 `on_demand` 改 `event`；两条目进新 wave
+> `event_news_flash_20260816`。planner `_window` 对
+> `local_datetime_seconds` 范围派生整日本地窗口（不猜盘中 session），
+> 编译期激活门禁按结构例外同步放开（event + fanout none + event_stream
+> 策略）。文档化的配置表达缺口与修复依据见
+> `docs/design/firecrawl-news-pipeline.v1.md` 附录。
 > **2026-08-16 CRYPTO_PERP 打开 catalog 发现门禁（代码层事实）：**
 > `catalog_service.is_catalog_discoverable` 的冻结产品范围门禁由
 > `{CN, CRYPTO_SPOT}` 扩为 `{CN, CRYPTO_SPOT, CRYPTO_PERP}`——OI dump 已真实入库
@@ -88,7 +130,6 @@
 > wave、不做自动调度：2026-08-16 有界探测（1 小时窗口 114 行）只证明合同
 > 可编译，激活需另行新鲜 HTTPS 证据与人工审核。`cn.dataset.major_news`
 > 此前已按 `dimension_fanout` 合同激活，本次不改动。
- HEAD
 
 > **2026-08-16 Firecrawl 新闻舆情 provider Phase 0 合同冻结
 > contract_ready 候选（代码层事实，无生产变更、无真实调用）：** 新增第三个
@@ -111,7 +152,6 @@
 > dry-run 非零计划门禁与有界 canary 的 provider→SQLite→catalog/query readback
 > （observed）；冻结设计与分期见 `docs/design/firecrawl-news-pipeline.v1.md`。
 > 本次没有 release、service/timer、数据库、真实 provider 调用或生产变更。
- origin/main
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的
 > `fapi.binance.com` SNI 级阻断，owner 批准 dump 降级方案：open interest 改用

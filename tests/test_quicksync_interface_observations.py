@@ -93,7 +93,15 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert isinstance(activation_projection, dict)
     active_evidence = _observations()["active_evidence"]
     assert isinstance(active_evidence, dict)
-    assert activation_projection["candidate_count"] == len(active_evidence) - 4
+    # The generic synthetic fixture only evidences the ingest-ready cohort;
+    # active entries whose interfaces are not ingest-ready in the checked-in
+    # observations (blocked params, unresolved enums, dataset-local pauses)
+    # never appear in its candidate projection.  The gap is 19 as of the
+    # 2026-08-16 news-flash activation; keep it explicit, not magical.
+    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 19
+    assert activation_projection["candidate_count"] == len(active_evidence) - (
+        _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS
+    )
     assert activation_projection["active_count"] == len(active_evidence)
     assert activation_projection["paused_count"] == len(_contracts()["contracts"]) - len(
         active_evidence

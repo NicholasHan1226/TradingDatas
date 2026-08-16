@@ -2648,6 +2648,93 @@ def test_windowed_unique_primary_key_allows_empty_fanout_partition() -> None:
         )
 
 
+def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
+    policy = ResponseCompletenessPolicy(
+        strategy="event_stream_unique_primary_key",
+        date_field="datetime",
+        request_start_key="start_time",
+        request_end_key="end_time",
+        fixed_field_matches=MappingProxyType({}),
+        reject_at_row_limit=True,
+    )
+    base = _registry()
+    dataset = replace(
+        base.resolve("cn.synthetic.runner"),
+        fields=(
+            DatasetField("datetime", "text", False, True, True, True),
+            DatasetField("title", "text", False, True, True, True),
+            DatasetField("content", "text", True, True, True, True),
+        ),
+        primary_key=("datetime", "title"),
+        default_projection=("datetime", "title", "content"),
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+    )
+    binding = replace(
+        base.provider_binding(dataset.dataset_id, "tushare"),
+        request_template=MappingProxyType(
+            {
+                "start_time": "${window.start_time}",
+                "end_time": "${window.end_time}",
+            }
+        ),
+        request_window_policy=RequestWindowPolicy(
+            required_keys=("start_time", "end_time"),
+            formats=MappingProxyType(
+                {
+                    "start_time": "local_datetime_seconds",
+                    "end_time": "local_datetime_seconds",
+                }
+            ),
+            range_start_key="start_time",
+            range_end_key="end_time",
+            max_span_days=1,
+        ),
+        response_completeness=policy,
+    )
+    window = {
+        "start_time": "2026-07-31 00:00:00",
+        "end_time": "2026-07-31 23:59:59",
+    }
+    rows = (
+        {"datetime": "2026-07-31 09:30:00", "title": "one", "content": None},
+        {"datetime": "2026-07-31 10:30:00", "title": "two", "content": "x"},
+    )
+    native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
+        dataset,
+        binding,
+        policy,
+        rows,
+        request_window=window,
+    )
+    # Legal-empty content windows stay admissible.
+    native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
+        dataset,
+        binding,
+        policy,
+        (),
+        request_window=window,
+    )
+    with pytest.raises(ValueError, match="falls outside"):
+        native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
+            dataset,
+            binding,
+            policy,
+            ({"datetime": "2026-08-01 00:00:00", "title": "three", "content": None},),
+            request_window=window,
+        )
+    with pytest.raises(ValueError):
+        native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
+            dataset,
+            binding,
+            policy,
+            (rows[0], dict(rows[0])),
+            request_window=window,
+        )
+
+
 def test_fanout_row_limit_is_applied_per_provider_call() -> None:
     base = _registry()
     dataset = replace(

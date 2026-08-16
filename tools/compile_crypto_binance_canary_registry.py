@@ -45,6 +45,7 @@ _BINDING_API_PREFIXES = {
     ("rules", "binance_spot"): "exchangeInfo_",
     ("book_ticker", "binance_spot"): "bookTicker_",
     ("funding_rate", "binance_usdm"): "fundingRate_",
+    ("funding_rate", "binance_usdm_relay"): "fundingRate_",
     ("open_interest", "binance_usdm"): "openInterestHist_",
     ("open_interest", "binance_usdm_dump"): "metricsDump_",
     ("premium_index", "binance_usdm_dump"): "premiumIndexKlinesDump_",
