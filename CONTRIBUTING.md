@@ -1,22 +1,24 @@
 # Autonomous Development Workflow
 
-This repository uses an agent-first GitHub workflow. Human code review is not a merge requirement.
+This repository uses an agent-first workflow. Routine human code review is not a merge requirement, and GitHub Actions is not a mandatory gate.
 
-## Required workflow
+## Normal workflow
 
-1. Start from the latest `main`.
-2. Create one branch for one task. Prefer `agent/<agent>/<task>`, `feat/<task>`, `fix/<task>`, `refactor/<task>`, or `chore/<task>`.
-3. Never push task work directly to `main`.
-4. Keep the change scoped to the task and do not overwrite unrelated concurrent work.
-5. Run the relevant local tests before pushing.
-6. Push the branch and open a pull request against `main`.
-7. CI is the merge gate. A same-repository PR created by the trusted repository owner is automatically squash-merged only after all CI jobs succeed and the tested SHA still matches the PR head.
-8. Fork PRs, draft PRs, untrusted PR authors, failed CI, and workflow-governance changes are never automatically merged.
-9. Do not put secrets, credentials, databases, runtime state, logs, provider receipts/evidence, or production artifacts in Git.
+1. Start from the latest `main` and check concurrent changes before integration.
+2. Keep one task scoped to one branch or isolated candidate; do not overwrite unrelated work.
+3. Run the smallest deterministic local/server validation that is relevant and available. For data/runtime changes, provider/receipt/SQLite/catalog/query/consumer readback is stronger production evidence than a hosted CI badge.
+4. Push the candidate branch when useful for review, handoff, rollback, or parallel work. Pull requests are useful visibility but are not a required human approval mechanism.
+5. Before merge, verify ancestry and diff scope; if `main` advanced, reapply/rebase onto the latest main rather than force-pushing.
+6. The controller/trusted agent may merge validated normal work without waiting for a human approval or GitHub Actions run.
+7. If GitHub Actions is available and runs, treat it as supplemental validation. Missing/skipped/billing-blocked Actions must not stop otherwise validated dataset onboarding, merge, immutable release, collection, internal API operation, or evidence-based dataset progression.
+8. Do not put secrets, credentials, databases, runtime state, logs, provider receipts/evidence, or production artifacts in Git.
+9. Keep source/GitHub, release, effective runtime, provider receipt, API readback, and consumer evidence as separate states.
 10. Do not force-push or rewrite shared history.
 
-## Governance boundary
+## Workflow-governance changes
 
-Changes under `.github/workflows/` are intentionally excluded from normal automatic merging. They require a separate trusted bootstrap/governance merge so a task branch cannot weaken its own merge gate.
+Changes under `.github/workflows/` require an explicit diff/policy check so a task cannot silently weaken safety boundaries. This check is machine-reviewable; it does not create a routine human approval requirement. Hosted CI must never be configured as the sole merge authority because Actions capacity may be unavailable.
 
-Automatic code merge does not grant authority to modify production credentials, destructive data/database state, provider entitlements, production scheduling, or any runtime safety boundary defined by `AGENTS.md`.
+## Authority boundary
+
+Autonomous code merge/deployment does not grant authority to change production credentials/accounts/permissions, perform destructive data/database operations, expose a public service, or bypass the provider/runtime safety boundaries in `AGENTS.md`. Ordinary internal read-only collection and deployment still follow the deploy-first, evidence-based progression recorded in the repository ADRs.
