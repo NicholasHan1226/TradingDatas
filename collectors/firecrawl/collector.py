@@ -162,10 +162,20 @@ def _canonical_url(value: object) -> str:
 def _parse_published_at(value: object) -> datetime:
     if type(value) is not str or not value.strip():
         raise ValueError("firecrawl item is missing a parseable published time")
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        raise ValueError("firecrawl item published time is not ISO-8601") from None
+    text = value.strip()
+    # Chinese financial list pages commonly emit dotted dates
+    # ("2026.08.16 03:55:29") rather than ISO-8601.  Accept ISO-8601 and
+    # the dotted local-date form; everything else still fails closed.
+    candidates = (text, text.replace(".", "-", 2))
+    parsed = None
+    for candidate in candidates:
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            break
+        except ValueError:
+            continue
+    if parsed is None:
+        raise ValueError("firecrawl item published time is not a recognized format")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=_LOCAL_TIMEZONE)
     return parsed.astimezone(_LOCAL_TIMEZONE)

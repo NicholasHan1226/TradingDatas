@@ -158,6 +158,58 @@ def test_scrape_page_normalizes_items(
     assert isinstance(formats, list) and formats[0]["type"] == "json"
 
 
+
+def test_dotted_local_datetime_published_at_is_normalized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    collector = FirecrawlWebCollector()
+    payload = {
+        "success": True,
+        "data": {
+            "json": {
+                "items": [
+                    {
+                        "title": "华测检测：2026年半年度净利润同比增长20.63%",
+                        "url": "https://www.cls.cn/detail/300012",
+                        "published_at": "2026.08.16 03:41:30",
+                        "summary": None,
+                    }
+                ]
+            }
+        },
+    }
+    monkeypatch.setattr(collector, "_post", lambda *a, **k: payload)
+    outcome = collector.collect_outcome("scrape_page", dict(_SCRAPE_PARAMS))
+    assert outcome.state == "success"
+    row = dict(outcome.rows[0])
+    assert row["published_at"] == "2026-08-16T03:41:30+08:00"
+    assert row["published_local"] == "2026-08-16 03:41:30"
+    assert row["event_date"] == "20260816"
+
+
+def test_unrecognized_published_at_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    collector = FirecrawlWebCollector()
+    payload = {
+        "success": True,
+        "data": {
+            "json": {
+                "items": [
+                    {"title": "t", "url": "https://e.com/a", "published_at": "16/08/2026 03:41"}
+                ]
+            }
+        },
+    }
+    monkeypatch.setattr(collector, "_post", lambda *a, **k: payload)
+    outcome = collector.collect_outcome("scrape_page", dict(_SCRAPE_PARAMS))
+    assert outcome.state == "failed"
+
+
 def test_scrape_page_content_uid_is_stable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
