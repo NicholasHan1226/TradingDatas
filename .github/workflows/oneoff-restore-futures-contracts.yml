@@ -1,0 +1,119 @@
+name: One-shot Restore Futures Contracts
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'codex/restore-futures-contracts-66ac446-20260816'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name 'TradingDatas Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+
+      - name: Reverse the accidental 66ac446 contract drift
+        run: |
+          set -euo pipefail
+          git revert --no-commit 66ac446d97c212571014fcdb0f9841aecef53a76
+
+      - name: Reapply the intentional rt_min SLA and rebuild canonical artifacts
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+
+          def set_rt_min_sla(path: Path) -> None:
+              text = path.read_text(encoding='utf-8')
+              lines = text.splitlines(keepends=True)
+              hits = 0
+              for i, line in enumerate(lines):
+                  if re.match(r'^\s*-?\s*api_name:\s*rt_min\s*$', line.rstrip('\n')):
+                      for j in range(i + 1, min(i + 120, len(lines))):
+                          if re.match(r'^\s*-?\s*api_name:\s*', lines[j].rstrip('\n')):
+                              break
+                          match = re.match(r'^(\s*freshness_sla_seconds:\s*)300(\s*)$', lines[j].rstrip('\n'))
+                          if match:
+                              newline = '\n' if lines[j].endswith('\n') else ''
+                              lines[j] = f'{match.group(1)}600{match.group(2)}{newline}'
+                              hits += 1
+                              break
+              if hits != 1:
+                  raise SystemExit(f'{path}: expected exactly one rt_min SLA update, got {hits}')
+              path.write_text(''.join(lines), encoding='utf-8')
+
+          reviewed = Path('config/tushare_reviewed_contracts.v1.yaml')
+          cadence = Path('config/tushare_cadence_policy.v1.yaml')
+          request_obs = Path('config/tushare_request_observations.v1.yaml')
+          set_rt_min_sla(reviewed)
+          set_rt_min_sla(cadence)
+
+          digest = hashlib.sha256(reviewed.read_bytes()).hexdigest()
+          text = request_obs.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'(reviewed_contract_bundle:\n\s+path:\s+config/tushare_reviewed_contracts\.v1\.yaml\n\s+sha256:\s+)[0-9a-f]{64}'
+          )
+          text, count = pattern.subn(r'\g<1>' + digest, text, count=1)
+          if count != 1:
+              raise SystemExit('failed to update reviewed_contract_bundle sha256')
+          request_obs.write_text(text, encoding='utf-8')
+          PY
+
+          python tools/compile_tushare_runtime_contracts.py
+          python tools/compile_provider_native_registry.py
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+
+          registry = Path('config/provider_native_dataset_registry.yaml')
+          waves = Path('config/provider_native_activation_waves.v1.yaml')
+          digest = hashlib.sha256(registry.read_bytes()).hexdigest()
+          text = waves.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r'(runtime_registry_sha256:\s*")[0-9a-f]{64}(")',
+              r'\g<1>' + digest + r'\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('failed to update activation-wave registry hash')
+          waves.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify focused futures contracts
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            tests/test_compile_provider_native_registry.py \
+            tests/test_collect_provider_dataset.py \
+            -q --tb=short -x
+          git diff --check
+
+      - name: Commit repair and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/oneoff-restore-futures-contracts.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No repair diff produced'
+            exit 1
+          fi
+          git commit -m 'fix: restore futures contracts reverted by rt_min change'
+          git push origin HEAD:${{ github.head_ref }}
