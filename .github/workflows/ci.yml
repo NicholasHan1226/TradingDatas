@@ -29,18 +29,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-
-      - name: Compile Python files
-        run: python -m compileall -q .
-
-      - name: Run tests
-        run: python -m pytest tests/ -q --tb=short
-
-      - name: Package core release candidate
+      - name: Package clean core release candidate
         run: |
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/tradingdatas-core-release"
@@ -73,6 +62,17 @@ jobs:
           if manifest.get("commit") != expected_sha:
               raise SystemExit("release manifest commit does not match GITHUB_SHA")
           PY
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile Python files
+        run: python -m compileall -q .
+
+      - name: Run tests
+        run: python -m pytest tests/ -q --tb=short
 
       - name: Upload tested core release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
