@@ -462,9 +462,9 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     }
     completeness = binding.response_completeness
     assert completeness is not None
-    assert completeness.strategy == "windowed_unique_primary_key"
+    assert completeness.strategy == "event_stream_unique_primary_key"
     assert completeness.date_field == "published_local"
-    assert completeness.fanout_field == "source"
+    assert completeness.fanout_field is None
 
     # Executor compatibility without any provider call: scan budget, request
     # resolution, and the ingest config hash all derive from the contract.

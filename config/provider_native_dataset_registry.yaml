@@ -36902,13 +36902,12 @@ datasets:
       range_end_key: end_time
       max_span_days: 1
     response_completeness:
-      strategy: windowed_unique_primary_key
+      strategy: event_stream_unique_primary_key
       fixed_field_matches: {}
       reject_at_row_limit: true
       date_field: published_local
       request_start_key: start_time
       request_end_key: end_time
-      fanout_field: source
     requested_fields: []
     max_batch_bytes: 16777216
     max_nesting_depth: 16
