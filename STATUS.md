@@ -1,6 +1,11 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 22:10 CST。
+最后更新：2026-08-16 22:30 CST。
+
+> **2026-08-16 read-model 快照重试范围放宽（侧车瞬态）：** 进一步定位——间歇
+> 503 的真实错误是 "receipt database sidecars are unreadable"（并发写使 WAL/SHM
+> 头处于瞬态、读前缀 <32/100 字节），非 connection target changed。有界重试范围从
+> 单一消息放宽到所有 RuntimeProjectionError（仍每次完整校验、耗尽 fail-closed）。
 
 > **2026-08-16 read-model 快照并发写重试（503 真正根因）：** 定位到间歇 503 的
 > 最终根因——`open_verified_read_model_snapshot` 的 epoch 证据含 `page_count`/
