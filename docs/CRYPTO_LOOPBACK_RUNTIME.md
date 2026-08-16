@@ -22,7 +22,7 @@ trading authority.
 | USDM candidate unit | `tradingdatas-crypto-binance-usdm-collect.service` |
 | USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer`, staggered two minutes after the bar timer; must stay disabled until the candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
 | OI dump candidate unit | `tradingdatas-crypto-binance-oi-dump-collect.service` |
-| OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, once daily at 00:37 UTC staggered off the five-minute timers; must stay disabled until the same candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
+| OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, every two hours at minute 37 (`*-*-* 00/2:37:00`) staggered off the five-minute timers; must stay disabled until the same candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
 | lock | `/run/tradingdatas-crypto/collect.lock` |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`

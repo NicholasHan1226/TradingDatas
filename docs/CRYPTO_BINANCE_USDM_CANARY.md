@@ -47,18 +47,40 @@ ratio columns are validated for shape but are not part of this dataset's
 schema; the raw daily zip remains publicly re-downloadable.
 
 The candidate runner `tools/run_binance_oi_dump_canary.py` accepts no
-provider, symbol, field, or registry path input.  Per run it collects, for
-every frozen symbol, the latest fully closed UTC day — the file a daily dump
-publishes after that day's UTC close — so it never asks for an unpublished
-file.  It shares `/run/tradingdatas-crypto/collect.lock` with the Spot and
-USDM collectors, records a terminal receipt per attempt, and makes one
-immediate retry on a provider error; a missing or not-yet-published file is an
-honest failed run retried by the next timer tick, and re-running a published
-day is idempotent by payload identity.  The unit pair
-`tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` fires once daily
-at 00:37 UTC, staggered off the five-minute Spot/USDM timers that share the
-same lock.  Like the USDM pair, this timer must stay **disabled** until the
-same isolated production review (`observed` then `stable`) completes.
+provider, symbol, field, or registry path input.  Daily publication lags the
+UTC day close by hours (observed: the 2026-08-15 zip was still 404 at
+03:05-03:45 UTC on 2026-08-16 while 2026-08-14 was available), so a run never
+assumes the latest closed day is published.  Within a bounded seven-day
+lookback it collects, per symbol, the newest day that is published and not yet
+in the store; coverage is derived from SQLite facts joined to validated
+success receipts, never from run history, so a late publication is picked up
+by a later tick and cannot cause a permanent day skip.  A symbol whose whole
+lookback window is already ingested is skipped without a provider call and
+reported `unchanged`.  It shares `/run/tradingdatas-crypto/collect.lock` with
+the Spot and USDM collectors, records a terminal receipt per attempt, and
+makes one immediate retry on a provider error; a missing or not-yet-published
+file stays an honest failed run retried by the next timer tick.  The unit pair
+`tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` fires every two
+hours at minute 37 (`*-*-* 00/2:37:00`), staggered off the five-minute
+Spot/USDM timers that share the same lock, so a publication lag of hours is
+absorbed the same day.  Like the USDM pair, this timer must stay **disabled**
+until the same isolated production review (`observed` then `stable`)
+completes.
+
+Bounded historical backfill is a separate one-shot operation approved by the
+owner to align open interest with the bar history: `--backfill-days 198` (any
+other value is rejected) walks the frozen horizon day by day, oldest first —
+with the latest closed UTC day 2026-08-15 the 198 windows start at
+2026-01-30.  Each day is one bounded batch of the frozen ten symbols taken
+under the shared lock, and the lock is released between days (re-acquired by
+waiting, not by failing) so the five-minute collectors interleave instead of
+starving; an individual five-minute slot may still see a lock-busy failure
+during the operation, which is the existing documented self-healing noise.
+Already-ingested days are skipped via the same receipt-validated store
+derivation, so an interrupted or rerun backfill resumes without duplicate
+work, and every collected day still writes its own receipt-bound facts.
+Running it in a low-traffic window remains the operator's choice; it is never
+triggered by a timer.
 
 While the fapi binding is paused, the disabled
 `tools/run_binance_usdm_canary.py` runner can no longer execute its
