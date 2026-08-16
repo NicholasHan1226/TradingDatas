@@ -43,7 +43,7 @@ hash registry, salt, or a provider credential.
 ## Collector behavior and current proof
 
 The timer passed candidate review and server preflight before it was enabled.
-The current isolated production runtime collects the frozen ten-symbol cohort
+The current isolated production runtime collects the frozen forty-symbol cohort
 through the existing provider-native receipt path, using already-closed 5m
 bars per run. Its `observed_at` is the actual collection time. BTCUSDT and
 ETHUSDT remain the smaller rollback baseline; they are not a claim that the
@@ -57,12 +57,12 @@ leaves the dataset failed. This bounded recovery is only to preserve honest
 observation continuity during a brief public transport interruption; it does
 not relax the API metadata or TradingAgent evidence gate.
 
-The expansion contract freezes ten symbols in
-`config/crypto_binance_spot_universe.v1.yaml` and compiles fifty datasets
-into the single pinned canary registry: one bar, one public-rule and one
-current book-ticker snapshot dataset per symbol for the Spot cohort, plus one
-funding-rate and one open-interest dataset per symbol for the USDⓈ-M
-perpetual candidate cohort documented in
+The expansion contract freezes forty symbols in
+`config/crypto_binance_spot_universe.v1.yaml` and compiles two hundred and
+forty datasets into the single pinned canary registry: one bar, one
+public-rule and one current book-ticker snapshot dataset per symbol for the
+Spot cohort, plus one funding-rate, one open-interest and one premium-index
+dataset per symbol for the USDⓈ-M perpetual candidate cohort documented in
 `CRYPTO_BINANCE_USDM_CANARY.md`. The source tree provides a dedicated
 `tradingdatas-crypto-binance-book-ticker.timer` for five-minute collection;
 installation, enablement and runtime effectiveness remain separate release
@@ -78,7 +78,7 @@ another symbol's healthy envelope. Bounded 180-day backfill remains a separate
 one-shot operation and is never real-time/PIT evidence.
 
 On 2026-08-02, authenticated formal `18083` readback verified two adjacent
-completed 5m windows for all ten bar datasets. Every dataset returned a
+completed 5m windows for all forty bar datasets. Every dataset returned a
 terminal page with unique bar identities and `ready/success/fresh/valid`,
 `degraded=false`, plus a receipt and complete lineage. This is runtime evidence
 for the frozen cohort only; it does not authorize orders, accounts, or a
@@ -88,7 +88,7 @@ The same production SQLite read model already contains at least the frozen
 180-day historical horizon for every bar dataset. On that date each had 52,957
 unique 5m identities from 2026-01-30 through the current bar, and a bounded
 historical formal query for 2026-02-03 returned terminal, receipt-bound,
-complete-lineage data for all ten. Do not rerun the frozen backfill merely to
+complete-lineage data for all forty. Do not rerun the frozen backfill merely to
 recreate this coverage: it is research/observation data, never proof of
 historical availability or real-time freshness.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Expand the frozen Binance canary registry from reviewed symbol templates.
 
-The same versioned universe freezes the ten USDT symbols for both the public
+The same versioned universe freezes the forty USDT symbols for both the public
 Spot cohort and the public USDⓈ-M perpetual funding-rate/open-interest/
 premium-index cohort; the deterministic compiler emits every dataset from its
 checked-in BTCUSDT template.
@@ -20,6 +20,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_UNIVERSE = ROOT / "config" / "crypto_binance_spot_universe.v1.yaml"
 DEFAULT_REGISTRY = ROOT / "config" / "crypto_binance_canary_registry.v1.yaml"
+# The frozen cohort spans forty liquid USDT symbols; the same constant gates the
+# compiler's universe validation and the Spot/USDM canary runners' cohort checks.
+FROZEN_CRYPTO_SYMBOL_COUNT = 40
 _SYMBOL = re.compile(r"[A-Z0-9]{2,16}USDT")
 
 # suffix -> (dataset-id infix, alias prefix)
@@ -77,11 +80,11 @@ def _symbols(path: Path) -> tuple[str, ...]:
         or payload["quote_asset"] != "USDT"
         or payload["interval"] != "5m"
         or not isinstance(raw, list)
-        or len(raw) != 10
+        or len(raw) != FROZEN_CRYPTO_SYMBOL_COUNT
     ):
         raise ValueError("Crypto universe contract is invalid")
     symbols = tuple(raw)
-    if len(set(symbols)) != 10 or any(
+    if len(set(symbols)) != len(symbols) or any(
         not isinstance(symbol, str) or _SYMBOL.fullmatch(symbol) is None
         for symbol in symbols
     ):
