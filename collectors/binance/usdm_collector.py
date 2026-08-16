@@ -182,7 +182,7 @@ class BinanceUsdmPublicCollector:
         for item in payload:
             if (
                 type(item) is not dict
-                or set(item) != _FUNDING_RATE_KEYS
+                or not _FUNDING_RATE_KEYS.issubset(item)
                 or item.get("symbol") != symbol
                 or type(item.get("fundingTime")) is not int
                 or type(item.get("fundingRate")) is not str
