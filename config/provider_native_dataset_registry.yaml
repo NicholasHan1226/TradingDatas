@@ -36846,7 +36846,7 @@ datasets:
     sortable: true
   - name: url
     logical_type: text
-    nullable: false
+    nullable: true
     selectable: true
     filterable: true
     sortable: true

@@ -193,12 +193,20 @@ def _normalize_item(
 ) -> dict[str, Any]:
     if type(item) is not dict:
         raise ValueError("firecrawl extraction item must be an object")
-    canonical_url = _canonical_url(item.get("url"))
+    raw_url = item.get("url")
+    canonical_url = (
+        None if raw_url in (None, "") else _canonical_url(raw_url)
+    )
     title = _non_empty_text(item.get("title"), "title", max_chars=1024)
     local = _parse_published_at(item.get(time_key))
     published_at = local.isoformat(timespec="seconds")
+    # Unlinkable flash items (empty URL in the source page) still carry a
+    # valid title/time/source identity; the id falls back to that tuple.
+    uid_identity = (
+        canonical_url if canonical_url is not None else source
+    )
     content_uid = hashlib.sha256(
-        f"{canonical_url}|{title}|{published_at}".encode("utf-8")
+        f"{uid_identity}|{title}|{published_at}".encode("utf-8")
     ).hexdigest()
     summary = item.get(summary_key) if summary_key is not None else item.get("summary")
     if summary is not None and type(summary) is not str:

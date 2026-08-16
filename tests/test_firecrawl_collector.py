@@ -402,6 +402,19 @@ def test_http_announcement_url_is_preserved() -> None:
     assert row["url"] == "http://static.cninfo.com.cn/finalpage/2026-08-17/1225473313.PDF"
 
 
+def test_empty_url_item_keeps_source_title_identity() -> None:
+    row = _normalize_item(
+        {"title": "无链接快讯", "url": "", "published_at": "2026-08-16 03:41:30"},
+        source="https://www.cls.cn/telegraph",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["url"] is None
+    assert row["content_uid"] == hashlib.sha256(
+        "https://www.cls.cn/telegraph|无链接快讯|2026-08-16T03:41:30+08:00".encode("utf-8")
+    ).hexdigest()
+
+
 def test_relative_url_still_fails_closed() -> None:
     collector = FirecrawlWebCollector()
     with pytest.raises(ValueError, match="http"):

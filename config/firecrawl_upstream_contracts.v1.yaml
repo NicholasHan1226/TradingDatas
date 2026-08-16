@@ -75,7 +75,7 @@ contracts:
   - name: url
     declared_source_type: str
     logical_type: text
-    nullable: false
+    nullable: true
     selectable: true
     filterable: true
     sortable: true
