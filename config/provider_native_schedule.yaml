@@ -21,8 +21,14 @@ rate_budgets:
     provider_requests_per_run: 16
     api_requests_per_run: 4
   event:
-    account_requests_per_run: 12
-    provider_requests_per_run: 12
+    # The event wave now spans seven APIs (anns_d, cctv_news, irm_qa x2,
+    # research_report, news, major_news) needing 15 provider calls for a
+    # full daily sweep; 12 forced major_news into a mid-fanout
+    # resource_budget failure.  24 keeps the sweep inside one run while
+    # staying far below the probed per-interface tolerance (60/min) and
+    # the daily call volume remains trivial (~1.4k/day).
+    account_requests_per_run: 24
+    provider_requests_per_run: 24
     api_requests_per_run: 4
     # major_news fans out over nine source literals per daily window; the
     # bounded 2026-08-15/16 weekend executions (9 calls per run, 60/min
