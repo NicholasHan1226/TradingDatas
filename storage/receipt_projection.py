@@ -189,7 +189,7 @@ _EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO = tuple(
     ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
-_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 1.0
+_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 10.0
 _FileIdentity = tuple[int, int, int]
 _IngestRunRow = tuple[object, ...]
 
