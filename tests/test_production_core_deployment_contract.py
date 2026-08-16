@@ -36,7 +36,7 @@ def test_ci_freezes_clean_manifest_before_test_side_effects() -> None:
     assert package < install < tests < upload
     assert "python tools/release_manifest.py build" in workflow
     assert '--source-root "$GITHUB_WORKSPACE"' in workflow
-    assert 'git archive --format=tar.gz' in workflow
+    assert "git archive --format=tar.gz" in workflow
     assert '"$GITHUB_SHA"' in workflow
     assert "release manifest commit does not match GITHUB_SHA" in workflow
     assert "actions/upload-artifact@v4" in workflow
@@ -61,8 +61,8 @@ def test_core_deploy_workflow_is_exact_run_and_current_main_gated() -> None:
     assert workflow.count('gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main"') == 2
     assert "Skip stale core deployment" in workflow
     assert "Main advanced during core upload" in workflow
-    assert "sudo -n /usr/local/sbin/tradingdatas-core-release" in workflow
-    assert "readlink /opt/investment/releases/tradingdatas/current" in workflow
+    assert "/usr/bin/sudo -n /usr/local/sbin/tradingdatas-core-release" in workflow
+    assert "/usr/bin/readlink /opt/investment/releases/tradingdatas/current" in workflow
 
 
 def test_core_deploy_pins_installed_privileged_code_to_tested_sha() -> None:
@@ -70,11 +70,13 @@ def test_core_deploy_pins_installed_privileged_code_to_tested_sha() -> None:
 
     assert "sha256sum tools/production_core_release.py" in workflow
     assert "sha256sum tools/release_manifest.py" in workflow
-    assert "/usr/local/sbin/tradingdatas-core-release" in workflow
+    assert "/usr/bin/sha256sum /usr/local/sbin/tradingdatas-core-release" in workflow
     assert "/usr/local/lib/tradingdatas-release/release_manifest.py" in workflow
     assert "remote_hashes=" in workflow
     assert "grep -Fxq \"$HELPER_CHECKSUM" in workflow
     assert "grep -Fxq \"$VERIFIER_CHECKSUM" in workflow
+    assert "/usr/bin/test -d '$spool'" in workflow
+    assert "/usr/bin/find '$spool'" in workflow
 
     # Ordinary deployments must not upload or directly execute a newly supplied
     # privileged helper/verifier from the target release.
@@ -134,6 +136,10 @@ def test_core_bootstrap_requires_verified_normalized_current_and_scoped_sudo() -
     assert "deployment spool is not empty" in bootstrap
     assert "installed_helper=/usr/local/sbin/tradingdatas-core-release" in bootstrap
     assert "installed_verifier=\"$trusted_dir/release_manifest.py\"" in bootstrap
+    assert "python_runtime=/opt/tradingdatas/venv/bin/python3" in bootstrap
+    assert "assert_root_controlled_dir" in bootstrap
+    assert "python runtime target must be root:root" in bootstrap
+    assert "python runtime target must not be group/other writable" in bootstrap
     assert "NOPASSWD: %s" in bootstrap
     assert "visudo -cf" in bootstrap
     assert "TRADINGDATAS_CORE_DEPLOY_ENABLED=false" in bootstrap
