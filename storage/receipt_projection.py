@@ -727,6 +727,83 @@ def _scan_ingest_run_rows_by_ids(
     return tuple(_classify_ingest_run_row(row) for row in rows)
 
 
+def _scan_ingest_run_rows_by_execution_ids(
+    conn: sqlite3.Connection,
+    dataset_id: str,
+    execution_ids: tuple[str, ...],
+) -> tuple[_ScannedIngestRunRow, ...]:
+    """Read only receipt rows belonging to selected validated executions.
+
+    The first page lookup remains bounded by immutable receipt IDs.  This
+    second-stage query retrieves only sibling physical calls needed to validate
+    execution/variant cohort consistency for those selected receipts.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if type(dataset_id) is not str or not dataset_id:
+        raise TypeError("dataset_id must be a non-empty string")
+    if (
+        type(execution_ids) is not tuple
+        or not execution_ids
+        or any(type(item) is not str or not item for item in execution_ids)
+        or execution_ids != tuple(sorted(set(execution_ids)))
+    ):
+        raise ValueError("execution_ids must be a sorted unique non-empty tuple")
+
+    fragments: list[str] = []
+    for execution_id in execution_ids:
+        ordinary = json.dumps(
+            execution_id, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        )
+        physical_prefix = json.dumps(
+            f"{execution_id}:provider-call:",
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )[:-1]
+        fragments.extend(
+            (f'"attempt_id":{ordinary}', f'"attempt_id":{physical_prefix}')
+        )
+    predicates = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
+    query = _RECEIPT_QUERY.replace(
+        "FROM market_ingest_runs\nLIMIT ?",
+        f"FROM market_ingest_runs\nWHERE source = ? AND ({predicates})\nLIMIT ?",
+    )
+    raw_rows = tuple(
+        tuple(row)
+        for row in conn.execute(
+            query,
+            (dataset_id, *fragments, scan_limit),
+        ).fetchall()
+    )
+    if len(raw_rows) == scan_limit:
+        raise RuntimeProjectionError("receipt execution scan row budget exceeded")
+
+    selected: list[_ScannedIngestRunRow] = []
+    expected = frozenset(execution_ids)
+    for row in raw_rows:
+        scanned = _classify_ingest_run_row(row)
+        if scanned.invalid is not None or scanned.payload is None:
+            # The SQL fragment matched receipt-shaped material in this bounded
+            # cohort. Preserve it so the ordinary validator can fail closed.
+            selected.append(scanned)
+            continue
+        attempt_id = scanned.payload.get("attempt_id")
+        try:
+            physical = parse_provider_call_attempt_id(attempt_id)
+            execution_id = (
+                attempt_id if physical is None else physical.root_attempt_id
+            )
+        except (TypeError, ValueError):
+            selected.append(scanned)
+            continue
+        if execution_id in expected:
+            selected.append(scanned)
+    return tuple(selected)
+
+
 def _is_valid_unmapped_tushare_attempt(
     scanned: _ScannedIngestRunRow,
     *,
@@ -2436,10 +2513,25 @@ def validated_row_receipt_proofs(
         raise ValueError("receipt_ids must be unique")
     _canonical_now(now)
     known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
+    selected_rows = _scan_ingest_run_rows_by_ids(conn, requested)
+    selected_receipts: list[_Receipt] = []
+    for scanned in selected_rows:
+        validated = _validate_receipt_row(
+            scanned, dataset, known_dataset_ids, now, None
+        )
+        if not isinstance(validated, _Receipt):
+            raise RuntimeProjectionError("row receipt authority is invalid")
+        selected_receipts.append(validated)
+    execution_ids = tuple(
+        sorted({receipt.execution_id for receipt in selected_receipts})
+    )
+    cohort_rows = _scan_ingest_run_rows_by_execution_ids(
+        conn, dataset.dataset_id, execution_ids
+    )
     entries, failures = _validated_history_for_dataset_rows(
         dataset,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows_by_ids(conn, requested),
+        rows=cohort_rows,
         now=now,
     )
     if failures:
