@@ -1,0 +1,207 @@
+name: One-shot Promote Futures Reviewed Authority
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'codex/restore-futures-reviewed-authority-20260816'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Configure git
+        run: |
+          git config user.name 'TradingDatas Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+
+      - name: Promote historical futures contracts into reviewed authority
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from copy import deepcopy
+          from pathlib import Path
+          import hashlib
+          import subprocess
+          import yaml
+
+          PRE = 'aa92d22bc9f2cafd8a944d256509ccc037a2c20b'
+          BAD = '66ac446d97c212571014fcdb0f9841aecef53a76'
+          UPSTREAM = 'config/tushare_upstream_contracts.v1.yaml'
+          REVIEWED = Path('config/tushare_reviewed_contracts.v1.yaml')
+          CADENCE = Path('config/tushare_cadence_policy.v1.yaml')
+          REQUEST_OBS = Path('config/tushare_request_observations.v1.yaml')
+
+          def git_yaml(ref: str, path: str):
+              raw = subprocess.check_output(['git', 'show', f'{ref}:{path}'])
+              value = yaml.safe_load(raw.decode('utf-8'))
+              if not isinstance(value, dict):
+                  raise SystemExit(f'{ref}:{path} is not a mapping')
+              return value
+
+          def map_contracts(document):
+              contracts = document.get('contracts')
+              if not isinstance(contracts, list):
+                  raise SystemExit('contracts must be a list')
+              result = {}
+              for contract in contracts:
+                  if not isinstance(contract, dict) or not isinstance(contract.get('api_name'), str):
+                      raise SystemExit('invalid contract entry')
+                  result[contract['api_name']] = contract
+              return result
+
+          pre_map = map_contracts(git_yaml(PRE, UPSTREAM))
+          bad_map = map_contracts(git_yaml(BAD, UPSTREAM))
+          if set(pre_map) != set(bad_map):
+              raise SystemExit('66ac446 changed the API set unexpectedly')
+
+          changed = sorted(api for api in pre_map if pre_map[api] != bad_map[api])
+          unintended = [api for api in changed if api != 'rt_min']
+          if not unintended:
+              raise SystemExit('no unintended contracts found')
+          unexpected = [api for api in unintended if not api.startswith('fut_')]
+          if unexpected:
+              raise SystemExit(f'unexpected non-futures drift: {unexpected}')
+          print('promoting reviewed futures APIs:', ', '.join(unintended))
+
+          reviewed = yaml.safe_load(REVIEWED.read_text(encoding='utf-8'))
+          cadence = yaml.safe_load(CADENCE.read_text(encoding='utf-8'))
+          if not isinstance(reviewed, dict) or not isinstance(reviewed.get('contracts'), list):
+              raise SystemExit('reviewed authority is malformed')
+          if not isinstance(cadence, dict) or not isinstance(cadence.get('entries'), list):
+              raise SystemExit('cadence authority is malformed')
+
+          runtime_only = {
+              'probe_state',
+              'probe_block_reasons',
+              'ingest_contract_state',
+              'ingest_contract_block_reasons',
+          }
+          existing = {
+              item['api_name']: item
+              for item in reviewed['contracts']
+              if isinstance(item, dict) and isinstance(item.get('api_name'), str)
+          }
+          for api in unintended:
+              historical = {
+                  key: deepcopy(value)
+                  for key, value in pre_map[api].items()
+                  if key not in runtime_only
+              }
+              prior = existing.get(api)
+              if prior is not None and prior != historical:
+                  raise SystemExit(f'current reviewed authority already differs for {api}; fail closed')
+              if prior is None:
+                  reviewed['contracts'].append(historical)
+
+          reviewed['contracts'] = sorted(
+              reviewed['contracts'], key=lambda item: (item['api_name'], item['dataset_id'])
+          )
+          REVIEWED.write_text(
+              yaml.safe_dump(reviewed, allow_unicode=True, sort_keys=False, width=1000),
+              encoding='utf-8',
+          )
+
+          cadence_by_api = {
+              item['api_name']: item
+              for item in cadence['entries']
+              if isinstance(item, dict) and isinstance(item.get('api_name'), str)
+          }
+          for api in unintended:
+              entry = cadence_by_api.get(api)
+              if entry is None:
+                  raise SystemExit(f'missing cadence entry for {api}')
+              entry['cadence_class'] = pre_map[api]['cadence_class']
+              entry['freshness_sla_seconds'] = pre_map[api]['freshness_sla_seconds']
+              entry['reason_code'] = 'reviewed_contract_exact'
+          CADENCE.write_text(
+              yaml.safe_dump(cadence, allow_unicode=True, sort_keys=False, width=1000),
+              encoding='utf-8',
+          )
+
+          request_obs = yaml.safe_load(REQUEST_OBS.read_text(encoding='utf-8'))
+          provenance = request_obs['provenance']
+          provenance['reviewed_contract_bundle']['sha256'] = hashlib.sha256(REVIEWED.read_bytes()).hexdigest()
+          REQUEST_OBS.write_text(
+              yaml.safe_dump(request_obs, allow_unicode=True, sort_keys=False, width=1000),
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Rebuild canonical runtime and provider registry
+        run: |
+          set -euo pipefail
+          python tools/compile_tushare_runtime_contracts.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import yaml
+
+          upstream = Path('config/tushare_upstream_contracts.v1.yaml')
+          request_obs_path = Path('config/tushare_request_observations.v1.yaml')
+          request_obs = yaml.safe_load(request_obs_path.read_text(encoding='utf-8'))
+          request_obs['provenance']['registered_contract_bundle']['sha256'] = hashlib.sha256(upstream.read_bytes()).hexdigest()
+          request_obs_path.write_text(
+              yaml.safe_dump(request_obs, allow_unicode=True, sort_keys=False, width=1000),
+              encoding='utf-8',
+          )
+          PY
+          python tools/compile_provider_native_registry.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import yaml
+
+          registry = Path('config/provider_native_dataset_registry.yaml')
+          waves_path = Path('config/provider_native_activation_waves.v1.yaml')
+          waves = yaml.safe_load(waves_path.read_text(encoding='utf-8'))
+          waves['input_hashes']['runtime_registry_sha256'] = hashlib.sha256(registry.read_bytes()).hexdigest()
+          waves_path.write_text(
+              yaml.safe_dump(waves, allow_unicode=True, sort_keys=False, width=1000),
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Verify futures authority and focused contracts
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            tests/test_compile_provider_native_registry.py \
+            tests/test_collect_provider_dataset.py \
+            tests/test_compile_tushare_runtime_contracts.py \
+            -q --tb=short -x
+          git diff --check
+
+      - name: Commit durable repair and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/oneoff-promote-futures-reviewed-authority.yml
+          git add -A
+          git diff --cached --stat
+          if git diff --cached --quiet; then
+            echo 'No durable repair diff produced'
+            exit 1
+          fi
+          git commit -m 'fix: persist reviewed futures contracts across recompilation'
+          git push origin HEAD:${{ github.head_ref }}
