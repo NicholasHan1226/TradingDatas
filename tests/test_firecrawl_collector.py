@@ -448,7 +448,7 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert dataset.primary_key == ("source", "published_local", "content_uid")
     assert dataset.as_of_field == "published_at"
     assert dataset.as_of_format == "rfc3339"
-    assert dataset.partition_field == "event_date"
+    assert dataset.partition_field is None
     assert binding.fanout is not None
     assert binding.fanout.strategy == "literal_values"
     assert binding.fanout.parameter == "url"

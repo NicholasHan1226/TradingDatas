@@ -101,7 +101,7 @@ contracts:
   as_of_field: published_at
   as_of_format: rfc3339
   range_field: published_at
-  partition_field: event_date
+  partition_field: null
   cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
