@@ -3613,8 +3613,10 @@ def open_verified_read_model_snapshot(db_path: Path):
                         conn.close()
                 return
             except RuntimeProjectionError as exc:
-                if "connection target changed" not in str(exc):
-                    raise
+                # A concurrent writer (backfill) leaves the WAL/SHM sidecars in
+                # transient mid-write states; any of those reads as a projection
+                # error.  Retry a bounded number of times; a persistent error is
+                # still raised fail-closed after the attempts are exhausted.
                 last_error = exc
                 time.sleep(0.05)
     except (
