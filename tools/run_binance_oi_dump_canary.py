@@ -200,6 +200,13 @@ def _require_canary_mode() -> None:
         raise RuntimeError("Binance canary mode is required")
 
 
+def _dataset_symbol(dataset_id: str) -> str:
+    parts = dataset_id.split(".")
+    if len(parts) != 5 or parts[3] != parts[3].lower() or not parts[3].endswith("usdt"):
+        raise ValueError("open-interest dataset id does not match the frozen shape")
+    return parts[3].upper()
+
+
 def _run_lookback(
     *,
     db_path: Path,
@@ -230,7 +237,16 @@ def _run_lookback(
                 continue
             collected = False
             hard_failure = False
+            probed_unpublished = False
             for day in missing:
+                if not collector.probe_published(
+                    symbol=_dataset_symbol(dataset_id), day=day
+                ):
+                    # The daily zip lags the UTC day close by hours; skip it
+                    # without an ingest attempt so no failed receipt pollutes
+                    # the dataset runtime state.
+                    probed_unpublished = True
+                    continue
                 attempts = _collect_with_one_provider_retry(
                     db_path=db_path,
                     registry=registry,
@@ -267,10 +283,29 @@ def _run_lookback(
             if hard_failure:
                 raise RuntimeError("one or more Crypto dataset collections failed")
             if not collected:
+                attempted = any(
+                    item["dataset_id"] == dataset_id
+                    and item["window"] is not None
+                    and item["receipt_ids"]
+                    for item in results
+                )
                 if len(missing) > 1:
-                    # Older missing days failing too is an outage, not lag.
+                    # Older missing days unpublished/failing too is an
+                    # outage, not publication lag.
                     raise RuntimeError("one or more Crypto dataset collections failed")
-                results[-1]["state"] = "pending_publication"
+                if attempted:
+                    results[-1]["state"] = "pending_publication"
+                else:
+                    results.append(
+                        {
+                            "collection_kind": "open_interest",
+                            "dataset_id": dataset_id,
+                            "receipt_ids": [],
+                            "retry_count": 0,
+                            "state": "pending_publication",
+                            "window": {"date": missing[0]},
+                        }
+                    )
         return {
             "datasets": results,
             "lookback_days": _LOOKBACK_DAYS,

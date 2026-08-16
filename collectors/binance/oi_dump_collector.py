@@ -131,6 +131,32 @@ class BinanceUsdmMetricsDumpCollector:
             raise OSError("public metrics-dump payload exceeds the bounded size")
         return payload
 
+    @staticmethod
+    def probe_published(*, symbol: str, day: str) -> bool:
+        """HEAD whether one daily metrics zip is already published.
+
+        Publication of the daily dump lags the UTC day close by hours; probing
+        before an ingest attempt keeps that expected lag from polluting the
+        receipt chain (and therefore the dataset runtime state) with failed
+        attempts.  Any transport error is reported as unpublished; the next
+        timer tick simply probes again.
+        """
+
+        date_text = _utc_day(day).strftime("%Y-%m-%d")
+        request = Request(
+            f"{BINANCE_USDM_DUMP_PUBLIC_DATA_URL}/data/futures/um/daily/"
+            f"metrics/{symbol}/{symbol}-metrics-{date_text}.zip",
+            headers={"User-Agent": "TradingDatas-Crypto-Canary/1"},
+            method="HEAD",
+        )
+        try:
+            with _PUBLIC_OPENER.open(request, timeout=10) as response:  # nosec B310
+                if response.geturl() != request.full_url:
+                    return False
+                return response.status == 200
+        except Exception:
+            return False
+
     def _metrics_dump(
         self,
         params: dict[str, Any],

@@ -1,6 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 13:10 CST。
+最后更新：2026-08-16 13:35 CST。
+
+> **2026-08-16 OI 数据集 SLA/cadence 修正（代码层事实）：** 生产 readback 发现
+> `crypto.perp.binance.*.open_interest` 模板的 `freshness_sla_seconds: 600` 使日度
+> dump 数据永远 stale/degraded。模板改为 129600（36h，覆盖日更+发布滞后+2h tick
+> 余量）并把 `cadence_class` 从 `on_demand` 更正为 `postclose_daily`（既有 2 小时
+> timer 的事实语义；on_demand 按根合同不得由 timer 自动采集）。编译器重生成 10 个
+> OI 条目，59 定向测试全绿。funding rate 保持 on_demand/paused 不变。
+
+> **2026-08-16 OI dump 采集前置发布探测（代码层事实）：** 生产 readback 发现
+> fall-through 的副作用：最新日 zip 未发布时的失败 receipt 会把数据集 runtime
+> state 翻成 `failed` 数小时（查询 fail-closed 拒读）。新增
+> `BinanceUsdmMetricsDumpCollector.probe_published`（HEAD 探测、拒 redirect、
+> 任何传输异常按未发布处理）：ingest 尝试前先探测，未发布日只记
+> `pending_publication`（无 receipt），最新日以外多日未发布/失败仍判定中断、
+> 诚实失败。测试 22+65 全绿。本变更随下次 crypto release 生效。
 
 > **2026-08-16 `news`/`major_news` 快讯激活（代码层事实，待部署）：**
 > 新增第五种通用 response_completeness 策略 `event_stream_unique_primary_key`
@@ -15,7 +30,6 @@
 > 编译期激活门禁按结构例外同步放开（event + fanout none + event_stream
 > 策略）。文档化的配置表达缺口与修复依据见
 > `docs/design/firecrawl-news-pipeline.v1.md` 附录。
-
 > **2026-08-16 CRYPTO_PERP 打开 catalog 发现门禁（代码层事实）：**
 > `catalog_service.is_catalog_discoverable` 的冻结产品范围门禁由
 > `{CN, CRYPTO_SPOT}` 扩为 `{CN, CRYPTO_SPOT, CRYPTO_PERP}`——OI dump 已真实入库
@@ -60,7 +74,6 @@
 > wave、不做自动调度：2026-08-16 有界探测（1 小时窗口 114 行）只证明合同
 > 可编译，激活需另行新鲜 HTTPS 证据与人工审核。`cn.dataset.major_news`
 > 此前已按 `dimension_fanout` 合同激活，本次不改动。
- HEAD
 
 > **2026-08-16 Firecrawl 新闻舆情 provider Phase 0 合同冻结
 > contract_ready 候选（代码层事实，无生产变更、无真实调用）：** 新增第三个
@@ -83,7 +96,6 @@
 > dry-run 非零计划门禁与有界 canary 的 provider→SQLite→catalog/query readback
 > （observed）；冻结设计与分期见 `docs/design/firecrawl-news-pipeline.v1.md`。
 > 本次没有 release、service/timer、数据库、真实 provider 调用或生产变更。
- origin/main
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的
 > `fapi.binance.com` SNI 级阻断，owner 批准 dump 降级方案：open interest 改用

@@ -5060,9 +5060,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_btcusdt
@@ -5212,9 +5212,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_ethusdt
@@ -5364,9 +5364,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_solusdt
@@ -5516,9 +5516,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_xrpusdt
@@ -5668,9 +5668,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_bnbusdt
@@ -5820,9 +5820,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_dogeusdt
@@ -5972,9 +5972,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_adausdt
@@ -6124,9 +6124,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_trxusdt
@@ -6276,9 +6276,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_linkusdt
@@ -6428,9 +6428,9 @@ datasets:
   entity_type: open_interest
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: postclose_daily
   timezone: UTC
-  freshness_sla_seconds: 600
+  freshness_sla_seconds: 129600
   provider_bindings:
   - provider: binance_usdm
     api_name: openInterestHist_avaxusdt
