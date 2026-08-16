@@ -680,6 +680,14 @@ def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() ->
     ):
         assert is_catalog_discoverable(dataset)
     assert not is_catalog_discoverable(foreign_dataset)
+    perp_dataset = replace(base, market="CRYPTO_PERP", provider_bindings=(active,))
+    perp_paused_dataset = replace(
+        base, market="CRYPTO_PERP", provider_bindings=(active_paused,)
+    )
+    assert is_catalog_discoverable(perp_dataset)
+    assert is_catalog_discoverable(perp_paused_dataset)
+    assert is_initial_release_eligible(perp_dataset)
+    assert not is_initial_release_eligible(perp_paused_dataset)
 
     assert is_initial_release_eligible(active_dataset)
     for dataset in (
