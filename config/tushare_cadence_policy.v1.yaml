@@ -338,12 +338,12 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 5063c346dc7f2a37b8bedbc7d6b23658fa5dae660ce5aa3ee16d63983b572728
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fut_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: c9017e5e7754b4cab52710001fdbfb35a411a46a267b5bc9c1d5cc72f6e556d2
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: fut_holding
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -353,17 +353,17 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: bdbb1397ab76c27e287a5766d7192d5d4ef38336e8c6b16561d4981f3535382f
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: fut_mapping
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 084495ddd4340fb4320c133717382d71ac8a4bc123a051d7799b028be236aed9
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fut_settle
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: bce6a604cd034c6190df28e1d474a0195098531bd42471b2ca0dfdcd22ae7e57
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: fut_trade_cal
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -378,7 +378,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 6680810f8cd4388810d62a126c055b2bdba6a88e397d90bf3b1c7675bb303529
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: fut_wsr
   cadence_class: on_demand
   freshness_sla_seconds: 86400
