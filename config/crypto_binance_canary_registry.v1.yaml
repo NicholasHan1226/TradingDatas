@@ -5069,7 +5069,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_btcusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5095,6 +5095,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_btcusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_btcusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BTCUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5182,7 +5221,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_ethusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5208,6 +5247,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_ethusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_ethusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ETHUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5295,7 +5373,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_solusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5321,6 +5399,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_solusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_solusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: SOLUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5408,7 +5525,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_xrpusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5434,6 +5551,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_xrpusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_xrpusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: XRPUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5521,7 +5677,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_bnbusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5547,6 +5703,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_bnbusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_bnbusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BNBUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5634,7 +5829,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_dogeusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5660,6 +5855,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_dogeusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_dogeusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: DOGEUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5747,7 +5981,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_adausdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5773,6 +6007,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_adausdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_adausdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ADAUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5860,7 +6133,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_trxusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5886,6 +6159,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_trxusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_trxusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: TRXUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -5973,7 +6285,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_linkusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -5999,6 +6311,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_linkusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_linkusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: LINKUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:
@@ -6086,7 +6437,7 @@ datasets:
     adapter_version: binance-usdm-public.v1
     read_discriminator_value: binance_usdm_avaxusdt_open_interest
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -6112,6 +6463,45 @@ datasets:
       period: 5m
       start_time: ${window.start_time}
       end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  - provider: binance_usdm_dump
+    api_name: metricsDump_avaxusdt
+    adapter_version: binance-usdm-metrics-dump.v1
+    read_discriminator_value: binance_usdm_dump_avaxusdt_open_interest
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: AVAXUSDT
+      date: ${window.date}
     request_variants:
     - {}
     fanout:

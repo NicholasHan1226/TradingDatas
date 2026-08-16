@@ -1,0 +1,12 @@
+[Unit]
+Description=Wake isolated TradingDatas Crypto USDM open-interest daily metrics-dump collection
+
+[Timer]
+OnCalendar=*-*-* 00:37:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=tradingdatas-crypto-binance-oi-dump-collect.service
+
+[Install]
+WantedBy=timers.target

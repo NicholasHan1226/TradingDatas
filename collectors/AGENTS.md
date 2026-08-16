@@ -31,13 +31,14 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 | `tushare/tushare_common.py` | Tushare 通用请求/响应与凭证边界 |
 | `binance/collector.py` | Binance public spot 的 provider-level 只读 adapter；不得加入账户、私钥或下单能力 |
 | `binance/usdm_collector.py` | Binance public USDⓈ-M 永续 funding rate / open interest 的 provider-level 只读 adapter（transport host `fapi.binance.com` 与现货不同）；同样不得加入账户、私钥或下单能力 |
+| `binance/oi_dump_collector.py` | Binance public USDⓈ-M 日度 metrics dump 的 provider-level 只读 adapter（transport host `data.binance.vision` 批量 zip 下载，`fapi.binance.com` 被 SNI 阻断期间 open interest 的降级来源，funding rate 无 dump）；同样不得加入账户、私钥或下单能力 |
 
 ### 子 Collector
 
 | 目录 | 市场 | 数据源 | 关键文件 |
 |------|------|--------|----------|
 | `tushare/` | 首期境内金融事实数据 | Tushare API | `collector.py`, `provider_native_ingest.py` |
-| `binance/` | 冻结的 Crypto spot canary 与 USDⓈ-M 永续公共只读切片 | Binance public market data | `collector.py`, `usdm_collector.py` |
+| `binance/` | 冻结的 Crypto spot canary 与 USDⓈ-M 永续公共只读切片 | Binance public market data | `collector.py`, `usdm_collector.py`, `oi_dump_collector.py` |
 
 预测市场、港股、美股及其历史 collector/cron 不在新代码树中。Crypto 仅允许根层合同已批准的 Binance 公共现货与同一冻结标的的 USDⓈ-M 永续 funding rate / open interest 隔离运行面；不得扩展为账户、订单、执行或共享 A 股运行面。未来新闻、公告或舆情来源按新的 provider adapter 接入，不恢复旧 RSS/MarketGraph fallback。
 

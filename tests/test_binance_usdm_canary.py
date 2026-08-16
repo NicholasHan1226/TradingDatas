@@ -253,9 +253,18 @@ def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() ->
     open_interest = registry.resolve("crypto.perp.binance.ethusdt.open_interest")
     assert open_interest.primary_key == ("symbol", "timestamp")
     assert open_interest.point_in_time == "append_only"
-    oi_binding = open_interest.provider_bindings[0]
-    assert oi_binding.api_name == "openInterestHist_ethusdt"
-    assert oi_binding.request_template["period"] == "5m"
+    fapi_binding, dump_binding = open_interest.provider_bindings
+    assert fapi_binding.provider == "binance_usdm"
+    assert fapi_binding.api_name == "openInterestHist_ethusdt"
+    assert fapi_binding.activation_state == "paused"
+    assert fapi_binding.request_template["period"] == "5m"
+    assert dump_binding.provider == "binance_usdm_dump"
+    assert dump_binding.api_name == "metricsDump_ethusdt"
+    assert dump_binding.activation_state == "active"
+    assert dump_binding.request_template == {
+        "symbol": "ETHUSDT",
+        "date": "${window.date}",
+    }
 
 
 def test_usdm_funding_rate_collection_is_idempotent_by_payload_identity(

@@ -18,6 +18,54 @@ from `https://fapi.binance.com` — a different transport host from the Spot
 adapter (`binance_usdm`). It contains no API key, account, Testnet, order, or
 retry/fallback-to-trading surface.
 
+## Metrics-dump open-interest degradation source
+
+`fapi.binance.com` is unreachable from the production host (SNI-level TLS
+reset, recorded in `STATUS.md` on 2026-08-16), while the public dump host
+`https://data.binance.vision` stays reachable.  With owner approval, open
+interest therefore has a second provider binding, `binance_usdm_dump`, on the
+**same** ten `crypto.perp.binance.<symbol>.open_interest` datasets: the dump's
+daily `metrics` zip carries the same 5-minute open-interest facts as
+`openInterestHist`, so the dataset identity, schema, primary key and
+append-only payload-hash idempotency are unchanged and only the transport
+differs (batch file download instead of a REST JSON API, which is why it is a
+separate provider-level adapter, `collectors/binance/oi_dump_collector.py`).
+The original `binance_usdm` open-interest binding stays in the registry as
+`activation_state: paused` so exactly one binding is active; if the fapi
+transport is ever restored, reactivating it is a deliberate registry decision,
+not an automatic fallback.  Funding rate has no dump (404 on the dump host)
+and remains unavailable until the fapi network path is resolved.
+
+The dump binding downloads
+`data/futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-YYYY-MM-DD.zip`, whose
+single CSV member holds one row per five-minute grid label of the UTC day
+(`create_time` from `00:00:00` to `23:55:00`, 288 rows, unordered).  The
+adapter pins the dump origin, rejects redirects, verifies the zip member name,
+the exact eight-column header, the complete 288-row grid and the symbol, and
+maps each row onto the existing open-interest schema.  The dump-only long/short
+ratio columns are validated for shape but are not part of this dataset's
+schema; the raw daily zip remains publicly re-downloadable.
+
+The candidate runner `tools/run_binance_oi_dump_canary.py` accepts no
+provider, symbol, field, or registry path input.  Per run it collects, for
+every frozen symbol, the latest fully closed UTC day — the file a daily dump
+publishes after that day's UTC close — so it never asks for an unpublished
+file.  It shares `/run/tradingdatas-crypto/collect.lock` with the Spot and
+USDM collectors, records a terminal receipt per attempt, and makes one
+immediate retry on a provider error; a missing or not-yet-published file is an
+honest failed run retried by the next timer tick, and re-running a published
+day is idempotent by payload identity.  The unit pair
+`tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` fires once daily
+at 00:37 UTC, staggered off the five-minute Spot/USDM timers that share the
+same lock.  Like the USDM pair, this timer must stay **disabled** until the
+same isolated production review (`observed` then `stable`) completes.
+
+While the fapi binding is paused, the disabled
+`tools/run_binance_usdm_canary.py` runner can no longer execute its
+open-interest half (its funding-rate half is unchanged); that is accepted
+because the USDM timer stays disabled and the dump runner is the open-interest
+collection path under the degradation plan.
+
 ## Frozen v1 cohort
 
 The symbol set reuses the same versioned universe contract as the Spot
@@ -41,7 +89,9 @@ UTC RFC3339 window bounded to thirty days; one physical request is capped at
 1,000 rows. The open-interest dataset accepts only its named symbol, period
 `5m`, and a UTC RFC3339 window bounded to one day; one physical request is
 capped at 500 rows. Rows outside the requested window or carrying a provider
-timestamp in the future are discarded.
+timestamp in the future are discarded.  This paragraph describes the paused
+`binance_usdm` binding; the active `binance_usdm_dump` binding and its daily
+window contract are defined in the metrics-dump section below.
 
 ## Candidate cadence and gate status
 

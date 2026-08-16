@@ -22,19 +22,24 @@ DEFAULT_UNIVERSE = ROOT / "config" / "crypto_binance_spot_universe.v1.yaml"
 DEFAULT_REGISTRY = ROOT / "config" / "crypto_binance_canary_registry.v1.yaml"
 _SYMBOL = re.compile(r"[A-Z0-9]{2,16}USDT")
 
-# suffix -> (dataset-id infix, alias prefix, provider API prefix)
+# suffix -> (dataset-id infix, alias prefix)
 _DATASET_KINDS = {
-    "5m": ("crypto.spot.binance.", "binance_spot.", "klines_"),
-    "rules": ("crypto.spot.binance.", "binance_spot.", "exchangeInfo_"),
-    "book_ticker": ("crypto.spot.binance.", "binance_spot.", "bookTicker_"),
-    "funding_rate": ("crypto.perp.binance.", "binance_usdm.", "fundingRate_"),
-    "open_interest": (
-        "crypto.perp.binance.",
-        "binance_usdm.",
-        "openInterestHist_",
-    ),
+    "5m": ("crypto.spot.binance.", "binance_spot."),
+    "rules": ("crypto.spot.binance.", "binance_spot."),
+    "book_ticker": ("crypto.spot.binance.", "binance_spot."),
+    "funding_rate": ("crypto.perp.binance.", "binance_usdm."),
+    "open_interest": ("crypto.perp.binance.", "binance_usdm."),
 }
 _DATASET_KIND_ORDER = ("5m", "rules", "book_ticker", "funding_rate", "open_interest")
+# (suffix, binding provider) -> provider API prefix
+_BINDING_API_PREFIXES = {
+    ("5m", "binance_spot"): "klines_",
+    ("rules", "binance_spot"): "exchangeInfo_",
+    ("book_ticker", "binance_spot"): "bookTicker_",
+    ("funding_rate", "binance_usdm"): "fundingRate_",
+    ("open_interest", "binance_usdm"): "openInterestHist_",
+    ("open_interest", "binance_usdm_dump"): "metricsDump_",
+}
 
 
 def _document(path: Path) -> dict[str, object]:
@@ -80,26 +85,27 @@ def _clone(template: dict[str, object], symbol: str, suffix: str) -> dict[str, o
     kind = _DATASET_KINDS.get(suffix)
     if kind is None:
         raise ValueError("Crypto registry template suffix is invalid")
-    dataset_prefix, alias_prefix, api_prefix = kind
+    dataset_prefix, alias_prefix = kind
     item = deepcopy(template)
     lower = symbol.lower()
     item["dataset_id"] = f"{dataset_prefix}{lower}.{suffix}"
     item["aliases"] = [f"{alias_prefix}{lower}.{suffix}"]
     bindings = item["provider_bindings"]
-    if not isinstance(bindings, list) or len(bindings) != 1:
+    if not isinstance(bindings, list) or not bindings:
         raise ValueError("Crypto registry template binding is invalid")
-    binding = bindings[0]
-    if not isinstance(binding, dict):
-        raise ValueError("Crypto registry template binding is invalid")
-    binding["api_name"] = api_prefix + lower
-    provider_prefix = alias_prefix.rstrip(".")
-    binding["read_discriminator_value"] = (
-        f"{provider_prefix}_{lower}_{suffix.replace('.', '_')}"
-    )
-    request = binding["request_template"]
-    if not isinstance(request, dict):
-        raise ValueError("Crypto registry request template is invalid")
-    request["symbol"] = symbol
+    for binding in bindings:
+        if not isinstance(binding, dict):
+            raise ValueError("Crypto registry template binding is invalid")
+        provider = binding.get("provider")
+        api_prefix = _BINDING_API_PREFIXES.get((suffix, provider))
+        if api_prefix is None:
+            raise ValueError("Crypto registry template binding provider is invalid")
+        binding["api_name"] = api_prefix + lower
+        binding["read_discriminator_value"] = f"{provider}_{lower}_{suffix}"
+        request = binding["request_template"]
+        if not isinstance(request, dict):
+            raise ValueError("Crypto registry request template is invalid")
+        request["symbol"] = symbol
     return item
 
 
