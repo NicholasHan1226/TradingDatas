@@ -100,6 +100,7 @@ def test_single_ts_code_request_template_is_not_a_frozen_universe(tmp_path: Path
     assert isinstance(binding, dict)
     binding["request_template"]["ts_code"] = "600000.SH"
     binding["fanout"] = {"strategy": "none"}
+    binding["resumable_fanout"] = None
     registry_path = tmp_path / "registry.yaml"
     registry_path.write_text(yaml.safe_dump(registry_document, allow_unicode=True, sort_keys=False))
 

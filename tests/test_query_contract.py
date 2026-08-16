@@ -147,7 +147,7 @@ def test_query_request_preserves_registry_owned_default_order() -> None:
     [
         {"fields": [f"field_{index}" for index in range(101)]},
         {"filters": {f"field_{index}": index for index in range(17)}},
-        {"filters": {"symbol": {"in": list(range(101))}}},
+        {"filters": {"symbol": {"in": list(range(501))}}},
         {"order": [f"field_{index}:asc" for index in range(9)]},
         {"limit": True},
         {"limit": 1.0},

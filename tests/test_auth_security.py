@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 import auth
+import query_cursor
 
 ROOT = Path(__file__).resolve().parents[1]
 HS256_TEST_SECRET = "tradingdatas-hs256-test-secret-at-least-32-bytes"
@@ -77,6 +78,16 @@ def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     return importlib.reload(auth)
+
+
+@pytest.fixture(autouse=True)
+def _realign_query_cursor_auth_references() -> None:
+    """importlib.reload(auth) rebinds auth.AuthError and auth._private_file_bytes
+    in place; query_cursor holds from-import references that must be realigned
+    so its AuthError translation keeps working for the rest of the session."""
+    yield
+    query_cursor.AuthError = auth.AuthError
+    query_cursor._private_file_bytes = auth._private_file_bytes
 
 
 def test_forged_jwt_is_rejected_when_jwt_key_is_unset(

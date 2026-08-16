@@ -1040,8 +1040,8 @@ def test_provider_entry_parses_raw_success_and_derives_data_through_from_rows(
     [
         (
             {"partition_field": "sequence"},
-            ["ts_code", "close", "sequence"],
-            [["000001.SZ", 11.25, 4], ["000002.SZ", 22.5, 7]],
+            ["ts_code", "trade_date", "close", "sequence"],
+            [["000001.SZ", "not-a-date", 11.25, 4], ["000002.SZ", "not-a-date", 22.5, 7]],
             "7",
         ),
         (
@@ -1062,8 +1062,8 @@ def test_provider_entry_parses_raw_success_and_derives_data_through_from_rows(
         ),
         (
             {},
-            ["ts_code", "close", "sequence"],
-            [["000001.SZ", 11.25, 1]],
+            ["ts_code", "trade_date", "close", "sequence"],
+            [["000001.SZ", None, 11.25, 1]],
             None,
         ),
         (
