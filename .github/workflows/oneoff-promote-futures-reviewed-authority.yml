@@ -48,7 +48,7 @@ jobs:
 
           PRE = 'aa92d22bc9f2cafd8a944d256509ccc037a2c20b'
           BAD = '66ac446d97c212571014fcdb0f9841aecef53a76'
-          UPSTREAM = 'config/tushare_upstream_contracts.v1.yaml'
+          UPSTREAM = Path('config/tushare_upstream_contracts.v1.yaml')
           REVIEWED = Path('config/tushare_reviewed_contracts.v1.yaml')
           CADENCE = Path('config/tushare_cadence_policy.v1.yaml')
           REQUEST_OBS = Path('config/tushare_request_observations.v1.yaml')
@@ -71,10 +71,12 @@ jobs:
                   result[contract['api_name']] = contract
               return result
 
-          pre_map = map_contracts(git_yaml(PRE, UPSTREAM))
-          bad_map = map_contracts(git_yaml(BAD, UPSTREAM))
-          if set(pre_map) != set(bad_map):
-              raise SystemExit('66ac446 changed the API set unexpectedly')
+          pre_map = map_contracts(git_yaml(PRE, str(UPSTREAM)))
+          bad_map = map_contracts(git_yaml(BAD, str(UPSTREAM)))
+          current_upstream = yaml.safe_load(UPSTREAM.read_text(encoding='utf-8'))
+          current_map = map_contracts(current_upstream)
+          if set(pre_map) != set(bad_map) or set(current_map) != set(pre_map):
+              raise SystemExit('API set drifted; fail closed')
 
           changed = sorted(api for api in pre_map if pre_map[api] != bad_map[api])
           unintended = [api for api in changed if api != 'rt_min']
@@ -92,23 +94,28 @@ jobs:
           if not isinstance(cadence, dict) or not isinstance(cadence.get('entries'), list):
               raise SystemExit('cadence authority is malformed')
 
-          runtime_only = {
-              'probe_state',
-              'probe_block_reasons',
-              'ingest_contract_state',
-              'ingest_contract_block_reasons',
-          }
-          existing = {
-              item['api_name']: item
-              for item in reviewed['contracts']
-              if isinstance(item, dict) and isinstance(item.get('api_name'), str)
-          }
+          # The current compiler's reviewed-bundle schema is stricter than some
+          # older checked reviewed entries. Fill only missing schema keys from
+          # the currently compiled same-API contract while preserving every
+          # explicit reviewed value. This is a schema migration, not a semantic
+          # overwrite of reviewed authority.
+          normalized_existing = []
+          for item in reviewed['contracts']:
+              if not isinstance(item, dict) or not isinstance(item.get('api_name'), str):
+                  raise SystemExit('invalid reviewed contract entry')
+              api = item['api_name']
+              compiled = current_map.get(api)
+              if compiled is None:
+                  raise SystemExit(f'reviewed API missing from current upstream: {api}')
+              normalized = deepcopy(compiled)
+              for key, value in item.items():
+                  normalized[key] = deepcopy(value)
+              normalized_existing.append(normalized)
+
+          reviewed['contracts'] = normalized_existing
+          existing = {item['api_name']: item for item in reviewed['contracts']}
           for api in unintended:
-              historical = {
-                  key: deepcopy(value)
-                  for key, value in pre_map[api].items()
-                  if key not in runtime_only
-              }
+              historical = deepcopy(pre_map[api])
               prior = existing.get(api)
               if prior is not None and prior != historical:
                   raise SystemExit(f'current reviewed authority already differs for {api}; fail closed')
