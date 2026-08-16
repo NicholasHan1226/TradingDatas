@@ -761,6 +761,10 @@ def test_oi_dump_backfill_yields_between_day_batches(
         "_yield_past_next_collection_boundary",
         lambda: yields.append(None),
     )
+    # Freeze the clock 30s before a boundary: every batch must yield.
+    monkeypatch.setattr(
+        oi_dump_canary.time, "time", lambda: 1700000070.0  # % 300 == 270
+    )
 
     def collect(*args, **kwargs):
         del args
@@ -813,3 +817,40 @@ def test_oi_dump_parse_accepts_phase_shifted_day_grid() -> None:
     assert len(rows) == 288
     assert rows[0]["timestamp"].startswith("2026-02-26T00:05")
     assert rows[-1]["timestamp"].startswith("2026-02-27T00:00")
+
+
+def test_oi_dump_backfill_yields_only_near_a_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
+    yields: list[None] = []
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_yield_past_next_collection_boundary",
+        lambda: yields.append(None),
+    )
+    # Freeze the clock at 90s after a boundary: far from the next one, so the
+    # backfill must not yield between day batches.
+    fake_now = 1700000000.0  # arbitrary; 1700000000 % 300 = 200 -> 100s to go
+    monkeypatch.setattr(oi_dump_canary.time, "time", lambda: fake_now)
+
+    def collect(*args, **kwargs):
+        del args
+        return _ingest_result(
+            status="success", receipt_id=f"receipt:{len(kwargs)}"
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        backfill_days=198,
+    )
+    assert result["state"] == "success"
+    assert yields == []
