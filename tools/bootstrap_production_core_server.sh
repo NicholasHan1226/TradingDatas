@@ -64,7 +64,7 @@ python_runtime_mode="$(stat -c '%a' -- "$python_runtime_real")"
 [[ -f "$source_wrapper" && ! -L "$source_wrapper" ]] || fail "wrapper source missing: $source_wrapper"
 [[ -f "$source_implementation" && ! -L "$source_implementation" ]] || fail "implementation source missing: $source_implementation"
 [[ -f "$source_verifier" && ! -L "$source_verifier" ]] || fail "verifier source missing: $source_verifier"
-[[ "$(head -n 1 -- "$source_wrapper")" == '#!/bin/bash' ]] || fail 'privileged wrapper must use fixed /bin/bash'
+[[ "$(head -n 1 -- "$source_wrapper")" == '#!/bin/sh' ]] || fail 'privileged wrapper must use fixed /bin/sh'
 
 [[ -d "$deploy_auth_dir" && ! -L "$deploy_auth_dir" ]] \
   || fail "deployment authorization directory is required: $deploy_auth_dir"
