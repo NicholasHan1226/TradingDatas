@@ -180,9 +180,9 @@ def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) 
             continue
     if parsed is None:
         # English regulator/list pages commonly emit month-name dates
-        # ("Aug. 14, 2026").  Accept a few bounded month-name forms; still
-        # fail closed on anything else.
-        for fmt in ("%b. %d, %Y", "%B %d, %Y", "%b %d, %Y"):
+        # ("Aug. 14, 2026") or US slash dates ("8/13/2026").  Accept a few
+        # bounded forms; still fail closed on anything else.
+        for fmt in ("%b. %d, %Y", "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y"):
             try:
                 parsed = datetime.strptime(text, fmt)
                 break

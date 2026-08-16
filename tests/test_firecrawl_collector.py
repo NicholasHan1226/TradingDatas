@@ -462,6 +462,18 @@ def test_english_month_name_published_at_is_normalized() -> None:
     assert row["event_date"] == "20260814"
 
 
+def test_us_slash_date_published_at_is_normalized() -> None:
+    row = _normalize_item(
+        {"title": "Fed press release", "url": "https://www.federalreserve.gov/x", "published_at": "8/13/2026"},
+        source="https://www.federalreserve.gov/newsevents/pressreleases.htm",
+        time_key="published_at",
+        summary_key=None,
+        timezone=firecrawl_collector._GLOBAL_TIMEZONE,
+    )
+    assert row["published_at"] == "2026-08-13T00:00:00-04:00"
+    assert row["event_date"] == "20260813"
+
+
 def test_relative_or_junk_url_becomes_unlinkable() -> None:
     row = _normalize_item(
         {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
