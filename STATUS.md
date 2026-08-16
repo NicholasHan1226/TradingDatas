@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 13:10 CST。
+最后更新：2026-08-16 13:35 CST。
+
+> **2026-08-16 OI 数据集 SLA/cadence 修正（代码层事实）：** 生产 readback 发现
+> `crypto.perp.binance.*.open_interest` 模板的 `freshness_sla_seconds: 600` 使日度
+> dump 数据永远 stale/degraded。模板改为 129600（36h，覆盖日更+发布滞后+2h tick
+> 余量）并把 `cadence_class` 从 `on_demand` 更正为 `postclose_daily`（既有 2 小时
+> timer 的事实语义；on_demand 按根合同不得由 timer 自动采集）。编译器重生成 10 个
+> OI 条目，59 定向测试全绿。funding rate 保持 on_demand/paused 不变。
 
 > **2026-08-16 OI dump 采集前置发布探测（代码层事实）：** 生产 readback 发现
 > fall-through 的副作用：最新日 zip 未发布时的失败 receipt 会把数据集 runtime
