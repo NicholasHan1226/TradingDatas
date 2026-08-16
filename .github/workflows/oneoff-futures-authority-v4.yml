@@ -1,0 +1,141 @@
+name: One-shot Futures Authority Repair V4
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'codex/restore-futures-reviewed-authority-20260816'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - run: |
+          git config user.name 'TradingDatas Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+
+      - name: Repair durable authorities and compiler order
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from copy import deepcopy
+          from pathlib import Path
+          import hashlib, subprocess, yaml
+
+          PRE='aa92d22bc9f2cafd8a944d256509ccc037a2c20b'
+          BAD='66ac446d97c212571014fcdb0f9841aecef53a76'
+          UP=Path('config/tushare_upstream_contracts.v1.yaml')
+          REV=Path('config/tushare_reviewed_contracts.v1.yaml')
+          CAD=Path('config/tushare_cadence_policy.v1.yaml')
+          OBS=Path('config/tushare_request_observations.v1.yaml')
+          COMP=Path('tools/compile_tushare_runtime_contracts.py')
+
+          source=COMP.read_text(encoding='utf-8')
+          old='''    # Reuse the existing strict registry validator for every pre-existing\n    # contract field, then attach the official input contract. The downstream\n    # registry compiler adopts this new field in a separate integration step.\n    validated = load_upstream_contract_bundle(result)\n    with_inputs = [\n        _with_input_fields(contract, input_fields_by_api[str(contract["api_name"])])\n        for contract in validated["contracts"]\n    ]\n    validated["contracts"] = [\n        _with_request_observation(contract, request_by_api[str(contract["api_name"])])\n        for contract in with_inputs\n    ]\n    try:\n        validated_final_bundle = load_upstream_contract_bundle(validated)\n    except ValueError as exc:\n        raise RuntimeContractCompilationError(\n            f"compiled runtime bundle is invalid: {exc}"\n        ) from exc\n    _registered_seed_requirements(validated_final_bundle["contracts"], request_by_api)\n    return validated\n'''
+          new='''    # The strict registry schema includes input-field and runtime-observation\n    # fields. Build the complete contract first, then validate once.\n    with_inputs = [\n        _with_input_fields(contract, input_fields_by_api[str(contract["api_name"])])\n        for contract in result["contracts"]\n    ]\n    result["contracts"] = [\n        _with_request_observation(contract, request_by_api[str(contract["api_name"])])\n        for contract in with_inputs\n    ]\n    try:\n        validated = load_upstream_contract_bundle(result)\n    except ValueError as exc:\n        raise RuntimeContractCompilationError(\n            f"compiled runtime bundle is invalid: {exc}"\n        ) from exc\n    _registered_seed_requirements(validated["contracts"], request_by_api)\n    return validated\n'''
+          if new not in source:
+              if source.count(old)!=1: raise SystemExit('compiler validation-order anchor drifted')
+              COMP.write_text(source.replace(old,new,1),encoding='utf-8')
+
+          def gy(ref,path):
+              value=yaml.safe_load(subprocess.check_output(['git','show',f'{ref}:{path}']).decode())
+              if not isinstance(value,dict): raise SystemExit('historical mapping invalid')
+              return value
+          def cmap(doc): return {r['api_name']:r for r in doc['contracts']}
+          pre=cmap(gy(PRE,str(UP))); bad=cmap(gy(BAD,str(UP))); cur=cmap(yaml.safe_load(UP.read_text(encoding='utf-8')))
+          if set(pre)!=set(bad) or set(cur)!=set(pre): raise SystemExit('API set drifted')
+          futures=sorted(api for api in pre if pre[api]!=bad[api] and api!='rt_min')
+          expected=['fut_basic','fut_daily','fut_index_daily','fut_mapping','fut_settle','fut_weekly_monthly']
+          if futures!=expected: raise SystemExit(f'unexpected futures set {futures}')
+
+          request_keys=('request_shape','request_template','request_variants','fanout','pagination','request_window_policy','resumable_fanout')
+          request_diffs=[]
+          for api in futures:
+              for key in request_keys:
+                  if pre[api].get(key)!=cur[api].get(key): request_diffs.append((api,key))
+          allowed=[('fut_weekly_monthly','request_variants')]
+          if request_diffs!=allowed: raise SystemExit(f'unexpected request mapping drift: {request_diffs}')
+
+          reviewed=yaml.safe_load(REV.read_text(encoding='utf-8'))
+          normalized=[]
+          for item in reviewed['contracts']:
+              base=cur.get(item['api_name'])
+              if base is None: raise SystemExit(f"missing current reviewed API {item['api_name']}")
+              merged=deepcopy(base); merged.update(deepcopy(item)); normalized.append(merged)
+          reviewed['contracts']=normalized
+          existing={r['api_name']:r for r in reviewed['contracts']}
+          for api in futures:
+              hist=deepcopy(pre[api])
+              if api in existing and existing[api]!=hist: raise SystemExit(f'conflicting reviewed authority {api}')
+              if api not in existing: reviewed['contracts'].append(hist)
+          reviewed['contracts']=sorted(reviewed['contracts'],key=lambda r:(r['api_name'],r['dataset_id']))
+          REV.write_text(yaml.safe_dump(reviewed,allow_unicode=True,sort_keys=False,width=1000),encoding='utf-8')
+
+          cadence=yaml.safe_load(CAD.read_text(encoding='utf-8')); cent={r['api_name']:r for r in cadence['entries']}
+          for api in futures:
+              cent[api]['cadence_class']=pre[api]['cadence_class']
+              cent[api]['freshness_sla_seconds']=pre[api]['freshness_sla_seconds']
+              cent[api]['reason_code']='reviewed_contract_exact'
+          CAD.write_text(yaml.safe_dump(cadence,allow_unicode=True,sort_keys=False,width=1000),encoding='utf-8')
+
+          obs=yaml.safe_load(OBS.read_text(encoding='utf-8'))
+          entries={r['api_name']:r for r in obs['entries']}
+          target=entries['fut_weekly_monthly']
+          target['request_variants']=deepcopy(pre['fut_weekly_monthly']['request_variants'])
+          obs['provenance']['reviewed_contract_bundle']['sha256']=hashlib.sha256(REV.read_bytes()).hexdigest()
+          OBS.write_text(yaml.safe_dump(obs,allow_unicode=True,sort_keys=False,width=1000),encoding='utf-8')
+          print('reviewed futures:', ', '.join(futures))
+          print('request mapping promoted: fut_weekly_monthly.request_variants')
+          PY
+
+      - name: Canonical rebuild
+        run: |
+          set -euo pipefail
+          python tools/compile_tushare_runtime_contracts.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,yaml
+          p=Path('config/tushare_request_observations.v1.yaml'); u=Path('config/tushare_upstream_contracts.v1.yaml')
+          d=yaml.safe_load(p.read_text(encoding='utf-8')); d['provenance']['registered_contract_bundle']['sha256']=hashlib.sha256(u.read_bytes()).hexdigest()
+          p.write_text(yaml.safe_dump(d,allow_unicode=True,sort_keys=False,width=1000),encoding='utf-8')
+          PY
+          python tools/compile_provider_native_registry.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,yaml
+          p=Path('config/provider_native_activation_waves.v1.yaml'); r=Path('config/provider_native_dataset_registry.yaml')
+          d=yaml.safe_load(p.read_text(encoding='utf-8')); d['input_hashes']['runtime_registry_sha256']=hashlib.sha256(r.read_bytes()).hexdigest()
+          p.write_text(yaml.safe_dump(d,allow_unicode=True,sort_keys=False,width=1000),encoding='utf-8')
+          PY
+
+      - name: Focused verification
+        run: |
+          set -euo pipefail
+          python -m pytest tests/test_compile_tushare_runtime_contracts.py tests/test_compile_provider_native_registry.py tests/test_collect_provider_dataset.py -q --tb=short -x
+          python tools/compile_tushare_runtime_contracts.py --output /tmp/runtime-rebuild.yaml
+          python tools/compile_provider_native_registry.py --upstream-contracts /tmp/runtime-rebuild.yaml --output /tmp/registry-rebuild.yaml
+          git diff --check
+
+      - name: Commit durable result
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/oneoff-promote-futures-reviewed-authority.yml .github/workflows/oneoff-futures-authority-v2.yml .github/workflows/oneoff-futures-authority-v3.yml .github/workflows/oneoff-futures-authority-v4.yml
+          git add -A
+          git diff --cached --stat
+          git diff --cached --quiet && exit 1 || true
+          git commit -m 'fix: persist futures reviewed and request authorities'
+          git push origin HEAD:${{ github.head_ref }}
