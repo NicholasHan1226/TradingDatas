@@ -1,6 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 19:05 CST。
+最后更新：2026-08-16 20:50 CST。
+
+> **2026-08-16 OI 查询层过滤缺陷（后续发现，未修）：** 去重后 OI 简单
+> `limit:N` 带显式 order/fields 可读，但带 `symbol` filter 的 query 返回 503
+> `service_unavailable`（`timestamp between` 也异常）。属 TD query-service 对 OI
+> dataset 的 filter/partition 元数据处理缺陷，非 crypto 特有；正式 API 预筛复算
+> 被此阻断（结论已由 SQLite 诊断抽取版确立）。转 TD 主线 owner。
+
+> **2026-08-16 OI 重复身份一次性去重（生产数据事实）：** OI 正式 API 复算触发
+> `pagination_duplicate_row_identity`。定位：Binance 日度 metrics dump 对同一 5 分钟
+> 标记（2026-06-12T00:00，XRP 为 06-13）被两次下载且文件被重算（两个不同 OI 值），
+> append_only+payload_hash 无法按逻辑身份去重，9 币各 1 对重复。一次性迁移：全部
+> 18 行备份到 `oi-dup-backup-20260816.json`（0600），按确定性 row_key 序保留首条、
+> 删除 9 条重复，事务提交。系统性缺口：append_only 跨 attempt 逻辑身份唯一性未
+> 强制（需身份列/表达式唯一索引的 schema 级决策），已记录待 TD 主线 owner。未来
+> 复现风险低（lookback 按 receipt 跳过已入库日，不重下载）。
 
 > **2026-08-16 日度 append_only 数据集瞬时失败不再隐藏健康历史（runtime 状态机修复）：**
 > 根因：`_latest_run_terminal` 以"最新一次 attempt"定 state，日度 dump 一次瞬时
