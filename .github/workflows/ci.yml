@@ -59,4 +59,8 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run tests
-        run: python -m pytest tests/ -q --tb=short
+        # Temporary diagnostic mode for the first public-runner failure. The
+        # previous full run already showed many F markers but hit timeout before
+        # pytest could print tracebacks. Stop at the first failure so the gate
+        # can be repaired from evidence rather than by increasing timeout again.
+        run: python -m pytest tests/ -q --tb=short -x
