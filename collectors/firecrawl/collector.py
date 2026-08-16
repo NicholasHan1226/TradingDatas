@@ -178,6 +178,16 @@ def _parse_published_at(value: object) -> datetime:
         except ValueError:
             continue
     if parsed is None:
+        # English regulator/list pages commonly emit month-name dates
+        # ("Aug. 14, 2026").  Accept a few bounded month-name forms; still
+        # fail closed on anything else.
+        for fmt in ("%b. %d, %Y", "%B %d, %Y", "%b %d, %Y"):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+    if parsed is None:
         raise ValueError("firecrawl item published time is not a recognized format")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=_LOCAL_TIMEZONE)

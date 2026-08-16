@@ -415,6 +415,17 @@ def test_empty_url_item_keeps_source_title_identity() -> None:
     ).hexdigest()
 
 
+def test_english_month_name_published_at_is_normalized() -> None:
+    row = _normalize_item(
+        {"title": "SEC Charges Boiler Room Operator", "url": "https://www.sec.gov/x", "published_at": "Aug. 14, 2026"},
+        source="https://www.sec.gov/news/pressreleases",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["published_at"] == "2026-08-14T00:00:00+08:00"
+    assert row["event_date"] == "20260814"
+
+
 def test_relative_or_junk_url_becomes_unlinkable() -> None:
     row = _normalize_item(
         {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
