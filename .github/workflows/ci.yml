@@ -39,3 +39,50 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -q --tb=short
+
+      - name: Package core release candidate
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/tradingdatas-core-release"
+          mkdir -p "$artifact_dir"
+
+          python tools/release_manifest.py build \
+            --source-root "$GITHUB_WORKSPACE" \
+            --output "$artifact_dir/${GITHUB_SHA}.release.json"
+
+          git archive --format=tar.gz \
+            --output="$artifact_dir/tradingdatas-core-${GITHUB_SHA}.tar.gz" \
+            "$GITHUB_SHA"
+
+          (
+            cd "$artifact_dir"
+            sha256sum "tradingdatas-core-${GITHUB_SHA}.tar.gz" \
+              > "tradingdatas-core-${GITHUB_SHA}.tar.gz.sha256"
+            sha256sum "${GITHUB_SHA}.release.json" \
+              > "${GITHUB_SHA}.release.json.sha256"
+          )
+
+          python - "$artifact_dir/${GITHUB_SHA}.release.json" "$GITHUB_SHA" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          manifest_path = pathlib.Path(sys.argv[1])
+          expected_sha = sys.argv[2]
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if manifest.get("commit") != expected_sha:
+              raise SystemExit("release manifest commit does not match GITHUB_SHA")
+          PY
+
+      - name: Upload tested core release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradingdatas-core-release-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/tradingdatas-core-release/tradingdatas-core-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/tradingdatas-core-release/tradingdatas-core-${{ github.sha }}.tar.gz.sha256
+            ${{ runner.temp }}/tradingdatas-core-release/${{ github.sha }}.release.json
+            ${{ runner.temp }}/tradingdatas-core-release/${{ github.sha }}.release.json.sha256
+          if-no-files-found: error
+          retention-days: 3
