@@ -20,7 +20,13 @@ from provider_transport import provider_transport_profile
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 import tools.run_binance_spot_canary as spot_canary
-from tools.run_binance_oi_dump_canary import metrics_dump_window, run
+import tools.run_binance_oi_dump_canary as oi_dump_canary
+from tools.run_binance_oi_dump_canary import (
+    backfill_windows,
+    lookback_days,
+    metrics_dump_window,
+    run,
+)
 from tests.test_crypto_loopback_runtime import _ingest_result
 
 
@@ -229,6 +235,31 @@ def test_oi_dump_window_is_the_latest_closed_utc_day() -> None:
         metrics_dump_window(datetime(2026, 8, 16, 0, 37))
 
 
+def test_oi_dump_lookback_covers_seven_days_newest_first() -> None:
+    days = lookback_days(datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc))
+    assert days == (
+        "2026-08-15",
+        "2026-08-14",
+        "2026-08-13",
+        "2026-08-12",
+        "2026-08-11",
+        "2026-08-10",
+        "2026-08-09",
+    )
+
+
+def test_oi_dump_backfill_windows_match_the_frozen_bar_aligned_horizon() -> None:
+    days = backfill_windows(
+        datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc), days=198
+    )
+    assert len(days) == 198
+    assert days[0] == "2026-01-30"
+    assert days[-1] == "2026-08-15"
+    assert days == tuple(sorted(days))
+    with pytest.raises(ValueError, match="198 days"):
+        backfill_windows(datetime(2026, 8, 16, tzinfo=timezone.utc), days=180)
+
+
 def test_oi_dump_runner_plan_never_calls_provider_or_writes(tmp_path) -> None:
     result = run(
         db_path=tmp_path / "unused.sqlite",
@@ -240,6 +271,30 @@ def test_oi_dump_runner_plan_never_calls_provider_or_writes(tmp_path) -> None:
     assert len(result["datasets"]) == 10
     assert set(result["windows"]) == {"open_interest"}
     assert result["windows"]["open_interest"] == {"date": "2026-08-15"}
+    assert result["lookback_days"] == 7
+    assert result["lookback_start"] == "2026-08-09"
+    assert result["backfill_days"] is None
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+
+
+def test_oi_dump_runner_backfill_plan_never_calls_provider_or_writes(tmp_path) -> None:
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "unused.lock",
+        execute=False,
+        now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
+        backfill_days=198,
+    )
+    assert result["state"] == "planned"
+    assert len(result["datasets"]) == 10
+    assert result["backfill_days"] == 198
+    assert result["window_count"] == 198
+    assert result["windows"] == {
+        "first_day": "2026-01-30",
+        "last_day": "2026-08-15",
+    }
+    assert result["lookback_days"] is None
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
 
@@ -248,6 +303,9 @@ def test_oi_dump_runner_retries_one_provider_error_and_preserves_both_receipts(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
     calls: list[str] = []
 
     def collect(*args, **kwargs):
@@ -296,6 +354,9 @@ def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
 
     def collect(*args, **kwargs):
         del args, kwargs
@@ -313,3 +374,226 @@ def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
             execute=True,
             now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
         )
+
+
+def test_oi_dump_runner_collects_only_the_newest_missing_day_per_symbol(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    candidates = lookback_days(now)
+    ingested = {
+        "crypto.perp.binance.btcusdt.open_interest": frozenset(candidates),
+        "crypto.perp.binance.ethusdt.open_interest": frozenset(
+            candidates[1:]
+        ),
+    }
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_ingested_days",
+        lambda db_path, registry, dataset_id: ingested.get(
+            dataset_id,
+            frozenset(day for day in candidates if day != "2026-08-13"),
+        ),
+    )
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    def collect(*args, **kwargs):
+        del args
+        calls.append((kwargs["dataset_id"], kwargs["request_window"]))
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{kwargs['dataset_id']}:{len(calls)}",
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+    )
+
+    assert result["state"] == "success"
+    assert result["lookback_days"] == 7
+    by_id = {item["dataset_id"]: item for item in result["datasets"]}
+    btc = by_id["crypto.perp.binance.btcusdt.open_interest"]
+    assert btc["state"] == "unchanged"
+    assert btc["window"] is None
+    assert btc["receipt_ids"] == []
+    eth = by_id["crypto.perp.binance.ethusdt.open_interest"]
+    assert eth["state"] == "success"
+    assert eth["window"] == {"date": "2026-08-15"}
+    others = [
+        item
+        for item in result["datasets"]
+        if item["dataset_id"].endswith("solusdt.open_interest")
+    ]
+    assert others[0]["state"] == "success"
+    assert others[0]["window"] == {"date": "2026-08-13"}
+    assert not any(call[0].endswith("btcusdt.open_interest") for call in calls)
+    assert all(
+        call[1] == {"date": "2026-08-15"}
+        for call in calls
+        if call[0].endswith("ethusdt.open_interest")
+    )
+
+
+def test_oi_dump_ingested_days_come_from_validated_receipts(tmp_path) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.executescript(PROVIDER_DATASET_ROWS_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
+    rows = BinanceUsdmMetricsDumpCollector._parse(
+        _zip_payload(_csv_lines()), symbol="BTCUSDT", day=_DUMP_DAY
+    )
+
+    class _StubCollector:
+        provider = "binance_usdm_dump"
+
+        def __init__(self, outcome_rows):
+            self._rows = outcome_rows
+
+        def collect_outcome(self, api_name, params, fields=None, *, scan_budget=None):
+            del api_name, params, fields
+            if self._rows is None:
+                return ProviderCallOutcome(
+                    state="failed",
+                    rows=(),
+                    provider_code=None,
+                    error_code="transport_error",
+                    error_message="OSError",
+                    scan_budget=scan_budget,
+                )
+            return ProviderCallOutcome(
+                state="success",
+                rows=tuple(self._rows),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+                scan_budget=scan_budget,
+            )
+
+    failed = collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=_StubCollector(None),
+        dataset_id="crypto.perp.binance.btcusdt.open_interest",
+        request_window={"date": "2026-08-12"},
+        attempt_id="018f47de-0000-7000-8000-0000000000f0",
+        started_at="2026-08-13T00:37:00Z",
+    )
+    assert failed.status == "failed"
+    assert oi_dump_canary._ingested_days(
+        db_path, registry, "crypto.perp.binance.btcusdt.open_interest"
+    ) == frozenset()
+    success = collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=_StubCollector(rows),
+        dataset_id="crypto.perp.binance.btcusdt.open_interest",
+        request_window={"date": _DUMP_DATE},
+        attempt_id="018f47de-0000-7000-8000-0000000000f1",
+        started_at="2026-08-14T00:37:00Z",
+    )
+    assert success.status == "success"
+    assert oi_dump_canary._ingested_days(
+        db_path, registry, "crypto.perp.binance.btcusdt.open_interest"
+    ) == frozenset({_DUMP_DATE})
+    assert oi_dump_canary._ingested_days(
+        db_path, registry, "crypto.perp.binance.ethusdt.open_interest"
+    ) == frozenset()
+
+
+def test_oi_dump_backfill_batches_per_day_and_releases_the_lock_between_days(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    days = backfill_windows(now, days=198)
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
+    lock_events: list[str] = []
+    real_blocking_lock = oi_dump_canary._blocking_lock
+    real_release = oi_dump_canary._release
+
+    def blocking_lock(path):
+        lock_events.append("acquire")
+        return real_blocking_lock(path)
+
+    def release(lock) -> None:
+        lock_events.append("release")
+        real_release(lock)
+
+    monkeypatch.setattr(oi_dump_canary, "_blocking_lock", blocking_lock)
+    monkeypatch.setattr(oi_dump_canary, "_release", release)
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    def collect(*args, **kwargs):
+        del args
+        calls.append((kwargs["dataset_id"], kwargs["request_window"]))
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{len(calls)}",
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        backfill_days=198,
+    )
+
+    assert result["state"] == "success"
+    assert result["window_count"] == 198
+    assert result["collected_day_count"] == 198
+    assert result["receipt_count"] == 1980
+    assert len(calls) == 1980
+    assert lock_events == ["acquire", "release"] * 198
+    collected_days = {call[1]["date"] for call in calls}
+    assert collected_days == set(days)
+    per_day = {}
+    for _, window in calls:
+        per_day[window["date"]] = per_day.get(window["date"], 0) + 1
+    assert set(per_day.values()) == {10}
+
+
+def test_oi_dump_backfill_skips_already_ingested_days_without_locking(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    days = set(backfill_windows(now, days=198))
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset(days)
+    )
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_blocking_lock",
+        lambda path: pytest.fail("caught-up backfill must not take the lock"),
+    )
+
+    def collect(*args, **kwargs):
+        del args, kwargs
+        return pytest.fail("caught-up backfill must not call the provider")
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        backfill_days=198,
+    )
+
+    assert result["state"] == "success"
+    assert result["collected_day_count"] == 0
+    assert result["receipt_count"] == 0
