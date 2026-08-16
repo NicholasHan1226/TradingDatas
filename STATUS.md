@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 21:35 CST。
+最后更新：2026-08-16 22:10 CST。
+
+> **2026-08-16 read-model 快照并发写重试（503 真正根因）：** 定位到间歇 503 的
+> 最终根因——`open_verified_read_model_snapshot` 的 epoch 证据含 `page_count`/
+> `freelist_count`/receipt 汇总，WAL 下两个读连接在并发写提交间隙看到不同值，
+> 误判"数据库被替换"→瞬态 RuntimeProjectionError→503。修复：bind-then-verify 有界
+> 重试 5 次（仅对 "connection target changed"），每次仍严格校验。新增重试回归测试，
+> 相关子集 7 项全绿。
 
 > **2026-08-16 read-model 读快照锁超时修复：** 定位到 503 根因——
 > `_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS=1.0`，读快照共享 authority 锁只等 1 秒，

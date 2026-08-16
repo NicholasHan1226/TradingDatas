@@ -10,6 +10,7 @@ import stat
 import struct
 import sys
 import threading
+import time
 import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -190,6 +191,7 @@ _EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO = tuple(
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
 _SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 10.0
+_SNAPSHOT_READER_MAX_ATTEMPTS = 5
 _FileIdentity = tuple[int, int, int]
 _IngestRunRow = tuple[object, ...]
 
@@ -3572,35 +3574,49 @@ def _connection_epoch_evidence(conn: sqlite3.Connection) -> tuple[object, ...]:
 
 @contextmanager
 def open_verified_read_model_snapshot(db_path: Path):
-    """Yield one canonical read transaction under the clean-slate authority lock."""
+    """Yield one canonical read transaction under the clean-slate authority lock.
 
+    Under WAL, two read connections opened back-to-back can observe different
+    ``page_count``/``freelist_count``/receipt-summary evidence when a concurrent
+    writer commits between them — a transient epoch skew, not a database swap.
+    The bind-then-verify step is therefore retried a bounded number of times;
+    the verified snapshot is still strictly required before any row is served.
+    """
+
+    last_error: RuntimeProjectionError | None = None
     try:
-        with sqlite_authority_lock(
-            db_path,
-            mode="shared",
-            create=False,
-            timeout=_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS,
-        ):
-            conn, binding = _open_receipt_database_ro(db_path)
+        for _ in range(_SNAPSHOT_READER_MAX_ATTEMPTS):
             try:
-                primary_evidence = _connection_epoch_evidence(conn)
-                verifier: sqlite3.Connection | None = None
-                try:
-                    verifier = _open_bound_receipt_database_ro(binding)
-                    if _connection_epoch_evidence(verifier) != primary_evidence:
-                        raise RuntimeProjectionError(
-                            "receipt database connection target changed"
-                        )
-                    verifier.commit()
-                finally:
-                    if verifier is not None:
-                        verifier.close()
-                yield conn
-                conn.commit()
-            finally:
-                conn.close()
-    except RuntimeProjectionError:
-        raise
+                with sqlite_authority_lock(
+                    db_path,
+                    mode="shared",
+                    create=False,
+                    timeout=_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS,
+                ):
+                    conn, binding = _open_receipt_database_ro(db_path)
+                    try:
+                        primary_evidence = _connection_epoch_evidence(conn)
+                        verifier: sqlite3.Connection | None = None
+                        try:
+                            verifier = _open_bound_receipt_database_ro(binding)
+                            if _connection_epoch_evidence(verifier) != primary_evidence:
+                                raise RuntimeProjectionError(
+                                    "receipt database connection target changed"
+                                )
+                            verifier.commit()
+                        finally:
+                            if verifier is not None:
+                                verifier.close()
+                        yield conn
+                        conn.commit()
+                    finally:
+                        conn.close()
+                return
+            except RuntimeProjectionError as exc:
+                if "connection target changed" not in str(exc):
+                    raise
+                last_error = exc
+                time.sleep(0.05)
     except (
         OSError,
         SqliteAuthorityLockError,
@@ -3610,6 +3626,7 @@ def open_verified_read_model_snapshot(db_path: Path):
         ValueError,
     ):
         raise RuntimeProjectionError("receipt projection failed closed") from None
+    raise last_error  # type: ignore[misc]
 
 
 def load_interface_runtime_report(

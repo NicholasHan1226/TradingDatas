@@ -3298,3 +3298,46 @@ def test_transient_latest_failure_does_not_hide_fresh_append_only_history(
     assert projection.degraded is False
     assert projection.data_through == "2026-07-15T00:00:00+00:00"
     assert projection.receipt_id == success_id
+
+
+def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import contextlib
+    import storage.receipt_projection as projection_module
+
+    calls = {"n": 0}
+    real = projection_module._connection_epoch_evidence
+
+    def flaky_epoch(c):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise RuntimeProjectionError("receipt database connection target changed")
+        return real(c)
+
+    monkeypatch.setattr(projection_module, "_connection_epoch_evidence", flaky_epoch)
+
+    @contextlib.contextmanager
+    def _fake_lock(db_path, *, mode, create, timeout):
+        yield
+
+    monkeypatch.setattr(projection_module, "sqlite_authority_lock", _fake_lock)
+
+    def _fake_open(db_path):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+        return conn, ("dev", 0, 1)
+
+    def _fake_bound(binding):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+        return conn
+
+    monkeypatch.setattr(projection_module, "_open_receipt_database_ro", _fake_open)
+    monkeypatch.setattr(projection_module, "_open_bound_receipt_database_ro", _fake_bound)
+
+    with projection_module.open_verified_read_model_snapshot(Path("/fake/provider_native.sqlite")) as snapshot:
+        assert tuple(snapshot.execute("SELECT 1").fetchone()) == (1,)
+    assert calls["n"] >= 3
