@@ -28,7 +28,31 @@ jobs:
       - name: Reverse the accidental 66ac446 contract drift
         run: |
           set -euo pipefail
+          start_sha="$(git rev-parse HEAD)"
+          set +e
           git revert --no-commit 66ac446d97c212571014fcdb0f9841aecef53a76
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            printf 'revert conflicts:\n%s\n' "${conflicts[*]}"
+            expected=(
+              config/provider_native_activation_waves.v1.yaml
+              config/tushare_request_observations.v1.yaml
+            )
+            mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+            if [[ "$(printf '%s\n' "${conflicts[@]}")" != "$(printf '%s\n' "${expected_sorted[@]}")" ]]; then
+              echo 'Unexpected revert conflict set; fail closed.'
+              exit 1
+            fi
+            git checkout --ours -- "${expected[@]}"
+            git add -- "${expected[@]}"
+            git revert --continue
+            if [[ "$(git rev-parse HEAD)" != "$start_sha" ]]; then
+              git reset --soft "$start_sha"
+            fi
+          fi
+          test -z "$(git diff --name-only --diff-filter=U)"
 
       - name: Reapply the intentional rt_min SLA and rebuild canonical artifacts
         run: |
