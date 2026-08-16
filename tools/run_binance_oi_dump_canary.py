@@ -377,7 +377,10 @@ def _run_backfill(
                     raise RuntimeError("OI dump backfill hit a non-provider failure")
         finally:
             _release(lock)
-        _yield_past_next_collection_boundary()
+        # Yield only when the next scheduled collector window is near;
+        # otherwise keep working through the free stretch of the block.
+        if (300 - (time.time() % 300)) < 60.0:
+            _yield_past_next_collection_boundary()
         if any(item["state"] == "success" for item in day_results):
             collected += 1
         receipt_count += sum(len(item["receipt_ids"]) for item in day_results)
