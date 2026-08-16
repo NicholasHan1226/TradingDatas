@@ -1581,7 +1581,7 @@ def _request_execution_contract(
         "pagination",
         *(("resumable_fanout",) if resumable_fanout is not None else ()),
     ):
-        if reviewed_contract[key] != projected[key]:
+        if reviewed_contract.get(key) != projected[key]:
             raise RuntimeContractCompilationError(
                 f"reviewed {observation['api_name']} request mapping drifted at {key}"
             )
@@ -1599,7 +1599,7 @@ def _request_execution_contract(
         raise RuntimeContractCompilationError(
             f"reviewed {observation['api_name']} request window mapping drifted"
         )
-    return {key: deepcopy(reviewed_contract[key]) for key in projected}
+    return {key: deepcopy(reviewed_contract.get(key)) for key in projected}
 
 
 def _with_request_observation(
@@ -1722,27 +1722,52 @@ def compile_runtime_contract_bundle(
         label="reviewed contract bundle",
     )
 
+    # Reviewed contracts intentionally own stable semantic/request contract
+    # fields only. Official input declarations plus probe/ingest observations
+    # are separate authorities, so decorate reviewed contracts in memory for
+    # strict runtime-schema validation without persisting those dynamic fields
+    # back into the reviewed bundle.
+    raw_reviewed_contracts = reviewed_document.get("contracts")
+    if not isinstance(raw_reviewed_contracts, list):
+        raise RuntimeContractCompilationError("reviewed bundle contracts must be a list")
+    decorated_reviewed = deepcopy(reviewed_document)
+    decorated_contracts = []
+    reviewed_by_api: dict[str, Mapping[str, Any]] = {}
+    for raw_contract in raw_reviewed_contracts:
+        if not isinstance(raw_contract, dict):
+            raise RuntimeContractCompilationError("reviewed contract must be a mapping")
+        api_name = str(raw_contract.get("api_name", ""))
+        document = by_api.get(api_name)
+        if document is None:
+            raise RuntimeContractCompilationError(
+                f"reviewed API is absent from official documents: {api_name}"
+            )
+        decorated_contracts.append(
+            _with_request_observation(
+                _with_input_fields(
+                    deepcopy(raw_contract),
+                    input_fields_by_api[api_name],
+                ),
+                request_by_api[api_name],
+            )
+        )
+        reviewed_by_api[api_name] = deepcopy(raw_contract)
+    decorated_reviewed["contracts"] = decorated_contracts
     try:
-        reviewed = load_upstream_contract_bundle(reviewed_document)
+        reviewed = load_upstream_contract_bundle(decorated_reviewed)
     except ValueError as exc:
         raise RuntimeContractCompilationError(
             f"reviewed bundle is invalid: {exc}"
         ) from exc
     if reviewed["provider"] != provider:
         raise RuntimeContractCompilationError("reviewed provider does not match policy")
-    reviewed_by_api: dict[str, Mapping[str, Any]] = {}
     for contract in reviewed["contracts"]:
         api_name = str(contract["api_name"])
-        document = by_api.get(api_name)
-        if document is None:
-            raise RuntimeContractCompilationError(
-                f"reviewed API is absent from official documents: {api_name}"
-            )
+        document = by_api[api_name]
         if contract["source_document_sha256"] != document.get("doc_sha256"):
             raise RuntimeContractCompilationError(
                 f"reviewed {api_name} does not match official document"
             )
-        reviewed_by_api[api_name] = contract
 
     for api_name, cadence in cadence_by_api.items():
         reviewed_contract = reviewed_by_api.get(api_name)
@@ -1794,25 +1819,24 @@ def compile_runtime_contract_bundle(
         "provenance": deepcopy(reviewed["provenance"]),
         "contracts": sorted(contracts, key=lambda item: str(item["dataset_id"])),
     }
-    # Reuse the existing strict registry validator for every pre-existing
-    # contract field, then attach the official input contract. The downstream
-    # registry compiler adopts this new field in a separate integration step.
-    validated = load_upstream_contract_bundle(result)
+    # Build the full runtime contract before applying the strict runtime
+    # registry validator. The partial stable contract intentionally does not
+    # contain official-input or request-observation projection fields yet.
     with_inputs = [
         _with_input_fields(contract, input_fields_by_api[str(contract["api_name"])])
-        for contract in validated["contracts"]
+        for contract in result["contracts"]
     ]
-    validated["contracts"] = [
+    result["contracts"] = [
         _with_request_observation(contract, request_by_api[str(contract["api_name"])])
         for contract in with_inputs
     ]
     try:
-        validated_final_bundle = load_upstream_contract_bundle(validated)
+        validated = load_upstream_contract_bundle(result)
     except ValueError as exc:
         raise RuntimeContractCompilationError(
             f"compiled runtime bundle is invalid: {exc}"
         ) from exc
-    _registered_seed_requirements(validated_final_bundle["contracts"], request_by_api)
+    _registered_seed_requirements(validated["contracts"], request_by_api)
     return validated
 
 

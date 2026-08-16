@@ -287,8 +287,7 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
     )
     by_api = {item["api_name"]: item for item in compiled["contracts"]}
 
-    normalized_reviewed = load_upstream_contract_bundle(reviewed)
-    for contract in normalized_reviewed["contracts"]:
+    for contract in reviewed["contracts"]:
         compiled_contract = deepcopy(by_api[contract["api_name"]])
         compiled_contract.pop("input_fields")
         for key in (
@@ -298,6 +297,9 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
             "ingest_contract_block_reasons",
         ):
             compiled_contract.pop(key)
+        for key in ("request_window_policy", "resumable_fanout"):
+            if key not in contract and compiled_contract.get(key) is None:
+                compiled_contract.pop(key, None)
         assert compiled_contract == contract
 
     documents_by_api = {

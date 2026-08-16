@@ -2120,8 +2120,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -3892,8 +3892,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -10433,8 +10433,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -11234,8 +11234,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -11371,8 +11371,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -12721,8 +12721,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -12875,8 +12875,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -13351,8 +13351,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -15713,7 +15713,7 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15822,7 +15822,8 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
   default_projection:
   - ts_code
   - symbol
@@ -15911,14 +15912,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -16020,7 +16021,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -16067,8 +16070,28 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - pre_close
+  - pre_settle
+  - open
+  - high
+  - low
+  - close
+  - settle
+  - change1
+  - change2
+  - vol
+  - amount
+  - oi
+  - oi_chg
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -16261,14 +16284,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -16335,7 +16358,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -16377,8 +16402,24 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - trade_date
+  - ts_code
+  - close
+  - open
+  - high
+  - low
+  - pre_close
+  - change
+  - pct_chg
+  - vol
+  - amount
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -16418,14 +16459,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -16436,7 +16477,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -16470,7 +16513,12 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
   requested_fields: []
   budgets:
     max_batch_bytes: 67108864
@@ -16514,14 +16562,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -16595,7 +16643,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -16638,7 +16688,12 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
   requested_fields: []
   budgets:
     max_batch_bytes: 67108864
@@ -16737,8 +16792,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -17000,14 +17055,14 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -17021,7 +17076,7 @@ contracts:
   - name: freq
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -17123,7 +17178,10 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - freq
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -17160,7 +17218,8 @@ contracts:
     freq: week
     trade_date: ${window.trade_date}
   request_variants:
-  - {}
+  - freq: week
+  - freq: month
   fanout:
     strategy: none
   pagination:
@@ -17173,8 +17232,32 @@ contracts:
     range_start_key: trade_date
     range_end_key: trade_date
     max_span_days: 1
-  response_completeness: null
-  requested_fields: []
+  response_completeness:
+    strategy: single_partition_unique_primary_key
+    fixed_field_matches:
+      freq: freq
+    reject_at_row_limit: true
+    partition_field: trade_date
+    request_partition_key: trade_date
+  requested_fields:
+  - ts_code
+  - trade_date
+  - end_date
+  - freq
+  - open
+  - high
+  - low
+  - close
+  - pre_close
+  - settle
+  - pre_settle
+  - vol
+  - amount
+  - oi
+  - oi_chg
+  - exchange
+  - change1
+  - change2
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -18953,8 +19036,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -19795,8 +19878,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -23261,8 +23344,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -25147,8 +25230,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -25309,8 +25392,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: yyyymmdd
       end_date: yyyymmdd
+      start_date: yyyymmdd
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -25551,8 +25634,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -26101,8 +26184,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -33793,8 +33876,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
@@ -35796,8 +35879,8 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1

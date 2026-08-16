@@ -13,10 +13,10 @@ provenance:
     sha256: fec17b22656e2415dc1acbecde42defa9058af0cc95ea3e11cd8188b401c2aa6
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: cf4fdbf4b54aa68604204111f96ca77c800b8325044f96e34a301685a296100c
+    sha256: 3cbac0e16e2cd693ff9f2969a3f777a428076f107fc1900de7bf854a81f00f53
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: db9b4dc2e5df1de6d4c916b09fb265795e6381d3ca51a3ede2be5d890dede04f
+    sha256: 4c379382f6b9bfa974759d1b830352aa7946ca8d95bb3585a300c9b65c7e8d11
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -1564,6 +1564,9 @@ entries:
       transform: yyyymmdd
       offset_seconds: 0
   row_limit_observation: null
+  request_variants:
+  - freq: week
+  - freq: month
 - api_name: fut_wsr
   scope_labels:
   - all
@@ -2373,10 +2376,6 @@ entries:
       transform: local_datetime_seconds
       offset_seconds: 0
     src:
-      # Official news document 143.md names sina; the 2026-08-16 bounded
-      # one-hour window probe returned 114 rows under this literal.  The
-      # response carries no source column, so the reviewed contract fixes
-      # this single documented source instead of guessing a wider enum.
       source: literal
       value: sina
     start_date:

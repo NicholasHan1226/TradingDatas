@@ -723,7 +723,10 @@ def test_fut_index_daily_rejects_row_missing_requested_field_before_persistence(
         receipt = conn.execute("SELECT status, notes FROM market_ingest_runs").fetchone()
     assert receipt is not None
     assert receipt[0] == "failed"
-    assert json.loads(receipt[1])["errors"] == ["validation_failed"]
+    assert json.loads(receipt[1])["errors"] == [
+        "validation_failed",
+        "response_field_coverage",
+    ]
 
 
 def test_fut_index_daily_accepts_response_schema_covering_requested_fields(
