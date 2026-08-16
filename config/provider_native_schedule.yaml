@@ -24,6 +24,11 @@ rate_budgets:
     account_requests_per_run: 12
     provider_requests_per_run: 12
     api_requests_per_run: 4
+    # major_news fans out over nine source literals per daily window; the
+    # bounded 2026-08-15/16 weekend executions (9 calls per run, 60/min
+    # tolerated per interface in probing) support this per-api ceiling.
+    api_overrides:
+      major_news: 12
 cadences:
   session_minute:
     automatic: true
