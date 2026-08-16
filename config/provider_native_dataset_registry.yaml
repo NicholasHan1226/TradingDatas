@@ -23800,7 +23800,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -23812,9 +23812,8 @@ datasets:
     activation_state: paused
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - required_enum_unresolved
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -23849,7 +23848,11 @@ datasets:
       range_end_key: end_date
       max_span_days: 1
     response_completeness: null
-    requested_fields: []
+    requested_fields:
+    - datetime
+    - content
+    - title
+    - channels
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -23863,7 +23866,7 @@ datasets:
   fields:
   - name: datetime
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -23875,7 +23878,7 @@ datasets:
     sortable: true
   - name: title
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -23885,7 +23888,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - datetime
+  - title
   default_projection:
   - datetime
   - content
