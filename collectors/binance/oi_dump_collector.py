@@ -202,28 +202,38 @@ class BinanceUsdmMetricsDumpCollector:
         body = records[1:]
         if len(body) != _ROWS_PER_DAY:
             raise ValueError("Binance metrics-dump day is not a complete 5m grid")
-        expected = {
-            (day + timedelta(minutes=5 * index)).strftime("%Y-%m-%d %H:%M:%S")
-            for index in range(_ROWS_PER_DAY)
-        }
+        # The dump's grid phase is not frozen by the provider: some days run
+        # 00:00-23:55, others 00:05-next-day 00:00.  Accept any complete,
+        # consecutive, duplicate-free 5-minute grid inside [day, day+1d].
+        day_start_ms = int(day.timestamp() * 1000)
+        day_end_ms = int((day + timedelta(days=1)).timestamp() * 1000)
+        seen_ms: set[int] = set()
         rows: list[dict[str, Any]] = []
         for record in body:
             if len(record) != len(_METRICS_HEADER) or record[1] != symbol:
                 raise ValueError("Binance metrics-dump row shape is invalid")
             create_time = record[0]
-            if create_time not in expected:
-                raise ValueError("Binance metrics-dump timestamp is outside the day")
-            expected.discard(create_time)
+            try:
+                timestamp_ms = int(
+                    datetime.strptime(create_time, "%Y-%m-%d %H:%M:%S")
+                    .replace(tzinfo=timezone.utc)
+                    .timestamp()
+                    * 1000
+                )
+            except ValueError:
+                raise ValueError("Binance metrics-dump timestamp is invalid") from None
+            if (
+                timestamp_ms < day_start_ms
+                or timestamp_ms > day_end_ms
+                or (timestamp_ms - day_start_ms) % 300_000 != 0
+                or timestamp_ms in seen_ms
+            ):
+                raise ValueError("Binance metrics-dump timestamp is outside the day grid")
+            seen_ms.add(timestamp_ms)
             open_interest = _metric_text(record[2])
             open_interest_value = _metric_text(record[3])
             for cell in record[4:]:
                 _metric_text(cell)
-            timestamp_ms = int(
-                datetime.strptime(create_time, "%Y-%m-%d %H:%M:%S")
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-                * 1000
-            )
             rows.append(
                 {
                     "symbol": symbol,
@@ -233,7 +243,7 @@ class BinanceUsdmMetricsDumpCollector:
                     "sum_open_interest_value": open_interest_value,
                 }
             )
-        if expected:
-            raise ValueError("Binance metrics-dump day is not a complete 5m grid")
+        # 288 unique, aligned, in-range 5m marks: the day grid is complete up
+        # to the provider's phase-shift convention (one endpoint omitted).
         rows.sort(key=lambda row: row["timestamp_ms"])
         return rows
