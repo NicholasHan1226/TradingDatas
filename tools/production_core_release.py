@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import http.client
 import importlib.util
 import json
@@ -27,6 +28,8 @@ SPOOL = Path("/var/tmp/tradingdatas-core-deploy")
 REQUEST_FILE = SPOOL / "request"
 TRUSTED_VERIFIER = Path("/usr/local/lib/tradingdatas-release/release_manifest.py")
 INSTALLED_HELPER = Path("/usr/local/sbin/tradingdatas-core-release")
+DEPLOY_AUTH_DIR = Path("/etc/tradingdatas-deploy")
+DEPLOY_AUTH_KEY = DEPLOY_AUTH_DIR / "core-release.hmac"
 API_UNIT = "tradingdatas-v1-internal.service"
 COLLECTOR_UNIT = "tradingdatas-provider-native-collect.service"
 TIMER_UNIT = "tradingdatas-provider-native-collect.timer"
@@ -36,6 +39,7 @@ CATALOG_PATH = "/v1/catalog"
 QUIESCE_TIMEOUT_SECONDS = 330.0
 API_READY_TIMEOUT_SECONDS = 12.0
 HEX = set("0123456789abcdef")
+REQUEST_VERSION = "v1"
 
 
 class ReleaseFailure(RuntimeError):
@@ -157,6 +161,32 @@ def _load_trusted_verifier() -> ModuleType:
     return module
 
 
+def _load_deploy_request_key() -> bytes:
+    directory = os.lstat(DEPLOY_AUTH_DIR)
+    if (
+        not stat.S_ISDIR(directory.st_mode)
+        or directory.st_uid != 0
+        or directory.st_gid != 0
+        or stat.S_IMODE(directory.st_mode) != 0o700
+    ):
+        fail("deployment authorization directory must be root:root mode 0700")
+
+    metadata = os.lstat(DEPLOY_AUTH_KEY)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or metadata.st_uid != 0
+        or metadata.st_gid != 0
+        or stat.S_IMODE(metadata.st_mode) != 0o400
+    ):
+        fail("deployment authorization key must be a root:root single-link mode 0400 file")
+
+    lines = DEPLOY_AUTH_KEY.read_text(encoding="ascii").splitlines()
+    if len(lines) != 1 or not _is_hex(lines[0], 64):
+        fail("deployment authorization key must contain exactly one 256-bit lowercase hex key")
+    return bytes.fromhex(lines[0])
+
+
 def _require_root_trust_boundary() -> str:
     if os.geteuid() != 0:
         fail("helper must run as root through the scoped sudo rule")
@@ -190,7 +220,25 @@ def _require_owned_single_file(path: Path, owner_uid: int, *, name: str) -> None
         fail(f"{name} ownership/type/mode is unsafe")
 
 
-def _read_request(sudo_user: str) -> tuple[str, str, str, Path, Path]:
+def _request_payload(
+    commit: str,
+    archive_checksum: str,
+    manifest_checksum: str,
+    expected_current: str,
+) -> bytes:
+    return (
+        f"{REQUEST_VERSION}\n"
+        f"{commit}\n"
+        f"{archive_checksum}\n"
+        f"{manifest_checksum}\n"
+        f"{expected_current}\n"
+    ).encode("ascii")
+
+
+def _read_request(
+    sudo_user: str,
+    request_key: bytes,
+) -> tuple[str, str, str, str, Path, Path]:
     try:
         owner_uid = int(_run("id", "-u", sudo_user).stdout.strip())
     except ValueError:
@@ -207,18 +255,52 @@ def _read_request(sudo_user: str) -> tuple[str, str, str, Path, Path]:
     if len(lines) != 1:
         fail("request must contain exactly one line")
     parts = lines[0].split(" ")
-    if len(parts) != 3 or any(not part for part in parts):
-        fail("request must contain SHA, archive checksum and manifest checksum")
-    commit, archive_checksum, manifest_checksum = parts
-    if not _is_hex(commit, 40):
-        fail("request commit is invalid")
+    if len(parts) != 6 or any(not part for part in parts):
+        fail(
+            "request must contain version, SHA, archive checksum, manifest checksum, "
+            "expected current SHA and signature"
+        )
+    version, commit, archive_checksum, manifest_checksum, expected_current, signature = parts
+    if version != REQUEST_VERSION:
+        fail("request version is unsupported")
+    if not _is_hex(commit, 40) or not _is_hex(expected_current, 40):
+        fail("request commit/current identity is invalid")
     if not _is_hex(archive_checksum, 64) or not _is_hex(manifest_checksum, 64):
         fail("request checksum is invalid")
+    if not _is_hex(signature, 64):
+        fail("request signature is invalid")
+
+    expected_signature = hmac.new(
+        request_key,
+        _request_payload(
+            commit,
+            archive_checksum,
+            manifest_checksum,
+            expected_current,
+        ),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        fail("deployment request signature verification failed")
+
     archive = SPOOL / f"tradingdatas-core-{commit}.tar.gz"
     manifest = SPOOL / f"{commit}.release.json"
     _require_owned_single_file(archive, owner_uid, name="archive")
     _require_owned_single_file(manifest, owner_uid, name="manifest")
-    return commit, archive_checksum, manifest_checksum, archive, manifest
+
+    expected_entries = {REQUEST_FILE.name, archive.name, manifest.name}
+    observed_entries = {entry.name for entry in SPOOL.iterdir()}
+    if observed_entries != expected_entries:
+        fail("deployment spool contains unexpected files")
+
+    return (
+        commit,
+        archive_checksum,
+        manifest_checksum,
+        expected_current,
+        archive,
+        manifest,
+    )
 
 
 def _copy_root_owned(source: Path, suffix: str) -> Path:
@@ -283,6 +365,7 @@ def _install_release_from_archive(
         observed_directories: set[str] = set()
 
         with tarfile.open(archive, "r:gz") as bundle:
+            members_by_name: dict[str, tarfile.TarInfo] = {}
             for member in bundle.getmembers():
                 raw = member.name
                 normalized = raw[:-1] if member.isdir() and raw.endswith("/") else raw
@@ -315,6 +398,7 @@ def _install_release_from_archive(
                         f"{normalized}"
                     )
                 observed_files.add(normalized)
+                members_by_name[normalized] = member
 
             missing = set(expected_files) - observed_files
             if missing:
@@ -323,7 +407,7 @@ def _install_release_from_archive(
             for relative, entry in expected_files.items():
                 destination = staging / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                member = bundle.getmember(relative)
+                member = members_by_name[relative]
                 source = bundle.extractfile(member)
                 if source is None:
                     fail(f"release archive cannot read tracked file: {relative}")
@@ -362,9 +446,12 @@ def _install_manifest(
     manifest: dict[str, object],
     verifier: ModuleType,
 ) -> Path:
-    MANIFESTS_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
-    os.chown(MANIFESTS_ROOT, 0, 0)
-    os.chmod(MANIFESTS_ROOT, 0o755)
+    if not MANIFESTS_ROOT.is_dir() or MANIFESTS_ROOT.is_symlink():
+        fail("release manifest directory is missing or unsafe")
+    metadata = os.lstat(MANIFESTS_ROOT)
+    if metadata.st_uid != 0 or metadata.st_gid != 0 or metadata.st_mode & 0o022:
+        fail("release manifest directory ownership/mode is unsafe")
+
     destination = MANIFESTS_ROOT / f"{manifest['commit']}.json"
     if destination.exists():
         existing = verifier.load_manifest(
@@ -511,13 +598,15 @@ def main() -> int:
     os.umask(0o077)
     sudo_user = _require_root_trust_boundary()
     verifier = _load_trusted_verifier()
+    request_key = _load_deploy_request_key()
     (
         commit,
         archive_checksum,
         manifest_checksum,
+        expected_current,
         uploaded_archive,
         uploaded_manifest,
-    ) = _read_request(sudo_user)
+    ) = _read_request(sudo_user, request_key)
 
     root_archive = _copy_root_owned(uploaded_archive, ".tar.gz")
     root_manifest = _copy_root_owned(uploaded_manifest, ".json")
@@ -542,6 +631,9 @@ def main() -> int:
             fail("tested manifest commit does not match deployment request")
 
         current_commit = _current_commit()
+        if current_commit != expected_current:
+            fail("current release changed since the signed deployment request was issued")
+
         rollback_manifest_path = MANIFESTS_ROOT / f"{current_commit}.json"
         rollback_manifest = verifier.load_manifest(
             rollback_manifest_path,
