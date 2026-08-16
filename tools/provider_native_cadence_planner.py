@@ -112,7 +112,9 @@ class RateBudget:
     account_requests_per_run: int
     provider_requests_per_run: int
     api_requests_per_run: int
-    api_overrides: Mapping[str, int] = MappingProxyType({})
+    api_overrides: Mapping[str, int] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 @dataclass(frozen=True)
