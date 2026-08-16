@@ -36846,7 +36846,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -36854,8 +36854,8 @@ datasets:
     api_name: scrape_page
     adapter_version: firecrawl-web-extraction.v1
     read_discriminator_value: firecrawl_scrape_page
-    entitlement_state: unknown
-    activation_state: paused
+    entitlement_state: active
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

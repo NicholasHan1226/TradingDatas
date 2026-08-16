@@ -148,12 +148,14 @@ _CONTRACT_KEYS = frozenset(
         "probe_block_reasons",
         "ingest_contract_state",
         "ingest_contract_block_reasons",
+        "activation",
     }
 )
 _CONTRACT_REQUIRED_KEYS = _CONTRACT_KEYS - {
     "request_window_policy",
     "known_future_horizon_days",
     "resumable_fanout",
+    "activation",
 }
 _FIELD_KEYS = frozenset(
     {
@@ -2747,6 +2749,11 @@ def _normalized_contract(
         "requested_fields": requested_fields,
         "budgets": budgets,
         "reviewed_type_overrides": overrides,
+        **(
+            {"activation": _mapping(value["activation"], f"{label}.activation")}
+            if "activation" in value
+            else {}
+        ),
         **request_contract,
     }
 
@@ -2980,6 +2987,50 @@ def _apply_observed_response_contract(
     return normalized
 
 
+def _supplemental_activation(
+    raw: object,
+    contract: Mapping[str, Any],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    """Build the activation entry for a hand-reviewed supplemental contract.
+
+    Supplemental providers have no QuickSync observation feed, so a reviewed
+    bundle may declare its own bounded activation with an evidence reference.
+    The same fail-closed gates in :func:`_compiled_dataset` still apply: an
+    ``active`` declaration is rejected when probe or ingest contract is not
+    ready.
+    """
+
+    value = _mapping(raw, label)
+    _reject_keys(
+        value,
+        {"activation_state", "entitlement_state", "evidence_ref"},
+        label,
+        required={"activation_state", "entitlement_state", "evidence_ref"},
+    )
+    activation_state = _required_text(value["activation_state"], f"{label}.activation_state")
+    if activation_state not in _ACTIVATION_STATES:
+        raise ValueError(f"{label}.activation_state is unsupported")
+    entitlement_state = _required_text(
+        value["entitlement_state"], f"{label}.entitlement_state"
+    )
+    if entitlement_state not in _ENTITLEMENT_STATES:
+        raise ValueError(f"{label}.entitlement_state is unsupported")
+    evidence_ref = _safe_evidence_ref(value["evidence_ref"], f"{label}.evidence_ref")
+    return {
+        "activation_state": activation_state,
+        "entitlement_state": entitlement_state,
+        "evidence_ref": evidence_ref,
+        "effective_probe_state": contract["probe_state"],
+        "effective_probe_block_reasons": list(contract["probe_block_reasons"]),
+        "effective_ingest_contract_state": contract["ingest_contract_state"],
+        "effective_ingest_contract_block_reasons": list(
+            contract["ingest_contract_block_reasons"]
+        ),
+    }
+
+
 def _compiled_dataset(
     contract: Mapping[str, Any], activation: Mapping[str, Any] | None
 ) -> dict[str, Any]:
@@ -3165,6 +3216,7 @@ def compile_provider_native_registry(
     seen_aliases = {
         alias for contract in contracts for alias in contract["aliases"]
     }
+    supplemental_activation: dict[tuple[str, str], dict[str, Any]] = {}
     for supplemental in supplemental_bundles:
         if supplemental["provider"] == bundle["provider"]:
             raise ValueError(
@@ -3186,6 +3238,15 @@ def compile_provider_native_registry(
             seen_api_names.add(contract["api_name"])
             seen_aliases.update(contract["aliases"])
             contracts.append(contract)
+            raw_activation = contract.get("activation")
+            if raw_activation is not None:
+                supplemental_activation[
+                    (contract["dataset_id"], contract["provider"])
+                ] = _supplemental_activation(
+                    raw_activation,
+                    contract,
+                    label=f"{contract['dataset_id']}.activation",
+                )
     missing_input_contracts = [
         contract["api_name"]
         for contract in contracts
@@ -3228,7 +3289,12 @@ def compile_provider_native_registry(
                 ),
                 activation_index.get(
                     (contract["dataset_id"], contract["provider"]),
-                    observations.get((contract["dataset_id"], contract["provider"])),
+                    supplemental_activation.get(
+                        (contract["dataset_id"], contract["provider"]),
+                        observations.get(
+                            (contract["dataset_id"], contract["provider"])
+                        ),
+                    ),
                 ),
             )
             for contract in contracts

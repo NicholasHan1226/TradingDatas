@@ -1860,11 +1860,21 @@ def test_repository_declarations_rebuild_the_checked_in_single_registry() -> Non
             paused_dataset_ids.add(dataset.dataset_id)
     active_evidence = observations["active_evidence"]
     assert isinstance(active_evidence, dict)
-    assert active_dataset_ids == {
+    supplemental_active = {
         dataset["dataset_id"]
-        for dataset in contracts["contracts"]
-        if isinstance(dataset, dict) and dataset["api_name"] in active_evidence
+        for document in supplemental
+        for dataset in document["contracts"]
+        if isinstance(dataset, dict)
+        and dataset.get("activation", {}).get("activation_state") == "active"
     }
+    assert active_dataset_ids == (
+        {
+            dataset["dataset_id"]
+            for dataset in contracts["contracts"]
+            if isinstance(dataset, dict) and dataset["api_name"] in active_evidence
+        }
+        | supplemental_active
+    )
     assert len(active_dataset_ids) + len(paused_dataset_ids) == len(loaded.datasets)
     assert request_shapes == {
         "snapshot_or_date_range",
@@ -1936,7 +1946,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
             dataset.provider_bindings[0].activation_state == "active"
             for dataset in loaded.datasets
         )
-        == len(active_evidence)
+        == len(active_evidence) + 1
     )
     # The checked-in target is already the current compiled registry.  The
     # external preactivation compile must be reproducible rather than mutate

@@ -439,9 +439,9 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert binding.provider == FirecrawlWebCollector.provider
     assert binding.api_name == "scrape_page"
     assert binding.adapter_version == "firecrawl-web-extraction.v1"
-    assert binding.activation_state == "paused"
-    assert binding.entitlement_state == "unknown"
-    assert dataset.cadence_class == "on_demand"
+    assert binding.activation_state == "active"
+    assert binding.entitlement_state == "active"
+    assert dataset.cadence_class == "event"
     assert dataset.schema_version == "1.0.0"
     assert dataset.point_in_time == "append_only"
     assert dataset.empty_data_policy == "allowed"
@@ -478,7 +478,7 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert provider_ingest_config_hash(dataset, binding)
 
 
-def test_plan_mode_refuses_the_paused_flash_dataset(
+def test_plan_mode_plans_the_active_flash_dataset(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     exit_code = collect_tool.main(
@@ -491,7 +491,7 @@ def test_plan_mode_refuses_the_paused_flash_dataset(
             '{"start_time": "2026-08-16 09:00:00", "end_time": "2026-08-16 15:00:00"}',
         ]
     )
-    assert exit_code == collect_tool.EXIT_VALIDATION
+    assert exit_code == collect_tool.EXIT_SUCCESS
     rendered = json.loads(capsys.readouterr().out)
-    assert rendered["error_code"] == "invalid_request"
-    assert rendered["state"] == "validation"
+    assert rendered["state"] == "planned"
+    assert rendered["will_call_provider"] is False
