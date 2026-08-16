@@ -1530,30 +1530,24 @@ def _success_watermark_receipt(
     )[1]
 
 
-def _receipt_matches_active_config(
-    receipt: _Receipt,
+def _ingest_config_hash_cached(
     dataset: DatasetDefinition,
-    expected_binding: ProviderBinding | None,
-) -> bool:
-    """Return whether a valid receipt attests to the active ingest contract."""
-
-    bindings = (
-        (expected_binding,)
-        if expected_binding is not None
-        else dataset.provider_bindings
-    )
-    return any(
-        receipt.config_hash == provider_ingest_config_hash(dataset, binding)
-        for binding in bindings
-    )
+    binding: ProviderBinding,
+    config_hash_cache: dict[tuple[int, int], str],
+) -> str:
+    """Return the ingest config hash, computed at most once per projection."""
+    key = (id(dataset), id(binding))
+    config_hash = config_hash_cache.get(key)
+    if config_hash is None:
+        config_hash = provider_ingest_config_hash(dataset, binding)
+        config_hash_cache[key] = config_hash
+    return config_hash
 
 
-def _receipt_matches_partition_declaration_predecessor(
-    receipt: _Receipt,
+def _partition_declaration_predecessor(
     dataset: DatasetDefinition,
-    expected_binding: ProviderBinding | None,
-) -> bool:
-    """Accept the pre-partition hash only for bounded historical row lineage.
+) -> DatasetDefinition | None:
+    """Return the preceding ``partition_field=None`` dataset, or ``None``.
 
     Declaring an append-only RFC3339 range field as ``partition_field`` changed
     the receipt config hash even though the provider request, payload, primary
@@ -1568,15 +1562,48 @@ def _receipt_matches_partition_declaration_predecessor(
         or dataset.range_field is None
         or dataset.partition_field != dataset.range_field
     ):
-        return False
-    predecessor = replace(dataset, partition_field=None)
+        return None
+    return replace(dataset, partition_field=None)
+
+
+def _receipt_matches_active_config(
+    receipt: _Receipt,
+    dataset: DatasetDefinition,
+    expected_binding: ProviderBinding | None,
+    config_hash_cache: dict[tuple[int, int], str],
+) -> bool:
+    """Return whether a valid receipt attests to the active ingest contract."""
+
     bindings = (
         (expected_binding,)
         if expected_binding is not None
         else dataset.provider_bindings
     )
     return any(
-        receipt.config_hash == provider_ingest_config_hash(predecessor, binding)
+        receipt.config_hash
+        == _ingest_config_hash_cached(dataset, binding, config_hash_cache)
+        for binding in bindings
+    )
+
+
+def _receipt_matches_partition_declaration_predecessor(
+    receipt: _Receipt,
+    predecessor: DatasetDefinition | None,
+    expected_binding: ProviderBinding | None,
+    config_hash_cache: dict[tuple[int, int], str],
+) -> bool:
+    """Accept the pre-partition hash only for bounded historical row lineage."""
+
+    if predecessor is None:
+        return False
+    bindings = (
+        (expected_binding,)
+        if expected_binding is not None
+        else predecessor.provider_bindings
+    )
+    return any(
+        receipt.config_hash
+        == _ingest_config_hash_cached(predecessor, binding, config_hash_cache)
         for binding in bindings
     )
 
@@ -1830,10 +1857,16 @@ def _project_dataset_runtime(
     invalid.extend(_attempt_context_failures(receipts))
     invalid.extend(_execution_context_failures(receipts))
 
+    config_hash_cache: dict[tuple[int, int], str] = {}
     authority_receipts = [
         receipt
         for receipt in receipts
-        if _receipt_matches_active_config(receipt, dataset, expected_binding)
+        if _receipt_matches_active_config(
+            receipt,
+            dataset,
+            expected_binding,
+            config_hash_cache,
+        )
     ]
     has_superseded_contract_receipt = len(authority_receipts) != len(receipts)
     successful = list(_complete_success_receipts(authority_receipts, dataset))
@@ -2639,6 +2672,8 @@ def project_dataset_runtime_evidence(
             ):
                 scoped_rows.append(row)
         rows = tuple(scoped_rows)
+    config_hash_cache: dict[tuple[int, int], str] = {}
+    predecessor = _partition_declaration_predecessor(dataset)
     projection_dataset = dataset
     if receipt_collection_window is not None and (
         dataset.point_in_time == "append_only"
@@ -2664,6 +2699,7 @@ def project_dataset_runtime_evidence(
                 receipt,
                 dataset,
                 provider_binding,
+                config_hash_cache,
             )
         ]
         predecessor_receipts = [
@@ -2671,8 +2707,9 @@ def project_dataset_runtime_evidence(
             for receipt in projection_receipts
             if _receipt_matches_partition_declaration_predecessor(
                 receipt,
-                dataset,
+                predecessor,
                 provider_binding,
+                config_hash_cache,
             )
         ]
         active_watermark = _success_watermark_receipt(active_receipts, dataset)
@@ -2691,7 +2728,7 @@ def project_dataset_runtime_evidence(
                 dataset.timezone,
             )
         ):
-            projection_dataset = replace(dataset, partition_field=None)
+            projection_dataset = predecessor
 
     projection = _project_dataset_runtime(
         conn,
@@ -2715,6 +2752,7 @@ def project_dataset_runtime_evidence(
             receipt,
             projection_dataset,
             provider_binding,
+            config_hash_cache,
         )
     ]
     successful = list(_complete_success_receipts(authority_receipts, dataset))
@@ -2723,11 +2761,17 @@ def project_dataset_runtime_evidence(
         as_of_authority_receipts = [
             receipt
             for receipt in receipts
-            if _receipt_matches_active_config(receipt, dataset, provider_binding)
-            or _receipt_matches_partition_declaration_predecessor(
+            if _receipt_matches_active_config(
                 receipt,
                 dataset,
                 provider_binding,
+                config_hash_cache,
+            )
+            or _receipt_matches_partition_declaration_predecessor(
+                receipt,
+                predecessor,
+                provider_binding,
+                config_hash_cache,
             )
         ]
     as_of_successful = list(
