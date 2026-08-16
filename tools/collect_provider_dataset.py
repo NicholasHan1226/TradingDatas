@@ -32,6 +32,7 @@ from collectors.binance.usdm_collector import BinanceUsdmPublicCollector  # noqa
 from collectors.binance.oi_dump_collector import (  # noqa: E402
     BinanceUsdmMetricsDumpCollector,
 )
+from collectors.firecrawl.collector import FirecrawlWebCollector  # noqa: E402
 from collectors.tushare import provider_native_ingest  # noqa: E402
 from dataset_registry import (  # noqa: E402
     DatasetDefinition,
@@ -427,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
             "binance_spot": BinanceSpotPublicCollector(),
             "binance_usdm": BinanceUsdmPublicCollector(),
             "binance_usdm_dump": BinanceUsdmMetricsDumpCollector(),
+            "firecrawl": FirecrawlWebCollector(),
         }
         results = tuple(
             provider_native_ingest.collect_provider_native_dataset(

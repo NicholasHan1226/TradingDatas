@@ -692,12 +692,12 @@ def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() ->
         assert not is_initial_release_eligible(dataset)
 
 
-def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(
+def test_target_registry_catalog_cursor_discovers_all_191_with_honest_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = load_dataset_registry()
-    assert len(registry.datasets) == 190
+    assert len(registry.datasets) == 191
     excluded_ids = {
         dataset.dataset_id
         for dataset in registry.datasets
@@ -780,8 +780,8 @@ def test_target_registry_catalog_cursor_discovers_all_190_with_honest_status(
     conn.close()
 
     ids = [row["dataset_id"] for row in rows]
-    assert len(ids) == 190
-    assert len(set(ids)) == 190
+    assert len(ids) == 191
+    assert len(set(ids)) == 191
     assert ids == sorted(ids)
     excluded_rows = {
         row["dataset_id"]: row for row in rows if row["dataset_id"] in excluded_ids

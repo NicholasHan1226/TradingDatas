@@ -31,6 +31,9 @@ from tests.synthetic_activation_evidence import (
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+SUPPLEMENTAL_CONTRACT_PATHS = (
+    ROOT / "config" / "firecrawl_upstream_contracts.v1.yaml",
+)
 TARGET_PATH = ROOT / "config" / "provider_native_dataset_registry.yaml"
 OPERATIONS_PATH = ROOT / "docs" / "OPERATIONS.md"
 
@@ -410,6 +413,7 @@ def test_compiler_has_single_registry_authority_and_no_legacy_inputs() -> None:
         "upstream_contracts",
         "observations_document",
         "activation_evidence_document",
+        "supplemental_contracts",
         "query_defaults",
         "compilation_mode",
     )
@@ -1820,15 +1824,18 @@ def test_query_default_declaration_fails_closed(
 def test_repository_declarations_rebuild_the_checked_in_single_registry() -> None:
     contracts = _read_yaml(CONTRACT_PATH)
     observations = _read_yaml(OBSERVATIONS_PATH)
+    supplemental = [_read_yaml(path) for path in SUPPLEMENTAL_CONTRACT_PATHS]
 
     first = compile_provider_native_registry(
         contracts,
         observations_document=observations,
+        supplemental_contracts=supplemental,
         query_defaults=DEFAULT_QUERY_DEFAULTS,
     )
     second = compile_provider_native_registry(
         deepcopy(contracts),
         observations_document=deepcopy(observations),
+        supplemental_contracts=deepcopy(supplemental),
         query_defaults=deepcopy(DEFAULT_QUERY_DEFAULTS),
     )
 

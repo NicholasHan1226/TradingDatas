@@ -842,11 +842,11 @@ def test_all_non_active_target_datasets_fail_before_storage_or_provider(
         for dataset in registry.datasets
         for binding in dataset.provider_bindings
     )
-    assert len(registry.datasets) == len(bindings) == 190
+    assert len(registry.datasets) == len(bindings) == 191
     assert {
         state: sum(binding.entitlement_state == state for binding in bindings)
         for state in ("active", "locked", "excluded", "unknown")
-    } == {"active": 170, "locked": 14, "excluded": 5, "unknown": 1}
+    } == {"active": 170, "locked": 14, "excluded": 5, "unknown": 2}
     activation_counts = {
         state: sum(binding.activation_state == state for binding in bindings)
         for state in ("active", "paused")

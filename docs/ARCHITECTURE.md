@@ -78,6 +78,30 @@ registry 声明 request template、variants、window、fanout、pagination、字
 `activation=active` 仅允许通用 collector 按显式有界请求执行，仍必须由实际 receipt、lineage 和
 读取时 freshness/quality 投影决定是否可消费。隔离验证或历史分区的成功不构成持续 fresh 保证。
 
+### Firecrawl provider（合同冻结，未激活）
+
+Firecrawl 是继 Binance 隔离切片之后新增的 provider-level adapter：其
+transport/auth/pagination 协议与 Tushare/QuickSync 及 Binance 公共接口均真实不同
+（`Authorization: Bearer` key 文件凭证、`POST /v2/scrape` 单页结构化抽取、无分页、credit 额度制），
+因此按根层合同允许一个且只允许一个 `collectors/firecrawl/collector.py`。adapter 的
+`api_name` 白名单只有 `scrape_page` 与 `search_news`；生产请求只声明结构化 JSON 抽取
+（标题/链接/发布时间/页面客观摘要短句），不请求 markdown/rawHtml，prompt 禁止情绪判断或
+摘要改写——TradingDatas 不生产 feature。归一化加工冻结为两件：`published_at` 归一为
+RFC3339（Asia/Shanghai 偏移）并派生 `event_date` 分区与 `published_local` 窗口完整性字段；
+`content_uid = sha256(canonical_url|title|published_at)` 作为主键分量与重抓去重键。
+bearer key 只从 `FIRECRAWL_API_KEY_FILE`（0600、仓库外）读取，永不进入 payload、receipt
+或日志，并作为 sensitive value 走 tushare_common 的 fail-closed 扫描。错误映射固定为
+402/429→`rate_limited`、401/403→`permission_denied`、其余 HTTP 失败→`provider_error`。
+
+`cn.news.flash` 是该 provider 的首个合同：经 `config/firecrawl_upstream_contracts.v1.yaml`
+（独立 bundle、独立 provenance）由 registry compiler 编译进同一单一 registry，源差异全部在
+registry/config（literal_values 源 URL、extraction_schema、prompt），adapter 不持有任何源 URL。
+当前状态为 `contract_ready`：`activation_state: paused`、`entitlement_state: unknown`、
+`on_demand` cadence，不进入 scheduler，plan 模式对其 fail-closed；激活前必须完成真实 key
+探测、dry-run 非零计划门禁与有界 canary readback（见
+`docs/design/firecrawl-news-pipeline.v1.md` 的分期）。一次性 key 额度是决定性约束：
+402/429 只降级本 dataset，不阻塞其它 provider；key 耗尽即把 binding 调回 paused，管线形态不变。
+
 生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
 绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
 systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 `current` 即使在另一次

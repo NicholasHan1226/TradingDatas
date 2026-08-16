@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 10:54 CST。
+最后更新：2026-08-16 10:59 CST。
 
 > **2026-08-16 Tushare `news`（快讯）合同冻结为 contract_ready
 > 候选（代码层事实，无生产变更）：** `cn.dataset.news` 从
@@ -16,6 +16,28 @@
 > wave、不做自动调度：2026-08-16 有界探测（1 小时窗口 114 行）只证明合同
 > 可编译，激活需另行新鲜 HTTPS 证据与人工审核。`cn.dataset.major_news`
 > 此前已按 `dimension_fanout` 合同激活，本次不改动。
+
+> **2026-08-16 Firecrawl 新闻舆情 provider Phase 0 合同冻结
+> contract_ready 候选（代码层事实，无生产变更、无真实调用）：** 新增第三个
+> provider-level adapter `collectors/firecrawl/collector.py`（bearer key 文件
+> 凭证、`https://api.firecrawl.dev/v2`、串行、拒 redirect；`api_name` 白名单仅
+> `scrape_page`/`search_news`；只声明结构化 JSON 抽取，不请求 markdown/rawHtml；
+> 归一化仅 `published_at`→RFC3339(+08:00) 派生 `event_date`/`published_local`，
+> 与 `content_uid=sha256(canonical_url|title|published_at)`；错误映射
+> 402/429→rate_limited、401/403→permission_denied、其余 HTTP 失败→provider_error；
+> key 只从 `FIRECRAWL_API_KEY_FILE`（0600、仓库外）读取并作为 sensitive value
+> 走 fail-closed 扫描，永不入 payload/receipt/log）。registry compiler 新增
+> supplemental bundle 输入 `config/firecrawl_upstream_contracts.v1.yaml`（独立
+> provider/provenance，QuickSync observations 不参与其 activation），编译出
+> `cn.news.flash`（on_demand、literal_values 双候选源、
+> windowed_unique_primary_key、主键 [source, published_local, content_uid]、
+> append_only + payload_hash）。条目为 `activation_state: paused`、
+> `entitlement_state: unknown`，不进 scheduler，`collect_provider_dataset.py`
+> plan 模式对其 fail-closed；分发表仅 +1 行使 executor 可识别该 provider。
+> 本条只声明 **contract_ready**：激活前须完成真实 key 文件部署、registry
+> dry-run 非零计划门禁与有界 canary 的 provider→SQLite→catalog/query readback
+> （observed）；冻结设计与分期见 `docs/design/firecrawl-news-pipeline.v1.md`。
+> 本次没有 release、service/timer、数据库、真实 provider 调用或生产变更。
 
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的

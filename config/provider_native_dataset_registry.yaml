@@ -36719,3 +36719,155 @@ datasets:
   empty_data_policy: forbidden
   required_scope: market_data
   quota_class: beta_standard
+- dataset_id: cn.news.flash
+  aliases:
+  - firecrawl.news_flash
+  domain: provider_data
+  market: CN
+  entity_type: provider_row
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: on_demand
+  timezone: Asia/Shanghai
+  freshness_sla_seconds: 86400
+  provider_bindings:
+  - provider: firecrawl
+    api_name: scrape_page
+    adapter_version: firecrawl-web-extraction.v1
+    read_discriminator_value: firecrawl_scrape_page
+    entitlement_state: unknown
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: url
+      declared_source_type: str
+      required: true
+    - name: window_start
+      declared_source_type: datetime
+      required: true
+    - name: window_end
+      declared_source_type: datetime
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"},"summary":{"type":["string","null"]}},"required":["title","url","published_at"],"additionalProperties":true}}},"required":["items"]}'
+      max_age_ms: '900000'
+      prompt: 只抽取页面中客观存在的快讯条目：每条给出标题、原文链接、页面显示的发布时间、页面上已有的摘要原文短句（无摘要则为 null）。禁止生成情绪判断、摘要改写或任何加工结论；禁止输出页面上不存在的内容。
+      timeout_ms: '30000'
+      window_end: ${window.end_time}
+      window_start: ${window.start_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: literal_values
+      parameter: url
+      values:
+      - https://www.cls.cn/telegraph
+      - https://kuaixun.eastmoney.com/7_24.html
+      batch_size: 1
+    pagination:
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - start_time
+      - end_time
+      formats:
+        end_time: local_datetime_seconds
+        start_time: local_datetime_seconds
+      range_start_key: start_time
+      range_end_key: end_time
+      max_span_days: 1
+    response_completeness:
+      strategy: windowed_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      date_field: published_local
+      request_start_key: start_time
+      request_end_key: end_time
+      fanout_field: source
+    requested_fields: []
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: source
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: content_uid
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: published_at
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: published_local
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: event_date
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: title
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: url
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: summary
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - source
+  - published_local
+  - content_uid
+  default_projection:
+  - source
+  - content_uid
+  - published_at
+  - event_date
+  - title
+  - url
+  - summary
+  as_of_field: published_at
+  as_of_format: rfc3339
+  range_field: published_at
+  partition_field: event_date
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
