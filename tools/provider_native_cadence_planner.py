@@ -1190,9 +1190,24 @@ def _window(binding: ProviderBinding, start: date, end: date) -> Mapping[str, st
         raise ValueError("request exceeds registry span")
     start_format = policy.formats[policy.range_start_key]
     if start_format == "local_datetime_seconds":
-        raise ValueError(
-            "automatic local_datetime_seconds ranges require an explicit window"
-        )
+        # Date-based planning covers whole calendar days; a datetime-ranged
+        # contract expresses the same planned span as local day boundaries
+        # (e.g. the news flash window "YYYY-MM-DD 00:00:00" .. "23:59:59").
+        end_format = policy.formats[policy.range_end_key]
+        if end_format != "local_datetime_seconds":
+            raise ValueError(
+                "automatic local_datetime_seconds ranges require an explicit window"
+            )
+        window = {
+            policy.range_start_key: encode_request_window_value(
+                start, start_format
+            ),
+            policy.range_end_key: encode_request_window_value(
+                datetime.combine(end, time(23, 59, 59), tzinfo=timezone.utc),
+                end_format,
+            ),
+        }
+        return MappingProxyType(normalize_request_window(policy, window))
     window = {
         policy.range_start_key: encode_request_window_value(start, start_format),
         policy.range_end_key: encode_request_window_value(

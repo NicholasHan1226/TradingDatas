@@ -20998,7 +20998,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -23809,7 +23809,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_news
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -23847,7 +23847,13 @@ datasets:
       range_start_key: start_date
       range_end_key: end_date
       max_span_days: 1
-    response_completeness: null
+    response_completeness:
+      strategy: event_stream_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      date_field: datetime
+      request_start_key: start_date
+      request_end_key: end_date
     requested_fields:
     - datetime
     - content

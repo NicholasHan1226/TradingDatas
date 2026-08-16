@@ -505,7 +505,7 @@ entries:
   source_document_sha256: 79d8bf18f3eedd1a4ddf658521053178bfc2c6b081f115c3d778ce05dbe5a7b4
   reason_code: reviewed_contract_exact
 - api_name: major_news
-  cadence_class: on_demand
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: a467f14e2e8cdf109c9d8aebf93d26894661130bb34e96e08c6e893a71a57211
   reason_code: reviewed_contract_exact

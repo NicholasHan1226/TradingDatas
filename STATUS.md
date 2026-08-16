@@ -1,6 +1,20 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 12:45 CST。
+最后更新：2026-08-16 13:10 CST。
+
+> **2026-08-16 `news`/`major_news` 快讯激活（代码层事实，待部署）：**
+> 新增第五种通用 response_completeness 策略 `event_stream_unique_primary_key`
+> （内容流窗口：断言每行事件时间在请求窗内且主键唯一，不声明行数完备性），
+> 覆盖新闻快讯/舆情/监管页等无 fanout 回显的时间窗内容源。`cn.dataset.news`
+> 采用该策略并登记 `active_evidence`
+> （`server-evidence/20260815T184500Z-news-flash-bounded-weekend-collect`，
+> 周末两窗有界 execute 共 721 行 success receipt 已在生产库）；
+> `major_news` cadence 由 `on_demand` 改 `event`；两条目进新 wave
+> `event_news_flash_20260816`。planner `_window` 对
+> `local_datetime_seconds` 范围派生整日本地窗口（不猜盘中 session），
+> 编译期激活门禁按结构例外同步放开（event + fanout none + event_stream
+> 策略）。文档化的配置表达缺口与修复依据见
+> `docs/design/firecrawl-news-pipeline.v1.md` 附录。
 
 > **2026-08-16 CRYPTO_PERP 打开 catalog 发现门禁（代码层事实）：**
 > `catalog_service.is_catalog_discoverable` 的冻结产品范围门禁由

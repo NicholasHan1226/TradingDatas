@@ -300,6 +300,7 @@ _RESPONSE_COMPLETENESS_STRATEGIES = frozenset(
         "unique_primary_key_snapshot",
         "single_partition_unique_primary_key",
         "windowed_unique_primary_key",
+        "event_stream_unique_primary_key",
     }
 )
 _ORDERED_LOGICAL_TYPES = frozenset({"text", "float", "integer"})
@@ -1346,6 +1347,16 @@ def _response_completeness_policy(
                 "reject_at_row_limit",
             }
         ),
+        "event_stream_unique_primary_key": frozenset(
+            {
+                "strategy",
+                "date_field",
+                "request_start_key",
+                "request_end_key",
+                "fixed_field_matches",
+                "reject_at_row_limit",
+            }
+        ),
     }[strategy]
     allowed_keys = required_keys
     if strategy == "unique_primary_key_snapshot":
@@ -1401,6 +1412,33 @@ def _response_completeness_policy(
             raise ValueError(f"{path}.request_end_key must equal the window range end")
         if (
             request_window_policy.formats[request_start_key]
+            != "local_datetime_seconds"
+        ):
+            raise ValueError(f"{path} requires local_datetime_seconds window values")
+    elif strategy == "event_stream_unique_primary_key":
+        # Content-stream windows (news flash, social sentiment, regulator
+        # pages): rows carry an event timestamp but no request echo or
+        # fanout dimension, so only in-window + unique-key shape can be
+        # asserted; row-count completeness is intentionally not claimed.
+        date_field = _provider_field_name(value["date_field"], f"{path}.date_field")
+        request_start_key = _provider_parameter_name(
+            value["request_start_key"], f"{path}.request_start_key"
+        )
+        request_end_key = _provider_parameter_name(
+            value["request_end_key"], f"{path}.request_end_key"
+        )
+        if request_window_policy is None:
+            raise ValueError(f"{path} requires request_window_policy")
+        if request_start_key != request_window_policy.range_start_key:
+            raise ValueError(
+                f"{path}.request_start_key must equal the window range start"
+            )
+        if request_end_key != request_window_policy.range_end_key:
+            raise ValueError(f"{path}.request_end_key must equal the window range end")
+        if (
+            request_window_policy.formats[request_start_key]
+            != "local_datetime_seconds"
+            or request_window_policy.formats[request_end_key]
             != "local_datetime_seconds"
         ):
             raise ValueError(f"{path} requires local_datetime_seconds window values")

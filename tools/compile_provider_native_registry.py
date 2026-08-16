@@ -259,6 +259,12 @@ def _activation_window_is_supported(contract: Mapping[str, Any]) -> bool:
     against a non-empty event identity. Keep that exception structural, not
     dataset-specific, so it cannot promote a session-minute or open-ended
     local-time contract.
+
+    A second structural exception covers date-anchored content streams
+    (news flash and similar): the cadence planner derives whole-calendar-day
+    spans (local ``00:00:00``–``23:59:59``), never intraday session guesses,
+    and the ``event_stream_unique_primary_key`` contract still asserts
+    in-window event times and unique primary keys for every row.
     """
 
     window = contract["request_window_policy"]
@@ -268,13 +274,20 @@ def _activation_window_is_supported(contract: Mapping[str, Any]) -> bool:
     if formats <= _AUTOMATIC_REQUEST_WINDOW_FORMATS:
         return True
     completeness = contract["response_completeness"]
-    return (
+    if formats != {"local_datetime_seconds"} or not bool(contract["primary_key"]):
+        return False
+    if completeness is None:
+        return False
+    if (
         contract["cadence_class"] == "on_demand"
-        and formats == {"local_datetime_seconds"}
-        and bool(contract["primary_key"])
         and contract["fanout"]["strategy"] == "literal_values"
-        and completeness is not None
         and completeness["strategy"] == "windowed_unique_primary_key"
+    ):
+        return True
+    return (
+        contract["cadence_class"] == "event"
+        and contract["fanout"]["strategy"] == "none"
+        and completeness["strategy"] == "event_stream_unique_primary_key"
     )
 
 
@@ -339,6 +352,7 @@ _COMPLETENESS_STRATEGIES = frozenset(
         "unique_primary_key_snapshot",
         "single_partition_unique_primary_key",
         "windowed_unique_primary_key",
+        "event_stream_unique_primary_key",
     }
 )
 _BUDGET_KEYS = frozenset(
@@ -2348,6 +2362,38 @@ def _completeness(
             request_start_key=start,
             request_end_key=end,
             fanout_field=fanout_field,
+        )
+    elif strategy == "event_stream_unique_primary_key":
+        required = {
+            "strategy",
+            "date_field",
+            "request_start_key",
+            "request_end_key",
+            "fixed_field_matches",
+        }
+        missing = sorted(required - set(value))
+        if missing:
+            raise ValueError(f"{label} is missing key(s): {', '.join(missing)}")
+        if window is None:
+            raise ValueError(f"{label} requires request_window_policy")
+        date_field = _required_text(value["date_field"], f"{label}.date_field")
+        start = _required_text(value["request_start_key"], f"{label}.request_start_key")
+        end = _required_text(value["request_end_key"], f"{label}.request_end_key")
+        if date_field not in fields:
+            raise ValueError(f"{label} event stream date_field is not declared")
+        if (
+            start != window["range_start_key"]
+            or end != window["range_end_key"]
+            or window["formats"][start] != "local_datetime_seconds"
+            or window["formats"][end] != "local_datetime_seconds"
+        ):
+            raise ValueError(
+                f"{label} requires local_datetime_seconds window range keys"
+            )
+        result.update(
+            date_field=date_field,
+            request_start_key=start,
+            request_end_key=end,
         )
     return result
 

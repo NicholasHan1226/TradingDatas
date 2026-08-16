@@ -1020,8 +1020,60 @@ def _validate_response_completeness_impl(
             request_window=request_window,
             calls=calls,
         )
+    elif policy.strategy == "event_stream_unique_primary_key":
+        _validate_event_stream_unique_primary_keys(
+            dataset,
+            binding,
+            policy,
+            rows,
+            request_window=request_window,
+        )
     else:
         raise ValueError("provider response completeness strategy is unsupported")
+
+
+def _validate_event_stream_unique_primary_keys(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+) -> None:
+    """Assert in-window event times and unique keys for content streams.
+
+    Content-stream responses (news flash, social sentiment, regulator pages)
+    carry no request echo and no fanout dimension, so only row shape can be
+    asserted; row-count completeness is deliberately not claimed here.
+    """
+
+    if (
+        policy.date_field is None
+        or policy.request_start_key is None
+        or policy.request_end_key is None
+        or binding.request_window_policy is None
+    ):
+        raise ValueError("provider response event stream contract is incomplete")
+    window_format = binding.request_window_policy.formats[policy.request_start_key]
+    try:
+        start = decode_request_window_value(
+            request_window[policy.request_start_key], window_format
+        ).anchor
+        end = decode_request_window_value(
+            request_window[policy.request_end_key], window_format
+        ).anchor
+    except ValueError as exc:
+        raise ValueError("provider response event stream request values are invalid") from exc
+    _validate_unique_primary_keys(dataset, rows)
+    for row in rows:
+        try:
+            event_time = decode_request_window_value(
+                row.get(policy.date_field), window_format
+            ).anchor
+        except ValueError as exc:
+            raise ValueError("provider response event time is invalid") from exc
+        if not (start <= event_time <= end):
+            raise ValueError("provider response event time falls outside the request window")
 
 
 def _validate_fanout_snapshot(
