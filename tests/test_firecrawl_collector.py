@@ -415,15 +415,21 @@ def test_empty_url_item_keeps_source_title_identity() -> None:
     ).hexdigest()
 
 
-def test_relative_url_still_fails_closed() -> None:
-    collector = FirecrawlWebCollector()
-    with pytest.raises(ValueError, match="http"):
-        _normalize_item(
-            {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
-            source="https://www.cls.cn/telegraph",
-            time_key="published_at",
-            summary_key=None,
-        )
+def test_relative_or_junk_url_becomes_unlinkable() -> None:
+    row = _normalize_item(
+        {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
+        source="https://www.cls.cn/telegraph",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["url"] is None
+    colon = _normalize_item(
+        {"title": "t2", "url": ":", "published_at": "2026-08-16 03:41:30"},
+        source="https://www.cls.cn/telegraph",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert colon["url"] is None
 
 
 def test_registry_freezes_flash_contract_and_executor_identity() -> None:

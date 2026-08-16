@@ -194,9 +194,13 @@ def _normalize_item(
     if type(item) is not dict:
         raise ValueError("firecrawl extraction item must be an object")
     raw_url = item.get("url")
-    canonical_url = (
-        None if raw_url in (None, "") else _canonical_url(raw_url)
-    )
+    try:
+        canonical_url = _canonical_url(raw_url)
+    except ValueError:
+        # The LLM occasionally emits empty, ":" or relative paths for items
+        # without a usable link.  Keep the item and its title/time/source
+        # identity; only the link itself is dropped.
+        canonical_url = None
     title = _non_empty_text(item.get("title"), "title", max_chars=1024)
     local = _parse_published_at(item.get(time_key))
     published_at = local.isoformat(timespec="seconds")
