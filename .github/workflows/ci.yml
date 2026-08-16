@@ -1,13 +1,19 @@
-name: Optional TradingDatas CI
+name: TradingDatas CI
 
-# Hosted Actions is supplemental only. Normal autonomous validation/merge and
-# deploy-first data work must remain possible when Actions capacity or billing
-# is unavailable.
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
+
+concurrency:
+  group: tradingdatas-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -20,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
