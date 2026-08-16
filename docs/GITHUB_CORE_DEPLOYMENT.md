@@ -134,7 +134,7 @@ using `/opt/tradingdatas/venv/bin/python3`.
 
 `-I` isolates Python from user environment/current-directory import injection; `-S` prevents `site` startup and therefore prevents site-packages and `.pth` processing before privileged code runs. The wrapper then reads the root-only Python implementation and executes it with `sys.argv[0]` bound to the fixed installed wrapper identity.
 
-Bootstrap also verifies the `/opt`/TradingDatas/venv interpreter directory chain is root-controlled, the resolved interpreter is root-owned and not group/world writable, and the fixed wrapper is `/bin/bash` based. The Python implementation and verifier use only the standard library.
+Bootstrap also verifies the `/opt`/TradingDatas/venv interpreter directory chain is root-controlled, the resolved interpreter is root-owned and not group/world writable, and the fixed wrapper is `/bin/sh` based. The Python implementation and verifier use only the standard library.
 
 This keeps the scoped sudo capability independent of application `site-packages` contents.
 
