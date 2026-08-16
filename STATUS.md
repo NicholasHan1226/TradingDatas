@@ -1,6 +1,18 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 14:45 CST。
+最后更新：2026-08-16 15:35 CST。
+
+> **2026-08-16 funding rate 经 SG 中继接入（代码层事实，timer 仍 disabled）：**
+> owner 提供并批准 Singapore 中继。生产主机新增 `sg-relay-tunnel.service`
+> （SSH L4 隧道 → loopback SOCKS5 `127.0.0.1:17890`），实测 `fapi.binance.com`
+> ping/fundingRate/openInterestHist 全 200。新 provider `binance_usdm_relay`
+> （stdlib 最小 SOCKS5 客户端 + 端到端 TLS，SNI/证书校验不变，无双向 fallback），
+> 10 个 funding_rate binding 切至该 provider 并保持 active；usdm runner 按
+> binding provider 路由 collector，dump-bound 的 open_interest 显式
+> `skipped_foreign_binding` 而不再失败。120 项定向测试全绿。生产评审（受控
+> 采集 + 认证 readback）通过前 USDM timer 保持 disabled。mihomo 旧代理
+> 已按 owner 指示停用并归档（`clash.removed-20260816`）。
+
 
 > **2026-08-16 Crypto 采集共享锁迁往持久路径：** systemd RuntimeDirectory 在多
 > unit 共享、长短任务混用时会在任一引用 unit 停止时移除目录，长任务（OI 回填）

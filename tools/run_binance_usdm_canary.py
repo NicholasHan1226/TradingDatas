@@ -25,7 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from collectors.binance.usdm_collector import BinanceUsdmPublicCollector  # noqa: E402
+from collectors.binance.usdm_collector import (  # noqa: E402
+    BinanceUsdmPublicCollector,
+    BinanceUsdmRelayCollector,
+)
 from dataset_registry import (  # noqa: E402
     BINANCE_CANARY_REGISTRY_PATH,
     BINANCE_SPOT_CANARY_MODE,
@@ -111,10 +114,35 @@ def run(
         raise RuntimeError("Binance canary mode is required")
     lock = _private_lock(lock_path)
     try:
-        collector = BinanceUsdmPublicCollector()
+        collectors = {
+            "binance_usdm": BinanceUsdmPublicCollector(),
+            "binance_usdm_relay": BinanceUsdmRelayCollector(),
+        }
         results = []
         for kind, datasets, window in groups:
             for dataset_id in datasets:
+                definition = registry.resolve(dataset_id)
+                active = [
+                    binding
+                    for binding in definition.provider_bindings
+                    if binding.activation_state == "active"
+                ]
+                if len(active) != 1:
+                    raise RuntimeError("canary dataset must have one active binding")
+                collector = collectors.get(active[0].provider)
+                if collector is None:
+                    # e.g. open_interest now collected by the dump runner.
+                    results.append(
+                        {
+                            "collection_kind": kind,
+                            "dataset_id": dataset_id,
+                            "receipt_ids": [],
+                            "retry_count": 0,
+                            "state": "skipped_foreign_binding",
+                            "window": window,
+                        }
+                    )
+                    continue
                 attempts = _collect_with_one_provider_retry(
                     db_path=db_path,
                     registry=registry,
@@ -137,7 +165,10 @@ def run(
                         "window": window,
                     }
                 )
-        if any(item["state"] != "success" for item in results):
+        if any(
+            item["state"] not in {"success", "skipped_foreign_binding"}
+            for item in results
+        ):
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
             "datasets": results,

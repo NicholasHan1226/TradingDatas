@@ -8,7 +8,9 @@ there is no account, testnet, order, or API-key surface.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import http.client
 import json
+import socket
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, build_opener
@@ -21,6 +23,63 @@ from collectors.binance.collector import (
 )
 from collectors.tushare.tushare_common import ProviderCallOutcome, SensitiveScanBudget
 from provider_transport import BINANCE_USDM_PUBLIC_API_URL
+
+
+def _recv_exactly(sock: "socket.socket", count: int) -> bytes:
+    chunks = b""
+    while len(chunks) < count:
+        chunk = sock.recv(count - len(chunks))
+        if not chunk:
+            raise OSError("socks5 relay closed the connection early")
+        chunks += chunk
+    return chunks
+
+
+class _Socks5HTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS through the owner-approved loopback SOCKS5 relay.
+
+    The SOCKS5 CONNECT handshake is plain L4 tunneling: TLS is negotiated
+    end-to-end with the target host afterwards, so the relay can only drop
+    traffic, never read or modify it.  There is deliberately no direct-egress
+    fallback.
+    """
+
+    def __init__(self, host: str, *, proxy: tuple[str, int], timeout: float):
+        super().__init__(host, 443, timeout=timeout)
+        self._proxy = proxy
+
+    def connect(self) -> None:
+        sock = socket.create_connection(self._proxy, timeout=self.timeout)
+        try:
+            sock.sendall(b"\x05\x01\x00")  # version 5, one method: no-auth
+            if _recv_exactly(sock, 2) != b"\x05\x00":
+                raise OSError("socks5 relay rejected no-auth negotiation")
+            host = self.host.encode("idna")
+            if len(host) > 255:
+                raise OSError("socks5 target host is too long")
+            sock.sendall(
+                b"\x05\x01\x00\x03"
+                + bytes([len(host)])
+                + host
+                + (443).to_bytes(2, "big")
+            )
+            reply = _recv_exactly(sock, 4)
+            if reply[0] != 5 or reply[1] != 0:
+                raise OSError("socks5 relay connect failed")
+            atyp = reply[3]
+            if atyp == 1:
+                _recv_exactly(sock, 4)
+            elif atyp == 3:
+                _recv_exactly(sock, _recv_exactly(sock, 1)[0])
+            elif atyp == 4:
+                _recv_exactly(sock, 16)
+            else:
+                raise OSError("socks5 relay returned an invalid address type")
+            _recv_exactly(sock, 2)  # bound port
+        except Exception:
+            sock.close()
+            raise
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
 
 
 _PUBLIC_OPENER = build_opener(_RejectRedirects)
@@ -195,3 +254,42 @@ class BinanceUsdmPublicCollector:
                 }
             )
         return rows
+
+
+class BinanceUsdmRelayCollector(BinanceUsdmPublicCollector):
+    """The same frozen USDⓈ-M cohort through the loopback SOCKS5 relay.
+
+    Used only when direct egress to fapi.binance.com is blocked and the
+    owner-approved relay profile is selected by the registry binding.  The
+    allowlist, shape validation, and anti-redirect discipline are inherited
+    unchanged; only the socket path differs.
+    """
+
+    provider = "binance_usdm_relay"
+    _RELAY_PROXY = ("127.0.0.1", 17890)
+
+    @staticmethod
+    def _get(path: str, query: dict[str, str | int]) -> object:
+        host = "fapi.binance.com"
+        connection = _Socks5HTTPSConnection(
+            host,
+            proxy=BinanceUsdmRelayCollector._RELAY_PROXY,
+            timeout=15,
+        )
+        try:
+            connection.request(
+                "GET",
+                f"{path}?{urlencode(query)}",
+                headers={
+                    "Host": host,
+                    "Accept": "application/json",
+                    "User-Agent": "TradingDatas-Crypto-Canary/1",
+                    "Connection": "close",
+                },
+            )
+            response = connection.getresponse()
+            if response.status != 200:
+                raise OSError("unexpected public market-data status")
+            return json.loads(response.read().decode("utf-8"))
+        finally:
+            connection.close()
