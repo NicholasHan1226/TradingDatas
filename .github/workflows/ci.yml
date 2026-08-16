@@ -18,7 +18,68 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 0
+            files: >
+              tests/test_provider_native_schedule.py
+              tests/test_receipt_projection.py
+              tests/test_compile_provider_native_registry.py
+              tests/test_provider_native_registry.py
+              tests/test_quicksync_interface_observations.py
+          - shard: 1
+            files: >
+              tests/test_collect_provider_dataset.py
+              tests/test_provider_native_query.py
+              tests/test_v1_api.py
+              tests/test_provider_native_zero_code.py
+              tests/test_tushare_request_observations.py
+              tests/test_schema_contract_edge.py
+          - shard: 2
+            files: >
+              tests/test_tushare_common.py
+              tests/test_probe_quicksync_interfaces.py
+              tests/test_catalog_service.py
+              tests/test_provider_dataset_rows.py
+              tests/test_ingest_receipts.py
+              tests/test_query_service.py
+              tests/test_binance_usdm_canary.py
+          - shard: 3
+            files: >
+              tests/test_query_cursor.py
+              tests/test_auth_security.py
+              tests/test_compile_tushare_capability_catalog.py
+              tests/test_binance_oi_dump_canary.py
+              tests/test_release_manifest.py
+              tests/test_provider_native_executor.py
+              tests/test_binance_premium_dump_canary.py
+              tests/test_compile_tushare_runtime_contracts.py
+              tests/test_query_contract.py
+              tests/test_firecrawl_collector.py
+              tests/test_report_dataset_onboarding_status.py
+              tests/test_sqlite_authority_lock.py
+              tests/test_crypto_loopback_runtime.py
+              tests/test_binance_spot_canary.py
+              tests/test_cb_basic_seed_authority.py
+              tests/test_init_tradingdatas_store.py
+              tests/test_provider_request_identity.py
+              tests/test_generate_cn_minute_universe.py
+              tests/test_provider_request_resolver.py
+              tests/test_env_bootstrap.py
+              tests/test_provider_native_internal_runtime.py
+              tests/test_snapshot_tushare_contracts.py
+              tests/test_run_provider_native_collector.py
+              tests/test_compile_cn_minute_capacity_registry.py
+              tests/test_compile_consumer_capability_manifest.py
+              tests/test_cn_minute_universe_contract.py
+              tests/test_v1_api_clean_slate.py
+              tests/test_clean_slate_boundary.py
+              tests/test_deploy_scripts_safety.py
+              tests/test_provider_native_collect_systemd.py
+    name: test-shard-${{ matrix.shard }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,4 +99,4 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run tests
-        run: python -m pytest tests/ -q --tb=short
+        run: python -m pytest ${{ matrix.files }} -q --tb=short
