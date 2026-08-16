@@ -18,7 +18,10 @@ no longer cause a permanent day skip.  ``--backfill-days`` runs the frozen
 one-shot historical horizon in per-day batches, releasing the shared store
 lock between days so the five-minute collectors are not starved.  The runner
 shares the isolated Crypto store lock with the Spot and USDM collectors so
-writers on the same SQLite stay serial.
+writers on the same SQLite stay serial.  The windowing, probe, lookback and
+backfill primitives are also reused verbatim by the premium-index dump runner
+(``tools/run_binance_premium_dump_canary.py``), which only binds a different
+dataset family, probe path and collection kind.
 """
 
 from __future__ import annotations
@@ -126,7 +129,7 @@ def _ingested_days(
                     (dataset.dataset_id, binding.provider, dataset.schema_major),
                 ).fetchall()
     except (OSError, sqlite3.Error, RuntimeError, TypeError, ValueError) as exc:
-        raise ValueError("open-interest dump fact authority is unavailable") from exc
+        raise ValueError("daily-dump fact authority is unavailable") from exc
     days: set[str] = set()
     for observed_at, receipt_id in rows:
         if (
@@ -181,7 +184,7 @@ def _require_canary_mode() -> None:
 def _dataset_symbol(dataset_id: str) -> str:
     parts = dataset_id.split(".")
     if len(parts) != 5 or parts[3] != parts[3].lower() or not parts[3].endswith("usdt"):
-        raise ValueError("open-interest dataset id does not match the frozen shape")
+        raise ValueError("perp dump dataset id does not match the frozen shape")
     return parts[3].upper()
 
 
@@ -190,13 +193,15 @@ def _run_lookback(
     db_path: Path,
     lock_path: Path,
     registry,
+    collector: BinanceUsdmMetricsDumpCollector,
+    collection_kind: str,
+    probe,
     datasets: tuple[str, ...],
     now: datetime,
 ) -> dict[str, object]:
     candidates = lookback_days(now)
     lock = _private_lock(lock_path)
     try:
-        collector = BinanceUsdmMetricsDumpCollector()
         results = []
         for dataset_id in datasets:
             ingested = _ingested_days(db_path, registry, dataset_id)
@@ -204,7 +209,7 @@ def _run_lookback(
             if not missing:
                 results.append(
                     {
-                        "collection_kind": "open_interest",
+                        "collection_kind": collection_kind,
                         "dataset_id": dataset_id,
                         "receipt_ids": [],
                         "retry_count": 0,
@@ -215,15 +220,11 @@ def _run_lookback(
                 continue
             collected = False
             hard_failure = False
-            probed_unpublished = False
             for day in missing:
-                if not collector.probe_published(
-                    symbol=_dataset_symbol(dataset_id), day=day
-                ):
+                if not probe(_dataset_symbol(dataset_id), day):
                     # The daily zip lags the UTC day close by hours; skip it
                     # without an ingest attempt so no failed receipt pollutes
                     # the dataset runtime state.
-                    probed_unpublished = True
                     continue
                 attempts = _collect_with_one_provider_retry(
                     db_path=db_path,
@@ -236,7 +237,7 @@ def _run_lookback(
                 last = attempts[-1]
                 results.append(
                     {
-                        "collection_kind": "open_interest",
+                        "collection_kind": collection_kind,
                         "dataset_id": dataset_id,
                         "receipt_ids": [
                             receipt_id
@@ -276,7 +277,7 @@ def _run_lookback(
                 else:
                     results.append(
                         {
-                            "collection_kind": "open_interest",
+                            "collection_kind": collection_kind,
                             "dataset_id": dataset_id,
                             "receipt_ids": [],
                             "retry_count": 0,
@@ -299,11 +300,13 @@ def _run_backfill(
     db_path: Path,
     lock_path: Path,
     registry,
+    collector: BinanceUsdmMetricsDumpCollector,
+    collection_kind: str,
+    probe,
     datasets: tuple[str, ...],
     now: datetime,
 ) -> dict[str, object]:
     days = backfill_windows(now, days=_BACKFILL_DAYS)
-    collector = BinanceUsdmMetricsDumpCollector()
     collected = 0
     receipt_count = 0
     unpublished_count = 0
@@ -336,10 +339,10 @@ def _run_backfill(
         try:
             for dataset_id in pending:
                 symbol = _dataset_symbol(dataset_id)
-                if not collector.probe_published(symbol=symbol, day=day):
+                if not probe(symbol, day):
                     day_results.append(
                         {
-                            "collection_kind": "open_interest",
+                            "collection_kind": collection_kind,
                             "dataset_id": dataset_id,
                             "receipt_ids": [],
                             "retry_count": 0,
@@ -359,7 +362,7 @@ def _run_backfill(
                 last = attempts[-1]
                 day_results.append(
                     {
-                        "collection_kind": "open_interest",
+                        "collection_kind": collection_kind,
                         "dataset_id": dataset_id,
                         "receipt_ids": [
                             receipt_id
@@ -374,7 +377,7 @@ def _run_backfill(
                 if last.status == "success":
                     ingested_by_dataset[dataset_id].add(day)
                 elif last.errors != ("provider_error",):
-                    raise RuntimeError("OI dump backfill hit a non-provider failure")
+                    raise RuntimeError("daily-dump backfill hit a non-provider failure")
         finally:
             _release(lock)
         # Yield only when the next scheduled collector window is near;
@@ -436,11 +439,16 @@ def run(
             "will_write_database": False,
         }
     _require_canary_mode()
+    collector = BinanceUsdmMetricsDumpCollector()
+    probe = lambda symbol, day: collector.probe_published(symbol=symbol, day=day)  # noqa: E731
     if days is not None:
         return _run_backfill(
             db_path=db_path,
             lock_path=lock_path,
             registry=registry,
+            collector=collector,
+            collection_kind="open_interest",
+            probe=probe,
             datasets=datasets,
             now=now,
         )
@@ -448,6 +456,9 @@ def run(
         db_path=db_path,
         lock_path=lock_path,
         registry=registry,
+        collector=collector,
+        collection_kind="open_interest",
+        probe=probe,
         datasets=datasets,
         now=now,
     )

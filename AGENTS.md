@@ -56,7 +56,7 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 ## 首期范围
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
-- Binance 公共现货冻结的 10 个高流动性 USDT 标的只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结 10 标的的 Binance USDⓈ-M 永续 funding rate 与 open interest 公共只读历史，仅允许在隔离 Crypto 运行面接入；标的清单由版本化 universe 合同编译，不能由运行时临时扩张；在 `fapi.binance.com` 被 SNI 级阻断期间，open interest 允许以 `https://data.binance.vision` 的 USDⓈ-M 日度 metrics dump 作为同一 dataset 的降级公共来源（funding rate 无 dump，仍不可得）；
+- Binance 公共现货冻结的 10 个高流动性 USDT 标的只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结 10 标的的 Binance USDⓈ-M 永续 funding rate 与 open interest 公共只读历史，仅允许在隔离 Crypto 运行面接入；标的清单由版本化 universe 合同编译，不能由运行时临时扩张；在 `fapi.binance.com` 被 SNI 级阻断期间，open interest 允许以 `https://data.binance.vision` 的 USDⓈ-M 日度 metrics dump 作为同一 dataset 的降级公共来源，premium index（funding 压力代理，非 funding rate 本身）允许以同站的日度 premiumIndexKlines dump 作为独立新 dataset 家族采集（funding rate 无 dump，仍不可得）；
 - 港股、美股、其它加密资产、预测市场和 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
 - `activation`/稳定生产的每个数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence；`contract_ready` 候选只需保留上述缺口，不得被误标为已激活。

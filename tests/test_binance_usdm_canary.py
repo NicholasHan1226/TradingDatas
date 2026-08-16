@@ -231,7 +231,7 @@ def test_usdm_transport_rejects_redirects() -> None:
 
 def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() -> None:
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
-    assert [item.dataset_id for item in registry.datasets[30:]] == [
+    assert [item.dataset_id for item in registry.datasets[30:50]] == [
         *(f"crypto.perp.binance.{symbol.lower()}.funding_rate" for symbol in SYMBOLS),
         *(f"crypto.perp.binance.{symbol.lower()}.open_interest" for symbol in SYMBOLS),
     ]

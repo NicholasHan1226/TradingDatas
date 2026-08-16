@@ -1,0 +1,12 @@
+[Unit]
+Description=Wake isolated TradingDatas Crypto USDM premium-index daily premiumIndexKlines-dump collection
+
+[Timer]
+OnCalendar=*-*-* 01/2:53:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=tradingdatas-crypto-binance-premium-dump-collect.service
+
+[Install]
+WantedBy=timers.target

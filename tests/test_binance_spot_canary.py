@@ -38,13 +38,14 @@ SYMBOLS = (
 
 def test_canary_registry_freezes_ten_symbols_and_current_snapshot_sets() -> None:
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
-    assert len(registry.datasets) == 50
+    assert len(registry.datasets) == 60
     assert [item.dataset_id for item in registry.datasets] == [
         *(f"crypto.spot.binance.{symbol.lower()}.5m" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.rules" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.book_ticker" for symbol in SYMBOLS),
         *(f"crypto.perp.binance.{symbol.lower()}.funding_rate" for symbol in SYMBOLS),
         *(f"crypto.perp.binance.{symbol.lower()}.open_interest" for symbol in SYMBOLS),
+        *(f"crypto.perp.binance.{symbol.lower()}.premium_index" for symbol in SYMBOLS),
     ]
     bar = registry.resolve("crypto.spot.binance.btcusdt.5m")
     assert bar.primary_key == ("symbol", "open_time")

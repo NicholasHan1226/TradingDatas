@@ -25,6 +25,7 @@
 > collection_boundary`），保证 bars/book-ticker 的定时窗口永远拿得到锁。新增
 > 回归测试（24 项全绿）。回填续跑自动跳过已入库的 26 天。
 
+
 > **2026-08-16 funding rate 经 SG 中继接入（代码层事实，timer 仍 disabled）：**
 > owner 提供并批准 Singapore 中继。生产主机新增 `sg-relay-tunnel.service`
 > （SSH L4 隧道 → loopback SOCKS5 `127.0.0.1:17890`），实测 `fapi.binance.com`
@@ -50,6 +51,35 @@
 > 其它 symbol；非 provider 类失败仍 fail-closed 中止。汇总输出新增
 > `unpublished_skip_count`/`failed_attempt_count`。`_collect_day` 死代码移除。
 > 新增回填跳过回归测试，23 项全绿。
+
+
+> **2026-08-16 premium index dump 采集切片冻结为 contract_ready 候选（代码层
+> 事实，无生产变更）：** 实测 `data.binance.vision` 存在 USDⓈ-M 日度
+> `premiumIndexKlines` zip（路径必须带 interval 段：
+> `data/futures/um/daily/premiumIndexKlines/<SYM>/5m/<SYM>-5m-YYYY-MM-DD.zip`，
+> 单成员 CSV，12 列 kline 头，288 行覆盖完整 UTC 5m 网格，open_time 为毫秒
+>  epoch，OHLC 为溢价指数值；下载验证后即删）。新增第三 dataset 家族
+> `crypto.perp.binance.<symbol>.premium_index`（OHLC + open/close 毫秒与
+> RFC3339 时间戳，主键 [symbol, open_time]，append_only + payload_hash，
+> postclose_daily / 129600s SLA，volume/count/taker 等 kline 列只校验形态
+> 不入 schema），单一 `binance_usdm_dump` binding
+> （`premiumIndexKlinesDump_<symbol>`），复用同一 dump adapter 与 transport
+> profile，未新增 provider adapter。**语义边界：premium index 是 funding
+> 压力的主要可观测驱动（funding rate 由利率与溢价指数经 clamp 公式得出），
+> 不是 funding rate 本身；funding rate 仍无 dump、不可得。** runner 复用
+> OI dump runner 共享实现（`_run_lookback`/`_run_backfill` 参数化
+> collection_kind/probe/collector，合并 main 的回填逐 (日,symbol) 探测跳过
+> 语义后 OI 行为不变），7 天回看 +
+> 发布探测（`probe_premium_index_published`）+ 冻结 `--backfill-days 198`
+> 与 OI/bar 历史对齐 + 按日放锁；新 unit 对
+> `tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` 错峰
+> `*-*-* 01/2:53:00`，**timer disabled**，生产评审门禁与 USDM/OI dump 相同。
+> 定向测试 18（新）+ 132（OI/spot/usdm/loopback/deploy/catalog 回归）全绿。
+> 生产启用缺口：真实下载入库 receipt、catalog/query readback、observed/stable
+> 评审、timer 启用均待评审后执行。本地临时库端到端证据（非生产）：真实下载
+> 2026-08-14 十币 2880 行入库并写 receipt（当时 2026-08-15 zip 尚未发布，
+> 探测后正确 fall-through 到 08-14）；重跑不回采已入库日、继续按回看取更旧
+> 缺失日（08-13），与 OI dump 语义一致；验证后临时库已删除。
 
 > **2026-08-16 OI 数据集 SLA/cadence 修正（代码层事实）：** 生产 readback 发现
 > `crypto.perp.binance.*.open_interest` 模板的 `freshness_sla_seconds: 600` 使日度

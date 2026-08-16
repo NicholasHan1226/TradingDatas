@@ -2,9 +2,9 @@
 """Expand the frozen Binance canary registry from reviewed symbol templates.
 
 The same versioned universe freezes the ten USDT symbols for both the public
-Spot cohort and the public USDⓈ-M perpetual funding-rate/open-interest
-cohort; the deterministic compiler emits every dataset from its checked-in
-BTCUSDT template.
+Spot cohort and the public USDⓈ-M perpetual funding-rate/open-interest/
+premium-index cohort; the deterministic compiler emits every dataset from its
+checked-in BTCUSDT template.
 """
 
 from __future__ import annotations
@@ -29,8 +29,16 @@ _DATASET_KINDS = {
     "book_ticker": ("crypto.spot.binance.", "binance_spot."),
     "funding_rate": ("crypto.perp.binance.", "binance_usdm."),
     "open_interest": ("crypto.perp.binance.", "binance_usdm."),
+    "premium_index": ("crypto.perp.binance.", "binance_usdm."),
 }
-_DATASET_KIND_ORDER = ("5m", "rules", "book_ticker", "funding_rate", "open_interest")
+_DATASET_KIND_ORDER = (
+    "5m",
+    "rules",
+    "book_ticker",
+    "funding_rate",
+    "open_interest",
+    "premium_index",
+)
 # (suffix, binding provider) -> provider API prefix
 _BINDING_API_PREFIXES = {
     ("5m", "binance_spot"): "klines_",
@@ -40,6 +48,7 @@ _BINDING_API_PREFIXES = {
     ("funding_rate", "binance_usdm_relay"): "fundingRate_",
     ("open_interest", "binance_usdm"): "openInterestHist_",
     ("open_interest", "binance_usdm_dump"): "metricsDump_",
+    ("premium_index", "binance_usdm_dump"): "premiumIndexKlinesDump_",
 }
 
 
