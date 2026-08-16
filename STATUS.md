@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 22:30 CST。
+最后更新：2026-08-16 22:55 CST。
+
+> **2026-08-16 503 终极根因（我引入的 WAL 模式）：** 间歇 503 的真正根因是去重
+> 脚本执行了 `PRAGMA journal_mode=WAL`，把 read-model DB 永久切到 WAL 模式，引入
+> `-wal/-shm` sidecar，读模型的 raw WAL 头校验在回填并发写下拉锯（sidecars
+> unreadable）。已切回 `journal_mode=DELETE` 并 `wal_checkpoint(TRUNCATE)` 清除
+> sidecar。验证：回填并发写下 catalog 10/10 稳定（此前 4-6/10）。此为运维事实，
+> 非代码改动；此前两个防御性修复（锁超时 10s、有界重试）保留作为并发写健壮性。
 
 > **2026-08-16 read-model 快照重试范围放宽（侧车瞬态）：** 进一步定位——间歇
 > 503 的真实错误是 "receipt database sidecars are unreadable"（并发写使 WAL/SHM
