@@ -12,12 +12,16 @@ def _read(relative: str) -> str:
 
 
 def test_core_server_bootstrap_shell_parses() -> None:
-    subprocess.run(
-        ["bash", "-n", str(ROOT / "tools/bootstrap_production_core_server.sh")],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    for relative in (
+        "tools/bootstrap_production_core_server.sh",
+        "tools/production_core_release_wrapper.sh",
+    ):
+        subprocess.run(
+            ["bash", "-n", str(ROOT / relative)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 def test_root_core_release_helper_compiles_without_side_effects() -> None:
@@ -66,24 +70,42 @@ def test_core_deploy_workflow_is_exact_run_and_current_main_gated() -> None:
     assert workflow.count("/usr/bin/readlink /opt/investment/releases/tradingdatas/current") == 3
 
 
-def test_core_deploy_pins_installed_privileged_code_to_tested_sha() -> None:
+def test_core_deploy_pins_all_installed_privileged_code_to_tested_sha() -> None:
     workflow = _read(".github/workflows/deploy-core-production.yml")
 
+    assert "sha256sum tools/production_core_release_wrapper.sh" in workflow
     assert "sha256sum tools/production_core_release.py" in workflow
     assert "sha256sum tools/release_manifest.py" in workflow
     assert "/usr/bin/sha256sum /usr/local/sbin/tradingdatas-core-release" in workflow
+    assert "/usr/local/lib/tradingdatas-release/production_core_release.py" in workflow
     assert "/usr/local/lib/tradingdatas-release/release_manifest.py" in workflow
     assert "remote_hashes=" in workflow
-    assert "grep -Fxq \"$HELPER_CHECKSUM" in workflow
+    assert "grep -Fxq \"$WRAPPER_CHECKSUM" in workflow
+    assert "grep -Fxq \"$IMPLEMENTATION_CHECKSUM" in workflow
     assert "grep -Fxq \"$VERIFIER_CHECKSUM" in workflow
     assert "/usr/bin/test -d '$spool'" in workflow
     assert "/usr/bin/find '$spool'" in workflow
 
-    # Ordinary deployments must not upload or directly execute a newly supplied
-    # privileged helper/verifier from the target release.
+    # Ordinary deployments must not upload or directly execute newly supplied
+    # privileged trust-boundary code from the target release.
+    assert "scp tools/production_core_release_wrapper.sh" not in workflow
     assert "scp tools/production_core_release.py" not in workflow
     assert "scp tools/release_manifest.py" not in workflow
     assert "sudo -n python" not in workflow
+
+
+def test_privileged_wrapper_isolates_python_startup() -> None:
+    wrapper = _read("tools/production_core_release_wrapper.sh")
+
+    assert wrapper.startswith("#!/bin/bash\n")
+    assert "wrapper accepts no arguments" in wrapper
+    assert "root:root 755 1" in wrapper
+    assert "root:root 444 1" in wrapper
+    assert "implementation=/usr/local/lib/tradingdatas-release/production_core_release.py" in wrapper
+    assert 'exec "$python_runtime" -I -S -c' in wrapper
+    assert 'sys.argv = ["/usr/local/sbin/tradingdatas-core-release"]' in wrapper
+    assert 'compile(source, str(implementation), "exec")' in wrapper
+    assert "runpy" not in wrapper
 
 
 def test_core_deployment_requires_independent_hmac_authority() -> None:
@@ -164,18 +186,20 @@ def test_core_bootstrap_requires_verified_normalized_current_and_scoped_sudo() -
     assert "current must be normalized to a relative 40-char commit" in bootstrap
     assert "existing manifest directory is required" in bootstrap
     assert "current rollback manifest is required" in bootstrap
-    assert '"$python_runtime" "$source_verifier" verify-current' in bootstrap
-    assert '"$python_runtime" "$installed_verifier" verify-current' in bootstrap
-    assert bootstrap.index('"$python_runtime" "$source_verifier" verify-current') < bootstrap.index(
+    assert '"$python_runtime" -I -S "$source_verifier" verify-current' in bootstrap
+    assert '"$python_runtime" -I -S "$installed_verifier" verify-current' in bootstrap
+    assert bootstrap.index('"$python_runtime" -I -S "$source_verifier" verify-current') < bootstrap.index(
         'install -d -o root -g root -m 0755 "$trusted_dir"'
     )
     assert "--expected-uid 0 --expected-gid 0" in bootstrap
     assert "deployment spool is not empty" in bootstrap
+    assert "source_wrapper=\"$script_dir/production_core_release_wrapper.sh\"" in bootstrap
+    assert "source_implementation=\"$script_dir/production_core_release.py\"" in bootstrap
     assert "installed_helper=/usr/local/sbin/tradingdatas-core-release" in bootstrap
+    assert "installed_implementation=\"$trusted_dir/production_core_release.py\"" in bootstrap
     assert "installed_verifier=\"$trusted_dir/release_manifest.py\"" in bootstrap
     assert "python_runtime=/opt/tradingdatas/venv/bin/python3" in bootstrap
     assert "assert_root_controlled_dir" in bootstrap
-    assert "helper shebang must exactly use trusted python runtime" in bootstrap
     assert "python runtime target must be root:root" in bootstrap
     assert "python runtime target must not be group/other writable" in bootstrap
     assert "NOPASSWD: %s" in bootstrap
@@ -187,8 +211,9 @@ def test_core_lane_does_not_expand_deploy_or_crypto_service_surface() -> None:
     helper = _read("tools/production_core_release.py")
     workflow = _read(".github/workflows/deploy-core-production.yml")
     bootstrap = _read("tools/bootstrap_production_core_server.sh")
+    wrapper = _read("tools/production_core_release_wrapper.sh")
 
-    combined = "\n".join((helper, workflow, bootstrap))
+    combined = "\n".join((helper, workflow, bootstrap, wrapper))
     assert "tradingdatas-crypto" not in combined
     assert "/opt/investment/releases/tradingdatas-crypto" not in combined
 
@@ -199,13 +224,16 @@ def test_core_lane_does_not_expand_deploy_or_crypto_service_surface() -> None:
         if path.is_file()
     }
     assert "production_core_release.py" not in files
+    assert "production_core_release_wrapper.sh" not in files
     assert "bootstrap_production_core_server.sh" not in files
 
 
-def test_core_deployment_documentation_names_hmac_secret_and_root_key() -> None:
+def test_core_deployment_documentation_names_hmac_secret_root_key_and_isolation() -> None:
     documentation = _read("docs/GITHUB_CORE_DEPLOYMENT.md")
 
     assert "DEPLOY_REQUEST_KEY" in documentation
     assert "/etc/tradingdatas-deploy/core-release.hmac" in documentation
     assert "expected_current" in documentation
     assert "HMAC-SHA256" in documentation
+    assert "production_core_release_wrapper.sh" in documentation
+    assert "python -I -S" in documentation
