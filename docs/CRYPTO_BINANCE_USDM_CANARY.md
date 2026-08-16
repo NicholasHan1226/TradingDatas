@@ -33,8 +33,20 @@ separate provider-level adapter, `collectors/binance/oi_dump_collector.py`).
 The original `binance_usdm` open-interest binding stays in the registry as
 `activation_state: paused` so exactly one binding is active; if the fapi
 transport is ever restored, reactivating it is a deliberate registry decision,
-not an automatic fallback.  Funding rate has no dump (404 on the dump host)
-and remains unavailable until the fapi network path is resolved.
+not an automatic fallback.
+
+Funding rate has no dump (404 on the dump host), so it now rides the
+owner-approved Singapore relay: `sg-relay-tunnel.service` maintains an SSH
+L4 tunnel exposing a loopback SOCKS5 endpoint (`127.0.0.1:17890`) on the
+production host.  The `binance_usdm_relay` provider (`transport profile
+binance-usdm-via-sg-relay.v1`) speaks plain SOCKS5 CONNECT to that loopback
+endpoint and then negotiates TLS end-to-end with `fapi.binance.com` — SNI,
+Host and certificate verification are unchanged, so the relay can only drop
+traffic, never read or modify it.  There is deliberately no direct-egress
+fallback and no relay fallback to direct.  All ten `funding_rate` bindings
+moved to this provider with `activation_state: active`; collection stays
+gated by the disabled USDM timer until the production review (controlled
+collection plus authenticated readback) completes.
 
 The dump binding downloads
 `data/futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-YYYY-MM-DD.zip`, whose

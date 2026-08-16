@@ -243,8 +243,9 @@ def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() ->
     assert funding.range_field == "funding_time"
     assert funding.schema_major == 1
     binding = funding.provider_bindings[0]
-    assert binding.provider == "binance_usdm"
+    assert binding.provider == "binance_usdm_relay"
     assert binding.api_name == "fundingRate_btcusdt"
+    assert binding.adapter_version == "binance-usdm-via-sg-relay.v1"
     assert binding.request_template == {
         "symbol": "BTCUSDT",
         "start_time": "${window.start_time}",
@@ -376,12 +377,12 @@ def test_usdm_runner_retries_one_provider_error_and_preserves_both_receipts(
         dataset_id = kwargs["dataset_id"]
         calls.append(dataset_id)
         if (
-            dataset_id.endswith("ethusdt.open_interest")
+            dataset_id.endswith("ethusdt.funding_rate")
             and calls.count(dataset_id) == 1
         ):
             return _ingest_result(
                 status="failed",
-                receipt_id="receipt:eth-oi-first-failure",
+                receipt_id="receipt:eth-fr-first-failure",
                 errors=("provider_error",),
             )
         return _ingest_result(
@@ -399,14 +400,123 @@ def test_usdm_runner_retries_one_provider_error_and_preserves_both_receipts(
 
     assert result["state"] == "success"
     assert len(result["datasets"]) == 20
-    eth_oi = next(
+    # open_interest is dump-bound now; this runner reports it as skipped.
+    oi_states = {
+        item["state"]
+        for item in result["datasets"]
+        if item["collection_kind"] == "open_interest"
+    }
+    assert oi_states == {"skipped_foreign_binding"}
+    eth_fr = next(
         item
         for item in result["datasets"]
-        if item["dataset_id"].endswith("ethusdt.open_interest")
+        if item["dataset_id"].endswith("ethusdt.funding_rate")
     )
-    assert eth_oi["collection_kind"] == "open_interest"
-    assert eth_oi["state"] == "success"
-    assert eth_oi["retry_count"] == 1
-    assert eth_oi["receipt_ids"][0] == "receipt:eth-oi-first-failure"
-    assert len(eth_oi["receipt_ids"]) == 2
-    assert calls.count("crypto.perp.binance.ethusdt.open_interest") == 2
+    assert eth_fr["collection_kind"] == "funding_rate"
+    assert eth_fr["state"] == "success"
+    assert eth_fr["retry_count"] == 1
+    assert eth_fr["receipt_ids"][0] == "receipt:eth-fr-first-failure"
+    assert len(eth_fr["receipt_ids"]) == 2
+    assert calls.count("crypto.perp.binance.ethusdt.funding_rate") == 2
+
+
+def test_usdm_relay_transport_profile_is_loopback_socks5_end_to_end_tls() -> None:
+    profile = provider_transport_profile("binance_usdm_relay")
+    assert profile["connection_mode"] == "loopback_socks5_relay"
+    assert profile["relay_endpoint"] == "socks5://127.0.0.1:17890"
+    assert profile["canonical_host"] == "fapi.binance.com"
+    assert profile["sni_server_name"] == "fapi.binance.com"
+    assert profile["certificate_hostname"] == "fapi.binance.com"
+    assert profile["credential_mode"] == "none"
+    assert profile["redirects_allowed"] is False
+    assert profile["pre_send_node_failover"] is False
+    assert profile["post_send_replay"] is False
+
+
+def test_socks5_connection_handshake_is_no_auth_domain_connect() -> None:
+    # Full scripted server bytes: method reply, then connect reply head+addr+port.
+    server_bytes = b"\x05\x00" + b"\x05\x00\x00\x03\x04" + b"host" + (443).to_bytes(2, "big")
+    received = bytearray()
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.closed = False
+            self._buffer = bytearray(server_bytes)
+
+        def sendall(self, data: bytes) -> None:
+            received.extend(data)
+
+        def recv(self, count: int) -> bytes:
+            chunk = bytes(self._buffer[:count])
+            del self._buffer[:count]
+            return chunk
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake = FakeSocket()
+    import collectors.binance.usdm_collector as module
+
+    class CaptureTLS:
+        def __init__(self) -> None:
+            self.wrapped = None
+
+        def wrap_socket(self, sock, server_hostname=None):
+            self.wrapped = (sock, server_hostname)
+            return sock
+
+    captured_tls = CaptureTLS()
+    monkeypatched = []
+    orig_create = module.socket.create_connection
+    try:
+        module.socket.create_connection = lambda proxy, timeout=None: fake
+        conn = module._Socks5HTTPSConnection(
+            "fapi.binance.com", proxy=("127.0.0.1", 17890), timeout=5
+        )
+        conn._context = captured_tls
+        conn.connect()
+    finally:
+        module.socket.create_connection = orig_create
+
+    expected = (
+        b"\x05\x01\x00"
+        + b"\x05\x01\x00\x03"
+        + bytes([len(b"fapi.binance.com")])
+        + b"fapi.binance.com"
+        + (443).to_bytes(2, "big")
+    )
+    assert bytes(received) == expected
+    assert captured_tls.wrapped == (fake, "fapi.binance.com")
+
+
+def test_socks5_connection_fails_closed_on_relay_refusal() -> None:
+    import collectors.binance.usdm_collector as module
+
+    class FakeSocket:
+        def sendall(self, data: bytes) -> None:
+            pass
+
+        def recv(self, count: int) -> bytes:
+            return b"\x05\x07"  # method not accepted / command not supported
+
+        def close(self) -> None:
+            pass
+
+    orig_create = module.socket.create_connection
+    try:
+        module.socket.create_connection = lambda proxy, timeout=None: FakeSocket()
+        conn = module._Socks5HTTPSConnection(
+            "fapi.binance.com", proxy=("127.0.0.1", 17890), timeout=5
+        )
+        with pytest.raises(OSError):
+            conn.connect()
+    finally:
+        module.socket.create_connection = orig_create
+
+
+def test_usdm_relay_collector_shares_allowlist_and_validation() -> None:
+    collector = usdm_collector.BinanceUsdmRelayCollector()
+    assert collector.provider == "binance_usdm_relay"
+    outcome = collector.collect_outcome("tickerPrice_btcusdt", {"symbol": "BTCUSDT"})
+    assert outcome.state == "failed"
+    assert outcome.error_code == "transport_error"  # allowlist raise -> failed

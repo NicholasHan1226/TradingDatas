@@ -21,6 +21,7 @@ from provider_transport import (
     BINANCE_SPOT_DATA_PROVIDER,
     BINANCE_USDM_DATA_PROVIDER,
     BINANCE_USDM_DUMP_DATA_PROVIDER,
+    BINANCE_USDM_RELAY_DATA_PROVIDER,
     TUSHARE_DATA_PROVIDER,
     provider_transport_profile,
 )
@@ -2070,6 +2071,7 @@ def _runtime_metadata(
             BINANCE_SPOT_DATA_PROVIDER,
             BINANCE_USDM_DATA_PROVIDER,
             BINANCE_USDM_DUMP_DATA_PROVIDER,
+            BINANCE_USDM_RELAY_DATA_PROVIDER,
         }
     ) and not transport_profile_proven
     if transport_profile_unverified:

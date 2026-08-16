@@ -19,6 +19,9 @@ BINANCE_USDM_PUBLIC_API_URL = "https://fapi.binance.com"
 BINANCE_USDM_DUMP_DATA_PROVIDER = "binance_usdm_dump"
 BINANCE_USDM_DUMP_TRANSPORT_SERVICE = "binance_usdm_public_metrics_dump"
 BINANCE_USDM_DUMP_PUBLIC_DATA_URL = "https://data.binance.vision"
+BINANCE_USDM_RELAY_DATA_PROVIDER = "binance_usdm_relay"
+BINANCE_USDM_RELAY_TRANSPORT_SERVICE = "binance_usdm_sg_relay"
+BINANCE_USDM_RELAY_SOCKS5_ENDPOINT = "socks5://127.0.0.1:17890"
 FIRECRAWL_DATA_PROVIDER = "firecrawl"
 FIRECRAWL_TRANSPORT_SERVICE = "firecrawl_web_scrape_api"
 FIRECRAWL_API_URL = "https://api.firecrawl.dev/v2"
@@ -60,6 +63,30 @@ def provider_transport_profile(provider: str) -> dict[str, object]:
             "credential_mode": "none",
             "market_data_only": True,
             "transport_service": BINANCE_USDM_TRANSPORT_SERVICE,
+        }
+    elif provider == BINANCE_USDM_RELAY_DATA_PROVIDER:
+        payload = {
+            "data_provider": BINANCE_USDM_RELAY_DATA_PROVIDER,
+            "endpoint": BINANCE_USDM_PUBLIC_API_URL,
+            "profile_id": "binance-usdm-via-sg-relay.v1",
+            "redirects_allowed": False,
+            "connection_mode": "loopback_socks5_relay",
+            "relay_endpoint": BINANCE_USDM_RELAY_SOCKS5_ENDPOINT,
+            "canonical_host": "fapi.binance.com",
+            "host_header": "fapi.binance.com",
+            "sni_server_name": "fapi.binance.com",
+            "certificate_hostname": "fapi.binance.com",
+            "pre_send_node_failover": False,
+            "post_send_replay": False,
+            "credential_mode": "none",
+            "market_data_only": True,
+            "relay_note": (
+                "Owner-approved L4 SSH tunnel (sg-relay-tunnel.service); TLS is "
+                "end-to-end to fapi.binance.com, the relay can only drop, never "
+                "read or modify.  Direct egress is SNI-blocked; there is no "
+                "silent fallback in either direction."
+            ),
+            "transport_service": BINANCE_USDM_RELAY_TRANSPORT_SERVICE,
         }
     elif provider == BINANCE_USDM_DUMP_DATA_PROVIDER:
         payload = {
