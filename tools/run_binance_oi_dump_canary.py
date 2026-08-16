@@ -33,6 +33,7 @@ import json
 from pathlib import Path
 import sqlite3
 import sys
+import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,6 +156,21 @@ def _release(lock) -> None:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     finally:
         lock.close()
+
+
+def _yield_past_next_collection_boundary() -> None:
+    """Sleep until the five-minute collectors had their scheduled window.
+
+    The 5m timers fire at minute :00 (bars, ~25s worst) and :00:40
+    (book-ticker); a backfill batch must not hold-or-regrab the shared lock
+    across those windows, or the timers starve and leave permanent bar gaps.
+    """
+
+    now = time.time()
+    boundary = now - (now % 300) + 300
+    target = boundary + 45.0
+    if target > now:
+        time.sleep(target - now)
 
 
 def _require_canary_mode() -> None:
@@ -295,11 +311,19 @@ def _run_backfill(
     receipt_count = 0
     unpublished_count = 0
     failed_count = 0
+    # Compute the ingested-day sets once: re-deriving them per (day, dataset)
+    # is O(days x datasets x receipt-table) and made the first production
+    # backfill crawl at 100% CPU without writing.  The sets are updated in
+    # memory as days complete; a crashed rerun simply re-derives them.
+    ingested_by_dataset = {
+        dataset_id: set(_ingested_days(db_path, registry, dataset_id))
+        for dataset_id in datasets
+    }
     for day in days:
         pending = tuple(
             dataset_id
             for dataset_id in datasets
-            if day not in _ingested_days(db_path, registry, dataset_id)
+            if day not in ingested_by_dataset[dataset_id]
         )
         if not pending:
             continue
@@ -350,10 +374,13 @@ def _run_backfill(
                         "window": {"date": day},
                     }
                 )
-                if last.status != "success" and last.errors != ("provider_error",):
+                if last.status == "success":
+                    ingested_by_dataset[dataset_id].add(day)
+                elif last.errors != ("provider_error",):
                     raise RuntimeError("daily-dump backfill hit a non-provider failure")
         finally:
             _release(lock)
+        _yield_past_next_collection_boundary()
         if any(item["state"] == "success" for item in day_results):
             collected += 1
         receipt_count += sum(len(item["receipt_ids"]) for item in day_results)

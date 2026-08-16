@@ -38,6 +38,13 @@ def _published_probe(monkeypatch: pytest.MonkeyPatch):
         "probe_premium_index_published",
         staticmethod(lambda *, symbol, day: True),
     )
+    # Stub the shared backfill boundary yield; production-timing behavior is
+    # covered by the OI runner tests.
+    import tools.run_binance_oi_dump_canary as oi_dump_canary
+
+    monkeypatch.setattr(
+        oi_dump_canary, "_yield_past_next_collection_boundary", lambda: None
+    )
 
 
 def _csv_lines(*, day: datetime = _DUMP_DAY) -> list[str]:
