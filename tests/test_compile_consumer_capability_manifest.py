@@ -68,9 +68,9 @@ def test_manifest_projects_contract_and_consumer_scope_without_runtime_claims() 
     assert rt_min["entity_scope"] == {
         "kind": "versioned_literal_values",
         "frozen": True,
-        "batch_size": 100,
-        "value_count": 528,
-        "values_sha256": "e460371e9b8a282f8da59a4239b5c61fe844f6f02ac604b9b7c0512df375abdb",
+        "batch_size": 300,
+        "value_count": 5963,
+        "values_sha256": "70f42a1f6f211f2aa74dc46c19de5eb89009235bcfe22935cec61734cfb36b29",
     }
     assert rt_min["consumer_applicability"] == [
         {
