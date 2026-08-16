@@ -308,11 +308,19 @@ def _run_backfill(
     receipt_count = 0
     unpublished_count = 0
     failed_count = 0
+    # Compute the ingested-day sets once: re-deriving them per (day, dataset)
+    # is O(days x datasets x receipt-table) and made the first production
+    # backfill crawl at 100% CPU without writing.  The sets are updated in
+    # memory as days complete; a crashed rerun simply re-derives them.
+    ingested_by_dataset = {
+        dataset_id: set(_ingested_days(db_path, registry, dataset_id))
+        for dataset_id in datasets
+    }
     for day in days:
         pending = tuple(
             dataset_id
             for dataset_id in datasets
-            if day not in _ingested_days(db_path, registry, dataset_id)
+            if day not in ingested_by_dataset[dataset_id]
         )
         if not pending:
             continue
@@ -363,7 +371,9 @@ def _run_backfill(
                         "window": {"date": day},
                     }
                 )
-                if last.status != "success" and last.errors != ("provider_error",):
+                if last.status == "success":
+                    ingested_by_dataset[dataset_id].add(day)
+                elif last.errors != ("provider_error",):
                     raise RuntimeError("OI dump backfill hit a non-provider failure")
         finally:
             _release(lock)
