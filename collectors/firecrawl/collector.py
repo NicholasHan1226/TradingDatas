@@ -154,8 +154,11 @@ def _non_empty_text(value: object, name: str, *, max_chars: int) -> str:
 def _canonical_url(value: object) -> str:
     text = _non_empty_text(value, "url", max_chars=2048)
     parsed = urlsplit(text)
-    if parsed.scheme != "https" or not parsed.hostname:
-        raise ValueError("firecrawl url must be an absolute https URL")
+    # Chinese financial feeds mix https article links with http announcement
+    # PDFs; both are ordinary web data.  Reject only malformed or non-web
+    # schemes (relative, javascript:, etc.) and keep the string as-is.
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("firecrawl url must be an absolute http(s) URL")
     return parsed._replace(fragment="").geturl()
 
 

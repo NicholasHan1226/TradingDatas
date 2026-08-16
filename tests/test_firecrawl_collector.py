@@ -13,6 +13,7 @@ from collectors.firecrawl.collector import (
     FIRECRAWL_API_KEY_FILE_ENV,
     FirecrawlWebCollector,
     _RejectRedirects,
+    _normalize_item,
 )
 from collectors.tushare.provider_native_ingest import (
     _provider_scan_budget,
@@ -375,10 +376,6 @@ def test_scrape_page_rejects_param_drift(
     assert (
         collector.collect_outcome("scrape_page", extra).state == "failed"
     )
-    bad_url = {**_SCRAPE_PARAMS, "url": "http://www.cls.cn/telegraph"}
-    assert (
-        collector.collect_outcome("scrape_page", bad_url).state == "failed"
-    )
     bad_timeout = {**_SCRAPE_PARAMS, "timeout_ms": "999999"}
     assert (
         collector.collect_outcome("scrape_page", bad_timeout).state == "failed"
@@ -387,6 +384,33 @@ def test_scrape_page_rejects_param_drift(
     assert (
         collector.collect_outcome("scrape_page", bad_schema).state == "failed"
     )
+
+
+def test_http_announcement_url_is_preserved() -> None:
+    collector = FirecrawlWebCollector()
+    row = _normalize_item(
+        {
+            "title": "华测检测：2026年半年度报告",
+            "url": "http://static.cninfo.com.cn/finalpage/2026-08-17/1225473313.PDF",
+            "published_at": "2026-08-16 03:41:30",
+            "summary": None,
+        },
+        source="https://www.cls.cn/telegraph",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["url"] == "http://static.cninfo.com.cn/finalpage/2026-08-17/1225473313.PDF"
+
+
+def test_relative_url_still_fails_closed() -> None:
+    collector = FirecrawlWebCollector()
+    with pytest.raises(ValueError, match="http"):
+        _normalize_item(
+            {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
+            source="https://www.cls.cn/telegraph",
+            time_key="published_at",
+            summary_key=None,
+        )
 
 
 def test_registry_freezes_flash_contract_and_executor_identity() -> None:
