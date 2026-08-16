@@ -4157,6 +4157,9 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
     now = datetime.now(timezone.utc).isoformat()
+    recent_list_date = (
+        datetime.now(timezone.utc).date() - timedelta(days=5)
+    ).strftime("%Y%m%d")
     source_collector = _FakeCollector(
         ProviderCallOutcome(
             state="success",
@@ -4195,7 +4198,7 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
                     "market": "主板",
                     "list_status": "L",
                     "curr_type": "CNY",
-                    "list_date": "20260718",
+                    "list_date": recent_list_date,
                 },
             ),
             provider_code=0,
