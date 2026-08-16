@@ -54,9 +54,12 @@ assumes the latest closed day is published.  Within a bounded seven-day
 lookback it tries, per symbol, the newest missing day first and **falls
 through to older missing days on `provider_error`** (an unpublished daily
 zip), collecting the newest day that is published and not yet in the store;
-coverage is derived from SQLite facts joined to validated success receipts,
-never from run history, so a late publication is picked up by a later tick
-and cannot cause a permanent day skip.  A symbol whose whole lookback window
+a HEAD publication probe (`probe_published`) runs before any ingest attempt,
+so the expected publication lag never writes failed receipts that would flip
+the dataset runtime state to `failed` for hours.  Coverage is derived from
+SQLite facts joined to validated success receipts, never from run history,
+so a late publication is picked up by a later tick and cannot cause a
+permanent day skip.  A symbol whose whole lookback window
 is already ingested is skipped without a provider call and reported
 `unchanged`.  If only the newest day is missing and its zip is still
 unpublished, the dataset is reported `pending_publication` and the run

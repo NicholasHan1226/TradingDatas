@@ -34,6 +34,17 @@ _DUMP_DATE = "2026-08-13"
 _DUMP_DAY = datetime(2026, 8, 13, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _published_probe(monkeypatch: pytest.MonkeyPatch):
+    """Default the publication probe to published; specific tests override."""
+
+    monkeypatch.setattr(
+        BinanceUsdmMetricsDumpCollector,
+        "probe_published",
+        staticmethod(lambda *, symbol, day: True),
+    )
+
+
 def _csv_lines(*, symbol: str = "BTCUSDT", day: datetime = _DUMP_DAY) -> list[str]:
     lines = [
         "create_time,symbol,sum_open_interest,sum_open_interest_value,"
@@ -382,11 +393,17 @@ def test_oi_dump_runner_falls_through_unpublished_newest_day(
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
     now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
     candidates = lookback_days(now)
-    # Only the two newest days are missing for every symbol.
+    # Only the two newest days are missing for every symbol; the newest zip
+    # is still unpublished while the older one is available.
     monkeypatch.setattr(
         oi_dump_canary,
         "_ingested_days",
         lambda db_path, registry, dataset_id: frozenset(candidates[2:]),
+    )
+    monkeypatch.setattr(
+        BinanceUsdmMetricsDumpCollector,
+        "probe_published",
+        staticmethod(lambda *, symbol, day: day != candidates[0]),
     )
     calls: list[tuple[str, str]] = []
 
@@ -394,12 +411,6 @@ def test_oi_dump_runner_falls_through_unpublished_newest_day(
         del args
         day = kwargs["request_window"]["date"]
         calls.append((kwargs["dataset_id"], day))
-        if day == candidates[0]:
-            return _ingest_result(
-                status="failed",
-                receipt_id=f"receipt:unpublished:{day}",
-                errors=("provider_error",),
-            )
         return _ingest_result(
             status="success",
             receipt_id=f"receipt:published:{day}",
@@ -414,15 +425,15 @@ def test_oi_dump_runner_falls_through_unpublished_newest_day(
     )
 
     assert result["state"] == "success"
-    by_id = {item["dataset_id"]: item for item in result["datasets"]}
-    for dataset_id in by_id:
-        entries = [
-            item for item in result["datasets"] if item["dataset_id"] == dataset_id
-        ]
-        assert [item["state"] for item in entries] == ["failed", "success"]
-        assert entries[0]["window"] == {"date": candidates[0]}
-        assert entries[1]["window"] == {"date": candidates[1]}
-    assert all(call[1] in candidates[:2] for call in calls)
+    assert all(
+        call[1] == candidates[1] for call in calls
+    ), "unpublished days must be skipped without an ingest attempt"
+    by_id: dict[str, list[dict[str, object]]] = {}
+    for item in result["datasets"]:
+        by_id.setdefault(item["dataset_id"], []).append(item)
+    for entries in by_id.values():
+        assert [item["state"] for item in entries] == ["success"]
+        assert entries[0]["window"] == {"date": candidates[1]}
 
 
 def test_oi_dump_runner_marks_single_newest_gap_pending_publication(
@@ -431,20 +442,21 @@ def test_oi_dump_runner_marks_single_newest_gap_pending_publication(
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
     now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
     candidates = lookback_days(now)
-    # Steady state: every lookback day except the newest is already ingested.
+    # Steady state: every lookback day except the newest is already ingested,
+    # and the newest zip is not published yet.
     monkeypatch.setattr(
         oi_dump_canary,
         "_ingested_days",
         lambda db_path, registry, dataset_id: frozenset(candidates[1:]),
     )
+    monkeypatch.setattr(
+        BinanceUsdmMetricsDumpCollector,
+        "probe_published",
+        staticmethod(lambda *, symbol, day: False),
+    )
 
-    def collect(*args, **kwargs):
-        del args
-        return _ingest_result(
-            status="failed",
-            receipt_id="receipt:unpublished",
-            errors=("provider_error",),
-        )
+    def collect(*args, **kwargs):  # pragma: no cover - must never run
+        raise AssertionError("unpublished days must not be collected")
 
     monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
     result = run(
@@ -457,7 +469,8 @@ def test_oi_dump_runner_marks_single_newest_gap_pending_publication(
     assert result["state"] == "success"
     assert {item["state"] for item in result["datasets"]} == {"pending_publication"}
     assert all(
-        item["window"] == {"date": candidates[0]} for item in result["datasets"]
+        item["window"] == {"date": candidates[0]} and item["receipt_ids"] == []
+        for item in result["datasets"]
     )
 
 
