@@ -241,11 +241,16 @@ def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() ->
     assert funding.as_of_field == "funding_time"
     assert funding.range_field == "funding_time"
     assert funding.schema_major == 1
-    binding = funding.provider_bindings[0]
-    assert binding.provider == "binance_usdm_relay"
-    assert binding.api_name == "fundingRate_btcusdt"
-    assert binding.adapter_version == "binance-usdm-via-sg-relay.v1"
-    assert binding.request_template == {
+    direct_binding, relay_binding = funding.provider_bindings
+    assert direct_binding.provider == "binance_usdm"
+    assert direct_binding.api_name == "fundingRate_btcusdt"
+    assert direct_binding.adapter_version == "binance-usdm-public.v1"
+    assert direct_binding.activation_state == "paused"
+    assert relay_binding.provider == "binance_usdm_relay"
+    assert relay_binding.api_name == "fundingRate_btcusdt"
+    assert relay_binding.adapter_version == "binance-usdm-via-sg-relay.v1"
+    assert relay_binding.activation_state == "active"
+    assert relay_binding.request_template == {
         "symbol": "BTCUSDT",
         "start_time": "${window.start_time}",
         "end_time": "${window.end_time}",
