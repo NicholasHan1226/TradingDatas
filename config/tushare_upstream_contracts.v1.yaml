@@ -25352,7 +25352,7 @@ contracts:
   - name: datetime
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -25366,7 +25366,7 @@ contracts:
   - name: title
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -25377,7 +25377,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - datetime
+  - title
   default_projection:
   - datetime
   - content
@@ -25387,7 +25389,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -25411,13 +25413,17 @@ contracts:
     - start_date
     - end_date
     formats:
-      start_date: local_datetime_seconds
       end_date: local_datetime_seconds
+      start_date: local_datetime_seconds
     range_start_key: start_date
     range_end_key: end_date
     max_span_days: 1
   response_completeness: null
-  requested_fields: []
+  requested_fields:
+  - datetime
+  - content
+  - title
+  - channels
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -25426,9 +25432,8 @@ contracts:
   reviewed_type_overrides: []
   probe_state: executable
   probe_block_reasons: []
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_enum_unresolved
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.npr
   aliases:
   - tushare.npr

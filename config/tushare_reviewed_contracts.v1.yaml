@@ -3815,3 +3815,49 @@ contracts:
     requested_fields: [ts_code, trade_date, close, open, high, low, pre_close, change, pct_change, vol, amount, rise, vol_ratio, turnover_rate, swing, up_num, down_num, limit_up_num, limit_down_num, lu_days, 3day, 5day, 10day, 20day, 60day, mtd, ytd, 1year, pe, pb, float_mv, ab_total_mv, float_share, total_share, bm_buy_net, bm_buy_ratio, bm_net, bm_ratio]
     budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
+  # Bounded QuickSync probe on 2026-08-16 returned 114 rows for a one-hour
+  # start/end window with the documented sina source literal.  The response
+  # carries no source column, so no windowed fanout completeness contract is
+  # expressible with the generic strategies; identity is the non-null event
+  # time plus title, and the contract stays paused until fresh activation
+  # evidence exists.
+  - dataset_id: cn.dataset.news
+    aliases: [tushare.news]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: news
+    source_document_url: https://tushare.pro/wctapi/documents/143.md
+    source_document_sha256: 4bba184ad32cf55c85b41d1a0d86796d0ece2c5ba1f6fa2589cf88257b5e5e78
+    schema_version: 1.0.0
+    fields:
+      - {name: datetime, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: content, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: title, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+      - {name: channels, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: [datetime, title]
+    default_projection: [datetime, content, title, channels]
+    as_of_field: null
+    as_of_format: null
+    range_field: null
+    partition_field: null
+    cadence_class: event
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 86400
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: event_or_intraday_window
+    request_template: {end_date: '${window.end_date}', src: sina, start_date: '${window.start_date}'}
+    request_variants: [{}]
+    fanout: {strategy: none}
+    pagination: {strategy: none}
+    request_window_policy: {required_keys: [start_date, end_date], formats: {start_date: local_datetime_seconds, end_date: local_datetime_seconds}, range_start_key: start_date, range_end_key: end_date, max_span_days: 1}
+    response_completeness: null
+    requested_fields: [datetime, content, title, channels]
+    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    reviewed_type_overrides: []

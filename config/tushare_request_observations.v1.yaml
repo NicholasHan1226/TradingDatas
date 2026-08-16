@@ -13,10 +13,10 @@ provenance:
     sha256: e5986d2f5cd1dd28af8753b7d389085315ff9b259041c542d697c6b1825c54f6
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: a4d7d2b6f05b3708cc65166d05505dfdbe23b21d63ef66ef4d315e5ee1fee370
+    sha256: 108df61025d562e62279d9881430f7d398e3bd18e40721f414cfe40fd05ab042
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 5f007f62a6f10404f31a78e25ee2795b4477a5470db800b1ee53189755bac369
+    sha256: 9201c1c889aaec0a9609b502f57a665c6ab67e2ef16700fb4eb14273342e8e98
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -70,8 +70,8 @@ counts:
   interfaces: 190
   probe_executable: 141
   probe_blocked: 49
-  ingest_contract_ready: 125
-  ingest_contract_blocked: 65
+  ingest_contract_ready: 126
+  ingest_contract_blocked: 64
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -2364,9 +2364,8 @@ entries:
   request_shape: event_or_intraday_window
   probe_state: executable
   probe_block_reasons: []
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_enum_unresolved
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters:
     end_date:
@@ -2374,8 +2373,10 @@ entries:
       transform: local_datetime_seconds
       offset_seconds: 0
     src:
-      # Official news document 143.md names sina; this one-source probe does
-      # not establish the complete source enum or an ingest contract.
+      # Official news document 143.md names sina; the 2026-08-16 bounded
+      # one-hour window probe returned 114 rows under this literal.  The
+      # response carries no source column, so the reviewed contract fixes
+      # this single documented source instead of guessing a wider enum.
       source: literal
       value: sina
     start_date:
