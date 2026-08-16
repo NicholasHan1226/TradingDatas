@@ -1,6 +1,21 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 01:51 CST。
+最后更新：2026-08-16 10:54 CST。
+
+> **2026-08-16 Tushare `news`（快讯）合同冻结为 contract_ready
+> 候选（代码层事实，无生产变更）：** `cn.dataset.news` 从
+> `ingest_contract_state: blocked`（`required_enum_unresolved`）转为
+> reviewed contract：主键 `[datetime, title]`（响应无显式 id、无 source
+> 列，datetime/title 声明非空），`event_or_intraday_window` 请求形状
+> （start/end `local_datetime_seconds` 窗口 + 官方文档唯一命名的
+> `src: sina` literal），cadence `event`，无分页参数。因四种通用
+> completeness 策略均要求响应侧 fanout/分区字段而 news 响应不具备，
+> `response_completeness` 保持 `null`（同形状 `npr`/`stk_nineturn`
+> 先例），`as_of/range/partition` 同样为 `null`（`as_of_format` 不支持
+> local datetime，同 `major_news` 先例）。activation 维持 `paused`、不加
+> wave、不做自动调度：2026-08-16 有界探测（1 小时窗口 114 行）只证明合同
+> 可编译，激活需另行新鲜 HTTPS 证据与人工审核。`cn.dataset.major_news`
+> 此前已按 `dimension_fanout` 合同激活，本次不改动。
 
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的

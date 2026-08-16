@@ -176,8 +176,8 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "interfaces": 190,
         "probe_executable": 141,
         "probe_blocked": 49,
-        "ingest_contract_ready": 125,
-        "ingest_contract_blocked": 65,
+        "ingest_contract_ready": 126,
+        "ingest_contract_blocked": 64,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -224,8 +224,8 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert news["probe_block_reasons"] == []
     assert news["unresolved_parameter_keys"] == []
     assert news["parameters"]["src"] == {"source": "literal", "value": "sina"}
-    assert news["ingest_contract_state"] == "blocked"
-    assert news["ingest_contract_block_reasons"] == ["required_enum_unresolved"]
+    assert news["ingest_contract_state"] == "ready"
+    assert news["ingest_contract_block_reasons"] == []
 
 
 def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
@@ -509,8 +509,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
         "planned": 190,
         "executable": 141,
         "blocked": 49,
-        "ingest_contract_ready": 125,
-        "ingest_contract_blocked": 65,
+        "ingest_contract_ready": 126,
+        "ingest_contract_blocked": 64,
     }
 
     daily = _entry(plan, "daily")
@@ -526,8 +526,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert news["probe_state"] == "executable"
     assert news["probe_block_reasons"] == []
-    assert news["ingest_contract_state"] == "blocked"
-    assert news["ingest_contract_block_reasons"] == ["required_enum_unresolved"]
+    assert news["ingest_contract_state"] == "ready"
+    assert news["ingest_contract_block_reasons"] == []
     assert news["scope_labels"] == ["all", "gaps"]
     assert all(
         entry["params"] == {} for entry in entries if entry["probe_state"] == "blocked"
@@ -573,8 +573,8 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "planned": 190,
         "executable": 158,
         "blocked": 32,
-        "ingest_contract_ready": 142,
-        "ingest_contract_blocked": 48,
+        "ingest_contract_ready": 143,
+        "ingest_contract_blocked": 47,
     }
     daily_basic = _entry(plan, "daily_basic")
     assert daily_basic["probe_state"] == "executable"

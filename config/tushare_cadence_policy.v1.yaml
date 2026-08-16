@@ -590,10 +590,10 @@ entries:
   source_document_sha256: 292e36d9515d7f19a545861d3a96bfd7762c438369b39cf509ac625db6c4cb49
   reason_code: no_document_frequency_evidence
 - api_name: news
-  cadence_class: on_demand
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 4bba184ad32cf55c85b41d1a0d86796d0ece2c5ba1f6fa2589cf88257b5e5e78
-  reason_code: ambiguous_insufficient_document_frequency
+  reason_code: reviewed_contract_exact
 - api_name: npr
   cadence_class: on_demand
   freshness_sla_seconds: 86400
