@@ -30,6 +30,7 @@ import json
 from pathlib import Path
 import sqlite3
 import sys
+import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +153,21 @@ def _release(lock) -> None:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     finally:
         lock.close()
+
+
+def _yield_past_next_collection_boundary() -> None:
+    """Sleep until the five-minute collectors had their scheduled window.
+
+    The 5m timers fire at minute :00 (bars, ~25s worst) and :00:40
+    (book-ticker); a backfill batch must not hold-or-regrab the shared lock
+    across those windows, or the timers starve and leave permanent bar gaps.
+    """
+
+    now = time.time()
+    boundary = now - (now % 300) + 300
+    target = boundary + 45.0
+    if target > now:
+        time.sleep(target - now)
 
 
 def _require_canary_mode() -> None:
@@ -351,6 +367,7 @@ def _run_backfill(
                     raise RuntimeError("OI dump backfill hit a non-provider failure")
         finally:
             _release(lock)
+        _yield_past_next_collection_boundary()
         if any(item["state"] == "success" for item in day_results):
             collected += 1
         receipt_count += sum(len(item["receipt_ids"]) for item in day_results)
