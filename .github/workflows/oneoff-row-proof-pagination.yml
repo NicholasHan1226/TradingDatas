@@ -1,0 +1,59 @@
+name: One-shot Row Proof Pagination Repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'codex/fix-row-proof-pagination-20260816'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - run: |
+          git config user.name 'TradingDatas Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+      - name: Restore dataset-local receipt cohort validation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('storage/receipt_projection.py')
+          source=path.read_text(encoding='utf-8')
+          old='''    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)\n    entries, failures = _validated_history_for_dataset_rows(\n        dataset,\n        known_dataset_ids=known_dataset_ids,\n        rows=_scan_ingest_run_rows_by_ids(conn, requested),\n        now=now,\n    )\n    if failures:\n        raise RuntimeProjectionError("receipt authority contains invalid evidence")\n    by_id = {\n        entry.receipt_id: entry\n        for entry in entries\n    }\n'''
+          new='''    histories = validated_receipt_history_for_dataset(\n        conn,\n        registry,\n        dataset,\n        now=now,\n    )\n    if dataset.dataset_id in histories.failures_by_dataset:\n        raise RuntimeProjectionError("receipt authority contains invalid evidence")\n    by_id = {\n        entry.receipt_id: entry\n        for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())\n    }\n'''
+          if source.count(old)!=1: raise SystemExit('row-proof patch anchor drifted')
+          path.write_text(source.replace(old,new,1),encoding='utf-8')
+          PY
+      - name: Verify regression, integrity and performance budget
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            tests/test_provider_native_query.py::test_opt_in_query_returns_each_row_receipt_proof_from_real_receipts \
+            tests/test_receipt_projection.py::test_validated_row_receipt_proofs_bounded_ids_survive_large_registry_and_history \
+            tests/test_receipt_projection.py::test_validated_row_receipt_proofs_uses_only_bounded_run_ids \
+            tests/test_receipt_projection.py::test_validated_row_receipt_proofs_fail_closed_for_missing_or_failed \
+            tests/test_receipt_projection.py::test_validated_row_receipt_proofs_fail_closed_for_malformed_selected_receipt \
+            tests/test_receipt_projection.py::test_validated_row_receipt_proofs_reject_wrong_dataset_and_bounds \
+            -q --tb=short
+          git diff --check
+      - name: Commit if both correctness and budget remain valid
+        run: |
+          set -euo pipefail
+          rm .github/workflows/oneoff-row-proof-pagination.yml
+          git add -A
+          git commit -m 'fix: validate row proofs with complete dataset cohort'
+          git push origin HEAD:${{ github.head_ref }}
