@@ -12,16 +12,18 @@ def _read(relative: str) -> str:
 
 
 def test_core_server_bootstrap_shell_parses() -> None:
-    for relative in (
-        "tools/bootstrap_production_core_server.sh",
-        "tools/production_core_release_wrapper.sh",
-    ):
-        subprocess.run(
-            ["bash", "-n", str(ROOT / relative)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+    subprocess.run(
+        ["bash", "-n", str(ROOT / "tools/bootstrap_production_core_server.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["sh", "-n", str(ROOT / "tools/production_core_release_wrapper.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_root_core_release_helper_compiles_without_side_effects() -> None:
@@ -97,7 +99,7 @@ def test_core_deploy_pins_all_installed_privileged_code_to_tested_sha() -> None:
 def test_privileged_wrapper_isolates_python_startup() -> None:
     wrapper = _read("tools/production_core_release_wrapper.sh")
 
-    assert wrapper.startswith("#!/bin/bash\n")
+    assert wrapper.startswith("#!/bin/sh\n")
     assert "wrapper accepts no arguments" in wrapper
     assert "root:root 755 1" in wrapper
     assert "root:root 444 1" in wrapper
@@ -200,6 +202,7 @@ def test_core_bootstrap_requires_verified_normalized_current_and_scoped_sudo() -
     assert "installed_verifier=\"$trusted_dir/release_manifest.py\"" in bootstrap
     assert "python_runtime=/opt/tradingdatas/venv/bin/python3" in bootstrap
     assert "assert_root_controlled_dir" in bootstrap
+    assert "privileged wrapper must use fixed /bin/sh" in bootstrap
     assert "python runtime target must be root:root" in bootstrap
     assert "python runtime target must not be group/other writable" in bootstrap
     assert "NOPASSWD: %s" in bootstrap
