@@ -166,12 +166,12 @@ jobs:
           chmod 0600 "$request_file"
 
           remote_hashes="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "sha256sum /usr/local/sbin/tradingdatas-core-release /usr/local/lib/tradingdatas-release/release_manifest.py")"
+            "/usr/bin/sha256sum /usr/local/sbin/tradingdatas-core-release /usr/local/lib/tradingdatas-release/release_manifest.py")"
           grep -Fxq "$HELPER_CHECKSUM  /usr/local/sbin/tradingdatas-core-release" <<<"$remote_hashes"
           grep -Fxq "$VERIFIER_CHECKSUM  /usr/local/lib/tradingdatas-release/release_manifest.py" <<<"$remote_hashes"
 
           ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "test -d '$spool' && test -z \"\$(find '$spool' -mindepth 1 -maxdepth 1 -print -quit)\""
+            "/usr/bin/test -d '$spool' && /usr/bin/test -z \"\$(/usr/bin/find '$spool' -mindepth 1 -maxdepth 1 -print -quit)\""
 
           scp "${scp_opts[@]}" \
             "$RELEASE_ARCHIVE" \
@@ -187,13 +187,13 @@ jobs:
           if [[ "$current_main_sha" != "$DEPLOY_SHA" ]]; then
             echo "Main advanced during core upload; discard incoming files without cutover."
             ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "rm -f '${spool}/${archive_name}.incoming' '${spool}/${manifest_name}.incoming' '${spool}/request.incoming'"
+              "/usr/bin/rm -f '${spool}/${archive_name}.incoming' '${spool}/${manifest_name}.incoming' '${spool}/request.incoming'"
             echo 'published=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "set -e; mv '${spool}/${archive_name}.incoming' '${spool}/${archive_name}'; mv '${spool}/${manifest_name}.incoming' '${spool}/${manifest_name}'; mv '${spool}/request.incoming' '${spool}/request'; sudo -n /usr/local/sbin/tradingdatas-core-release"
+            "set -e; /usr/bin/mv '${spool}/${archive_name}.incoming' '${spool}/${archive_name}'; /usr/bin/mv '${spool}/${manifest_name}.incoming' '${spool}/${manifest_name}'; /usr/bin/mv '${spool}/request.incoming' '${spool}/request'; /usr/bin/sudo -n /usr/local/sbin/tradingdatas-core-release"
           echo 'published=true' >> "$GITHUB_OUTPUT"
 
       - name: Verify current pointer
@@ -209,6 +209,6 @@ jobs:
             -p "$DEPLOY_PORT"
           )
           current_target="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "readlink /opt/investment/releases/tradingdatas/current")"
+            "/usr/bin/readlink /opt/investment/releases/tradingdatas/current")"
           [[ "$current_target" == "$DEPLOY_SHA" ]]
           echo "Verified TradingDatas core current=$current_target"
