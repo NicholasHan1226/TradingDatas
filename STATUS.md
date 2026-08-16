@@ -1,6 +1,12 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 21:15 CST。
+最后更新：2026-08-16 21:35 CST。
+
+> **2026-08-16 read-model 读快照锁超时修复：** 定位到 503 根因——
+> `_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS=1.0`，读快照共享 authority 锁只等 1 秒，
+> 回填的连续独占写让读侧瞬超时→service_unavailable。改为 10.0（有界等待，读者
+> 在写突发间隙排队；clean-slate 切换仍短暂独占，10s 安全）。既有 0.1s 超时
+> fail-closed 测试不受影响。
 
 > **2026-08-16 OI 503 根因更正（read-model 快照在并发写下间歇降级）：** 上条
 > "查询层过滤缺陷"为误判。实测直接调用 query service 用 symbol filter 成功、HTTP
