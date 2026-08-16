@@ -1,6 +1,12 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 20:20 CST。
+最后更新：2026-08-16 20:50 CST。
+
+> **2026-08-16 OI 查询层过滤缺陷（后续发现，未修）：** 去重后 OI 简单
+> `limit:N` 带显式 order/fields 可读，但带 `symbol` filter 的 query 返回 503
+> `service_unavailable`（`timestamp between` 也异常）。属 TD query-service 对 OI
+> dataset 的 filter/partition 元数据处理缺陷，非 crypto 特有；正式 API 预筛复算
+> 被此阻断（结论已由 SQLite 诊断抽取版确立）。转 TD 主线 owner。
 
 > **2026-08-16 OI 重复身份一次性去重（生产数据事实）：** OI 正式 API 复算触发
 > `pagination_duplicate_row_identity`。定位：Binance 日度 metrics dump 对同一 5 分钟
