@@ -1,6 +1,13 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 12:20 CST。
+最后更新：2026-08-16 12:45 CST。
+
+> **2026-08-16 CRYPTO_PERP 打开 catalog 发现门禁（代码层事实）：**
+> `catalog_service.is_catalog_discoverable` 的冻结产品范围门禁由
+> `{CN, CRYPTO_SPOT}` 扩为 `{CN, CRYPTO_SPOT, CRYPTO_PERP}`——OI dump 已真实入库
+> 但 perp 数据集此前对 catalog/query 不可见，门禁未随 owner 批准的范围扩展打开。
+> funding rate 数据集因 binding activation=paused 仍不满足 release eligibility，
+> 只可见不可查。本变更随下次 crypto release 生效。
 
 > **2026-08-16 OI dump 回看 fall-through 修正（代码层事实）：** 生产评审首轮
 > 发现回看实现只试最新缺失日，未发布（provider_error）时不回退到更早缺失日——
