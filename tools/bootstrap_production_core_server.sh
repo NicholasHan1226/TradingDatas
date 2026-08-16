@@ -59,6 +59,9 @@ python_runtime_mode="$(stat -c '%a' -- "$python_runtime_real")"
 
 [[ -f "$source_helper" && ! -L "$source_helper" ]] || fail "helper source missing: $source_helper"
 [[ -f "$source_verifier" && ! -L "$source_verifier" ]] || fail "verifier source missing: $source_verifier"
+[[ "$(head -n 1 -- "$source_helper")" == "#!$python_runtime" ]] \
+  || fail "helper shebang must exactly use trusted python runtime: $python_runtime"
+
 [[ -d "$release_root" && ! -L "$release_root" ]] || fail "release root missing or unsafe: $release_root"
 [[ "$(stat -c '%U:%G' -- "$release_root")" == 'root:root' ]] || fail 'release root must be root:root'
 release_root_mode="$(stat -c '%a' -- "$release_root")"
@@ -69,14 +72,25 @@ current_target="$(readlink -- "$release_root/current")"
 [[ "$current_target" =~ ^[0-9a-f]{40}$ ]] || fail 'current must be normalized to a relative 40-char commit before automation'
 [[ -d "$release_root/$current_target" && ! -L "$release_root/$current_target" ]] || fail 'current immutable release target is missing'
 
-install -d -o root -g root -m 0755 "$manifests_root"
+[[ -d "$manifests_root" && ! -L "$manifests_root" ]] || fail "existing manifest directory is required: $manifests_root"
+[[ "$(stat -c '%U:%G' -- "$manifests_root")" == 'root:root' ]] || fail 'manifest directory must be root:root'
+manifests_root_mode="$(stat -c '%a' -- "$manifests_root")"
+(( (8#$manifests_root_mode & 0022) == 0 )) || fail 'manifest directory must not be group/other writable'
 current_manifest="$manifests_root/$current_target.json"
 [[ -f "$current_manifest" && ! -L "$current_manifest" ]] || fail "current rollback manifest is required: $current_manifest"
+
+# Validate the existing rollback authority with the approved checkout before
+# installing any new privileged deployment trust boundary on the server.
+"$python_runtime" "$source_verifier" verify-current \
+  --releases-root "$release_root" \
+  --manifest "$current_manifest" \
+  --expected-uid 0 --expected-gid 0 >/dev/null
 
 install -d -o root -g root -m 0755 "$trusted_dir"
 install -o root -g root -m 0444 "$source_verifier" "$installed_verifier"
 install -o root -g root -m 0755 "$source_helper" "$installed_helper"
 
+# Read back the installed trusted verifier against the same current authority.
 "$python_runtime" "$installed_verifier" verify-current \
   --releases-root "$release_root" \
   --manifest "$current_manifest" \
