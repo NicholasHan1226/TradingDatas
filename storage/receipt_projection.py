@@ -9,6 +9,7 @@ import sqlite3
 import stat
 import struct
 import sys
+import threading
 import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -890,6 +891,59 @@ def _is_valid_unmapped_tushare_attempt(
     )
 
 
+# Bounded per-process memo for receipt-row validation.  Receipts are immutable
+# once committed, and validating a row against its *owning* dataset never
+# consults ``now`` (only the unknown-source tombstone path does), so the result
+# is a pure function of the row content and the dataset identity.  Long-lived
+# API services pass one shared cache so each catalog request only validates
+# receipts written since the previous request instead of the full append-only
+# history; short-lived callers pass ``None`` and keep the direct path.  The
+# cache is keyed by row content, not run_id, so a restored or rewritten row
+# with a recycled run_id is always re-validated.
+_RECEIPT_VALIDATION_CACHE_LIMIT = 250_000
+_RECEIPT_VALIDATION_CACHE_LOCK = threading.Lock()
+
+
+def _validate_receipt_row_memoized(
+    scanned: _ScannedIngestRunRow,
+    dataset: DatasetDefinition,
+    known_dataset_ids: frozenset[str],
+    now: datetime,
+    expected_binding: ProviderBinding | None,
+    cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"] | None,
+) -> "_Receipt | _InvalidReceipt | None":
+    if cache is None or expected_binding is not None:
+        return _validate_receipt_row(
+            scanned, dataset, known_dataset_ids, now, expected_binding
+        )
+    source = scanned.raw[9]
+    if type(source) is not str or source != dataset.dataset_id:
+        if type(source) is str and source in known_dataset_ids:
+            # Rows owned by another known dataset always validate to ``None``
+            # in both the invalid and the normal branch; skip the call.
+            return None
+        # Unknown-source rows take the ``now``-dependent tombstone path and
+        # are never cached.
+        return _validate_receipt_row(
+            scanned, dataset, known_dataset_ids, now, expected_binding
+        )
+    key = (
+        dataset.dataset_id,
+        hashlib.sha256(repr(scanned.raw).encode("utf-8")).hexdigest(),
+    )
+    with _RECEIPT_VALIDATION_CACHE_LOCK:
+        if key in cache:
+            return cache[key]
+    validated = _validate_receipt_row(
+        scanned, dataset, known_dataset_ids, now, expected_binding
+    )
+    with _RECEIPT_VALIDATION_CACHE_LOCK:
+        if len(cache) >= _RECEIPT_VALIDATION_CACHE_LIMIT:
+            cache.clear()
+        cache[key] = validated
+    return validated
+
+
 def _validate_receipt_row(
     scanned: _ScannedIngestRunRow,
     dataset: DatasetDefinition,
@@ -1703,6 +1757,8 @@ def _project_dataset_runtime(
     known_dataset_ids: frozenset[str],
     rows: tuple[_ScannedIngestRunRow, ...],
     expected_binding: ProviderBinding | None = None,
+    validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
+    | None = None,
 ) -> DatasetRuntimeProjection:
     """Derive one dataset's current state without consulting flat files."""
 
@@ -1722,12 +1778,13 @@ def _project_dataset_runtime(
     receipts: list[_Receipt] = []
     invalid: list[_InvalidReceipt] = []
     for scanned_row in rows:
-        validated = _validate_receipt_row(
+        validated = _validate_receipt_row_memoized(
             scanned_row,
             dataset,
             known_dataset_ids,
             now,
             expected_binding,
+            validation_cache,
         )
         if isinstance(validated, _Receipt):
             receipts.append(validated)
@@ -2806,6 +2863,8 @@ def _project_registry_datasets(
     registry: DatasetRegistry,
     *,
     now: datetime,
+    validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
+    | None = None,
 ) -> tuple[
     tuple[DatasetRuntimeProjection, ...],
     frozenset[str],
@@ -2822,6 +2881,7 @@ def _project_registry_datasets(
             now=now,
             known_dataset_ids=known_dataset_ids,
             rows=rows,
+            validation_cache=validation_cache,
         )
         for dataset in registry.datasets
     )
@@ -2833,6 +2893,8 @@ def project_catalog_runtime(
     registry: DatasetRegistry,
     *,
     now: datetime,
+    validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
+    | None = None,
 ) -> dict[str, object]:
     """Project only the dataset runtime rows required by ``GET /v1/catalog``.
 
@@ -2843,7 +2905,7 @@ def project_catalog_runtime(
     """
 
     projections, _known_dataset_ids, _rows = _project_registry_datasets(
-        conn, registry, now=now
+        conn, registry, now=now, validation_cache=validation_cache
     )
     return {
         "datasets": {
