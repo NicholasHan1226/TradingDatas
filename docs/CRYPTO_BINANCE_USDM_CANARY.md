@@ -51,15 +51,22 @@ provider, symbol, field, or registry path input.  Daily publication lags the
 UTC day close by hours (observed: the 2026-08-15 zip was still 404 at
 03:05-03:45 UTC on 2026-08-16 while 2026-08-14 was available), so a run never
 assumes the latest closed day is published.  Within a bounded seven-day
-lookback it collects, per symbol, the newest day that is published and not yet
-in the store; coverage is derived from SQLite facts joined to validated
-success receipts, never from run history, so a late publication is picked up
-by a later tick and cannot cause a permanent day skip.  A symbol whose whole
-lookback window is already ingested is skipped without a provider call and
-reported `unchanged`.  It shares `/run/tradingdatas-crypto/collect.lock` with
+lookback it tries, per symbol, the newest missing day first and **falls
+through to older missing days on `provider_error`** (an unpublished daily
+zip), collecting the newest day that is published and not yet in the store;
+coverage is derived from SQLite facts joined to validated success receipts,
+never from run history, so a late publication is picked up by a later tick
+and cannot cause a permanent day skip.  A symbol whose whole lookback window
+is already ingested is skipped without a provider call and reported
+`unchanged`.  If only the newest day is missing and its zip is still
+unpublished, the dataset is reported `pending_publication` and the run
+succeeds; if older missing days also fail, that is an outage and the run
+fails honestly.  Contract or validation drift is never treated as
+publication lag and stops the run fail closed.  It shares `/run/tradingdatas-crypto/collect.lock` with
 the Spot and USDM collectors, records a terminal receipt per attempt, and
-makes one immediate retry on a provider error; a missing or not-yet-published
-file stays an honest failed run retried by the next timer tick.  The unit pair
+makes one immediate retry on a provider error; with the whole lookback
+exhausted by provider errors the outcome follows the
+`pending_publication`/honest-failure rule above.  The unit pair
 `tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` fires every two
 hours at minute 37 (`*-*-* 00/2:37:00`), staggered off the five-minute
 Spot/USDM timers that share the same lock, so a publication lag of hours is
