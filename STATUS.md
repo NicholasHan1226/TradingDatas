@@ -268,7 +268,9 @@
 > firecrawl-flash-bounded-canary` 编入主 registry；`cn.news.flash` 由
 > `on_demand`/`paused`/`unknown` 转为 `event`/`active`（QuickSync observations 仍
 > 不参与其 activation）。evidence 文件记录有界 canary：07:30Z、38 行、7 receipts、
-> 财联社电报 + 东财快讯两源。生产 SQLite receipt 与 catalog/query readback 的完整
+> 财联社电报 + 东财快讯两源（evidence 文件 sha256
+> f2a7e9b5cfd36ba5abfdc6ab0fbff895e97b9a290ea8ad98774ba5083be0bf7e）。生产 SQLite
+> receipt 与 catalog/query readback 的完整
 > observed 复核需运行时读身份（`/run/secrets/marketgraph/tradingdatas-read.token`）
 > 执行，不在本条目声明。
 
