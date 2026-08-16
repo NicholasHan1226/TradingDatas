@@ -65,8 +65,8 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 - 当前凭证只标识 QuickSync 访问账号，不证明某个 Tushare dataset 可用、调用额度或并发能力。
 - 项目中的 `entitlement` 是 provider-neutral 技术字段，含义固定为“经当前 QuickSync transport 真实调用观测到的账号权限状态”，不是购买、计费或订阅状态。
-- activation 只能来自受控真实探测与人工审核；scheduler 的账号级/API 级调用预算必须服从 QuickSync 当前账号说明和真实返回中更保守的一侧，不能从凭证存在、官方 Tushare 积分、静态目录或单次成功推断。
-- QuickSync 频率或并发未知时固定为 unknown，并保持串行、人工有界 canary 和 production timer disabled；禁止填入猜测值或沿用官方直连预算。
+- activation 只能来自受控真实探测、可信 receipt/API readback 与客观机器合同；一旦预先冻结的证据条件满足，不再附加周期性人工审批。scheduler 的账号级/API 级调用预算必须服从 QuickSync 当前账号说明和真实返回中更保守的一侧，不能从凭证存在、官方 Tushare 积分、静态目录或单次成功推断。
+- QuickSync 频率或并发未知时固定为 unknown，并保持串行、机器有界 canary 和 production timer disabled；只有客观运行证据满足冻结阈值后才自动提升相应 dataset/provider 能力，禁止填入猜测值或沿用官方直连预算。
 - Tushare 官方入口仍用于理解 dataset 与更新周期：[平台介绍与接口文档](https://tushare.pro/document/1)；当前 transport 权限与流控必须由 QuickSync 文档或真实有界观测另行证明。
 
 ## 频率与回填
@@ -96,7 +96,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 -> 一个通用能力实现
 -> TDD
 -> 候选冻结
--> fresh independent review
+-> fresh independent machine/agent review
 -> 精确集成
 -> safe release
 -> production readback
@@ -106,7 +106,7 @@ reviewer 只能按冻结合同阻断 P0/P1，不得在候选冻结后扩大范�
 
 ## 并行协作
 
-registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并行，但写域不得交叉。同一 schema、公共合同或 authority 只能有一个 owner。协作者不得自行 commit、push、deploy、改 production 或删除数据。
+registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并行，但写域不得交叉。同一 schema、公共合同或 authority 只能有一个 owner。可信 Agent 可以在独立 branch 上自行 commit、push、创建 PR，并在冻结合同与机器 gate 范围内执行非破坏性的内部发布；共享 authority、workflow/deploy 基座仍遵守单写者与 fresh-base 规则。删除数据/数据库、凭证或账号权限变更、public ingress、provider 写操作和其它破坏性 production 变更仍属于独立高权限边界。
 
 ## Git、发布与删除
 
