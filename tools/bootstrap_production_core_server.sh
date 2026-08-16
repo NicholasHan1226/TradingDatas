@@ -43,6 +43,8 @@ release_root=/opt/investment/releases/tradingdatas
 manifests_root="$release_root/manifests"
 sudoers_file=/etc/sudoers.d/tradingdatas-core-release
 python_runtime=/opt/tradingdatas/venv/bin/python3
+deploy_auth_dir=/etc/tradingdatas-deploy
+deploy_auth_key="$deploy_auth_dir/core-release.hmac"
 
 [[ -x "$python_runtime" ]] || fail "python runtime missing: $python_runtime"
 for trusted_runtime_dir in /opt /opt/tradingdatas /opt/tradingdatas/venv /opt/tradingdatas/venv/bin; do
@@ -61,6 +63,21 @@ python_runtime_mode="$(stat -c '%a' -- "$python_runtime_real")"
 [[ -f "$source_verifier" && ! -L "$source_verifier" ]] || fail "verifier source missing: $source_verifier"
 [[ "$(head -n 1 -- "$source_helper")" == "#!$python_runtime" ]] \
   || fail "helper shebang must exactly use trusted python runtime: $python_runtime"
+
+[[ -d "$deploy_auth_dir" && ! -L "$deploy_auth_dir" ]] \
+  || fail "deployment authorization directory is required: $deploy_auth_dir"
+[[ "$(stat -c '%U:%G %a' -- "$deploy_auth_dir")" == 'root:root 700' ]] \
+  || fail 'deployment authorization directory must be root:root mode 0700'
+[[ -f "$deploy_auth_key" && ! -L "$deploy_auth_key" ]] \
+  || fail "deployment authorization key is required: $deploy_auth_key"
+[[ "$(stat -c '%U:%G %a %h' -- "$deploy_auth_key")" == 'root:root 400 1' ]] \
+  || fail 'deployment authorization key must be root:root mode 0400 with one hard link'
+[[ "$(stat -c '%s' -- "$deploy_auth_key")" == '65' ]] \
+  || fail 'deployment authorization key must contain 64 lowercase hex characters plus newline'
+IFS= read -r deploy_request_key < "$deploy_auth_key" || fail 'cannot read deployment authorization key'
+[[ "$deploy_request_key" =~ ^[0-9a-f]{64}$ ]] \
+  || fail 'deployment authorization key must contain one 256-bit lowercase hex key'
+unset deploy_request_key
 
 [[ -d "$release_root" && ! -L "$release_root" ]] || fail "release root missing or unsafe: $release_root"
 [[ "$(stat -c '%U:%G' -- "$release_root")" == 'root:root' ]] || fail 'release root must be root:root'
