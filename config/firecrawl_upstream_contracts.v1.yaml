@@ -98,9 +98,9 @@ contracts:
   - title
   - url
   - summary
-  as_of_field: published_at
-  as_of_format: rfc3339
-  range_field: published_at
+  as_of_field: null
+  as_of_format: null
+  range_field: null
   partition_field: null
   cadence_class: event
   timezone: Asia/Shanghai

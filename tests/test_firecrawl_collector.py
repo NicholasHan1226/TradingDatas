@@ -446,8 +446,8 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert dataset.point_in_time == "append_only"
     assert dataset.empty_data_policy == "allowed"
     assert dataset.primary_key == ("source", "published_local", "content_uid")
-    assert dataset.as_of_field == "published_at"
-    assert dataset.as_of_format == "rfc3339"
+    assert dataset.as_of_field is None
+    assert dataset.as_of_format is None
     assert dataset.partition_field is None
     assert binding.fanout is not None
     assert binding.fanout.strategy == "literal_values"
