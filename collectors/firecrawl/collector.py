@@ -46,6 +46,7 @@ from provider_transport import FIRECRAWL_API_URL
 
 FIRECRAWL_API_KEY_FILE_ENV = "FIRECRAWL_API_KEY_FILE"
 _LOCAL_TIMEZONE = ZoneInfo("Asia/Shanghai")
+_GLOBAL_TIMEZONE = ZoneInfo("America/New_York")
 _MAX_KEY_FILE_BYTES = 4_096
 _MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 _MAX_TIMEOUT_MS = 120_000
@@ -162,7 +163,7 @@ def _canonical_url(value: object) -> str:
     return parsed._replace(fragment="").geturl()
 
 
-def _parse_published_at(value: object) -> datetime:
+def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) -> datetime:
     if type(value) is not str or not value.strip():
         raise ValueError("firecrawl item is missing a parseable published time")
     text = value.strip()
@@ -190,8 +191,8 @@ def _parse_published_at(value: object) -> datetime:
     if parsed is None:
         raise ValueError("firecrawl item published time is not a recognized format")
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_LOCAL_TIMEZONE)
-    return parsed.astimezone(_LOCAL_TIMEZONE)
+        parsed = parsed.replace(tzinfo=timezone)
+    return parsed.astimezone(timezone)
 
 
 def _normalize_item(
@@ -200,6 +201,7 @@ def _normalize_item(
     source: str,
     time_key: str,
     summary_key: str | None,
+    timezone: ZoneInfo = _LOCAL_TIMEZONE,
 ) -> dict[str, Any]:
     if type(item) is not dict:
         raise ValueError("firecrawl extraction item must be an object")
@@ -212,7 +214,7 @@ def _normalize_item(
         # identity; only the link itself is dropped.
         canonical_url = None
     title = _non_empty_text(item.get("title"), "title", max_chars=1024)
-    local = _parse_published_at(item.get(time_key))
+    local = _parse_published_at(item.get(time_key), timezone=timezone)
     published_at = local.isoformat(timespec="seconds")
     # Unlinkable flash items (empty URL in the source page) still carry a
     # valid title/time/source identity; the id falls back to that tuple.
@@ -271,7 +273,12 @@ class FirecrawlWebCollector:
                 api_key = _read_private_key_file(
                     os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
                 )
-                rows = self._scrape_page(params, api_key=api_key)
+                rows = self._scrape_page(params, api_key=api_key, timezone=_LOCAL_TIMEZONE)
+            elif api_name == "scrape_page_global":
+                api_key = _read_private_key_file(
+                    os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
+                )
+                rows = self._scrape_page(params, api_key=api_key, timezone=_GLOBAL_TIMEZONE)
             elif api_name == "search_news":
                 api_key = _read_private_key_file(
                     os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
@@ -347,7 +354,7 @@ class FirecrawlWebCollector:
         return json.loads(payload.decode("utf-8"))
 
     def _scrape_page(
-        self, params: dict[str, Any], *, api_key: str
+        self, params: dict[str, Any], *, api_key: str, timezone: ZoneInfo = _LOCAL_TIMEZONE
     ) -> list[dict[str, Any]]:
         if set(params) - _SCRAPE_PARAM_KEYS:
             raise ValueError("firecrawl scrape params do not match the registry")
@@ -387,7 +394,7 @@ class FirecrawlWebCollector:
         if type(items) is not list:
             raise ValueError("firecrawl extraction must produce an items array")
         return [
-            _normalize_item(item, source=url, time_key="published_at", summary_key=None)
+            _normalize_item(item, source=url, time_key="published_at", summary_key=None, timezone=timezone)
             for item in items
         ]
 

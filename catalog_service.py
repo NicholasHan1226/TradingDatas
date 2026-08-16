@@ -137,11 +137,11 @@ def is_catalog_discoverable(dataset: DatasetDefinition) -> bool:
     if not isinstance(dataset, DatasetDefinition):
         raise TypeError("dataset must be DatasetDefinition")
     # The default registry remains CN-only.  The only non-CN discoverable
-    # surfaces are the separately selected Binance public-market-data canaries:
-    # spot (5m bars, rules, book-ticker) and, since the owner-approved 2026-08
-    # scope expansion, USDⓈ-M perpetual public history (open interest dumps;
-    # funding rate stays activation-paused behind its own binding gate).
-    return dataset.market in {"CN", "CRYPTO_SPOT", "CRYPTO_PERP"}
+    # surfaces are the separately selected Binance public-market-data canaries
+    # (spot 5m bars/rules/book-ticker, USDⓈ-M perpetual public history) and,
+    # since the owner-approved 2026-08-16 scope expansion, the global
+    # news-flash content stream (Firecrawl CNBC/Fed/SEC).
+    return dataset.market in {"CN", "CRYPTO_SPOT", "CRYPTO_PERP", "GLOBAL"}
 
 
 def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:
