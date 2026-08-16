@@ -8,6 +8,7 @@ on:
       - completed
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -92,8 +93,22 @@ jobs:
             echo "Main advanced only through disjoint authority domains; preserve parallelism and merge the tested PR head."
           fi
 
-          gh api \
+          MERGE_JSON="$(gh api \
             --method PUT \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
             -f merge_method=squash \
-            -f sha="$HEAD_SHA"
+            -f sha="$HEAD_SHA")"
+          MERGED="$(jq -r '.merged // false' <<<"$MERGE_JSON")"
+          MERGE_SHA="$(jq -r '.sha // empty' <<<"$MERGE_JSON")"
+          [[ "$MERGED" == "true" ]]
+          [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          # Merges performed with GITHUB_TOKEN do not create ordinary follow-up
+          # push workflow runs. Explicitly dispatch the exact new main SHA so
+          # the integrated tree is tested after every autonomous merge.
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
+            -f ref=main \
+            -f "inputs[expected_sha]=$MERGE_SHA"
+          echo "Dispatched exact-main validation for $MERGE_SHA"
