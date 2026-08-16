@@ -9,7 +9,10 @@ import pytest
 import yaml
 
 from dataset_registry import load_dataset_registry
-from tools.compile_cn_minute_capacity_registry import compile_capacity_candidate
+from tools.compile_cn_minute_capacity_registry import (
+    _ROLLBACK_CANARY,
+    compile_capacity_candidate,
+)
 from tools.validate_cn_minute_universe import validate_universe_contract
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +55,16 @@ def _contract() -> dict[str, object]:
 def _base_registry() -> dict[str, object]:
     document = yaml.safe_load(BASE_REGISTRY.read_text(encoding="utf-8"))
     assert isinstance(document, dict)
+    # The live rt_min binding has intentionally moved to the frozen full-universe
+    # fanout (docs/ASHARE_MINUTE_COHORTS.md keeps the 500/100 shards and the
+    # 30-symbol canary as historical rollback evidence only), while the capacity
+    # compiler still gates on the frozen 30-symbol rollback canary shape. Restore
+    # that shape on the fixture copy so the compiler contract stays testable.
+    binding = _rt_min(document)["provider_bindings"][0]
+    binding["request_template"] = {"freq": "5MIN", "ts_code": _ROLLBACK_CANARY}
+    binding["request_variants"] = [{}]
+    binding["fanout"] = {"strategy": "none"}
+    binding["resumable_fanout"] = None
     return document
 
 

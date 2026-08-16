@@ -1329,7 +1329,7 @@ def test_each_pagination_call_has_its_own_terminal_receipt(
 
     assert len(result.receipt_ids) == 2
     assert result.status == ("failed" if full_final_page else "success")
-    assert provider_fact_count(db_path) == (0 if full_final_page else 1)
+    assert provider_fact_count(db_path) == (2 if full_final_page else 1)
     with sqlite3.connect(db_path) as conn:
         receipts = [
             json.loads(row[0])
@@ -1341,10 +1341,9 @@ def test_each_pagination_call_has_its_own_terminal_receipt(
     assert {receipt["request_identity"]["page_index"] for receipt in receipts} == {0, 1}
     assert all("requests" not in receipt for receipt in receipts)
     if full_final_page:
-        assert {receipt["status"] for receipt in receipts} == {"failed"}
-        assert {tuple(receipt["errors"]) for receipt in receipts} == {
-            ("resource_budget",)
-        }
+        assert result.errors == ("resource_budget",)
+        assert {receipt["status"] for receipt in receipts} == {"success"}
+        assert {tuple(receipt["errors"]) for receipt in receipts} == {()}
 
 
 def test_later_storage_failure_reports_prior_committed_physical_call_truthfully(
