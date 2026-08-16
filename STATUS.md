@@ -1,7 +1,23 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 10:54 CST。
+最后更新：2026-08-16 11:50 CST。
 
+> **2026-08-16 OI dump 生产评审修正：有界回看 + 历史回填（代码层事实，无生产
+> 变更）：** 评审发现两点并已在同一 candidate 上修正。(1) 发布滞后永久跳日：
+> 实测 UTC 03:05–03:45 时 2026-08-15 的 metrics zip 仍 404（2026-08-14 可用），
+> 原"最近完整日"窗口在每日一发的 timer 下失败即跳日。runner 改为 7 天有界回看：
+> 缺口从 SQLite facts + 经验证 success receipt 推导（不看运行历史），每个 symbol
+> 采集"已发布且尚未入库"的最新一日，已覆盖窗口的 symbol 标 `unchanged` 不调
+> provider；文件缺失仍是诚实失败，但缺口留在库里，后续 tick 自愈，不再永久跳日。
+> timer 相应调为每 2 小时一发（`*-*-* 00/2:37:00`，与 5 分钟 timer 错峰）。
+> (2) owner 批准 OI 历史回填对齐 bar 历史：新增有界 `--backfill-days 198`（其它值
+> 拒绝；以最近完整 UTC 日 2026-08-15 计 198 个窗口起于 2026-01-30），逐日一批
+> （10 币）持锁、批间放锁并以等待方式重新取锁，5 分钟采集链只在批边界看到已有的
+> 锁忙自愈噪声而不会被长时间饿死；已入库日按同一 receipt 校验推导跳过，中断重跑
+> 自动续跑；回填为一次性手工操作，不进任何 timer。真实端到端证据：404 诚实失败
+> （2 张 failed receipt、0 行）、真实下载 2026-08-14/08-13 两日各 2880 行成功
+> 入库、2 日真实回填 20 张 receipt 且重跑 collected=0。timer 仍 disabled，
+> 生产启用门禁不变。
 > **2026-08-16 Tushare `news`（快讯）合同冻结为 contract_ready
 > 候选（代码层事实，无生产变更）：** `cn.dataset.news` 从
 > `ingest_contract_state: blocked`（`required_enum_unresolved`）转为
@@ -16,7 +32,6 @@
 > wave、不做自动调度：2026-08-16 有界探测（1 小时窗口 114 行）只证明合同
 > 可编译，激活需另行新鲜 HTTPS 证据与人工审核。`cn.dataset.major_news`
 > 此前已按 `dimension_fanout` 合同激活，本次不改动。
-
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的
 > `fapi.binance.com` SNI 级阻断，owner 批准 dump 降级方案：open interest 改用
