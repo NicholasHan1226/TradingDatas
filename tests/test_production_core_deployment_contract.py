@@ -130,14 +130,20 @@ def test_core_bootstrap_requires_verified_normalized_current_and_scoped_sudo() -
     bootstrap = _read("tools/bootstrap_production_core_server.sh")
 
     assert "current must be normalized to a relative 40-char commit" in bootstrap
+    assert "existing manifest directory is required" in bootstrap
     assert "current rollback manifest is required" in bootstrap
-    assert '"$installed_verifier" verify-current' in bootstrap
+    assert '"$python_runtime" "$source_verifier" verify-current' in bootstrap
+    assert '"$python_runtime" "$installed_verifier" verify-current' in bootstrap
+    assert bootstrap.index('"$python_runtime" "$source_verifier" verify-current') < bootstrap.index(
+        'install -d -o root -g root -m 0755 "$trusted_dir"'
+    )
     assert "--expected-uid 0 --expected-gid 0" in bootstrap
     assert "deployment spool is not empty" in bootstrap
     assert "installed_helper=/usr/local/sbin/tradingdatas-core-release" in bootstrap
     assert "installed_verifier=\"$trusted_dir/release_manifest.py\"" in bootstrap
     assert "python_runtime=/opt/tradingdatas/venv/bin/python3" in bootstrap
     assert "assert_root_controlled_dir" in bootstrap
+    assert "helper shebang must exactly use trusted python runtime" in bootstrap
     assert "python runtime target must be root:root" in bootstrap
     assert "python runtime target must not be group/other writable" in bootstrap
     assert "NOPASSWD: %s" in bootstrap
