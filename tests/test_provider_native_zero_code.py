@@ -39,6 +39,11 @@ OBSERVATIONS_PATH = (
     / "config"
     / "quicksync_interface_observations.v1.yaml"
 )
+SUPPLEMENTAL_CONTRACT_PATHS = (
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "firecrawl_upstream_contracts.v1.yaml",
+)
 
 
 def _registry_document() -> dict[str, object]:
@@ -193,6 +198,15 @@ def test_observations_compile_without_dataset_specific_runtime():
 
     assert len(bindings) == 191
     observed_active_apis = set(observations["active_evidence"])
+    supplemental_active_apis = {
+        contract["api_name"]
+        for path in SUPPLEMENTAL_CONTRACT_PATHS
+        for contract in yaml.safe_load(path.read_text(encoding="utf-8")).get(
+            "contracts", ()
+        )
+        if isinstance(contract, dict)
+        and contract.get("activation", {}).get("activation_state") == "active"
+    }
     registry_active_apis = {
         api
         for api, binding in bindings.items()
@@ -207,7 +221,7 @@ def test_observations_compile_without_dataset_specific_runtime():
         "active",
         "paused",
     }
-    assert registry_active_apis == observed_active_apis
+    assert registry_active_apis == observed_active_apis | supplemental_active_apis
     assert registry_active_apis.isdisjoint(paused_apis)
     assert registry_active_apis | paused_apis == set(bindings)
     executable_paused_apis = {

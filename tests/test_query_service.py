@@ -846,7 +846,7 @@ def test_all_non_active_target_datasets_fail_before_storage_or_provider(
     assert {
         state: sum(binding.entitlement_state == state for binding in bindings)
         for state in ("active", "locked", "excluded", "unknown")
-    } == {"active": 170, "locked": 14, "excluded": 5, "unknown": 2}
+    } == {"active": 171, "locked": 14, "excluded": 5, "unknown": 1}
     activation_counts = {
         state: sum(binding.activation_state == state for binding in bindings)
         for state in ("active", "paused")
