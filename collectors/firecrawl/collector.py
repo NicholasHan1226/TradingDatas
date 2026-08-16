@@ -273,12 +273,19 @@ class FirecrawlWebCollector:
                 api_key = _read_private_key_file(
                     os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
                 )
-                rows = self._scrape_page(params, api_key=api_key, timezone=_LOCAL_TIMEZONE)
+                rows = self._scrape_page(
+                    params, api_key=api_key, timezone=_LOCAL_TIMEZONE, api_name="scrape_page"
+                )
             elif api_name == "scrape_page_global":
                 api_key = _read_private_key_file(
                     os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
                 )
-                rows = self._scrape_page(params, api_key=api_key, timezone=_GLOBAL_TIMEZONE)
+                rows = self._scrape_page(
+                    params,
+                    api_key=api_key,
+                    timezone=_GLOBAL_TIMEZONE,
+                    api_name="scrape_page_global",
+                )
             elif api_name == "search_news":
                 api_key = _read_private_key_file(
                     os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
@@ -354,11 +361,16 @@ class FirecrawlWebCollector:
         return json.loads(payload.decode("utf-8"))
 
     def _scrape_page(
-        self, params: dict[str, Any], *, api_key: str, timezone: ZoneInfo = _LOCAL_TIMEZONE
+        self,
+        params: dict[str, Any],
+        *,
+        api_key: str,
+        timezone: ZoneInfo = _LOCAL_TIMEZONE,
+        api_name: str = "scrape_page",
     ) -> list[dict[str, Any]]:
         if set(params) - _SCRAPE_PARAM_KEYS:
             raise ValueError("firecrawl scrape params do not match the registry")
-        self._consume_budget("scrape_page")
+        self._consume_budget(api_name)
         url = _canonical_url(params.get("url"))
         prompt = _non_empty_text(params.get("prompt"), "prompt", max_chars=4096)
         for key in ("window_start", "window_end"):

@@ -451,6 +451,20 @@ def test_scrape_page_global_normalizes_to_new_york(
     assert row["published_local"].startswith("2026-08-14")
 
 
+def test_scrape_page_global_consumes_its_own_budget_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    seen: list[str] = []
+    collector = FirecrawlWebCollector(
+        request_gate=lambda api_name: seen.append(api_name)
+    )
+    monkeypatch.setattr(collector, "_post", lambda *a, **k: _SCRAPE_PAYLOAD)
+    outcome = collector.collect_outcome("scrape_page_global", dict(_SCRAPE_PARAMS))
+    assert outcome.state == "success"
+    assert seen == ["scrape_page_global"]
+
+
 def test_english_month_name_published_at_is_normalized() -> None:
     row = _normalize_item(
         {"title": "SEC Charges Boiler Room Operator", "url": "https://www.sec.gov/x", "published_at": "Aug. 14, 2026"},
