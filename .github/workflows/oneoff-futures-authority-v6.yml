@@ -1,0 +1,110 @@
+name: One-shot Futures Authority Repair V6
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'codex/restore-futures-reviewed-authority-20260816'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - run: |
+          git config user.name 'TradingDatas Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+
+      - name: Reuse reviewed-authority repair and fix optional request keys
+        run: |
+          set -euo pipefail
+          extract_step() {
+            local step_name="$1"
+            local target="$2"
+            STEP_NAME="$step_name" TARGET="$target" python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+          doc = yaml.safe_load(Path('.github/workflows/oneoff-futures-authority-v5.yml').read_text(encoding='utf-8'))
+          steps = doc['jobs']['repair']['steps']
+          wanted = os.environ['STEP_NAME']
+          matches = [step['run'] for step in steps if step.get('name') == wanted]
+          if len(matches) != 1:
+              raise SystemExit(f'expected one V5 step {wanted!r}, got {len(matches)}')
+          Path(os.environ['TARGET']).write_text(matches[0] + '\n', encoding='utf-8')
+          PY
+          }
+          extract_step 'Repair compiler and durable authority ownership' /tmp/v5-repair.sh
+          bash /tmp/v5-repair.sh
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/compile_tushare_runtime_contracts.py')
+          source = path.read_text(encoding='utf-8')
+          old_compare = '        if reviewed_contract[key] != projected[key]:\n'
+          new_compare = '        if reviewed_contract.get(key) != projected[key]:\n'
+          if new_compare not in source:
+              if source.count(old_compare) != 1:
+                  raise SystemExit('reviewed request-key comparison anchor drifted')
+              source = source.replace(old_compare, new_compare, 1)
+          old_return = '    return {key: deepcopy(reviewed_contract[key]) for key in projected}\n'
+          new_return = '    return {key: deepcopy(reviewed_contract.get(key)) for key in projected}\n'
+          if new_return not in source:
+              if source.count(old_return) != 1:
+                  raise SystemExit('reviewed request projection return anchor drifted')
+              source = source.replace(old_return, new_return, 1)
+          path.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Canonical rebuild
+        run: |
+          set -euo pipefail
+          STEP_NAME='Canonical rebuild' TARGET=/tmp/v5-rebuild.sh python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+          doc = yaml.safe_load(Path('.github/workflows/oneoff-futures-authority-v5.yml').read_text(encoding='utf-8'))
+          matches = [s['run'] for s in doc['jobs']['repair']['steps'] if s.get('name') == os.environ['STEP_NAME']]
+          if len(matches) != 1:
+              raise SystemExit('V5 canonical rebuild step is not unique')
+          Path(os.environ['TARGET']).write_text(matches[0] + '\n', encoding='utf-8')
+          PY
+          bash /tmp/v5-rebuild.sh
+
+      - name: Focused verification and deterministic rebuild
+        run: |
+          set -euo pipefail
+          STEP_NAME='Focused verification and deterministic rebuild' TARGET=/tmp/v5-verify.sh python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+          doc = yaml.safe_load(Path('.github/workflows/oneoff-futures-authority-v5.yml').read_text(encoding='utf-8'))
+          matches = [s['run'] for s in doc['jobs']['repair']['steps'] if s.get('name') == os.environ['STEP_NAME']]
+          if len(matches) != 1:
+              raise SystemExit('V5 focused verification step is not unique')
+          Path(os.environ['TARGET']).write_text(matches[0] + '\n', encoding='utf-8')
+          PY
+          bash /tmp/v5-verify.sh
+
+      - name: Commit durable result and remove repair workflows
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/oneoff-promote-futures-reviewed-authority.yml .github/workflows/oneoff-futures-authority-v2.yml .github/workflows/oneoff-futures-authority-v3.yml .github/workflows/oneoff-futures-authority-v4.yml .github/workflows/oneoff-futures-authority-v5.yml .github/workflows/oneoff-futures-authority-v6.yml
+          git add -A
+          git diff --cached --stat
+          git diff --cached --quiet && exit 1 || true
+          git commit -m 'fix: persist futures reviewed authority across rebuilds'
+          git push origin HEAD:${{ github.head_ref }}
