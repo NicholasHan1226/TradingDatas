@@ -24,14 +24,14 @@ jobs:
       matrix:
         include:
           - shard: 0
-            files: >
+            files: >-
               tests/test_provider_native_schedule.py
               tests/test_receipt_projection.py
               tests/test_compile_provider_native_registry.py
               tests/test_provider_native_registry.py
               tests/test_quicksync_interface_observations.py
           - shard: 1
-            files: >
+            files: >-
               tests/test_collect_provider_dataset.py
               tests/test_provider_native_query.py
               tests/test_v1_api.py
@@ -39,7 +39,7 @@ jobs:
               tests/test_tushare_request_observations.py
               tests/test_schema_contract_edge.py
           - shard: 2
-            files: >
+            files: >-
               tests/test_tushare_common.py
               tests/test_probe_quicksync_interfaces.py
               tests/test_catalog_service.py
@@ -48,7 +48,7 @@ jobs:
               tests/test_query_service.py
               tests/test_binance_usdm_canary.py
           - shard: 3
-            files: >
+            files: >-
               tests/test_query_cursor.py
               tests/test_auth_security.py
               tests/test_compile_tushare_capability_catalog.py
