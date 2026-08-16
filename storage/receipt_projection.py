@@ -1569,6 +1569,51 @@ def _latest_run_terminal(
     return _run_terminal(dataset, latest)
 
 
+def _effective_latest_terminal(
+    dataset: DatasetDefinition,
+    authority_receipts: list[_Receipt],
+    last_success: _Receipt | None,
+    now_utc: datetime,
+) -> _CohortTerminal:
+    """Return the current terminal, falling back to a fresh success history.
+
+    An append-only dataset accumulates immutable rows; a transient
+    ``provider_error`` on the *latest* incremental attempt does not invalidate
+    a still-fresh successful watermark.  Without this fallback a daily-dump
+    dataset would stay ``failed`` for hours after one transient failure until
+    a new day publishes — hiding healthy history.  Structural failures
+    (validation/config drift) and any snapshot dataset still fail closed.
+    """
+
+    latest = _latest_run_terminal(dataset, authority_receipts)
+    if (
+        latest.status == "failed"
+        and dataset.point_in_time == "append_only"
+        and latest.errors == ("provider_error",)
+        and last_success is not None
+        and last_success.data_through is not None
+    ):
+        try:
+            success_utc = _freshness_reference_in_utc(
+                last_success.data_through, dataset
+            )
+        except (ValueError, AttributeError):
+            return latest
+        if now_utc - success_utc <= timedelta(seconds=dataset.freshness_sla_seconds):
+            execution = tuple(
+                receipt
+                for receipt in authority_receipts
+                if receipt.execution_id == last_success.execution_id
+            )
+            return _CohortTerminal(
+                status="success",
+                representative=last_success,
+                errors=(),
+                receipts=execution,
+            )
+    return latest
+
+
 def _complete_success_receipts(
     receipts: list[_Receipt],
     dataset: DatasetDefinition,
@@ -1960,7 +2005,9 @@ def _project_dataset_runtime(
             ),
         )
 
-    latest = _latest_run_terminal(dataset, authority_receipts)
+    latest = _effective_latest_terminal(
+        dataset, authority_receipts, last_success, now_utc
+    )
     representative = latest.representative
     data_through = public_success_watermark
     if latest.status == "failed":
@@ -2853,7 +2900,13 @@ def project_dataset_runtime_evidence(
         and projection.state not in {"paused", "unobserved"}
         and authority_receipts
     ):
-        latest = _latest_run_terminal(dataset, authority_receipts)
+        if evidence_as_of is None:
+            latest = _effective_latest_terminal(
+                dataset, authority_receipts, last_success, projection_now
+            )
+        else:
+            # Historical as-of reads keep the strict latest-terminal semantics.
+            latest = _latest_run_terminal(dataset, authority_receipts)
         current_status = latest.status
         current_execution = latest.receipts
         current_providers = tuple(sorted({receipt.provider for receipt in current_execution}))

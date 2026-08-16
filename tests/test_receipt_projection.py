@@ -3262,3 +3262,39 @@ def test_dataset_runtime_evidence_never_trusts_tampered_current_provider(
     assert evidence.current_providers == ()
     assert evidence.last_success_receipt_id == success_id
     assert evidence.last_success_providers == ("tushare",)
+
+
+def test_transient_latest_failure_does_not_hide_fresh_append_only_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = replace(_dataset(), point_in_time="append_only", timezone="UTC")
+    success_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success-then-transient",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:00:00+00:00",
+        dataset=dataset,
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-transient-later",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+        dataset=dataset,
+    )
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.data_through == "2026-07-15T00:00:00+00:00"
+    assert projection.receipt_id == success_id
