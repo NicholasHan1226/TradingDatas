@@ -9,6 +9,15 @@ fail() {
   exit 1
 }
 
+assert_root_controlled_dir() {
+  local path="$1"
+  [[ -d "$path" && ! -L "$path" ]] || fail "trusted runtime directory missing or symlinked: $path"
+  [[ "$(stat -c '%U:%G' -- "$path")" == 'root:root' ]] || fail "trusted runtime directory must be root:root: $path"
+  local mode
+  mode="$(stat -c '%a' -- "$path")"
+  (( (8#$mode & 0022) == 0 )) || fail "trusted runtime directory must not be group/other writable: $path"
+}
+
 [[ "$EUID" -eq 0 ]] || fail 'must run as root'
 [[ $# -eq 1 ]] || fail 'usage: bootstrap_production_core_server.sh <deploy-user>'
 
@@ -36,6 +45,18 @@ sudoers_file=/etc/sudoers.d/tradingdatas-core-release
 python_runtime=/opt/tradingdatas/venv/bin/python3
 
 [[ -x "$python_runtime" ]] || fail "python runtime missing: $python_runtime"
+for trusted_runtime_dir in /opt /opt/tradingdatas /opt/tradingdatas/venv /opt/tradingdatas/venv/bin; do
+  assert_root_controlled_dir "$trusted_runtime_dir"
+done
+python_runtime_real="$(readlink -f -- "$python_runtime")"
+[[ -n "$python_runtime_real" && -f "$python_runtime_real" && ! -L "$python_runtime_real" ]] \
+  || fail "python runtime target missing or unsafe: $python_runtime_real"
+[[ "$(stat -c '%U:%G' -- "$python_runtime_real")" == 'root:root' ]] \
+  || fail "python runtime target must be root:root: $python_runtime_real"
+python_runtime_mode="$(stat -c '%a' -- "$python_runtime_real")"
+(( (8#$python_runtime_mode & 0022) == 0 )) \
+  || fail "python runtime target must not be group/other writable: $python_runtime_real"
+
 [[ -f "$source_helper" && ! -L "$source_helper" ]] || fail "helper source missing: $source_helper"
 [[ -f "$source_verifier" && ! -L "$source_verifier" ]] || fail "verifier source missing: $source_verifier"
 [[ -d "$release_root" && ! -L "$release_root" ]] || fail "release root missing or unsafe: $release_root"
@@ -89,6 +110,7 @@ trap - EXIT
 printf 'TradingDatas core deployment bootstrap complete.\n'
 printf 'deploy_user=%s\n' "$deploy_user"
 printf 'current=%s\n' "$current_target"
+printf 'python_runtime=%s\n' "$python_runtime_real"
 printf 'helper_sha256=%s\n' "$(sha256sum "$installed_helper" | awk '{print $1}')"
 printf 'verifier_sha256=%s\n' "$(sha256sum "$installed_verifier" | awk '{print $1}')"
 printf 'Keep repository variable TRADINGDATAS_CORE_DEPLOY_ENABLED=false until GitHub secrets are configured.\n'
