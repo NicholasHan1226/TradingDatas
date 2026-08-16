@@ -1,6 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 12:45 CST。
+最后更新：2026-08-16 13:10 CST。
+
+> **2026-08-16 OI dump 采集前置发布探测（代码层事实）：** 生产 readback 发现
+> fall-through 的副作用：最新日 zip 未发布时的失败 receipt 会把数据集 runtime
+> state 翻成 `failed` 数小时（查询 fail-closed 拒读）。新增
+> `BinanceUsdmMetricsDumpCollector.probe_published`（HEAD 探测、拒 redirect、
+> 任何传输异常按未发布处理）：ingest 尝试前先探测，未发布日只记
+> `pending_publication`（无 receipt），最新日以外多日未发布/失败仍判定中断、
+> 诚实失败。测试 22+65 全绿。本变更随下次 crypto release 生效。
 
 > **2026-08-16 CRYPTO_PERP 打开 catalog 发现门禁（代码层事实）：**
 > `catalog_service.is_catalog_discoverable` 的冻结产品范围门禁由
