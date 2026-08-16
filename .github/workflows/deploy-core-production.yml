@@ -1,0 +1,214 @@
+name: Deploy TradingDatas Core Production
+
+on:
+  workflow_run:
+    workflows:
+      - TradingDatas CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: tradingdatas-core-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      vars.TRADINGDATAS_CORE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-core
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOY_RUN_ID: ${{ github.event.workflow_run.id }}
+
+    steps:
+      - name: Check out tested commit for trust-boundary hashes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Validate deployment configuration
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ -n "$DEPLOY_HOST" ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( DEPLOY_PORT >= 1 && DEPLOY_PORT <= 65535 ))
+          [[ -n "$DEPLOY_SSH_KEY" ]]
+          [[ -n "$DEPLOY_KNOWN_HOSTS" ]]
+
+      - name: Download tested core release artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: tradingdatas-core-release-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/core-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify tested artifact and trust-boundary hashes
+        id: release
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/core-release"
+          archive="$artifact_dir/tradingdatas-core-${DEPLOY_SHA}.tar.gz"
+          archive_checksum_file="$artifact_dir/tradingdatas-core-${DEPLOY_SHA}.tar.gz.sha256"
+          manifest="$artifact_dir/${DEPLOY_SHA}.release.json"
+          manifest_checksum_file="$artifact_dir/${DEPLOY_SHA}.release.json.sha256"
+
+          test -f "$archive"
+          test -f "$archive_checksum_file"
+          test -f "$manifest"
+          test -f "$manifest_checksum_file"
+
+          (
+            cd "$artifact_dir"
+            sha256sum -c "$(basename "$archive_checksum_file")"
+            sha256sum -c "$(basename "$manifest_checksum_file")"
+          )
+
+          python - "$manifest" "$DEPLOY_SHA" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if manifest.get("commit") != sys.argv[2]:
+              raise SystemExit("artifact manifest commit does not match tested SHA")
+          PY
+
+          archive_checksum="$(awk 'NR == 1 {print $1}' "$archive_checksum_file")"
+          manifest_checksum="$(awk 'NR == 1 {print $1}' "$manifest_checksum_file")"
+          helper_checksum="$(sha256sum tools/production_core_release.py | awk '{print $1}')"
+          verifier_checksum="$(sha256sum tools/release_manifest.py | awk '{print $1}')"
+          [[ "$archive_checksum" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$manifest_checksum" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$helper_checksum" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$verifier_checksum" =~ ^[0-9a-f]{64}$ ]]
+
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          printf 'manifest=%s\n' "$manifest" >> "$GITHUB_OUTPUT"
+          printf 'archive_checksum=%s\n' "$archive_checksum" >> "$GITHUB_OUTPUT"
+          printf 'manifest_checksum=%s\n' "$manifest_checksum" >> "$GITHUB_OUTPUT"
+          printf 'helper_checksum=%s\n' "$helper_checksum" >> "$GITHUB_OUTPUT"
+          printf 'verifier_checksum=%s\n' "$verifier_checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 0600 "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+      - name: Publish tested core release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ARCHIVE: ${{ steps.release.outputs.archive }}
+          RELEASE_MANIFEST: ${{ steps.release.outputs.manifest }}
+          ARCHIVE_CHECKSUM: ${{ steps.release.outputs.archive_checksum }}
+          MANIFEST_CHECKSUM: ${{ steps.release.outputs.manifest_checksum }}
+          HELPER_CHECKSUM: ${{ steps.release.outputs.helper_checksum }}
+          VERIFIER_CHECKSUM: ${{ steps.release.outputs.verifier_checksum }}
+        run: |
+          set -euo pipefail
+
+          current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_main_sha" != "$DEPLOY_SHA" ]]; then
+            echo "Skip stale core deployment: tested=$DEPLOY_SHA current_main=$current_main_sha"
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ssh_opts=(
+            -i "$HOME/.ssh/deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -p "$DEPLOY_PORT"
+          )
+          scp_opts=(
+            -i "$HOME/.ssh/deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -P "$DEPLOY_PORT"
+          )
+
+          spool=/var/tmp/tradingdatas-core-deploy
+          archive_name="tradingdatas-core-${DEPLOY_SHA}.tar.gz"
+          manifest_name="${DEPLOY_SHA}.release.json"
+          request_file="$RUNNER_TEMP/tradingdatas-core-deploy-request"
+          printf '%s %s %s\n' "$DEPLOY_SHA" "$ARCHIVE_CHECKSUM" "$MANIFEST_CHECKSUM" > "$request_file"
+          chmod 0600 "$request_file"
+
+          remote_hashes="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sha256sum /usr/local/sbin/tradingdatas-core-release /usr/local/lib/tradingdatas-release/release_manifest.py")"
+          grep -Fxq "$HELPER_CHECKSUM  /usr/local/sbin/tradingdatas-core-release" <<<"$remote_hashes"
+          grep -Fxq "$VERIFIER_CHECKSUM  /usr/local/lib/tradingdatas-release/release_manifest.py" <<<"$remote_hashes"
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "test -d '$spool' && test -z \"\$(find '$spool' -mindepth 1 -maxdepth 1 -print -quit)\""
+
+          scp "${scp_opts[@]}" \
+            "$RELEASE_ARCHIVE" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${spool}/${archive_name}.incoming"
+          scp "${scp_opts[@]}" \
+            "$RELEASE_MANIFEST" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${spool}/${manifest_name}.incoming"
+          scp "${scp_opts[@]}" \
+            "$request_file" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${spool}/request.incoming"
+
+          current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_main_sha" != "$DEPLOY_SHA" ]]; then
+            echo "Main advanced during core upload; discard incoming files without cutover."
+            ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "rm -f '${spool}/${archive_name}.incoming' '${spool}/${manifest_name}.incoming' '${spool}/request.incoming'"
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "set -e; mv '${spool}/${archive_name}.incoming' '${spool}/${archive_name}'; mv '${spool}/${manifest_name}.incoming' '${spool}/${manifest_name}'; mv '${spool}/request.incoming' '${spool}/request'; sudo -n /usr/local/sbin/tradingdatas-core-release"
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+
+      - name: Verify current pointer
+        if: steps.publish.outputs.published == 'true'
+        run: |
+          set -euo pipefail
+          ssh_opts=(
+            -i "$HOME/.ssh/deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -p "$DEPLOY_PORT"
+          )
+          current_target="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "readlink /opt/investment/releases/tradingdatas/current")"
+          [[ "$current_target" == "$DEPLOY_SHA" ]]
+          echo "Verified TradingDatas core current=$current_target"
