@@ -30,7 +30,7 @@ import json
 import os
 import re
 import stat
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -233,6 +233,19 @@ class FirecrawlWebCollector:
     name = "firecrawl"
     provider = "firecrawl"
 
+    def __init__(
+        self,
+        *,
+        request_gate: Callable[[str], None] | None = None,
+    ) -> None:
+        if request_gate is not None and not callable(request_gate):
+            raise TypeError("request_gate must be callable")
+        self._request_gate = request_gate
+
+    def _consume_budget(self, api_name: str) -> None:
+        if self._request_gate is not None:
+            self._request_gate(api_name)
+
     def collect_outcome(
         self,
         api_name: str,
@@ -328,6 +341,7 @@ class FirecrawlWebCollector:
     ) -> list[dict[str, Any]]:
         if set(params) - _SCRAPE_PARAM_KEYS:
             raise ValueError("firecrawl scrape params do not match the registry")
+        self._consume_budget("scrape_page")
         url = _canonical_url(params.get("url"))
         prompt = _non_empty_text(params.get("prompt"), "prompt", max_chars=4096)
         for key in ("window_start", "window_end"):
@@ -372,6 +386,7 @@ class FirecrawlWebCollector:
     ) -> list[dict[str, Any]]:
         if set(params) - _SEARCH_PARAM_KEYS:
             raise ValueError("firecrawl search params do not match the registry")
+        self._consume_budget("search_news")
         query = _non_empty_text(params.get("query"), "query", max_chars=_MAX_QUERY_CHARS)
         limit = _bounded_int(
             params.get("limit", 10), "limit", minimum=1, maximum=_MAX_SEARCH_LIMIT

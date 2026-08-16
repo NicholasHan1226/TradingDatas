@@ -313,9 +313,18 @@ def _in_process_executor(
 ) -> DatasetResult:
     """Execute one plan while sharing the runner's actual-call budget ledger."""
 
-    collector = TushareCollector(
-        request_gate=lambda api_name: rate_ledger.consume(plan, api_name)
-    )
+    if plan.provider == "tushare":
+        collector: object = TushareCollector(
+            request_gate=lambda api_name: rate_ledger.consume(plan, api_name)
+        )
+    elif plan.provider == "firecrawl":
+        from collectors.firecrawl.collector import FirecrawlWebCollector  # noqa: E402
+
+        collector = FirecrawlWebCollector(
+            request_gate=lambda api_name: rate_ledger.consume(plan, api_name)
+        )
+    else:
+        raise ValueError(f"unsupported scheduled provider: {plan.provider}")
     result = collect_provider_native_dataset(
         db_path,
         registry=registry,
