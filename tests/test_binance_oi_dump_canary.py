@@ -695,3 +695,48 @@ def test_oi_dump_backfill_skips_already_ingested_days_without_locking(
     assert result["state"] == "success"
     assert result["collected_day_count"] == 0
     assert result["receipt_count"] == 0
+
+
+def test_oi_dump_backfill_skips_unpublished_days_without_receipts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    days = backfill_windows(now, days=198)
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
+    # Only the two newest days are published for every symbol (pre-listing
+    # days and publication gaps simply have no zip).
+    published = set(days[-2:])
+    monkeypatch.setattr(
+        BinanceUsdmMetricsDumpCollector,
+        "probe_published",
+        staticmethod(lambda *, symbol, day: day in published),
+    )
+    calls: list[str] = []
+
+    def collect(*args, **kwargs):
+        del args
+        day = kwargs["request_window"]["date"]
+        assert day in published
+        calls.append(day)
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{kwargs['dataset_id']}:{day}",
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        backfill_days=198,
+    )
+
+    assert result["state"] == "success"
+    assert result["collected_day_count"] == 2
+    assert result["unpublished_skip_count"] == (len(days) - 2) * 10
+    assert result["failed_attempt_count"] == 0
+    assert len(calls) == 20

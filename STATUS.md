@@ -1,6 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 13:35 CST。
+最后更新：2026-08-16 14:05 CST。
+
+> **2026-08-16 OI 回填健壮性修正（代码层事实）：** 首次 198 天回填在第 1 天
+> （2026-01-30）即中止——早期日期部分 symbol 的 zip 不存在（未上线/发布缺口），
+> 单 symbol 失败整批 raise。回填路径改为与回看同一探测语义：probe 未发布则跳过
+> 该 (日, symbol) 且不写 receipt；探测成功但采集失败记 provider_error 并继续当日
+> 其它 symbol；非 provider 类失败仍 fail-closed 中止。汇总输出新增
+> `unpublished_skip_count`/`failed_attempt_count`。`_collect_day` 死代码移除。
+> 新增回填跳过回归测试，23 项全绿。
 
 > **2026-08-16 OI 数据集 SLA/cadence 修正（代码层事实）：** 生产 readback 发现
 > `crypto.perp.binance.*.open_interest` 模板的 `freshness_sla_seconds: 600` 使日度
