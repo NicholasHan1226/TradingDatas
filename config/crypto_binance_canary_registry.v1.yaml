@@ -6572,3 +6572,1313 @@ datasets:
   empty_data_policy: forbidden
   required_scope: market_data
   quota_class: beta_standard
+- dataset_id: crypto.perp.binance.btcusdt.premium_index
+  aliases:
+  - binance_usdm.btcusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_btcusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_btcusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BTCUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.ethusdt.premium_index
+  aliases:
+  - binance_usdm.ethusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_ethusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_ethusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ETHUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.solusdt.premium_index
+  aliases:
+  - binance_usdm.solusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_solusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_solusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: SOLUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.xrpusdt.premium_index
+  aliases:
+  - binance_usdm.xrpusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_xrpusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_xrpusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: XRPUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.bnbusdt.premium_index
+  aliases:
+  - binance_usdm.bnbusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_bnbusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_bnbusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BNBUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.dogeusdt.premium_index
+  aliases:
+  - binance_usdm.dogeusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_dogeusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_dogeusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: DOGEUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.adausdt.premium_index
+  aliases:
+  - binance_usdm.adausdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_adausdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_adausdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ADAUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.trxusdt.premium_index
+  aliases:
+  - binance_usdm.trxusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_trxusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_trxusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: TRXUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.linkusdt.premium_index
+  aliases:
+  - binance_usdm.linkusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_linkusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_linkusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: LINKUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard
+- dataset_id: crypto.perp.binance.avaxusdt.premium_index
+  aliases:
+  - binance_usdm.avaxusdt.premium_index
+  domain: provider_data
+  market: CRYPTO_PERP
+  entity_type: premium_index
+  data_classification: objective_factual
+  schema_version: 1.0.0
+  cadence_class: postclose_daily
+  timezone: UTC
+  freshness_sla_seconds: 129600
+  provider_bindings:
+  - provider: binance_usdm_dump
+    api_name: premiumIndexKlinesDump_avaxusdt
+    adapter_version: binance-usdm-premium-index-dump.v1
+    read_discriminator_value: binance_usdm_dump_avaxusdt_premium_index
+    entitlement_state: active
+    activation_state: active
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: date
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: AVAXUSDT
+      date: ${window.date}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  read_model_adapter:
+    adapter_version: provider-native-json.v1
+    primary_table: provider_dataset_rows
+    fixed_field_filters: []
+    storage_kind: provider_native_rows
+    row_key_strategy: payload_hash
+  fields:
+  - name: symbol
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: open_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: close_time_ms
+    logical_type: integer
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close_time
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: open
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: high
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: low
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: close
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - symbol
+  - open_time
+  default_projection:
+  - symbol
+  - open_time
+  - open
+  - high
+  - low
+  - close
+  as_of_field: close_time
+  as_of_format: rfc3339
+  range_field: open_time
+  partition_field: null
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: forbidden
+  required_scope: market_data
+  quota_class: beta_standard

@@ -98,13 +98,59 @@ open-interest half (its funding-rate half is unchanged); that is accepted
 because the USDM timer stays disabled and the dump runner is the open-interest
 collection path under the degradation plan.
 
+## Premium-index dump: funding-pressure proxy
+
+The same dump host also publishes daily `premiumIndexKlines` zips, and the
+frozen cohort therefore has a third dataset family,
+`crypto.perp.binance.<symbol>.premium_index`, backed by a single
+`binance_usdm_dump` binding (`api_name` prefix `premiumIndexKlinesDump_`) on
+the same adapter (`collectors/binance/oi_dump_collector.py`) and the same
+transport profile — only the dump path, member naming, and row parser differ,
+so no new provider-level adapter was added.
+
+**Boundary:** the premium index is **not** the funding rate.  Binance derives
+each funding rate from the interest rate and this premium-index series through
+a clamped formula; the premium index is the main observable driver of funding
+pressure and is collected here strictly as a proxy input for that pressure.
+Funding rate itself still has no dump and remains unavailable until the fapi
+network path is resolved.  Consumers must not treat a premium-index row as a
+realized or predicted funding rate.
+
+The binding downloads
+`data/futures/um/daily/premiumIndexKlines/<SYMBOL>/5m/<SYMBOL>-5m-YYYY-MM-DD.zip`
+(verified live on 2026-08-16: the interval is a mandatory path segment, the
+single CSV member is `<SYMBOL>-5m-<date>.csv`, and the 288 rows cover the full
+UTC day on the five-minute grid).  Rows carry millisecond `open_time`/
+`close_time` plus premium-index OHLC values; the kline `volume`/`count`/
+taker columns are structurally constant for an index series and are validated
+for shape but excluded from the dataset schema, exactly like the dump-only
+long/short columns of the metrics zip.  Identity is `[symbol, open_time]`,
+values stay text, and payload-hash idempotency matches the other append-only
+canary series.
+
+The candidate runner `tools/run_binance_premium_dump_canary.py` accepts no
+provider, symbol, field, or registry path input and reuses the
+open-interest dump runner's shared implementation verbatim: closed-UTC-day
+window, bounded seven-day lookback with per-symbol newest-missing-day-first
+selection, the HEAD publication probe (`probe_premium_index_published`) with
+`pending_publication` semantics, receipt-validated store-derived coverage,
+honest failure on contract drift or multi-day outage, and the frozen one-shot
+`--backfill-days 198` horizon (same 2026-01-30 alignment as open interest)
+with per-day batches that release the shared
+`/run/tradingdatas-crypto/collect.lock` between days.  The unit pair
+`tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` fires every
+two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`), staggered off both
+the five-minute timers and the `00/2:37:00` open-interest dump timer.  Like
+the USDM and OI-dump pairs, this timer must stay **disabled** until the same
+isolated production review (`observed` then `stable`) completes.
+
 ## Frozen v1 cohort
 
 The symbol set reuses the same versioned universe contract as the Spot
 cohort, `config/crypto_binance_spot_universe.v1.yaml`: BTCUSDT, ETHUSDT,
 SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT, LINKUSDT and
-AVAXUSDT. The deterministic registry compiler emits one `.funding_rate` and
-one `.open_interest` dataset per symbol as
+AVAXUSDT. The deterministic registry compiler emits one `.funding_rate`, one
+`.open_interest` and one `.premium_index` dataset per symbol as
 `crypto.perp.binance.<symbol>.<kind>`; runtime collection cannot add a symbol
 that is absent from the compiled registry.
 

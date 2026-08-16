@@ -31,7 +31,7 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 | `tushare/tushare_common.py` | Tushare 通用请求/响应与凭证边界 |
 | `binance/collector.py` | Binance public spot 的 provider-level 只读 adapter；不得加入账户、私钥或下单能力 |
 | `binance/usdm_collector.py` | Binance public USDⓈ-M 永续 funding rate / open interest 的 provider-level 只读 adapter（transport host `fapi.binance.com` 与现货不同）；同样不得加入账户、私钥或下单能力 |
-| `binance/oi_dump_collector.py` | Binance public USDⓈ-M 日度 metrics dump 的 provider-level 只读 adapter（transport host `data.binance.vision` 批量 zip 下载，`fapi.binance.com` 被 SNI 阻断期间 open interest 的降级来源，funding rate 无 dump）；同样不得加入账户、私钥或下单能力 |
+| `binance/oi_dump_collector.py` | Binance public USDⓈ-M 日度 dump 的 provider-level 只读 adapter（transport host `data.binance.vision` 批量 zip 下载，`fapi.binance.com` 被 SNI 阻断期间 open interest 的降级来源与 premium index（funding 压力代理，非 funding rate 本身）日度 premiumIndexKlines dump 来源，funding rate 无 dump）；同样不得加入账户、私钥或下单能力 |
 | `firecrawl/collector.py` | Firecrawl web 抽取的 provider-level 只读 adapter（bearer key 文件凭证，`scrape_page`/`search_news` 白名单，只声明结构化 JSON 抽取）；不得加入 crawl/interact、全文留存或情绪/摘要加工能力 |
 
 ### 子 Collector
