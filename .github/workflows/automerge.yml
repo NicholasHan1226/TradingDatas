@@ -59,11 +59,6 @@ jobs:
             MAIN_CHANGED_FILES="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${CURRENT_MAIN_SHA}" --jq '.files[].filename')"
 
             NEED_FRESH_BASE=false
-            if grep -Eq '^(AGENTS\.md$|CONTRIBUTING\.md$|\.github/|deploy/|docs/OPERATIONS\.md$|requirements[^/]*$|pyproject\.toml$|api_server\.py$|auth\.py$|catalog_service\.py$|query_service\.py$|dataset_registry\.py$|runtime_paths\.py$|storage/)' <<<"$CHANGED_FILES"; then
-              NEED_FRESH_BASE=true
-              echo "PR touches shared core/governance/deployment authority and requires a fresh main base."
-            fi
-
             OVERLAP="$(comm -12 \
               <(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | sort -u) \
               <(printf '%s\n' "$MAIN_CHANGED_FILES" | sed '/^$/d' | sort -u) || true)"
@@ -71,6 +66,18 @@ jobs:
               NEED_FRESH_BASE=true
               echo "PR overlaps files changed on main since its base:"
               printf '%s\n' "$OVERLAP"
+            fi
+
+            CORE_RE='^(deploy/|requirements[^/]*$|pyproject\.toml$|api_server\.py$|auth\.py$|catalog_service\.py$|query_service\.py$|dataset_registry\.py$|runtime_paths\.py$|storage/)'
+            GOVERNANCE_RE='^(AGENTS\.md$|CONTRIBUTING\.md$|\.github/|docs/OPERATIONS\.md$)'
+
+            if grep -Eq "$CORE_RE" <<<"$CHANGED_FILES"; then
+              NEED_FRESH_BASE=true
+              echo "PR changes shared core/deployment authority; any main advance requires integration on a fresh base."
+            elif grep -Eq "$GOVERNANCE_RE" <<<"$CHANGED_FILES" && \
+                 grep -Eq "${CORE_RE}|${GOVERNANCE_RE}" <<<"$MAIN_CHANGED_FILES"; then
+              NEED_FRESH_BASE=true
+              echo "Governance PR and main both changed governance/core authority since the frozen base."
             fi
 
             if [[ "$NEED_FRESH_BASE" == "true" ]]; then
@@ -82,7 +89,7 @@ jobs:
               exit 0
             fi
 
-            echo "Main advanced only through disjoint, non-core paths; preserve parallelism and merge the tested PR head."
+            echo "Main advanced only through disjoint authority domains; preserve parallelism and merge the tested PR head."
           fi
 
           gh api \
