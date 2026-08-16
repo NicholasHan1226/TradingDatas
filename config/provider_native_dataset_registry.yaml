@@ -14557,8 +14557,26 @@ datasets:
     pagination:
       strategy: none
     request_window_policy: null
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields:
+    - ts_code
+    - symbol
+    - exchange
+    - name
+    - fut_code
+    - multiplier
+    - trade_unit
+    - per_unit
+    - quote_unit
+    - quote_unit_desc
+    - d_mode_desc
+    - list_date
+    - delist_date
+    - d_month
+    - last_ddate
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -14568,11 +14586,11 @@ datasets:
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -14666,7 +14684,8 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
   default_projection:
   - ts_code
   - symbol
@@ -14683,14 +14702,13 @@ datasets:
   - delist_date
   - d_month
   - last_ddate
-  - trade_time_desc
   as_of_field: null
   as_of_format: null
   range_field: null
   partition_field: null
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
-  empty_data_policy: allowed
+  empty_data_policy: forbidden
   required_scope: market_data
   quota_class: beta_standard
 - dataset_id: cn.dataset.fut_daily
@@ -14750,8 +14768,28 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - pre_close
+    - pre_settle
+    - open
+    - high
+    - low
+    - close
+    - settle
+    - change1
+    - change2
+    - vol
+    - amount
+    - oi
+    - oi_chg
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -14765,13 +14803,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -14853,7 +14891,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -15085,8 +15125,24 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - trade_date
+    - ts_code
+    - close
+    - open
+    - high
+    - low
+    - pre_close
+    - change
+    - pct_chg
+    - vol
+    - amount
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -15100,13 +15156,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15164,10 +15220,12 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
-  default_projection:
-  - ts_code
+  primary_key:
   - trade_date
+  - ts_code
+  default_projection:
+  - trade_date
+  - ts_code
   - close
   - open
   - high
@@ -15240,8 +15298,16 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - mapping_ts_code
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -15255,13 +15321,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15271,7 +15337,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -15342,8 +15410,23 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - settle
+    - trading_fee_rate
+    - trading_fee
+    - delivery_fee
+    - b_hedging_margin_rate
+    - s_hedging_margin_rate
+    - long_margin_rate
+    - short_margin_rate
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -15357,13 +15440,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15415,7 +15498,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
@@ -15796,7 +15881,8 @@ datasets:
       freq: week
       trade_date: ${window.trade_date}
     request_variants:
-    - {}
+    - freq: week
+    - freq: month
     fanout:
       strategy: none
     pagination:
@@ -15809,8 +15895,32 @@ datasets:
       range_start_key: trade_date
       range_end_key: trade_date
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches:
+        freq: freq
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - end_date
+    - freq
+    - open
+    - high
+    - low
+    - close
+    - pre_close
+    - settle
+    - pre_settle
+    - vol
+    - amount
+    - oi
+    - oi_chg
+    - exchange
+    - change1
+    - change2
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -15824,13 +15934,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15842,7 +15952,7 @@ datasets:
     sortable: true
   - name: freq
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -15930,7 +16040,10 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - trade_date
+  - freq
+  - ts_code
   default_projection:
   - ts_code
   - trade_date
