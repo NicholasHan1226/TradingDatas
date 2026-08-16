@@ -4044,6 +4044,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_btcusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_btcusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BTCUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_btcusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4146,6 +4189,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_ethusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_ethusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ETHUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_ethusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4248,6 +4334,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_solusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_solusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: SOLUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_solusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4350,6 +4479,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_xrpusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_xrpusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: XRPUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_xrpusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4452,6 +4624,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_bnbusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_bnbusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: BNBUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_bnbusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4554,6 +4769,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_dogeusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_dogeusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: DOGEUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_dogeusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4656,6 +4914,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_adausdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_adausdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: ADAUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_adausdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4758,6 +5059,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_trxusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_trxusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: TRXUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_trxusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4860,6 +5204,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_linkusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_linkusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: LINKUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_linkusdt
     adapter_version: binance-usdm-via-sg-relay.v1
@@ -4962,6 +5349,49 @@ datasets:
   timezone: UTC
   freshness_sla_seconds: 32400
   provider_bindings:
+  - provider: binance_usdm
+    api_name: fundingRate_avaxusdt
+    adapter_version: binance-usdm-public.v1
+    read_discriminator_value: binance_usdm_avaxusdt_funding_rate
+    entitlement_state: active
+    activation_state: paused
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
+    target_tables:
+    - provider_dataset_rows
+    input_fields:
+    - name: symbol
+      declared_source_type: str
+      required: true
+    - name: start_time
+      declared_source_type: str
+      required: true
+    - name: end_time
+      declared_source_type: str
+      required: true
+    request_shape: event_or_intraday_window
+    request_template:
+      symbol: AVAXUSDT
+      start_time: ${window.start_time}
+      end_time: ${window.end_time}
+    request_variants:
+    - {}
+    fanout:
+      strategy: none
+    pagination:
+      strategy: none
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches:
+        symbol: symbol
+      reject_at_row_limit: true
+    requested_fields: []
+    max_batch_bytes: 1048576
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 1000
   - provider: binance_usdm_relay
     api_name: fundingRate_avaxusdt
     adapter_version: binance-usdm-via-sg-relay.v1

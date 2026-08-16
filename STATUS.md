@@ -1,6 +1,16 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 17:35 CST。
+最后更新：2026-08-16 18:30 CST。
+
+> **2026-08-16 funding rate 历史 receipt 兼容：** 中继切换后旧失败 receipt
+> 的 provider 不再匹配当前单一 relay binding，导致 readback `provider_binding_mismatch`。
+> funding_rate 模板改为双 binding（直连 binance_usdm paused + relay active，与 OI 先例
+> 一致），历史直连 receipt 继续有效。30 项测试全绿。
+
+> **2026-08-16 funding rate 生产评审首轮修正：** 经 SG 中继首测发现 adapter 的
+> funding_rate shape 校验要求恰好 3 键，而真实响应含 markPrice/rateType 额外键
+> （被误判 drift 拒收）。改为要求 3 个核心键为子集、类型正确，额外键容忍但只映射
+> 核心字段；drift 测试改测 fundingTime 类型错误。21 项测试全绿。
 
 > **2026-08-16 OI 回填吞吐修正：** 让路协议按"每批必让"实现后实测仅 ~1.3 天/
 > 小时。改为条件让路：仅当距下一个 5 分钟边界不足 60 秒才让路越界，其余时间

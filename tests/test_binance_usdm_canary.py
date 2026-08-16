@@ -101,9 +101,8 @@ def test_usdm_collector_rejects_funding_rate_shape_drift(
         lambda path, query: [
             {
                 "symbol": "BTCUSDT",
-                "fundingTime": 1785052800000,
+                "fundingTime": "not-an-int",
                 "fundingRate": "0.0001",
-                "markPrice": "1.0",
             }
         ],
     )
@@ -242,11 +241,16 @@ def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() ->
     assert funding.as_of_field == "funding_time"
     assert funding.range_field == "funding_time"
     assert funding.schema_major == 1
-    binding = funding.provider_bindings[0]
-    assert binding.provider == "binance_usdm_relay"
-    assert binding.api_name == "fundingRate_btcusdt"
-    assert binding.adapter_version == "binance-usdm-via-sg-relay.v1"
-    assert binding.request_template == {
+    direct_binding, relay_binding = funding.provider_bindings
+    assert direct_binding.provider == "binance_usdm"
+    assert direct_binding.api_name == "fundingRate_btcusdt"
+    assert direct_binding.adapter_version == "binance-usdm-public.v1"
+    assert direct_binding.activation_state == "paused"
+    assert relay_binding.provider == "binance_usdm_relay"
+    assert relay_binding.api_name == "fundingRate_btcusdt"
+    assert relay_binding.adapter_version == "binance-usdm-via-sg-relay.v1"
+    assert relay_binding.activation_state == "active"
+    assert relay_binding.request_template == {
         "symbol": "BTCUSDT",
         "start_time": "${window.start_time}",
         "end_time": "${window.end_time}",
@@ -520,3 +524,39 @@ def test_usdm_relay_collector_shares_allowlist_and_validation() -> None:
     outcome = collector.collect_outcome("tickerPrice_btcusdt", {"symbol": "BTCUSDT"})
     assert outcome.state == "failed"
     assert outcome.error_code == "transport_error"  # allowlist raise -> failed
+
+
+def test_usdm_collector_accepts_live_funding_rate_extra_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = BinanceUsdmPublicCollector()
+    # The live endpoint adds markPrice and rateType to every row.
+    monkeypatch.setattr(
+        collector,
+        "_get",
+        lambda path, query: [
+            {
+                "symbol": "BTCUSDT",
+                "fundingTime": 1785052800000,
+                "fundingRate": "0.0001",
+                "markPrice": "63000.0",
+                "rateType": "Regular",
+            }
+        ],
+    )
+    outcome = collector.collect_outcome(
+        "fundingRate_btcusdt",
+        {
+            "symbol": "BTCUSDT",
+            "start_time": "2026-07-26T08:00:00Z",
+            "end_time": "2026-07-27T08:00:00Z",
+        },
+    )
+    assert outcome.state == "success"
+    assert outcome.rows[0]["funding_rate"] == "0.0001"
+    assert set(outcome.rows[0]) == {
+        "symbol",
+        "funding_time_ms",
+        "funding_time",
+        "funding_rate",
+    }
