@@ -26,6 +26,11 @@ env:
 
 jobs:
   test:
+    name: test-shard-${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -58,9 +63,26 @@ jobs:
       - name: Compile Python files
         run: python -m compileall -q .
 
-      - name: Run tests
-        # Temporary diagnostic mode for the first public-runner failure. The
-        # previous full run already showed many F markers but hit timeout before
-        # pytest could print tracebacks. Stop at the first failure so the gate
-        # can be repaired from evidence rather than by increasing timeout again.
-        run: python -m pytest tests/ -q --tb=short -x
+      - name: Run deterministic test shard
+        env:
+          TEST_SHARD: ${{ matrix.shard }}
+          TEST_SHARD_COUNT: "4"
+        run: |
+          set -euo pipefail
+          mapfile -t test_files < <(
+            python - <<'PY'
+          import os
+          from pathlib import Path
+
+          shard = int(os.environ["TEST_SHARD"])
+          count = int(os.environ["TEST_SHARD_COUNT"])
+          files = sorted(Path("tests").glob("test_*.py"))
+          selected = [str(path) for index, path in enumerate(files) if index % count == shard]
+          if not selected:
+              raise SystemExit("empty test shard")
+          print("\n".join(selected))
+          PY
+          )
+          printf 'shard=%s files=%s\n' "$TEST_SHARD" "${#test_files[@]}"
+          printf '%s\n' "${test_files[@]}"
+          python -m pytest "${test_files[@]}" -q --tb=short -x
