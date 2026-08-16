@@ -376,6 +376,91 @@ def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
         )
 
 
+def test_oi_dump_runner_falls_through_unpublished_newest_day(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    candidates = lookback_days(now)
+    # Only the two newest days are missing for every symbol.
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_ingested_days",
+        lambda db_path, registry, dataset_id: frozenset(candidates[2:]),
+    )
+    calls: list[tuple[str, str]] = []
+
+    def collect(*args, **kwargs):
+        del args
+        day = kwargs["request_window"]["date"]
+        calls.append((kwargs["dataset_id"], day))
+        if day == candidates[0]:
+            return _ingest_result(
+                status="failed",
+                receipt_id=f"receipt:unpublished:{day}",
+                errors=("provider_error",),
+            )
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:published:{day}",
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+    )
+
+    assert result["state"] == "success"
+    by_id = {item["dataset_id"]: item for item in result["datasets"]}
+    for dataset_id in by_id:
+        entries = [
+            item for item in result["datasets"] if item["dataset_id"] == dataset_id
+        ]
+        assert [item["state"] for item in entries] == ["failed", "success"]
+        assert entries[0]["window"] == {"date": candidates[0]}
+        assert entries[1]["window"] == {"date": candidates[1]}
+    assert all(call[1] in candidates[:2] for call in calls)
+
+
+def test_oi_dump_runner_marks_single_newest_gap_pending_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    candidates = lookback_days(now)
+    # Steady state: every lookback day except the newest is already ingested.
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_ingested_days",
+        lambda db_path, registry, dataset_id: frozenset(candidates[1:]),
+    )
+
+    def collect(*args, **kwargs):
+        del args
+        return _ingest_result(
+            status="failed",
+            receipt_id="receipt:unpublished",
+            errors=("provider_error",),
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+    )
+
+    assert result["state"] == "success"
+    assert {item["state"] for item in result["datasets"]} == {"pending_publication"}
+    assert all(
+        item["window"] == {"date": candidates[0]} for item in result["datasets"]
+    )
+
+
 def test_oi_dump_runner_collects_only_the_newest_missing_day_per_symbol(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

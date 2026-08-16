@@ -228,16 +228,49 @@ def _run_lookback(
                     }
                 )
                 continue
-            results.extend(
-                _collect_day(
+            collected = False
+            hard_failure = False
+            for day in missing:
+                attempts = _collect_with_one_provider_retry(
                     db_path=db_path,
                     registry=registry,
                     collector=collector,
-                    dataset_ids=(dataset_id,),
-                    day=missing[0],
+                    dataset_id=dataset_id,
+                    request_window={"date": day},
                     now=now,
                 )
-            )
+                last = attempts[-1]
+                results.append(
+                    {
+                        "collection_kind": "open_interest",
+                        "dataset_id": dataset_id,
+                        "receipt_ids": [
+                            receipt_id
+                            for attempt in attempts
+                            for receipt_id in attempt.receipt_ids
+                        ],
+                        "retry_count": len(attempts) - 1,
+                        "state": last.status,
+                        "window": {"date": day},
+                    }
+                )
+                if last.status == "success":
+                    collected = True
+                    break
+                if last.errors != ("provider_error",):
+                    # Contract/validation drift is never publication lag;
+                    # stop the whole run fail closed.
+                    hard_failure = True
+                    break
+                # provider_error includes an unpublished daily zip; fall
+                # through to the next older missing day.
+            if hard_failure:
+                raise RuntimeError("one or more Crypto dataset collections failed")
+            if not collected:
+                if len(missing) > 1:
+                    # Older missing days failing too is an outage, not lag.
+                    raise RuntimeError("one or more Crypto dataset collections failed")
+                results[-1]["state"] = "pending_publication"
         return {
             "datasets": results,
             "lookback_days": _LOOKBACK_DAYS,
