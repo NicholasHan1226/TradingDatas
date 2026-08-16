@@ -97,18 +97,21 @@ jobs:
 
           archive_checksum="$(awk 'NR == 1 {print $1}' "$archive_checksum_file")"
           manifest_checksum="$(awk 'NR == 1 {print $1}' "$manifest_checksum_file")"
-          helper_checksum="$(sha256sum tools/production_core_release.py | awk '{print $1}')"
+          wrapper_checksum="$(sha256sum tools/production_core_release_wrapper.sh | awk '{print $1}')"
+          implementation_checksum="$(sha256sum tools/production_core_release.py | awk '{print $1}')"
           verifier_checksum="$(sha256sum tools/release_manifest.py | awk '{print $1}')"
           [[ "$archive_checksum" =~ ^[0-9a-f]{64}$ ]]
           [[ "$manifest_checksum" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$helper_checksum" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$wrapper_checksum" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$implementation_checksum" =~ ^[0-9a-f]{64}$ ]]
           [[ "$verifier_checksum" =~ ^[0-9a-f]{64}$ ]]
 
           printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
           printf 'manifest=%s\n' "$manifest" >> "$GITHUB_OUTPUT"
           printf 'archive_checksum=%s\n' "$archive_checksum" >> "$GITHUB_OUTPUT"
           printf 'manifest_checksum=%s\n' "$manifest_checksum" >> "$GITHUB_OUTPUT"
-          printf 'helper_checksum=%s\n' "$helper_checksum" >> "$GITHUB_OUTPUT"
+          printf 'wrapper_checksum=%s\n' "$wrapper_checksum" >> "$GITHUB_OUTPUT"
+          printf 'implementation_checksum=%s\n' "$implementation_checksum" >> "$GITHUB_OUTPUT"
           printf 'verifier_checksum=%s\n' "$verifier_checksum" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH
@@ -131,7 +134,8 @@ jobs:
           RELEASE_MANIFEST: ${{ steps.release.outputs.manifest }}
           ARCHIVE_CHECKSUM: ${{ steps.release.outputs.archive_checksum }}
           MANIFEST_CHECKSUM: ${{ steps.release.outputs.manifest_checksum }}
-          HELPER_CHECKSUM: ${{ steps.release.outputs.helper_checksum }}
+          WRAPPER_CHECKSUM: ${{ steps.release.outputs.wrapper_checksum }}
+          IMPLEMENTATION_CHECKSUM: ${{ steps.release.outputs.implementation_checksum }}
           VERIFIER_CHECKSUM: ${{ steps.release.outputs.verifier_checksum }}
           DEPLOY_REQUEST_KEY: ${{ secrets.DEPLOY_REQUEST_KEY }}
         run: |
@@ -167,8 +171,9 @@ jobs:
           request_file="$RUNNER_TEMP/tradingdatas-core-deploy-request"
 
           remote_hashes="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "/usr/bin/sha256sum /usr/local/sbin/tradingdatas-core-release /usr/local/lib/tradingdatas-release/release_manifest.py")"
-          grep -Fxq "$HELPER_CHECKSUM  /usr/local/sbin/tradingdatas-core-release" <<<"$remote_hashes"
+            "/usr/bin/sha256sum /usr/local/sbin/tradingdatas-core-release /usr/local/lib/tradingdatas-release/production_core_release.py /usr/local/lib/tradingdatas-release/release_manifest.py")"
+          grep -Fxq "$WRAPPER_CHECKSUM  /usr/local/sbin/tradingdatas-core-release" <<<"$remote_hashes"
+          grep -Fxq "$IMPLEMENTATION_CHECKSUM  /usr/local/lib/tradingdatas-release/production_core_release.py" <<<"$remote_hashes"
           grep -Fxq "$VERIFIER_CHECKSUM  /usr/local/lib/tradingdatas-release/release_manifest.py" <<<"$remote_hashes"
 
           ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
