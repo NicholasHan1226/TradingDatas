@@ -3,9 +3,12 @@
 
 The compiler is offline, deterministic, and fail closed. Dataset identity,
 schema, cadence, request execution, and budgets come only from the pinned
-upstream contract bundle. Entitlement/activation and reviewed runtime
-compatibility come only from one QuickSync observation declaration. Query
-limits come only from the explicit query-default declaration.
+upstream contract bundle plus any explicitly declared supplemental provider
+contract bundles (each with its own provider identity and provenance).
+Entitlement/activation and reviewed runtime compatibility come only from one
+QuickSync observation declaration, which stays scoped to the primary tushare
+bundle and never promotes a supplemental contract. Query limits come only
+from the explicit query-default declaration.
 The only artifact written is the provider-native dataset registry.
 """
 
@@ -37,6 +40,9 @@ DEFAULT_UPSTREAM_CONTRACTS_PATH = (
 DEFAULT_OBSERVATIONS_PATH = (
     REPOSITORY_ROOT / "config" / "quicksync_interface_observations.v1.yaml"
 )
+DEFAULT_SUPPLEMENTAL_CONTRACTS_PATHS = (
+    REPOSITORY_ROOT / "config" / "firecrawl_upstream_contracts.v1.yaml",
+)
 FORMAL_COMPILATION_MODE = "formal"
 PREACTIVATION_COMPILATION_MODE = "preactivation_candidate"
 COMPILATION_MODES = frozenset(
@@ -46,6 +52,15 @@ COMPILATION_MODES = frozenset(
 PROVIDER = "tushare"
 ASHARE_MARKET_TIMEZONE = ZoneInfo("Asia/Shanghai")
 PROVIDER_ADAPTER_VERSION = "tushare-provider-native.v1"
+# Additional provider contract bundles compiled into the same single registry.
+# Each supplemental bundle keeps its own provider identity and provenance; the
+# QuickSync observations/activation evidence below stay scoped to PROVIDER and
+# never promote a supplemental contract.
+_BUNDLE_PROVIDERS = frozenset({PROVIDER, "firecrawl"})
+_PROVIDER_ADAPTER_VERSIONS = {
+    PROVIDER: PROVIDER_ADAPTER_VERSION,
+    "firecrawl": "firecrawl-web-extraction.v1",
+}
 READ_ADAPTER_VERSION = "provider-native-json.v1"
 PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
 DEFAULT_QUERY_DEFAULTS = {
@@ -2698,8 +2713,8 @@ def load_upstream_contract_bundle(document: Mapping[str, Any]) -> dict[str, Any]
     if type(root["version"]) is not int or root["version"] != 1:
         raise ValueError("upstream contract bundle.version must be integer 1")
     provider = _required_text(root["provider"], "upstream contract bundle.provider")
-    if provider != PROVIDER:
-        raise ValueError(f"upstream contract bundle.provider must be {PROVIDER}")
+    if provider not in _BUNDLE_PROVIDERS:
+        raise ValueError("upstream contract bundle.provider is unsupported")
     provenance = _mapping(root["provenance"], "upstream contract bundle.provenance")
     _reject_keys(provenance, _PROVENANCE_KEYS, "upstream contract bundle.provenance")
     normalized_provenance = {
@@ -2996,7 +3011,7 @@ def _compiled_dataset(
     binding = {
         "provider": contract["provider"],
         "api_name": contract["api_name"],
-        "adapter_version": PROVIDER_ADAPTER_VERSION,
+        "adapter_version": _PROVIDER_ADAPTER_VERSIONS[contract["provider"]],
         "read_discriminator_value": f"{contract['provider']}_{contract['api_name']}",
         "entitlement_state": "unknown"
         if activation is None
@@ -3079,6 +3094,7 @@ def compile_provider_native_registry(
     *,
     observations_document: Mapping[str, Any] | None = None,
     activation_evidence_document: Mapping[str, Any] | None = None,
+    supplemental_contracts: Sequence[Mapping[str, Any]] | None = None,
     query_defaults: Mapping[str, Any] | None = None,
     compilation_mode: str = FORMAL_COMPILATION_MODE,
 ) -> dict[str, Any]:
@@ -3093,9 +3109,40 @@ def compile_provider_native_registry(
         raise ValueError("preactivation candidate mode requires activation evidence")
 
     bundle = load_upstream_contract_bundle(upstream_contracts)
+    supplemental_bundles = [
+        load_upstream_contract_bundle(document)
+        for document in (supplemental_contracts or ())
+    ]
+    contracts = list(bundle["contracts"])
+    seen_dataset_ids = {contract["dataset_id"] for contract in contracts}
+    seen_api_names = {contract["api_name"] for contract in contracts}
+    seen_aliases = {
+        alias for contract in contracts for alias in contract["aliases"]
+    }
+    for supplemental in supplemental_bundles:
+        if supplemental["provider"] == bundle["provider"]:
+            raise ValueError(
+                "supplemental contract bundle duplicates the primary provider"
+            )
+        for contract in supplemental["contracts"]:
+            if (
+                contract["dataset_id"] in seen_dataset_ids
+                or contract["api_name"] in seen_api_names
+                or seen_aliases.intersection(contract["aliases"])
+                or contract["dataset_id"] in seen_aliases
+                or any(alias in seen_dataset_ids for alias in contract["aliases"])
+            ):
+                raise ValueError(
+                    "supplemental contract identity conflicts with the registry: "
+                    f"{contract['dataset_id']}"
+                )
+            seen_dataset_ids.add(contract["dataset_id"])
+            seen_api_names.add(contract["api_name"])
+            seen_aliases.update(contract["aliases"])
+            contracts.append(contract)
     missing_input_contracts = [
         contract["api_name"]
-        for contract in bundle["contracts"]
+        for contract in contracts
         if "input_fields" not in contract
     ]
     if missing_input_contracts:
@@ -3138,7 +3185,7 @@ def compile_provider_native_registry(
                     observations.get((contract["dataset_id"], contract["provider"])),
                 ),
             )
-            for contract in bundle["contracts"]
+            for contract in contracts
         ],
     }
 
@@ -3273,6 +3320,12 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
     )
     parser.add_argument(
+        "--supplemental-contracts",
+        type=Path,
+        nargs="*",
+        default=list(DEFAULT_SUPPLEMENTAL_CONTRACTS_PATHS),
+    )
+    parser.add_argument(
         "--compilation-mode",
         choices=sorted(COMPILATION_MODES),
         default=FORMAL_COMPILATION_MODE,
@@ -3287,6 +3340,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     required_inputs = [args.upstream_contracts, args.observations]
     if args.compilation_mode == PREACTIVATION_COMPILATION_MODE:
         required_inputs.append(args.activation_evidence)
+    required_inputs.extend(args.supplemental_contracts)
     for path in required_inputs:
         if path is None:
             continue
@@ -3309,6 +3363,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     protected_inputs = {
         args.upstream_contracts.resolve(),
         args.observations.resolve(),
+        *(path.resolve() for path in args.supplemental_contracts),
     }
     if args.compilation_mode == PREACTIVATION_COMPILATION_MODE:
         protected_inputs.add(args.activation_evidence.resolve())
@@ -3335,6 +3390,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 observations_sha256=hashlib.sha256(observations_bytes).hexdigest(),
             )
         ),
+        supplemental_contracts=[
+            _load_yaml(path, "supplemental contract bundle")
+            for path in args.supplemental_contracts
+        ],
         query_defaults=DEFAULT_QUERY_DEFAULTS,
         compilation_mode=args.compilation_mode,
     )

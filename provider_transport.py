@@ -19,12 +19,32 @@ BINANCE_USDM_PUBLIC_API_URL = "https://fapi.binance.com"
 BINANCE_USDM_DUMP_DATA_PROVIDER = "binance_usdm_dump"
 BINANCE_USDM_DUMP_TRANSPORT_SERVICE = "binance_usdm_public_metrics_dump"
 BINANCE_USDM_DUMP_PUBLIC_DATA_URL = "https://data.binance.vision"
+FIRECRAWL_DATA_PROVIDER = "firecrawl"
+FIRECRAWL_TRANSPORT_SERVICE = "firecrawl_web_scrape_api"
+FIRECRAWL_API_URL = "https://api.firecrawl.dev/v2"
 
 
 def provider_transport_profile(provider: str) -> dict[str, object]:
     """Return one credential-free, code-pinned provider transport profile."""
 
-    if provider == BINANCE_USDM_DATA_PROVIDER:
+    if provider == FIRECRAWL_DATA_PROVIDER:
+        payload: dict[str, object] = {
+            "data_provider": FIRECRAWL_DATA_PROVIDER,
+            "endpoint": FIRECRAWL_API_URL,
+            "profile_id": "firecrawl-web-scrape-api.v1",
+            "redirects_allowed": False,
+            "connection_mode": "public_https",
+            "canonical_host": "api.firecrawl.dev",
+            "host_header": "api.firecrawl.dev",
+            "sni_server_name": "api.firecrawl.dev",
+            "certificate_hostname": "api.firecrawl.dev",
+            "pre_send_node_failover": False,
+            "post_send_replay": False,
+            "credential_mode": "bearer_key_file",
+            "max_concurrency": 1,
+            "transport_service": FIRECRAWL_TRANSPORT_SERVICE,
+        }
+    elif provider == BINANCE_USDM_DATA_PROVIDER:
         payload: dict[str, object] = {
             "data_provider": BINANCE_USDM_DATA_PROVIDER,
             "endpoint": BINANCE_USDM_PUBLIC_API_URL,

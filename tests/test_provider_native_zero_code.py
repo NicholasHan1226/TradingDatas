@@ -191,7 +191,7 @@ def test_observations_compile_without_dataset_specific_runtime():
         for dataset in registry["datasets"]
     }
 
-    assert len(bindings) == 190
+    assert len(bindings) == 191
     observed_active_apis = set(observations["active_evidence"])
     registry_active_apis = {
         api

@@ -1,0 +1,160 @@
+version: 1
+bundle_id: firecrawl-web-extraction-contracts.v1
+provider: firecrawl
+provenance:
+  index_path: docs/design/firecrawl-news-pipeline.v1.md
+  index_sha256: 7c383f4e7aa97c385139ee444b9a31b35147106cf3694e1ae7e2e044ecb7ea91
+  pinned_commit: ec624f0ec494596af44ae5006cd42cad472f0b2d
+  repository_url: https://github.com/NicholasHan1226/TradingDatas.git
+contracts:
+- dataset_id: cn.news.flash
+  aliases:
+  - firecrawl.news_flash
+  domain: provider_data
+  market: CN
+  entity_type: provider_row
+  data_classification: objective_factual
+  provider: firecrawl
+  api_name: scrape_page
+  source_document_url: https://docs.firecrawl.dev/api-reference/endpoint/scrape
+  source_document_sha256: 57586f065a864567e5a9e7860747fe972f7e48297d7d3203d7733343568a9536
+  schema_version: 1.0.0
+  input_fields:
+  - name: url
+    declared_source_type: str
+    required: true
+  - name: window_start
+    declared_source_type: datetime
+    required: true
+  - name: window_end
+    declared_source_type: datetime
+    required: true
+  fields:
+  - name: source
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: content_uid
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: published_at
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: published_local
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: event_date
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: title
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: url
+    declared_source_type: str
+    logical_type: text
+    nullable: false
+    selectable: true
+    filterable: true
+    sortable: true
+  - name: summary
+    declared_source_type: str
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  primary_key:
+  - source
+  - published_local
+  - content_uid
+  default_projection:
+  - source
+  - content_uid
+  - published_at
+  - event_date
+  - title
+  - url
+  - summary
+  as_of_field: published_at
+  as_of_format: rfc3339
+  range_field: published_at
+  partition_field: event_date
+  cadence_class: on_demand
+  timezone: Asia/Shanghai
+  freshness_sla_seconds: 86400
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
+  request_shape: event_or_intraday_window
+  request_template:
+    extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"},"summary":{"type":["string","null"]}},"required":["title","url","published_at"],"additionalProperties":true}}},"required":["items"]}'
+    max_age_ms: "900000"
+    prompt: 只抽取页面中客观存在的快讯条目：每条给出标题、原文链接、页面显示的发布时间、页面上已有的摘要原文短句（无摘要则为 null）。禁止生成情绪判断、摘要改写或任何加工结论；禁止输出页面上不存在的内容。
+    timeout_ms: "30000"
+    window_end: ${window.end_time}
+    window_start: ${window.start_time}
+  request_variants:
+  - {}
+  fanout:
+    strategy: literal_values
+    parameter: url
+    values:
+    - https://www.cls.cn/telegraph
+    - https://kuaixun.eastmoney.com/7_24.html
+    batch_size: 1
+  pagination:
+    strategy: none
+  request_window_policy:
+    required_keys:
+    - start_time
+    - end_time
+    formats:
+      start_time: local_datetime_seconds
+      end_time: local_datetime_seconds
+    range_start_key: start_time
+    range_end_key: end_time
+    max_span_days: 1
+  response_completeness:
+    strategy: windowed_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: true
+    date_field: published_local
+    request_start_key: start_time
+    request_end_key: end_time
+    fanout_field: source
+  requested_fields: []
+  budgets:
+    max_batch_bytes: 16777216
+    max_nesting_depth: 16
+    max_payload_bytes_per_row: 65536
+    max_rows_per_attempt: 500
+  reviewed_type_overrides: []
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
