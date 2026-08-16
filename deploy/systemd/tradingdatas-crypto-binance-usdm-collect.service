@@ -12,7 +12,7 @@ WorkingDirectory=/opt/investment/releases/tradingdatas-crypto/current
 EnvironmentFile=/opt/investment/releases/tradingdatas-crypto/current/deploy/crypto/tradingdatas_crypto_internal.env
 Environment="PYTHONDONTWRITEBYTECODE=1"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas-crypto/current/tools/run_binance_usdm_canary.py --db-path /opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite --lock-path /run/tradingdatas-crypto/collect.lock --execute
+ExecStart=/opt/tradingdatas/venv/bin/python3 /opt/investment/releases/tradingdatas-crypto/current/tools/run_binance_usdm_canary.py --db-path /opt/investment-data/tradingdatas-crypto/read_model/provider_native.sqlite --lock-path /opt/investment-data/tradingdatas-crypto/collect.lock --execute
 TimeoutStartSec=10min
 UMask=0077
 RuntimeDirectory=tradingdatas-crypto

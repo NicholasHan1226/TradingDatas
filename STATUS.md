@@ -1,6 +1,12 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 14:05 CST。
+最后更新：2026-08-16 14:45 CST。
+
+> **2026-08-16 Crypto 采集共享锁迁往持久路径：** systemd RuntimeDirectory 在多
+> unit 共享、长短任务混用时会在任一引用 unit 停止时移除目录，长任务（OI 回填）
+> 的 `a+` 建锁随即 FileNotFoundError。四个现役 crypto 采集 unit（含 disabled 的
+> usdm）的 `--lock-path` 统一迁往 `/opt/investment-data/tradingdatas-crypto/
+> collect.lock`（数据根内，ReadWritePaths 已覆盖）；写串行语义不变。文档同步。
 
 > **2026-08-16 OI 回填健壮性修正（代码层事实）：** 首次 198 天回填在第 1 天
 > （2026-01-30）即中止——早期日期部分 symbol 的 zip 不存在（未上线/发布缺口），

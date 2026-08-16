@@ -65,7 +65,7 @@ is already ingested is skipped without a provider call and reported
 unpublished, the dataset is reported `pending_publication` and the run
 succeeds; if older missing days also fail, that is an outage and the run
 fails honestly.  Contract or validation drift is never treated as
-publication lag and stops the run fail closed.  It shares `/run/tradingdatas-crypto/collect.lock` with
+publication lag and stops the run fail closed.  It shares `/opt/investment-data/tradingdatas-crypto/collect.lock` with
 the Spot and USDM collectors, records a terminal receipt per attempt, and
 makes one immediate retry on a provider error; with the whole lookback
 exhausted by provider errors the outcome follows the
@@ -133,7 +133,7 @@ symbol, one trailing 48-hour funding-rate window ending at the latest
 realized eight-hour funding boundary (deduplication covers the overlap; a new
 funding row appears only every eight hours) and the two latest closed
 five-minute open-interest boundaries. It shares
-`/run/tradingdatas-crypto/collect.lock` with the Spot collector so writers on
+`/opt/investment-data/tradingdatas-crypto/collect.lock` with the Spot collector so writers on
 the same isolated SQLite stay serial; its timer is staggered two minutes
 after the Spot bar timer. A lock-busy or provider failure is an honest failed
 run retried by the next timer tick; the funding window self-heals, while a
