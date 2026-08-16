@@ -43,6 +43,11 @@ def _published_probe(monkeypatch: pytest.MonkeyPatch):
         "probe_published",
         staticmethod(lambda *, symbol, day: True),
     )
+    # The inter-batch boundary yield is a production-timing behavior; tests
+    # stub it out and assert call counts separately.
+    monkeypatch.setattr(
+        oi_dump_canary, "_yield_past_next_collection_boundary", lambda: None
+    )
 
 
 def _csv_lines(*, symbol: str = "BTCUSDT", day: datetime = _DUMP_DAY) -> list[str]:
@@ -740,3 +745,46 @@ def test_oi_dump_backfill_skips_unpublished_days_without_receipts(
     assert result["unpublished_skip_count"] == (len(days) - 2) * 10
     assert result["failed_attempt_count"] == 0
     assert len(calls) == 20
+
+
+def test_oi_dump_backfill_yields_between_day_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    now = datetime(2026, 8, 16, 3, 5, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        oi_dump_canary, "_ingested_days", lambda *args, **kwargs: frozenset()
+    )
+    yields: list[None] = []
+    monkeypatch.setattr(
+        oi_dump_canary,
+        "_yield_past_next_collection_boundary",
+        lambda: yields.append(None),
+    )
+
+    def collect(*args, **kwargs):
+        del args
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{kwargs['dataset_id']}:{len(calls)}",
+        )
+
+    calls: list[str] = []
+    def recording_collect(*args, **kwargs):
+        calls.append(kwargs["dataset_id"])
+        return collect(*args, **kwargs)
+
+    monkeypatch.setattr(
+        spot_canary, "collect_provider_native_dataset", recording_collect
+    )
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        backfill_days=198,
+    )
+
+    assert result["state"] == "success"
+    assert result["collected_day_count"] == 198
+    assert len(yields) == 198

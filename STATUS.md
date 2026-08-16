@@ -1,6 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 15:35 CST。
+最后更新：2026-08-16 16:20 CST。
+
+> **2026-08-16 OI 回填锁饿死事故与让路修复（含生产事实）：** 首次长回填的
+> 按日"放锁即阻塞重取"在 5 分钟采集的间隙窗口外几乎永远持有共享锁，造成 bars
+> 采集约 70 分钟大面积失败，BTC 实测缺 06:15–07:15 间 12 根 bar（TA 观测链按
+> 今早的 shape_invalid→data_gap 纪律显式记录缺口、链无损）。已立即停止回填。
+> 修复：每个日批放锁后让路到下一个 5 分钟边界 +45s 再继续（`_yield_past_next_
+> collection_boundary`），保证 bars/book-ticker 的定时窗口永远拿得到锁。新增
+> 回归测试（24 项全绿）。回填续跑自动跳过已入库的 26 天。
 
 > **2026-08-16 funding rate 经 SG 中继接入（代码层事实，timer 仍 disabled）：**
 > owner 提供并批准 Singapore 中继。生产主机新增 `sg-relay-tunnel.service`
