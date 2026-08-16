@@ -61,8 +61,9 @@ def test_core_deploy_workflow_is_exact_run_and_current_main_gated() -> None:
     assert workflow.count('gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main"') == 2
     assert "Skip stale core deployment" in workflow
     assert "Main advanced during core upload" in workflow
+    assert "Server current changed after request signing" in workflow
     assert "/usr/bin/sudo -n /usr/local/sbin/tradingdatas-core-release" in workflow
-    assert "/usr/bin/readlink /opt/investment/releases/tradingdatas/current" in workflow
+    assert workflow.count("/usr/bin/readlink /opt/investment/releases/tradingdatas/current") == 3
 
 
 def test_core_deploy_pins_installed_privileged_code_to_tested_sha() -> None:
@@ -85,6 +86,37 @@ def test_core_deploy_pins_installed_privileged_code_to_tested_sha() -> None:
     assert "sudo -n python" not in workflow
 
 
+def test_core_deployment_requires_independent_hmac_authority() -> None:
+    workflow = _read(".github/workflows/deploy-core-production.yml")
+    helper = _read("tools/production_core_release.py")
+    bootstrap = _read("tools/bootstrap_production_core_server.sh")
+
+    assert "DEPLOY_REQUEST_KEY: ${{ secrets.DEPLOY_REQUEST_KEY }}" in workflow
+    assert '[[ "$DEPLOY_REQUEST_KEY" =~ ^[0-9a-f]{64}$ ]]' in workflow
+    assert "import hmac" in workflow
+    assert 'key_hex = os.environ["DEPLOY_REQUEST_KEY"]' in workflow
+    assert "bytes.fromhex(key_hex)" in workflow
+    assert 'expected_current="$(ssh' in workflow
+    assert 'f"v1\\n{target}\\n{archive_hash}\\n{manifest_hash}\\n{expected_current}\\n"' in workflow
+    assert 'f"v1 {target} {archive_hash} {manifest_hash} {expected_current} {signature}\\n"' in workflow
+
+    assert "import hmac" in helper
+    assert 'DEPLOY_AUTH_DIR = Path("/etc/tradingdatas-deploy")' in helper
+    assert 'DEPLOY_AUTH_KEY = DEPLOY_AUTH_DIR / "core-release.hmac"' in helper
+    assert 'REQUEST_VERSION = "v1"' in helper
+    assert "hmac.compare_digest(signature, expected_signature)" in helper
+    assert "deployment request signature verification failed" in helper
+    assert "current release changed since the signed deployment request was issued" in helper
+    assert "deployment spool contains unexpected files" in helper
+
+    assert "deploy_auth_dir=/etc/tradingdatas-deploy" in bootstrap
+    assert 'deploy_auth_key="$deploy_auth_dir/core-release.hmac"' in bootstrap
+    assert "deployment authorization directory must be root:root mode 0700" in bootstrap
+    assert "deployment authorization key must be root:root mode 0400 with one hard link" in bootstrap
+    assert "deployment authorization key must contain one 256-bit lowercase hex key" in bootstrap
+    assert "unset deploy_request_key" in bootstrap
+
+
 def test_core_release_helper_respects_existing_safe_release_order() -> None:
     helper = _read("tools/production_core_release.py")
 
@@ -94,7 +126,7 @@ def test_core_release_helper_respects_existing_safe_release_order() -> None:
     assert 'TIMER_UNIT = "tradingdatas-provider-native-collect.timer"' in helper
     assert 'CATALOG_PATH = "/v1/catalog"' in helper
     assert "status != 401" in helper
-    assert "disable\", \"--now\", TIMER_UNIT" in helper
+    assert '"disable", "--now", TIMER_UNIT' in helper
     assert "_wait_collector_inactive()" in helper
     assert '"systemctl", "stop", API_UNIT' in helper
     assert "verifier.switch_current(" in helper
@@ -168,3 +200,12 @@ def test_core_lane_does_not_expand_deploy_or_crypto_service_surface() -> None:
     }
     assert "production_core_release.py" not in files
     assert "bootstrap_production_core_server.sh" not in files
+
+
+def test_core_deployment_documentation_names_hmac_secret_and_root_key() -> None:
+    documentation = _read("docs/GITHUB_CORE_DEPLOYMENT.md")
+
+    assert "DEPLOY_REQUEST_KEY" in documentation
+    assert "/etc/tradingdatas-deploy/core-release.hmac" in documentation
+    assert "expected_current" in documentation
+    assert "HMAC-SHA256" in documentation
