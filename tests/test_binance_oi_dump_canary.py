@@ -788,3 +788,28 @@ def test_oi_dump_backfill_yields_between_day_batches(
     assert result["state"] == "success"
     assert result["collected_day_count"] == 198
     assert len(yields) == 198
+
+
+def test_oi_dump_parse_accepts_phase_shifted_day_grid() -> None:
+    # Real 2026-02 zips run 00:05 -> next-day 00:00 instead of 00:00-23:55.
+    lines = [
+        "create_time,symbol,sum_open_interest,sum_open_interest_value,"
+        "count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,"
+        "count_long_short_ratio,sum_taker_long_short_vol_ratio"
+    ]
+    day = datetime(2026, 2, 26, tzinfo=timezone.utc)
+    for index in range(288):
+        stamp = (day + timedelta(minutes=5 * (index + 1))).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        lines.append(
+            f"{stamp},BTCUSDT,{1000 + index}.0,{100000000 + index}.0,"
+            "1.9,1.5,1.8,2.1"
+        )
+    payload = _zip_payload(lines, member="BTCUSDT-metrics-2026-02-26.csv")
+    rows = BinanceUsdmMetricsDumpCollector._parse(
+        payload, symbol="BTCUSDT", day=day
+    )
+    assert len(rows) == 288
+    assert rows[0]["timestamp"].startswith("2026-02-26T00:05")
+    assert rows[-1]["timestamp"].startswith("2026-02-27T00:00")
