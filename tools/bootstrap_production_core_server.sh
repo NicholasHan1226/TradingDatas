@@ -32,11 +32,13 @@ esac
 
 deploy_group="$(id -gn "$deploy_user")"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-source_helper="$script_dir/production_core_release.py"
+source_wrapper="$script_dir/production_core_release_wrapper.sh"
+source_implementation="$script_dir/production_core_release.py"
 source_verifier="$script_dir/release_manifest.py"
 
 installed_helper=/usr/local/sbin/tradingdatas-core-release
 trusted_dir=/usr/local/lib/tradingdatas-release
+installed_implementation="$trusted_dir/production_core_release.py"
 installed_verifier="$trusted_dir/release_manifest.py"
 spool=/var/tmp/tradingdatas-core-deploy
 release_root=/opt/investment/releases/tradingdatas
@@ -59,10 +61,10 @@ python_runtime_mode="$(stat -c '%a' -- "$python_runtime_real")"
 (( (8#$python_runtime_mode & 0022) == 0 )) \
   || fail "python runtime target must not be group/other writable: $python_runtime_real"
 
-[[ -f "$source_helper" && ! -L "$source_helper" ]] || fail "helper source missing: $source_helper"
+[[ -f "$source_wrapper" && ! -L "$source_wrapper" ]] || fail "wrapper source missing: $source_wrapper"
+[[ -f "$source_implementation" && ! -L "$source_implementation" ]] || fail "implementation source missing: $source_implementation"
 [[ -f "$source_verifier" && ! -L "$source_verifier" ]] || fail "verifier source missing: $source_verifier"
-[[ "$(head -n 1 -- "$source_helper")" == "#!$python_runtime" ]] \
-  || fail "helper shebang must exactly use trusted python runtime: $python_runtime"
+[[ "$(head -n 1 -- "$source_wrapper")" == '#!/bin/bash' ]] || fail 'privileged wrapper must use fixed /bin/bash'
 
 [[ -d "$deploy_auth_dir" && ! -L "$deploy_auth_dir" ]] \
   || fail "deployment authorization directory is required: $deploy_auth_dir"
@@ -96,19 +98,20 @@ manifests_root_mode="$(stat -c '%a' -- "$manifests_root")"
 current_manifest="$manifests_root/$current_target.json"
 [[ -f "$current_manifest" && ! -L "$current_manifest" ]] || fail "current rollback manifest is required: $current_manifest"
 
-# Validate the existing rollback authority with the approved checkout before
-# installing any new privileged deployment trust boundary on the server.
-"$python_runtime" "$source_verifier" verify-current \
+# Validate the existing rollback authority with isolated Python from the approved
+# checkout before installing any new privileged deployment trust boundary.
+"$python_runtime" -I -S "$source_verifier" verify-current \
   --releases-root "$release_root" \
   --manifest "$current_manifest" \
   --expected-uid 0 --expected-gid 0 >/dev/null
 
 install -d -o root -g root -m 0755 "$trusted_dir"
 install -o root -g root -m 0444 "$source_verifier" "$installed_verifier"
-install -o root -g root -m 0755 "$source_helper" "$installed_helper"
+install -o root -g root -m 0444 "$source_implementation" "$installed_implementation"
+install -o root -g root -m 0755 "$source_wrapper" "$installed_helper"
 
 # Read back the installed trusted verifier against the same current authority.
-"$python_runtime" "$installed_verifier" verify-current \
+"$python_runtime" -I -S "$installed_verifier" verify-current \
   --releases-root "$release_root" \
   --manifest "$current_manifest" \
   --expected-uid 0 --expected-gid 0 >/dev/null
@@ -131,9 +134,11 @@ chown root:root "$sudoers_file"
 visudo -cf "$sudoers_file" >/dev/null
 trap - EXIT
 
-[[ "$(stat -c '%U:%G %a' -- "$installed_helper")" == 'root:root 755' ]] \
-  || fail 'installed helper ownership/mode verification failed'
-[[ "$(stat -c '%U:%G %a' -- "$installed_verifier")" == 'root:root 444' ]] \
+[[ "$(stat -c '%U:%G %a %h' -- "$installed_helper")" == 'root:root 755 1' ]] \
+  || fail 'installed wrapper ownership/mode verification failed'
+[[ "$(stat -c '%U:%G %a %h' -- "$installed_implementation")" == 'root:root 444 1' ]] \
+  || fail 'installed implementation ownership/mode verification failed'
+[[ "$(stat -c '%U:%G %a %h' -- "$installed_verifier")" == 'root:root 444 1' ]] \
   || fail 'installed verifier ownership/mode verification failed'
 [[ "$(stat -c '%U %a' -- "$spool")" == "$deploy_user 700" ]] \
   || fail 'deployment spool ownership/mode verification failed'
@@ -142,6 +147,7 @@ printf 'TradingDatas core deployment bootstrap complete.\n'
 printf 'deploy_user=%s\n' "$deploy_user"
 printf 'current=%s\n' "$current_target"
 printf 'python_runtime=%s\n' "$python_runtime_real"
-printf 'helper_sha256=%s\n' "$(sha256sum "$installed_helper" | awk '{print $1}')"
+printf 'wrapper_sha256=%s\n' "$(sha256sum "$installed_helper" | awk '{print $1}')"
+printf 'implementation_sha256=%s\n' "$(sha256sum "$installed_implementation" | awk '{print $1}')"
 printf 'verifier_sha256=%s\n' "$(sha256sum "$installed_verifier" | awk '{print $1}')"
 printf 'Keep repository variable TRADINGDATAS_CORE_DEPLOY_ENABLED=false until GitHub secrets are configured.\n'
