@@ -1,6 +1,14 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 18:30 CST。
+最后更新：2026-08-16 19:05 CST。
+
+> **2026-08-16 日度 append_only 数据集瞬时失败不再隐藏健康历史（runtime 状态机修复）：**
+> 根因：`_latest_run_terminal` 以"最新一次 attempt"定 state，日度 dump 一次瞬时
+> provider_error 会让整个数据集 query fail-closed 数小时（直到下一日发布）。修复：
+> 仅对 `point_in_time=append_only` 且最新失败 errors 恰为 provider_error、且最近一次
+> 成功 data_through 仍在 SLA 内时，当前读投影/证据回退到最近成功终端；结构性失败、
+> 快照数据集、as-of 历史读保持严格语义。新增回归测试，receipt_projection+query_service
+> 131 项全绿。
 
 > **2026-08-16 funding rate 历史 receipt 兼容：** 中继切换后旧失败 receipt
 > 的 provider 不再匹配当前单一 relay binding，导致 readback `provider_binding_mismatch`。
