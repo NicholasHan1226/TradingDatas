@@ -1040,6 +1040,33 @@ def test_api_override_is_specific_and_does_not_widen_global_budgets() -> None:
         ledger.consume(plan("default_api", 1), "default_api")
 
 
+def test_event_wave_budget_leaves_headroom_above_active_fanout() -> None:
+    """The active event wave (tushare + firecrawl) must fit inside the event
+    rate budget with headroom for transient retries, not sit exactly at the
+    limit where the tail of a fanout (major_news) gets resource_budget."""
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    budget = schedule.rate_budgets["event"]
+    registry = _active_registry()
+
+    total = 0
+    for dataset in registry.datasets:
+        if dataset.cadence_class != "event":
+            continue
+        for binding in dataset.provider_bindings:
+            if binding.activation_state != "active":
+                continue
+            fanout = binding.fanout
+            if fanout is not None and fanout.strategy == "literal_values":
+                total += len(fanout.values)
+            else:
+                total += 1
+
+    # The budget must exceed the deterministic request count so a transient
+    # provider failure plus its retry does not truncate the fanout tail.
+    assert total < budget.account_requests_per_run
+    assert total < budget.provider_requests_per_run
+
+
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
