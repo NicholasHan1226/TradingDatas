@@ -682,6 +682,7 @@ class ResponseCompletenessPolicy:
     request_partition_key: str | None = None
     fanout_field: str | None = None
     snapshot_field: str | None = None
+    dedup_duplicate_keys: bool = False
 
 
 @dataclass(frozen=True)
@@ -1266,9 +1267,9 @@ def _request_window_policy(
     )
     if len(placeholders) != len(set(placeholders)):
         raise ValueError(f"{path} request_template placeholders must be unique")
-    if set(placeholders) != set(required_keys):
+    if not set(placeholders) <= set(required_keys):
         raise ValueError(
-            f"{path} request_template placeholders must exactly equal required_keys"
+            f"{path} request_template placeholders must be covered by required_keys"
         )
 
     range_start_key = _provider_parameter_name(
@@ -1363,9 +1364,13 @@ def _response_completeness_policy(
         allowed_keys = allowed_keys | {"fanout_field", "snapshot_field"}
     if strategy == "one_row_per_calendar_date":
         allowed_keys = allowed_keys | {"reject_at_row_limit"}
+    allowed_keys = allowed_keys | {"dedup_duplicate_keys"}
     _reject_unknown_keys(value, allowed_keys, path, required=required_keys)
     reject_at_row_limit = _boolean(
         value.get("reject_at_row_limit", False), f"{path}.reject_at_row_limit"
+    )
+    dedup_duplicate_keys = _boolean(
+        value.get("dedup_duplicate_keys", False), f"{path}.dedup_duplicate_keys"
     )
 
     date_field: str | None = None
@@ -1443,10 +1448,6 @@ def _response_completeness_policy(
         ):
             raise ValueError(f"{path} requires local_datetime_seconds window values")
     elif strategy == "unique_primary_key_snapshot":
-        if request_window_policy is not None:
-            raise ValueError(
-                f"{path}.unique_primary_key_snapshot must not use request_window_policy"
-            )
         raw_fanout_field = value.get("fanout_field")
         raw_snapshot_field = value.get("snapshot_field")
         if raw_fanout_field is not None and raw_snapshot_field is None:
@@ -1505,6 +1506,7 @@ def _response_completeness_policy(
         request_partition_key=request_partition_key,
         fanout_field=fanout_field,
         snapshot_field=snapshot_field,
+        dedup_duplicate_keys=dedup_duplicate_keys,
     )
 
 

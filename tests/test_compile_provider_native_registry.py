@@ -109,7 +109,7 @@ def test_rt_min_full_universe_is_exact_and_resumable_in_generated_registry() -> 
     assert binding.fanout.values == tuple(sorted(binding.fanout.values))
     assert binding.resumable_fanout is not None
     assert binding.resumable_fanout.cursor_contract_version == 2
-    assert binding.resumable_fanout.max_batches_per_run == 6
+    assert binding.resumable_fanout.max_batches_per_run == 20
     batches = _stable_fanout_batches(
         binding.fanout.values,
         parameter="ts_code",
@@ -499,7 +499,7 @@ def test_compiler_preserves_exact_fanout_snapshot_contract() -> None:
     assert len(binding["fanout"]["values"]) == 5963
     assert binding["resumable_fanout"] == {
         "cursor_contract_version": 2,
-        "max_batches_per_run": 6,
+        "max_batches_per_run": 20,
     }
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -17,6 +18,7 @@ from collectors.tushare.provider_native_ingest import (
     _execute_provider_requests,
     _resolved_request,
     _stable_fanout_batches,
+    _validate_unique_primary_keys,
 )
 from collectors.tushare.tushare_common import (
     ProviderCallOutcome,
@@ -30,6 +32,7 @@ from dataset_registry import (
     ProviderBinding,
     ReadModelAdapter,
     ResumableFanoutPolicy,
+    load_dataset_registry,
 )
 from storage.receipt_projection import ValidatedReceiptHistoryEntry
 from datetime import datetime, timezone
@@ -650,7 +653,7 @@ def test_seven_allowed_empty_event_plans_use_seven_shared_budget_calls(
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", empty_provider)
     schedule = scheduler.load_schedule()
     ledger = scheduler.RuntimeRateBudgetLedger(schedule)
-    assert schedule.rate_budgets["event"].account_requests_per_run == 24
+    assert schedule.rate_budgets["event"].account_requests_per_run == 32
 
     for index in range(7):
         api_name = f"synthetic_event_{index}"
@@ -679,6 +682,29 @@ def test_seven_allowed_empty_event_plans_use_seven_shared_budget_calls(
         assert len(execution.calls) == 1
 
     assert provider_delegations == [f"synthetic_event_{index}" for index in range(7)]
+
+
+def test_duplicate_primary_keys_skip_when_opt_in() -> None:
+    registry = load_dataset_registry(
+        Path(__file__).resolve().parents[1]
+        / "config"
+        / "provider_native_dataset_registry.yaml"
+    )
+    major_news = registry.resolve("cn.dataset.major_news")
+    assert (
+        major_news.provider_bindings[0].response_completeness.dedup_duplicate_keys
+        is True
+    )
+
+    rows = (
+        {"src": "新华网", "pub_time": "2026-08-17 10:30:00", "title": "t"},
+        {"src": "新华网", "pub_time": "2026-08-17 10:30:00", "title": "t"},
+    )
+    # opt-in dedup tolerates the republished news item.
+    _validate_unique_primary_keys(major_news, rows, dedup_duplicate_keys=True)
+    # default still fails closed on duplicates.
+    with pytest.raises(ValueError, match="duplicate primary key"):
+        _validate_unique_primary_keys(major_news, rows)
 
 
 def test_pre_provider_resource_budget_rejection_remains_fail_closed(

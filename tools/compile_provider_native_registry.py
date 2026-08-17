@@ -351,6 +351,7 @@ _COMPLETENESS_KEYS = frozenset(
         "snapshot_field",
         "fixed_field_matches",
         "reject_at_row_limit",
+        "dedup_duplicate_keys",
     }
 )
 _COMPLETENESS_STRATEGIES = frozenset(
@@ -2224,8 +2225,8 @@ def _window_policy(
     _reject_keys(value, _WINDOW_KEYS, label)
     required_keys = _string_list(value["required_keys"], f"{label}.required_keys")
     formats = _mapping(value["formats"], f"{label}.formats")
-    if set(required_keys) != set(formats) or set(required_keys) != set(placeholders):
-        raise ValueError(f"{label} keys must exactly match request window placeholders")
+    if set(required_keys) != set(formats) or not set(placeholders) <= set(required_keys):
+        raise ValueError(f"{label} keys must cover request window placeholders")
     normalized_formats = {
         key: _required_text(formats[key], f"{label}.formats.{key}")
         for key in sorted(formats)
@@ -2287,6 +2288,10 @@ def _completeness(
             value.get("reject_at_row_limit", True), f"{label}.reject_at_row_limit"
         ),
     }
+    if "dedup_duplicate_keys" in value:
+        result["dedup_duplicate_keys"] = _required_bool(
+            value["dedup_duplicate_keys"], f"{label}.dedup_duplicate_keys"
+        )
     if strategy == "one_row_per_calendar_date":
         required = {
             "strategy",

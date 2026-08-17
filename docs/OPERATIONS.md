@@ -30,14 +30,15 @@ one-shot manifest 明确选择，且继续受同一 transport budget 约束。�
 planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
 receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。受审沪深主板
 `cn.dataset.rt_min` 5MIN 是其中一个受控 canary：当前 registry 的 5,963 个冻结代码以每批 300
-拆为 20 个确定性批次；resumable cursor v2 每轮最多推进 6 批，因此完整窗口的确定性续接为
-`6+6+6+2`。只有带匹配 dataset/provider、config hash、frozen universe、batch identity 与
+拆为 20 个确定性批次；resumable cursor v2 每轮最多推进 20 批，并以 bar_time 窗口在每根
+5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
+dataset/provider、config hash、frozen universe、batch identity 与
 success/empty 状态的 receipt 才能推进游标；失败批次只在本数据集内优先重试，不能借用其它
-dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 12、
-单 API 6 次的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
+dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 24、
+rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
 已接纳。每轮仍须保留实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行
-可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 10，在当前单 API 6 次
-门禁下保持 dataset-local `paused`；这不撤销它的 executable/ingest-ready 合同，也不阻断其它
+可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 10，在 registry 中保持 dataset-local
+`paused`；这不撤销它的 executable/ingest-ready 合同，也不阻断其它
 dataset。只有新的有界证据证明完整 cohort 可在相同全局门禁内完成，才可恢复其精确
 `active_evidence` 并重编 registry。回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
