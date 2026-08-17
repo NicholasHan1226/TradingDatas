@@ -21170,13 +21170,9 @@ datasets:
       range_end_key: end_date
       max_span_days: 1
     response_completeness:
-      strategy: windowed_unique_primary_key
+      strategy: unique_primary_key_snapshot
       fixed_field_matches: {}
       reject_at_row_limit: true
-      date_field: pub_time
-      request_start_key: start_date
-      request_end_key: end_date
-      fanout_field: src
     requested_fields:
     - title
     - content
