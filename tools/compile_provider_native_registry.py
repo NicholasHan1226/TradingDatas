@@ -74,7 +74,7 @@ DEFAULT_QUERY_DEFAULTS = {
     "max_order_terms": 8,
     "max_catalog_search_chars": 128,
     "cursor_ttl_seconds": 900,
-    "sqlite_progress_steps": 1_000_000,
+    "sqlite_progress_steps": 1_000_000_000,
 }
 
 _SAFE_PROVIDER_FIELD = re.compile(r"[A-Za-z0-9_]{1,64}")

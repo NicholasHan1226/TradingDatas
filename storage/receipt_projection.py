@@ -3619,6 +3619,10 @@ def open_verified_read_model_snapshot(db_path: Path):
                 # still raised fail-closed after the attempts are exhausted.
                 last_error = exc
                 time.sleep(0.05)
+    except PermissionError:
+        # QueryAccessDenied inherits PermissionError (an OSError subclass) and
+        # must propagate as a 403, not be folded into a 503 projection error.
+        raise
     except (
         OSError,
         SqliteAuthorityLockError,

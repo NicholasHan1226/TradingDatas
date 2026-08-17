@@ -959,7 +959,10 @@ def test_validated_row_receipt_proofs_bounded_ids_survive_large_registry_and_his
     conn.commit()
     now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
 
-    budget = registry.query_defaults.sqlite_progress_steps
+    # Use an explicit bounded budget so the unbounded scan is interrupted while
+    # the bounded row-proof join stays within budget, independent of the
+    # registry's default progress budget.
+    budget = 1_000_000
 
     def with_unchanged_budget(call):
         steps = 0
