@@ -1122,6 +1122,31 @@ def test_raw_probe_evidence_normalizes_sparse_probe_summary() -> None:
     assert bindings["major_news"]["activation_state"] == "active"
 
 
+def test_raw_probe_evidence_accepts_present_permission_denied_with_sparse_summary() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    for result in evidence["results"]:
+        if result["api_name"] == "major_news":
+            result["state"] = "permission_denied"
+            result["provider_class"] = "permission_denied"
+            result["row_count"] = 0
+            break
+    evidence["summary"] = {"permission_denied": 1}
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+    assert isinstance(registry, dict)
+
+
 def test_raw_probe_evidence_accepts_a_plan_subset_of_executable_contracts() -> None:
     bundle = _bundle()
     observations = _observations()

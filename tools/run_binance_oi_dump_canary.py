@@ -268,10 +268,9 @@ def _run_lookback(
                     and item["receipt_ids"]
                     for item in results
                 )
-                if len(missing) > 1:
-                    # Older missing days unpublished/failing too is an
-                    # outage, not publication lag.
-                    raise RuntimeError("one or more Crypto dataset collections failed")
+                # Non-provider drift already failed closed above; anything
+                # left here is provider_error/unpublished, which is a soft gap
+                # to retry next tick (multiple missing days included).
                 if attempted:
                     results[-1]["state"] = "pending_publication"
                 else:

@@ -346,7 +346,7 @@ def test_premium_dump_runner_retries_one_provider_error_and_preserves_both_recei
     assert all(item["window"] == {"date": "2026-08-15"} for item in result["datasets"])
 
 
-def test_premium_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
+def test_premium_dump_runner_treats_missing_dump_as_soft_gap_across_multiple_days(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
@@ -363,13 +363,17 @@ def test_premium_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
         )
 
     monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
-    with pytest.raises(RuntimeError, match="collections failed"):
-        run(
-            db_path=tmp_path / "unused.sqlite",
-            lock_path=tmp_path / "collect.lock",
-            execute=True,
-            now=datetime(2026, 8, 16, 0, 53, tzinfo=timezone.utc),
-        )
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=datetime(2026, 8, 16, 0, 53, tzinfo=timezone.utc),
+    )
+
+    assert result["state"] == "success"
+    assert any(
+        item["state"] == "pending_publication" for item in result["datasets"]
+    )
 
 
 def test_premium_dump_runner_falls_through_unpublished_newest_day(
