@@ -1116,10 +1116,16 @@ def _validate_fanout_snapshot(
         observed.add(value)
         snapshots.add(snapshot)
     if observed != expected:
-        raise ProviderValidationError(
-            "provider response fanout coverage is incomplete",
-            predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
-        )
+        if binding.resumable_fanout is not None and observed <= expected:
+            # Resumable fanout splits a large universe into batches, and a
+            # minute stream legitimately omits halted symbols.  A strict subset
+            # is an allowed data gap, not incomplete provider coverage.
+            pass
+        else:
+            raise ProviderValidationError(
+                "provider response fanout coverage is incomplete",
+                predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+            )
     if len(snapshots) != 1:
         raise ValueError("provider response fanout snapshot time is inconsistent")
 

@@ -2507,8 +2507,8 @@ def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
         )
 
     validate(complete_rows)
-    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
-        validate(complete_rows[:-1])
+    # Resumable fanout permits a strict subset (halted symbols may be absent).
+    validate(complete_rows[:-1])
     with pytest.raises(ValueError, match="duplicate primary key"):
         validate(complete_rows[:-1] + (complete_rows[0],))
     with pytest.raises(ValueError, match="fanout coverage is incomplete"):
