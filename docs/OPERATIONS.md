@@ -476,3 +476,27 @@ provider route 或 SQLite 直读。TradingDatas 回滚只允许切换到已验�
 回滚只切回已验证的 immutable release，不覆盖 SQLite，不恢复旧 cron，不把旧 provider route 重新引入新系统。
 
 外部账户不属于当前运行范围；内部运行凭证和 API token 不得复用于任何外部账户或公网入口。
+
+## Firecrawl 凭证与额度运维
+
+Firecrawl 是境内新闻/公告/舆情采集的第三个 provider-level adapter（transport 协议与
+QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界与 Tushare/QuickSync 完全一致：
+
+- 凭证只从 `FIRECRAWL_API_KEY_FILE` 读取：绝对路径、单一硬链接普通文件、owner 等于采集进程
+  有效 UID（当前 `tradingdatas`）、mode `0600`、非空且为单行 UTF-8。当前生产文件为
+  `/etc/tradingdatas/firecrawl.token`，不在仓库内。
+- Firecrawl key 是一次性成品号、按 credit 计费。换 key 只替换该文件内容并保持 owner/mode，
+  零代码、零 registry 改动；替换后下一轮 event 采集自然使用新 key，无需重启服务。
+- 402/429 → 该 dataset 记 `rate_limited` terminal receipt、planner 跳过、runtime 降级
+  degraded，不阻塞 tushare/binance 管线。401/403 → `permission_denied`（key 失效即 entitlement
+  降级，同样 dataset 级隔离）。
+- 额度消费以 Firecrawl 后台 `creditsUsed` 为准；本仓库不持久化任何 Firecrawl 凭据或额度数字。
+  全部 key 耗尽且暂无新 key 时，把 `config/firecrawl_upstream_contracts.v1.yaml` 中
+  `cn.news.flash` 的 `activation.activation_state` 改回 `paused`（registry/config 改动），
+  管线形态不变，恢复新 key 后按同一路径改回 `active` 并重编 registry。
+- 生产采集单元的环境变量 `FIRECRAWL_API_KEY_FILE` 由
+  `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`
+  提供；修改凭证文件路径时必须同步该 drop-in，并 `systemctl daemon-reload`。
+
+Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
+补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
