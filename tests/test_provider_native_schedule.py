@@ -1000,8 +1000,8 @@ def test_api_override_is_specific_and_does_not_widen_global_budgets() -> None:
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
     intraday = schedule.rate_budgets["intraday"]
 
-    assert intraday.account_requests_per_run == 12
-    assert intraday.provider_requests_per_run == 12
+    assert intraday.account_requests_per_run == 24
+    assert intraday.provider_requests_per_run == 24
     assert intraday.api_requests_per_run == 6
     assert dict(intraday.api_overrides) == {"rt_min": 60, "rt_min_daily": 60}
 
