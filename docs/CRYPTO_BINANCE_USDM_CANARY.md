@@ -24,7 +24,7 @@ retry/fallback-to-trading surface.
 reset, recorded in `STATUS.md` on 2026-08-16), while the public dump host
 `https://data.binance.vision` stays reachable.  With owner approval, open
 interest therefore has a second provider binding, `binance_usdm_dump`, on the
-**same** ten `crypto.perp.binance.<symbol>.open_interest` datasets: the dump's
+**same** forty `crypto.perp.binance.<symbol>.open_interest` datasets: the dump's
 daily `metrics` zip carries the same 5-minute open-interest facts as
 `openInterestHist`, so the dataset identity, schema, primary key and
 append-only payload-hash idempotency are unchanged and only the transport
@@ -43,7 +43,7 @@ binance-usdm-via-sg-relay.v1`) speaks plain SOCKS5 CONNECT to that loopback
 endpoint and then negotiates TLS end-to-end with `fapi.binance.com` — SNI,
 Host and certificate verification are unchanged, so the relay can only drop
 traffic, never read or modify it.  There is deliberately no direct-egress
-fallback and no relay fallback to direct.  All ten `funding_rate` bindings
+fallback and no relay fallback to direct.  All forty `funding_rate` bindings
 moved to this provider with `activation_state: active`; collection stays
 gated by the disabled USDM timer until the production review (controlled
 collection plus authenticated readback) completes.
@@ -93,7 +93,7 @@ Bounded historical backfill is a separate one-shot operation approved by the
 owner to align open interest with the bar history: `--backfill-days 198` (any
 other value is rejected) walks the frozen horizon day by day, oldest first —
 with the latest closed UTC day 2026-08-15 the 198 windows start at
-2026-01-30.  Each day is one bounded batch of the frozen ten symbols taken
+2026-01-30.  Each day is one bounded batch of the frozen forty symbols taken
 under the shared lock, and the lock is released between days (re-acquired by
 waiting, not by failing) so the five-minute collectors interleave instead of
 starving; an individual five-minute slot may still see a lock-busy failure
@@ -163,8 +163,12 @@ isolated production review (`observed` then `stable`) completes.
 
 The symbol set reuses the same versioned universe contract as the Spot
 cohort, `config/crypto_binance_spot_universe.v1.yaml`: BTCUSDT, ETHUSDT,
-SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT, LINKUSDT and
-AVAXUSDT. The deterministic registry compiler emits one `.funding_rate`, one
+SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT, LINKUSDT, AVAXUSDT,
+BCHUSDT, LTCUSDT, DOTUSDT, NEARUSDT, SUIUSDT, APTUSDT, UNIUSDT, ATOMUSDT,
+XLMUSDT, HBARUSDT, ETCUSDT, FILUSDT, INJUSDT, ARBUSDT, OPUSDT, AAVEUSDT,
+GRTUSDT, TIAUSDT, SEIUSDT, ONDOUSDT, LDOUSDT, CRVUSDT, ENAUSDT, WLDUSDT,
+STRKUSDT, JUPUSDT, PYTHUSDT, FETUSDT, RENDERUSDT and POLUSDT. The
+deterministic registry compiler emits one `.funding_rate`, one
 `.open_interest` and one `.premium_index` dataset per symbol as
 `crypto.perp.binance.<symbol>.<kind>`; runtime collection cannot add a symbol
 that is absent from the compiled registry.
@@ -201,7 +205,7 @@ run retried by the next timer tick; the funding window self-heals, while a
 missed open-interest interval stays a gap until a bounded replay is
 explicitly approved.
 
-These twenty datasets are **contract_ready candidates only**. The unit pair
+These eighty datasets are **contract_ready candidates only**. The unit pair
 `tradingdatas-crypto-binance-usdm-collect.{service,timer}` ships in the
 repository but the timer must stay disabled until an isolated production
 review completes a real provider → SQLite receipt → authenticated

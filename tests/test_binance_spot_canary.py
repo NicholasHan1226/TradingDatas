@@ -33,12 +33,42 @@ SYMBOLS = (
     "TRXUSDT",
     "LINKUSDT",
     "AVAXUSDT",
+    "BCHUSDT",
+    "LTCUSDT",
+    "DOTUSDT",
+    "NEARUSDT",
+    "SUIUSDT",
+    "APTUSDT",
+    "UNIUSDT",
+    "ATOMUSDT",
+    "XLMUSDT",
+    "HBARUSDT",
+    "ETCUSDT",
+    "FILUSDT",
+    "INJUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "AAVEUSDT",
+    "GRTUSDT",
+    "TIAUSDT",
+    "SEIUSDT",
+    "ONDOUSDT",
+    "LDOUSDT",
+    "CRVUSDT",
+    "ENAUSDT",
+    "WLDUSDT",
+    "STRKUSDT",
+    "JUPUSDT",
+    "PYTHUSDT",
+    "FETUSDT",
+    "RENDERUSDT",
+    "POLUSDT",
 )
 
 
-def test_canary_registry_freezes_ten_symbols_and_current_snapshot_sets() -> None:
+def test_canary_registry_freezes_forty_symbols_and_current_snapshot_sets() -> None:
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
-    assert len(registry.datasets) == 60
+    assert len(registry.datasets) == 240
     assert [item.dataset_id for item in registry.datasets] == [
         *(f"crypto.spot.binance.{symbol.lower()}.5m" for symbol in SYMBOLS),
         *(f"crypto.spot.binance.{symbol.lower()}.rules" for symbol in SYMBOLS),

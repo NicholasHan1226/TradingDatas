@@ -37,6 +37,36 @@ SYMBOLS = (
     "TRXUSDT",
     "LINKUSDT",
     "AVAXUSDT",
+    "BCHUSDT",
+    "LTCUSDT",
+    "DOTUSDT",
+    "NEARUSDT",
+    "SUIUSDT",
+    "APTUSDT",
+    "UNIUSDT",
+    "ATOMUSDT",
+    "XLMUSDT",
+    "HBARUSDT",
+    "ETCUSDT",
+    "FILUSDT",
+    "INJUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "AAVEUSDT",
+    "GRTUSDT",
+    "TIAUSDT",
+    "SEIUSDT",
+    "ONDOUSDT",
+    "LDOUSDT",
+    "CRVUSDT",
+    "ENAUSDT",
+    "WLDUSDT",
+    "STRKUSDT",
+    "JUPUSDT",
+    "PYTHUSDT",
+    "FETUSDT",
+    "RENDERUSDT",
+    "POLUSDT",
 )
 
 _FUNDING_PAYLOAD = [
@@ -228,9 +258,9 @@ def test_usdm_transport_rejects_redirects() -> None:
         )
 
 
-def test_usdm_registry_freezes_ten_symbol_funding_and_open_interest_cohorts() -> None:
+def test_usdm_registry_freezes_forty_symbol_funding_and_open_interest_cohorts() -> None:
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
-    assert [item.dataset_id for item in registry.datasets[30:50]] == [
+    assert [item.dataset_id for item in registry.datasets[120:200]] == [
         *(f"crypto.perp.binance.{symbol.lower()}.funding_rate" for symbol in SYMBOLS),
         *(f"crypto.perp.binance.{symbol.lower()}.open_interest" for symbol in SYMBOLS),
     ]
@@ -364,7 +394,7 @@ def test_usdm_runner_plan_never_calls_provider_or_writes(tmp_path) -> None:
         now=datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
     )
     assert result["state"] == "planned"
-    assert len(result["datasets"]) == 20
+    assert len(result["datasets"]) == 80
     assert set(result["windows"]) == {"funding_rate", "open_interest"}
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
@@ -403,7 +433,7 @@ def test_usdm_runner_retries_one_provider_error_and_preserves_both_receipts(
     )
 
     assert result["state"] == "success"
-    assert len(result["datasets"]) == 20
+    assert len(result["datasets"]) == 80
     # open_interest is dump-bound now; this runner reports it as skipped.
     oi_states = {
         item["state"]

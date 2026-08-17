@@ -26,7 +26,7 @@ provider
 6. 如实暴露 `success`、`empty`、`unobserved`、`paused`、`failed`、`stale`；
 7. 支持失败后的有界自愈、缺口恢复和版本化 manifest 控制的历史回填。
 
-当前中国境内只读数据以 Tushare provider、QuickSync transport 为主要范围。Crypto 使用隔离运行面覆盖冻结的 10 个 USDT 标的；现货和 USDⓈ-M 公共只读能力共用同一 provider-neutral 数据模型，但保持独立 release、SQLite、内部认证、端口和 timer。精确 active/paused 能力、release 与生产状态不得固化在本路线图，以 `STATUS.md` 和本轮 runtime/catalog/query readback 为准。
+当前中国境内只读数据以 Tushare provider、QuickSync transport 为主要范围。Crypto 使用隔离运行面覆盖冻结的 40 个 USDT 标的；现货和 USDⓈ-M 公共只读能力共用同一 provider-neutral 数据模型，但保持独立 release、SQLite、内部认证、端口和 timer。精确 active/paused 能力、release 与生产状态不得固化在本路线图，以 `STATUS.md` 和本轮 runtime/catalog/query readback 为准。
 
 ## 执行原则：先运行，再持续优化
 
