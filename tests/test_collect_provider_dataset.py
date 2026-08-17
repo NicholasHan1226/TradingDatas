@@ -2515,10 +2515,10 @@ def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
         validate((*complete_rows[:-1], {**complete_rows[-1], "ts_code": "999999.SZ"}))
     with pytest.raises(ValueError, match="fixed field does not match request"):
         validate(({**complete_rows[0], "freq": "1MIN"}, *complete_rows[1:]))
-    with pytest.raises(ValueError, match="snapshot time is inconsistent"):
-        validate(
-            (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
-        )
+    # Resumable minute streams may span more than one bar timestamp.
+    validate(
+        (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
+    )
     dynamic_binding = replace(
         binding,
         request_template=MappingProxyType(

@@ -1127,7 +1127,12 @@ def _validate_fanout_snapshot(
                 predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
             )
     if len(snapshots) != 1:
-        raise ValueError("provider response fanout snapshot time is inconsistent")
+        if binding.resumable_fanout is not None:
+            # Long-halted symbols carry a stale last-bar time, so a resumable
+            # minute stream legitimately spans more than one bar timestamp.
+            pass
+        else:
+            raise ValueError("provider response fanout snapshot time is inconsistent")
 
 
 def _template_snapshot_cohort(
