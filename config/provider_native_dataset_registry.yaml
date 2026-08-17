@@ -9737,8 +9737,8 @@ datasets:
     api_name: etf_sh_cons
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_sh_cons
-    entitlement_state: excluded
-    activation_state: paused
+    entitlement_state: active
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -14728,7 +14728,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -15537,8 +15537,8 @@ datasets:
     api_name: fut_trade_cal
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_trade_cal
-    entitlement_state: excluded
-    activation_state: paused
+    entitlement_state: active
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -15646,8 +15646,8 @@ datasets:
     api_name: fut_weekly_detail
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_weekly_detail
-    entitlement_state: unknown
-    activation_state: paused
+    entitlement_state: active
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -24171,7 +24171,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_basic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
