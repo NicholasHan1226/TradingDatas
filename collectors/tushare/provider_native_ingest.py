@@ -981,6 +981,8 @@ def _validate_response_completeness_impl(
     policy = binding.response_completeness
     if policy is None:
         raise ValueError("provider response completeness contract is missing")
+    if not rows and dataset.empty_data_policy == "allowed":
+        return
 
     for row in rows:
         for row_field, request_param in policy.fixed_field_matches.items():

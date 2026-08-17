@@ -778,3 +778,32 @@ def test_scan_budget_scales_with_resumable_fanout_batches() -> None:
     # the sensitive-scan node budget must scale by that factor (minus the fixed
     # envelope headroom, which does not scale).
     assert resumable_budget.max_nodes >= single_budget.max_nodes * 5
+
+
+def test_empty_rows_with_allowed_policy_skip_fanout_coverage() -> None:
+    from collectors.tushare.provider_native_ingest import (
+        _validate_response_completeness_impl,
+    )
+    from dataset_registry import ResponseCompletenessPolicy
+
+    binding = replace(
+        _binding(),
+        response_completeness=ResponseCompletenessPolicy(
+            strategy="unique_primary_key_snapshot",
+            fixed_field_matches={},
+            reject_at_row_limit=True,
+            fanout_field="ts_code",
+            snapshot_field="time",
+        ),
+    )
+    dataset = _synthetic_dataset(binding)
+    # An allowed empty partition (e.g. a resumable fanout batch where every
+    # symbol is halted) must not be rejected as incomplete coverage.
+    _validate_response_completeness_impl(
+        dataset,
+        binding,
+        (),
+        request_window={},
+        resolved_params={},
+        calls=(),
+    )
