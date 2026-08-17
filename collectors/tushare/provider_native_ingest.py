@@ -981,7 +981,11 @@ def _validate_response_completeness_impl(
     policy = binding.response_completeness
     if policy is None:
         raise ValueError("provider response completeness contract is missing")
-    if not rows and dataset.empty_data_policy == "allowed":
+    if (
+        not rows
+        and dataset.empty_data_policy == "allowed"
+        and policy.strategy != "one_row_per_calendar_date"
+    ):
         return
 
     for row in rows:
@@ -1130,7 +1134,13 @@ def _validate_fanout_snapshot(
         if binding.resumable_fanout is not None:
             # Long-halted symbols carry a stale last-bar time, so a resumable
             # minute stream legitimately spans more than one bar timestamp.
-            pass
+            # Bound that span to a single calendar day: arbitrary old rows
+            # spanning multiple dates must not make a current cohort fresh.
+            dates = {snapshot[:10] for snapshot in snapshots}
+            if len(dates) > 1:
+                raise ValueError(
+                    "provider response fanout snapshot spans multiple dates"
+                )
         else:
             raise ValueError("provider response fanout snapshot time is inconsistent")
 
