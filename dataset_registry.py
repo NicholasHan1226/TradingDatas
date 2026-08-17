@@ -1448,6 +1448,14 @@ def _response_completeness_policy(
         ):
             raise ValueError(f"{path} requires local_datetime_seconds window values")
     elif strategy == "unique_primary_key_snapshot":
+        if request_window_policy is not None and any(
+            fmt != "local_datetime_seconds"
+            for fmt in request_window_policy.formats.values()
+        ):
+            raise ValueError(
+                f"{path} unique_primary_key_snapshot requires "
+                "local_datetime_seconds window values"
+            )
         raw_fanout_field = value.get("fanout_field")
         raw_snapshot_field = value.get("snapshot_field")
         if raw_fanout_field is not None and raw_snapshot_field is None:
