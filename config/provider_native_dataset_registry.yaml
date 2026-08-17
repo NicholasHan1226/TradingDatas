@@ -36877,7 +36877,7 @@ datasets:
       extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"},"summary":{"type":["string","null"]}},"required":["title","url","published_at"],"additionalProperties":true}}},"required":["items"]}'
       max_age_ms: '900000'
       prompt: 只抽取页面中客观存在的快讯条目：每条给出标题、原文链接、页面显示的发布时间、页面上已有的摘要原文短句（无摘要则为 null）。禁止生成情绪判断、摘要改写或任何加工结论；禁止输出页面上不存在的内容。
-      timeout_ms: '30000'
+      timeout_ms: '60000'
       window_end: ${window.end_time}
       window_start: ${window.start_time}
     request_variants:
@@ -36888,6 +36888,7 @@ datasets:
       values:
       - https://www.cls.cn/telegraph
       - https://kuaixun.eastmoney.com/7_24.html
+      - https://finance.sina.com.cn/7x24/
       batch_size: 1
     pagination:
       strategy: none

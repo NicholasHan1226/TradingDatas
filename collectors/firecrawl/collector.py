@@ -189,6 +189,19 @@ def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) 
             except ValueError:
                 continue
     if parsed is None:
+        # Realtime flash feeds sometimes emit a bare wall-clock time
+        # ("08:09:28" / "08:09") with the date implied by the source
+        # timezone.  Anchor it to the source timezone's current day.
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                wall = datetime.strptime(text, fmt).time()
+                parsed = datetime.combine(
+                    datetime.now(timezone).date(), wall
+                ).replace(tzinfo=timezone)
+                break
+            except ValueError:
+                continue
+    if parsed is None:
         raise ValueError("firecrawl item published time is not a recognized format")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone)
