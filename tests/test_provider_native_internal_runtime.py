@@ -158,7 +158,7 @@ print(json.dumps({
     )
     payload = json.loads(result.stdout)
 
-    assert payload["dataset_count"] == 191
+    assert payload["dataset_count"] == 192
     assert Path(payload["module_root"]) == ROOT
     assert Path(payload["registry"]) == (
         ROOT / "config/provider_native_dataset_registry.yaml"

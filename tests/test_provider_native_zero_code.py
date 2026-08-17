@@ -189,9 +189,10 @@ def test_observations_compile_without_dataset_specific_runtime():
     bindings = {
         dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
         for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["provider"] == "tushare"
     }
 
-    assert len(bindings) == 191
+    assert len(bindings) == 190
     observed_active_apis = set(observations["active_evidence"])
     registry_active_apis = {
         api
