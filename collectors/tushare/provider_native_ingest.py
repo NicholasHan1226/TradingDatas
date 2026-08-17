@@ -232,9 +232,9 @@ def _resolved_request(
         for value in binding.request_template.values()
         if (match := _WINDOW_PLACEHOLDER.fullmatch(value)) is not None
     }
-    if set(window) != referenced:
+    if not referenced <= set(window):
         raise ValueError(
-            "request_window must contain exactly the registry template window keys"
+            "request_window must contain the registry template window keys"
         )
     policy = binding.request_window_policy
     if policy is not None:

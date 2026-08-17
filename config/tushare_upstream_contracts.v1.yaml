@@ -28562,7 +28562,12 @@ contracts:
     max_batches_per_run: 20
   pagination:
     strategy: none
-  request_window_policy: null
+  request_window_policy:
+    required_keys: [bar_time]
+    formats: {bar_time: local_datetime_seconds}
+    range_start_key: bar_time
+    range_end_key: bar_time
+    max_span_days: 1
   response_completeness:
     strategy: unique_primary_key_snapshot
     fixed_field_matches:

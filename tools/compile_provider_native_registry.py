@@ -2208,8 +2208,8 @@ def _window_policy(
     _reject_keys(value, _WINDOW_KEYS, label)
     required_keys = _string_list(value["required_keys"], f"{label}.required_keys")
     formats = _mapping(value["formats"], f"{label}.formats")
-    if set(required_keys) != set(formats) or set(required_keys) != set(placeholders):
-        raise ValueError(f"{label} keys must exactly match request window placeholders")
+    if set(required_keys) != set(formats) or not set(placeholders) <= set(required_keys):
+        raise ValueError(f"{label} keys must cover request window placeholders")
     normalized_formats = {
         key: _required_text(formats[key], f"{label}.formats.{key}")
         for key in sorted(formats)
