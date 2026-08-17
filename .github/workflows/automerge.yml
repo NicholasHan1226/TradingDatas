@@ -64,8 +64,8 @@ jobs:
             exit 0
           fi
 
-          gh api \
-            --method PUT \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
-            -f merge_method=squash \
-            -f sha="$HEAD_SHA"
+          # Automatic merge is disabled. A green CI run is evidence only, never
+          # merge authority. The Finance Delivery Controller is the sole merge
+          # actor and must accept this exact immutable head before any merge.
+          echo "No automatic merge: Controller acceptance required for PR #${PR_NUMBER} (head ${HEAD_SHA})."
+
