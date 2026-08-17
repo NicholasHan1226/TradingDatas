@@ -358,6 +358,41 @@ def test_append_only_stable_identity_rejects_schema_change_without_new_receipt(
         ).fetchone() == (1,)
 
 
+def test_append_only_stable_identity_tolerates_partition_field_drift(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    dataset_payload = generic_dataset(point_in_time="append_only")
+    dataset_payload["read_model_adapter"]["row_key_strategy"] = "payload_hash"  # type: ignore[index]
+    registry = load_dataset_registry(write_registry(tmp_path, dataset_payload))
+    dataset = registry.datasets[0]
+    binding = dataset.provider_bindings[0]
+    ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[_row(close=10.0)],
+        context=_context(dataset, binding, 1),
+    )
+    before = _fact(db_path)
+    assert before["partition_value"] == "20260717"
+
+    drifted = replace(dataset, partition_field=None)
+    outcome = ingest_provider_native_rows(
+        db_path,
+        dataset=drifted,
+        binding=binding,
+        rows=[_row(close=10.0)],
+        context=_context(drifted, binding, 2),
+    )
+
+    assert outcome.counts.unchanged == 1
+    after = _fact(db_path)
+    assert tuple(after) == tuple(before)
+    assert after["partition_value"] == "20260717"
+
+
 def test_snapshot_missing_key_uses_tagged_payload_fallback(tmp_path: Path) -> None:
     db_path = tmp_path / "facts.sqlite"
     _db(db_path)

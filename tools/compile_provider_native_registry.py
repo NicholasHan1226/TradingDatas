@@ -351,6 +351,7 @@ _COMPLETENESS_KEYS = frozenset(
         "snapshot_field",
         "fixed_field_matches",
         "reject_at_row_limit",
+        "dedup_duplicate_keys",
     }
 )
 _COMPLETENESS_STRATEGIES = frozenset(
@@ -2287,6 +2288,10 @@ def _completeness(
             value.get("reject_at_row_limit", True), f"{label}.reject_at_row_limit"
         ),
     }
+    if "dedup_duplicate_keys" in value:
+        result["dedup_duplicate_keys"] = _required_bool(
+            value["dedup_duplicate_keys"], f"{label}.dedup_duplicate_keys"
+        )
     if strategy == "one_row_per_calendar_date":
         required = {
             "strategy",

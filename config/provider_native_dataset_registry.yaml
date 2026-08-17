@@ -21172,7 +21172,8 @@ datasets:
     response_completeness:
       strategy: unique_primary_key_snapshot
       fixed_field_matches: {}
-      reject_at_row_limit: true
+      reject_at_row_limit: false
+      dedup_duplicate_keys: true
     requested_fields:
     - title
     - content
