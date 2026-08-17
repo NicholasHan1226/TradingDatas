@@ -540,11 +540,29 @@ dependency_seed_authorities:
       - cb_rating
       - cb_share
       - top10_cb_holders
+  - dataset_id: cn.dataset.etf_basic
+    field: ts_code
+    schema_version: 1.0.0
+    receipt_id: receipt:e4875b74f59ef64f535c1a0b74bdf3fd2fcee1bd32b377a3bd910b3898ac6da8
+    data_through: '2026-08-14T22:19:37.314050Z'
+    dependent_api_names:
+      - etf_mins
+      - rt_etf_k
+      - rt_etf_min
+      - rt_etf_min_daily
+  - dataset_id: cn.dataset.fut_basic
+    field: ts_code
+    schema_version: 1.0.0
+    receipt_id: receipt:842c296e839094f2f12c5f2b91a96197f6a8e3bf793cb060f1ed2eceeb548d0b
+    data_through: '2026-08-04T00:05:41.392734Z'
+    dependent_api_names:
+      - ft_mins
+      - rt_fut_min
   - dataset_id: cn.equity.security_master
     field: ts_code
     schema_version: 2.0.0
-    receipt_id: receipt:653392e20e8ec6de05bc8729d2802d529e51ecf47dd261f82cb0a1938ca0a115
-    data_through: '2026-08-11T10:35:04.025706+00:00'
+    receipt_id: receipt:3e1054e8d7844522346fccbf935a371b62c3dca9bea31291f288919468fb7378
+    data_through: '2026-08-16T11:25:08.096484Z'
     dependent_api_names:
       - balancesheet
       - cashflow
@@ -557,6 +575,7 @@ dependency_seed_authorities:
       - fina_mainbz
       - income
       - pledge_stat
+      - rt_k
       - rt_min_daily
       - stk_mins
       - stk_rewards
