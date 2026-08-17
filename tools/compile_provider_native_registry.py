@@ -214,6 +214,11 @@ _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "ret
 _ACTIVATION_STATES = frozenset({"active", "paused"})
 _FRESH_ACTIVATION_STATES = frozenset({"success", "valid_empty"})
 _PROBE_RESULT_STATES = _FRESH_ACTIVATION_STATES | {
+    "permission_denied",
+    "credential_rejected",
+    "unsupported",
+    "not_mapped",
+    "parameter_error",
     "provider_failed_unclassified",
     "field_contract_mismatch",
 }
@@ -509,7 +514,17 @@ _COVERAGE_KEYS = frozenset(
     {"blocked", "executable", "executed", "planned", "selected"}
 )
 _PROBE_SUMMARY_KEYS = frozenset(
-    {"success", "valid_empty", "provider_failed_unclassified", "field_contract_mismatch"}
+    {
+        "success",
+        "valid_empty",
+        "permission_denied",
+        "credential_rejected",
+        "unsupported",
+        "not_mapped",
+        "parameter_error",
+        "provider_failed_unclassified",
+        "field_contract_mismatch",
+    }
 )
 _TRANSPORT_KEYS = frozenset({"endpoint_host", "scheme"})
 _RATE_BUDGET_KEYS = frozenset(
