@@ -650,7 +650,7 @@ def test_seven_allowed_empty_event_plans_use_seven_shared_budget_calls(
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", empty_provider)
     schedule = scheduler.load_schedule()
     ledger = scheduler.RuntimeRateBudgetLedger(schedule)
-    assert schedule.rate_budgets["event"].account_requests_per_run == 24
+    assert schedule.rate_budgets["event"].account_requests_per_run == 32
 
     for index in range(7):
         api_name = f"synthetic_event_{index}"

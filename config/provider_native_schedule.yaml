@@ -23,20 +23,24 @@ rate_budgets:
     provider_requests_per_run: 16
     api_requests_per_run: 4
   event:
-    # The event wave now spans seven APIs (anns_d, cctv_news, irm_qa x2,
-    # research_report, news, major_news) needing 15 provider calls for a
-    # full daily sweep; 12 forced major_news into a mid-fanout
-    # resource_budget failure.  24 keeps the sweep inside one run while
-    # staying far below the probed per-interface tolerance (60/min) and
-    # the daily call volume remains trivial (~1.4k/day).
-    account_requests_per_run: 24
-    provider_requests_per_run: 24
+    # The event wave now spans twelve active datasets (tushare anns_d,
+    # cctv_news, cn_schedule, irm_qa x2, news, research_report,
+    # stk_holdernumber, suspend_d, major_news, plus firecrawl cn.news.flash
+    # and global.news.flash) needing 24 deterministic provider calls per
+    # sweep.  24 sat exactly at the old ceiling, so a transient firecrawl
+    # retry truncated the major_news fanout tail with resource_budget.
+    # 32 keeps the sweep inside one run with headroom while staying below
+    # the probed per-interface tolerance (60/min) and the daily call volume
+    # remains trivial (~1.4k/day).
+    account_requests_per_run: 32
+    provider_requests_per_run: 32
     api_requests_per_run: 4
     # major_news fans out over nine source literals per daily window; the
     # bounded 2026-08-15/16 weekend executions (9 calls per run, 60/min
-    # tolerated per interface in probing) support this per-api ceiling.
+    # tolerated per interface in probing) support this per-api ceiling with
+    # headroom for transient retries.
     api_overrides:
-      major_news: 12
+      major_news: 16
 cadences:
   session_minute:
     automatic: true
