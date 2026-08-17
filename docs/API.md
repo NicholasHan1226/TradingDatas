@@ -174,7 +174,7 @@ watermark 或 lineage 投影，也不能把当前已验证分区降级。只有�
 
 `cn.dataset.rt_min` 的 registry 输入固定为 `freq=5MIN` 的 30 只沪深主板 request template，
 并绑定当前冻结的完整 5,963 个 `ts_code`。该 immutable fanout 以每批 300 拆成 20 批，使用
-resumable cursor v2（每轮最多 6 批），由匹配 dataset/provider、config、universe 与 batch
+resumable cursor v2（每轮最多 20 批，按 bar_time 窗口每根 bar 重置游标），由匹配 dataset/provider、config、universe 与 batch
 identity 的 success/empty receipt 续接；失败只在该 dataset 内重试，不能跨 universe/config
 复用 receipt。该绑定用于正式 compiler/registry 的可重建 authority，实际激活、完整 cohort
 receipt 和 catalog/query 供应仍须由独立 release/readback 门禁确认。它不是中证500成分、研究

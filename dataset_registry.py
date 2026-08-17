@@ -1266,9 +1266,9 @@ def _request_window_policy(
     )
     if len(placeholders) != len(set(placeholders)):
         raise ValueError(f"{path} request_template placeholders must be unique")
-    if set(placeholders) != set(required_keys):
+    if not set(placeholders) <= set(required_keys):
         raise ValueError(
-            f"{path} request_template placeholders must exactly equal required_keys"
+            f"{path} request_template placeholders must be covered by required_keys"
         )
 
     range_start_key = _provider_parameter_name(
@@ -1443,10 +1443,6 @@ def _response_completeness_policy(
         ):
             raise ValueError(f"{path} requires local_datetime_seconds window values")
     elif strategy == "unique_primary_key_snapshot":
-        if request_window_policy is not None:
-            raise ValueError(
-                f"{path}.unique_primary_key_snapshot must not use request_window_policy"
-            )
         raw_fanout_field = value.get("fanout_field")
         raw_snapshot_field = value.get("snapshot_field")
         if raw_fanout_field is not None and raw_snapshot_field is None:

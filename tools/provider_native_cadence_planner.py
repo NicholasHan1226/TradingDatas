@@ -1273,6 +1273,31 @@ def _dataset_plans(
     session_state = _session_window_state(registry, state, now, policy, local_now)
     if session_state is not None:
         return (), session_state
+    if dataset.cadence_class == "session_minute":
+        # Each five-minute bar is its own resumable window: align the clock to
+        # the latest completed bar end so the cursor resets per bar instead of
+        # carrying one sweep across the whole session.
+        minute = (local_now.minute // 5) * 5
+        bar_end = local_now.replace(minute=minute, second=0, microsecond=0)
+        window = {
+            "bar_time": encode_request_window_value(bar_end, "local_datetime_seconds")
+        }
+        latest = _latest(current.receipts, window)
+        if latest is not None:
+            age = (now_utc - latest.finished_at).total_seconds()
+            healthy = latest.status == "empty" or any(
+                fact.receipt_id in latest.success_receipt_ids
+                for fact in current.facts
+            )
+            if (latest.status == "failed" and age < policy.failure_retry_seconds) or (
+                latest.status != "failed"
+                and healthy
+                and age < policy.minimum_interval_seconds
+            ):
+                return (), "not_due"
+        return _runs(
+            dataset, binding, policy, MappingProxyType(window), "current"
+        ), "planned"
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
         if latest is not None:

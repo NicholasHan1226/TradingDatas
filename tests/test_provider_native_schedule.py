@@ -1000,8 +1000,8 @@ def test_api_override_is_specific_and_does_not_widen_global_budgets() -> None:
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
     intraday = schedule.rate_budgets["intraday"]
 
-    assert intraday.account_requests_per_run == 12
-    assert intraday.provider_requests_per_run == 12
+    assert intraday.account_requests_per_run == 24
+    assert intraday.provider_requests_per_run == 24
     assert intraday.api_requests_per_run == 6
     assert dict(intraday.api_overrides) == {"rt_min": 60, "rt_min_daily": 60}
 
@@ -3202,6 +3202,156 @@ def test_minute_canary_only_runs_in_declared_open_session_windows(
         assert {item.dataset_id: item.state for item in skips}[
             "cn.dataset.rt_min"
         ] == "not_due"
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "second", "expected_bar"),
+    [
+        (9, 34, 59, "09:30:00"),
+        (9, 35, 0, "09:35:00"),
+        (9, 35, 59, "09:35:00"),
+        (9, 39, 59, "09:35:00"),
+        (9, 40, 0, "09:40:00"),
+        (11, 34, 59, "11:30:00"),
+        (13, 0, 30, "13:00:00"),
+        (14, 34, 59, "14:30:00"),
+        (14, 59, 59, "14:55:00"),
+        (15, 0, 30, "15:00:00"),
+    ],
+)
+def test_rt_min_bar_time_aligns_to_completed_five_minute_bar(
+    hour: int,
+    minute: int,
+    second: int,
+    expected_bar: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """rt_min's bar_time window is the aligned five-minute bar end, so every
+    bar is a distinct resumable window (cursor resets per bar, one full sweep)."""
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
+        conn.commit()
+
+    now = datetime(2026, 7, 28, hour, minute, second, tzinfo=ZoneInfo("Asia/Shanghai"))
+    state = scheduler.load_planner_state(db_path, registry, now=now)
+    plans, skips = cadence_planner.plan_runs(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=now,
+        selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+        current_only=True,
+    )
+
+    assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
+    assert len(plans) == 1
+    run = plans[0]
+    assert run.dataset_id == "cn.dataset.rt_min"
+    assert run.request_window == {"bar_time": f"2026-07-28 {expected_bar}"}
+    assert run.resumable_fanout is not None
+    assert run.resumable_fanout.max_batches_per_run == 20
+
+
+def test_rt_min_cursor_resets_per_bar_and_current_bar_is_not_due(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed bar must not suppress the next bar; the current bar's fresh
+    success must suppress re-planning within the minimum interval."""
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
+        receipt = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.dataset.rt_min",
+            status="success",
+            started_at="2026-07-28T01:35:01Z",
+            finished_at="2026-07-28T01:35:36Z",
+            request_window={"bar_time": "2026-07-28 09:35:00"},
+        )
+        _fact(
+            conn,
+            registry,
+            "cn.dataset.rt_min",
+            receipt,
+            "2026-07-28 09:35:00",
+            {"ts_code": "600000.SH", "time": "2026-07-28 09:35:00"},
+        )
+        conn.commit()
+
+    def _plan(now: datetime):
+        state = scheduler.load_planner_state(db_path, registry, now=now)
+        return cadence_planner.plan_runs(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            state=state,
+            now=now,
+            selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+            current_only=True,
+        )
+
+    # Same bar (09:36) still inside minimum_interval -> not_due, no new sweep.
+    plans, skips = _plan(datetime(2026, 7, 28, 9, 36, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
+    assert not plans
+    assert {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"] == "not_due"
+
+    # Next bar (09:40) is a fresh window -> planned with the new bar_time.
+    plans, skips = _plan(datetime(2026, 7, 28, 9, 40, 1, tzinfo=ZoneInfo("Asia/Shanghai")))
+    assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
+    assert len(plans) == 1
+    assert plans[0].request_window == {"bar_time": "2026-07-28 09:40:00"}
+
+
+def test_rt_min_full_day_sweep_plans_every_bar_once_without_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stress: every five-minute bar across a full session plans exactly once
+    with a distinct, correctly-aligned bar_time (no cursor accumulation)."""
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 28): True})
+        conn.commit()
+
+    tz = ZoneInfo("Asia/Shanghai")
+    bars: list[datetime] = []
+    cursor = datetime(2026, 7, 28, 9, 30, tzinfo=tz)
+    while cursor <= datetime(2026, 7, 28, 11, 30, tzinfo=tz):
+        bars.append(cursor)
+        cursor += timedelta(minutes=5)
+    cursor = datetime(2026, 7, 28, 13, 0, tzinfo=tz)
+    while cursor <= datetime(2026, 7, 28, 15, 0, tzinfo=tz):
+        bars.append(cursor)
+        cursor += timedelta(minutes=5)
+
+    seen: set[str] = set()
+    for bar_end in bars:
+        now = bar_end + timedelta(seconds=30)
+        state = scheduler.load_planner_state(db_path, registry, now=now)
+        plans, skips = cadence_planner.plan_runs(
+            registry=registry,
+            schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+            state=state,
+            now=now,
+            selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
+            current_only=True,
+        )
+        assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips), now
+        assert len(plans) == 1, now
+        expected = {"bar_time": bar_end.strftime("%Y-%m-%d %H:%M:%S")}
+        assert plans[0].request_window == expected, f"{now} -> {plans[0].request_window}"
+        seen.add(plans[0].request_window["bar_time"])
+
+    assert len(seen) == len(bars)
 
 
 def test_session_minute_current_plan_precedes_other_current_plans(
