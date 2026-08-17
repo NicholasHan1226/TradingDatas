@@ -109,7 +109,7 @@ def test_rt_min_full_universe_is_exact_and_resumable_in_generated_registry() -> 
     assert binding.fanout.values == tuple(sorted(binding.fanout.values))
     assert binding.resumable_fanout is not None
     assert binding.resumable_fanout.cursor_contract_version == 2
-    assert binding.resumable_fanout.max_batches_per_run == 6
+    assert binding.resumable_fanout.max_batches_per_run == 20
     batches = _stable_fanout_batches(
         binding.fanout.values,
         parameter="ts_code",
@@ -499,7 +499,7 @@ def test_compiler_preserves_exact_fanout_snapshot_contract() -> None:
     assert len(binding["fanout"]["values"]) == 5963
     assert binding["resumable_fanout"] == {
         "cursor_contract_version": 2,
-        "max_batches_per_run": 6,
+        "max_batches_per_run": 20,
     }
 
 
@@ -1120,6 +1120,31 @@ def test_raw_probe_evidence_normalizes_sparse_probe_summary() -> None:
         for dataset in registry["datasets"]
     }
     assert bindings["major_news"]["activation_state"] == "active"
+
+
+def test_raw_probe_evidence_accepts_present_permission_denied_with_sparse_summary() -> None:
+    bundle = _bundle()
+    observations = _observations()
+    evidence = build_synthetic_raw_probe_evidence(
+        bundle,
+        observations,
+        promoted_api_name="major_news",
+    )
+    for result in evidence["results"]:
+        if result["api_name"] == "major_news":
+            result["state"] = "permission_denied"
+            result["provider_class"] = "permission_denied"
+            result["row_count"] = 0
+            break
+    evidence["summary"] = {"permission_denied": 1}
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=evidence,
+        compilation_mode="preactivation_candidate",
+    )
+    assert isinstance(registry, dict)
 
 
 def test_raw_probe_evidence_accepts_a_plan_subset_of_executable_contracts() -> None:
@@ -1946,7 +1971,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
             dataset.provider_bindings[0].activation_state == "active"
             for dataset in loaded.datasets
         )
-        == len(active_evidence) + 1
+        == len(active_evidence) + 2
     )
     # The checked-in target is already the current compiled registry.  The
     # external preactivation compile must be reproducible rather than mutate

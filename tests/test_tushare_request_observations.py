@@ -271,7 +271,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     assert observation_fanout["values"] == sorted(observation_fanout["values"])
     assert _entry(observations, "rt_min")["resumable_fanout"] == {
         "cursor_contract_version": 2,
-        "max_batches_per_run": 6,
+        "max_batches_per_run": 20,
     }
 
     bundle = _compile()
@@ -297,7 +297,7 @@ def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
     assert len(rt_min["fanout"]["values"]) == 5963
     assert rt_min["resumable_fanout"] == {
         "cursor_contract_version": 2,
-        "max_batches_per_run": 6,
+        "max_batches_per_run": 20,
     }
     assert rt_min["primary_key"] == ["ts_code", "time"]
     assert rt_min["default_projection"] == [
@@ -335,7 +335,7 @@ def test_rt_min_registry_uses_the_exact_frozen_full_universe() -> None:
     assert len(symbols) == len(set(symbols)) == 5963
     assert binding["resumable_fanout"] == {
         "cursor_contract_version": 2,
-        "max_batches_per_run": 6,
+        "max_batches_per_run": 20,
     }
     assert all(re.fullmatch(r"(?:\d{6}|T\d{5,6}|TS\d{4})\.(?:SZ|SH|BJ)", symbol) for symbol in symbols)
 

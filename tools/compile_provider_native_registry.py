@@ -214,6 +214,11 @@ _ENTITLEMENT_STATES = frozenset({"active", "locked", "unknown", "excluded", "ret
 _ACTIVATION_STATES = frozenset({"active", "paused"})
 _FRESH_ACTIVATION_STATES = frozenset({"success", "valid_empty"})
 _PROBE_RESULT_STATES = _FRESH_ACTIVATION_STATES | {
+    "permission_denied",
+    "credential_rejected",
+    "unsupported",
+    "not_mapped",
+    "parameter_error",
     "provider_failed_unclassified",
     "field_contract_mismatch",
 }
@@ -509,7 +514,17 @@ _COVERAGE_KEYS = frozenset(
     {"blocked", "executable", "executed", "planned", "selected"}
 )
 _PROBE_SUMMARY_KEYS = frozenset(
-    {"success", "valid_empty", "provider_failed_unclassified", "field_contract_mismatch"}
+    {
+        "success",
+        "valid_empty",
+        "permission_denied",
+        "credential_rejected",
+        "unsupported",
+        "not_mapped",
+        "parameter_error",
+        "provider_failed_unclassified",
+        "field_contract_mismatch",
+    }
 )
 _TRANSPORT_KEYS = frozenset({"endpoint_host", "scheme"})
 _RATE_BUDGET_KEYS = frozenset(
@@ -1423,10 +1438,11 @@ def _activation_evidence_index(
         summary,
         _PROBE_SUMMARY_KEYS,
         "HTTPS activation evidence.evidence.summary",
+        required=frozenset(),
     )
     expected_summary = {
         key: _required_non_negative_int(
-            summary[key], f"HTTPS activation evidence.evidence.summary.{key}"
+            summary.get(key, 0), f"HTTPS activation evidence.evidence.summary.{key}"
         )
         for key in _PROBE_SUMMARY_KEYS
     }
@@ -2208,8 +2224,8 @@ def _window_policy(
     _reject_keys(value, _WINDOW_KEYS, label)
     required_keys = _string_list(value["required_keys"], f"{label}.required_keys")
     formats = _mapping(value["formats"], f"{label}.formats")
-    if set(required_keys) != set(formats) or set(required_keys) != set(placeholders):
-        raise ValueError(f"{label} keys must exactly match request window placeholders")
+    if set(required_keys) != set(formats) or not set(placeholders) <= set(required_keys):
+        raise ValueError(f"{label} keys must cover request window placeholders")
     normalized_formats = {
         key: _required_text(formats[key], f"{label}.formats.{key}")
         for key in sorted(formats)

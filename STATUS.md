@@ -1,6 +1,26 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-16 22:55 CST。
+最后更新：2026-08-16 22:09 CST。
+
+> **2026-08-16 Crypto 冻结 universe 从 10 扩到 40 个 USDT 标的（Phase 1，
+> 只追加不动模板，代码层事实，无生产变更）：** 根层产品合同变更——版本化 universe
+> `config/crypto_binance_spot_universe.v1.yaml` 在保持 BTCUSDT/ETHUSDT 前两位与
+> 前 10 币顺序不变的前提下，追加 20 个高流动性 USDT 现货标的（BCH/LTC/DOT/NEAR/
+> SUI/APT/UNI/ATOM/XLM/HBAR/ETC/FIL/INJ/ARB/OP/AAVE/GRT/TIA/SEI/ONDO）与 10 个
+> 现役 TRADING 非稳定币标的（LDO/CRV/ENA/WLD/STRK/JUP/PYTH/FET/RENDER/POL），
+> `selected_at` 更新为 2026-08-16T14:04:05Z；全部现役、现货==USDⓈ-M 永续符号名
+> 一致，避开 1000SHIB 乘数前缀与 TON/OM 等 dump 缺失标的。编译器
+> `_symbols` 校验由 `!= 10` 放宽为共享常量 `FROZEN_CRYPTO_SYMBOL_COUNT=40`
+> （保留去重、BTC/ETH 前两位、USDT 后缀校验）；spot/usdm 4 处 runner 断言改为
+> 读取同一共享常量，不再散落 magic number。确定性编译器重生成单一 pinned canary
+> registry 为 240 个 dataset（40 币 × 6 家族：5m/rules/book_ticker/funding_rate/
+> open_interest/premium_index）。**config_hash 红线已核验**：对 regenerated
+> registry 用 `provider_ingest_config_hash` before/after 对比，原 10 币共 80 个
+> binding 的 config_hash 全部不变（0 变更），原 60 个 dataset 块字节级一致，
+> 历史 receipt 不失效；BTCUSDT 模板未动。测试同步 40 币断言（spot/usdm/oi_dump/
+> premium/loopback 定向 87 项全绿）。authority 全 false、research only，所有
+> Crypto timer 保持 disabled；TA 侧消费与新增 30 币的历史数据回填为后续 Phase，
+> 本轮不启用任何 timer、不建 PR 不 merge。
 
 > **2026-08-16 503 终极根因（我引入的 WAL 模式）：** 间歇 503 的真正根因是去重
 > 脚本执行了 `PRAGMA journal_mode=WAL`，把 read-model DB 永久切到 WAL 模式，引入

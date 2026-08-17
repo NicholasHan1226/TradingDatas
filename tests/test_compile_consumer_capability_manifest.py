@@ -20,7 +20,7 @@ def test_manifest_is_deterministic_and_binds_the_exact_registry_bytes() -> None:
     assert first == second
     assert first["schema_version"] == 1
     assert first["registry_sha256"] == hashlib.sha256(DEFAULT_REGISTRY.read_bytes()).hexdigest()
-    assert first["coverage"]["dataset_count"] == 191
+    assert first["coverage"]["dataset_count"] == 192
     assert first["coverage"]["by_cadence"]["session_minute"] >= 1
     assert [item["dataset_id"] for item in first["datasets"]] == sorted(
         item["dataset_id"] for item in first["datasets"]

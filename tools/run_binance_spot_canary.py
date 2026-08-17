@@ -30,6 +30,9 @@ from dataset_registry import (  # noqa: E402
     BINANCE_SPOT_CANARY_MODE,
     load_dataset_registry,
 )
+from tools.compile_crypto_binance_canary_registry import (  # noqa: E402
+    FROZEN_CRYPTO_SYMBOL_COUNT,
+)
 
 FIVE_MINUTES = timedelta(minutes=5)
 _MAX_DATASET_ATTEMPTS = 2
@@ -42,9 +45,9 @@ def _bar_datasets(registry) -> tuple[str, ...]:
         if item.dataset_id.startswith("crypto.spot.binance.")
         and item.dataset_id.endswith(".5m")
     )
-    if len(datasets) != 10 or len(set(datasets)) != len(datasets):
+    if len(datasets) != FROZEN_CRYPTO_SYMBOL_COUNT or len(set(datasets)) != len(datasets):
         raise RuntimeError(
-            "runtime registry must contain the frozen ten-symbol bar cohort"
+            "runtime registry must contain the frozen forty-symbol bar cohort"
         )
     return datasets
 
@@ -56,9 +59,9 @@ def _rule_datasets(registry) -> tuple[str, ...]:
         if item.dataset_id.startswith("crypto.spot.binance.")
         and item.dataset_id.endswith(".rules")
     )
-    if len(datasets) != 10 or len(set(datasets)) != len(datasets):
+    if len(datasets) != FROZEN_CRYPTO_SYMBOL_COUNT or len(set(datasets)) != len(datasets):
         raise RuntimeError(
-            "runtime registry must contain the frozen ten-symbol rule cohort"
+            "runtime registry must contain the frozen forty-symbol rule cohort"
         )
     return datasets
 
@@ -70,9 +73,9 @@ def _book_ticker_datasets(registry) -> tuple[str, ...]:
         if item.dataset_id.startswith("crypto.spot.binance.")
         and item.dataset_id.endswith(".book_ticker")
     )
-    if len(datasets) != 10 or len(set(datasets)) != len(datasets):
+    if len(datasets) != FROZEN_CRYPTO_SYMBOL_COUNT or len(set(datasets)) != len(datasets):
         raise RuntimeError(
-            "runtime registry must contain the frozen ten-symbol book-ticker cohort"
+            "runtime registry must contain the frozen forty-symbol book-ticker cohort"
         )
     return datasets
 

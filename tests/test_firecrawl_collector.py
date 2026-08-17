@@ -415,6 +415,94 @@ def test_empty_url_item_keeps_source_title_identity() -> None:
     ).hexdigest()
 
 
+def test_scrape_page_global_normalizes_to_new_york(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    collector = FirecrawlWebCollector()
+    payload = {
+        "success": True,
+        "data": {
+            "json": {
+                "items": [
+                    {
+                        "title": "SEC Charges Boiler Room Operator",
+                        "url": "https://www.sec.gov/x",
+                        "published_at": "Aug. 14, 2026",
+                    }
+                ]
+            }
+        },
+    }
+    import collectors.firecrawl.collector as fc
+    real_post = collector._post
+
+    def fake_post(path, body, *, api_key):
+        return payload
+    import types
+    collector._post = fake_post  # type: ignore[method-assign]
+    try:
+        outcome = collector.collect_outcome("scrape_page_global", dict(_SCRAPE_PARAMS))
+    finally:
+        collector._post = real_post
+    assert outcome.state == "success"
+    row = dict(outcome.rows[0])
+    assert row["published_at"].endswith("-04:00")  # America/New_York in August
+    assert row["published_local"].startswith("2026-08-14")
+
+
+def test_scrape_page_global_consumes_its_own_budget_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    seen: list[str] = []
+    collector = FirecrawlWebCollector(
+        request_gate=lambda api_name: seen.append(api_name)
+    )
+    monkeypatch.setattr(collector, "_post", lambda *a, **k: _SCRAPE_PAYLOAD)
+    outcome = collector.collect_outcome("scrape_page_global", dict(_SCRAPE_PARAMS))
+    assert outcome.state == "success"
+    assert seen == ["scrape_page_global"]
+
+
+def test_english_month_name_published_at_is_normalized() -> None:
+    row = _normalize_item(
+        {"title": "SEC Charges Boiler Room Operator", "url": "https://www.sec.gov/x", "published_at": "Aug. 14, 2026"},
+        source="https://www.sec.gov/news/pressreleases",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["published_at"] == "2026-08-14T00:00:00+08:00"
+    assert row["event_date"] == "20260814"
+
+
+def test_us_slash_date_published_at_is_normalized() -> None:
+    row = _normalize_item(
+        {"title": "Fed press release", "url": "https://www.federalreserve.gov/x", "published_at": "8/13/2026"},
+        source="https://www.federalreserve.gov/newsevents/pressreleases.htm",
+        time_key="published_at",
+        summary_key=None,
+        timezone=firecrawl_collector._GLOBAL_TIMEZONE,
+    )
+    assert row["published_at"] == "2026-08-13T00:00:00-04:00"
+    assert row["event_date"] == "20260813"
+
+
+def test_bare_wall_clock_time_is_anchored_to_source_day() -> None:
+    today = firecrawl_collector.datetime.now(
+        firecrawl_collector._LOCAL_TIMEZONE
+    ).date().strftime("%Y-%m-%d")
+    row = _normalize_item(
+        {"title": "快讯", "url": "https://finance.sina.com.cn/7x24/1", "published_at": "08:09:28"},
+        source="https://finance.sina.com.cn/7x24/",
+        time_key="published_at",
+        summary_key=None,
+        timezone=firecrawl_collector._LOCAL_TIMEZONE,
+    )
+    assert row["published_at"] == f"{today}T08:09:28+08:00"
+    assert row["event_date"] == today.replace("-", "")
+
+
 def test_relative_or_junk_url_becomes_unlinkable() -> None:
     row = _normalize_item(
         {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
@@ -453,12 +541,10 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert binding.fanout.strategy == "literal_values"
     assert binding.fanout.parameter == "url"
     assert binding.fanout.batch_size == 1
-    assert binding.fanout.values == (
-        "https://kuaixun.eastmoney.com/7_24.html",
-        "https://www.cls.cn/telegraph",
-    ) or set(binding.fanout.values) == {
+    assert set(binding.fanout.values) == {
         "https://www.cls.cn/telegraph",
         "https://kuaixun.eastmoney.com/7_24.html",
+        "https://finance.sina.com.cn/7x24/",
     }
     completeness = binding.response_completeness
     assert completeness is not None

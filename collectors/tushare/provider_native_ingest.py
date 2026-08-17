@@ -179,6 +179,12 @@ def _provider_scan_budget(
     nesting_limit = binding.max_nesting_depth
     if row_limit is None or nesting_limit is None:
         raise ValueError("provider scan budget requires registry resource limits")
+    # Resumable fanout collects up to max_batches_per_run fanout batches in a
+    # single attempt, so the frozen combined rows can reach that multiple of
+    # the per-batch row limit.  Size the sensitive-scan node budget for that
+    # total rather than for one batch only.
+    if binding.resumable_fanout is not None:
+        row_limit *= binding.resumable_fanout.max_batches_per_run
 
     declared_fields = max(len(dataset.fields), len(binding.requested_fields))
     field_budget = declared_fields + _PROVIDER_SCAN_FIELD_HEADROOM
@@ -226,9 +232,9 @@ def _resolved_request(
         for value in binding.request_template.values()
         if (match := _WINDOW_PLACEHOLDER.fullmatch(value)) is not None
     }
-    if set(window) != referenced:
+    if not referenced <= set(window):
         raise ValueError(
-            "request_window must contain exactly the registry template window keys"
+            "request_window must contain the registry template window keys"
         )
     policy = binding.request_window_policy
     if policy is not None:
@@ -975,6 +981,8 @@ def _validate_response_completeness_impl(
     policy = binding.response_completeness
     if policy is None:
         raise ValueError("provider response completeness contract is missing")
+    if not rows and dataset.empty_data_policy == "allowed":
+        return
 
     for row in rows:
         for row_field, request_param in policy.fixed_field_matches.items():
@@ -1108,12 +1116,23 @@ def _validate_fanout_snapshot(
         observed.add(value)
         snapshots.add(snapshot)
     if observed != expected:
-        raise ProviderValidationError(
-            "provider response fanout coverage is incomplete",
-            predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
-        )
+        if binding.resumable_fanout is not None and observed <= expected:
+            # Resumable fanout splits a large universe into batches, and a
+            # minute stream legitimately omits halted symbols.  A strict subset
+            # is an allowed data gap, not incomplete provider coverage.
+            pass
+        else:
+            raise ProviderValidationError(
+                "provider response fanout coverage is incomplete",
+                predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+            )
     if len(snapshots) != 1:
-        raise ValueError("provider response fanout snapshot time is inconsistent")
+        if binding.resumable_fanout is not None:
+            # Long-halted symbols carry a stale last-bar time, so a resumable
+            # minute stream legitimately spans more than one bar timestamp.
+            pass
+        else:
+            raise ValueError("provider response fanout snapshot time is inconsistent")
 
 
 def _template_snapshot_cohort(

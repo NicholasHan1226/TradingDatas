@@ -2507,18 +2507,18 @@ def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
         )
 
     validate(complete_rows)
-    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
-        validate(complete_rows[:-1])
+    # Resumable fanout permits a strict subset (halted symbols may be absent).
+    validate(complete_rows[:-1])
     with pytest.raises(ValueError, match="duplicate primary key"):
         validate(complete_rows[:-1] + (complete_rows[0],))
     with pytest.raises(ValueError, match="fanout coverage is incomplete"):
         validate((*complete_rows[:-1], {**complete_rows[-1], "ts_code": "999999.SZ"}))
     with pytest.raises(ValueError, match="fixed field does not match request"):
         validate(({**complete_rows[0], "freq": "1MIN"}, *complete_rows[1:]))
-    with pytest.raises(ValueError, match="snapshot time is inconsistent"):
-        validate(
-            (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
-        )
+    # Resumable minute streams may span more than one bar timestamp.
+    validate(
+        (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
+    )
     dynamic_binding = replace(
         binding,
         request_template=MappingProxyType(
@@ -4157,6 +4157,9 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
     now = datetime.now(timezone.utc).isoformat()
+    recent_list_date = (
+        datetime.now(timezone.utc).date() - timedelta(days=5)
+    ).strftime("%Y%m%d")
     source_collector = _FakeCollector(
         ProviderCallOutcome(
             state="success",
@@ -4195,7 +4198,7 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
                     "market": "主板",
                     "list_status": "L",
                     "curr_type": "CNY",
-                    "list_date": "20260718",
+                    "list_date": recent_list_date,
                 },
             ),
             provider_code=0,

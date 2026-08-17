@@ -15,11 +15,14 @@ surface.
 ## Frozen v1 cohort
 
 The versioned source of truth is
-`config/crypto_binance_spot_universe.v1.yaml`. It freezes ten established,
+`config/crypto_binance_spot_universe.v1.yaml`. It freezes forty established,
 liquid USDT Spot symbols with at least 180 days of public 5m history:
 BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT, ADAUSDT, TRXUSDT,
-LINKUSDT and AVAXUSDT. BTCUSDT and ETHUSDT remain first as the rollback
-baseline. The deterministic registry compiler emits one `.5m` and one
+LINKUSDT, AVAXUSDT, BCHUSDT, LTCUSDT, DOTUSDT, NEARUSDT, SUIUSDT, APTUSDT,
+UNIUSDT, ATOMUSDT, XLMUSDT, HBARUSDT, ETCUSDT, FILUSDT, INJUSDT, ARBUSDT,
+OPUSDT, AAVEUSDT, GRTUSDT, TIAUSDT, SEIUSDT, ONDOUSDT, LDOUSDT, CRVUSDT,
+ENAUSDT, WLDUSDT, STRKUSDT, JUPUSDT, PYTHUSDT, FETUSDT, RENDERUSDT and
+POLUSDT. BTCUSDT and ETHUSDT remain first as the rollback baseline. The deterministic registry compiler emits one `.5m` and one
 `.rules` dataset per symbol into the single pinned canary registry
 `config/crypto_binance_canary_registry.v1.yaml`; runtime collection cannot
 add a symbol that is absent from the compiled registry. The same registry and
@@ -56,7 +59,7 @@ downstream simulator, not permission to trade.
 ## Current quote snapshot candidate
 
 The optional `.book_ticker` contract reads Binance public `bookTicker` for the
-same frozen ten symbols. It exposes only `symbol`, `bid_price`, `bid_qty`,
+same frozen forty symbols. It exposes only `symbol`, `bid_price`, `bid_qty`,
 `ask_price`, and `ask_qty` as a current, receipt-bound snapshot. The upstream
 response has no provider event timestamp, so its time authority is the
 collection receipt's actual observation interval. It is not historical L1,

@@ -126,6 +126,17 @@ def test_oi_dump_collector_rejects_header_and_grid_drift() -> None:
     assert _collect(_zip_payload(bad_cell)).state == "failed"
 
 
+def test_oi_dump_collector_tolerates_empty_dropped_ratio_cells() -> None:
+    lines = _csv_lines()
+    # Binance emits an empty ratio cell for buckets with no taker flow. These
+    # ratio columns are dropped by the OI contract, so an empty cell must not
+    # fail the whole day.
+    mutated = [*lines[:-1], lines[-1].replace("1.9,1.5,1.8,2.1", "1.9,1.5,1.8,")]
+    outcome = _collect(_zip_payload(mutated))
+    assert outcome.state == "success"
+    assert len(outcome.rows) == 288
+
+
 def test_oi_dump_collector_bounds_the_window_to_a_closed_utc_day() -> None:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for date in (today, "2999-01-01", "2026-8-13", "2026-08-13T00:00:00Z", ""):
@@ -284,7 +295,7 @@ def test_oi_dump_runner_plan_never_calls_provider_or_writes(tmp_path) -> None:
         now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
     )
     assert result["state"] == "planned"
-    assert len(result["datasets"]) == 10
+    assert len(result["datasets"]) == 40
     assert set(result["windows"]) == {"open_interest"}
     assert result["windows"]["open_interest"] == {"date": "2026-08-15"}
     assert result["lookback_days"] == 7
@@ -303,7 +314,7 @@ def test_oi_dump_runner_backfill_plan_never_calls_provider_or_writes(tmp_path) -
         backfill_days=198,
     )
     assert result["state"] == "planned"
-    assert len(result["datasets"]) == 10
+    assert len(result["datasets"]) == 40
     assert result["backfill_days"] == 198
     assert result["window_count"] == 198
     assert result["windows"] == {
@@ -351,7 +362,7 @@ def test_oi_dump_runner_retries_one_provider_error_and_preserves_both_receipts(
     )
 
     assert result["state"] == "success"
-    assert len(result["datasets"]) == 10
+    assert len(result["datasets"]) == 40
     eth_oi = next(
         item
         for item in result["datasets"]
@@ -366,7 +377,7 @@ def test_oi_dump_runner_retries_one_provider_error_and_preserves_both_receipts(
     assert all(item["window"] == {"date": "2026-08-15"} for item in result["datasets"])
 
 
-def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
+def test_oi_dump_runner_treats_missing_dump_as_soft_gap_across_multiple_days(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
@@ -383,13 +394,21 @@ def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
         )
 
     monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
-    with pytest.raises(RuntimeError, match="collections failed"):
-        run(
-            db_path=tmp_path / "unused.sqlite",
-            lock_path=tmp_path / "collect.lock",
-            execute=True,
-            now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
-        )
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
+    )
+
+    # A missing daily dump is provider_error (publication lag), so even with
+    # multiple missing days it degrades to a soft gap rather than failing the
+    # whole run; non-provider drift is still fail-closed by the hard_failure
+    # branch above.
+    assert result["state"] == "success"
+    assert any(
+        item["state"] == "pending_publication" for item in result["datasets"]
+    )
 
 
 def test_oi_dump_runner_falls_through_unpublished_newest_day(
@@ -658,15 +677,15 @@ def test_oi_dump_backfill_batches_per_day_and_releases_the_lock_between_days(
     assert result["state"] == "success"
     assert result["window_count"] == 198
     assert result["collected_day_count"] == 198
-    assert result["receipt_count"] == 1980
-    assert len(calls) == 1980
+    assert result["receipt_count"] == 7920
+    assert len(calls) == 7920
     assert lock_events == ["acquire", "release"] * 198
     collected_days = {call[1]["date"] for call in calls}
     assert collected_days == set(days)
     per_day = {}
     for _, window in calls:
         per_day[window["date"]] = per_day.get(window["date"], 0) + 1
-    assert set(per_day.values()) == {10}
+    assert set(per_day.values()) == {40}
 
 
 def test_oi_dump_backfill_skips_already_ingested_days_without_locking(
@@ -742,9 +761,9 @@ def test_oi_dump_backfill_skips_unpublished_days_without_receipts(
 
     assert result["state"] == "success"
     assert result["collected_day_count"] == 2
-    assert result["unpublished_skip_count"] == (len(days) - 2) * 10
+    assert result["unpublished_skip_count"] == (len(days) - 2) * 40
     assert result["failed_attempt_count"] == 0
-    assert len(calls) == 20
+    assert len(calls) == 80
 
 
 def test_oi_dump_backfill_yields_between_day_batches(

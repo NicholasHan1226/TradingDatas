@@ -13,10 +13,10 @@ provenance:
     sha256: fec17b22656e2415dc1acbecde42defa9058af0cc95ea3e11cd8188b401c2aa6
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: cbc15b3c1a9e70eb40fcb720c67712a07546f6e7cc5e8b85e6c9f33ac7f04f3c
+    sha256: ec934dcb5e28dbb46059b652c016827207a2b4b1d804605012fa5759f0295f16
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 9bc0cff59c2fb13cb8377e8641bbe5811a1d11b6a78166cb9c238c49032e007c
+    sha256: 28dc8004d151719a1b8e3092432ad41a5973dd15e09f9b42d25022468dcab79c
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -8740,7 +8740,7 @@ entries:
     batch_size: 300
   resumable_fanout:
     cursor_contract_version: 2
-    max_batches_per_run: 6
+    max_batches_per_run: 20
   row_limit_observation: null
 - api_name: rt_min_daily
   scope_labels:

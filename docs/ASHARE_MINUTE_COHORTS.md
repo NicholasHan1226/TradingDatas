@@ -3,8 +3,8 @@
 本文件只说明 `cn.dataset.rt_min` 的消费覆盖与扩容证据。它不定义交易 Universe、下单、仓位或自动化投资建议。
 
 当前 registry authority 是冻结的 5,963 个 `ts_code`，以每批 300 拆成 20 个 batch；cursor
-contract v2 每轮最多选择 6 个 batch，完整窗口按 receipt-bound continuation 形成
-`6+6+6+2`。本文件中的 500/100 分片和 30 只 canary 仅保留为历史回滚与诊断证据，不替代
+contract v2 每轮最多选择 20 个 batch，并以 bar_time 窗口在每根 5 分钟 bar 重置游标，一个 bar
+完整扫完整个 universe。本文件中的 500/100 分片和 30 只 canary 仅保留为历史回滚与诊断证据，不替代
 当前 full-universe 配置。
 
 ## 事实源优先级

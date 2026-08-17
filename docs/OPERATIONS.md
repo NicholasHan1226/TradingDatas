@@ -30,14 +30,15 @@ one-shot manifest 明确选择，且继续受同一 transport budget 约束。�
 planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
 receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。受审沪深主板
 `cn.dataset.rt_min` 5MIN 是其中一个受控 canary：当前 registry 的 5,963 个冻结代码以每批 300
-拆为 20 个确定性批次；resumable cursor v2 每轮最多推进 6 批，因此完整窗口的确定性续接为
-`6+6+6+2`。只有带匹配 dataset/provider、config hash、frozen universe、batch identity 与
+拆为 20 个确定性批次；resumable cursor v2 每轮最多推进 20 批，并以 bar_time 窗口在每根
+5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
+dataset/provider、config hash、frozen universe、batch identity 与
 success/empty 状态的 receipt 才能推进游标；失败批次只在本数据集内优先重试，不能借用其它
-dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 12、
-单 API 6 次的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
+dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 24、
+rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
 已接纳。每轮仍须保留实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行
-可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 10，在当前单 API 6 次
-门禁下保持 dataset-local `paused`；这不撤销它的 executable/ingest-ready 合同，也不阻断其它
+可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 10，在 registry 中保持 dataset-local
+`paused`；这不撤销它的 executable/ingest-ready 合同，也不阻断其它
 dataset。只有新的有界证据证明完整 cohort 可在相同全局门禁内完成，才可恢复其精确
 `active_evidence` 并重编 registry。回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
@@ -476,3 +477,27 @@ provider route 或 SQLite 直读。TradingDatas 回滚只允许切换到已验�
 回滚只切回已验证的 immutable release，不覆盖 SQLite，不恢复旧 cron，不把旧 provider route 重新引入新系统。
 
 外部账户不属于当前运行范围；内部运行凭证和 API token 不得复用于任何外部账户或公网入口。
+
+## Firecrawl 凭证与额度运维
+
+Firecrawl 是境内新闻/公告/舆情采集的第三个 provider-level adapter（transport 协议与
+QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界与 Tushare/QuickSync 完全一致：
+
+- 凭证只从 `FIRECRAWL_API_KEY_FILE` 读取：绝对路径、单一硬链接普通文件、owner 等于采集进程
+  有效 UID（当前 `tradingdatas`）、mode `0600`、非空且为单行 UTF-8。当前生产文件为
+  `/etc/tradingdatas/firecrawl.token`，不在仓库内。
+- Firecrawl key 是一次性成品号、按 credit 计费。换 key 只替换该文件内容并保持 owner/mode，
+  零代码、零 registry 改动；替换后下一轮 event 采集自然使用新 key，无需重启服务。
+- 402/429 → 该 dataset 记 `rate_limited` terminal receipt、planner 跳过、runtime 降级
+  degraded，不阻塞 tushare/binance 管线。401/403 → `permission_denied`（key 失效即 entitlement
+  降级，同样 dataset 级隔离）。
+- 额度消费以 Firecrawl 后台 `creditsUsed` 为准；本仓库不持久化任何 Firecrawl 凭据或额度数字。
+  全部 key 耗尽且暂无新 key 时，把 `config/firecrawl_upstream_contracts.v1.yaml` 中
+  `cn.news.flash` 的 `activation.activation_state` 改回 `paused`（registry/config 改动），
+  管线形态不变，恢复新 key 后按同一路径改回 `active` 并重编 registry。
+- 生产采集单元的环境变量 `FIRECRAWL_API_KEY_FILE` 由
+  `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`
+  提供；修改凭证文件路径时必须同步该 drop-in，并 `systemctl daemon-reload`。
+
+Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
+补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。

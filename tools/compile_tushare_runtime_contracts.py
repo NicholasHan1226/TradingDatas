@@ -1586,19 +1586,34 @@ def _request_execution_contract(
                 f"reviewed {observation['api_name']} request mapping drifted at {key}"
             )
     reviewed_window = reviewed_contract.get("request_window_policy")
-    if (reviewed_window is None) != (window_policy is None):
-        raise RuntimeContractCompilationError(
-            f"reviewed {observation['api_name']} request window mapping drifted"
-        )
-    if reviewed_window is not None and (
-        reviewed_window["required_keys"] != window_policy["required_keys"]
-        or reviewed_window["formats"] != window_policy["formats"]
-        or reviewed_window["range_start_key"] != window_policy["range_start_key"]
-        or reviewed_window["range_end_key"] != window_policy["range_end_key"]
-    ):
-        raise RuntimeContractCompilationError(
-            f"reviewed {observation['api_name']} request window mapping drifted"
-        )
+    if reviewed_window is None:
+        if window_policy is not None:
+            raise RuntimeContractCompilationError(
+                f"reviewed {observation['api_name']} request window mapping drifted"
+            )
+    else:
+        # A reviewed window policy may declare cursor-only keys that are present
+        # in required_keys but absent from the request template. Those keys reset
+        # the resumable cursor per window without becoming API parameters, so the
+        # observation-derived window placeholders are only required to be a
+        # subset of the reviewed declaration rather than an exact match.
+        required_keys = reviewed_window["required_keys"]
+        if not set(window_formats) <= set(required_keys):
+            raise RuntimeContractCompilationError(
+                f"reviewed {observation['api_name']} request window mapping drifted"
+            )
+        for key, fmt in window_formats.items():
+            if reviewed_window["formats"].get(key) != fmt:
+                raise RuntimeContractCompilationError(
+                    f"reviewed {observation['api_name']} request window mapping drifted"
+                )
+        if (
+            reviewed_window["range_start_key"] not in required_keys
+            or reviewed_window["range_end_key"] not in required_keys
+        ):
+            raise RuntimeContractCompilationError(
+                f"reviewed {observation['api_name']} request window mapping drifted"
+            )
     return {key: deepcopy(reviewed_contract[key]) for key in projected}
 
 

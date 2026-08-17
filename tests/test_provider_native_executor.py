@@ -650,7 +650,7 @@ def test_seven_allowed_empty_event_plans_use_seven_shared_budget_calls(
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", empty_provider)
     schedule = scheduler.load_schedule()
     ledger = scheduler.RuntimeRateBudgetLedger(schedule)
-    assert schedule.rate_budgets["event"].account_requests_per_run == 24
+    assert schedule.rate_budgets["event"].account_requests_per_run == 32
 
     for index in range(7):
         api_name = f"synthetic_event_{index}"
@@ -751,4 +751,59 @@ def test_retry_attempts_keep_one_singular_identity_and_distinct_call_ordinals() 
     assert (
         execution.calls[0].identity.canonical_payload()
         == execution.calls[1].identity.canonical_payload()
+    )
+
+
+def test_scan_budget_scales_with_resumable_fanout_batches() -> None:
+    from collectors.tushare.provider_native_ingest import _provider_scan_budget
+
+    fanout = FanoutPolicy(
+        strategy="literal_values",
+        parameter="ts_code",
+        batch_size=300,
+        values=("000001.SZ",),
+    )
+    binding = replace(
+        _binding(max_rows=500),
+        fanout=fanout,
+        resumable_fanout=ResumableFanoutPolicy(max_batches_per_run=6),
+    )
+    dataset = _synthetic_dataset(binding)
+    resumable_budget = _provider_scan_budget(dataset, binding)
+
+    single_batch_binding = replace(binding, resumable_fanout=None)
+    single_budget = _provider_scan_budget(dataset, single_batch_binding)
+
+    # The frozen combined rows span up to max_batches_per_run fanout batches, so
+    # the sensitive-scan node budget must scale by that factor (minus the fixed
+    # envelope headroom, which does not scale).
+    assert resumable_budget.max_nodes >= single_budget.max_nodes * 5
+
+
+def test_empty_rows_with_allowed_policy_skip_fanout_coverage() -> None:
+    from collectors.tushare.provider_native_ingest import (
+        _validate_response_completeness_impl,
+    )
+    from dataset_registry import ResponseCompletenessPolicy
+
+    binding = replace(
+        _binding(),
+        response_completeness=ResponseCompletenessPolicy(
+            strategy="unique_primary_key_snapshot",
+            fixed_field_matches={},
+            reject_at_row_limit=True,
+            fanout_field="ts_code",
+            snapshot_field="time",
+        ),
+    )
+    dataset = _synthetic_dataset(binding)
+    # An allowed empty partition (e.g. a resumable fanout batch where every
+    # symbol is halted) must not be rejected as incomplete coverage.
+    _validate_response_completeness_impl(
+        dataset,
+        binding,
+        (),
+        request_window={},
+        resolved_params={},
+        calls=(),
     )

@@ -670,6 +670,7 @@ def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() ->
         provider_bindings=(active_paused, cross_match_active),
     )
     foreign_dataset = replace(base, market="US", provider_bindings=(active,))
+    global_dataset = replace(base, market="GLOBAL", provider_bindings=(active,))
 
     for dataset in (
         active_dataset,
@@ -680,6 +681,7 @@ def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() ->
     ):
         assert is_catalog_discoverable(dataset)
     assert not is_catalog_discoverable(foreign_dataset)
+    assert is_catalog_discoverable(global_dataset)
     perp_dataset = replace(base, market="CRYPTO_PERP", provider_bindings=(active,))
     perp_paused_dataset = replace(
         base, market="CRYPTO_PERP", provider_bindings=(active_paused,)
@@ -700,12 +702,12 @@ def test_catalog_discoverability_is_separate_from_query_runtime_eligibility() ->
         assert not is_initial_release_eligible(dataset)
 
 
-def test_target_registry_catalog_cursor_discovers_all_191_with_honest_status(
+def test_target_registry_catalog_cursor_discovers_all_192_with_honest_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = load_dataset_registry()
-    assert len(registry.datasets) == 191
+    assert len(registry.datasets) == 192
     excluded_ids = {
         dataset.dataset_id
         for dataset in registry.datasets
@@ -788,8 +790,8 @@ def test_target_registry_catalog_cursor_discovers_all_191_with_honest_status(
     conn.close()
 
     ids = [row["dataset_id"] for row in rows]
-    assert len(ids) == 191
-    assert len(set(ids)) == 191
+    assert len(ids) == 192
+    assert len(set(ids)) == 192
     assert ids == sorted(ids)
     excluded_rows = {
         row["dataset_id"]: row for row in rows if row["dataset_id"] in excluded_ids
