@@ -1438,10 +1438,11 @@ def _activation_evidence_index(
         summary,
         _PROBE_SUMMARY_KEYS,
         "HTTPS activation evidence.evidence.summary",
+        required=frozenset(),
     )
     expected_summary = {
         key: _required_non_negative_int(
-            summary[key], f"HTTPS activation evidence.evidence.summary.{key}"
+            summary.get(key, 0), f"HTTPS activation evidence.evidence.summary.{key}"
         )
         for key in _PROBE_SUMMARY_KEYS
     }
