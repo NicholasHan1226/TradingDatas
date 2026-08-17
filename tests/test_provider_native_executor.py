@@ -752,3 +752,29 @@ def test_retry_attempts_keep_one_singular_identity_and_distinct_call_ordinals() 
         execution.calls[0].identity.canonical_payload()
         == execution.calls[1].identity.canonical_payload()
     )
+
+
+def test_scan_budget_scales_with_resumable_fanout_batches() -> None:
+    from collectors.tushare.provider_native_ingest import _provider_scan_budget
+
+    fanout = FanoutPolicy(
+        strategy="literal_values",
+        parameter="ts_code",
+        batch_size=300,
+        values=("000001.SZ",),
+    )
+    binding = replace(
+        _binding(max_rows=500),
+        fanout=fanout,
+        resumable_fanout=ResumableFanoutPolicy(max_batches_per_run=6),
+    )
+    dataset = _synthetic_dataset(binding)
+    resumable_budget = _provider_scan_budget(dataset, binding)
+
+    single_batch_binding = replace(binding, resumable_fanout=None)
+    single_budget = _provider_scan_budget(dataset, single_batch_binding)
+
+    # The frozen combined rows span up to max_batches_per_run fanout batches, so
+    # the sensitive-scan node budget must scale by that factor (minus the fixed
+    # envelope headroom, which does not scale).
+    assert resumable_budget.max_nodes >= single_budget.max_nodes * 5

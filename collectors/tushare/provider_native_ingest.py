@@ -179,6 +179,12 @@ def _provider_scan_budget(
     nesting_limit = binding.max_nesting_depth
     if row_limit is None or nesting_limit is None:
         raise ValueError("provider scan budget requires registry resource limits")
+    # Resumable fanout collects up to max_batches_per_run fanout batches in a
+    # single attempt, so the frozen combined rows can reach that multiple of
+    # the per-batch row limit.  Size the sensitive-scan node budget for that
+    # total rather than for one batch only.
+    if binding.resumable_fanout is not None:
+        row_limit *= binding.resumable_fanout.max_batches_per_run
 
     declared_fields = max(len(dataset.fields), len(binding.requested_fields))
     field_budget = declared_fields + _PROVIDER_SCAN_FIELD_HEADROOM
