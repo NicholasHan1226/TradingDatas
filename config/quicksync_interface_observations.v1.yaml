@@ -430,7 +430,6 @@ active_evidence:
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
-  fut_daily: server-evidence/20260817T120000Z-quicksync-seed-unlock-probe
   fut_index_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_mapping: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_settle: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -466,7 +465,6 @@ active_evidence:
   namechange: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   new_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   news: server-evidence/20260815T184500Z-news-flash-bounded-weekend-collect
-  opt_basic: server-evidence/20260817T120000Z-quicksync-seed-unlock-probe
   repo_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   report_rc: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native

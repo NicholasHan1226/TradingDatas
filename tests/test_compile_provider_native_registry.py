@@ -1413,8 +1413,8 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert wave4_exact8 <= active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
     assert "forecast" not in active_evidence
@@ -1442,8 +1442,8 @@ def test_wave5_batch_a_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert batch_a <= active
     assert "top10_cb_holders" in active
     assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
@@ -1469,8 +1469,8 @@ def test_wave5_batch_b_top10_active_evidence_is_formal_and_fail_closed() -> None
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert "top10_cb_holders" in active
     assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
 
@@ -1494,8 +1494,8 @@ def test_wave7_financial_exact7_valid_empty_evidence_is_formal_and_fail_closed()
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert wave7_exact7 <= active
     assert "pledge_stat" in active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
@@ -1512,8 +1512,8 @@ def test_wave7_tradedate_exact3_evidence_is_formal_and_fail_closed() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert exact3 <= active
     assert "pledge_stat" in active
     assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
@@ -1556,8 +1556,8 @@ def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert active_cohort <= active
     assert bindings["rt_min_daily"]["activation_state"] == "active"
     assert bindings["rt_min_daily"]["probe_state"] == "executable"
@@ -1576,8 +1576,8 @@ def test_wave7_pledge_stat_evidence_is_formal_and_exact16_resolved() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 136
-    assert len(bindings) - len(active) == 54
+    assert len(active) == 134
+    assert len(bindings) - len(active) == 56
     assert "pledge_stat" in active
     security_master_dependents = {
         "balancesheet", "cashflow", "cyq_chips", "cyq_perf", "daily_basic", "express",

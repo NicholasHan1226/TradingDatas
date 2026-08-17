@@ -179,6 +179,7 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         "forecast",
         "pledge_detail",
         "stk_nineturn",
+        "opt_basic",
         "opt_daily",
     ):
         binding = bindings[api]["provider_bindings"][0]
@@ -211,8 +212,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 136
-    assert len(bindings) - active_count == 54
+    assert active_count == 134
+    assert len(bindings) - active_count == 56
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
