@@ -260,6 +260,17 @@
 > dry-run 非零计划门禁与有界 canary 的 provider→SQLite→catalog/query readback
 > （observed）；冻结设计与分期见 `docs/design/firecrawl-news-pipeline.v1.md`。
 > 本次没有 release、service/timer、数据库、真实 provider 调用或生产变更。
+
+> **2026-08-16 `cn.news.flash`（Firecrawl）激活为 event/active（代码层事实）：**
+> `82a62e0` 让 registry compiler 尊重 supplemental bundle 自带的 activation 声明，
+> 把 `config/firecrawl_upstream_contracts.v1.yaml` 声明的 `activation_state: active`、
+> `entitlement_state: active`、`evidence_ref: server-evidence/20260816T073000Z-
+> firecrawl-flash-bounded-canary` 编入主 registry；`cn.news.flash` 由
+> `on_demand`/`paused`/`unknown` 转为 `event`/`active`（QuickSync observations 仍
+> 不参与其 activation）。生产 SQLite receipt 与 catalog/query readback 的完整
+> observed 复核需运行时读身份（`/run/secrets/marketgraph/tradingdatas-read.token`）
+> 执行，不在本条目声明。
+
 > **2026-08-16 Binance USDⓈ-M open interest metrics-dump 降级采集
 > contract_ready 候选（代码层事实，无生产变更）：** 针对上一条记录的
 > `fapi.binance.com` SNI 级阻断，owner 批准 dump 降级方案：open interest 改用
