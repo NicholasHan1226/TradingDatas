@@ -682,6 +682,7 @@ class ResponseCompletenessPolicy:
     request_partition_key: str | None = None
     fanout_field: str | None = None
     snapshot_field: str | None = None
+    dedup_duplicate_keys: bool = False
 
 
 @dataclass(frozen=True)
@@ -1363,9 +1364,13 @@ def _response_completeness_policy(
         allowed_keys = allowed_keys | {"fanout_field", "snapshot_field"}
     if strategy == "one_row_per_calendar_date":
         allowed_keys = allowed_keys | {"reject_at_row_limit"}
+    allowed_keys = allowed_keys | {"dedup_duplicate_keys"}
     _reject_unknown_keys(value, allowed_keys, path, required=required_keys)
     reject_at_row_limit = _boolean(
         value.get("reject_at_row_limit", False), f"{path}.reject_at_row_limit"
+    )
+    dedup_duplicate_keys = _boolean(
+        value.get("dedup_duplicate_keys", False), f"{path}.dedup_duplicate_keys"
     )
 
     date_field: str | None = None
@@ -1501,6 +1506,7 @@ def _response_completeness_policy(
         request_partition_key=request_partition_key,
         fanout_field=fanout_field,
         snapshot_field=snapshot_field,
+        dedup_duplicate_keys=dedup_duplicate_keys,
     )
 
 
