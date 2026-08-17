@@ -126,6 +126,17 @@ def test_oi_dump_collector_rejects_header_and_grid_drift() -> None:
     assert _collect(_zip_payload(bad_cell)).state == "failed"
 
 
+def test_oi_dump_collector_tolerates_empty_dropped_ratio_cells() -> None:
+    lines = _csv_lines()
+    # Binance emits an empty ratio cell for buckets with no taker flow. These
+    # ratio columns are dropped by the OI contract, so an empty cell must not
+    # fail the whole day.
+    mutated = [*lines[:-1], lines[-1].replace("1.9,1.5,1.8,2.1", "1.9,1.5,1.8,")]
+    outcome = _collect(_zip_payload(mutated))
+    assert outcome.state == "success"
+    assert len(outcome.rows) == 288
+
+
 def test_oi_dump_collector_bounds_the_window_to_a_closed_utc_day() -> None:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for date in (today, "2999-01-01", "2026-8-13", "2026-08-13T00:00:00Z", ""):
@@ -366,7 +377,7 @@ def test_oi_dump_runner_retries_one_provider_error_and_preserves_both_receipts(
     assert all(item["window"] == {"date": "2026-08-15"} for item in result["datasets"])
 
 
-def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
+def test_oi_dump_runner_treats_missing_dump_as_soft_gap_across_multiple_days(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
@@ -383,13 +394,21 @@ def test_oi_dump_runner_surfaces_a_missing_dump_file_as_a_failed_run(
         )
 
     monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
-    with pytest.raises(RuntimeError, match="collections failed"):
-        run(
-            db_path=tmp_path / "unused.sqlite",
-            lock_path=tmp_path / "collect.lock",
-            execute=True,
-            now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
-        )
+    result = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=datetime(2026, 8, 16, 0, 37, tzinfo=timezone.utc),
+    )
+
+    # A missing daily dump is provider_error (publication lag), so even with
+    # multiple missing days it degrades to a soft gap rather than failing the
+    # whole run; non-provider drift is still fail-closed by the hard_failure
+    # branch above.
+    assert result["state"] == "success"
+    assert any(
+        item["state"] == "pending_publication" for item in result["datasets"]
+    )
 
 
 def test_oi_dump_runner_falls_through_unpublished_newest_day(

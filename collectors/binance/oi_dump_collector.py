@@ -278,6 +278,12 @@ class BinanceUsdmMetricsDumpCollector:
             open_interest = _metric_text(record[2])
             open_interest_value = _metric_text(record[3])
             for cell in record[4:]:
+                if cell.strip() == "":
+                    # Binance emits an empty ratio cell for 5m buckets with no
+                    # taker flow. These ratio columns are dropped below and are
+                    # not part of the OI dataset contract, so tolerate empties
+                    # instead of failing the whole day.
+                    continue
                 _metric_text(cell)
             rows.append(
                 {
