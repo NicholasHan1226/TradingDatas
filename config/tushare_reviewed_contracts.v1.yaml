@@ -91,7 +91,7 @@ contracts:
     fanout: {strategy: literal_values, parameter: src, values: [新华网, 凤凰财经, 同花顺, 新浪财经, 华尔街见闻, 中证网, 财新网, 第一财经, 财联社], batch_size: 1}
     pagination: {strategy: none}
     request_window_policy: {required_keys: [start_date, end_date], formats: {start_date: local_datetime_seconds, end_date: local_datetime_seconds}, range_start_key: start_date, range_end_key: end_date, max_span_days: 1}
-    response_completeness: {strategy: unique_primary_key_snapshot, fixed_field_matches: {}, reject_at_row_limit: true, dedup_duplicate_keys: true}
+    response_completeness: {strategy: unique_primary_key_snapshot, fixed_field_matches: {}, reject_at_row_limit: false, dedup_duplicate_keys: true}
     requested_fields: [title, content, pub_time, src]
     budgets: {max_rows_per_attempt: 400, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
