@@ -1006,7 +1006,7 @@ def _validate_response_completeness_impl(
             request_window=request_window,
         )
     elif policy.strategy == "unique_primary_key_snapshot":
-        _validate_unique_primary_keys(dataset, rows)
+        _validate_unique_primary_keys(dataset, rows, dedup_duplicate_keys=policy.dedup_duplicate_keys)
         if policy.fanout_field is not None:
             _validate_fanout_snapshot(binding, policy, rows, calls=calls)
         elif policy.snapshot_field is not None:
@@ -1072,7 +1072,7 @@ def _validate_event_stream_unique_primary_keys(
         ).anchor
     except ValueError as exc:
         raise ValueError("provider response event stream request values are invalid") from exc
-    _validate_unique_primary_keys(dataset, rows)
+    _validate_unique_primary_keys(dataset, rows, dedup_duplicate_keys=policy.dedup_duplicate_keys)
     for row in rows:
         try:
             event_time = decode_request_window_value(
@@ -1231,7 +1231,7 @@ def _validate_windowed_unique_primary_keys(
         ).anchor
     except ValueError as exc:
         raise ValueError("provider response windowed request values are invalid") from exc
-    _validate_unique_primary_keys(dataset, rows)
+    _validate_unique_primary_keys(dataset, rows, dedup_duplicate_keys=policy.dedup_duplicate_keys)
     for row in rows:
         fanout_value = row.get(policy.fanout_field)
         if type(fanout_value) is not str or not fanout_value:
@@ -1280,6 +1280,8 @@ def _usable_primary_key(
 def _validate_unique_primary_keys(
     dataset: DatasetDefinition,
     rows: tuple[Mapping[str, Any], ...],
+    *,
+    dedup_duplicate_keys: bool = False,
 ) -> None:
     observed: set[tuple[tuple[str, str | int | float], ...]] = set()
     for row in rows:
@@ -1287,6 +1289,11 @@ def _validate_unique_primary_keys(
         if identity is None:
             continue
         if identity in observed:
+            if dedup_duplicate_keys:
+                # News-like content streams legitimately republish the same
+                # (source, time, title) item; keep the first occurrence and let
+                # storage dedup by payload hash instead of failing the dataset.
+                continue
             raise ValueError("provider response contains duplicate primary key")
         observed.add(identity)
 
@@ -1326,7 +1333,7 @@ def _validate_single_partition(
         )
         if actual_value != expected_value:
             raise ValueError("provider response partition does not match request")
-    _validate_unique_primary_keys(dataset, rows)
+    _validate_unique_primary_keys(dataset, rows, dedup_duplicate_keys=policy.dedup_duplicate_keys)
 
 
 def _strict_partition_value(value: object, format_name: object) -> str:

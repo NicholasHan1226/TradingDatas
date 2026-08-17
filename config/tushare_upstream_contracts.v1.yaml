@@ -22692,6 +22692,7 @@ contracts:
     strategy: unique_primary_key_snapshot
     fixed_field_matches: {}
     reject_at_row_limit: true
+    dedup_duplicate_keys: true
   requested_fields:
   - title
   - content
