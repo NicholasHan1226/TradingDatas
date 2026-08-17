@@ -488,6 +488,21 @@ def test_us_slash_date_published_at_is_normalized() -> None:
     assert row["event_date"] == "20260813"
 
 
+def test_bare_wall_clock_time_is_anchored_to_source_day() -> None:
+    today = firecrawl_collector.datetime.now(
+        firecrawl_collector._LOCAL_TIMEZONE
+    ).date().strftime("%Y-%m-%d")
+    row = _normalize_item(
+        {"title": "快讯", "url": "https://finance.sina.com.cn/7x24/1", "published_at": "08:09:28"},
+        source="https://finance.sina.com.cn/7x24/",
+        time_key="published_at",
+        summary_key=None,
+        timezone=firecrawl_collector._LOCAL_TIMEZONE,
+    )
+    assert row["published_at"] == f"{today}T08:09:28+08:00"
+    assert row["event_date"] == today.replace("-", "")
+
+
 def test_relative_or_junk_url_becomes_unlinkable() -> None:
     row = _normalize_item(
         {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
@@ -526,12 +541,10 @@ def test_registry_freezes_flash_contract_and_executor_identity() -> None:
     assert binding.fanout.strategy == "literal_values"
     assert binding.fanout.parameter == "url"
     assert binding.fanout.batch_size == 1
-    assert binding.fanout.values == (
-        "https://kuaixun.eastmoney.com/7_24.html",
-        "https://www.cls.cn/telegraph",
-    ) or set(binding.fanout.values) == {
+    assert set(binding.fanout.values) == {
         "https://www.cls.cn/telegraph",
         "https://kuaixun.eastmoney.com/7_24.html",
+        "https://finance.sina.com.cn/7x24/",
     }
     completeness = binding.response_completeness
     assert completeness is not None

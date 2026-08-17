@@ -36888,6 +36888,7 @@ datasets:
       values:
       - https://www.cls.cn/telegraph
       - https://kuaixun.eastmoney.com/7_24.html
+      - https://finance.sina.com.cn/7x24/
       batch_size: 1
     pagination:
       strategy: none
