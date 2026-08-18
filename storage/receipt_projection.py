@@ -127,6 +127,13 @@ _ERROR_CODES = frozenset(
     }
 )
 _MAX_INGEST_RUN_SCAN_ROWS = 100_000
+# Catalog projection only needs each dataset's most recent receipts, not the
+# full append-only run history.  A single execution normally emits 1-3 receipt
+# rows (success/empty/failed plus fanout siblings and retries), so 100 rows per
+# dataset covers the last few dozen executions and the worst fanout + retry
+# case while keeping the projected union small and independent of the total
+# number of rows in ``market_ingest_runs``.
+_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET = 100
 _RECEIPT_QUERY = """
 SELECT typeof(run_id), run_id,
        typeof(started_at), started_at,
@@ -142,6 +149,23 @@ LIMIT ?
 _RECEIPT_QUERY_BY_DATASET = _RECEIPT_QUERY.replace(
     "FROM market_ingest_runs\nLIMIT ?",
     "FROM market_ingest_runs\nWHERE source = ?\nLIMIT ?",
+)
+# The catalog projection scans the most recent ``_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET``
+# receipts per ``source`` instead of the whole append-only table.  The column
+# expressions stay identical to ``_RECEIPT_QUERY`` so ``_classify_ingest_run_row``
+# keeps the same positional contract; only the row source changes.
+_RECENT_INGEST_RUN_QUERY = _RECEIPT_QUERY.replace(
+    "FROM market_ingest_runs\nLIMIT ?",
+    """FROM (
+    SELECT run_id, started_at, finished_at, status, source, rows_read,
+           rows_written, notes,
+           ROW_NUMBER() OVER (
+               PARTITION BY source
+               ORDER BY finished_at DESC, rowid DESC
+           ) AS rn
+    FROM market_ingest_runs
+)
+WHERE rn <= ?""",
 )
 
 
@@ -703,6 +727,36 @@ def _scan_ingest_run_rows(
         )
     raw_rows = tuple(tuple(row) for row in cursor.fetchall())
     if len(raw_rows) == scan_limit:
+        raise RuntimeProjectionError("receipt scan row budget exceeded")
+    return tuple(_classify_ingest_run_row(row) for row in raw_rows)
+
+
+def _scan_recent_ingest_run_rows(
+    conn: sqlite3.Connection,
+    *,
+    per_dataset_limit: int,
+) -> tuple[_ScannedIngestRunRow, ...]:
+    """Read only the most recent ``per_dataset_limit`` receipts per dataset.
+
+    This is the bounded replacement for the full ``market_ingest_runs`` scan on
+    the catalog projection path.  The result is a union of per-source windows,
+    so its size is independent of the table's total row count.  A global
+    fail-closed budget still guards against a pathological number of distinct
+    sources instead of silently truncating the authority snapshot.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if type(per_dataset_limit) is not int or per_dataset_limit <= 0:
+        raise ValueError("per_dataset_limit must be a positive integer")
+    raw_rows = tuple(
+        tuple(row)
+        for row in conn.execute(
+            _RECENT_INGEST_RUN_QUERY,
+            (per_dataset_limit,),
+        ).fetchall()
+    )
+    if len(raw_rows) > _MAX_INGEST_RUN_SCAN_ROWS:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
 
@@ -3064,7 +3118,10 @@ def _project_registry_datasets(
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
     known_dataset_ids = frozenset(dataset.dataset_id for dataset in registry.datasets)
-    rows = _scan_ingest_run_rows(conn)
+    rows = _scan_recent_ingest_run_rows(
+        conn,
+        per_dataset_limit=_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET,
+    )
     projections = tuple(
         _project_dataset_runtime(
             conn,
