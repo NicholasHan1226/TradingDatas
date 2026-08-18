@@ -488,7 +488,10 @@ def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition
 
     assert contract["schema_version"] == "1.0.0"
     assert contract["primary_key"] == ["ann_date", "end_date", "ts_code"]
-    assert contract["cadence_class"] == "on_demand"
+    # Deliberate cadence change (catalyst event feed automation):
+    # disclosure_date is now swept daily so forward disclosure dates are
+    # collected automatically instead of on demand.
+    assert contract["cadence_class"] == "daily_reference"
     assert contract["as_of_field"] == "ann_date"
     assert contract["range_field"] == "ann_date"
     assert contract["partition_field"] == "ann_date"
@@ -504,18 +507,25 @@ def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition
 
 
 @pytest.mark.parametrize(
-    ("api_name", "primary_key", "partition_field"),
+    ("api_name", "primary_key", "partition_field", "cadence_class"),
     [
         (
+            # Deliberate cadence change (catalyst event feed automation):
+            # share_float is now swept daily so forward lockup expiries are
+            # collected automatically instead of on demand.
             "share_float",
             ["ann_date", "float_date", "ts_code", "holder_name", "share_type"],
             "ann_date",
+            "daily_reference",
         ),
-        ("top_list", ["trade_date", "ts_code", "reason"], "trade_date"),
+        ("top_list", ["trade_date", "ts_code", "reason"], "trade_date", "on_demand"),
     ],
 )
 def test_reviewed_nonmarket_evidence_contracts_bind_observed_partition_identities(
-    api_name: str, primary_key: list[str], partition_field: str
+    api_name: str,
+    primary_key: list[str],
+    partition_field: str,
+    cadence_class: str,
 ) -> None:
     compiled = compile_runtime_contract_bundle(
         _yaml(DOCUMENTS), _yaml(REVIEWED), _yaml(POLICY)
@@ -524,7 +534,7 @@ def test_reviewed_nonmarket_evidence_contracts_bind_observed_partition_identitie
 
     assert contract["schema_version"] == "1.0.0"
     assert contract["primary_key"] == primary_key
-    assert contract["cadence_class"] == "on_demand"
+    assert contract["cadence_class"] == cadence_class
     assert contract["as_of_field"] == partition_field
     assert contract["range_field"] == partition_field
     assert contract["partition_field"] == partition_field

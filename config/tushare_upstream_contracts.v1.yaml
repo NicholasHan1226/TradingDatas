@@ -9752,7 +9752,7 @@ contracts:
   range_field: ann_date
   partition_field: ann_date
   as_of_format: yyyymmdd
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -29432,7 +29432,7 @@ contracts:
   range_field: ann_date
   partition_field: ann_date
   as_of_format: yyyymmdd
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
