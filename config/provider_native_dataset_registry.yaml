@@ -536,12 +536,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bak_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -564,20 +563,60 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: snapshot_or_date_range
-    request_template: {}
+    request_template:
+      trade_date: ${window.trade_date}
     request_variants:
     - {}
     fanout:
       strategy: none
     pagination:
-      strategy: offset
-      limit_parameter: limit
-      offset_parameter: offset
-      page_size: 1
-      max_pages: 1
-    request_window_policy: null
-    response_completeness: null
-    requested_fields: []
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - name
+    - pct_change
+    - close
+    - change
+    - open
+    - high
+    - low
+    - pre_close
+    - vol_ratio
+    - turn_over
+    - swing
+    - vol
+    - amount
+    - selling
+    - buying
+    - total_share
+    - float_share
+    - pe
+    - industry
+    - area
+    - float_mv
+    - total_mv
+    - avg_price
+    - strength
+    - activity
+    - avg_turnover
+    - attack
+    - interval_3
+    - interval_6
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -591,13 +630,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -775,7 +814,9 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
@@ -808,10 +849,10 @@ datasets:
   - attack
   - interval_3
   - interval_6
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -2095,12 +2136,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bc_otcqt
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -6169,8 +6209,26 @@ datasets:
       range_start_key: m
       range_end_key: m
       max_span_days: 1
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: month
+      request_partition_key: m
+    requested_fields:
+    - month
+    - nt_val
+    - nt_yoy
+    - nt_mom
+    - nt_accu
+    - town_val
+    - town_yoy
+    - town_mom
+    - town_accu
+    - cnt_val
+    - cnt_yoy
+    - cnt_mom
+    - cnt_accu
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -6184,7 +6242,7 @@ datasets:
   fields:
   - name: month
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -6260,7 +6318,8 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - month
   default_projection:
   - month
   - nt_val
@@ -6275,10 +6334,10 @@ datasets:
   - cnt_yoy
   - cnt_mom
   - cnt_accu
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: month
+  as_of_format: yyyymm
+  range_field: month
+  partition_field: month
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -8337,12 +8396,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_concept_cons
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -8857,12 +8915,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_dc_member
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -10039,12 +10096,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_etf_sz_cons
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -11842,7 +11898,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_forecast
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -12314,12 +12370,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_adj
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -12342,20 +12397,32 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: snapshot_or_date_range
-    request_template: {}
+    request_template:
+      trade_date: ${window.trade_date}
     request_variants:
     - {}
     fanout:
       strategy: none
     pagination:
-      strategy: offset
-      limit_parameter: limit
-      offset_parameter: offset
-      page_size: 1
-      max_pages: 1
-    request_window_policy: null
-    response_completeness: null
-    requested_fields: []
+      strategy: none
+    request_window_policy:
+      required_keys:
+      - trade_date
+      formats:
+        trade_date: yyyymmdd
+      range_start_key: trade_date
+      range_end_key: trade_date
+      max_span_days: 1
+    response_completeness:
+      strategy: single_partition_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+      partition_field: trade_date
+      request_partition_key: trade_date
+    requested_fields:
+    - ts_code
+    - trade_date
+    - adj_factor
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -12369,13 +12436,13 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: trade_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -12385,15 +12452,17 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - trade_date
   default_projection:
   - ts_code
   - trade_date
   - adj_factor
-  as_of_field: null
-  as_of_format: null
-  range_field: null
-  partition_field: null
+  as_of_field: trade_date
+  as_of_format: yyyymmdd
+  range_field: trade_date
+  partition_field: trade_date
   point_in_time: append_only
   backfill_policy: provider_limited
   empty_data_policy: allowed
@@ -12900,12 +12969,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -13973,12 +14041,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_manager
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -14004,14 +14071,23 @@ datasets:
     fanout:
       strategy: none
     pagination:
-      strategy: offset
-      limit_parameter: limit
-      offset_parameter: offset
-      page_size: 1
-      max_pages: 1
+      strategy: none
     request_window_policy: null
-    response_completeness: null
-    requested_fields: []
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields:
+    - ts_code
+    - ann_date
+    - name
+    - gender
+    - birth_year
+    - edu
+    - nationality
+    - begin_date
+    - end_date
+    - resume
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
@@ -14021,23 +14097,23 @@ datasets:
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: ann_date
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
   - name: name
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -14083,7 +14159,10 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - ann_date
+  - name
   default_projection:
   - ts_code
   - ann_date
@@ -14099,7 +14178,7 @@ datasets:
   as_of_format: null
   range_field: null
   partition_field: null
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: allowed
   required_scope: market_data
@@ -14121,12 +14200,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_nav
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -14724,7 +14802,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -14932,12 +15010,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_holding
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -16085,12 +16162,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fut_wsr
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -18475,7 +18551,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -18485,12 +18561,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_basic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -18521,22 +18596,38 @@ datasets:
     pagination:
       strategy: none
     request_window_policy: null
-    response_completeness: null
-    requested_fields: []
-    max_batch_bytes: 67108864
+    response_completeness:
+      strategy: unique_primary_key_snapshot
+      fixed_field_matches: {}
+      reject_at_row_limit: true
+    requested_fields:
+    - ts_code
+    - name
+    - fullname
+    - market
+    - publisher
+    - index_type
+    - category
+    - base_date
+    - base_point
+    - list_date
+    - weight_rule
+    - desc
+    - exp_date
+    max_batch_bytes: 4194304
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 1000
   read_model_adapter:
     adapter_version: provider-native-json.v1
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -18612,7 +18703,8 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
   default_projection:
   - ts_code
   - name
@@ -18631,7 +18723,7 @@ datasets:
   as_of_format: null
   range_field: null
   partition_field: null
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: allowed
   required_scope: market_data
@@ -19435,12 +19527,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_index_weekly
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -19995,12 +20086,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_kpl_concept_cons
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -24164,7 +24254,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_basic
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -24363,12 +24453,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_opt_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -24687,7 +24776,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_pledge_detail
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready

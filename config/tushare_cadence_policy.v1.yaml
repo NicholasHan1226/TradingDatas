@@ -23,7 +23,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: a6605573b916cbc59a4bb8f2cf562070175a1d34f8006608287bed7f3a26b49f
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: balancesheet
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -133,7 +133,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: fc73d12a27b84c2e4c9cbf8f9603530580602474a773d4af572009f2ce38361d
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: cn_gdp
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -288,7 +288,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 53e171d634c91dca890a2148bb60ccb63396de0eab21a24633fb4703029ce40a
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fund_basic
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -318,7 +318,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 489cf9fad6efb4bfc5c213b15c9acd681388ef42e63b5763cf7b4fbd45ad427c
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: fund_nav
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -428,7 +428,7 @@ entries:
   cadence_class: on_demand
   freshness_sla_seconds: 86400
   source_document_sha256: 5dbbbda563f880297ff67d55b5c82a867ee4f253c2044e1ad56887627e66e6c8
-  reason_code: no_document_frequency_evidence
+  reason_code: reviewed_contract_exact
 - api_name: index_classify
   cadence_class: weekly
   freshness_sla_seconds: 604800
