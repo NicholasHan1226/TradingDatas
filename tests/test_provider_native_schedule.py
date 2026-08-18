@@ -1615,20 +1615,27 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         for dataset_id in (
             "cn.dataset.cb_issue",
             "cn.dataset.daily_info",
-            "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
             "cn.dataset.index_dailybasic",
             "cn.dataset.limit_cpt_list",
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
             "cn.dataset.repurchase",
-            "cn.dataset.share_float",
             "cn.dataset.stk_managers",
             "cn.dataset.stock_st",
             "cn.dataset.sz_daily_info",
             "cn.dataset.top_list",
         )
     } == {"on_demand"}
+    # disclosure_date / share_float moved from on_demand to daily_reference
+    # (deliberate cadence change for the catalyst event feed): they are
+    # ann_date-partitioned announcements, so a 7-day-week daily sweep with
+    # 7-day correction overlap covers weekend announcements and late fixes.
+    planned = {item.dataset_id for item in result.plans}
+    assert {
+        "cn.dataset.disclosure_date",
+        "cn.dataset.share_float",
+    } <= planned
 
 
 def test_recent_receipt_with_replaced_contract_is_replanned(
@@ -4251,7 +4258,16 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
     for dataset_id in direct.dataset_ids:
         dataset = registry.resolve(dataset_id)
         binding = dataset.provider_bindings[0]
-        assert dataset.cadence_class == "on_demand"
+        # disclosure_date / share_float deliberately moved to the automatic
+        # daily_reference cadence (catalyst event feed); every other
+        # direct_wave_4 member remains on_demand.
+        if dataset_id in {
+            "cn.dataset.disclosure_date",
+            "cn.dataset.share_float",
+        }:
+            assert dataset.cadence_class == "daily_reference"
+        else:
+            assert dataset.cadence_class == "on_demand"
         assert binding.fanout is not None
         assert binding.fanout.strategy == "none"
         assert binding.pagination is not None
@@ -4330,7 +4346,7 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
             assert binding.response_completeness is None
 
 
-def test_formal_direct_wave_4_explicit_dry_run_skips_all_as_on_demand(
+def test_formal_direct_wave_4_dry_run_skips_on_demand_and_plans_scheduled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4340,18 +4356,22 @@ def test_formal_direct_wave_4_explicit_dry_run_skips_all_as_on_demand(
     with sqlite3.connect(db_path) as conn:
         _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
         conn.commit()
-    expected = {
+    expected_on_demand = {
         "cn.dataset.cb_issue",
         "cn.dataset.daily_info",
-        "cn.dataset.disclosure_date",
         "cn.dataset.fund_div",
         "cn.dataset.index_dailybasic",
         "cn.dataset.limit_cpt_list",
         "cn.dataset.limit_step",
         "cn.dataset.moneyflow_hsgt",
-        "cn.dataset.share_float",
         "cn.dataset.stk_managers",
         "cn.dataset.sz_daily_info",
+    }
+    # disclosure_date / share_float left on_demand for daily_reference, so
+    # the wave dry-run must now plan them instead of skipping them.
+    expected_planned = {
+        "cn.dataset.disclosure_date",
+        "cn.dataset.share_float",
     }
 
     result = scheduler.run_schedule(
@@ -4366,12 +4386,14 @@ def test_formal_direct_wave_4_explicit_dry_run_skips_all_as_on_demand(
         schedule_source_path=SCHEDULE_CONFIG,
     )
 
-    assert not {plan.dataset_id for plan in result.plans} & expected
+    planned = {plan.dataset_id for plan in result.plans}
+    assert not planned & expected_on_demand
+    assert expected_planned <= planned
     assert {
         (item.dataset_id, item.state)
         for item in result.skipped
-        if item.dataset_id in expected
-    } == {(dataset_id, "on_demand") for dataset_id in expected}
+        if item.dataset_id in expected_on_demand
+    } == {(dataset_id, "on_demand") for dataset_id in expected_on_demand}
 
 
 def test_activation_wave_uses_hashed_input_bytes_not_detached_objects(
