@@ -582,6 +582,21 @@ def _write_prepared_rows(
             unchanged += 1
             continue
         if dataset.point_in_time != "current_snapshot":
+            if (
+                existing_tuple[3] == desired_content[3]
+                and existing_tuple[7] == desired_content[7]
+            ):
+                # Append-only rows are keyed by payload hash, so a matching
+                # row_key already proves the payload bytes.  The remaining
+                # content columns are registry-derived (observed_at,
+                # partition_value, quality_state) and can drift when the
+                # registry metadata changes (for example ``partition_field``);
+                # keep the first provenance as long as schema version and
+                # payload are unchanged, instead of failing an idempotent
+                # re-collection.
+                expected_rows[identity] = existing_tuple
+                unchanged += 1
+                continue
             raise RuntimeError("append_only provider identity must not update")
         cursor = conn.execute(
             """UPDATE provider_dataset_rows

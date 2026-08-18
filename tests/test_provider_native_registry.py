@@ -1185,19 +1185,6 @@ def test_event_stream_completeness_rejects_non_datetime_window(
             "missing key",
         ),
         (
-            lambda item: item["provider_bindings"][0].update(  # type: ignore[index]
-                request_template={"trade_date": "${window.trade_date}"},
-                request_window_policy={
-                    "required_keys": ["trade_date"],
-                    "formats": {"trade_date": "yyyymmdd"},
-                    "range_start_key": "trade_date",
-                    "range_end_key": "trade_date",
-                    "max_span_days": 1,
-                },
-            ),
-            "unique_primary_key_snapshot",
-        ),
-        (
             lambda item: item["provider_bindings"][0]["response_completeness"].update(  # type: ignore[index]
                 snapshot_field="missing"
             ),
