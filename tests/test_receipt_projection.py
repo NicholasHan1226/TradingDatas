@@ -2040,7 +2040,8 @@ def test_registry_projection_scans_ingest_runs_once_with_a_hard_limit() -> None:
     assert len(receipt_scans) == 1
     assert "WHERE source" not in receipt_scans[0]
     assert "run_id LIKE" not in receipt_scans[0]
-    assert "LIMIT" in receipt_scans[0]
+    assert "ROW_NUMBER() OVER" in receipt_scans[0]
+    assert "rn <=" in receipt_scans[0]
 
 
 def test_registry_projection_classifies_each_ingest_row_once(
@@ -2081,6 +2082,165 @@ def test_registry_projection_classifies_each_ingest_row_once(
     )
 
     assert calls == 3
+
+
+def test_recent_ingest_run_scan_returns_bounded_per_dataset_window() -> None:
+    conn = _memory_db()
+    source = "cn.equity.daily"
+    base = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                f"recent-run-{index:03d}",
+                (base + timedelta(minutes=index)).isoformat().replace("+00:00", "Z"),
+                (base + timedelta(minutes=index)).isoformat().replace("+00:00", "Z"),
+                "success",
+                source,
+                1,
+                1,
+                _canonical_json({"legacy": index}),
+            )
+            for index in range(105)
+        ],
+    )
+    conn.commit()
+
+    scanned = projection_module._scan_recent_ingest_run_rows(
+        conn,
+        per_dataset_limit=100,
+    )
+
+    assert len(scanned) == 100
+    assert {row.raw[9] for row in scanned} == {source}
+    assert scanned[0].raw[1] == "recent-run-104"
+    assert scanned[-1].raw[1] == "recent-run-005"
+
+
+def test_recent_ingest_run_scan_fails_closed_on_total_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    monkeypatch.setattr(
+        projection_module,
+        "_MAX_INGEST_RUN_SCAN_ROWS",
+        3,
+        raising=False,
+    )
+    base = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    rows: list[tuple[object, ...]] = []
+    for source_index in range(3):
+        source = f"cn.equity.daily.{source_index}"
+        for index in range(2):
+            finished = (base + timedelta(minutes=index)).isoformat().replace(
+                "+00:00", "Z"
+            )
+            rows.append(
+                (
+                    f"run-{source_index}-{index}",
+                    finished,
+                    finished,
+                    "success",
+                    source,
+                    1,
+                    1,
+                    _canonical_json({"legacy": index}),
+                )
+            )
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+
+    with pytest.raises(RuntimeProjectionError, match="row budget exceeded"):
+        projection_module._scan_recent_ingest_run_rows(
+            conn,
+            per_dataset_limit=2,
+        )
+
+
+def test_catalog_projection_survives_full_scan_budget_exceeded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catalog projection must not fail closed on the old full-table scan budget."""
+
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="catalog-survives-budget",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+
+    def fail_global_scan(*args: object, **kwargs: object) -> tuple[object, ...]:
+        raise RuntimeProjectionError("receipt scan row budget exceeded")
+
+    monkeypatch.setattr(projection_module, "_scan_ingest_run_rows", fail_global_scan)
+
+    catalog = project_catalog_runtime(conn, registry, now=now)
+    assert catalog["datasets"][dataset.dataset_id]["state"] == "success"
+
+
+def test_catalog_projection_recent_scan_preserves_dataset_states(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-dataset recent receipts keep dataset and interface projections intact."""
+
+    conn = _memory_db()
+    base = _dataset()
+    success = base
+    failed_binding = replace(
+        base.provider_bindings[0],
+        api_name="daily_failed",
+        read_discriminator_value="daily_failed",
+    )
+    failed = replace(
+        base,
+        dataset_id="cn.equity.daily.failed",
+        aliases=("daily.failed",),
+        provider_bindings=(failed_binding,),
+    )
+    registry = DatasetRegistry((success, failed))
+
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="recent-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+        dataset=success,
+        dataset_id=success.dataset_id,
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="recent-failed",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+        dataset=failed,
+        dataset_id=failed.dataset_id,
+        provider_api="daily_failed",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+
+    catalog = project_catalog_runtime(conn, registry, now=now)
+    assert catalog["datasets"][success.dataset_id]["state"] == "success"
+    assert catalog["datasets"][failed.dataset_id]["state"] == "failed"
+
+    full = project_registry_runtime(conn, registry, now=now)
+    assert full["interfaces"]["daily"]["state"] == "success"
+    assert full["interfaces"]["daily_failed"]["state"] == "failed"
 
 
 def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
