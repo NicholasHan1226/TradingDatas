@@ -176,9 +176,9 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "interfaces": 190,
         "probe_executable": 141,
         "probe_blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
-        "row_limit_ingest_contract_blocked": 15,
+        "ingest_contract_ready": 141,
+        "ingest_contract_blocked": 49,
+        "row_limit_ingest_contract_blocked": 3,
     }
     assert observations["counts"] == {
         "interfaces": len(entries),
@@ -214,10 +214,8 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     fund_nav = _entry(observations, "fund_nav")
     assert fund_nav["probe_state"] == "executable"
     assert fund_nav["probe_block_reasons"] == []
-    assert fund_nav["ingest_contract_state"] == "blocked"
-    assert fund_nav["ingest_contract_block_reasons"] == [
-        "response_completeness_unresolved_at_observed_limit"
-    ]
+    assert fund_nav["ingest_contract_state"] == "ready"
+    assert fund_nav["ingest_contract_block_reasons"] == []
 
     news = _entry(observations, "news")
     assert news["probe_state"] == "executable"
@@ -399,10 +397,8 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
 
     fund_nav = _contract(bundle, "fund_nav")
     assert fund_nav["probe_state"] == "executable"
-    assert fund_nav["ingest_contract_state"] == "blocked"
-    assert fund_nav["ingest_contract_block_reasons"] == [
-        "response_completeness_unresolved_at_observed_limit"
-    ]
+    assert fund_nav["ingest_contract_state"] == "ready"
+    assert fund_nav["ingest_contract_block_reasons"] == []
 
     news = _contract(bundle, "news")
     assert news["probe_state"] == "executable"
@@ -509,8 +505,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
         "planned": 190,
         "executable": 141,
         "blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
+        "ingest_contract_ready": 141,
+        "ingest_contract_blocked": 49,
     }
 
     daily = _entry(plan, "daily")
@@ -573,8 +569,8 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "planned": 190,
         "executable": 158,
         "blocked": 32,
-        "ingest_contract_ready": 143,
-        "ingest_contract_blocked": 47,
+        "ingest_contract_ready": 158,
+        "ingest_contract_blocked": 32,
     }
     daily_basic = _entry(plan, "daily_basic")
     assert daily_basic["probe_state"] == "executable"
@@ -856,7 +852,7 @@ def test_runtime_compiler_rejects_content_drift_behind_frozen_authority_sha(
         document_bytes = _yaml_bytes(document)
     elif authority == "request":
         request = _yaml(REQUEST_OBSERVATIONS)
-        _entry(request, "bak_daily")["parameters"]["limit"]["value"] = 2
+        _entry(request, "bak_daily")["parameters"]["trade_date"]["offset_seconds"] = 1
         request_bytes = _yaml_bytes(request)
     elif authority == "transport":
         transport = _yaml(TRANSPORT_OBSERVATIONS)
