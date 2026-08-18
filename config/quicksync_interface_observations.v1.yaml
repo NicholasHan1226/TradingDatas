@@ -583,25 +583,25 @@ active_evidence:
   top10_floatholders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   top10_holders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   pledge_stat: server-evidence/ashare-wave7-pledge-stat-single-20260812T1947CST
-  index_basic: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  bc_otcqt: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  dc_concept_cons: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  dc_member: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  etf_sz_cons: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fund_daily: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fund_nav: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fut_holding: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fut_wsr: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  opt_daily: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  index_weekly: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  kpl_concept_cons: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  forecast: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fut_daily: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  opt_basic: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  pledge_detail: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  bak_daily: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fund_adj: server-evidence/20260818T120000Z-quicksync-activation-sweep
-  fund_manager: server-evidence/20260818T120000Z-quicksync-activation-sweep
+  index_basic: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  bc_otcqt: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  dc_concept_cons: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  dc_member: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  etf_sz_cons: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fund_daily: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fund_nav: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fut_holding: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fut_wsr: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  opt_daily: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  index_weekly: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  kpl_concept_cons: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  forecast: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fut_daily: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  opt_basic: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  pledge_detail: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  bak_daily: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fund_adj: server-evidence/ashare-wave8-exact19-20260818T0630Z
+  fund_manager: server-evidence/ashare-wave8-exact19-20260818T0630Z
 dependency_seed_authorities:
 - dataset_id: cn.dataset.cb_basic
   field: ts_code
