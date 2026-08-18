@@ -41,6 +41,7 @@ SECURITY_MASTER_DEPENDENTS = {
     "fina_mainbz",
     "income",
     "pledge_stat",
+    "rt_k",
     "rt_min_daily",
     "stk_mins",
     "stk_rewards",
@@ -48,9 +49,19 @@ SECURITY_MASTER_DEPENDENTS = {
     "top10_holders",
 }
 SECURITY_MASTER_RECEIPT = (
-    "receipt:653392e20e8ec6de05bc8729d2802d529e51ecf47dd261f82cb0a1938ca0a115"
+    "receipt:3e1054e8d7844522346fccbf935a371b62c3dca9bea31291f288919468fb7378"
 )
-SECURITY_MASTER_DATA_THROUGH = "2026-08-11T10:35:04.025706+00:00"
+SECURITY_MASTER_DATA_THROUGH = "2026-08-16T11:25:08.096484Z"
+ETF_BASIC_DEPENDENTS = {"etf_mins", "rt_etf_k", "rt_etf_min", "rt_etf_min_daily"}
+ETF_BASIC_RECEIPT = (
+    "receipt:e4875b74f59ef64f535c1a0b74bdf3fd2fcee1bd32b377a3bd910b3898ac6da8"
+)
+ETF_BASIC_DATA_THROUGH = "2026-08-14T22:19:37.314050Z"
+FUT_BASIC_DEPENDENTS = {"ft_mins", "rt_fut_min"}
+FUT_BASIC_RECEIPT = (
+    "receipt:842c296e839094f2f12c5f2b91a96197f6a8e3bf793cb060f1ed2eceeb548d0b"
+)
+FUT_BASIC_DATA_THROUGH = "2026-08-04T00:05:41.392734Z"
 
 
 def _yaml(path: Path) -> dict[str, object]:
@@ -77,6 +88,16 @@ def _bindings(registry: dict[str, object]) -> dict[str, dict[str, object]]:
     }
 
 
+def _authority_by_dataset(
+    authorities: list[dict[str, object]], dataset_id: str
+) -> dict[str, object]:
+    for authority in authorities:
+        assert isinstance(authority, dict)
+        if authority.get("dataset_id") == dataset_id:
+            return authority
+    raise AssertionError(f"seed authority not found: {dataset_id}")
+
+
 def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
     observations = _yaml(OBSERVATIONS_PATH)
     authorities = observations["dependency_seed_authorities"]
@@ -90,6 +111,22 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
             ),
             "data_through": "2026-08-11T21:22:19.352479Z",
             "dependent_api_names": sorted(TARGET_APIS),
+        },
+        {
+            "dataset_id": "cn.dataset.etf_basic",
+            "field": "ts_code",
+            "schema_version": "1.0.0",
+            "receipt_id": ETF_BASIC_RECEIPT,
+            "data_through": ETF_BASIC_DATA_THROUGH,
+            "dependent_api_names": sorted(ETF_BASIC_DEPENDENTS),
+        },
+        {
+            "dataset_id": "cn.dataset.fut_basic",
+            "field": "ts_code",
+            "schema_version": "1.0.0",
+            "receipt_id": FUT_BASIC_RECEIPT,
+            "data_through": FUT_BASIC_DATA_THROUGH,
+            "dependent_api_names": sorted(FUT_BASIC_DEPENDENTS),
         },
         {
             "dataset_id": "cn.equity.security_master",
@@ -125,7 +162,7 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
         assert binding["activation_state"] == (
-            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"pledge_stat", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
+            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"pledge_stat", "stk_mins", "stk_rewards", "rt_min_daily", "top10_floatholders", "top10_holders"} else "paused"
         )
 
     active_evidence = observations["active_evidence"]
@@ -160,7 +197,11 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         if (
             set(contract["probe_block_reasons"])
             == {"dependency_seed_receipt_unresolved"}
-            and api not in TARGET_APIS | SECURITY_MASTER_DEPENDENTS
+            and api
+            not in TARGET_APIS
+            | SECURITY_MASTER_DEPENDENTS
+            | ETF_BASIC_DEPENDENTS
+            | FUT_BASIC_DEPENDENTS
         ):
             binding = bindings[api]["provider_bindings"][0]
             assert binding["activation_state"] == "paused"
@@ -171,16 +212,15 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 133
-    assert len(bindings) - active_count == 57
+    assert active_count == 134
+    assert len(bindings) - active_count == 56
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
     observations = _yaml(OBSERVATIONS_PATH)
     authorities = deepcopy(observations["dependency_seed_authorities"])
     assert isinstance(authorities, list)
-    security_authority = authorities[1]
-    assert isinstance(security_authority, dict)
+    security_authority = _authority_by_dataset(authorities, "cn.equity.security_master")
 
     security_authority["receipt_id"] = "receipt:not-a-sha256"
     observations["dependency_seed_authorities"] = authorities
@@ -190,8 +230,7 @@ def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
     observations = _yaml(OBSERVATIONS_PATH)
     authorities = deepcopy(observations["dependency_seed_authorities"])
     assert isinstance(authorities, list)
-    security_authority = authorities[1]
-    assert isinstance(security_authority, dict)
+    security_authority = _authority_by_dataset(authorities, "cn.equity.security_master")
     security_authority["data_through"] = "not-rfc3339"
     observations["dependency_seed_authorities"] = authorities
     with pytest.raises(ValueError, match="data_through must be RFC3339"):
@@ -200,8 +239,7 @@ def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
     observations = _yaml(OBSERVATIONS_PATH)
     authorities = deepcopy(observations["dependency_seed_authorities"])
     assert isinstance(authorities, list)
-    security_authority = authorities[1]
-    assert isinstance(security_authority, dict)
+    security_authority = _authority_by_dataset(authorities, "cn.equity.security_master")
     security_authority["dependent_api_names"] = sorted(
         [*security_authority["dependent_api_names"], "cb_price_chg"]
     )
@@ -216,8 +254,9 @@ def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
         observations = _yaml(OBSERVATIONS_PATH)
         authorities = deepcopy(observations["dependency_seed_authorities"])
         assert isinstance(authorities, list)
-        security_authority = authorities[1]
-        assert isinstance(security_authority, dict)
+        security_authority = _authority_by_dataset(
+            authorities, "cn.equity.security_master"
+        )
         security_authority[key] = value
         observations["dependency_seed_authorities"] = authorities
         with pytest.raises(ValueError, match=message):

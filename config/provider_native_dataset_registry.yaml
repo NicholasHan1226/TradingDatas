@@ -9595,12 +9595,10 @@ datasets:
     read_discriminator_value: tushare_etf_mins
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -12168,12 +12166,10 @@ datasets:
     read_discriminator_value: tushare_ft_mins
     entitlement_state: active
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -25726,12 +25722,10 @@ datasets:
     read_discriminator_value: tushare_rt_etf_k
     entitlement_state: locked
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -25888,12 +25882,10 @@ datasets:
     read_discriminator_value: tushare_rt_etf_min
     entitlement_state: excluded
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -26015,12 +26007,10 @@ datasets:
     read_discriminator_value: tushare_rt_etf_min_daily
     entitlement_state: excluded
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -26289,12 +26279,10 @@ datasets:
     read_discriminator_value: tushare_rt_fut_min
     entitlement_state: locked
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -26694,12 +26682,10 @@ datasets:
     read_discriminator_value: tushare_rt_k
     entitlement_state: locked
     activation_state: paused
-    probe_state: blocked
-    probe_block_reasons:
-    - dependency_seed_receipt_unresolved
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - dependency_seed_receipt_unresolved
+    probe_state: executable
+    probe_block_reasons: []
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -27023,7 +27009,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_rt_min_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
