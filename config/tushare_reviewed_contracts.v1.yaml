@@ -2361,7 +2361,7 @@ contracts:
     cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
-    point_in_time: append_only
+    point_in_time: current_snapshot
     backfill_policy: provider_limited
     empty_data_policy: allowed
     required_scope: market_data
