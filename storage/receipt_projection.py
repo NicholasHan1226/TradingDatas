@@ -2208,12 +2208,16 @@ def project_dataset_runtime(
         if registry is not None
         else frozenset({dataset.dataset_id})
     )
+    if registry is not None:
+        rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+    else:
+        rows = _scan_ingest_run_rows(conn)
     return _project_dataset_runtime(
         conn,
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows(conn),
+        rows=rows,
         expected_binding=provider_binding,
     )
 
@@ -2597,7 +2601,7 @@ def validated_success_receipt_ids(
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows(conn),
+        rows=_scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id),
         expected_binding=provider_binding,
     )
     if invalid:
@@ -3720,12 +3724,16 @@ def load_dataset_runtime_projection(
             if registry is not None
             else frozenset({dataset.dataset_id})
         )
+        if registry is not None:
+            rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+        else:
+            rows = _scan_ingest_run_rows(conn)
         return _project_dataset_runtime(
             conn,
             dataset,
             now=now,
             known_dataset_ids=known_dataset_ids,
-            rows=_scan_ingest_run_rows(conn),
+            rows=rows,
             expected_binding=provider_binding,
         )
 

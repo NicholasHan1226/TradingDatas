@@ -3504,3 +3504,132 @@ def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
     with projection_module.open_verified_read_model_snapshot(Path("/fake/provider_native.sqlite")) as snapshot:
         assert tuple(snapshot.execute("SELECT 1").fetchone()) == (1,)
     assert calls["n"] >= 3
+
+
+def test_validated_success_receipt_ids_ignores_other_datasets_row_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-scoped-1",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:01:00+00:00",
+    )
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                f"other-dataset-run-{index}",
+                "2026-07-15T00:00:00+00:00",
+                "2026-07-15T00:01:00+00:00",
+                "success",
+                "binance.usdm.oi",
+                1,
+                1,
+                "legacy audit row",
+            )
+            for index in range(5)
+        ],
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        projection_module,
+        "_MAX_INGEST_RUN_SCAN_ROWS",
+        3,
+        raising=False,
+    )
+
+    dataset = _dataset()
+    ids = projection_module.validated_success_receipt_ids(
+        conn,
+        load_dataset_registry(),
+        dataset,
+        dataset.provider_bindings[0],
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert ids == frozenset({receipt_id})
+
+
+def test_validated_success_receipt_ids_fails_closed_on_own_dataset_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    for index in range(4):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=f"attempt-scoped-budget-{index}",
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at="2026-07-15T00:01:00+00:00",
+            data_through="2026-07-15T00:01:00+00:00",
+        )
+    conn.commit()
+    monkeypatch.setattr(
+        projection_module,
+        "_MAX_INGEST_RUN_SCAN_ROWS",
+        3,
+        raising=False,
+    )
+
+    dataset = _dataset()
+    with pytest.raises(RuntimeProjectionError, match="row budget exceeded"):
+        projection_module.validated_success_receipt_ids(
+            conn,
+            load_dataset_registry(),
+            dataset,
+            dataset.provider_bindings[0],
+            now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_project_dataset_runtime_with_registry_scopes_scan_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-runtime-scoped-1",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:01:00+00:00",
+    )
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                f"other-dataset-run-{index}",
+                "2026-07-15T00:00:00+00:00",
+                "2026-07-15T00:01:00+00:00",
+                "success",
+                "binance.usdm.premium",
+                1,
+                1,
+                "legacy audit row",
+            )
+            for index in range(5)
+        ],
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        projection_module,
+        "_MAX_INGEST_RUN_SCAN_ROWS",
+        3,
+        raising=False,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    assert projection.dataset_id == _dataset().dataset_id
