@@ -55,7 +55,11 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 ## 管理控制台
 
-`GET /admin/` 提供内部管理界面，需要 `admin` scope 或 `internal` tier 认证。管理 API 路由：
+`GET /admin/` 提供内部管理界面，页面本身无需认证即可加载，API 调用需要 `admin` scope 或 `internal` tier 认证。
+
+**前端部署**：前端代码位于 `static/index.html`，可独立部署到 Cloudflare Pages 等静态托管服务。部署后需在页面中配置后端 API URL。
+
+管理 API 路由：
 
 - `GET/POST /admin/api/tokens`：列出/创建 API token
 - `PATCH/DELETE /admin/api/tokens/{hash}`：更新/删除 token

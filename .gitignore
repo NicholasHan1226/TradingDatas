@@ -23,3 +23,7 @@ runtime/
 staging/
 data/
 evidence/
+
+# Cloudflare Pages
+.wrangler/
+.pages/
