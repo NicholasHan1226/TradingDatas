@@ -1955,6 +1955,66 @@ contracts:
       max_batch_bytes: 4194304
       max_nesting_depth: 16
     reviewed_type_overrides: []
+  - dataset_id: cn.dataset.rt_min_daily
+    aliases: [tushare.rt_min_daily]
+    domain: provider_data
+    market: CN
+    entity_type: provider_row
+    data_classification: objective_factual
+    provider: tushare
+    api_name: rt_min_daily
+    source_document_url: https://tushare.pro/wctapi/documents/457.md
+    source_document_sha256: 00059f93afb6de825c91f891edd3ac54c7e7d9b0bf6ec21a8baf0d311a4714d6
+    schema_version: 1.0.0
+    fields:
+      - {name: ts_code, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: freq, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: time, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: false, sortable: false}
+      - {name: open, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: close, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: high, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: low, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: vol, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+      - {name: amount, declared_source_type: float, logical_type: float, nullable: true, selectable: true, filterable: true, sortable: true}
+    primary_key: []
+    default_projection: [ts_code, freq, time, open, close, high, low, vol, amount]
+    as_of_field: null
+    as_of_format: null
+    range_field: null
+    partition_field: null
+    cadence_class: session_minute
+    timezone: Asia/Shanghai
+    freshness_sla_seconds: 300
+    point_in_time: append_only
+    backfill_policy: provider_limited
+    empty_data_policy: allowed
+    required_scope: market_data
+    quota_class: beta_standard
+    request_shape: entity_fanout
+    request_template:
+      freq: 1MIN
+    request_variants:
+      - {}
+    fanout:
+      strategy: dataset_field
+      parameter: ts_code
+      source_dataset_id: cn.equity.security_master
+      source_field: ts_code
+      batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 20
+    pagination:
+      strategy: none
+    request_window_policy: null
+    response_completeness: null
+    requested_fields: []
+    budgets:
+      max_batch_bytes: 67108864
+      max_nesting_depth: 16
+      max_payload_bytes_per_row: 65536
+      max_rows_per_attempt: 10000
+    reviewed_type_overrides: []
   # The stored DC concept cohort has a complete trade_date/theme_code identity
   # with no null or duplicate keys.  Keep this a normal date-partitioned
   # Tushare contract; it does not introduce a dataset-specific collector.
