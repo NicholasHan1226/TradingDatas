@@ -23358,7 +23358,7 @@ datasets:
     primary_table: provider_dataset_rows
     fixed_field_filters: []
     storage_kind: provider_native_rows
-    row_key_strategy: payload_hash
+    row_key_strategy: primary_key
   fields:
   - name: trade_date
     logical_type: text
@@ -23459,7 +23459,7 @@ datasets:
   as_of_format: yyyymmdd
   range_field: trade_date
   partition_field: trade_date
-  point_in_time: append_only
+  point_in_time: current_snapshot
   backfill_policy: provider_limited
   empty_data_policy: allowed
   required_scope: market_data
