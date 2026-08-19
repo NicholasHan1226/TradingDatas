@@ -8,6 +8,7 @@ logs/
 backups/
 config/api_tokens.json
 *.log
+.preview
 node_modules/
 .DS_Store
 .venv/
