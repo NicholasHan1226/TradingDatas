@@ -28622,14 +28622,14 @@ contracts:
     filterable: true
     sortable: true
   - name: freq
-    declared_source_type: None
+    declared_source_type: str
     logical_type: text
     nullable: true
     selectable: true
     filterable: false
     sortable: false
   - name: time
-    declared_source_type: None
+    declared_source_type: str
     logical_type: text
     nullable: true
     selectable: true

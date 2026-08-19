@@ -693,7 +693,7 @@ entries:
   cadence_class: session_minute
   freshness_sla_seconds: 300
   source_document_sha256: 00059f93afb6de825c91f891edd3ac54c7e7d9b0bf6ec21a8baf0d311a4714d6
-  reason_code: doc_explicit_session_minute
+  reason_code: reviewed_contract_exact
 - api_name: rt_sw_k
   cadence_class: on_demand
   freshness_sla_seconds: 86400
