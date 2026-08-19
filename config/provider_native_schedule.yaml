@@ -6,8 +6,8 @@ rate_budgets:
     provider_requests_per_run: 64
     api_requests_per_run: 16
   intraday:
-    account_requests_per_run: 24
-    provider_requests_per_run: 24
+    account_requests_per_run: 48
+    provider_requests_per_run: 48
     api_requests_per_run: 6
     # Per-provider-api request ceilings from bounded QuickSync probing
     # (2026-08-15, non-trading window).  Each interface tolerated 60 serial

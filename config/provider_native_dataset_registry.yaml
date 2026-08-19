@@ -27034,6 +27034,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 20
     pagination:
       strategy: none
     request_window_policy: null
