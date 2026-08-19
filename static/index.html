@@ -53,6 +53,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
       <div class="card"><h3 class="font-semibold mb-3">By Provider</h3><div id="chart-provider" class="space-y-2"></div></div>
       <div class="card"><h3 class="font-semibold mb-3">By Cadence</h3><div id="chart-cadence" class="space-y-2"></div></div>
     </div>
+    <div class="card mt-4">
+      <h3 class="font-semibold mb-3">Health Alerts</h3>
+      <div id="alerts-list" class="space-y-2"><div class="text-gray-400 text-sm">Loading...</div></div>
+    </div>
   </div>
 
   <!-- Tokens Tab -->
@@ -100,6 +104,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
       <h2 class="text-lg font-semibold">Usage & Rate Limits</h2>
       <button onclick="loadUsage()" class="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-200">Refresh</button>
     </div>
+    <div class="card mb-4"><h3 class="font-semibold mb-3">Requests Trend (last 14 days)</h3><div id="usage-chart" class="flex items-end gap-1 h-40"></div><div id="usage-chart-labels" class="flex gap-1 mt-1 text-xs text-gray-500"></div></div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="card"><h3 class="font-semibold mb-3">Daily Usage</h3><table class="w-full text-sm"><thead><tr class="border-b"><th class="text-left py-2">Tenant</th><th class="text-left py-2">Requests</th><th class="text-left py-2">Date</th></tr></thead><tbody id="daily-usage-table"></tbody></table></div>
       <div class="card"><h3 class="font-semibold mb-3">Hourly Rate (current window)</h3><table class="w-full text-sm"><thead><tr class="border-b"><th class="text-left py-2">Tenant</th><th class="text-left py-2">Requests</th><th class="text-left py-2">Window</th></tr></thead><tbody id="hourly-usage-table"></tbody></table></div>
@@ -176,6 +181,22 @@ async function loadOverview() {
   renderBarChart('chart-market', overview.by_market || {});
   renderBarChart('chart-provider', overview.by_provider || {});
   renderBarChart('chart-cadence', overview.by_cadence || {});
+  renderAlerts();
+}
+
+async function renderAlerts() {
+  const el = document.getElementById('alerts-list');
+  try {
+    const data = await api('/admin/api/health/alerts');
+    const items = data.alerts || [];
+    if (!items.length) { el.innerHTML = '<div class="text-green-600 text-sm">All systems healthy</div>'; return; }
+    const color = { critical: 'border-red-300 bg-red-50 text-red-700', warning: 'border-yellow-300 bg-yellow-50 text-yellow-700', info: 'border-blue-300 bg-blue-50 text-blue-700' };
+    el.innerHTML = items.map(a =>
+      '<div class="flex items-start gap-2 border rounded p-2 text-sm ' + (color[a.severity] || color.info) + '">' +
+      '<span class="badge">' + a.severity.toUpperCase() + '</span>' +
+      '<div><div class="font-medium">' + a.title + '</div><div class="text-xs opacity-75">' + (a.detail || '') + '</div></div></div>'
+    ).join('');
+  } catch (e) { el.innerHTML = '<div class="text-red-400 text-sm">' + e.message + '</div>'; }
 }
 
 function renderBarChart(id, data) {
@@ -270,9 +291,26 @@ async function loadUsage() {
     ['Dedup Entries', stats.dedup_entries], ['Dedup Memory', ((stats.dedup_bytes || 0) / 1024).toFixed(1) + ' KB'],
     ['Active Requests', stats.active_requests], ['Rate Tenants', stats.request_log_tenants],
   ].map(([k, v]) => `<div class="bg-gray-50 rounded p-3"><div class="text-gray-500 text-xs">${k}</div><div class="font-semibold">${v ?? '-'}</div></div>`).join('');
+  await renderUsageChart();
 }
 
 loadData();
+
+async function renderUsageChart() {
+  try {
+    const data = await apiCall('/admin/api/usage/history?days=14');
+    const days = data.days || [];
+    const chartEl = document.getElementById('usage-chart');
+    const labelEl = document.getElementById('usage-chart-labels');
+    if (!days.length) { chartEl.innerHTML = '<div class="text-gray-400 text-sm">No usage data yet</div>'; labelEl.innerHTML = ''; return; }
+    const max = Math.max(...days.map(d => d.total_requests), 1);
+    chartEl.innerHTML = days.map(d => {
+      const h = Math.max(2, Math.round((d.total_requests / max) * 100));
+      return '<div title="' + d.date + ': ' + d.total_requests + '" style="height:' + h + '%" class="flex-1 bg-blue-500 rounded-t hover:bg-blue-600"></div>';
+    }).join('');
+    labelEl.innerHTML = days.map(d => '<div class="flex-1 text-center">' + d.date.slice(5) + '</div>').join('');
+  } catch (e) { document.getElementById('usage-chart').innerHTML = '<div class="text-red-400 text-sm">' + e.message + '</div>'; }
+}
 </script>
 </body>
 </html>
