@@ -609,6 +609,11 @@ class Handler(BaseHTTPRequestHandler):
                 request_id, status=503, code="service_unavailable"
             )
 
+        # Serve admin console HTML without authentication (page loads, API calls need auth)
+        if path in ("/admin", "/admin/") and method == "GET":
+            return self._serve_admin_console()
+
+        # Admin API routes require authentication
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
         except auth.AuthError:
@@ -620,10 +625,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_error(
                 request_id, status=403, code="forbidden"
             )
-
-        # Serve admin console HTML
-        if path in ("/admin", "/admin/") and method == "GET":
-            return self._serve_admin_console()
 
         # Admin API routes
         if path == "/admin/api/tokens" and method == "GET":
@@ -1058,9 +1059,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 </head>
 <body class="bg-gray-50 min-h-screen">
 <div class="max-w-7xl mx-auto px-4 py-6">
-  <header class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">TradingDatas Admin Console</h1>
-    <p class="text-sm text-gray-500 mt-1">Internal data platform management</p>
+  <header class="mb-6 flex justify-between items-start">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">TradingDatas Admin Console</h1>
+      <p class="text-sm text-gray-500 mt-1">Internal data platform management</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="token-input" type="password" placeholder="Enter API token" class="border rounded px-3 py-1.5 text-sm w-64" />
+      <button onclick="saveToken()" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">Save</button>
+      <span id="auth-status" class="text-xs text-gray-400"></span>
+    </div>
   </header>
 
   <nav class="flex gap-6 border-b border-gray-200 mb-6" id="tabs">
@@ -1142,6 +1150,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 const API = '';
 let allDatasets = [];
 
+// Token management
+function getToken() {
+  return document.getElementById('token-input').value || localStorage.getItem('td_admin_token') || '';
+}
+function saveToken() {
+  const token = document.getElementById('token-input').value;
+  if (token) { localStorage.setItem('td_admin_token', token); updateAuthStatus(); loadData(); }
+}
+function updateAuthStatus() {
+  const el = document.getElementById('auth-status');
+  el.textContent = localStorage.getItem('td_admin_token') ? '✓ token saved' : '';
+}
+document.getElementById('token-input').value = localStorage.getItem('td_admin_token') || '';
+updateAuthStatus();
+
 // Tab navigation
 document.querySelectorAll('#tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1149,7 +1172,10 @@ document.querySelectorAll('#tabs button').forEach(btn => {
     btn.classList.add('tab-active'); btn.classList.remove('text-gray-500');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
     document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
-    if (btn.dataset.tab === 'overview') loadOverview();
+    if (btn.dataset.tab === 'overview') function loadData() {
+  if (getToken()) { loadOverview(); }
+}
+loadData();
     if (btn.dataset.tab === 'tokens') loadTokens();
     if (btn.dataset.tab === 'collection') loadCollection();
     if (btn.dataset.tab === 'usage') loadUsage();
@@ -1157,11 +1183,12 @@ document.querySelectorAll('#tabs button').forEach(btn => {
 });
 
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }, ...opts });
+  const token = getToken();
+  if (!token) { alert('Please enter your API token first'); return {}; }
+  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, ...opts });
+  if (res.status === 401) { alert('Authentication failed. Please check your token.'); return {}; }
   return res.json();
 }
-
-function getToken() { return localStorage.getItem('td_admin_token') || prompt('Enter admin API token:'); }
 
 async function loadOverview() {
   const [overview, tokens] = await Promise.all([api('/admin/api/data/overview'), api('/admin/api/tokens')]);
