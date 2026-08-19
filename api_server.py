@@ -791,6 +791,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin" or path.startswith("/admin/"):
             return self._handle_admin(method, path, raw_query, request_id)
 
+        # Redirect root path to admin console
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/admin/")
+            self.end_headers()
+            return
+
         if path not in {V1_CATALOG_PATH, V1_QUERY_PATH}:
             return self._write_v1_error(
                 request_id,
