@@ -65,6 +65,7 @@ RATE_MAX_EVENTS_PER_TENANT = env_int(
 )
 
 V1_DATA_ENDPOINTS = {"/v1/catalog", "/v1/query"}
+ADMIN_ENDPOINTS = {"/admin/"}
 
 SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "catalog": {"/v1/catalog"},
@@ -73,10 +74,12 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "external_read": V1_DATA_ENDPOINTS,
     "internal": V1_DATA_ENDPOINTS,
     "full": V1_DATA_ENDPOINTS,
+    "admin": ADMIN_ENDPOINTS,
 }
 
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
+_DAILY_REQUEST_LOG: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _ACTIVE_REQUESTS: dict[str, int] = {}
 _DEDUP_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _DEDUP_CACHE_BYTES = 0
@@ -501,6 +504,37 @@ def _hash_token(token: str) -> str:
     )
 
 
+def _parse_expires_at(raw: Any) -> float | None:
+    """Parse expires_at as RFC3339 string or Unix timestamp."""
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+        for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z",
+                    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(raw, fmt)
+                if dt.tzinfo is None:
+                    from datetime import timezone as _tz
+                    dt = dt.replace(tzinfo=_tz.utc)
+                return dt.timestamp()
+            except ValueError:
+                continue
+    return None
+
+
+def _utc_today_key() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def _load_token_hashes() -> dict[str, dict[str, Any]]:
     global _TOKEN_HASHES
     if _TOKEN_HASHES is not None:
@@ -561,14 +595,35 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
             )
         except (TypeError, ValueError):
             max_concurrent = None
-        items[token_hash] = {
+        parsed: dict[str, Any] = {
             "tenant_id": tenant_id,
             "tier": tier,
             "scopes": scopes,
             "auth_method": "token_hash",
         }
         if max_concurrent is not None and max_concurrent >= 0:
-            items[token_hash]["max_concurrent"] = max_concurrent
+            parsed["max_concurrent"] = max_concurrent
+
+        raw_enabled = item.get("enabled")
+        if raw_enabled is not None:
+            parsed["enabled"] = bool(raw_enabled)
+
+        raw_daily_limit = item.get("daily_limit")
+        if raw_daily_limit is not None:
+            try:
+                daily_limit = int(raw_daily_limit)
+                if daily_limit > 0:
+                    parsed["daily_limit"] = daily_limit
+            except (TypeError, ValueError):
+                pass
+
+        raw_expires = item.get("expires_at")
+        if raw_expires is not None:
+            expires_ts = _parse_expires_at(raw_expires)
+            if expires_ts is not None:
+                parsed["expires_at"] = expires_ts
+
+        items[token_hash] = parsed
 
     _TOKEN_HASHES = items
     return _TOKEN_HASHES
@@ -694,7 +749,13 @@ def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
     token_hash = _hash_token(token)
     token_hashes = _load_token_hashes()
     if token_hash in token_hashes:
-        return token_hashes[token_hash]
+        binding = token_hashes[token_hash]
+        if binding.get("enabled") is False:
+            raise AuthError("token is disabled")
+        expires_at = binding.get("expires_at")
+        if expires_at is not None and _now() >= float(expires_at):
+            raise AuthError("token has expired")
+        return binding
     raise AuthError("invalid token")
 
 
@@ -739,6 +800,202 @@ def enforce_rate_limit(tenant_id: str, tier: str) -> None:
         _cleanup_rate_log_locked(now)
 
 
+def enforce_daily_limit(account: dict[str, Any]) -> None:
+    """Enforce per-tenant daily request limit if configured."""
+    daily_limit = account.get("daily_limit")
+    if daily_limit is None:
+        return
+    tenant_id = str(account.get("tenant_id") or "").strip()
+    if not tenant_id:
+        return
+
+    today = _utc_today_key()
+    now = _now()
+    with _STATE_LOCK:
+        entry = _DAILY_REQUEST_LOG.get(tenant_id)
+        if entry is None or entry.get("date") != today:
+            _DAILY_REQUEST_LOG[tenant_id] = {"date": today, "count": 0, "reset_at": now}
+            entry = _DAILY_REQUEST_LOG[tenant_id]
+        if entry["count"] >= int(daily_limit):
+            raise RateLimitError(
+                f"daily limit exceeded for tenant={tenant_id} "
+                f"(limit={daily_limit}, used={entry['count']})"
+            )
+        entry["count"] += 1
+        _DAILY_REQUEST_LOG.move_to_end(tenant_id)
+
+        # Cleanup stale entries
+        stale = [k for k, v in _DAILY_REQUEST_LOG.items() if v.get("date") != today]
+        for k in stale:
+            _DAILY_REQUEST_LOG.pop(k, None)
+
+
+def get_daily_usage() -> dict[str, dict[str, Any]]:
+    """Return current daily usage for all tenants."""
+    today = _utc_today_key()
+    with _STATE_LOCK:
+        result: dict[str, dict[str, Any]] = {}
+        for tenant_id, entry in _DAILY_REQUEST_LOG.items():
+            if entry.get("date") == today:
+                result[tenant_id] = {
+                    "date": today,
+                    "count": entry["count"],
+                    "daily_limit": entry.get("daily_limit"),
+                }
+        return result
+
+
+def get_hourly_usage() -> dict[str, dict[str, Any]]:
+    """Return current hourly rate-limit usage for all tenants."""
+    now = _now()
+    with _STATE_LOCK:
+        result: dict[str, dict[str, Any]] = {}
+        for tenant_id, bucket in _REQUEST_LOG.items():
+            count = sum(1 for t in bucket if now - t <= RATE_WINDOW_SECONDS)
+            if count > 0:
+                tier_limit = RATE_LIMITS.get("free", 60)
+                result[tenant_id] = {
+                    "count_in_window": count,
+                    "window_seconds": RATE_WINDOW_SECONDS,
+                    "tier_limit": tier_limit,
+                }
+        return result
+
+
+def reload_token_hashes() -> None:
+    """Force reload of token hashes from config file."""
+    global _TOKEN_HASHES
+    with _STATE_LOCK:
+        _TOKEN_HASHES = None
+
+
+def list_tokens() -> list[dict[str, Any]]:
+    """List all configured tokens with masked hashes."""
+    hashes = _load_token_hashes()
+    result = []
+    for token_hash, binding in hashes.items():
+        masked = token_hash[:8] + "..." + token_hash[-4:]
+        entry: dict[str, Any] = {
+            "token_hash_masked": masked,
+            "token_hash_full": token_hash,
+            "tenant_id": binding.get("tenant_id", ""),
+            "tier": binding.get("tier", "free"),
+            "scopes": binding.get("scopes", []),
+            "enabled": binding.get("enabled", True),
+        }
+        if "max_concurrent" in binding:
+            entry["max_concurrent"] = binding["max_concurrent"]
+        if "daily_limit" in binding:
+            entry["daily_limit"] = binding["daily_limit"]
+        if "expires_at" in binding:
+            from datetime import datetime, timezone
+            ts = float(binding["expires_at"])
+            entry["expires_at"] = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            entry["expired"] = _now() >= ts
+        result.append(entry)
+    return result
+
+
+def _read_token_file() -> dict[str, Any]:
+    """Read the raw token config file."""
+    if os.environ.get("TRADINGDATAS_TOKEN_HASHES_JSON", "").strip():
+        raise AuthError("token management not supported with env-based config")
+    if not os.path.lexists(TOKEN_HASH_FILE_RAW):
+        return {"tokens": []}
+    raw = _private_file_bytes(
+        TOKEN_HASH_FILE_RAW, label="token hash", max_bytes=1024 * 1024
+    )
+    return json.loads(raw.decode("utf-8"))
+
+
+def _write_token_file(payload: dict[str, Any]) -> None:
+    """Write token config back to file. File must already exist and be writable."""
+    if os.environ.get("TRADINGDATAS_TOKEN_HASHES_JSON", "").strip():
+        raise AuthError("token management not supported with env-based config")
+    path = Path(TOKEN_HASH_FILE_RAW)
+    if not path.exists():
+        raise AuthError("token config file does not exist; create it first")
+    data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    path.write_bytes(data)
+    reload_token_hashes()
+
+
+def create_token(
+    tenant_id: str,
+    tier: str = "free",
+    scopes: list[str] | None = None,
+    max_concurrent: int | None = None,
+    daily_limit: int | None = None,
+    expires_at: str | None = None,
+) -> dict[str, Any]:
+    """Create a new API token and return it (only time the raw token is visible)."""
+    import secrets
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(raw_token)
+
+    payload = _read_token_file()
+    tokens = payload.get("tokens", payload if isinstance(payload, list) else [])
+    if isinstance(payload, dict) and "tokens" not in payload:
+        tokens = list(payload.values()) if all(isinstance(v, dict) for v in payload.values()) else []
+
+    entry: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "tier": tier,
+        "scopes": scopes or ["read"],
+        "token_hash": token_hash,
+        "enabled": True,
+    }
+    if max_concurrent is not None:
+        entry["max_concurrent"] = max_concurrent
+    if daily_limit is not None:
+        entry["daily_limit"] = daily_limit
+    if expires_at is not None:
+        entry["expires_at"] = expires_at
+
+    tokens.append(entry)
+    payload = {"tokens": tokens}
+    _write_token_file(payload)
+
+    return {"token": raw_token, "token_hash": token_hash, "tenant_id": tenant_id}
+
+
+def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
+    """Update an existing token's settings."""
+    payload = _read_token_file()
+    tokens = payload.get("tokens", [])
+    found = False
+    for item in tokens:
+        if str(item.get("token_hash", "")).lower() == token_hash.lower():
+            found = True
+            for key in ("enabled", "daily_limit", "expires_at", "tier", "scopes", "max_concurrent"):
+                if key in updates:
+                    if updates[key] is None:
+                        item.pop(key, None)
+                    else:
+                        item[key] = updates[key]
+            break
+    if not found:
+        raise AuthError("token not found")
+    payload = {"tokens": tokens}
+    _write_token_file(payload)
+    return {"token_hash": token_hash, "updated": True}
+
+
+def delete_token(token_hash: str) -> dict[str, Any]:
+    """Remove a token from the config."""
+    payload = _read_token_file()
+    tokens = payload.get("tokens", [])
+    new_tokens = [
+        t for t in tokens
+        if str(t.get("token_hash", "")).lower() != token_hash.lower()
+    ]
+    if len(new_tokens) == len(tokens):
+        raise AuthError("token not found")
+    payload = {"tokens": new_tokens}
+    _write_token_file(payload)
+    return {"token_hash": token_hash, "deleted": True}
 def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
     raw_limit = account.get("max_concurrent")
     if raw_limit is not None:

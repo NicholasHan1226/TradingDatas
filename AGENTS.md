@@ -53,6 +53,24 @@ provider registry
 
 API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一致时 fail closed；不得现场调用 provider，不得回退文件、旧数据库、旧 route 或 provider 专用接口。
 
+## 管理控制台
+
+`GET /admin/` 提供内部管理界面，需要 `admin` scope 或 `internal` tier 认证。管理 API 路由：
+
+- `GET/POST /admin/api/tokens`：列出/创建 API token
+- `PATCH/DELETE /admin/api/tokens/{hash}`：更新/删除 token
+- `GET /admin/api/usage`：日用量、小时用量、系统统计
+- `GET /admin/api/collection/status`：各数据集采集状态
+- `GET /admin/api/data/overview`：数据概览（按市场/Provider/cadence 分类）
+
+Token 配置（`config/api_tokens.json`）支持扩展字段：
+
+- `enabled`（bool）：是否启用，默认 true
+- `expires_at`（RFC3339/Unix 时间戳）：token 有效期
+- `daily_limit`（number/null）：每日请求上限，null 或省略 = 无限
+
+`enforce_daily_limit` 在 `enforce_rate_limit`（每小时窗口）之后执行，超限时返回 429 `daily_limit_exceeded`。
+
 ## 首期范围
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
