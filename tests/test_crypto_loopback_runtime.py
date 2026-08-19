@@ -251,7 +251,7 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     assert "tradingdatas-crypto-binance-usdm-collect.service" in usdm_timer
     assert "OnCalendar=*-*-* *:2/5:00" in usdm_timer
     assert "tools/run_binance_usdm_canary.py" in usdm_service
-    assert "/opt/investment-data/tradingdatas-crypto/collect.lock" in usdm_service
+    assert "/opt/investment-data/tradingdatas-crypto/collect-usdm.lock" in usdm_service
     assert "tradingdatas-crypto-binance-oi-dump-collect.service" in oi_dump_timer
     assert "OnCalendar=*-*-* 00/2:37:00" in oi_dump_timer
     assert "tools/run_binance_oi_dump_canary.py" in oi_dump_service
