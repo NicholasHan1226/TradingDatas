@@ -118,7 +118,7 @@ jobs:
             exit 0
           fi
 
-          if gh pr merge "$PR_NUMBER" --merge; then
+          if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge; then
             echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}). Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
           else
             PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
