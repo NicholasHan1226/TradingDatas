@@ -139,6 +139,7 @@ registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并�
 ## Git、发布与删除
 
 - 开工先检查 branch、status、remote、HEAD 与并行 worktree。
+- **合入门禁：** 一切变更走 feature 分支 + PR，禁止直推 main。链路固定为 push 分支 → 开 PR → `TradingDatas CI` 全绿 → `automerge.yml` 合并可信作者 PR → main 更新触发 `deploy.yml` 与服务器 timer 拉取。CI 在 push main 后补跑不构成豁免：直推意味着坏代码可能已在 main 上并被服务器 5 分钟内拉取。本地测试通过不能替代 CI 门禁。
 - GitHub 传输优先使用 Nicholas 已登录的 `gh` HTTPS 凭据链：先核对 `gh auth status`，仓库 `origin` 固定为 `https://github.com/NicholasHan1226/TradingDatas.git`。若 `git@github.com` 的 SSH/22 端口失败一次，不重复重试或上报为长期 blocker；立即验证 HTTPS `git ls-remote`，切换现有 remote 后 fetch。不得输出 token，也不得另建凭据或绕过 host-key 校验。
 - 不覆盖他人改动，不使用 `git add .`、force push、历史重写或破坏性 reset。
 - local、GitHub、production files、runtime、真实 provider receipt、API readback 和消费者调用分别验证。
