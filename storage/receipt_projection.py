@@ -126,7 +126,7 @@ _ERROR_CODES = frozenset(
         VALIDATION_RESPONSE_COMPLETENESS,
     }
 )
-_MAX_INGEST_RUN_SCAN_ROWS = 100_000
+_MAX_INGEST_RUN_SCAN_ROWS = 400_000
 # Catalog projection only needs each dataset's most recent receipts, not the
 # full append-only run history.  A single execution normally emits 1-3 receipt
 # rows (success/empty/failed plus fanout siblings and retries), so 100 rows per

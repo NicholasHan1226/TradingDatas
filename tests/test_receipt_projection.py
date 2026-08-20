@@ -3504,3 +3504,10 @@ def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
     with projection_module.open_verified_read_model_snapshot(Path("/fake/provider_native.sqlite")) as snapshot:
         assert tuple(snapshot.execute("SELECT 1").fetchone()) == (1,)
     assert calls["n"] >= 3
+
+
+def test_full_table_scan_budget_covers_current_read_model_footprint() -> None:
+    # The crypto read model reached ~131k market_ingest_runs rows in Aug 2026
+    # and the append-only table keeps growing; the budget must stay above that
+    # footprint or every dataset-scoped validation fails closed again.
+    assert projection_module._MAX_INGEST_RUN_SCAN_ROWS >= 400_000
