@@ -53,7 +53,7 @@ contracts:
   # Every documented source is collected independently in an inclusive
   # one-minute publication window.  Source shards may be legally empty, but
   # each returned item must bind a non-null source/time/title identity and
-  # remain within the requested window.  The documented 400-row source cap is
+  # remain within the requested window.  The verified 2000-row source cap is
   # a fail-closed ceiling, never a completeness assertion for a wider window.
   - dataset_id: cn.dataset.major_news
     aliases: [tushare.major_news]
@@ -2361,7 +2361,7 @@ contracts:
     cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
-    point_in_time: append_only
+    point_in_time: current_snapshot
     backfill_policy: provider_limited
     empty_data_policy: allowed
     required_scope: market_data

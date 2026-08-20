@@ -21,7 +21,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 
-from storage.schema_contract import require_clean_sqlite_authority_schema
+from storage.schema_contract import (
+    ensure_market_ingest_runs_source_index,
+    require_clean_sqlite_authority_schema,
+)
 from storage.sqlite_authority_lock import sqlite_authority_lock
 
 
@@ -1023,6 +1026,7 @@ def insert_ingest_receipt_with_evidence(
         transaction_index=index,
     )
 
+    ensure_market_ingest_runs_source_index(conn)
     cursor = conn.execute(
         """INSERT INTO market_ingest_runs
            (run_id, started_at, finished_at, status, source,

@@ -66,6 +66,20 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
+### `market_ingest_runs` 的收据读取索引
+
+`market_ingest_runs` 是追加式收据运行日志。收据历史、evidence 与 journal 的验证读取必须按
+目标 dataset 隔离：已知其它 dataset 的行不消耗该 dataset 的读取预算，未知 source 的 tombstone
+行仍须纳入验证，避免以索引跳过未知 authority。`market_ingest_runs_source_idx (source)` 是可选的
+单列索引合同：旧 SQLite 在索引缺失时仍可验证；目标 release 首次成功写入 receipt 时，会在同一
+写入事务内幂等创建该索引。若存在同名但列定义不精确的自定义索引，schema 验证必须失败，不能
+继续读取或静默替换。该变更不需要单独数据库迁移，也不表示 production release 已切换。
+
+若已验证的 release 需要回退索引本身，可在维护窗口执行
+`DROP INDEX market_ingest_runs_source_idx`；不得删除 `market_ingest_runs` 或任一 receipt/fact。
+代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
+允许状态。
+
 对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。该字段不包含 receipt payload、provider rows、请求凭据或本机路径，且不替代 SQLite receipt authority。
 
 严格 fanout 覆盖缺口在公开采集路径中保留顶层 `validation_failed`，并附带脱敏的

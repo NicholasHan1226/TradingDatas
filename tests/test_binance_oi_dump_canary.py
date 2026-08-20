@@ -7,6 +7,9 @@ from zipfile import ZipFile
 
 import pytest
 
+
+pytestmark = pytest.mark.slow
+
 from collectors.binance.collector import _RejectRedirects
 from collectors.binance.oi_dump_collector import BinanceUsdmMetricsDumpCollector
 import collectors.binance.oi_dump_collector as oi_dump_collector

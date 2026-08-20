@@ -369,6 +369,7 @@ def test_literal_values_dimension_fanout_compiles_without_a_seed_dataset() -> No
         ],
         "batch_size": 1,
     }
+    assert _contract(bundle, "major_news")["budgets"]["max_rows_per_attempt"] == 2000
 
     observations["provenance"]["registered_contract_bundle"]["sha256"] = (
         hashlib.sha256(_yaml_bytes(bundle)).hexdigest()

@@ -14,7 +14,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: read
-  actions: read
+  actions: write
 
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
@@ -91,6 +91,20 @@ jobs:
             exit 0
           fi
 
+          # The label opens the gate, but its application is not SHA-bound.
+          # Require the newest Controller return to bind acceptance to this
+          # exact PR head so a later push or update-branch cannot inherit an
+          # approval for older code.
+          ACCEPTANCE_CANDIDATE="$(
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+              --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1") and contains("decision=accepted"))] | sort_by(.created_at) | last | .body // ""' \
+              | sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p'
+          )"
+          if [[ "$ACCEPTANCE_CANDIDATE" != "$HEAD_SHA" ]]; then
+            echo "Skip: Controller return candidate ${ACCEPTANCE_CANDIDATE:-none} does not match current head ${HEAD_SHA}."
+            exit 0
+          fi
+
           CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
           if grep -Eq '^\.github/workflows/' <<<"$CHANGED_FILES"; then
             echo "Skip: workflow-governance changes require a separate trusted bootstrap merge."
@@ -118,8 +132,19 @@ jobs:
             exit 0
           fi
 
-          if gh pr merge "$PR_NUMBER" --merge; then
-            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); deploy.yml and the server timer pick it up from main."
+          if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge; then
+            MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merge_commit_sha // empty')"
+            [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+            [[ "$MERGE_SHA" == "$CURRENT_MAIN_SHA" ]] || {
+              echo "Main advanced after merge; skip stale exact-main dispatch for ${MERGE_SHA:0:8}."
+              exit 0
+            }
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
+              -f ref=main \
+              -f 'inputs[suite]=pr' \
+              -f "inputs[expected_sha]=$MERGE_SHA"
+            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}. Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
           else
             PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
             if [[ "$PR_STATE_AFTER" != "open" ]]; then
