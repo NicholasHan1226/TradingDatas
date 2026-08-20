@@ -126,7 +126,7 @@ _ERROR_CODES = frozenset(
         VALIDATION_RESPONSE_COMPLETENESS,
     }
 )
-_MAX_INGEST_RUN_SCAN_ROWS = 100_000
+_MAX_INGEST_RUN_SCAN_ROWS = 400_000
 # Catalog projection only needs each dataset's most recent receipts, not the
 # full append-only run history.  A single execution normally emits 1-3 receipt
 # rows (success/empty/failed plus fanout siblings and retries), so 100 rows per
@@ -1997,6 +1997,12 @@ def _project_dataset_runtime(
             invalid.append(validated)
 
     now_utc = now.astimezone(timezone.utc)
+    # Attempt/execution integrity must be asserted on the full validated set:
+    # filtering future-dated receipts first would strip mid-execution calls and
+    # cascade into bogus receipt_execution_inconsistent, masking the real
+    # reason (receipt_timestamp_in_future / data_through_in_future).
+    invalid.extend(_attempt_context_failures(receipts))
+    invalid.extend(_execution_context_failures(receipts))
     current_receipts: list[_Receipt] = []
     for receipt in receipts:
         if receipt.started_sort > now_utc or receipt.finished_sort > now_utc:
@@ -2031,9 +2037,6 @@ def _project_dataset_runtime(
                 continue
         current_receipts.append(receipt)
     receipts = current_receipts
-
-    invalid.extend(_attempt_context_failures(receipts))
-    invalid.extend(_execution_context_failures(receipts))
 
     config_hash_cache: dict[tuple[int, int], str] = {}
     authority_receipts = [
@@ -2114,8 +2117,10 @@ def _project_dataset_runtime(
     # time, not an older successful data watermark: otherwise a legitimate
     # empty current partition is incorrectly reported as stale forever.
     if latest.status == "empty":
-        empty_is_stale = now_utc - representative.finished_sort > timedelta(
-            seconds=dataset.freshness_sla_seconds
+        empty_is_stale = (
+            dataset.cadence_class != "on_demand"
+            and now_utc - representative.finished_sort
+            > timedelta(seconds=dataset.freshness_sla_seconds)
         )
         if empty_is_stale:
             return DatasetRuntimeProjection(
@@ -2159,8 +2164,12 @@ def _project_dataset_runtime(
             reasons=(str(exc),),
         )
 
-    is_stale = now_utc - data_through_utc > timedelta(
-        seconds=dataset.freshness_sla_seconds
+    # on_demand datasets have no refresh expectation; freshness SLA must not
+    # mark them stale (query-on-demand semantics per registry contract).
+    is_stale = (
+        dataset.cadence_class != "on_demand"
+        and now_utc - data_through_utc
+        > timedelta(seconds=dataset.freshness_sla_seconds)
     )
     if is_stale:
         reasons = ("freshness_sla_exceeded",)
@@ -2242,6 +2251,10 @@ def _trusted_receipts_for_evidence(
             invalid.append(validated)
 
     now_utc = now.astimezone(timezone.utc)
+    # Same ordering rule as _project_dataset_runtime: integrity checks on the
+    # full validated set, before future-dated receipts are filtered out.
+    invalid.extend(_attempt_context_failures(receipts))
+    invalid.extend(_execution_context_failures(receipts))
     current_receipts: list[_Receipt] = []
     for receipt in receipts:
         if receipt.started_sort > now_utc or receipt.finished_sort > now_utc:
@@ -2275,8 +2288,6 @@ def _trusted_receipts_for_evidence(
                 )
                 continue
         current_receipts.append(receipt)
-    invalid.extend(_attempt_context_failures(current_receipts))
-    invalid.extend(_execution_context_failures(current_receipts))
     return current_receipts, invalid
 
 

@@ -1279,6 +1279,29 @@ def _dataset_plans(
         # carrying one sweep across the whole session.
         minute = (local_now.minute // 5) * 5
         bar_end = local_now.replace(minute=minute, second=0, microsecond=0)
+        # QuickSync publishes a completed five-minute bar with up to one full
+        # bar cycle of lag: requesting the just-ended bar silently returns the
+        # previous published bar's rows and fails the snapshot completeness
+        # check, and the failed window is never retried. Target the previous
+        # bar so the publisher always holds a full cycle to publish it.
+        bar_end -= timedelta(minutes=5)
+        clock = local_now.timetz().replace(tzinfo=None, second=0, microsecond=0)
+        active_window = next(
+            (
+                item
+                for item in policy.session_windows_local
+                if item[0] <= clock <= item[1]
+            ),
+            None,
+        )
+        # The lagged target can fall before the current session window starts
+        # (09:30 and 13:00 rounds target 09:25 and 12:55): no such bar exists,
+        # so the round must skip instead of requesting a phantom window.
+        if (
+            active_window is not None
+            and bar_end.timetz().replace(tzinfo=None) < active_window[0]
+        ):
+            return (), "not_due"
         window = {
             "bar_time": encode_request_window_value(bar_end, "local_datetime_seconds")
         }

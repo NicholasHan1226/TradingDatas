@@ -23,6 +23,12 @@ major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.
 
 每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。`cn.dataset.fut_basic` 的正式合同 identity 为 `[ts_code]`，因此 catalog 的确定性默认顺序为 `[ts_code:asc]`；该 identity 只支持有界分页与 replay，不证明 response completeness、业务时间水位或 PIT。日分区的 receipt completeness 可以声明稳定 identity 并验证请求分区、唯一性和行数上限；若同一 dataset 的 `as_of_field`、`range_field` 与 `partition_field` 都是 `null`，这不声明业务时间水位或 PIT 可用性，消费者仍只能将其作为 receipt-bound current-partition 事实读取。
 
+每个 catalog row 还携带 `coverage`（`row_count`、`earliest_observed_at`、`latest_observed_at`），
+来自同一 SQLite 快照对 `provider_dataset_rows` 的按 dataset 聚合。它是存储侧覆盖面
+参考：只统计已入库行，不证明历史完整性、provider 侧覆盖或 PIT；`row_count=0` 与
+runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor watermark，采集
+增量不会使未过期的 catalog cursor 失效。
+
 ## POST /v1/query
 
 请求：
@@ -195,3 +201,71 @@ bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批�
 ## 禁止接口
 
 TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交易控制接口。新增 dataset 不得新增 route。
+
+## Admin Console API
+
+管理控制台提供内部管理员使用的 token 管理、采集状态监控和用量统计接口。所有 admin 路由需要 `admin` scope 或 `internal` tier 的认证。
+
+### GET /admin/
+
+返回管理控制台 HTML 页面（单页应用，Tailwind CSS）。
+
+### GET /admin/api/tokens
+
+返回所有已配置的 API token 列表（hash 已脱敏），包含每日用量。
+
+### POST /admin/api/tokens
+
+创建新 token。请求体：
+
+```json
+{
+  "tenant_id": "new-tenant",
+  "tier": "research",
+  "scopes": ["read"],
+  "daily_limit": 10000,
+  "expires_at": "2027-12-31T23:59:59Z",
+  "max_concurrent": 4
+}
+```
+
+响应包含明文 token（仅此一次可见）：
+
+```json
+{
+  "token": "raw-token-value",
+  "token_hash": "...",
+  "tenant_id": "new-tenant"
+}
+```
+
+### PATCH /admin/api/tokens/{token_hash}
+
+更新 token 设置。可更新字段：`enabled`、`daily_limit`、`expires_at`、`tier`、`scopes`、`max_concurrent`。
+
+### DELETE /admin/api/tokens/{token_hash}
+
+删除 token。
+
+### GET /admin/api/usage
+
+返回当前日用量、小时用量和系统统计。
+
+### GET /admin/api/collection/status
+
+返回所有数据集的采集状态（activation、entitlement、runtime state）。
+
+### GET /admin/api/data/overview
+
+返回数据概览（按市场、Provider、cadence 分类的数据集数量）。
+
+## Token 配置扩展字段
+
+`api_tokens.json` 支持以下新增字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `enabled` | bool | 是否启用（默认 true） |
+| `expires_at` | string/number | 过期时间（RFC3339 或 Unix 时间戳） |
+| `daily_limit` | number/null | 每日请求上限（null 或省略 = 无限） |
+

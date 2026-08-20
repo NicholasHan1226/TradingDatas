@@ -8,6 +8,7 @@ logs/
 backups/
 config/api_tokens.json
 *.log
+.preview
 node_modules/
 .DS_Store
 .venv/
@@ -22,3 +23,8 @@ runtime/
 staging/
 data/
 evidence/
+
+# Cloudflare Pages
+.wrangler/
+.pages/
+config/api_usage_history.json

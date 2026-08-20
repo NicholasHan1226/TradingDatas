@@ -2013,3 +2013,130 @@ def test_v1_group_22_invalid_server_clock_is_503(
     assert payload is not None
     _error_shape(payload, "service_unavailable")
     data_plane_runtime._reset_data_plane_runtime_for_tests()
+
+
+def test_admin_data_endpoints_serve_real_catalog_runtime(
+    v1_server: _Harness,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """Admin collection/status, health/alerts and data/overview must run
+    against the real catalog service surface instead of assuming methods
+    that only exist on test doubles."""
+    import sqlite3
+    from contextlib import contextmanager
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import catalog_service as catalog_module
+    import data_plane_runtime
+    from catalog_service import CatalogService
+    from query_cursor import SignedCursorCodec
+    from storage.schema import SCHEMA_SQL
+
+    registry = load_dataset_registry()
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.executescript(SCHEMA_SQL)
+    db_path = (tmp_path / "admin-endpoints.sqlite").absolute()
+
+    def _runtime_row(dataset_id: str, state: str) -> dict[str, Any]:
+        return {
+            "dataset_id": dataset_id,
+            "state": state,
+            "degraded": state not in {"success", "empty"},
+            "data_through": (
+                "2026-07-16T03:00:00+00:00"
+                if state in {"success", "stale"}
+                else None
+            ),
+            "observed_at": (
+                None if state in {"unobserved", "paused"}
+                else "2026-07-16T03:00:00+00:00"
+            ),
+            "receipt_id": None,
+            "reasons": {
+                "success": [],
+                "empty": ["provider_returned_no_rows"],
+                "unobserved": ["no_recognized_receipt"],
+                "paused": ["registry_activation_paused"],
+                "failed": ["provider_error"],
+                "stale": ["freshness_sla_exceeded"],
+            }[state],
+        }
+
+    failed_id = registry.datasets[0].dataset_id
+    stale_id = registry.datasets[1].dataset_id
+    states = {
+        dataset.dataset_id: _runtime_row(
+            dataset.dataset_id,
+            "failed" if dataset.dataset_id == failed_id
+            else "stale" if dataset.dataset_id == stale_id
+            else "success",
+        )
+        for dataset in registry.datasets
+    }
+
+    @contextmanager
+    def snapshot(path: Any):
+        assert Path(path) == db_path
+        yield conn
+
+    def project(
+        snapshot_conn: sqlite3.Connection,
+        projected_registry: DatasetRegistry,
+        *,
+        now: datetime,
+        validation_cache: dict | None = None,
+    ) -> dict[str, Any]:
+        return {"datasets": states}
+
+    monkeypatch.setattr(catalog_module, "open_verified_read_model_snapshot", snapshot)
+    monkeypatch.setattr(catalog_module, "project_catalog_runtime", project)
+    catalog = CatalogService(
+        registry=registry,
+        db_path=db_path,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    monkeypatch.setattr(
+        data_plane_runtime,
+        "build_data_plane_runtime",
+        lambda: SimpleNamespace(registry=registry, catalog=catalog),
+    )
+    try:
+        status, payload, _headers, _raw = v1_server.request(
+            "GET", "/admin/api/collection/status", token="full-token"
+        )
+        assert status == 200, payload
+        assert payload is not None
+        ids = {row["dataset_id"] for row in payload["datasets"]}
+        assert ids == {dataset.dataset_id for dataset in registry.datasets}
+        failed_row = next(
+            row for row in payload["datasets"] if row["dataset_id"] == failed_id
+        )
+        assert failed_row["runtime_state"] == "failed"
+        assert failed_row["provider"]
+        assert failed_row["cadence"]
+
+        status, alerts, _headers, _raw = v1_server.request(
+            "GET", "/admin/api/health/alerts", token="full-token"
+        )
+        assert status == 200
+        assert alerts is not None
+        by_severity = {}
+        for alert in alerts["alerts"]:
+            by_severity.setdefault(alert["severity"], []).append(alert)
+        assert {a["title"].split(":")[0] for a in by_severity["critical"]} == {failed_id}
+        assert {a["title"].split(":")[0] for a in by_severity["warning"]} == {stale_id}
+
+        status, overview, _headers, _raw = v1_server.request(
+            "GET", "/admin/api/data/overview", token="full-token"
+        )
+        assert status == 200
+        assert overview is not None
+        assert overview["total_datasets"] == len(registry.datasets)
+        assert sum(overview["by_runtime_state"].values()) == len(registry.datasets)
+        assert overview["by_runtime_state"]["failed"] == 1
+        assert overview["by_runtime_state"]["stale"] == 1
+        assert sum(overview["by_market"].values()) == len(registry.datasets)
+    finally:
+        conn.close()

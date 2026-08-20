@@ -3198,7 +3198,10 @@ def test_session_minute_plans_after_collection_completes_265_seconds_before_tick
         (11, 35, True),
         (11, 40, False),
         (12, 55, False),
-        (13, 0, True),
+        # The 13:00 window-opening round targets the pre-window 12:55 bar and
+        # skips as not_due; 13:05 is the first afternoon plan (bar 13:00).
+        (13, 0, False),
+        (13, 5, True),
         (15, 5, True),
         (15, 10, False),
     ],
@@ -3241,28 +3244,33 @@ def test_minute_canary_only_runs_in_declared_open_session_windows(
 @pytest.mark.parametrize(
     ("hour", "minute", "second", "expected_bar"),
     [
-        (9, 34, 59, "09:30:00"),
-        (9, 35, 0, "09:35:00"),
-        (9, 35, 59, "09:35:00"),
-        (9, 39, 59, "09:35:00"),
-        (9, 40, 0, "09:40:00"),
-        (11, 34, 59, "11:30:00"),
-        (13, 0, 30, "13:00:00"),
-        (14, 34, 59, "14:30:00"),
-        (14, 59, 59, "14:55:00"),
-        (15, 0, 30, "15:00:00"),
+        (9, 30, 0, None),
+        (9, 34, 59, None),
+        (9, 35, 0, "09:30:00"),
+        (9, 35, 59, "09:30:00"),
+        (9, 39, 59, "09:30:00"),
+        (9, 40, 0, "09:35:00"),
+        (11, 34, 59, "11:25:00"),
+        (11, 35, 0, "11:30:00"),
+        (13, 0, 30, None),
+        (13, 5, 0, "13:00:00"),
+        (14, 34, 59, "14:25:00"),
+        (14, 59, 59, "14:50:00"),
+        (15, 0, 30, "14:55:00"),
+        (15, 5, 0, "15:00:00"),
     ],
 )
 def test_rt_min_bar_time_aligns_to_completed_five_minute_bar(
     hour: int,
     minute: int,
     second: int,
-    expected_bar: str,
+    expected_bar: str | None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """rt_min's bar_time window is the aligned five-minute bar end, so every
-    bar is a distinct resumable window (cursor resets per bar, one full sweep)."""
+    """rt_min targets the previous completed bar so the publisher holds a full
+    bar cycle to publish it; targets that fall before the session window start
+    (09:30 and 13:00 rounds) skip as not_due instead of phantom requests."""
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -3281,6 +3289,13 @@ def test_rt_min_bar_time_aligns_to_completed_five_minute_bar(
         current_only=True,
     )
 
+    if expected_bar is None:
+        assert not plans
+        assert (
+            {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"]
+            == "not_due"
+        )
+        return
     assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
     assert len(plans) == 1
     run = plans[0]
@@ -3308,15 +3323,15 @@ def test_rt_min_cursor_resets_per_bar_and_current_bar_is_not_due(
             status="success",
             started_at="2026-07-28T01:35:01Z",
             finished_at="2026-07-28T01:35:36Z",
-            request_window={"bar_time": "2026-07-28 09:35:00"},
+            request_window={"bar_time": "2026-07-28 09:30:00"},
         )
         _fact(
             conn,
             registry,
             "cn.dataset.rt_min",
             receipt,
-            "2026-07-28 09:35:00",
-            {"ts_code": "600000.SH", "time": "2026-07-28 09:35:00"},
+            "2026-07-28 09:30:00",
+            {"ts_code": "600000.SH", "time": "2026-07-28 09:30:00"},
         )
         conn.commit()
 
@@ -3331,24 +3346,26 @@ def test_rt_min_cursor_resets_per_bar_and_current_bar_is_not_due(
             current_only=True,
         )
 
-    # Same bar (09:36) still inside minimum_interval -> not_due, no new sweep.
+    # The 09:36 round still targets bar 09:30 (one-bar publish lag) and its
+    # fresh success is inside the minimum interval -> not_due, no new sweep.
     plans, skips = _plan(datetime(2026, 7, 28, 9, 36, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
     assert not plans
     assert {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"] == "not_due"
 
-    # Next bar (09:40) is a fresh window -> planned with the new bar_time.
+    # The 09:40 round targets bar 09:35, a fresh window -> planned.
     plans, skips = _plan(datetime(2026, 7, 28, 9, 40, 1, tzinfo=ZoneInfo("Asia/Shanghai")))
     assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips)
     assert len(plans) == 1
-    assert plans[0].request_window == {"bar_time": "2026-07-28 09:40:00"}
+    assert plans[0].request_window == {"bar_time": "2026-07-28 09:35:00"}
 
 
 def test_rt_min_full_day_sweep_plans_every_bar_once_without_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stress: every five-minute bar across a full session plans exactly once
-    with a distinct, correctly-aligned bar_time (no cursor accumulation)."""
+    """Stress: every session round plans the previous bar exactly once with a
+    distinct, correctly-aligned bar_time; window-opening rounds skip their
+    pre-window phantom target (no cursor accumulation, no drift)."""
     registry = _active_registry()
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -3367,6 +3384,12 @@ def test_rt_min_full_day_sweep_plans_every_bar_once_without_drift(
         bars.append(cursor)
         cursor += timedelta(minutes=5)
 
+    # The first round of each session window targets a pre-window bar that
+    # cannot exist (09:25, 12:55) and must skip as not_due.
+    session_open_rounds = {
+        datetime(2026, 7, 28, 9, 30, tzinfo=tz),
+        datetime(2026, 7, 28, 13, 0, tzinfo=tz),
+    }
     seen: set[str] = set()
     for bar_end in bars:
         now = bar_end + timedelta(seconds=30)
@@ -3379,13 +3402,24 @@ def test_rt_min_full_day_sweep_plans_every_bar_once_without_drift(
             selected_dataset_ids=frozenset({"cn.dataset.rt_min"}),
             current_only=True,
         )
+        if bar_end in session_open_rounds:
+            assert not plans, now
+            assert (
+                {item.dataset_id: item.state for item in skips}["cn.dataset.rt_min"]
+                == "not_due"
+            ), now
+            continue
         assert not any(item.dataset_id == "cn.dataset.rt_min" for item in skips), now
         assert len(plans) == 1, now
-        expected = {"bar_time": bar_end.strftime("%Y-%m-%d %H:%M:%S")}
+        target = bar_end - timedelta(minutes=5)
+        expected = {"bar_time": target.strftime("%Y-%m-%d %H:%M:%S")}
         assert plans[0].request_window == expected, f"{now} -> {plans[0].request_window}"
         seen.add(plans[0].request_window["bar_time"])
 
-    assert len(seen) == len(bars)
+    # Every post-open round plans the previous bar exactly once (no cursor
+    # accumulation, no drift); the final 15:00 bar is covered by the 15:05
+    # round inside the declared session window slack.
+    assert len(seen) == len(bars) - len(session_open_rounds)
 
 
 def test_session_minute_current_plan_precedes_other_current_plans(
