@@ -126,7 +126,7 @@ _ERROR_CODES = frozenset(
         VALIDATION_RESPONSE_COMPLETENESS,
     }
 )
-_MAX_INGEST_RUN_SCAN_ROWS = 100_000
+_MAX_INGEST_RUN_SCAN_ROWS = 400_000
 # Catalog projection only needs each dataset's most recent receipts, not the
 # full append-only run history.  A single execution normally emits 1-3 receipt
 # rows (success/empty/failed plus fanout siblings and retries), so 100 rows per
@@ -2208,16 +2208,12 @@ def project_dataset_runtime(
         if registry is not None
         else frozenset({dataset.dataset_id})
     )
-    if registry is not None:
-        rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
-    else:
-        rows = _scan_ingest_run_rows(conn)
     return _project_dataset_runtime(
         conn,
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=rows,
+        rows=_scan_ingest_run_rows(conn),
         expected_binding=provider_binding,
     )
 
@@ -2601,7 +2597,7 @@ def validated_success_receipt_ids(
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id),
+        rows=_scan_ingest_run_rows(conn),
         expected_binding=provider_binding,
     )
     if invalid:
@@ -3724,16 +3720,12 @@ def load_dataset_runtime_projection(
             if registry is not None
             else frozenset({dataset.dataset_id})
         )
-        if registry is not None:
-            rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
-        else:
-            rows = _scan_ingest_run_rows(conn)
         return _project_dataset_runtime(
             conn,
             dataset,
             now=now,
             known_dataset_ids=known_dataset_ids,
-            rows=rows,
+            rows=_scan_ingest_run_rows(conn),
             expected_binding=provider_binding,
         )
 
