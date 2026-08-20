@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from storage.schema_contract import (
@@ -60,3 +62,72 @@ def test_clean_slate_schema_contains_only_fact_and_receipt_authorities() -> None
     assert "CREATE TABLE IF NOT EXISTS market_ingest_runs" in ddl
     assert "market_events" not in ddl
     assert "market_bars_daily" not in ddl
+
+
+def _authority_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(render_schema("sqlite"))
+    conn.commit()
+    return conn
+
+
+def test_market_ingest_runs_source_index_is_optional_and_validated() -> None:
+    from storage.schema_contract import (
+        MARKET_INGEST_RUNS_INDEX_COLUMNS,
+        ensure_market_ingest_runs_source_index,
+        require_clean_sqlite_authority_schema,
+    )
+
+    conn = _authority_conn()
+    try:
+        conn.execute("DROP INDEX market_ingest_runs_source_idx")
+        conn.commit()
+        require_clean_sqlite_authority_schema(conn)
+
+        ensure_market_ingest_runs_source_index(conn)
+        conn.commit()
+        require_clean_sqlite_authority_schema(conn)
+
+        stored_ddl = conn.execute(
+            "SELECT sql FROM main.sqlite_schema "
+            "WHERE type='index' AND name='market_ingest_runs_source_idx'"
+        ).fetchone()[0]
+        assert stored_ddl == (
+            "CREATE INDEX market_ingest_runs_source_idx "
+            "ON market_ingest_runs (source)"
+        )
+        assert MARKET_INGEST_RUNS_INDEX_COLUMNS == {
+            "market_ingest_runs_source_idx": ("source",)
+        }
+
+        conn.execute("DROP INDEX market_ingest_runs_source_idx")
+        conn.execute(
+            "CREATE INDEX rogue_runs_idx ON market_ingest_runs (run_id)"
+        )
+        conn.commit()
+        with pytest.raises(RuntimeError):
+            require_clean_sqlite_authority_schema(conn)
+    finally:
+        conn.close()
+
+
+def test_ensure_market_ingest_runs_source_index_is_idempotent() -> None:
+    from storage.schema_contract import (
+        ensure_market_ingest_runs_source_index,
+        require_clean_sqlite_authority_schema,
+    )
+
+    conn = _authority_conn()
+    try:
+        ensure_market_ingest_runs_source_index(conn)
+        ensure_market_ingest_runs_source_index(conn)
+        conn.commit()
+        require_clean_sqlite_authority_schema(conn)
+
+        count = conn.execute(
+            "SELECT COUNT(*) FROM main.sqlite_schema "
+            "WHERE type='index' AND name='market_ingest_runs_source_idx'"
+        ).fetchone()[0]
+        assert count == 1
+    finally:
+        conn.close()

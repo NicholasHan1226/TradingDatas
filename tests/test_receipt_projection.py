@@ -3511,3 +3511,62 @@ def test_full_table_scan_budget_covers_current_read_model_footprint() -> None:
     # and the append-only table keeps growing; the budget must stay above that
     # footprint or every dataset-scoped validation fails closed again.
     assert projection_module._MAX_INGEST_RUN_SCAN_ROWS >= 400_000
+
+
+def _runs_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    conn.commit()
+    return conn
+
+
+def _insert_run(conn: sqlite3.Connection, run_id: str, source: str) -> None:
+    conn.execute(
+        "INSERT INTO market_ingest_runs "
+        "(run_id, started_at, finished_at, status, source, rows_read, "
+        "rows_written, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            "2026-07-15T04:00:00+00:00",
+            "2026-07-15T04:01:00+00:00",
+            "success",
+            source,
+            1,
+            1,
+            None,
+        ),
+    )
+    conn.commit()
+
+
+def test_scan_ingest_run_rows_for_dataset_authority_bounds_by_dataset() -> None:
+    conn = _runs_conn()
+    try:
+        _insert_run(conn, "run-a1", "ds.a")
+        _insert_run(conn, "run-a2", "ds.a")
+        _insert_run(conn, "run-b1", "ds.b")
+        _insert_run(conn, "run-b2", "ds.b")
+        _insert_run(conn, "run-x1", "rogue.unknown")
+
+        own_rows = projection_module._scan_ingest_run_rows_for_dataset_authority(
+            conn,
+            dataset_id="ds.a",
+            known_dataset_ids=frozenset({"ds.a", "ds.b"}),
+        )
+        assert [row.raw[1] for row in own_rows] == ["run-a1", "run-a2", "run-x1"]
+        assert all(row.raw[9] == "ds.a" or row.raw[9] == "rogue.unknown" for row in own_rows)
+        assert not any(row.raw[9] == "ds.b" for row in own_rows)
+
+        sole_rows = projection_module._scan_ingest_run_rows_for_dataset_authority(
+            conn,
+            dataset_id="ds.a",
+            known_dataset_ids=frozenset({"ds.a"}),
+        )
+        assert [row.raw[1] for row in sole_rows] == [
+            "run-a1", "run-a2", "run-b1", "run-b2", "run-x1",
+        ]
+
+        full_rows = projection_module._scan_ingest_run_rows(conn)
+        assert len(full_rows) == 5
+    finally:
+        conn.close()

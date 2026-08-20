@@ -120,6 +120,10 @@ PROVIDER_DATASET_ROWS_CONTRACT = Table(
     indexes=tuple(PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()),
 )
 
+MARKET_INGEST_RUNS_INDEX_COLUMNS: dict[str, tuple[str, ...]] = {
+    "market_ingest_runs_source_idx": ("source",)
+}
+
 MARKET_INGEST_RUNS_CONTRACT = Table(
     name="market_ingest_runs",
     columns=(
@@ -133,6 +137,7 @@ MARKET_INGEST_RUNS_CONTRACT = Table(
         Column("notes", "text"),
     ),
     primary_key=("run_id",),
+    indexes=tuple(MARKET_INGEST_RUNS_INDEX_COLUMNS.items()),
 )
 
 TABLES: tuple[Table, ...] = (
@@ -189,7 +194,9 @@ def _sqlite_schema_sql(ddl: str) -> str:
     raise ValueError("canonical SQLite DDL must use CREATE ... IF NOT EXISTS")
 
 
-def _expected_sqlite_objects() -> dict[tuple[str, str, str], str]:
+def _expected_sqlite_objects(
+    include_market_ingest_runs_source_index: bool = False,
+) -> dict[tuple[str, str, str], str]:
     expected = {
         ("table", table.name, table.name): _sqlite_schema_sql(
             render_table(table, "sqlite")
@@ -206,6 +213,17 @@ def _expected_sqlite_objects() -> dict[tuple[str, str, str], str]:
             for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
         }
     )
+    if include_market_ingest_runs_source_index:
+        expected.update(
+            {
+                ("index", name, "market_ingest_runs"): _sqlite_schema_sql(
+                    "CREATE INDEX IF NOT EXISTS "
+                    f"{name} ON market_ingest_runs "
+                    f"({', '.join(columns)});"
+                )
+                for name, columns in MARKET_INGEST_RUNS_INDEX_COLUMNS.items()
+            }
+        )
     return expected
 
 
@@ -238,7 +256,12 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
             "WHERE name NOT LIKE 'sqlite_%'"
         ).fetchall()
     }
-    expected_objects = _expected_sqlite_objects()
+    expected_objects = _expected_sqlite_objects(
+        include_market_ingest_runs_source_index=(
+            "market_ingest_runs_source_idx"
+            in {name for (_type, name, _table) in objects}
+        )
+    )
     if objects != expected_objects:
         raise RuntimeError(
             "SQLite authority contains unsupported tables, views, triggers, or indexes"
@@ -274,6 +297,24 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
         ).fetchall()
         if str(row[3]) == "c"
     )
+    source_index_present = "market_ingest_runs_source_idx" in {
+        name for (_type, name, _table) in objects
+    }
+    if source_index_present:
+        allowed = MARKET_INGEST_RUNS_INDEX_COLUMNS
+        columns = tuple(
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
+                ("market_ingest_runs_source_idx",),
+            ).fetchall()
+        )
+        if columns != tuple(allowed["market_ingest_runs_source_idx"]):
+            raise RuntimeError("market_ingest_runs indexes are incompatible")
+        receipt_custom_indexes = tuple(
+            row for row in receipt_custom_indexes
+            if str(row[1]) != "market_ingest_runs_source_idx"
+        )
     if receipt_custom_indexes:
         raise RuntimeError("market_ingest_runs indexes are incompatible")
 
@@ -365,3 +406,22 @@ def table_with_name(table: Table, name: str) -> Table:
     """Return a copy of a table contract with a different name."""
 
     return replace(table, name=name)
+
+
+def ensure_market_ingest_runs_source_index(conn: sqlite3.Connection) -> None:
+    """Create the market_ingest_runs source index if missing (idempotent).
+
+    Called inside the writer's IMMEDIATE transaction after schema validation,
+    so existing read-only releases without the index keep validating clean
+    while the first write on this release upgrades the store in place.
+    """
+
+    existing = {
+        row[0]
+        for row in conn.execute("PRAGMA index_list(market_ingest_runs)").fetchall()
+    }
+    if "market_ingest_runs_source_idx" not in existing:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS market_ingest_runs_source_idx"
+            " ON market_ingest_runs (source)"
+        )
