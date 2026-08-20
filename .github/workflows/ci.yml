@@ -7,6 +7,19 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # 02:17 Asia/Shanghai: full canary/timing coverage, isolated from PR latency.
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Run the PR-fast suite or the nightly-equivalent full suite
+        required: true
+        default: pr
+        type: choice
+        options:
+          - pr
+          - full
 
 permissions:
   contents: read
@@ -16,9 +29,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  pr_fast:
+    if: >-
+      github.event_name != 'schedule' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    name: PR fast tests (shard ${{ matrix.shard_id }}/4)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_id: [0, 1, 2, 3]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,5 +58,49 @@ jobs:
       - name: Compile Python files
         run: python -m compileall -q .
 
-      - name: Run tests
-        run: python -m pytest tests/ -q --tb=short
+      - name: Run fast test shard
+        run: |
+          started_at="$(date +%s)"
+          python -m pytest tests/ -q --tb=short -m "not slow" -n auto --dist=loadfile \
+            --shard-id=${{ matrix.shard_id }} --num-shards=4
+          elapsed_seconds="$(( $(date +%s) - started_at ))"
+          printf 'fast_shard=%s/4\nelapsed_seconds=%s\n' \
+            "${{ matrix.shard_id }}" "$elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
+
+  nightly_full:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    name: Nightly full tests (shard ${{ matrix.shard_id }}/4)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_id: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile Python files
+        run: python -m compileall -q .
+
+      - name: Run full test shard
+        run: |
+          started_at="$(date +%s)"
+          python -m pytest tests/ -q --tb=short -n auto --dist=loadfile \
+            --shard-id=${{ matrix.shard_id }} --num-shards=4
+          elapsed_seconds="$(( $(date +%s) - started_at ))"
+          printf 'full_shard=%s/4\nelapsed_seconds=%s\n' \
+            "${{ matrix.shard_id }}" "$elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"

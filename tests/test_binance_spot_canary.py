@@ -5,6 +5,9 @@ from types import MappingProxyType
 
 import pytest
 
+
+pytestmark = pytest.mark.slow
+
 from collectors.binance.collector import BinanceSpotPublicCollector, _RejectRedirects
 from dataset_registry import (
     BINANCE_CANARY_REGISTRY_PATH,
