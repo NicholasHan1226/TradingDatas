@@ -6,7 +6,7 @@ This repository uses an agent-first, machine-gated workflow. Routine human code 
 
 1. Start from the latest `main` and check concurrent changes before integration.
 2. Keep one task scoped to one branch and one pull request; do not overwrite unrelated work.
-3. Do not push routine code directly to `main`. Do not force-push or rewrite shared history.
+3. `main` is protected: use a pull request with all four named fast CI shards on the current base. Direct pushes, force-pushes, branch deletion, and unresolved review threads are blocked; routine human approval is not required.
 4. Run relevant deterministic local validation before opening or updating the pull request. Data/runtime work must still obtain its provider/receipt/SQLite/catalog/query/consumer evidence where applicable.
 5. Open a pull request to `main`. Human review is not required.
 6. The pull-request CI is the routine Git merge gate. It runs four `pytest-shard` slices in parallel, each with `pytest-xdist -n auto`, and excludes only `slow` canary, local-HTTP, and timing suites. A failing, missing, cancelled, or stale CI result must not auto-merge.
