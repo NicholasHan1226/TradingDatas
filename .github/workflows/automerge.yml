@@ -14,7 +14,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: read
-  actions: read
+  actions: write
 
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
@@ -133,7 +133,18 @@ jobs:
           fi
 
           if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge; then
-            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}). Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
+            MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merge_commit_sha // empty')"
+            [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+            [[ "$MERGE_SHA" == "$CURRENT_MAIN_SHA" ]] || {
+              echo "Main advanced after merge; skip stale exact-main dispatch for ${MERGE_SHA:0:8}."
+              exit 0
+            }
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
+              -f ref=main \
+              -f 'inputs[suite]=pr' \
+              -f "inputs[expected_sha]=$MERGE_SHA"
+            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}. Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
           else
             PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
             if [[ "$PR_STATE_AFTER" != "open" ]]; then

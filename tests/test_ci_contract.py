@@ -16,6 +16,9 @@ def test_ci_uses_four_xdist_shards_and_a_nightly_full_suite() -> None:
     assert "schedule:" in workflow
     assert 'cron: "17 18 * * *"' in workflow
     assert "workflow_dispatch:" in workflow
+    assert "expected_sha:" in workflow
+    assert "SOURCE_SHA:" in workflow
+    assert workflow.count("Verify checkout identity") == 3
     assert "Nightly full tests" in workflow
     assert "Nightly local HTTP timing tests (serial)" in workflow
     assert "PR fast tests" in workflow
@@ -49,3 +52,6 @@ def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
     assert 'candidate=([0-9a-f]{40})' in workflow
     assert '"$ACCEPTANCE_CANDIDATE" != "$HEAD_SHA"' in workflow
     assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge' in workflow
+    assert 'actions: write' in workflow
+    assert 'actions/workflows/ci.yml/dispatches' in workflow
+    assert 'inputs[expected_sha]=$MERGE_SHA' in workflow
