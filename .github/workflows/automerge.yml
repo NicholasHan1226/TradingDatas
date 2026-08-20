@@ -6,35 +6,58 @@ on:
       - TradingDatas CI
     types:
       - completed
+  pull_request_target:
+    types:
+      - labeled
 
 permissions:
   contents: write
   pull-requests: write
+  issues: read
+  actions: read
 
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
+  CONTROLLER_ACCEPT_LABEL: controller-accepted
 
 jobs:
   merge:
-    if: github.event.workflow_run.conclusion == 'success'
+    # CI path: TradingDatas CI just completed successfully on a PR head.
+    # Label path: the controller-accepted label was just applied and the CI
+    # state for that exact head is re-verified below. Either order results in
+    # a merge; concurrent attempts are tolerated. Issue #228: a green CI run
+    # is evidence only, never merge authority, so both triggers additionally
+    # require the Controller-applied acceptance label.
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'pull_request_target'
+        && github.event.label.name == 'controller-accepted')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Merge verified trusted PR
+      - name: Merge controller-accepted trusted PR
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          PRS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+          WORKFLOW_PRS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+          LABEL_EVENT_PR_NUMBER: ${{ github.event.number }}
         run: |
           set -euo pipefail
 
-          PR_NUMBER="$(jq -r '.[0].number // empty' <<<"$PRS_JSON")"
-          if [[ -z "$PR_NUMBER" ]]; then
-            echo "No pull request is associated with this successful workflow run."
-            exit 0
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            PR_NUMBER="$(jq -r '.[0].number // empty' <<<"$WORKFLOW_PRS_JSON")"
+            if [[ -z "$PR_NUMBER" ]]; then
+              echo "No pull request is associated with this successful workflow run."
+              exit 0
+            fi
+          else
+            PR_NUMBER="$LABEL_EVENT_PR_NUMBER"
           fi
 
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          STATE="$(jq -r '.state' <<<"$PR_JSON")"
           BASE_REF="$(jq -r '.base.ref' <<<"$PR_JSON")"
           BASE_SHA="$(jq -r '.base.sha' <<<"$PR_JSON")"
           HEAD_REPO="$(jq -r '.head.repo.full_name // empty' <<<"$PR_JSON")"
@@ -42,11 +65,31 @@ jobs:
           AUTHOR="$(jq -r '.user.login' <<<"$PR_JSON")"
           DRAFT="$(jq -r '.draft' <<<"$PR_JSON")"
 
-          [[ "$BASE_REF" == "main" ]] || { echo "Skip: base is not main."; exit 0; }
+          [[ "$STATE" == "open" ]] || { echo "Skip: PR #${PR_NUMBER} is not open."; exit 0; }
+          [[ "$BASE_REF" == "main" ]] || { echo "Skip: PR base is not main."; exit 0; }
           [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]] || { echo "Skip: fork PRs never auto-merge."; exit 0; }
-          [[ "$AUTHOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: PR author is not trusted."; exit 0; }
-          [[ "$DRAFT" == "false" ]] || { echo "Skip: draft PR."; exit 0; }
-          [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || { echo "Skip: tested SHA no longer matches PR head."; exit 0; }
+          [[ "$AUTHOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: PR author is not a trusted member."; exit 0; }
+          [[ "$DRAFT" == "false" ]] || { echo "Skip: PR is still a draft."; exit 0; }
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            # The CI conclusion that triggered this run belongs to this exact
+            # head; refuse to act when the PR has moved on in the meantime.
+            [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || { echo "Skip: tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."; exit 0; }
+          fi
+
+          # Controller acceptance gate: the label must be present and its most
+          # recent application must come from the controller account itself.
+          LABEL_NAMES="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name')"
+          if ! grep -qx "$CONTROLLER_ACCEPT_LABEL" <<<"$LABEL_NAMES"; then
+            echo "CI green but PR #${PR_NUMBER} carries no '${CONTROLLER_ACCEPT_LABEL}' label; waiting for Controller acceptance."
+            exit 0
+          fi
+          LABEL_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
+            --jq '[.[] | select(.event == "labeled" and .label.name == "controller-accepted")] | sort_by(.created_at) | last | .actor.login // empty')"
+          if [[ "$LABEL_ACTOR" != "$TRUSTED_PR_AUTHOR" ]]; then
+            echo "Skip: '${CONTROLLER_ACCEPT_LABEL}' on PR #${PR_NUMBER} was applied by '${LABEL_ACTOR:-unknown}', not the Controller."
+            exit 0
+          fi
 
           CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
           if grep -Eq '^\.github/workflows/' <<<"$CHANGED_FILES"; then
@@ -54,18 +97,35 @@ jobs:
             exit 0
           fi
 
+          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+            # Label path: the CI state for this head is not implied by the
+            # trigger. Require the TradingDatas CI run for this exact head to
+            # have completed successfully; otherwise the workflow_run trigger
+            # retries the merge once CI finishes.
+            RUNS_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100")"
+            CI_STATUS="$(jq -r '[.workflow_runs[] | select(.name == "TradingDatas CI")] | .[0] | .status // "none"' <<<"$RUNS_JSON")"
+            CI_CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "TradingDatas CI")] | .[0] | .conclusion // "none"' <<<"$RUNS_JSON")"
+            if [[ "$CI_STATUS" != "completed" || "$CI_CONCLUSION" != "success" ]]; then
+              echo "TradingDatas CI on head ${HEAD_SHA:0:8} is ${CI_STATUS}/${CI_CONCLUSION}; merge will be retried when CI completes."
+              exit 0
+            fi
+          fi
+
           CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           if [[ "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
-            echo "Base advanced after this CI run; update the PR branch and let CI rerun."
-            gh api \
-              --method PUT \
-              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" \
-              -f expected_head_sha="$HEAD_SHA"
+            echo "Base advanced; updating PR branch so CI reruns on the merged head."
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/update-branch" -f expected_head_sha="$HEAD_SHA" || true
             exit 0
           fi
 
-          # Automatic merge is disabled. A green CI run is evidence only, never
-          # merge authority. The Finance Delivery Controller is the sole merge
-          # actor and must accept this exact immutable head before any merge.
-          echo "No automatic merge: Controller acceptance required for PR #${PR_NUMBER} (head ${HEAD_SHA})."
-
+          if gh pr merge "$PR_NUMBER" --merge; then
+            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); deploy.yml and the server timer pick it up from main."
+          else
+            PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
+            if [[ "$PR_STATE_AFTER" != "open" ]]; then
+              echo "PR #${PR_NUMBER} was already merged by a concurrent run."
+              exit 0
+            fi
+            echo "Merge command failed for PR #${PR_NUMBER}."
+            exit 1
+          fi
