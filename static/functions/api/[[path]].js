@@ -21,7 +21,7 @@ export async function onRequest(context) {
   const init = {
     method: request.method,
     headers,
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+    body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
     redirect: "manual",
   };
 
