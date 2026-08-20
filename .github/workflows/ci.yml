@@ -20,9 +20,16 @@ on:
         options:
           - pr
           - full
+      expected_sha:
+        description: Exact main commit SHA to validate when dispatching a post-merge run
+        required: false
+        type: string
 
 permissions:
   contents: read
+
+env:
+  SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_sha || github.sha }}
 
 concurrency:
   group: tradingdatas-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -43,6 +50,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify checkout identity
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -81,6 +96,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify checkout identity
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -116,6 +139,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify checkout identity
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
 
       - name: Set up Python
         uses: actions/setup-python@v5
