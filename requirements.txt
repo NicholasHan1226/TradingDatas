@@ -2,3 +2,5 @@
 # The service uses the Python standard library for HTTP and SQLite.
 pyyaml>=6.0,<7
 pytest>=8,<9
+pytest-xdist>=3.8,<4
+pytest-shard>=0.1.2,<0.2

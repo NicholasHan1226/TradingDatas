@@ -7,6 +7,9 @@ from zipfile import ZipFile
 
 import pytest
 
+
+pytestmark = pytest.mark.slow
+
 from collectors.binance.oi_dump_collector import BinanceUsdmMetricsDumpCollector
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
 from collectors.tushare.tushare_common import ProviderCallOutcome
