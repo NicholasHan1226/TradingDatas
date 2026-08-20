@@ -51,6 +51,8 @@ provider registry
 - `GET /v1/catalog`
 - `POST /v1/query`
 
+catalog row 携带 `coverage`（`row_count`、`earliest_observed_at`、`latest_observed_at`），来自同一 SQLite 快照对 `provider_dataset_rows` 的按 dataset 聚合；它是存储覆盖面参考，不证明历史完整性或 PIT，也不参与 cursor watermark。`/v1/query` 的 `fields` 过滤与 `max_selected_fields` 预算已内建于 query contract。
+
 API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一致时 fail closed；不得现场调用 provider，不得回退文件、旧数据库、旧 route 或 provider 专用接口。
 
 ## 管理控制台
@@ -96,6 +98,8 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 ## 频率与回填
 
 只允许八种通用 cadence class：`session_minute`、`postclose_daily`、`daily_reference`、`weekly`、`monthly`、`quarterly_reporting`、`event`、`on_demand`。
+
+`on_demand` 数据集在 receipt 投影中永远不判 stale（success 与 empty 观测均豁免 freshness SLA）：按需查询语义没有刷新预期，`freshness_sla_seconds` 是 registry 通用字段而非刷新承诺。投影的 attempt/execution 完整性校验必须在 `data_through_in_future` 过滤之前的完整 receipt 集合上执行；否则同 execution 中被 future 过滤移除的行会造成 call_index 断档，级联误报 `receipt_execution_inconsistent` 掩盖真实根因（生产 `cn.news.flash` 曾因此误报）。
 
 当前/最新分区优先，历史回填有界并在后台运行。调度从 registry、SQLite facts 和可信 receipts 推导缺口，不以最近一次运行时间假装数据完整。账号级、provider 级、API 级预算必须跨 dataset 生效。
 

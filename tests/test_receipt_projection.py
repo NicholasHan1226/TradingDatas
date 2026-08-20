@@ -10,6 +10,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
+from typing import Any
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def _dataset(
     active: bool = True,
     freshness_sla_seconds: int = 3_600,
     timezone_name: str = "Asia/Shanghai",
+    cadence_class: str | None = None,
 ) -> DatasetDefinition:
     base = load_dataset_registry().resolve("tushare.daily")
     binding = replace(
@@ -63,12 +65,14 @@ def _dataset(
         entitlement_state="active",
         activation_state="active" if active else "paused",
     )
-    return replace(
-        base,
-        provider_bindings=(binding,),
-        freshness_sla_seconds=freshness_sla_seconds,
-        timezone=timezone_name,
-    )
+    replacements: dict[str, Any] = {
+        "provider_bindings": (binding,),
+        "freshness_sla_seconds": freshness_sla_seconds,
+        "timezone": timezone_name,
+    }
+    if cadence_class is not None:
+        replacements["cadence_class"] = cadence_class
+    return replace(base, **replacements)
 
 
 def _memory_db() -> sqlite3.Connection:
@@ -1175,9 +1179,8 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = _memory_db()
-    dataset = load_dataset_registry(
-        BINANCE_CANARY_REGISTRY_PATH
-    ).resolve("crypto.spot.binance.btcusdt.5m")
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
+    dataset = registry.resolve("crypto.spot.binance.btcusdt.5m")
     binding = dataset.provider_bindings[0]
     predecessor = replace(dataset, partition_field=None)
     _insert_receipt(
@@ -1194,8 +1197,8 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
             "start_open_time": "2026-07-14T23:50:00Z",
             "end_open_time": "2026-07-14T23:55:00Z",
         },
-        config_hash=provider_ingest_config_hash(dataset, binding),
-        dataset=dataset,
+        config_hash=provider_ingest_config_hash(predecessor, binding),
+        dataset=predecessor,
     )
     receipt_id = _insert_receipt(
         monkeypatch,
@@ -1233,9 +1236,14 @@ def test_asof_window_accepts_partition_declaration_predecessor_receipt(
     )
     assert evidence.as_of_success_receipt_ids == (receipt_id,)
 
+    session_minute = replace(
+        dataset,
+        cadence_class="session_minute",
+        freshness_sla_seconds=600,
+    )
     current = project_dataset_runtime_evidence(
         conn,
-        dataset,
+        session_minute,
         now=datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc),
     )
     assert current.projection.state == "stale"
@@ -2907,6 +2915,119 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
     assert stale.state == "stale"
     assert stale.degraded is True
     assert stale.reasons == ("freshness_sla_exceeded",)
+
+
+def test_on_demand_success_never_marks_stale_past_sla(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-ondemand",
+        started_at="2026-07-15T03:00:00+00:00",
+        finished_at="2026-07-15T03:01:00+00:00",
+        data_through="2026-07-15T12:00:00",
+    )
+    dataset = _dataset(cadence_class="on_demand", freshness_sla_seconds=3_600)
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 18, 3, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.reasons == ()
+
+
+def test_on_demand_empty_observation_never_marks_stale_past_sla(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id="attempt-ondemand-empty",
+        started_at="2026-07-15T03:00:00+00:00",
+        finished_at="2026-07-15T03:01:00+00:00",
+        data_through=None,
+    )
+    dataset = _dataset(cadence_class="on_demand", freshness_sla_seconds=3_600)
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 18, 3, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "empty"
+    assert projection.degraded is False
+    assert projection.reasons == ("provider_returned_no_rows",)
+
+
+def test_future_data_through_does_not_cascade_execution_inconsistent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mid-execution future-dated receipts must surface their own reason.
+
+    Integrity checks run on the full validated set, so removing a future
+    data_through receipt cannot orphan sibling calls into a bogus
+    receipt_execution_inconsistent verdict.
+    """
+
+    conn = _memory_db()
+    future_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id=make_provider_call_attempt_id(
+            "exec-future-window", call_index=0, retry_index=0
+        ),
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T23:59:00+00:00",
+        transaction_index=0,
+        request_identity=ProviderRequestIdentity(
+            request_variant={"window": "a"},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=0,
+            page_index=0,
+        ),
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="empty",
+        attempt_id=make_provider_call_attempt_id(
+            "exec-future-window", call_index=1, retry_index=0
+        ),
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:30+00:00",
+        data_through=None,
+        transaction_index=1,
+        request_identity=ProviderRequestIdentity(
+            request_variant={"window": "b"},
+            fanout_parameter=None,
+            fanout_values=(),
+            page_offset=1,
+            page_index=1,
+        ),
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        _dataset(),
+        now=datetime(2026, 7, 15, 0, 2, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.receipt_id == future_id
+    assert projection.reasons == ("data_through_in_future",)
 
 
 def test_postclose_date_partition_stays_fresh_through_its_local_day(

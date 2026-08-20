@@ -23,6 +23,12 @@ major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.
 
 每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。`cn.dataset.fut_basic` 的正式合同 identity 为 `[ts_code]`，因此 catalog 的确定性默认顺序为 `[ts_code:asc]`；该 identity 只支持有界分页与 replay，不证明 response completeness、业务时间水位或 PIT。日分区的 receipt completeness 可以声明稳定 identity 并验证请求分区、唯一性和行数上限；若同一 dataset 的 `as_of_field`、`range_field` 与 `partition_field` 都是 `null`，这不声明业务时间水位或 PIT 可用性，消费者仍只能将其作为 receipt-bound current-partition 事实读取。
 
+每个 catalog row 还携带 `coverage`（`row_count`、`earliest_observed_at`、`latest_observed_at`），
+来自同一 SQLite 快照对 `provider_dataset_rows` 的按 dataset 聚合。它是存储侧覆盖面
+参考：只统计已入库行，不证明历史完整性、provider 侧覆盖或 PIT；`row_count=0` 与
+runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor watermark，采集
+增量不会使未过期的 catalog cursor 失效。
+
 ## POST /v1/query
 
 请求：
