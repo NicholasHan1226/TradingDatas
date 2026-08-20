@@ -30,6 +30,22 @@ After deployment, open the admin console and:
 
 The settings will persist across sessions.
 
+The default backend is the Aliyun origin (`http://8.138.181.177:18084`), set in `static/index.html`.
+
+## Why no same-origin `/api` proxy
+
+A Cloudflare Pages Function proxying `/api/*` to the Aliyun origin is not viable with the current setup:
+
+- Cloudflare Workers `fetch()` cannot target IP literals (error 1003).
+- Wrapping the IP in a domain (e.g. `sslip.io`) trips Aliyun's ICP gate for unfiled domains on China-mainland ports.
+- The `Host` header cannot be overridden in Workers to bypass that gate.
+
+Until the backend gets a filed domain with TLS, the browser calls the Aliyun origin directly over HTTP. Frontend→backend traffic carries only the admin token; rotate it if compromise is suspected.
+
+## Data Browser
+
+The console includes a Data Browser tab: filter `/v1/catalog`, click a dataset to page through its stored rows via `POST /v1/query` (forward-only cursor).
+
 ## CORS Requirements
 
 Your backend must allow CORS from the Cloudflare Pages domain:

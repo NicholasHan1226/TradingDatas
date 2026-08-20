@@ -57,7 +57,7 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 `GET /admin/` 提供内部管理界面，页面本身无需认证即可加载，API 调用需要 `admin` scope 或 `internal` tier 认证。
 
-**前端部署**：前端代码位于 `static/index.html`，可独立部署到 Cloudflare Pages 等静态托管服务。部署后需在页面中配置后端 API URL。
+**前端部署**：前端代码位于 `static/index.html`，部署到 Cloudflare Pages（`tradingdatas-admin.pages.dev`），由 GitHub Actions 在 push main 且 `static/**` 变化时自动部署。后端管理服务在阿里云 ECS `/opt/td-admin`（systemd `tradingdatas-admin.service`，0.0.0.0:18084，`td-admin-autodeploy.timer` 每 5 分钟自动拉取），`/admin/` 直接读磁盘 `static/index.html`。浏览器直连后端 IP（Cloudflare Worker 无法 fetch IP 字面量，阿里云又拦截未备案域名，同源 `/api` 代理方案已验证不可行并回退）；后端切 HTTPS 需先完成域名备案。控制台含 Data Browser tab：按 dataset 浏览 `/v1/query` 落库数据（forward-only cursor）。控制台含 Token 管理、用量趋势、采集状态、健康告警与数据浏览器（按数据集分页预览 `/v1/query` 结果）。
 
 管理 API 路由：
 
@@ -66,6 +66,8 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 - `GET /admin/api/usage`：日用量、小时用量、系统统计
 - `GET /admin/api/collection/status`：各数据集采集状态
 - `GET /admin/api/data/overview`：数据概览（按市场/Provider/cadence 分类）
+
+三个数据端点通过 `build_data_plane_runtime()` + `CatalogService.list_datasets` 聚合真实 catalog runtime（与 `/v1/catalog` 同一数据面），不引入旁路读法；功能测试见 `tests/test_v1_api.py::test_admin_data_endpoints_serve_real_catalog_runtime`。
 
 Token 配置（`config/api_tokens.json`）支持扩展字段：
 
