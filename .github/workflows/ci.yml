@@ -100,7 +100,38 @@ jobs:
         run: |
           started_at="$(date +%s)"
           python -m pytest tests/ -q --tb=short -n auto --dist=loadfile \
+            --ignore=tests/test_v1_api.py \
             --shard-id=${{ matrix.shard_id }} --num-shards=4
           elapsed_seconds="$(( $(date +%s) - started_at ))"
           printf 'full_shard=%s/4\nelapsed_seconds=%s\n' \
             "${{ matrix.shard_id }}" "$elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
+
+  nightly_http_timing:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    name: Nightly local HTTP timing tests (serial)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run local HTTP timing tests serially
+        run: |
+          started_at="$(date +%s)"
+          python -m pytest tests/test_v1_api.py -q --tb=short
+          elapsed_seconds="$(( $(date +%s) - started_at ))"
+          printf 'nightly_http_timing=serial\nelapsed_seconds=%s\n' \
+            "$elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"

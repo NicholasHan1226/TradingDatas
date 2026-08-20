@@ -21,7 +21,7 @@ Changes under `.github/workflows/` must not be self-authorizing. They require a 
 
 If GitHub Actions is temporarily unavailable, leave the affected PR unmerged rather than bypassing `main`. A future independent fallback runner may be added explicitly, but absence of the configured merge gate is not permission to direct-push routine code.
 
-The nightly 02:17 Asia/Shanghai schedule (or `workflow_dispatch` with `suite=full`) runs all four shards including `slow` coverage. The CI job summaries record each shard's test duration; PR median duration is assessed from successful PR runs, not from a local estimate.
+The nightly 02:17 Asia/Shanghai schedule (or `workflow_dispatch` with `suite=full`) runs all four shards including `slow` coverage, plus the local HTTP timing suite serially because it owns process-global server state. The CI job summaries record each shard's test duration; PR median duration is assessed from successful PR runs, not from a local estimate.
 
 ## Authority boundary
 

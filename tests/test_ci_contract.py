@@ -17,12 +17,15 @@ def test_ci_uses_four_xdist_shards_and_a_nightly_full_suite() -> None:
     assert 'cron: "17 18 * * *"' in workflow
     assert "workflow_dispatch:" in workflow
     assert "Nightly full tests" in workflow
+    assert "Nightly local HTTP timing tests (serial)" in workflow
     assert "PR fast tests" in workflow
     assert "shard_id: [0, 1, 2, 3]" in workflow
     assert "--shard-id=${{ matrix.shard_id }} --num-shards=4" in workflow
     assert workflow.count("-n auto") == 2
     assert workflow.count("--dist=loadfile") == 2
     assert '-m "not slow"' in workflow
+    assert "--ignore=tests/test_v1_api.py" in workflow
+    assert "python -m pytest tests/test_v1_api.py -q --tb=short" in workflow
 
 
 def test_canary_and_timing_runtime_suites_are_marked_slow() -> None:
