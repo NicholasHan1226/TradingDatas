@@ -6,6 +6,8 @@
       "tier": "internal",
       "scopes": ["read"],
       "max_concurrent": 16,
+      "daily_limit": null,
+      "enabled": true,
       "token_hash": "0000000000000000000000000000000000000000000000000000000000000000"
     },
     {
@@ -13,6 +15,8 @@
       "tier": "internal",
       "scopes": ["health", "market_data", "macro", "fundamentals", "read"],
       "max_concurrent": 16,
+      "daily_limit": null,
+      "enabled": true,
       "token_hash": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -20,6 +24,9 @@
       "tier": "starter",
       "scopes": ["external_read"],
       "max_concurrent": 2,
+      "daily_limit": 5000,
+      "expires_at": "2027-12-31T23:59:59Z",
+      "enabled": true,
       "token_hash": "2222222222222222222222222222222222222222222222222222222222222222"
     },
     {
@@ -27,6 +34,8 @@
       "tier": "internal",
       "scopes": ["external_read"],
       "max_concurrent": 16,
+      "daily_limit": null,
+      "enabled": true,
       "token_hash": "3333333333333333333333333333333333333333333333333333333333333333"
     }
   ]

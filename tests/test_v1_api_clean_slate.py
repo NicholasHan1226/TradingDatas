@@ -33,7 +33,22 @@ def test_v1_server_source_contains_only_the_fixed_public_routes() -> None:
         and node.value.startswith("/")
     }
 
-    assert route_literals == {"/v1/catalog", "/v1/query"}
+    allowed = {
+        "/",
+        "/v1/catalog",
+        "/v1/query",
+        "/",
+        "/admin",
+        "/admin/",
+        "/admin/api/tokens",
+        "/admin/api/tokens/",
+        "/admin/api/usage",
+        "/admin/api/usage/history",
+        "/admin/api/collection/status",
+        "/admin/api/data/overview",
+        "/admin/api/health/alerts",
+    }
+    assert route_literals == allowed
 
 
 def test_v1_startup_and_runtime_do_not_import_legacy_modules() -> None:

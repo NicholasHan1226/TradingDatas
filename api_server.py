@@ -438,6 +438,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Origin", "*")
         if allow is not None:
             self.send_header("Allow", allow)
         if self.close_connection:
@@ -598,12 +601,312 @@ class Handler(BaseHTTPRequestHandler):
         )
         return response, defaults.max_response_bytes
 
+    def _handle_admin(
+        self, method: str, path: str, raw_query: str, request_id: str
+    ) -> None:
+        """Handle admin console and admin API routes."""
+        try:
+            _ensure_auth_loaded()
+        except Exception:
+            return self._write_v1_error(
+                request_id, status=503, code="service_unavailable"
+            )
+
+        # Serve admin console HTML without authentication (page loads, API calls need auth)
+        if path in ("/admin", "/admin/") and method == "GET":
+            return self._serve_admin_console()
+
+        # Admin API routes require authentication
+        try:
+            account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.AuthError:
+            return self._write_v1_error(
+                request_id, status=401, code="unauthenticated"
+            )
+
+        if "admin" not in account.get("scopes", []) and account.get("tier") != "internal":
+            return self._write_v1_error(
+                request_id, status=403, code="forbidden"
+            )
+
+        # Admin API routes
+        if path == "/admin/api/tokens" and method == "GET":
+            tokens = auth.list_tokens()
+            daily = auth.get_daily_usage()
+            for t in tokens:
+                tid = t.get("tenant_id", "")
+                t["daily_usage"] = daily.get(tid, {}).get("count", 0)
+            return self._write_v1_json(
+                {"tokens": tokens, "count": len(tokens)}, status=200
+            )
+
+        if path == "/admin/api/tokens" and method == "POST":
+            body = self._read_admin_body()
+            if body is None:
+                return self._write_v1_error(
+                    request_id, status=400, code="invalid_request"
+                )
+            try:
+                result = auth.create_token(
+                    tenant_id=body.get("tenant_id", ""),
+                    tier=body.get("tier", "free"),
+                    scopes=body.get("scopes"),
+                    max_concurrent=body.get("max_concurrent"),
+                    daily_limit=body.get("daily_limit"),
+                    expires_at=body.get("expires_at"),
+                )
+                return self._write_v1_json(result, status=201)
+            except auth.AuthError as exc:
+                return self._write_v1_json(
+                    {"error": str(exc)}, status=400
+                )
+
+        if path.startswith("/admin/api/tokens/") and method in ("PATCH", "DELETE"):
+            token_hash = path[len("/admin/api/tokens/"):]
+            if not token_hash or len(token_hash) != 64:
+                return self._write_v1_error(
+                    request_id, status=400, code="invalid_request"
+                )
+            if method == "DELETE":
+                try:
+                    result = auth.delete_token(token_hash)
+                    return self._write_v1_json(result, status=200)
+                except auth.AuthError as exc:
+                    return self._write_v1_json(
+                        {"error": str(exc)}, status=404
+                    )
+            # PATCH
+            body = self._read_admin_body()
+            if body is None:
+                return self._write_v1_error(
+                    request_id, status=400, code="invalid_request"
+                )
+            try:
+                result = auth.update_token(token_hash, body)
+                return self._write_v1_json(result, status=200)
+            except auth.AuthError as exc:
+                return self._write_v1_json(
+                    {"error": str(exc)}, status=404
+                )
+
+        if path == "/admin/api/usage" and method == "GET":
+            return self._write_v1_json({
+                "daily": auth.get_daily_usage(),
+                "hourly": auth.get_hourly_usage(),
+                "cache": auth.cache_stats(),
+            }, status=200)
+
+        if path == "/admin/api/usage/history" and method == "GET":
+            try:
+                days = int(query_params.get("days", ["30"])[0])
+            except (ValueError, TypeError):
+                days = 30
+            days = max(1, min(days, 365))
+            return self._write_v1_json({
+                "history": auth.get_usage_history(days=days),
+            }, status=200)
+
+        if path == "/admin/api/health/alerts" and method == "GET":
+            return self._serve_health_alerts(request_id, account)
+
+        if path == "/admin/api/collection/status" and method == "GET":
+            return self._serve_collection_status(request_id, account)
+
+        if path == "/admin/api/data/overview" and method == "GET":
+            return self._serve_data_overview(request_id, account)
+
+        return self._write_v1_error(
+            request_id, status=404, code="not_found"
+        )
+
+    def _read_admin_body(self) -> dict | None:
+        """Read and parse JSON body for admin API."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (ValueError, TypeError):
+            return None
+        if length <= 0 or length > 1024 * 1024:
+            return None
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+    def _serve_admin_console(self) -> None:
+        """Serve the admin console HTML page from static/index.html."""
+        static_path = Path(__file__).resolve().parent / "static" / "index.html"
+        try:
+            html = static_path.read_bytes()
+        except OSError:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b"admin console asset missing: static/index.html")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(html)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(html)
+
+    def _admin_catalog_rows(self, account: dict[str, Any]) -> list[dict[str, Any]]:
+        """Aggregate access-visible catalog rows via the fixed V1 catalog API."""
+        from data_plane_runtime import build_data_plane_runtime
+
+        runtime = build_data_plane_runtime()
+        provider_map = {
+            dataset.dataset_id: sorted(
+                {binding.provider for binding in dataset.provider_bindings}
+            )
+            for dataset in runtime.registry.datasets
+        }
+        access = _access_context_from_account(account)
+        rows: list[dict[str, Any]] = []
+        cursor: str | None = None
+        for _ in range(50):
+            response: dict[str, object] = runtime.catalog.list_datasets(
+                access=access,
+                filters=CatalogFilters(),
+                limit=200,
+                cursor=cursor,
+                now=datetime.now(timezone.utc),
+                request_id="admin",
+            )
+            for item in response.get("data", []):
+                dataset_id = item.get("dataset_id", "")
+                availability = item.get("availability", {})
+                runtime_info = item.get("runtime", {})
+                state = runtime_info.get("state", "")
+                degraded = bool(runtime_info.get("degraded"))
+                rows.append({
+                    "dataset_id": dataset_id,
+                    "provider": "|".join(provider_map.get(dataset_id, ["-"])),
+                    "market": item.get("market", ""),
+                    "domain": item.get("domain", ""),
+                    "cadence": item.get("cadence", ""),
+                    "activation": "|".join(availability.get("activation_states") or ["-"]),
+                    "entitlement": "|".join(availability.get("entitlement_states") or ["-"]),
+                    "runtime_state": state,
+                    "degraded": degraded,
+                    "freshness_state": "degraded" if degraded else state,
+                    "data_through": runtime_info.get("data_through"),
+                    "observed_at": runtime_info.get("observed_at"),
+                    "reasons": list(runtime_info.get("reasons", [])),
+                })
+            cursor = response.get("next_cursor")
+            if not cursor:
+                break
+        return rows
+
+    def _serve_collection_status(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return collection status for all access-visible datasets."""
+        try:
+            datasets = self._admin_catalog_rows(account)
+            self._write_v1_json({
+                "datasets": datasets,
+                "total": len(datasets),
+                "active": sum(1 for d in datasets if d["activation"] == "active"),
+                "paused": sum(1 for d in datasets if d["activation"] == "paused"),
+            }, status=200)
+        except Exception as exc:
+            self._write_v1_json(
+                {"error": str(exc), "datasets": [], "total": 0}, status=503
+            )
+
+    def _serve_health_alerts(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return current collection health alerts (failed, stale, degraded)."""
+        try:
+            datasets = self._admin_catalog_rows(account)
+            alerts: list[dict[str, Any]] = []
+            for d in datasets:
+                state = d["runtime_state"]
+                if state == "failed":
+                    alerts.append({
+                        "severity": "critical",
+                        "title": f"{d['dataset_id']}: collection failed",
+                        "detail": (
+                            f"provider={d['provider']} cadence={d['cadence']} "
+                            f"reasons={','.join(d['reasons']) or '-'} "
+                            f"observed_at={d['observed_at'] or '-'}"
+                        ),
+                    })
+                elif state == "stale" or d["degraded"]:
+                    alerts.append({
+                        "severity": "warning",
+                        "title": f"{d['dataset_id']}: {d['freshness_state']}",
+                        "detail": (
+                            f"provider={d['provider']} cadence={d['cadence']} "
+                            f"data_through={d['data_through'] or '-'} "
+                            f"observed_at={d['observed_at'] or '-'}"
+                        ),
+                    })
+                elif d["activation"] == "active" and state in ("empty", "unobserved"):
+                    alerts.append({
+                        "severity": "info",
+                        "title": f"{d['dataset_id']}: {state}",
+                        "detail": (
+                            f"provider={d['provider']} active but runtime state is "
+                            f"{state}"
+                        ),
+                    })
+            return self._write_v1_json({
+                "alert_count": len(alerts),
+                "alerts": alerts,
+            }, status=200)
+        except Exception as exc:
+            return self._write_v1_json(
+                {"error": "health_alerts_failed", "detail": str(exc)}, status=500)
+
+    def _serve_data_overview(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return data overview (dataset counts by market/provider/cadence)."""
+        try:
+            datasets = self._admin_catalog_rows(account)
+
+            def _counts(key: str) -> dict[str, int]:
+                out: dict[str, int] = {}
+                for d in datasets:
+                    value = d.get(key) or "unknown"
+                    out[value] = out.get(value, 0) + 1
+                return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+            self._write_v1_json({
+                "total_datasets": len(datasets),
+                "by_market": _counts("market"),
+                "by_provider": _counts("provider"),
+                "by_cadence": _counts("cadence"),
+                "by_runtime_state": _counts("runtime_state"),
+            }, status=200)
+        except Exception as exc:
+            self._write_v1_json(
+                {"error": str(exc)}, status=503
+            )
+
     def _handle_v1(self, method: str) -> None:
         request_id = str(uuid.uuid4())
         self._v1_request_id = request_id
         self._v1_log_category = "request"
         suppress_body = method == "HEAD"
         path, raw_query = _split_target(self.path)
+
+        if path == "/admin" or path.startswith("/admin/"):
+            return self._handle_admin(method, path, raw_query, request_id)
+
+        # Redirect root path to admin console
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/admin/")
+            self.end_headers()
+            return
 
         if path not in {V1_CATALOG_PATH, V1_QUERY_PATH}:
             return self._write_v1_error(
@@ -683,6 +986,15 @@ class Handler(BaseHTTPRequestHandler):
                 request_id,
                 status=429,
                 code="rate_limited",
+                suppress_body=suppress_body,
+            )
+        try:
+            auth.enforce_daily_limit(account)
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id,
+                status=429,
+                code="daily_limit_exceeded",
                 suppress_body=suppress_body,
             )
 
@@ -841,6 +1153,8 @@ class TradingDatasHTTPServer(ThreadingHTTPServer):
             request.sendall(response)
         finally:
             request.close()
+
+
 
 
 def main() -> None:

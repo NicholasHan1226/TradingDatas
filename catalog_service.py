@@ -334,6 +334,25 @@ def _matches_filters(
     return True
 
 
+def _dataset_coverage(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+) -> dict[str, object]:
+    """Aggregate stored-row coverage for one dataset from the same snapshot."""
+
+    row_count, earliest, latest = conn.execute(
+        """SELECT COUNT(*), MIN(observed_at), MAX(observed_at)
+           FROM provider_dataset_rows
+           WHERE dataset_id = ? AND schema_major = ?""",
+        (dataset.dataset_id, dataset.schema_major),
+    ).fetchone()
+    return {
+        "row_count": row_count,
+        "earliest_observed_at": earliest,
+        "latest_observed_at": latest,
+    }
+
+
 def _serialize_dataset(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
@@ -392,6 +411,7 @@ def _serialize_dataset(
             "queryable": queryability.queryable,
             "reasons": list(queryability.reasons),
         },
+        "coverage": _dataset_coverage(conn, dataset),
         "runtime": {
             "state": runtime["state"],
             "degraded": runtime["degraded"],
