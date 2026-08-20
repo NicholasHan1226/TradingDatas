@@ -38,3 +38,14 @@ def test_canary_and_timing_runtime_suites_are_marked_slow() -> None:
         "tests/test_v1_api.py",
     ):
         assert "pytestmark = pytest.mark.slow" in _read(path)
+
+
+def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
+    workflow = _read(".github/workflows/automerge.yml")
+
+    assert 'CONTROLLER_ACCEPT_LABEL: controller-accepted' in workflow
+    assert 'ACCEPTANCE_CANDIDATE="$(' in workflow
+    assert 'contains("AUTODEV_RETURN_V1") and contains("decision=accepted")' in workflow
+    assert 'candidate=([0-9a-f]{40})' in workflow
+    assert '"$ACCEPTANCE_CANDIDATE" != "$HEAD_SHA"' in workflow
+    assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge' in workflow
