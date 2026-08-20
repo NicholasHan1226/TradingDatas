@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+
+pytestmark = pytest.mark.slow
+
 import tools.run_binance_spot_canary as canary
 from storage.ingest_receipts import IngestCounts, IngestResult
 from tools.run_binance_spot_canary import backfill_windows, latest_closed_window, run
