@@ -119,7 +119,7 @@ jobs:
           fi
 
           if gh pr merge "$PR_NUMBER" --merge; then
-            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); deploy.yml and the server timer pick it up from main."
+            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}). Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
           else
             PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
             if [[ "$PR_STATE_AFTER" != "open" ]]; then
