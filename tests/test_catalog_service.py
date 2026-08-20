@@ -78,6 +78,7 @@ ROW_KEYS = {
     "quota_class",
     "availability",
     "queryability",
+    "coverage",
     "runtime",
 }
 
@@ -900,6 +901,11 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
         "operators",
     }
     assert set(row["limits"]) == {"max_page_size", "max_lookback_days"}
+    assert row["coverage"] == {
+        "row_count": 0,
+        "earliest_observed_at": None,
+        "latest_observed_at": None,
+    }
     assert set(row["availability"]) == {
         "entitlement_states",
         "activation_states",
@@ -1513,6 +1519,65 @@ def test_real_receipt_snapshot_preserves_all_six_projected_states(
         "reasons": ["primary_table_unavailable"],
     }
     assert response["next_cursor"] is None
+
+
+def test_catalog_coverage_aggregates_stored_rows_per_dataset(
+    catalog_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_snapshot(monkeypatch, catalog_harness)
+    conn = catalog_harness["conn"]
+    provider = "source_cn_catalog_alpha"
+    conn.executemany(
+        """INSERT INTO provider_dataset_rows
+           (dataset_id, provider, schema_major, ingested_schema_version,
+            row_key, observed_at, partition_value, payload_json,
+            payload_hash, quality_state, quality_issues_json,
+            collected_at, receipt_id, revision)
+           VALUES (?, ?, 1, 'v1', ?, ?, NULL, '{}', ?, 'valid', '[]', ?, ?, 1)""",
+        [
+            ("cn.catalog.alpha", provider, "k1", "2026-07-14T01:00:00Z", "h1",
+             "2026-07-15T01:00:00Z", "receipt:a"),
+            ("cn.catalog.alpha", provider, "k2", "2026-07-15T02:00:00Z", "h2",
+             "2026-07-15T02:00:00Z", "receipt:a"),
+            ("cn.catalog.gamma", "source_cn_catalog_gamma", "k9",
+             "2026-07-16T03:00:00Z", "h9", "2026-07-16T03:00:00Z", "receipt:b"),
+        ],
+    )
+    conn.commit()
+
+    response = _list(_service(catalog_harness), catalog_harness, limit=2)
+    rows_by_id = {}
+    cursor_text = None
+    while True:
+        page = _list(
+            _service(catalog_harness),
+            catalog_harness,
+            limit=2,
+            cursor=cursor_text,
+        )
+        for row in page["data"]:
+            rows_by_id[row["dataset_id"]] = row
+        cursor_text = page["next_cursor"]
+        if cursor_text is None:
+            break
+    coverage = {did: row["coverage"] for did, row in rows_by_id.items()}
+
+    assert coverage["cn.catalog.alpha"] == {
+        "row_count": 2,
+        "earliest_observed_at": "2026-07-14T01:00:00Z",
+        "latest_observed_at": "2026-07-15T02:00:00Z",
+    }
+    assert coverage["cn.catalog.gamma"] == {
+        "row_count": 1,
+        "earliest_observed_at": "2026-07-16T03:00:00Z",
+        "latest_observed_at": "2026-07-16T03:00:00Z",
+    }
+    assert coverage["cn.catalog.beta"] == {
+        "row_count": 0,
+        "earliest_observed_at": None,
+        "latest_observed_at": None,
+    }
 
 
 def test_queryability_reports_only_frozen_physical_reason_enums() -> None:
