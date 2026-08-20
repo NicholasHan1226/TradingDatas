@@ -27,3 +27,4 @@ evidence/
 # Cloudflare Pages
 .wrangler/
 .pages/
+config/api_usage_history.json

@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import atexit
 import base64
 import binascii
 import copy
+import datetime
 import hashlib
 import hmac
 import json
@@ -20,6 +22,7 @@ from typing import Any
 from env_bootstrap import env_int
 
 ROOT = Path(__file__).resolve().parent
+_UTC = datetime.timezone.utc
 TOKEN_HASH_FILE_RAW = os.environ.get(
     "TRADINGDATAS_TOKEN_HASH_FILE",
     os.fspath(ROOT / "config" / "api_tokens.json"),
@@ -800,11 +803,92 @@ def enforce_rate_limit(tenant_id: str, tier: str) -> None:
         _cleanup_rate_log_locked(now)
 
 
-def enforce_daily_limit(account: dict[str, Any]) -> None:
-    """Enforce per-tenant daily request limit if configured."""
-    daily_limit = account.get("daily_limit")
-    if daily_limit is None:
+_USAGE_HISTORY_FILE = os.environ.get(
+    "TRADINGDATAS_USAGE_HISTORY",
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "config",
+        "api_usage_history.json",
+    ),
+)
+# date -> {tenant_id: request_count}; persisted for usage history queries.
+_USAGE_HISTORY: dict[str, dict[str, int]] = {}
+_USAGE_HISTORY_LOADED = False
+
+
+def _load_usage_history_locked() -> dict[str, dict[str, int]]:
+    global _USAGE_HISTORY_LOADED
+    if _USAGE_HISTORY_LOADED:
+        return _USAGE_HISTORY
+    _USAGE_HISTORY_LOADED = True
+    try:
+        with open(_USAGE_HISTORY_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            for date, tenants in data.items():
+                if isinstance(tenants, dict):
+                    _USAGE_HISTORY.setdefault(str(date), {
+                        str(t): int(c) for t, c in tenants.items()
+                        if isinstance(c, (int, float))
+                    })
+    except (OSError, ValueError):
+        pass
+    return _USAGE_HISTORY
+
+
+def _flush_usage_history_locked() -> None:
+    if not _USAGE_HISTORY:
         return
+    tmp_path = _USAGE_HISTORY_FILE + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(_USAGE_HISTORY_FILE), exist_ok=True)
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            json.dump(_USAGE_HISTORY, fh, sort_keys=True)
+        os.replace(tmp_path, _USAGE_HISTORY_FILE)
+    except OSError:
+        pass
+
+
+def get_usage_history(days: int = 30) -> list[dict[str, Any]]:
+    """Return daily usage history for the last N days (UTC), oldest first."""
+    today = _utc_today_key()
+    year, month, day = (int(x) for x in today.split("-"))
+    start = datetime.datetime(year, month, day, tzinfo=_UTC) - datetime.timedelta(days=max(0, days - 1))
+    out: list[dict[str, Any]] = []
+    with _STATE_LOCK:
+        _load_usage_history_locked()
+        # Sync today's in-memory daily counters into history before reading.
+        for tenant_id, entry in _DAILY_REQUEST_LOG.items():
+            date_key = entry.get("date")
+            if date_key == today and entry.get("count"):
+                day_counts = _USAGE_HISTORY.setdefault(date_key, {})
+                day_counts[tenant_id] = entry["count"]
+        for offset in range(max(0, days)):
+            date_key = (start + datetime.timedelta(days=offset)).strftime("%Y-%m-%d")
+            tenants = _USAGE_HISTORY.get(date_key, {})
+            out.append({
+                "date": date_key,
+                "total": sum(tenants.values()),
+                "by_tenant": dict(sorted(tenants.items())),
+            })
+        _flush_usage_history_locked()
+    return out
+
+
+def _flush_usage_history_on_exit() -> None:
+    try:
+        with _STATE_LOCK:
+            _flush_usage_history_locked()
+    except Exception:
+        pass
+
+
+atexit.register(_flush_usage_history_on_exit)
+
+
+def enforce_daily_limit(account: dict[str, Any]) -> None:
+    """Count every authenticated request and enforce per-tenant daily limit."""
+    daily_limit = account.get("daily_limit")
     tenant_id = str(account.get("tenant_id") or "").strip()
     if not tenant_id:
         return
@@ -816,13 +900,18 @@ def enforce_daily_limit(account: dict[str, Any]) -> None:
         if entry is None or entry.get("date") != today:
             _DAILY_REQUEST_LOG[tenant_id] = {"date": today, "count": 0, "reset_at": now}
             entry = _DAILY_REQUEST_LOG[tenant_id]
-        if entry["count"] >= int(daily_limit):
+        if daily_limit is not None and entry["count"] >= int(daily_limit):
             raise RateLimitError(
                 f"daily limit exceeded for tenant={tenant_id} "
                 f"(limit={daily_limit}, used={entry['count']})"
             )
         entry["count"] += 1
+        entry["daily_limit"] = daily_limit
         _DAILY_REQUEST_LOG.move_to_end(tenant_id)
+
+        _load_usage_history_locked()
+        day_counts = _USAGE_HISTORY.setdefault(today, {})
+        day_counts[tenant_id] = entry["count"]
 
         # Cleanup stale entries
         stale = [k for k, v in _DAILY_REQUEST_LOG.items() if v.get("date") != today]

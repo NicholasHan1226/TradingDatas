@@ -696,6 +696,19 @@ class Handler(BaseHTTPRequestHandler):
                 "cache": auth.cache_stats(),
             }, status=200)
 
+        if path == "/admin/api/usage/history" and method == "GET":
+            try:
+                days = int(query_params.get("days", ["30"])[0])
+            except (ValueError, TypeError):
+                days = 30
+            days = max(1, min(days, 365))
+            return self._write_v1_json({
+                "history": auth.get_usage_history(days=days),
+            }, status=200)
+
+        if path == "/admin/api/health/alerts" and method == "GET":
+            return self._serve_health_alerts(request_id)
+
         if path == "/admin/api/collection/status" and method == "GET":
             return self._serve_collection_status(request_id)
 
@@ -758,6 +771,31 @@ class Handler(BaseHTTPRequestHandler):
             self._write_v1_json(
                 {"error": str(exc), "datasets": [], "total": 0}, status=503
             )
+
+    def _serve_health_alerts(self, request_id: str) -> None:
+        """Return current collection health alerts (stale datasets, errors)."""
+        try:
+            catalog_svc, _ = self._build_services_fail_closed()
+            rows = catalog_svc.list_catalog_rows()
+            alerts = []
+            for row in rows:
+                freshness = row.get("freshness_state", "")
+                if freshness in ("stale", "degraded"):
+                    alerts.append({
+                        "dataset_id": row.get("dataset_id"),
+                        "provider": row.get("provider"),
+                        "cadence_class": row.get("cadence_class"),
+                        "freshness_state": freshness,
+                        "last_success_at": row.get("last_success_at"),
+                        "message": f"dataset freshness is {freshness}",
+                    })
+            return self._write_v1_json({
+                "alert_count": len(alerts),
+                "alerts": alerts,
+            }, status=200)
+        except Exception as exc:
+            return self._write_v1_json(
+                {"error": "health_alerts_failed", "detail": str(exc)}, status=500)
 
     def _serve_data_overview(self, request_id: str) -> None:
         """Return data overview (row counts, storage, coverage)."""
