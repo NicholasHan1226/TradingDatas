@@ -731,6 +731,47 @@ def _scan_ingest_run_rows(
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
 
 
+def _scan_ingest_run_rows_for_dataset_authority(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    known_dataset_ids: frozenset[str],
+) -> tuple[_ScannedIngestRunRow, ...]:
+    """Read one bounded per-dataset authority snapshot or fail closed.
+
+    Materializes exactly the rows that can influence ``dataset_id``'s
+    validation: rows owned by the dataset itself plus rows whose source is
+    outside ``known_dataset_ids`` (the unknown-source tombstone path).  Rows
+    owned by other known datasets always classify to inert rows and are
+    excluded by the query instead of being materialized, so the row budget
+    binds the dataset's own history rather than the whole append-only table.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if type(dataset_id) is not str or not dataset_id:
+        raise TypeError("dataset_id must be a non-empty string")
+    if type(known_dataset_ids) is not frozenset:
+        raise TypeError("known_dataset_ids must be frozenset")
+    other_known = sorted(source for source in known_dataset_ids if source != dataset_id)
+    scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
+    if not other_known:
+        cursor = conn.execute(_RECEIPT_QUERY, (scan_limit,))
+    else:
+        placeholders = ", ".join("?" for _ in other_known)
+        query = _RECEIPT_QUERY.replace(
+            "FROM market_ingest_runs\nLIMIT ?",
+            "FROM market_ingest_runs\n"
+            f"WHERE source = ? OR source NOT IN ({placeholders})\n"
+            "LIMIT ?",
+        )
+        cursor = conn.execute(query, (dataset_id, *other_known, scan_limit))
+    raw_rows = tuple(tuple(row) for row in cursor.fetchall())
+    if len(raw_rows) == scan_limit:
+        raise RuntimeProjectionError("receipt scan row budget exceeded")
+    return tuple(_classify_ingest_run_row(row) for row in raw_rows)
+
+
 def _scan_recent_ingest_run_rows(
     conn: sqlite3.Connection,
     *,
@@ -2222,7 +2263,15 @@ def project_dataset_runtime(
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows(conn),
+        rows=(
+            _scan_ingest_run_rows_for_dataset_authority(
+                conn,
+                dataset_id=dataset.dataset_id,
+                known_dataset_ids=known_dataset_ids,
+            )
+            if registry is not None
+            else _scan_ingest_run_rows(conn)
+        ),
         expected_binding=provider_binding,
     )
 
@@ -2356,14 +2405,17 @@ def validated_receipt_histories_by_dataset(
         raise TypeError("registry must be DatasetRegistry")
     _canonical_now(now)
     known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
-    rows = _scan_ingest_run_rows(conn)
     entries_by_dataset: dict[str, tuple[ValidatedReceiptHistoryEntry, ...]] = {}
     failures_by_dataset: dict[str, tuple[str, ...]] = {}
     for dataset in registry.datasets:
         entries, failures = _validated_history_for_dataset_rows(
             dataset,
             known_dataset_ids=known_dataset_ids,
-            rows=rows,
+            rows=_scan_ingest_run_rows_for_dataset_authority(
+                conn,
+                dataset_id=dataset.dataset_id,
+                known_dataset_ids=known_dataset_ids,
+            ),
             now=now,
         )
         if failures:
@@ -2414,7 +2466,11 @@ def validated_receipt_history_for_dataset(
     if registered_dataset != dataset:
         raise RuntimeProjectionError("dataset definition is not the registered authority")
     known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
-    rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+    rows = _scan_ingest_run_rows_for_dataset_authority(
+        conn,
+        dataset_id=dataset.dataset_id,
+        known_dataset_ids=known_dataset_ids,
+    )
     entries, failures = _validated_history_for_dataset_rows(
         dataset,
         known_dataset_ids=known_dataset_ids,
@@ -2525,7 +2581,7 @@ def validated_receipt_journal_entries_by_dataset(
         for receipt_ids in receipt_ids_by_dataset.values()
     ):
         raise TypeError("receipt_ids_by_dataset values must be tuples of receipt IDs")
-    rows = _scan_ingest_run_rows(conn)
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
     return MappingProxyType(
         {
             dataset_id: _journal_entries_for_rows(
@@ -2533,7 +2589,11 @@ def validated_receipt_journal_entries_by_dataset(
                 dataset_id,
                 receipt_ids,
                 now=now,
-                rows=rows,
+                rows=_scan_ingest_run_rows_for_dataset_authority(
+                    conn,
+                    dataset_id=dataset_id,
+                    known_dataset_ids=known_dataset_ids,
+                ),
             )
             for dataset_id, receipt_ids in receipt_ids_by_dataset.items()
             if receipt_ids
@@ -2608,7 +2668,11 @@ def validated_success_receipt_ids(
         dataset,
         now=now,
         known_dataset_ids=known_dataset_ids,
-        rows=_scan_ingest_run_rows(conn),
+        rows=_scan_ingest_run_rows_for_dataset_authority(
+            conn,
+            dataset_id=dataset.dataset_id,
+            known_dataset_ids=known_dataset_ids,
+        ),
         expected_binding=provider_binding,
     )
     if invalid:
@@ -2804,7 +2868,11 @@ def project_dataset_runtime_evidence(
                 raise RuntimeProjectionError("dataset definition is not the registered authority")
         except KeyError:
             raise RuntimeProjectionError("dataset is not registered") from None
-        rows = _scan_ingest_run_rows(conn, dataset_id=dataset.dataset_id)
+        rows = _scan_ingest_run_rows_for_dataset_authority(
+            conn,
+            dataset_id=dataset.dataset_id,
+            known_dataset_ids=known_dataset_ids,
+        )
     else:
         rows = _scan_ingest_run_rows(conn)
     projection_now = now
@@ -3736,7 +3804,15 @@ def load_dataset_runtime_projection(
             dataset,
             now=now,
             known_dataset_ids=known_dataset_ids,
-            rows=_scan_ingest_run_rows(conn),
+            rows=(
+                _scan_ingest_run_rows_for_dataset_authority(
+                    conn,
+                    dataset_id=dataset.dataset_id,
+                    known_dataset_ids=known_dataset_ids,
+                )
+                if registry is not None
+                else _scan_ingest_run_rows(conn)
+            ),
             expected_binding=provider_binding,
         )
 

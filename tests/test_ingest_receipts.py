@@ -19,6 +19,7 @@ from storage.ingest_receipts import (
     write_terminal_receipt,
 )
 from storage.schema import SCHEMA_SQL
+from storage.schema_contract import require_clean_sqlite_authority_schema
 from storage.sqlite_authority_lock import (
     SqliteAuthorityLockError,
     sqlite_authority_lock_path,
@@ -1075,5 +1076,38 @@ def test_terminal_writer_rejects_symbolic_link_without_writing_target(
         assert (
             conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
         )
+    finally:
+        conn.close()
+
+
+def test_insert_ingest_receipt_lazily_builds_source_index(tmp_path: Path) -> None:
+    db_path = tmp_path / "lazy-index.sqlite"
+    _file_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DROP INDEX market_ingest_runs_source_idx")
+        conn.commit()
+
+        conn.execute("BEGIN IMMEDIATE")
+        insert_ingest_receipt(
+            conn,
+            context=_context(),
+            target_table="market_bars_daily",
+            transaction_index=0,
+            status="success",
+            counts=_counts(),
+            errors=(),
+            payload_fingerprint=PAYLOAD_FINGERPRINT,
+        )
+        conn.commit()
+
+        index_names = {
+            str(row[1])
+            for row in conn.execute(
+                "PRAGMA main.index_list('market_ingest_runs')"
+            ).fetchall()
+        }
+        assert "market_ingest_runs_source_idx" in index_names
+        require_clean_sqlite_authority_schema(conn)
     finally:
         conn.close()
