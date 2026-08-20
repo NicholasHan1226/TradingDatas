@@ -707,13 +707,13 @@ class Handler(BaseHTTPRequestHandler):
             }, status=200)
 
         if path == "/admin/api/health/alerts" and method == "GET":
-            return self._serve_health_alerts(request_id)
+            return self._serve_health_alerts(request_id, account)
 
         if path == "/admin/api/collection/status" and method == "GET":
-            return self._serve_collection_status(request_id)
+            return self._serve_collection_status(request_id, account)
 
         if path == "/admin/api/data/overview" and method == "GET":
-            return self._serve_data_overview(request_id)
+            return self._serve_data_overview(request_id, account)
 
         return self._write_v1_error(
             request_id, status=404, code="not_found"
@@ -753,23 +753,61 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html)
 
-    def _serve_collection_status(self, request_id: str) -> None:
-        """Return collection status for all datasets."""
-        try:
-            catalog_svc, _ = self._build_services_fail_closed()
-            rows = catalog_svc.list_catalog_rows()
-            datasets = []
-            for row in rows:
-                datasets.append({
-                    "dataset_id": row.get("dataset_id", ""),
-                    "provider": row.get("provider", ""),
-                    "market": row.get("market", ""),
-                    "cadence": row.get("cadence_class", ""),
-                    "activation": row.get("activation_state", ""),
-                    "entitlement": row.get("entitlement_state", ""),
-                    "runtime_state": row.get("runtime_state", ""),
-                    "freshness_state": row.get("freshness_state", ""),
+    def _admin_catalog_rows(self, account: dict[str, Any]) -> list[dict[str, Any]]:
+        """Aggregate access-visible catalog rows via the fixed V1 catalog API."""
+        from data_plane_runtime import build_data_plane_runtime
+
+        runtime = build_data_plane_runtime()
+        provider_map = {
+            dataset.dataset_id: sorted(
+                {binding.provider for binding in dataset.provider_bindings}
+            )
+            for dataset in runtime.registry.datasets
+        }
+        access = _access_context_from_account(account)
+        rows: list[dict[str, Any]] = []
+        cursor: str | None = None
+        for _ in range(50):
+            response: dict[str, object] = runtime.catalog.list_datasets(
+                access=access,
+                filters=CatalogFilters(),
+                limit=200,
+                cursor=cursor,
+                now=datetime.now(timezone.utc),
+                request_id="admin",
+            )
+            for item in response.get("data", []):
+                dataset_id = item.get("dataset_id", "")
+                availability = item.get("availability", {})
+                runtime_info = item.get("runtime", {})
+                state = runtime_info.get("state", "")
+                degraded = bool(runtime_info.get("degraded"))
+                rows.append({
+                    "dataset_id": dataset_id,
+                    "provider": "|".join(provider_map.get(dataset_id, ["-"])),
+                    "market": item.get("market", ""),
+                    "domain": item.get("domain", ""),
+                    "cadence": item.get("cadence", ""),
+                    "activation": "|".join(availability.get("activation_states") or ["-"]),
+                    "entitlement": "|".join(availability.get("entitlement_states") or ["-"]),
+                    "runtime_state": state,
+                    "degraded": degraded,
+                    "freshness_state": "degraded" if degraded else state,
+                    "data_through": runtime_info.get("data_through"),
+                    "observed_at": runtime_info.get("observed_at"),
+                    "reasons": list(runtime_info.get("reasons", [])),
                 })
+            cursor = response.get("next_cursor")
+            if not cursor:
+                break
+        return rows
+
+    def _serve_collection_status(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return collection status for all access-visible datasets."""
+        try:
+            datasets = self._admin_catalog_rows(account)
             self._write_v1_json({
                 "datasets": datasets,
                 "total": len(datasets),
@@ -781,22 +819,43 @@ class Handler(BaseHTTPRequestHandler):
                 {"error": str(exc), "datasets": [], "total": 0}, status=503
             )
 
-    def _serve_health_alerts(self, request_id: str) -> None:
-        """Return current collection health alerts (stale datasets, errors)."""
+    def _serve_health_alerts(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return current collection health alerts (failed, stale, degraded)."""
         try:
-            catalog_svc, _ = self._build_services_fail_closed()
-            rows = catalog_svc.list_catalog_rows()
-            alerts = []
-            for row in rows:
-                freshness = row.get("freshness_state", "")
-                if freshness in ("stale", "degraded"):
+            datasets = self._admin_catalog_rows(account)
+            alerts: list[dict[str, Any]] = []
+            for d in datasets:
+                state = d["runtime_state"]
+                if state == "failed":
                     alerts.append({
-                        "dataset_id": row.get("dataset_id"),
-                        "provider": row.get("provider"),
-                        "cadence_class": row.get("cadence_class"),
-                        "freshness_state": freshness,
-                        "last_success_at": row.get("last_success_at"),
-                        "message": f"dataset freshness is {freshness}",
+                        "severity": "critical",
+                        "title": f"{d['dataset_id']}: collection failed",
+                        "detail": (
+                            f"provider={d['provider']} cadence={d['cadence']} "
+                            f"reasons={','.join(d['reasons']) or '-'} "
+                            f"observed_at={d['observed_at'] or '-'}"
+                        ),
+                    })
+                elif state == "stale" or d["degraded"]:
+                    alerts.append({
+                        "severity": "warning",
+                        "title": f"{d['dataset_id']}: {d['freshness_state']}",
+                        "detail": (
+                            f"provider={d['provider']} cadence={d['cadence']} "
+                            f"data_through={d['data_through'] or '-'} "
+                            f"observed_at={d['observed_at'] or '-'}"
+                        ),
+                    })
+                elif d["activation"] == "active" and state in ("empty", "unobserved"):
+                    alerts.append({
+                        "severity": "info",
+                        "title": f"{d['dataset_id']}: {state}",
+                        "detail": (
+                            f"provider={d['provider']} active but runtime state is "
+                            f"{state}"
+                        ),
                     })
             return self._write_v1_json({
                 "alert_count": len(alerts),
@@ -806,26 +865,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_json(
                 {"error": "health_alerts_failed", "detail": str(exc)}, status=500)
 
-    def _serve_data_overview(self, request_id: str) -> None:
-        """Return data overview (row counts, storage, coverage)."""
+    def _serve_data_overview(
+        self, request_id: str, account: dict[str, Any]
+    ) -> None:
+        """Return data overview (dataset counts by market/provider/cadence)."""
         try:
-            catalog_svc, _ = self._build_services_fail_closed()
-            rows = catalog_svc.list_catalog_rows()
-            by_market: dict[str, int] = {}
-            by_provider: dict[str, int] = {}
-            by_cadence: dict[str, int] = {}
-            for row in rows:
-                m = row.get("market", "unknown")
-                p = row.get("provider", "unknown")
-                c = row.get("cadence_class", "unknown")
-                by_market[m] = by_market.get(m, 0) + 1
-                by_provider[p] = by_provider.get(p, 0) + 1
-                by_cadence[c] = by_cadence.get(c, 0) + 1
+            datasets = self._admin_catalog_rows(account)
+
+            def _counts(key: str) -> dict[str, int]:
+                out: dict[str, int] = {}
+                for d in datasets:
+                    value = d.get(key) or "unknown"
+                    out[value] = out.get(value, 0) + 1
+                return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
             self._write_v1_json({
-                "total_datasets": len(rows),
-                "by_market": by_market,
-                "by_provider": by_provider,
-                "by_cadence": by_cadence,
+                "total_datasets": len(datasets),
+                "by_market": _counts("market"),
+                "by_provider": _counts("provider"),
+                "by_cadence": _counts("cadence"),
+                "by_runtime_state": _counts("runtime_state"),
             }, status=200)
         except Exception as exc:
             self._write_v1_json(

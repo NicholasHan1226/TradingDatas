@@ -25,7 +25,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
       <p class="text-sm text-gray-500 mt-1">Internal data platform management</p>
     </div>
     <div class="flex items-center gap-2">
-      <input id="api-url-input" type="text" placeholder="Backend API URL" value="http://8.138.181.177:18084" class="border rounded px-3 py-1.5 text-sm w-64" />
+      <input id="api-url-input" type="text" placeholder="API base URL (default: same-origin /api proxy)" class="border rounded px-3 py-1.5 text-sm w-64" />
       <button onclick="saveApiUrl()" class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700">API URL</button>
       <input id="token-input" type="password" placeholder="Enter API token" class="border rounded px-3 py-1.5 text-sm w-64" />
       <button onclick="saveToken()" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">Save</button>
@@ -38,6 +38,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     <button class="pb-3 text-gray-500 hover:text-gray-700" data-tab="tokens">Token Management</button>
     <button class="pb-3 text-gray-500 hover:text-gray-700" data-tab="collection">Collection Status</button>
     <button class="pb-3 text-gray-500 hover:text-gray-700" data-tab="usage">Usage & Limits</button>
+    <button class="pb-3 text-gray-500 hover:text-gray-700" data-tab="browser">Data Browser</button>
   </nav>
 
   <!-- Overview Tab -->
@@ -111,11 +112,53 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     </div>
     <div class="card mt-4"><h3 class="font-semibold mb-3">System Stats</h3><div id="system-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm"></div></div>
   </div>
+
+  <div id="tab-browser" class="tab-content hidden">
+    <div class="card mb-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[240px]">
+          <label class="block text-xs text-gray-500 mb-1">Search dataset (id / market / cadence)</label>
+          <input id="browser-search" class="w-full border rounded px-3 py-2 text-sm" placeholder="e.g. tushare.daily, cn, postclose_daily">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">State</label>
+          <select id="browser-state" class="border rounded px-3 py-2 text-sm">
+            <option value="">all</option>
+            <option value="success">success</option>
+            <option value="stale">stale</option>
+            <option value="failed">failed</option>
+            <option value="empty">empty</option>
+            <option value="unobserved">unobserved</option>
+            <option value="paused">paused</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Rows</label>
+          <select id="browser-limit" class="border rounded px-3 py-2 text-sm">
+            <option>10</option><option selected>20</option><option>50</option><option>100</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card mb-4"><div class="max-h-72 overflow-auto"><table class="w-full text-sm"><thead><tr class="border-b"><th class="text-left py-2">Dataset ID</th><th class="text-left py-2">Market</th><th class="text-left py-2">Cadence</th><th class="text-left py-2">State</th><th class="text-left py-2">Queryable</th><th class="text-left py-2">Action</th></tr></thead><tbody id="browser-table"></tbody></table></div><div id="browser-count" class="text-xs text-gray-500 mt-2"></div></div>
+    <div class="card hidden" id="browser-detail">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold" id="browser-detail-title">Dataset</h3>
+        <button onclick="browserNext()" class="text-sm px-3 py-1 border rounded hidden" id="browser-next">Next page</button>
+      </div>
+      <div class="overflow-auto max-h-[28rem]"><table class="w-full text-xs"><thead id="browser-detail-head"></thead><tbody id="browser-detail-body"></tbody></table></div>
+      <div id="browser-detail-info" class="text-xs text-gray-500 mt-2"></div>
+    </div>
+  </div>
 </div>
 
 <script>
 // API URL configuration
-let API_BASE = localStorage.getItem('td_api_base') || 'http://8.138.181.177:18084';
+// https origin (Cloudflare Pages) routes through the same-origin /api proxy so the
+// admin token never crosses plain HTTP; http origin (local dev) falls back to direct.
+if (localStorage.getItem('td_api_base') === 'http://8.138.181.177:18084') localStorage.removeItem('td_api_base');
+let API_BASE = localStorage.getItem('td_api_base') ||
+  (location.protocol === 'https:' ? location.origin + '/api' : 'http://' + location.hostname + ':18084');
 document.getElementById('api-url-input').value = API_BASE;
 
 function saveApiUrl() {
@@ -155,6 +198,8 @@ document.querySelectorAll('#tabs button').forEach(btn => {
     if (btn.dataset.tab === 'tokens') loadTokens();
     if (btn.dataset.tab === 'collection') loadCollection();
     if (btn.dataset.tab === 'usage') loadUsage();
+    if (btn.dataset.tab === 'browser') loadBrowser();
+    if (btn.dataset.tab === 'browser') loadBrowser();
   });
 });
 
@@ -311,6 +356,86 @@ async function renderUsageChart() {
     labelEl.innerHTML = days.map(d => '<div class="flex-1 text-center">' + d.date.slice(5) + '</div>').join('');
   } catch (e) { document.getElementById('usage-chart').innerHTML = '<div class="text-red-400 text-sm">' + e.message + '</div>'; }
 }
+
+// Data browser: catalog + fixed query API
+let BROWSER_ROWS = [], BROWSER_CURSOR = null, BROWSER_DATASET = null;
+
+async function loadBrowser() {
+  const el = document.getElementById('browser-table');
+  el.innerHTML = '<tr><td colspan="6" class="py-3 text-gray-500">Loading catalog…</td></tr>';
+  const res = await fetch(API_BASE + '/v1/catalog?limit=200', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+  if (res.status === 401 || res.status === 403) {
+    el.innerHTML = '<tr><td colspan="6" class="py-3 text-red-500">Token lacks catalog scope (' + res.status + '). Use a token with catalog/read access.</td></tr>';
+    return;
+  }
+  const data = await res.json();
+  BROWSER_ROWS = data.data || [];
+  renderBrowser();
+}
+
+function renderBrowser() {
+  const q = document.getElementById('browser-search').value.trim().toLowerCase();
+  const state = document.getElementById('browser-state').value;
+  const rows = BROWSER_ROWS.filter(r => {
+    const hit = !q || r.dataset_id.toLowerCase().includes(q) || (r.market || '').toLowerCase().includes(q) || (r.cadence || '').toLowerCase().includes(q);
+    const st = !state || (r.runtime || {}).state === state;
+    return hit && st;
+  });
+  document.getElementById('browser-count').textContent = rows.length + ' of ' + BROWSER_ROWS.length + ' datasets';
+  document.getElementById('browser-table').innerHTML = rows.slice(0, 200).map(r => {
+    const rt = r.runtime || {}, qa = r.queryability || {};
+    const stateColor = { success: 'text-green-600', failed: 'text-red-600', stale: 'text-yellow-600' }[rt.state] || 'text-gray-500';
+    return '<tr class="border-b hover:bg-gray-50"><td class="py-2 font-mono text-xs">' + r.dataset_id + '</td><td class="py-2">' + (r.market || '-') + '</td><td class="py-2 text-xs">' + (r.cadence || '-') + '</td><td class="py-2 ' + stateColor + '">' + (rt.state || '-') + '</td><td class="py-2">' + (qa.queryable ? 'yes' : 'no') + '</td><td class="py-2"><button onclick="openDataset(\'' + r.dataset_id + '\')" class="text-blue-600 hover:underline text-xs">browse</button></td></tr>';
+  }).join('') || '<tr><td colspan="6" class="py-3 text-gray-500">No matching datasets</td></tr>';
+}
+
+async function openDataset(datasetId) {
+  BROWSER_DATASET = datasetId; BROWSER_CURSOR = null;
+  document.getElementById('browser-detail').classList.remove('hidden');
+  document.getElementById('browser-detail-title').textContent = datasetId;
+  await queryDataset();
+}
+
+async function queryDataset() {
+  const info = document.getElementById('browser-detail-info');
+  info.textContent = 'Loading…';
+  const body = { dataset_id: BROWSER_DATASET, limit: parseInt(document.getElementById('browser-limit').value, 10) };
+  if (BROWSER_CURSOR) body.cursor = BROWSER_CURSOR;
+  const res = await fetch(API_BASE + '/v1/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    info.innerHTML = '<span class="text-red-500">Query failed (' + res.status + '): ' + JSON.stringify(data.error || data) + '</span>';
+    return;
+  }
+  const items = data.data && data.data.items ? data.data.items : (data.items || []);
+  const fields = data.data && data.data.fields ? data.data.fields : (data.fields || []);
+  if (!items.length) {
+    document.getElementById('browser-detail-head').innerHTML = '';
+    document.getElementById('browser-detail-body').innerHTML = '<tr><td class="py-3 text-gray-500">No rows returned for this window.</td></tr>';
+    info.textContent = '';
+    return;
+  }
+  const cols = fields.length ? fields : Object.keys(items[0]);
+  document.getElementById('browser-detail-head').innerHTML = '<tr class="border-b bg-gray-50">' + cols.map(c => '<th class="text-left py-2 px-2 whitespace-nowrap">' + c + '</th>').join('') + '</tr>';
+  document.getElementById('browser-detail-body').innerHTML = items.map(item => '<tr class="border-b">' + cols.map(c => {
+    let v = item[c];
+    if (v === null || v === undefined) v = '-';
+    else if (typeof v === 'object') v = JSON.stringify(v);
+    return '<td class="py-1.5 px-2 whitespace-nowrap max-w-[16rem] truncate" title="' + String(v).replace(/"/g, '&quot;') + '">' + v + '</td>';
+  }).join('') + '</tr>').join('');
+  BROWSER_CURSOR = data.next_cursor || data.meta && data.meta.next_cursor || null;
+  document.getElementById('browser-next').classList.toggle('hidden', !BROWSER_CURSOR);
+  info.textContent = items.length + ' rows';
+}
+
+function browserNext() { if (BROWSER_CURSOR) queryDataset(); }
+
+document.getElementById('browser-search').addEventListener('input', renderBrowser);
+document.getElementById('browser-state').addEventListener('change', renderBrowser);
 </script>
 </body>
 </html>
