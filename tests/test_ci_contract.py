@@ -32,5 +32,6 @@ def test_canary_and_timing_runtime_suites_are_marked_slow() -> None:
         "tests/test_binance_spot_canary.py",
         "tests/test_binance_usdm_canary.py",
         "tests/test_crypto_loopback_runtime.py",
+        "tests/test_v1_api.py",
     ):
         assert "pytestmark = pytest.mark.slow" in _read(path)
