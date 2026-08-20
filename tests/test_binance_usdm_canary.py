@@ -5,6 +5,9 @@ import sqlite3
 
 import pytest
 
+
+pytestmark = pytest.mark.slow
+
 from collectors.binance.collector import _RejectRedirects
 from collectors.binance.usdm_collector import BinanceUsdmPublicCollector
 import collectors.binance.usdm_collector as usdm_collector

@@ -44,6 +44,12 @@ from query_service import (
 from storage.receipt_projection import RuntimeProjectionError
 
 
+# This module runs an in-process HTTP server, raw sockets, timeout paths, and
+# polling loops. Keep its contract coverage in the nightly full suite: xdist
+# workers otherwise contend for process-global auth/runtime state.
+pytestmark = pytest.mark.slow
+
+
 SIGNING_KEY = b"phase2-test-signing-key-32-bytes-minimum"
 JWT_HS256_SECRET = "tradingdatas-hs256-test-secret-at-least-32-bytes"
 GOOD_QUERY = {"dataset_id": "cn.equity.daily", "schema_major": 1}
