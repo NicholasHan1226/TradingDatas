@@ -139,7 +139,7 @@ registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并�
 ## Git、发布与删除
 
 - 开工先检查 branch、status、remote、HEAD 与并行 worktree。
-- **合入门禁：** 一切变更走 feature 分支 + PR，禁止直推 main。合并需要两道独立的门同时满足：`TradingDatas CI` 在当前 head 上全绿，以及 Controller 在 PR 上打 `controller-accepted` label（label 必须由 Controller 账号亲自添加，`automerge.yml` 校验添加者）。两道门都满足后自动合并，顺序无关：先 label 后 CI 完成走 workflow_run 路径，先 CI 后 label 走 label 路径并回查该 head 的 CI 状态；main 更新触发 `deploy.yml` 与服务器 timer 拉取。绿 CI 只是证据不是合并权（issue #228：PR #222 曾在 review 决策为 changes_requested 时被 CI 绿自动合并，违反终审合同）。修改 `.github/workflows/**` 的 PR 永不自动合并，需单独的受信 bootstrap 合并。CI 在 push main 后补跑不构成豁免：直推意味着坏代码可能已在 main 上并被服务器 5 分钟内拉取。本地测试通过不能替代 CI 门禁。
+- **合入门禁：** 一切变更走 feature 分支 + PR，禁止直推 main。合并需要两道独立的门同时满足：`TradingDatas CI` 在当前 head 上全绿，以及 Controller 在 PR 上打 `controller-accepted` label（label 必须由 Controller 账号亲自添加，`automerge.yml` 校验添加者）。两道门都满足后自动合并，顺序无关：先 label 后 CI 完成走 workflow_run 路径，先 CI 后 label 走 label 路径并回查该 head 的 CI 状态；main 更新触发 `deploy.yml` 与服务器 timer 拉取。绿 CI 只是证据不是合并权（issue #228：PR #222 曾在 review 决策为 changes_requested 时被 CI 绿自动合并，违反终审合同）。若 base 已前进，自动化只报告并停止，绝不替 owner/Controller 更新候选分支；更新后必须重跑 CI 且 Controller 对新 head 重新验收。修改 `.github/workflows/**` 的 PR 永不自动合并，需单独的受信 bootstrap 合并。CI 在 push main 后补跑不构成豁免：直推意味着坏代码可能已在 main 上并被服务器 5 分钟内拉取。本地测试通过不能替代 CI 门禁。
 - GitHub 传输优先使用 Nicholas 已登录的 `gh` HTTPS 凭据链：先核对 `gh auth status`，仓库 `origin` 固定为 `https://github.com/NicholasHan1226/TradingDatas.git`。若 `git@github.com` 的 SSH/22 端口失败一次，不重复重试或上报为长期 blocker；立即验证 HTTPS `git ls-remote`，切换现有 remote 后 fetch。不得输出 token，也不得另建凭据或绕过 host-key 校验。
 - 不覆盖他人改动，不使用 `git add .`、force push、历史重写或破坏性 reset。
 - local、GitHub、production files、runtime、真实 provider receipt、API readback 和消费者调用分别验证。
