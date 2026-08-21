@@ -86,7 +86,8 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 `validation_fanout_coverage_incomplete` reason code；scheduler 的 `error_layer` 仍为
 `ingest_validation`，不会暴露 fanout 值、provider rows、摘要或路径。声明
 `resumable_fanout` 的分钟批次允许保留请求集合内实际返回的严格子集，单只股票缺失只降低
-该批 coverage；越界代码、重复主键、跨日快照仍失败。允许空结果和禁止空结果继续遵循各自既有策略。
+该批 coverage；停牌代码带回的历史最后 bar 也按 `[ts_code,time]` 独立保留。越界代码、重复
+主键和非可恢复批次的跨日快照仍失败。允许空结果和禁止空结果继续遵循各自既有策略。
 
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用

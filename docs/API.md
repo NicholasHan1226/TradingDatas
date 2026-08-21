@@ -136,8 +136,8 @@ schema、主键或 payload 变化一律不兼容。
 对声明 `snapshot_field` 的 cohort，watermark 必须取 provider 返回的该 snapshot 值，
 不能以 collector 的开始时间代替；对未声明 `resumable_fanout` 的 cohort，同时声明
 `fanout_field` 时所有请求值必须恰好出现一次且共享同一 snapshot；声明
-`resumable_fanout` 的分钟批次允许请求集合内的严格子集，但仍必须共享受限日期内的 snapshot，
-否则该 cohort 只能形成 failed receipt。
+`resumable_fanout` 的分钟批次允许请求集合内的严格子集，停牌代码带回的历史最后 bar 按
+`[ts_code,time]` 独立绑定；越界或无效响应仍只能形成 failed receipt。
 `metadata.data_through` 不得晚于 `resolved_as_of`，`metadata.observed_at` 不得晚于
 `requested_as_of`。截止点之后新增的 receipt 不改变同一 as-of 的 cursor authority。
 

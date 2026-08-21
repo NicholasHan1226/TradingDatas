@@ -1133,15 +1133,13 @@ def _validate_fanout_snapshot(
             )
     if len(snapshots) != 1:
         if binding.resumable_fanout is not None:
-            # Long-halted symbols carry a stale last-bar time, so a resumable
-            # minute stream legitimately spans more than one bar timestamp.
-            # Bound that span to a single calendar day: arbitrary old rows
-            # spanning multiple dates must not make a current cohort fresh.
-            dates = {snapshot[:10] for snapshot in snapshots}
-            if len(dates) > 1:
-                raise ValueError(
-                    "provider response fanout snapshot spans multiple dates"
-                )
+            # Long-halted symbols carry their own stale last-bar time. A
+            # resumable minute batch may therefore span multiple dates; the
+            # immutable [ts_code,time] identity keeps those historical rows
+            # separate, while consumers requesting the current bar still
+            # bind to that exact time. The latest returned time remains the
+            # receipt watermark; it is not inferred from collection time.
+            pass
         else:
             raise ValueError("provider response fanout snapshot time is inconsistent")
 
