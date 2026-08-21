@@ -67,6 +67,13 @@ def test_automerge_keeps_m0_narrow_and_m1_controller_bound() -> None:
     assert 'AUTODEV_RETURN_V1' in workflow
 
 
+def test_automerge_never_mutates_a_stale_candidate_branch() -> None:
+    workflow = _read(".github/workflows/automerge.yml")
+
+    assert 'pulls/${PR_NUMBER}/update-branch' not in workflow
+    assert "do not mutate the candidate branch" in workflow
+
+
 def test_static_deploy_has_a_published_route_readback() -> None:
     workflow = _read(".github/workflows/deploy.yml")
 
