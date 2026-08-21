@@ -50,8 +50,25 @@ def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
     assert 'ACCEPTANCE_CANDIDATE="$(' in workflow
     assert 'contains("AUTODEV_RETURN_V1") and contains("decision=accepted")' in workflow
     assert 'candidate=([0-9a-f]{40})' in workflow
-    assert '"$ACCEPTANCE_CANDIDATE" != "$HEAD_SHA"' in workflow
+    assert '"$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA"' in workflow
     assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge' in workflow
     assert 'actions: write' in workflow
     assert 'actions/workflows/ci.yml/dispatches' in workflow
     assert 'inputs[expected_sha]=$MERGE_SHA' in workflow
+
+
+def test_automerge_keeps_m0_narrow_and_m1_controller_bound() -> None:
+    workflow = _read(".github/workflows/automerge.yml")
+
+    assert 'M0_AUTOMERGE_LABEL: automerge-m0' in workflow
+    assert "grep -qx 'change_class=M0'" in workflow
+    assert 'grep -qx "candidate=$HEAD_SHA"' in workflow
+    assert "README\\.md|CONTRIBUTING\\.md|docs/|tests/|static/" in workflow
+    assert 'AUTODEV_RETURN_V1' in workflow
+
+
+def test_static_deploy_has_a_published_route_readback() -> None:
+    workflow = _read(".github/workflows/deploy.yml")
+
+    assert "Read back published static route" in workflow
+    assert "https://tradingdatas-admin.pages.dev/" in workflow

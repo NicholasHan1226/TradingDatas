@@ -26,3 +26,10 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy static/ --project-name=tradingdatas-admin --branch=main
+
+      - name: Read back published static route
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 https://tradingdatas-admin.pages.dev/ \
+            | grep -F '<!doctype html>'
