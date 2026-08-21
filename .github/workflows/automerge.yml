@@ -19,6 +19,7 @@ permissions:
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
   CONTROLLER_ACCEPT_LABEL: controller-accepted
+  M0_AUTOMERGE_LABEL: automerge-m0
 
 jobs:
   merge:
@@ -32,7 +33,8 @@ jobs:
       (github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success')
       || (github.event_name == 'pull_request_target'
-        && github.event.label.name == 'controller-accepted')
+        && (github.event.label.name == 'controller-accepted'
+          || github.event.label.name == 'automerge-m0'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -77,31 +79,39 @@ jobs:
             [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || { echo "Skip: tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."; exit 0; }
           fi
 
-          # Controller acceptance gate: the label must be present and its most
-          # recent application must come from the controller account itself.
+          # A label selects exactly one merge class. M0 is limited to a
+          # machine-readable declaration and a narrow reversible path allowlist;
+          # every other class remains SHA-bound Controller M1 acceptance.
           LABEL_NAMES="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name')"
-          if ! grep -qx "$CONTROLLER_ACCEPT_LABEL" <<<"$LABEL_NAMES"; then
-            echo "CI green but PR #${PR_NUMBER} carries no '${CONTROLLER_ACCEPT_LABEL}' label; waiting for Controller acceptance."
+          HAS_M0=false
+          HAS_CONTROLLER=false
+          grep -qx "$M0_AUTOMERGE_LABEL" <<<"$LABEL_NAMES" && HAS_M0=true || true
+          grep -qx "$CONTROLLER_ACCEPT_LABEL" <<<"$LABEL_NAMES" && HAS_CONTROLLER=true || true
+          if [[ "$HAS_M0" == true && "$HAS_CONTROLLER" == true ]]; then
+            echo "Skip: PR #${PR_NUMBER} has conflicting M0 and Controller labels."
             exit 0
           fi
-          LABEL_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
-            --jq '[.[] | select(.event == "labeled" and .label.name == "controller-accepted")] | sort_by(.created_at) | last | .actor.login // empty')"
-          if [[ "$LABEL_ACTOR" != "$TRUSTED_PR_AUTHOR" ]]; then
-            echo "Skip: '${CONTROLLER_ACCEPT_LABEL}' on PR #${PR_NUMBER} was applied by '${LABEL_ACTOR:-unknown}', not the Controller."
-            exit 0
-          fi
-
-          # The label opens the gate, but its application is not SHA-bound.
-          # Require the newest Controller return to bind acceptance to this
-          # exact PR head so a later push or update-branch cannot inherit an
-          # approval for older code.
-          ACCEPTANCE_CANDIDATE="$(
-            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
-              --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1") and contains("decision=accepted"))] | sort_by(.created_at) | last | .body // ""' \
-              | sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p'
-          )"
-          if [[ "$ACCEPTANCE_CANDIDATE" != "$HEAD_SHA" ]]; then
-            echo "Skip: Controller return candidate ${ACCEPTANCE_CANDIDATE:-none} does not match current head ${HEAD_SHA}."
+          if [[ "$HAS_M0" == true ]]; then
+            M0_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "automerge-m0")] | sort_by(.created_at) | last | .actor.login // empty')"
+            [[ "$M0_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: untrusted M0 label actor."; exit 0; }
+            PR_BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
+            grep -qx 'change_class=M0' <<<"$PR_BODY" || { echo "Skip: M0 body declaration missing."; exit 0; }
+            grep -qx "candidate=$HEAD_SHA" <<<"$PR_BODY" || { echo "Skip: M0 candidate is not the current head."; exit 0; }
+            CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
+            grep -Eqv '^(README\.md|CONTRIBUTING\.md|docs/|tests/|static/)' <<<"$CHANGED_FILES" && { echo "Skip: M0 changed a non-allowlisted path."; exit 0; }
+          elif [[ "$HAS_CONTROLLER" == true ]]; then
+            LABEL_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "controller-accepted")] | sort_by(.created_at) | last | .actor.login // empty')"
+            [[ "$LABEL_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: Controller label actor is untrusted."; exit 0; }
+            ACCEPTANCE_CANDIDATE="$(
+              gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+                --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1") and contains("decision=accepted"))] | sort_by(.created_at) | last | .body // ""' \
+                | sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p'
+            )"
+            [[ "$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA" ]] || { echo "Skip: Controller return does not accept current head."; exit 0; }
+          else
+            echo "CI green but no accepted M0 or Controller M1 label is present."
             exit 0
           fi
 
