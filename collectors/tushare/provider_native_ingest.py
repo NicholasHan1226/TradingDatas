@@ -1120,14 +1120,17 @@ def _validate_fanout_snapshot(
         observed.add(value)
         snapshots.add(snapshot)
     if observed != expected:
-        # A resumable batch changes scheduling, not completeness authority.  The
-        # validator has no positive halted/inactive proof for a missing symbol,
-        # so accepting an arbitrary strict subset would turn partial provider
-        # data into an indistinguishable successful snapshot.
-        raise ProviderValidationError(
-            "provider response fanout coverage is incomplete",
-            predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
-        )
+        if binding.resumable_fanout is not None and observed <= expected:
+            # A resumable minute batch may omit a halted, newly listed, or
+            # otherwise unavailable symbol.  Keep the valid returned rows and
+            # let the batch receipt expose the reduced coverage.  Values
+            # outside the requested batch remain a validation failure below.
+            pass
+        else:
+            raise ProviderValidationError(
+                "provider response fanout coverage is incomplete",
+                predicate=VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
+            )
     if len(snapshots) != 1:
         if binding.resumable_fanout is not None:
             # Long-halted symbols carry a stale last-bar time, so a resumable

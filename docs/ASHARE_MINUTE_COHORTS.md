@@ -7,6 +7,12 @@ contract v2 每轮最多选择 20 个 batch，并以 bar_time 窗口在每根 5 
 完整扫完整个 universe。本文件中的 500/100 分片和 30 只 canary 仅保留为历史回滚与诊断证据，不替代
 当前 full-universe 配置。
 
+TD 数据覆盖与 TA 模拟成员资格是两个独立维度：TD 仍按当前 registry 继续采集完整
+5,963 证券数据，不因某只股票上市不足 30 日、退市或 TA 风险状态而停止其它证券，
+也不替 TA 静默替换身份。TA 在消费端按决策时点派生 `rolling_active_partition`，
+逐股记录 `pending`/`excluded` reason；因此 TA 的 active 数量低于 source 数量时，
+只能降低模拟覆盖率声明，不能回退或阻断 TD 的数据 fanout。
+
 ## 事实源优先级
 
 1. 生产状态：immutable release、systemd、SQLite receipt、受认证 catalog/query 读回；
