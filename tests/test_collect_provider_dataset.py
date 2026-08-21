@@ -2520,13 +2520,11 @@ def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
     validate(
         (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-04 14:50:00"})
     )
-    # Arbitrary stale rows spanning multiple calendar dates must not make a
-    # current cohort complete: the forward-fix bounds mixed bar times to a
-    # single day.
-    with pytest.raises(ValueError, match="spans multiple dates"):
-        validate(
-            (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-06 14:50:00"})
-        )
+    # Long-halted symbols may return their own last bar from an earlier date;
+    # the [ts_code,time] identity preserves it as historical data.
+    validate(
+        (*complete_rows[:-1], {**complete_rows[-1], "time": "2026-08-06 14:50:00"})
+    )
     dynamic_binding = replace(
         binding,
         request_template=MappingProxyType(
