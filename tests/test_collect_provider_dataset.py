@@ -2507,8 +2507,11 @@ def test_rt_min_template_cohort_requires_the_frozen_complete_snapshot() -> None:
         )
 
     validate(complete_rows)
-    # Resumable fanout permits a strict subset (halted symbols may be absent).
-    validate(complete_rows[:-1])
+    # A resumable batch does not prove that an omitted symbol is halted or
+    # inactive.  Unknown strict subsets must remain an explicit failed cohort,
+    # never an indistinguishable success snapshot.
+    with pytest.raises(ValueError, match="fanout coverage is incomplete"):
+        validate(complete_rows[:-1])
     with pytest.raises(ValueError, match="duplicate primary key"):
         validate(complete_rows[:-1] + (complete_rows[0],))
     with pytest.raises(ValueError, match="fanout coverage is incomplete"):
