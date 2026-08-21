@@ -136,9 +136,12 @@ jobs:
           fi
 
           CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          if [[ "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
-            echo "Base advanced; do not mutate the candidate branch. The owner or Controller must refresh the PR, rerun CI, and record a new exact-head acceptance."
+          if [[ "$HAS_M0" != true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
+            echo "M1 base advanced; do not mutate the candidate branch. The owner or Controller must refresh the PR, rerun CI, and record a new exact-head acceptance."
             exit 0
+          fi
+          if [[ "$HAS_M0" == true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
+            echo "M0 base advanced. The exact tested head and narrow path allowlist remain sufficient only when GitHub still reports the PR mergeable; continue without rewriting the candidate branch."
           fi
 
           if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge; then

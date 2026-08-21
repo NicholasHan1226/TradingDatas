@@ -65,6 +65,8 @@ def test_automerge_keeps_m0_narrow_and_m1_controller_bound() -> None:
     assert 'grep -qx "candidate=$HEAD_SHA"' in workflow
     assert "README\\.md|CONTRIBUTING\\.md|docs/|tests/|static/" in workflow
     assert 'AUTODEV_RETURN_V1' in workflow
+    assert 'if [[ "$HAS_M0" != true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then' in workflow
+    assert "M0 base advanced. The exact tested head and narrow path allowlist" in workflow
 
 
 def test_automerge_never_mutates_a_stale_candidate_branch() -> None:
