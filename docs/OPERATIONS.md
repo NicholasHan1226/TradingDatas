@@ -47,6 +47,10 @@ dataset。只有新的有界证据证明完整 cohort 可在相同全局门禁�
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
 不为某个 dataset、provider 或消费者增加专用分支。
 
+读取已结束的精确分钟槽位时，receipt cohort 的 `request_window` 可以保留该 dataset
+合同要求的窗口（例如 `bar_time`）；同一 execution 内必须保持窗口、provider、config
+和 `data_through` 一致，不能用空窗口或跨窗口 receipt 冒充当前槽位证据。
+
 `daily_reference` 的下一日期窗口只适用于 registry 声明为 `trade_calendar` 的已知未来事实，
 用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只
 请求当前可用日期，不能因日历预取而创建未来数据 receipt。

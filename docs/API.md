@@ -194,6 +194,12 @@ receipt 和 catalog/query 供应仍须由独立 release/readback 门禁确认。
 `vol` 单位为股，`amount` 单位为人民币元。只允许通过同一 catalog/query API 读取；盘后
 可读到的最后一根 bar 不得被描述为 300 秒内的实时新鲜数据。
 
+当消费者显式过滤单一已结束的 `time` 槽位时，receipt authority 绑定该槽位对应的
+完整 success execution。该 execution 的 receipt 必须共享 provider、config、
+`data_through` 和请求窗口；请求窗口可以是合法的 `request_window_policy`（例如
+`bar_time`），不要求为空。缺 receipt、跨 execution、跨窗口或行时间与槽位不一致时，
+API fail closed 返回 503。
+
 完整 universe 仅在同一 request window 的 20 个 batch receipt 均通过 identity、schema、
 时间与行完整性校验时才投影为该窗口的 `ready`；任一 batch 失败、缺代码、重复代码或
 bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批次供 cursor v2 续接，不把部分

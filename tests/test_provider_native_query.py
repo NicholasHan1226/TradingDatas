@@ -1337,6 +1337,74 @@ def test_opt_in_no_window_session_minute_requires_exact_closed_slot_time(
         )
 
 
+def test_no_window_session_minute_accepts_consistent_request_window(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    minute = _minute_dataset(native_harness["dataset"])
+    registry = DatasetRegistry(
+        (minute,), query_defaults=native_harness["registry"].query_defaults
+    )
+    service = QueryService(
+        db_path=native_harness["service"]._db_path,
+        registry=registry,
+        cursor_codec=SignedCursorCodec(SIGNING_KEY),
+    )
+    receipt = _insert_native_success_receipt(
+        monkeypatch,
+        conn,
+        minute,
+        execution_id="minute-window-proof",
+        call_index=0,
+        page_offset=0,
+        request_window={"bar_time": "2026-07-17 11:35:00"},
+        data_through="2026-07-17 11:40:00",
+    )
+    _insert_row(
+        conn,
+        dataset_id=minute.dataset_id,
+        provider="provider-a",
+        row_key="minute-window-a",
+        payload={"symbol": "MINUTE_WINDOW_A", "time": "2026-07-17 11:40:00"},
+        receipt_id=receipt,
+    )
+    conn.commit()
+    evidence = replace(
+        _proof_evidence((receipt,)),
+        projection=replace(
+            _proof_evidence((receipt,)).projection,
+            dataset_id=minute.dataset_id,
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: evidence,
+    )
+    request = QueryRequest(
+        dataset_id=minute.dataset_id,
+        schema_major=1,
+        fields=("symbol", "time"),
+        filters={
+            "symbol": {"eq": "MINUTE_WINDOW_A"},
+            "time": {"eq": "2026-07-17 11:40:00"},
+        },
+        as_of=None,
+        order=("time:asc", "symbol:asc"),
+        limit=10,
+        cursor=None,
+        include_receipt_proofs=False,
+    )
+    result = service.execute(
+        request,
+        access=native_harness["access"],
+        now=NOW,
+        request_id="request-minute-window-proof",
+    )
+    assert result["data"][0]["symbol"] == "MINUTE_WINDOW_A"
+
+
 @pytest.mark.parametrize(
     "variant",
     ("wrong_cadence", "missing_snapshot", "future", "missing_data_through", "row_mismatch"),

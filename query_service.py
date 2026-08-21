@@ -1660,7 +1660,6 @@ def _exact_session_minute_receipt_ids(
         for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
         if entry.status == "success"
         and entry.cohort_status == "success"
-        and entry.request_window == {}
         and entry.data_through is not None
         and _normalize_data_through(entry.data_through, dataset) == slot_value
         and entry.finished_at <= now
@@ -1668,6 +1667,16 @@ def _exact_session_minute_receipt_ids(
     executions = {entry.execution_id for entry in entries}
     providers = {entry.provider for entry in entries}
     configs = {entry.config_hash for entry in entries}
+    request_windows = {
+        json.dumps(
+            dict(entry.request_window),
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        for entry in entries
+    }
     data_throughs = {
         _normalize_data_through(entry.data_through, dataset) for entry in entries
     }
@@ -1675,6 +1684,7 @@ def _exact_session_minute_receipt_ids(
         len(executions) != 1
         or len(providers) != 1
         or len(configs) != 1
+        or len(request_windows) != 1
         or data_throughs != {slot_value}
     ):
         return ()
