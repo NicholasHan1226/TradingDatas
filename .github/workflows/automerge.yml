@@ -144,7 +144,10 @@ jobs:
             echo "M0 base advanced. The exact tested head and narrow path allowlist remain sufficient only when GitHub still reports the PR mergeable; continue without rewriting the candidate branch."
           fi
 
-          if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge; then
+          # Branch protection requires GitHub's merge queue/auto-merge path.
+          # Keep this SHA- and Controller-bound; --auto waits for the same
+          # required checks instead of bypassing them.
+          if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto; then
             MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merge_commit_sha // empty')"
             [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
             CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
