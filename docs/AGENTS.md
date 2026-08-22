@@ -10,6 +10,8 @@
 6. `API.md`：固定 catalog/query 合同；
 7. `OPERATIONS.md`：运行、回填、发布和回滚；
 8. `adr/ADR-0010-tradingdatas-clean-slate.md`：重命名和旧系统退役决策。
+9. `AUTHORITY_AND_HISTORY.md`：事实权威与历史保留规则；
+10. `reports/`：日期化事故、验收和迁移复盘。
 
 ## 规则
 
