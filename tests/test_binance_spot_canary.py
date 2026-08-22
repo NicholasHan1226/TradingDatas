@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import fcntl
+import json
+import sys
+import threading
+import time
 from datetime import datetime, timezone
 from types import MappingProxyType
 
@@ -8,6 +13,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
+import tools.run_binance_spot_canary as spot_canary
 from collectors.binance.collector import BinanceSpotPublicCollector, _RejectRedirects
 from dataset_registry import (
     BINANCE_CANARY_REGISTRY_PATH,
@@ -312,3 +318,83 @@ def test_rfc3339_as_of_cutoff_uses_provider_row_timestamp_encoding() -> None:
     )
 
     assert params[-1] == "2026-07-28T09:44:59.999Z"
+
+
+def test_bounded_lock_acquires_a_free_lock(tmp_path) -> None:
+    lock_path = tmp_path / "store.lock"
+    lock = spot_canary._bounded_lock(lock_path, wait_seconds=5.0)
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        lock.close()
+
+
+def test_bounded_lock_waits_for_the_holder_to_release(tmp_path) -> None:
+    lock_path = tmp_path / "store.lock"
+    holder = lock_path.open("a+", encoding="utf-8")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+    def release() -> None:
+        time.sleep(0.3)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+
+    thread = threading.Thread(target=release)
+    thread.start()
+    try:
+        started = time.monotonic()
+        lock = spot_canary._bounded_lock(lock_path, wait_seconds=10.0)
+        try:
+            assert time.monotonic() - started >= 0.2
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            lock.close()
+    finally:
+        thread.join()
+
+
+def test_bounded_lock_times_out_while_the_lock_stays_held(tmp_path) -> None:
+    lock_path = tmp_path / "store.lock"
+    holder = lock_path.open("a+", encoding="utf-8")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    try:
+        with pytest.raises(RuntimeError, match="still held"):
+            spot_canary._bounded_lock(lock_path, wait_seconds=0.5)
+    finally:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+
+
+def test_bounded_lock_rejects_a_symlink_parent(tmp_path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    with pytest.raises(ValueError, match="non-symlink child"):
+        spot_canary._bounded_lock(link / "store.lock", wait_seconds=0.5)
+
+
+def test_main_failure_output_includes_error_detail(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_binance_spot_canary.py",
+            "--db-path",
+            str(tmp_path / "db.sqlite"),
+            "--lock-path",
+            str(tmp_path / "lock"),
+        ],
+    )
+
+    def fail(**kwargs):
+        raise RuntimeError("collection lock is still held after 120s")
+
+    monkeypatch.setattr(spot_canary, "run", fail)
+    assert spot_canary.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "failed"
+    assert "collection lock is still held after 120s" in payload["error"]
