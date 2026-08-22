@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-23 00:45 CST。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-23 02:35 CST。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,15 +9,24 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `300182f935c7f9f35b01d08ef049d4ed911df652` | 已验收源码；文档合并不等于发布 |
-| 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，ahead 1 / behind 8 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `300182f935c7f9f35b01d08ef049d4ed911df652`（回滚点 `f085075e98f5de9199482e8aac0281d4f1ec529e`） | immutable 运行源码，2026-08-23 00:22 CST 切换 |
-| Crypto 有效 release | `300182f935c7f9f35b01d08ef049d4ed911df652`（回滚点 `d711414bec41356724dd2bdbeaf4601459ff2778`） | 隔离 immutable 运行源码，2026-08-23 00:25 CST 切换 |
+| GitHub `main` | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（PR #267） | 已验收源码；文档合并不等于发布 |
+| 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
+| A 股有效 release | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（回滚点 `300182f935c7f9f35b01d08ef049d4ed911df652`） | immutable 运行源码，2026-08-23 02:20 CST 切换 |
+| Crypto 有效 release | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（回滚点 `300182f935c7f9f35b01d08ef049d4ed911df652`） | 隔离 immutable 运行源码，2026-08-23 02:23 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
 
 ## 2026-08-23 发布记录
+
+第二轮（02:20/02:23 CST，两面 → `5ca8e3e`，PR #267）：scheduled crypto 采集器
+（spot bars / book-ticker / USDM）从非阻塞抢锁改为有界 120s 等待
+（`_bounded_lock`），失败输出带具体错误与 `lock_wait_seconds`；`_private_lock`
+保留给快路径调用方。同一 trusted verifier（SHA256 复核一致）、registry 重编译逐字节
+一致；两面 switch-current、verify-current（含 manifest）、认证 readback 均通过。
+回滚点统一为 `300182f`。
+
+第一轮（00:22/00:25 CST，两面 → `300182f`）：
 
 发布通道：本地 clean worktree（origin/main HEAD）→ `release_manifest.py build`
 → `marketgraph-root` 写入新 commit 目录 → trusted verifier 校验 → registry 重编译
@@ -44,10 +53,9 @@
   `active/running`，匿名 `GET /v1/catalog` 返回 `401`。Spot、rules、book-ticker、USDM、
   OI dump 和 premium-index dump 六个 timer 均 enabled。切换后首轮 spot 采集
   40/40 数据集成功、零 retry。
-- **已知残留：** crypto 共享存储锁下，长时 USDM/OI-dump 批次仍会让 5 分钟级
-  spot/book-ticker 批次以 lock-held 快速失败（本轮切换后已观察到 2 次）；
-  该行为是既有设计（非阻塞抢锁 + 失败即退出），不是本轮发布引入。修复方向
-  （阻塞等待或错峰调度）需单独走 PR。
+- **已知残留：** crypto 共享存储锁冲突已在 `5ca8e3e` 改为有界等待（120s）+ 失败
+  带错误详情；后续观察 journal 中 `lock_wait_seconds` 的出现频率与数值，确认
+  长批次重叠不再造成整轮失败。若仍有等待超时，再评估错峰调度。
 
 ## 能力和边界
 
@@ -65,8 +73,8 @@
 
 1. 周一开盘后核对 A 股模拟盘自然轮次的 receipt 与决策结果，确认 rt-min 请求
    在预算内完成且无新增 fail-closed。
-2. 观察 crypto spot/book-ticker 的 lock-held 失败频率，决定是否提 PR 改为
-   有界阻塞等待或错峰调度。
+2. 观察 crypto journal 中 `lock_wait_seconds` 的频率与数值，确认锁冲突不再
+   造成整轮采集失败；异常时再评估错峰调度。
 3. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
 4. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
