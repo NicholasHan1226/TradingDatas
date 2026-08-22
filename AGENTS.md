@@ -28,10 +28,10 @@ provider registry
 数据质量不降级，但开发、内部试用与稳定生产不得再共用一扇门：
 
 - `contract_ready`：registry/config、字段/主键、cadence、consumer applicability、编译与失败测试均通过。它允许进入 capability manifest、TA 的受控兼容测试和候选发布准备；不声称上游权限、receipt、API 或生产可用。
-- `observed`：在受控窗口取得一次真实 provider -> SQLite receipt -> 固定 `catalog/query` 回读。它允许明确标注为一次性、内部只读试用；单次结果不等于连续健康、历史 PIT 或自动调度。
+- `observed`：在受控窗口取得一次真实 provider -> SQLite receipt -> 固定 `catalog/query` 回读。它允许明确标注的内部只读试用，以及在既有 provider 预算、隔离运行面和 fail-closed 语义内持续积累观察证据；单次结果不等于连续健康或历史 PIT。
 - `stable`：按该数据集适用 cadence 连续成功，且需要消费的 TA/Copilot 已完成受控 readback。它才是稳定生产能力的称谓；不要求无关消费者或尚未适用的 cadence 一并完成。
 
-`stable` 缺失只能阻止稳定生产声明、自动调度或相应发布切换，不能阻止后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。
+`stable` 缺失只能阻止稳定生产声明、无界扩容或相应发布切换，不能单独阻止已受控启用的隔离只读采集、后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。观察期 timer 的启用不是 `stable` 声明，仍受 provider 权限/预算、SQLite receipt、认证 API 回读和 fail-closed 完整性约束。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。
 
 ## Tushare 复用
 
@@ -155,5 +155,7 @@ registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并�
 - `docs/API.md`
 - `docs/OPERATIONS.md`
 - `docs/adr/ADR-0010-tradingdatas-clean-slate.md`
+- `docs/AUTHORITY_AND_HISTORY.md`
+- `docs/reports/`
 
 架构、API、运行路径、环境变量、频率或发布边界变化时，代码与上述文档同批更新。旧计划和事故说明不保留在当前树，必要追溯使用 Git 历史。
