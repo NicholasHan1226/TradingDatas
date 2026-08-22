@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
 import sqlite3
+import ssl
+from datetime import datetime, timezone
+from urllib.error import HTTPError, URLError
 
 import pytest
 
-
 pytestmark = pytest.mark.slow
 
+import tools.run_binance_spot_canary as spot_canary
+from collectors.binance import usdm_collector
 from collectors.binance.collector import _RejectRedirects
 from collectors.binance.usdm_collector import BinanceUsdmPublicCollector
-import collectors.binance.usdm_collector as usdm_collector
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
 from collectors.tushare.tushare_common import ProviderCallOutcome
 from dataset_registry import (
@@ -20,14 +23,12 @@ from dataset_registry import (
 from provider_transport import provider_transport_profile
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
-import tools.run_binance_spot_canary as spot_canary
+from tests.test_crypto_loopback_runtime import _ingest_result
 from tools.run_binance_usdm_canary import (
     funding_rate_window,
     open_interest_window,
     run,
 )
-from tests.test_crypto_loopback_runtime import _ingest_result
-
 
 SYMBOLS = (
     "BTCUSDT",
@@ -149,6 +150,57 @@ def test_usdm_collector_rejects_funding_rate_shape_drift(
     )
     assert outcome.state == "failed"
     assert outcome.error_code == "transport_error"
+
+
+@pytest.mark.parametrize(
+    ("failure", "diagnostic"),
+    (
+        (TimeoutError("request timed out"), "network_timeout"),
+        (
+            HTTPError(
+                "https://fapi.binance.com/private?token=should-not-appear",
+                429,
+                "rate limited",
+                None,
+                None,
+            ),
+            "http_status_429",
+        ),
+        (URLError(ssl.SSLError("certificate detail")), "tls_error"),
+        (URLError("relay 127.0.0.1:17890 unavailable"), "network_connection"),
+        (json.JSONDecodeError("provider payload", "not-json", 0), "response_decode"),
+        (ValueError("response shape drift"), "contract_validation"),
+        (RuntimeError("secret=must-not-appear"), "transport_unclassified"),
+    ),
+)
+def test_usdm_collector_logs_only_safe_transport_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    failure: Exception,
+    diagnostic: str,
+) -> None:
+    collector = BinanceUsdmPublicCollector()
+
+    def fail(*args, **kwargs):
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(collector, "_get", fail)
+    outcome = collector.collect_outcome(
+        "fundingRate_btcusdt",
+        {
+            "symbol": "BTCUSDT",
+            "start_time": "2026-07-26T08:00:00Z",
+            "end_time": "2026-07-27T00:00:00Z",
+        },
+    )
+
+    assert outcome.state == "failed"
+    assert outcome.error_code == "transport_error"
+    assert outcome.error_message == diagnostic
+    assert diagnostic in caplog.text
+    assert "should-not-appear" not in caplog.text
+    assert "must-not-appear" not in caplog.text
 
 
 def test_usdm_collector_rejects_funding_rate_symbol_mismatch() -> None:
@@ -457,6 +509,41 @@ def test_usdm_runner_retries_one_provider_error_and_preserves_both_receipts(
     assert calls.count("crypto.perp.binance.ethusdt.funding_rate") == 2
 
 
+def test_usdm_runner_logs_failed_dataset_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+
+    def collect(*args, **kwargs):
+        del args
+        dataset_id = kwargs["dataset_id"]
+        if dataset_id.endswith("ethusdt.funding_rate"):
+            return _ingest_result(
+                status="failed",
+                receipt_id="receipt:eth-fr-failure",
+                errors=("provider_error",),
+            )
+        return _ingest_result(
+            status="success",
+            receipt_id=f"receipt:{dataset_id}",
+        )
+
+    monkeypatch.setattr(spot_canary, "collect_provider_native_dataset", collect)
+    with pytest.raises(RuntimeError, match="one or more Crypto dataset collections failed"):
+        run(
+            db_path=tmp_path / "unused.sqlite",
+            lock_path=tmp_path / "collect.lock",
+            execute=True,
+            now=datetime(2026, 8, 2, 12, 10, tzinfo=timezone.utc),
+        )
+
+    assert "crypto_usdm_collection_failed" in caplog.text
+    assert "failed_dataset_count=1" in caplog.text
+    assert "funding_rate" in caplog.text
+
+
 def test_usdm_relay_transport_profile_is_loopback_socks5_end_to_end_tls() -> None:
     profile = provider_transport_profile("binance_usdm_relay")
     assert profile["connection_mode"] == "loopback_socks5_relay"
@@ -503,7 +590,6 @@ def test_socks5_connection_handshake_is_no_auth_domain_connect() -> None:
             return sock
 
     captured_tls = CaptureTLS()
-    monkeypatched = []
     orig_create = module.socket.create_connection
     try:
         module.socket.create_connection = lambda proxy, timeout=None: fake
