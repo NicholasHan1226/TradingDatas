@@ -7,25 +7,28 @@ there is no account, testnet, order, or API-key surface.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import http.client
 import json
+import logging
 import socket
+import ssl
+from datetime import datetime, timezone
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, build_opener
 
 from collectors.binance.collector import (
-    _RejectRedirects,
     _api_symbol,
     _iso_ms,
+    _RejectRedirects,
     _rfc3339_to_ms,
 )
 from collectors.tushare.tushare_common import ProviderCallOutcome, SensitiveScanBudget
 from provider_transport import BINANCE_USDM_PUBLIC_API_URL
 
 
-def _recv_exactly(sock: "socket.socket", count: int) -> bytes:
+def _recv_exactly(sock: socket.socket, count: int) -> bytes:
     chunks = b""
     while len(chunks) < count:
         chunk = sock.recv(count - len(chunks))
@@ -89,6 +92,41 @@ _OPEN_INTEREST_KEYS = frozenset(
 )
 _MAX_FUNDING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 _MAX_OPEN_INTEREST_WINDOW_MS = 24 * 60 * 60 * 1000
+_LOGGER = logging.getLogger(__name__)
+
+
+def _safe_transport_diagnostic(exc: Exception) -> str:
+    """Return a fixed, non-sensitive transport diagnostic label.
+
+    The public collector must not put provider bodies, URLs, exception text,
+    paths, or relay details into receipts or the journal. These labels retain
+    the operational distinction needed to diagnose a failed collection while
+    keeping the provider-neutral receipt error contract unchanged.
+    """
+
+    if isinstance(exc, HTTPError):
+        status = exc.code
+        if isinstance(status, int) and 400 <= status <= 599:
+            return f"http_status_{status}"
+        return "http_status_other"
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLError):
+            return "tls_error"
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            return "network_timeout"
+        return "network_connection"
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return "network_timeout"
+    if isinstance(exc, ssl.SSLError):
+        return "tls_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "response_decode"
+    if isinstance(exc, ValueError):
+        return "contract_validation"
+    if isinstance(exc, (ConnectionError, OSError)):
+        return "network_connection"
+    return "transport_unclassified"
 
 
 class BinanceUsdmPublicCollector:
@@ -126,13 +164,19 @@ class BinanceUsdmPublicCollector:
                 error_message=None,
                 scan_budget=scan_budget,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - convert every provider failure safely
+            diagnostic = _safe_transport_diagnostic(exc)
+            _LOGGER.warning(
+                "binance_usdm_public_call_failed provider=%s diagnostic=%s",
+                self.provider,
+                diagnostic,
+            )
             return ProviderCallOutcome(
                 state="failed",
                 rows=(),
                 provider_code=None,
                 error_code="transport_error",
-                error_message=type(exc).__name__,
+                error_message=diagnostic,
                 scan_budget=scan_budget,
             )
 

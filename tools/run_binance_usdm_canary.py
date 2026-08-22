@@ -13,37 +13,38 @@ so writers on the same SQLite stay serial.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
 import fcntl
 import json
-from pathlib import Path
+import logging
 import sys
-import uuid
-
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from collectors.binance.usdm_collector import (  # noqa: E402
+from collectors.binance.usdm_collector import (
     BinanceUsdmPublicCollector,
     BinanceUsdmRelayCollector,
 )
-from dataset_registry import (  # noqa: E402
+from dataset_registry import (
     BINANCE_CANARY_REGISTRY_PATH,
     BINANCE_SPOT_CANARY_MODE,
     load_dataset_registry,
 )
-from tools.compile_crypto_binance_canary_registry import (  # noqa: E402
+from tools.compile_crypto_binance_canary_registry import (
     FROZEN_CRYPTO_SYMBOL_COUNT,
 )
-from tools.run_binance_spot_canary import (  # noqa: E402
+from tools.run_binance_spot_canary import (
     _collect_with_one_provider_retry,
     _private_lock,
     _utc,
 )
 
 _FUNDING_LOOKBACK = timedelta(hours=48)
+_LOGGER = logging.getLogger(__name__)
 
 
 def _perp_datasets(registry, suffix: str) -> tuple[str, ...]:
@@ -172,6 +173,16 @@ def run(
             item["state"] not in {"success", "skipped_foreign_binding"}
             for item in results
         ):
+            failed = [item for item in results if item["state"] == "failed"]
+            by_kind = Counter(item["collection_kind"] for item in failed)
+            retry_total = sum(int(item["retry_count"]) for item in failed)
+            _LOGGER.error(
+                "crypto_usdm_collection_failed failed_dataset_count=%d "
+                "failed_dataset_counts_by_collection_kind=%s retry_total=%d",
+                len(failed),
+                dict(sorted(by_kind.items())),
+                retry_total,
+            )
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
             "datasets": results,
@@ -199,7 +210,7 @@ def main() -> int:
             execute=args.execute,
             now=now,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - preserve the systemd nonzero failure boundary
         print(
             json.dumps(
                 {"mode": "execute" if args.execute else "plan", "state": "failed"},
