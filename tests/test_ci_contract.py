@@ -51,7 +51,7 @@ def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
     assert 'contains("AUTODEV_RETURN_V1") and contains("decision=accepted")' in workflow
     assert 'candidate=([0-9a-f]{40})' in workflow
     assert '"$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA"' in workflow
-    assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge' in workflow
+    assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto' in workflow
     assert 'actions: write' in workflow
     assert 'actions/workflows/ci.yml/dispatches' in workflow
     assert 'inputs[expected_sha]=$MERGE_SHA' in workflow
