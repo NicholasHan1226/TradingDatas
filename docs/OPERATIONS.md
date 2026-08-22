@@ -297,7 +297,13 @@ systemd 仅从 `current` 启动入口脚本。入口立即解析到同一物理 
 registry 与 schedule 不接受 `/current/config/...` 环境覆盖；execute 模式也拒绝非本物理
 release 的 `--schedule-config`，避免代码/配置跨版本混配。
 
-当前 runtime 使用 `provider=tushare`、`transport_service=quicksync`。Tushare 官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责 endpoint、认证、权限码、分钟/每日频控和并发事实。QuickSync 凭证只建立账号身份，不代表接口权限；`entitled_active` 不是购买或计费状态。2026-07-21 CST（证据时间 2026-07-20Z）的单一 HTTPS 节点小响应探测曾取得并发 4、210/210 request starts 在一分钟内成功；该历史探测只是 transport 观测，不是当前 scheduler budget、供应商合同额度或已部署 production 配置。当前 scheduler 仍以本文上述每轮账号/provider/API `12/12/6` 为绑定上限；混合大响应、每日额度和 DNS failover 仍未知。timer 仅在 target release 的 preflight、rollback 与 server readback 通过后显式启用，单个接口成功不会自动扩权。
+`provider=tushare` 与 `transport_service=quicksync` 是两个独立身份。Tushare
+官方文档只负责 dataset/schema/cadence 参考；QuickSync 文档与真实有界探测才负责
+endpoint、认证、权限码和流控事实。凭证只建立账号身份，不代表接口权限，
+`entitled_active` 也不是购买或计费状态。并发、分钟/每日额度、scheduler budget 和
+DNS failover 都从目标 release 配置及带时间戳的有界探测读回，不在长期运维文档中
+硬编码。timer 仅在 target release 的 preflight、rollback 与 server readback 通过后
+显式启用，单个接口成功不会自动扩权。
 
 ## 运行顺序
 
@@ -415,11 +421,11 @@ release 的 `--schedule-config`，避免代码/配置跨版本混配。
    `--compilation-mode preactivation_candidate` 且把 `--output` 指向仓外私有临时路径时，
    compiler 才会生成 canary registry。正式 release 的 activation 只来自同版本、已审查的
    `active_evidence` 配置；因此 active/paused 计数必须由 immutable target 的 compiler 和
-   checked-in registry 共同读回。截至 2026-07-27，已部署 production release
-   `42fcf6c8822cf0b3268ee9ebdd20b207d69a3902` 的 99 / 91 是历史快照。main 的 `stk_factor_pro` 宽 schema
-   候选会在同一 2,000,000-node 安全上限内自动下调每批行数；它在 fresh release/readback 前
-   不是 production activation。受控 one-shot 不会把 active 状态等同于 ready；collector timer 的实际状态
-   必须由当前 release/runtime readback 判定，而不是仓库文本、历史 sidecar 或 CI fixture。
+   checked-in registry 共同读回。宽 schema 候选必须在编译器安全上限内自动下调每批行数，
+   且在 fresh release/readback 前不是 production activation。受控 one-shot 不会把 active
+   状态等同于 ready；collector timer 的实际状态必须由当前 release/runtime readback 判定，
+   而不是仓库文本、历史 sidecar 或 CI fixture。历史 release SHA、active/paused 数量与
+   timer 状态只保留在 Git 历史、带时间戳的 `STATUS.md` 或生成报告中。
 5. 运行一次受控 latest/current collection；
 6. 验证 facts、receipts、catalog/query 与 impaired negative cases；
 7. 在 generic runner 独立验收后安装唯一采集 service/timer；仅在发布 preflight 和回滚验证
