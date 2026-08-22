@@ -4,7 +4,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的金融数据服�
 
 它在 Finance 中只承担跨市场数据平台职责：接入数据接口、稳定采集、规范化写入数据库、持续积累、保留 lineage/receipt，并通过固定 `catalog/query` API 稳定供应各市场。TradingAgent/Quant Core 才是终局个人自动量化交易系统；TradingCopilot 只是过渡性的 A 股实盘辅助与观察工具。TradingDatas 不拥有预测、策略、模型晋级、资金、风险或订单 authority。
 
-当前主目标是把属于首期范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。Binance 公共数据作为隔离的第二 provider 纵向切片，覆盖冻结 40 个 USDT 标的的现货 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史（当前为 contract_ready 候选，timer 未启用），并使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 服务和 timer；无需且禁止 Binance 账户/API key。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。Crypto 运行合同见 [docs/CRYPTO_LOOPBACK_RUNTIME.md](docs/CRYPTO_LOOPBACK_RUNTIME.md)，实际部署状态以 [STATUS.md](STATUS.md) 为准。
+当前主目标是把属于首期范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。Binance 公共数据作为隔离的第二 provider 纵向切片，覆盖冻结 40 个 USDT 标的的现货 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史。Crypto 的 timer 可在隔离、只读、预算受控且 fail-closed 的观察期运行，以持续积累 receipt；单个 dataset 是否 `observed` 或 `stable` 仍只由其真实 receipt 与认证 API 回读决定。该切片使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 服务和 timer；无需且禁止 Binance 账户/API key。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。Crypto 运行合同见 [docs/CRYPTO_LOOPBACK_RUNTIME.md](docs/CRYPTO_LOOPBACK_RUNTIME.md)，实际部署状态以 [STATUS.md](STATUS.md) 为准。
 
 ## 当前开发优先级
 
@@ -35,10 +35,10 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 | 状态 | 最小证据 | 可做什么 | 不能声称什么 |
 |---|---|---|---|
 | `contract_ready` | registry/config、编译与失败测试 | 进入 capability manifest、TA 兼容测试、候选 PR | 上游权限、真实数据、生产可用 |
-| `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的一次性内部只读试用 | 连续健康、历史 PIT、自动调度 |
+| `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的内部只读试用与受预算约束的观察期采集 | 连续健康、历史 PIT、稳定生产声明 |
 | `stable` | 跨适用 cadence 连续成功，且适用 TA/Copilot 已 readback | 稳定生产能力声明与相应常规运行 | 覆盖所有无关消费者或未适用 cadence |
 
-缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；它只限制对应层级的运行声明和自动化。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。
 
 ## 普通数据集零代码接入
 
@@ -82,6 +82,7 @@ API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 pr
 - [API 合同](docs/API.md)
 - [运行与发布](docs/OPERATIONS.md)
 - [clean-slate 决策](docs/adr/ADR-0010-tradingdatas-clean-slate.md)
+- [事实权威、历史决策与复盘入口](docs/AUTHORITY_AND_HISTORY.md)
 
 官方 Tushare 合同批量快照入口：
 

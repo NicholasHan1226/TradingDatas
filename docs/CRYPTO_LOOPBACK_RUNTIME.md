@@ -1,9 +1,11 @@
 # Crypto loopback runtime
 
-The internal runtime is deployed from immutable release
-`24298b22f0bbd4a5746514dac96c92e59b8f3011`. It does not change the A-share
-API at `127.0.0.1:18082`, any Tushare timer, any A-share SQLite file, or any
-trading authority.
+The internal runtime is deployed from its own immutable release. The server
+readback on 2026-08-22 resolved `current` to
+`d711414bec41356724dd2bdbeaf4601459ff2778`; a later release must be verified
+from the server pointer rather than inferred from this document. It does not
+change the A-share API at `127.0.0.1:18082`, any Tushare timer, any A-share
+SQLite file, or any trading authority.
 
 ## Fixed isolation contract
 
@@ -20,11 +22,11 @@ trading authority.
 | rule unit | `tradingdatas-crypto-binance-rules.service` |
 | rule timer | `tradingdatas-crypto-binance-rules.timer`, daily public-rule refresh |
 | USDM candidate unit | `tradingdatas-crypto-binance-usdm-collect.service` |
-| USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer`, staggered two minutes after the bar timer; must stay disabled until the candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
+| USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer`, staggered two minutes after the bar timer; it may run as an isolated, budget-bounded observation timer, but does not by itself make any dataset `observed` or `stable` |
 | OI dump candidate unit | `tradingdatas-crypto-binance-oi-dump-collect.service` |
-| OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, every two hours at minute 37 (`*-*-* 00/2:37:00`) staggered off the five-minute timers; must stay disabled until the same candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
+| OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, every two hours at minute 37 (`*-*-* 00/2:37:00`) staggered off the five-minute timers; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
 | premium-index dump candidate unit | `tradingdatas-crypto-binance-premium-dump-collect.service` |
-| premium-index dump candidate timer | `tradingdatas-crypto-binance-premium-dump-collect.timer`, every two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`) staggered off the five-minute timers and the OI dump timer; must stay disabled until the same candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed |
+| premium-index dump candidate timer | `tradingdatas-crypto-binance-premium-dump-collect.timer`, every two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`) staggered off the five-minute timers and the OI dump timer; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
 | lock | `/opt/investment-data/tradingdatas-crypto/collect.lock` |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`
@@ -70,12 +72,14 @@ gates and do not change the enabled bar or rules timers. Every book-ticker
 collection keeps only the latest receipt-bound snapshot per symbol; it is not
 a replayable history. The USDⓈ-M candidate shares this data root, SQLite,
 release and loopback API, and its collector takes the same `collect.lock` so
-writers stay serial; its timer ships disabled and must not be enabled before
-the candidate gate in `CRYPTO_BINANCE_USDM_CANARY.md` is passed. Promotion
-requires every dataset in a promoted cohort to pass independent authenticated
-catalog/query readback. A symbol failure is isolated and must not be hidden by
-another symbol's healthy envelope. Bounded 180-day backfill remains a separate
-one-shot operation and is never real-time/PIT evidence.
+writers stay serial. Its timer may run for bounded, isolated observation
+accumulation; timer enablement never promotes a dataset, relaxes its
+receipt/API checks, or grants any authority beyond data collection. Promotion
+to `stable` still requires each promoted dataset's independent authenticated
+catalog/query readback and continuous cadence evidence. A symbol failure is
+isolated and must not be hidden by another symbol's healthy envelope. Bounded
+180-day backfill remains a separate one-shot operation and is never
+real-time/PIT evidence.
 
 On 2026-08-02, authenticated formal `18083` readback verified two adjacent
 completed 5m windows for all forty bar datasets. Every dataset returned a
@@ -125,8 +129,9 @@ it. Verify no
 listener exists on `18083`, the A-share release pointer and units are unchanged,
 and the Crypto release pointer resolves only below
 `/opt/investment/releases/tradingdatas-crypto`. The first proof must include
-authenticated catalog/query readback, receipt lineage, freshness, a
-disabled-timer readback before activation, and A-share isolation readback.
+authenticated catalog/query readback, receipt lineage, freshness, an explicit
+timer state readback before activation or observation continuation, and A-share
+isolation readback.
 
 Rollback is: disable and stop both
 `tradingdatas-crypto-binance-collect.timer` and

@@ -43,10 +43,11 @@ binance-usdm-via-sg-relay.v1`) speaks plain SOCKS5 CONNECT to that loopback
 endpoint and then negotiates TLS end-to-end with `fapi.binance.com` — SNI,
 Host and certificate verification are unchanged, so the relay can only drop
 traffic, never read or modify it.  There is deliberately no direct-egress
-fallback and no relay fallback to direct.  All forty `funding_rate` bindings
-moved to this provider with `activation_state: active`; collection stays
-gated by the disabled USDM timer until the production review (controlled
-collection plus authenticated readback) completes.
+fallback and no relay fallback to direct. All forty `funding_rate` bindings
+moved to this provider with `activation_state: active`. The USDM timer may
+collect them in the isolated, budget-bounded observation runtime; every
+dataset remains `contract_ready`, `observed`, or `stable` only according to
+its own receipt and authenticated API evidence.
 
 The dump binding downloads
 `data/futures/um/daily/metrics/<SYMBOL>/<SYMBOL>-metrics-YYYY-MM-DD.zip`, whose
@@ -85,9 +86,9 @@ exhausted by provider errors the outcome follows the
 `tradingdatas-crypto-binance-oi-dump-collect.{service,timer}` fires every two
 hours at minute 37 (`*-*-* 00/2:37:00`), staggered off the five-minute
 Spot/USDM timers that share the same lock, so a publication lag of hours is
-absorbed the same day.  Like the USDM pair, this timer must stay **disabled**
-until the same isolated production review (`observed` then `stable`)
-completes.
+absorbed the same day. Like the USDM pair, this timer may run only as an
+isolated, budget-bounded observation collector; it neither proves
+`observed`/`stable` nor authorizes any non-data action.
 
 Bounded historical backfill is a separate one-shot operation approved by the
 owner to align open interest with the bar history: `--backfill-days 198` (any
@@ -104,11 +105,10 @@ work, and every collected day still writes its own receipt-bound facts.
 Running it in a low-traffic window remains the operator's choice; it is never
 triggered by a timer.
 
-While the fapi binding is paused, the disabled
-`tools/run_binance_usdm_canary.py` runner can no longer execute its
-open-interest half (its funding-rate half is unchanged); that is accepted
-because the USDM timer stays disabled and the dump runner is the open-interest
-collection path under the degradation plan.
+While the fapi binding is paused,
+`tools/run_binance_usdm_canary.py` can no longer execute its open-interest
+half (its funding-rate half is unchanged); that is accepted because the dump
+runner is the open-interest collection path under the degradation plan.
 
 ## Premium-index dump: funding-pressure proxy
 
@@ -155,9 +155,10 @@ error after a positive probe is recorded without aborting the horizon, while
 non-provider failures still stop the run fail closed.  The unit pair
 `tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` fires every
 two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`), staggered off both
-the five-minute timers and the `00/2:37:00` open-interest dump timer.  Like
-the USDM and OI-dump pairs, this timer must stay **disabled** until the same
-isolated production review (`observed` then `stable`) completes.
+the five-minute timers and the `00/2:37:00` open-interest dump timer. Like the
+USDM and OI-dump pairs, this timer may run only for isolated, budget-bounded
+observation accumulation; it does not independently prove `observed` or
+`stable`.
 
 ## Frozen v1 cohort
 
@@ -205,12 +206,14 @@ run retried by the next timer tick; the funding window self-heals, while a
 missed open-interest interval stays a gap until a bounded replay is
 explicitly approved.
 
-These eighty datasets are **contract_ready candidates only**. The unit pair
-`tradingdatas-crypto-binance-usdm-collect.{service,timer}` ships in the
-repository but the timer must stay disabled until an isolated production
-review completes a real provider → SQLite receipt → authenticated
-catalog/query readback (`observed`) and then continuous-cadence evidence
-(`stable`); only then may the timer be enabled. A successful compile, test
-run, catalog entry, or plan-mode output is not evidence of upstream
-availability or production readiness. Bounded historical backfill is a
-separate one-shot decision and is not part of this candidate.
+These eighty datasets begin as **contract_ready candidates**. The unit pair
+`tradingdatas-crypto-binance-usdm-collect.{service,timer}` may be enabled for
+isolated, budget-bounded observation collection after its release, service,
+rollback and API-auth boundary have been checked. Timer enablement only
+accumulates receipt-bound evidence: a dataset becomes `observed` after a real
+provider → SQLite receipt → authenticated catalog/query readback, and becomes
+`stable` only after continuous-cadence evidence and applicable consumer
+readback. A successful compile, test run, catalog entry, plan-mode output or
+enabled timer is not evidence of upstream availability or stable production.
+Bounded historical backfill is a separate one-shot decision and is not part of
+this candidate.
