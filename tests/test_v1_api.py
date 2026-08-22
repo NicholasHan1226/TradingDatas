@@ -467,6 +467,28 @@ def test_v1_group_02_exact_path_method_and_options(
         assert headers["allow"] == allow
 
 
+def test_admin_api_options_preflight_does_not_require_credentials(
+    v1_server: _Harness,
+) -> None:
+    status, payload, headers, raw = v1_server.request(
+        "OPTIONS",
+        "/admin/api/tokens",
+        token=None,
+        headers=[
+            ("Origin", "https://tradingdatas-admin.pages.dev"),
+            ("Access-Control-Request-Method", "GET"),
+            ("Access-Control-Request-Headers", "authorization"),
+        ],
+    )
+
+    assert status == 204
+    assert payload is None
+    assert raw == b""
+    assert headers["access-control-allow-origin"] == "*"
+    assert headers["access-control-allow-methods"] == "GET, POST, PATCH, DELETE, OPTIONS"
+    assert headers["access-control-allow-headers"] == "Authorization, Content-Type, X-API-Key"
+
+
 @pytest.mark.parametrize(
     ("method", "path", "allow"),
     [

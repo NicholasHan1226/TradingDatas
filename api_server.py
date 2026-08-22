@@ -616,6 +616,13 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/admin", "/admin/") and method == "GET":
             return self._serve_admin_console()
 
+        # Browser CORS preflight carries no credentials.  It can advertise the
+        # supported methods without granting access to an admin resource; the
+        # subsequent request still passes the normal authentication and scope
+        # checks below.
+        if path.startswith("/admin/api/") and method == "OPTIONS":
+            return self._write_v1_options("GET, POST, PATCH, DELETE, OPTIONS")
+
         # Admin API routes require authentication
         try:
             account = auth.authenticate(self.headers, self.client_address[0])

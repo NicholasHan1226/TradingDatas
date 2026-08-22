@@ -30,17 +30,26 @@ After deployment, open the admin console and:
 
 The settings will persist across sessions.
 
-The default backend is the Aliyun origin (`http://8.138.181.177:18084`), set in `static/index.html`.
+The production default backend is `https://td-admin-api.tradingagent.cc`, set in
+`static/index.html`. It reaches the private Admin service through a dedicated
+Cloudflare Tunnel; do not change the Pages build to call an IP address directly.
 
-## Why no same-origin `/api` proxy
+## Production route
 
-A Cloudflare Pages Function proxying `/api/*` to the Aliyun origin is not viable with the current setup:
+Cloudflare Pages hosts the static console. A dedicated Tunnel named
+`tradingdatas-admin-api` publishes `td-admin-api.tradingagent.cc` and forwards
+only to the TD host's loopback Admin listener (`127.0.0.1:18084`). This removes
+the HTTPS-page-to-HTTP-origin mixed-content failure without exposing the origin
+IP as the browser API target.
 
-- Cloudflare Workers `fetch()` cannot target IP literals (error 1003).
-- Wrapping the IP in a domain (e.g. `sslip.io`) trips Aliyun's ICP gate for unfiled domains on China-mainland ports.
-- The `Host` header cannot be overridden in Workers to bypass that gate.
+The TD host runs this as an independent `tradingdatas-admin-api-tunnel.service`.
+Its Tunnel credential belongs in the root-only environment file on that host and
+must never be committed, copied into Pages, or placed in browser storage.
 
-Until the backend gets a filed domain with TLS, the browser calls the Aliyun origin directly over HTTP. Frontend→backend traffic carries only the admin token; rotate it if compromise is suspected.
+To verify the published boundary, `GET /admin/` must return 200 over HTTPS and
+an unauthenticated `GET /admin/api/...` must return 401. Those are distinct
+checks; use an authenticated readback separately when an admin token is in
+scope.
 
 ## Data Browser
 
@@ -48,7 +57,10 @@ The console includes a Data Browser tab: filter `/v1/catalog`, click a dataset t
 
 ## CORS Requirements
 
-Your backend must allow CORS from the Cloudflare Pages domain:
+Your backend must return a successful unauthenticated preflight for
+`OPTIONS /admin/api/*`; browsers send it before cross-origin requests that use
+the `Authorization` header. The preflight grants no API access—the subsequent
+request still requires the admin token.
 
 ```python
 # In your backend, add:

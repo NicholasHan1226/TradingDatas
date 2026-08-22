@@ -213,11 +213,16 @@ TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交�
 
 ## Admin Console API
 
-管理控制台提供内部管理员使用的 token 管理、采集状态监控和用量统计接口。所有 admin 路由需要 `admin` scope 或 `internal` tier 的认证。
+管理控制台提供内部管理员使用的 token 管理、采集状态监控和用量统计接口。除 CORS 预检外，所有 admin API 路由需要 `admin` scope 或 `internal` tier 的认证。
 
 ### GET /admin/
 
 返回管理控制台 HTML 页面（单页应用，Tailwind CSS）。
+
+### OPTIONS /admin/api/*
+
+跨域浏览器请求在携带 `Authorization` 前会发送无凭据预检。该请求返回 `204` 和允许的
+methods/headers，不读取或返回任何管理数据；后续实际请求仍执行完整认证与 scope 校验。
 
 ### GET /admin/api/tokens
 
