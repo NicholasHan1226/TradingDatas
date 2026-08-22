@@ -148,18 +148,37 @@ jobs:
           # Keep this SHA- and Controller-bound; --auto waits for the same
           # required checks instead of bypassing them.
           if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto; then
-            MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merge_commit_sha // empty')"
-            [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
-            CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-            [[ "$MERGE_SHA" == "$CURRENT_MAIN_SHA" ]] || {
-              echo "Main advanced after merge; skip stale exact-main dispatch for ${MERGE_SHA:0:8}."
-              exit 0
-            }
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
-              -f ref=main \
-              -f 'inputs[suite]=pr' \
-              -f "inputs[expected_sha]=$MERGE_SHA"
-            echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}. Controller must separately verify server source, immutable release, and runtime; deploy.yml only covers static/**."
+            # --auto can return before GitHub actually merges.  Do not use the
+            # prospective test-merge SHA from an open PR: wait for the actual
+            # closed/merged record before dispatching post-merge verification.
+            for _ in {1..20}; do
+              PR_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+              STATE_AFTER="$(jq -r '.state' <<<"$PR_AFTER")"
+              MERGED_AT="$(jq -r '.merged_at // empty' <<<"$PR_AFTER")"
+              MERGE_SHA="$(jq -r '.merge_commit_sha // empty' <<<"$PR_AFTER")"
+              if [[ "$STATE_AFTER" == "closed" && -n "$MERGED_AT" ]]; then
+                [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+                CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+                [[ "$MERGE_SHA" == "$CURRENT_MAIN_SHA" ]] || {
+                  echo "Main advanced after merge; skip stale exact-main dispatch for ${MERGE_SHA:0:8}."
+                  exit 0
+                }
+                gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
+                  -f ref=main \
+                  -f 'inputs[suite]=pr' \
+                  -f "inputs[expected_sha]=$MERGE_SHA"
+                if grep -q '^static/' <<<"$CHANGED_FILES"; then
+                  gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/dispatches" \
+                    -f ref=main \
+                    -f "inputs[expected_sha]=$MERGE_SHA"
+                fi
+                echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}, plus static deploy when applicable. Controller must separately verify server source, immutable release, and runtime."
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "Auto-merge is enabled for PR #${PR_NUMBER}; it has not merged within this bounded wait, so no post-merge workflow was dispatched."
+            exit 0
           else
             PR_STATE_AFTER="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
             if [[ "$PR_STATE_AFTER" != "open" ]]; then

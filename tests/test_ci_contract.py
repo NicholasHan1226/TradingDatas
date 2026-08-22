@@ -55,6 +55,10 @@ def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
     assert 'actions: write' in workflow
     assert 'actions/workflows/ci.yml/dispatches' in workflow
     assert 'inputs[expected_sha]=$MERGE_SHA' in workflow
+    assert "--auto can return before GitHub actually merges" in workflow
+    assert "MERGED_AT=\"$(jq -r '.merged_at // empty' <<<\"$PR_AFTER\")\"" in workflow
+    assert 'actions/workflows/deploy.yml/dispatches' in workflow
+    assert "grep -q '^static/'" in workflow
 
 
 def test_automerge_keeps_m0_narrow_and_m1_controller_bound() -> None:
@@ -79,5 +83,9 @@ def test_automerge_never_mutates_a_stale_candidate_branch() -> None:
 def test_static_deploy_has_a_published_route_readback() -> None:
     workflow = _read(".github/workflows/deploy.yml")
 
+    assert "workflow_dispatch:" in workflow
+    assert "expected_sha:" in workflow
+    assert "SOURCE_SHA:" in workflow
+    assert "Verify checkout identity" in workflow
     assert "Read back published static route" in workflow
     assert "https://tradingdatas-admin.pages.dev/" in workflow
