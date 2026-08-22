@@ -3,9 +3,10 @@
 ## GET /v1/catalog
 
 返回首期产品范围内、已经具备 provider-neutral runtime contract 的可发现数据集、
-schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。当前运行目录
-为 190 项；另有 32 项只存在于 222 项产品能力发现 artifact 中，在 dataset identity、
-schema 和请求合同冻结前不进入 runtime registry、SQLite、scheduler 或查询 API。
+schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state。运行目录与更广
+的产品能力发现 artifact 是两个版本化对象；尚未冻结 dataset identity、schema 和请求
+合同的发现项不进入 runtime registry、SQLite、scheduler 或查询 API。具体数量是易变
+运行事实，只在带 `observed_at` 的 `STATUS.md` 或生成报告中记录。
 
 目录可发现性与查询/运行资格是两个独立事实：`excluded`、`retired` 或其它未激活项
 仍应在 catalog 中如实展示其状态，但只有同一 provider binding 同时满足
