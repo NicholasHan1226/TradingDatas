@@ -59,7 +59,7 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 `GET /admin/` 提供内部管理界面，页面本身无需认证即可加载，API 调用需要 `admin` scope 或 `internal` tier 认证。
 
-**前端部署**：前端代码位于 `static/index.html`，部署到 Cloudflare Pages（`tradingdatas-admin.pages.dev`），由 GitHub Actions 在 push main 且 `static/**` 变化时自动部署。后端管理服务在阿里云 ECS `/opt/td-admin`（systemd `tradingdatas-admin.service`，0.0.0.0:18084，`td-admin-autodeploy.timer` 每 5 分钟自动拉取），`/admin/` 直接读磁盘 `static/index.html`。Pages 的生产默认 API 是 `https://td-admin-api.tradingagent.cc`：专用 Cloudflare Tunnel `tradingdatas-admin-api` 仅转发到同一主机的 `127.0.0.1:18084`，连接器由 `tradingdatas-admin-api-tunnel.service` 管理，凭据只保留在服务器 root-only 环境文件。不得把浏览器改回直连 HTTP IP，也不得将 Tunnel 凭据写入仓库或 Pages。管理 API 的无凭据 `OPTIONS /admin/api/*` 必须返回 CORS preflight 成功；这不放宽后续实际请求的 admin/internal 认证。控制台含 Data Browser tab：按 dataset 浏览 `/v1/query` 落库数据（forward-only cursor）。控制台含 Token 管理、用量趋势、采集状态、健康告警与数据浏览器（按数据集分页预览 `/v1/query` 结果）。
+**前端部署**：前端代码位于 `static/index.html`，部署到 Cloudflare Pages（`tradingdatas-admin.pages.dev`），由 GitHub Actions 在 push main 且 `static/**` 变化时自动部署。后端管理服务在阿里云 ECS `/opt/td-admin`（systemd `tradingdatas-admin.service`，0.0.0.0:18084，`td-admin-autodeploy.timer` 每 5 分钟自动拉取），`/admin/` 直接读磁盘 `static/index.html`。Pages 的生产默认 API 是 `https://td-admin-api.tradingagent.cc`；该公开 HTTPS/auth 边界须由相应运行时交付分别读回，仓库不凭此客户端配置断言 Tunnel 名称、systemd unit 或凭据落点。不得把浏览器改回直连 HTTP IP，也不得将任何路由凭据写入仓库或 Pages。管理 API 的无凭据 `OPTIONS /admin/api/*` 必须返回 CORS preflight 成功；这不放宽后续实际请求的 admin/internal 认证。控制台含 Data Browser tab：按 dataset 浏览 `/v1/query` 落库数据（forward-only cursor）。控制台含 Token 管理、用量趋势、采集状态、健康告警与数据浏览器（按数据集分页预览 `/v1/query` 结果）。
 
 管理 API 路由：
 

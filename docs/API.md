@@ -223,6 +223,8 @@ TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交�
 
 跨域浏览器请求在携带 `Authorization` 前会发送无凭据预检。该请求返回 `204` 和允许的
 methods/headers，不读取或返回任何管理数据；后续实际请求仍执行完整认证与 scope 校验。
+当前策略以 bearer token 认证且不使用 cookie/session，因此响应明确使用 `Access-Control-Allow-Origin: *`。
+若将来引入 cookie 或浏览器凭据，必须改为显式 allowlist，不能沿用 wildcard。
 
 ### GET /admin/api/tokens
 
