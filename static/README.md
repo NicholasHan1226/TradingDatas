@@ -30,17 +30,24 @@ After deployment, open the admin console and:
 
 The settings will persist across sessions.
 
-The default backend is the Aliyun origin (`http://8.138.181.177:18084`), set in `static/index.html`.
+The production default backend is `https://td-admin-api.tradingagent.cc`, set in
+`static/index.html`. Do not change the Pages build to call an IP address directly.
 
-## Why no same-origin `/api` proxy
+## Production route
 
-A Cloudflare Pages Function proxying `/api/*` to the Aliyun origin is not viable with the current setup:
+Cloudflare Pages hosts the static console. The configured HTTPS endpoint removes
+the HTTPS-page-to-HTTP-origin mixed-content failure without making an origin IP
+the browser API target. Its tunnel, connector/service, listener and credential
+placement are runtime-delivery concerns: verify them from the target environment
+before claiming them; this repository does not define or prove those details.
 
-- Cloudflare Workers `fetch()` cannot target IP literals (error 1003).
-- Wrapping the IP in a domain (e.g. `sslip.io`) trips Aliyun's ICP gate for unfiled domains on China-mainland ports.
-- The `Host` header cannot be overridden in Workers to bypass that gate.
+Never commit route credentials, copy them into Pages, or place them in browser
+storage.
 
-Until the backend gets a filed domain with TLS, the browser calls the Aliyun origin directly over HTTP. Frontend→backend traffic carries only the admin token; rotate it if compromise is suspected.
+To verify the published boundary, `GET /admin/` must return 200 over HTTPS and
+an unauthenticated `GET /admin/api/...` must return 401. Those are distinct
+checks; use an authenticated readback separately when an admin token is in
+scope.
 
 ## Data Browser
 
@@ -48,7 +55,14 @@ The console includes a Data Browser tab: filter `/v1/catalog`, click a dataset t
 
 ## CORS Requirements
 
-Your backend must allow CORS from the Cloudflare Pages domain:
+Your backend must return a successful unauthenticated preflight for
+`OPTIONS /admin/api/*`; browsers send it before cross-origin requests that use
+the `Authorization` header. The preflight grants no API access—the subsequent
+request still requires the admin token.
+
+The current policy intentionally returns `Access-Control-Allow-Origin: *` for a
+bearer-token-only API with no cookie/session authentication. If cookie or browser
+credentials are added, replace the wildcard with an explicit origin allowlist.
 
 ```python
 # In your backend, add:

@@ -232,6 +232,7 @@ class _Harness:
         self.port = int(base_url.rsplit(":", 1)[1])
         self.catalog = catalog
         self.query = query
+        self.last_response_headers: list[tuple[str, str]] = []
 
     def request(
         self,
@@ -254,8 +255,9 @@ class _Harness:
         connection.endheaders(body)
         response = connection.getresponse()
         raw = response.read()
+        self.last_response_headers = response.getheaders()
         response_headers = {
-            name.lower(): value for name, value in response.getheaders()
+            name.lower(): value for name, value in self.last_response_headers
         }
         status = response.status
         connection.close()
@@ -465,6 +467,45 @@ def test_v1_group_02_exact_path_method_and_options(
         assert payload is not None
     if allow is not None:
         assert headers["allow"] == allow
+
+
+def test_admin_api_options_preflight_does_not_require_credentials(
+    v1_server: _Harness,
+) -> None:
+    status, payload, headers, raw = v1_server.request(
+        "OPTIONS",
+        "/admin/api/tokens",
+        token=None,
+        headers=[
+            ("Origin", "https://tradingdatas-admin.pages.dev"),
+            ("Access-Control-Request-Method", "GET"),
+            ("Access-Control-Request-Headers", "authorization"),
+        ],
+    )
+
+    assert status == 204
+    assert payload is None
+    assert raw == b""
+    assert headers["access-control-allow-origin"] == "*"
+    assert headers["access-control-allow-methods"] == "GET, POST, PATCH, DELETE, OPTIONS"
+    assert headers["access-control-allow-headers"] == "Authorization, Content-Type, X-API-Key"
+
+
+def test_admin_api_unauthenticated_response_has_one_cors_origin_header(
+    v1_server: _Harness,
+) -> None:
+    status, payload, headers, _raw = v1_server.request(
+        "GET", "/admin/api/tokens", token=None
+    )
+
+    assert status == 401
+    assert payload is not None
+    assert headers["access-control-allow-origin"] == "*"
+    assert [
+        value
+        for name, value in v1_server.last_response_headers
+        if name.casefold() == "access-control-allow-origin"
+    ] == ["*"]
 
 
 @pytest.mark.parametrize(

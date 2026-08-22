@@ -440,7 +440,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Origin", "*")
         if allow is not None:
             self.send_header("Allow", allow)
         if self.close_connection:
@@ -615,6 +614,13 @@ class Handler(BaseHTTPRequestHandler):
         # Serve admin console HTML without authentication (page loads, API calls need auth)
         if path in ("/admin", "/admin/") and method == "GET":
             return self._serve_admin_console()
+
+        # Browser CORS preflight carries no credentials.  It can advertise the
+        # supported methods without granting access to an admin resource; the
+        # subsequent request still passes the normal authentication and scope
+        # checks below.
+        if path.startswith("/admin/api/") and method == "OPTIONS":
+            return self._write_v1_options("GET, POST, PATCH, DELETE, OPTIONS")
 
         # Admin API routes require authentication
         try:

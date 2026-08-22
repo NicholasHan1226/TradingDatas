@@ -25,7 +25,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
       <p class="text-sm text-gray-500 mt-1">Internal data platform management</p>
     </div>
     <div class="flex items-center gap-2">
-      <input id="api-url-input" type="text" placeholder="API base URL (default: http://8.138.181.177:18084)" class="border rounded px-3 py-1.5 text-sm w-64" />
+      <input id="api-url-input" type="text" placeholder="API base URL (default: https://td-admin-api.tradingagent.cc)" class="border rounded px-3 py-1.5 text-sm w-64" />
       <button onclick="saveApiUrl()" class="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700">API URL</button>
       <input id="token-input" type="password" placeholder="Enter API token" class="border rounded px-3 py-1.5 text-sm w-64" />
       <button onclick="saveToken()" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">Save</button>
@@ -154,10 +154,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 
 <script>
 // API URL configuration
-// https origin (Cloudflare Pages) routes through the same-origin /api proxy so the
-// admin token never crosses plain HTTP; http origin (local dev) falls back to direct.
+// Production traffic uses the configured HTTPS endpoint.
+// Local development can override it through the API URL control below.
 if (localStorage.getItem('td_api_base') === 'http://8.138.181.177:18084') localStorage.removeItem('td_api_base');
-let API_BASE = localStorage.getItem('td_api_base') || 'http://8.138.181.177:18084';
+let API_BASE = localStorage.getItem('td_api_base') || 'https://td-admin-api.tradingagent.cc';
 document.getElementById('api-url-input').value = API_BASE;
 
 function saveApiUrl() {
