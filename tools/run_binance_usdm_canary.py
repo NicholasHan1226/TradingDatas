@@ -17,6 +17,7 @@ import fcntl
 import json
 import logging
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -38,8 +39,8 @@ from tools.compile_crypto_binance_canary_registry import (
     FROZEN_CRYPTO_SYMBOL_COUNT,
 )
 from tools.run_binance_spot_canary import (
+    _bounded_lock,
     _collect_with_one_provider_retry,
-    _private_lock,
     _utc,
 )
 
@@ -116,7 +117,9 @@ def run(
         != BINANCE_SPOT_CANARY_MODE
     ):
         raise RuntimeError("Binance canary mode is required")
-    lock = _private_lock(lock_path)
+    lock_wait_started = time.monotonic()
+    lock = _bounded_lock(lock_path)
+    lock_wait_seconds = time.monotonic() - lock_wait_started
     try:
         collectors = {
             "binance_usdm": BinanceUsdmPublicCollector(),
@@ -186,6 +189,7 @@ def run(
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
             "datasets": results,
+            "lock_wait_seconds": round(lock_wait_seconds, 3),
             "mode": "execute",
             "state": "success",
         }
@@ -210,10 +214,14 @@ def main() -> int:
             execute=args.execute,
             now=now,
         )
-    except Exception:  # noqa: BLE001 - preserve the systemd nonzero failure boundary
+    except Exception as error:  # noqa: BLE001 - preserve the systemd nonzero failure boundary
         print(
             json.dumps(
-                {"mode": "execute" if args.execute else "plan", "state": "failed"},
+                {
+                    "error": f"{type(error).__name__}: {error}",
+                    "mode": "execute" if args.execute else "plan",
+                    "state": "failed",
+                },
                 sort_keys=True,
             )
         )
