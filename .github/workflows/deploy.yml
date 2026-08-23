@@ -49,4 +49,4 @@ jobs:
           set -euo pipefail
           curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
             --connect-timeout 10 --max-time 30 https://tradingdatas-admin.pages.dev/ \
-            | grep -F '<!doctype html>'
+            | grep -Fi '<!doctype html>'

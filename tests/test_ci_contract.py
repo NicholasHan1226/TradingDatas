@@ -89,3 +89,4 @@ def test_static_deploy_has_a_published_route_readback() -> None:
     assert "Verify checkout identity" in workflow
     assert "Read back published static route" in workflow
     assert "https://tradingdatas-admin.pages.dev/" in workflow
+    assert "grep -Fi '<!doctype html>'" in workflow
