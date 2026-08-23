@@ -31,6 +31,7 @@ from storage.ingest_receipts import (
 from storage.schema_contract import (
     PROVIDER_DATASET_ROWS_COLUMNS,
     PROVIDER_DATASET_ROWS_TABLE,
+    ensure_provider_dataset_rows_coverage_index,
     get_table,
     require_clean_sqlite_authority_schema,
 )
@@ -707,6 +708,7 @@ def ingest_provider_native_rows(
         try:
             conn.execute("BEGIN IMMEDIATE")
             _require_existing_table(conn)
+            ensure_provider_dataset_rows_coverage_index(conn)
             require_unchanged_sqlite_binding(db_binding)
             counts, expected_rows = _write_prepared_rows(
                 conn,

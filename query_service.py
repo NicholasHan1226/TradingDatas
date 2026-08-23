@@ -2410,7 +2410,9 @@ class QueryService:
                         "SELECT MAX("
                         f"{_field_expression(dataset, dataset.partition_field)}) "
                         f"FROM main.{_quote_identifier(_PROVIDER_NATIVE_TABLE)}"
-                        f"{_where_clause(predicates)}"
+                        " INDEXED BY "
+                        + _quote_identifier(_PROVIDER_NATIVE_PARTITION_INDEX)
+                        + f"{_where_clause(predicates)}"
                     )
                     partition_row = conn.execute(partition_sql, params).fetchone()
                     if partition_row is None or len(partition_row) != 1:
