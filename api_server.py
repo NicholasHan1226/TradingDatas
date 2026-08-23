@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import math
@@ -10,6 +11,7 @@ import os
 import re
 import socket
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from email.utils import formatdate
@@ -93,6 +95,44 @@ _process_config_loaded = False
 _CANONICAL_CONTENT_LENGTH_RE = re.compile(r"(?:0|[1-9][0-9]*)\Z", re.ASCII)
 _CANONICAL_POSITIVE_INTEGER_RE = re.compile(r"[1-9][0-9]*\Z", re.ASCII)
 _INVALID_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+# Coarse pre-authentication gate: auth.authenticate burns a full PBKDF2
+# derivation per request before any per-account limit can apply, so an
+# anonymous client spraying bearer tokens converts request volume directly
+# into CPU load.  Bound attempts per source address well above any legit
+# internal consumer while capping the unauthenticated work multiplier.
+_AUTH_ATTEMPT_WINDOW_SECONDS = 60.0
+_AUTH_ATTEMPTS_PER_WINDOW = 600
+_AUTH_ATTEMPT_TRACK_CAP = 4096
+_AUTH_LIMITER_LOCK = threading.Lock()
+_AUTH_ATTEMPT_TIMES: dict[str, list[float]] = {}
+
+
+def _auth_attempt_allowed(client_ip: str) -> bool:
+    try:
+        if ipaddress.ip_address(client_ip).is_loopback:
+            return True
+    except ValueError:
+        pass
+    now = time.monotonic()
+    with _AUTH_LIMITER_LOCK:
+        times = _AUTH_ATTEMPT_TIMES.get(client_ip)
+        if times is None:
+            if len(_AUTH_ATTEMPT_TIMES) >= _AUTH_ATTEMPT_TRACK_CAP:
+                cutoff = now - _AUTH_ATTEMPT_WINDOW_SECONDS
+                for key in [k for k, v in _AUTH_ATTEMPT_TIMES.items() if not v or v[-1] <= cutoff]:
+                    del _AUTH_ATTEMPT_TIMES[key]
+                if len(_AUTH_ATTEMPT_TIMES) >= _AUTH_ATTEMPT_TRACK_CAP:
+                    _AUTH_ATTEMPT_TIMES.clear()
+            times = _AUTH_ATTEMPT_TIMES.setdefault(client_ip, [])
+        cutoff = now - _AUTH_ATTEMPT_WINDOW_SECONDS
+        while times and times[0] <= cutoff:
+            times.pop(0)
+        if len(times) >= _AUTH_ATTEMPTS_PER_WINDOW:
+            return False
+        times.append(now)
+        return True
+
+
 _V1_ERROR_DETAILS: dict[str, tuple[str, bool]] = {
     "invalid_request": ("request is invalid", False),
     "unauthenticated": ("authentication required", False),
@@ -624,6 +664,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_options("GET, POST, PATCH, DELETE, OPTIONS")
 
         # Admin API routes require authentication
+        if not _auth_attempt_allowed(self.client_address[0]):
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
         except auth.RateLimitError:
@@ -975,6 +1019,10 @@ class Handler(BaseHTTPRequestHandler):
                 suppress_body=suppress_body,
             )
 
+        if not _auth_attempt_allowed(self.client_address[0]):
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
         except auth.RateLimitError:
