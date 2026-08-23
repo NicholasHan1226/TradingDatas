@@ -118,6 +118,6 @@ def test_starter_file_is_json_compatible_yaml() -> None:
     payload = json.loads(
         (Path(__file__).resolve().parents[1] / "config/polymarket_starter_markets.v1.yaml").read_text()
     )
-    assert payload["status"] == "draft_unverified_candidates"
+    assert payload["status"] == "relay_verified_phase0_2026-08-24"
     assert len(payload["markets"]) == 14
     assert all(item["verification_required"] is True for item in payload["markets"])
