@@ -8,6 +8,7 @@ export interface PortalInfo {
   enabled: boolean
   max_concurrent: number | null
   hourly_request_limit: number | null
+  minute_request_limit?: number | null
   daily_limit: number | null
   expires_at: string | null
   usage: {

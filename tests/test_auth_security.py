@@ -590,6 +590,73 @@ def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module.enforce_rate_limit(account_b["tenant_id"], account_b["tier"])
 
 
+def test_commercial_minute_tier_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
+    # Deterministic clock + tiny budget so the window boundary is exercisable.
+    clock = {"now": 1_000_000.0}
+    monkeypatch.setattr(auth_module, "_now", lambda: clock["now"])
+    monkeypatch.setitem(auth_module.MINUTE_RATE_LIMITS, "basic", 2)
+
+    for _ in range(2):
+        auth_module.enforce_rate_limit("tenant-basic", "basic")
+    with pytest.raises(auth_module.RateLimitError, match="minute rate limit"):
+        auth_module.enforce_rate_limit("tenant-basic", "basic")
+
+    # Sliding past the 60s boundary frees the budget again.
+    clock["now"] += auth_module.MINUTE_RATE_WINDOW_SECONDS + 1
+    auth_module.enforce_rate_limit("tenant-basic", "basic")
+
+
+def test_commercial_tiers_have_no_hourly_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
+    clock = {"now": 2_000_000.0}
+    monkeypatch.setattr(auth_module, "_now", lambda: clock["now"])
+    monkeypatch.setitem(auth_module.MINUTE_RATE_LIMITS, "flagship", 10**9)
+
+    # A commercial tier must not inherit any hourly fallback (regression:
+    # falling back to the free-tier hourly cap would reject at request 61).
+    for _ in range(120):
+        auth_module.enforce_rate_limit("tenant-flagship", "flagship")
+
+
+def test_commercial_tier_constants_and_effective_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
+
+    assert auth_module.MINUTE_RATE_LIMITS == {
+        "basic": 200,
+        "standard": 600,
+        "flagship": 1000,
+    }
+    assert auth_module.RATE_LIMITS["basic"] is None
+    assert auth_module.RATE_LIMITS["standard"] is None
+    assert auth_module.RATE_LIMITS["flagship"] is None
+    assert auth_module.CONCURRENCY_LIMITS["basic"] == 4
+    assert auth_module.CONCURRENCY_LIMITS["standard"] == 8
+    assert auth_module.CONCURRENCY_LIMITS["flagship"] == 16
+
+    assert auth_module.effective_limits({"tier": "basic"})[
+        "minute_request_limit"
+    ] == 200
+    assert auth_module.effective_limits({"tier": "standard"})[
+        "minute_request_limit"
+    ] == 600
+    assert auth_module.effective_limits({"tier": "flagship"})[
+        "minute_request_limit"
+    ] == 1000
+    assert (
+        auth_module.effective_limits({"tier": "pro"})["minute_request_limit"]
+        is None
+    )
+    assert (
+        auth_module.effective_limits({"tier": "basic"})["hourly_request_limit"]
+        is None
+    )
+
+
 def test_account_tiers_define_internal_and_future_packages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

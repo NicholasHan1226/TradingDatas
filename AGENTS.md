@@ -89,7 +89,14 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 - `expires_at`（RFC3339/Unix 时间戳）：token 有效期
 - `daily_limit`（number/null）：每日请求上限，null 或省略 = 无限
 
-`enforce_daily_limit` 在 `enforce_rate_limit`（每小时窗口）之后执行，超限时返回 429 `daily_limit_exceeded`。
+`tier` 档位与频率/并发（`auth.py` 常量，admin PATCH 可 per-token 覆盖并发）：
+
+- 商业三档：`basic` 200 次/分钟、`standard` 600 次/分钟、`flagship` 1000 次/分钟，
+  默认并发 4/8/16。按滑动 60 秒窗口计每分钟请求数，无小时窗；日配额与有效期照常。
+- 存量档位不变：`free`/`starter` 60 次/小时、`research` 300 次/小时、`pro` 600 次/小时；
+  `enterprise`/`internal` 不限频率。
+
+`enforce_daily_limit` 在 `enforce_rate_limit`（商业档为每分钟窗口、存量档为每小时窗口）之后执行，超限时返回 429 `daily_limit_exceeded`。
 
 ## 首期范围
 

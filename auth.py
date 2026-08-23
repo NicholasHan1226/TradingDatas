@@ -35,14 +35,30 @@ RATE_LIMITS = {
     "starter": 60,
     "research": 300,
     "pro": 600,
+    # Commercial per-minute tiers (Nicholas 2026-08-23): burst quota is the
+    # minute window below; hourly is intentionally uncapped for them and
+    # daily_limit/expires_at stay per-token admin controls.
+    "basic": None,
+    "standard": None,
+    "flagship": None,
     "enterprise": None,
     "internal": None,
+}
+# Per-minute request budgets for the commercial tiers (requests/minute).
+MINUTE_RATE_LIMITS = {
+    "basic": 200,
+    "standard": 600,
+    "flagship": 1000,
 }
 CONCURRENCY_LIMITS = {
     "free": 2,
     "starter": 2,
     "research": 4,
     "pro": 8,
+    # Defaults for the commercial tiers; admin PATCH can override per token.
+    "basic": 4,
+    "standard": 8,
+    "flagship": 16,
     "enterprise": None,
     "internal": None,
 }
@@ -82,6 +98,9 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
 
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
+# Sliding per-minute window for commercial tiers; same shape as _REQUEST_LOG.
+MINUTE_RATE_WINDOW_SECONDS = 60
+_MINUTE_REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 _DAILY_REQUEST_LOG: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _ACTIVE_REQUESTS: dict[str, int] = {}
 # Cheap per-host pre-auth limiter: bounds PBKDF2 work spent on garbage bearer
@@ -175,6 +194,16 @@ def _cleanup_rate_log_locked(now: float) -> None:
     for tenant_id in empty_tenants:
         _REQUEST_LOG.pop(tenant_id, None)
 
+    # Same housekeeping for the commercial per-minute window log.
+    empty_minute_tenants: list[str] = []
+    for tenant_id, bucket in _MINUTE_REQUEST_LOG.items():
+        while bucket and now - bucket[0] > MINUTE_RATE_WINDOW_SECONDS:
+            bucket.popleft()
+        if not bucket:
+            empty_minute_tenants.append(tenant_id)
+    for tenant_id in empty_minute_tenants:
+        _MINUTE_REQUEST_LOG.pop(tenant_id, None)
+
 
 def _enforce_preauth_limit(host: str) -> None:
     """Sliding-window per-host cap enforced before PBKDF2 key derivation.
@@ -214,9 +243,11 @@ def _enforce_preauth_limit(host: str) -> None:
         while len(_PREAUTH_LOG) > _PREAUTH_MAX_HOSTS:
             _PREAUTH_LOG.pop(next(iter(_PREAUTH_LOG)), None)
 
-    # Evict oldest (LRU) tenants when over capacity
-    while len(_REQUEST_LOG) > RATE_MAX_TENANTS:
-        _REQUEST_LOG.popitem(last=False)
+        # Evict oldest (LRU) tenants when over capacity
+        while len(_REQUEST_LOG) > RATE_MAX_TENANTS:
+            _REQUEST_LOG.popitem(last=False)
+        while len(_MINUTE_REQUEST_LOG) > RATE_MAX_TENANTS:
+            _MINUTE_REQUEST_LOG.popitem(last=False)
 
 
 def _b64url_decode(value: str) -> bytes:
@@ -822,35 +853,68 @@ def check_endpoint_scope(account: dict[str, Any], path: str) -> bool:
     return path in allowed
 
 
-def enforce_rate_limit(tenant_id: str, tier: str) -> None:
-    limit = RATE_LIMITS.get((tier or "free").lower(), RATE_LIMITS["free"])
-    if limit is None:
-        return
+def _enforce_window(
+    buckets: dict,
+    tenant_id: str,
+    limit: int,
+    window_seconds: float,
+    message: str,
+) -> None:
+    """One sliding-window check inside ``_STATE_LOCK``; appends on success."""
 
     now = _now()
+    if tenant_id not in buckets:
+        buckets[tenant_id] = deque()
+    bucket = buckets[tenant_id]
+
+    # Remove expired timestamps from this tenant's bucket
+    while bucket and now - bucket[0] > window_seconds:
+        bucket.popleft()
+
+    if len(bucket) >= limit:
+        raise RateLimitError(message)
+
+    # Enforce per-tenant event cap
+    while len(bucket) >= RATE_MAX_EVENTS_PER_TENANT:
+        bucket.popleft()
+
+    bucket.append(now)
+
+    # LRU tracking: mark this tenant as recently used
+    buckets.move_to_end(tenant_id)
+
+
+def enforce_rate_limit(tenant_id: str, tier: str) -> None:
+    normalized = (tier or "free").lower()
+
+    minute_limit = MINUTE_RATE_LIMITS.get(normalized)
+    if minute_limit is not None:
+        with _STATE_LOCK:
+            _enforce_window(
+                _MINUTE_REQUEST_LOG,
+                tenant_id,
+                minute_limit,
+                MINUTE_RATE_WINDOW_SECONDS,
+                f"minute rate limit exceeded for tier={normalized}",
+            )
+            _cleanup_rate_log_locked(_now())
+
+    hourly_limit = RATE_LIMITS.get(normalized, RATE_LIMITS["free"])
+    if hourly_limit is None:
+        # Commercial tiers (and enterprise/internal) are governed by the
+        # per-minute window above plus the admin-controlled daily quota;
+        # no hourly cap applies.
+        return
+
     with _STATE_LOCK:
-        if tenant_id not in _REQUEST_LOG:
-            _REQUEST_LOG[tenant_id] = deque()
-        bucket = _REQUEST_LOG[tenant_id]
-
-        # Remove expired timestamps from this tenant's bucket
-        while bucket and now - bucket[0] > RATE_WINDOW_SECONDS:
-            bucket.popleft()
-
-        if len(bucket) >= limit:
-            raise RateLimitError(f"rate limit exceeded for tier={tier}")
-
-        # Enforce per-tenant event cap
-        while len(bucket) >= RATE_MAX_EVENTS_PER_TENANT:
-            bucket.popleft()
-
-        bucket.append(now)
-
-        # LRU tracking: mark this tenant as recently used
-        _REQUEST_LOG.move_to_end(tenant_id)
-
-        # Periodic cleanup
-        _cleanup_rate_log_locked(now)
+        _enforce_window(
+            _REQUEST_LOG,
+            tenant_id,
+            hourly_limit,
+            RATE_WINDOW_SECONDS,
+            f"rate limit exceeded for tier={normalized}",
+        )
+        _cleanup_rate_log_locked(_now())
 
 
 _USAGE_HISTORY_FILE = os.environ.get(
@@ -1163,6 +1227,7 @@ def effective_limits(account: dict[str, Any]) -> dict[str, Any]:
     return {
         "tier": tier,
         "hourly_request_limit": RATE_LIMITS.get(tier, RATE_LIMITS["free"]),
+        "minute_request_limit": MINUTE_RATE_LIMITS.get(tier),
         "concurrency_limit": _account_concurrency_limit(account),
         "daily_limit": daily_limit,
     }
