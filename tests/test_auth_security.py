@@ -971,3 +971,44 @@ def test_preauth_rate_limit_env_override_at_import(
         monkeypatch, TRADINGDATAS_PREAUTH_RATE_LIMIT="7"
     )
     assert auth_module._PREAUTH_MAX_ATTEMPTS == 7
+
+
+def test_preauth_limiter_bounds_and_recovers():
+    """Anonymous PBKDF2 spray is capped per source; window expiry restores."""
+    import api_server
+
+    monkey = {"t": 1000.0}
+    real_mono = api_server.time.monotonic
+    api_server.time.monotonic = lambda: monkey["t"]
+    try:
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+        for _ in range(api_server._AUTH_ATTEMPTS_PER_WINDOW):
+            assert api_server._auth_attempt_allowed("10.9.9.9")
+        assert not api_server._auth_attempt_allowed("10.9.9.9")
+        assert api_server._auth_attempt_allowed("10.9.9.8")  # other sources unaffected
+
+        monkey["t"] += api_server._AUTH_ATTEMPT_WINDOW_SECONDS + 1
+        assert api_server._auth_attempt_allowed("10.9.9.9")  # expired window recovers
+    finally:
+        api_server.time.monotonic = real_mono
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+
+
+def test_preauth_limiter_tracks_bounded_sources():
+    import api_server
+
+    real_mono = api_server.time.monotonic
+    api_server.time.monotonic = lambda: 5000.0
+    try:
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+        cap = api_server._AUTH_ATTEMPT_TRACK_CAP
+        for i in range(cap + 5):
+            api_server._auth_attempt_allowed(f"10.1.{i // 256}.{i % 256}")
+        assert len(api_server._AUTH_ATTEMPT_TIMES) <= cap
+    finally:
+        api_server.time.monotonic = real_mono
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
