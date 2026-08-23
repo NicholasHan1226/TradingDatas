@@ -62,6 +62,11 @@ from tools.run_binance_usdm_canary import _perp_datasets  # noqa: E402
 # a bound well inside the unit's TimeoutStartSec=10min instead of failing.
 _OI_DUMP_LOCK_WAIT_SECONDS = 480.0
 
+# The fact-authority shared lock is contended by the exclusive writer side,
+# which itself waits up to 180s to acquire; mirror that bound so a read that
+# starts mid-write waits for the writer instead of failing the whole round.
+_FACT_AUTHORITY_LOCK_WAIT_SECONDS = 180.0
+
 _PROVIDER = BinanceUsdmMetricsDumpCollector.provider
 _LOOKBACK_DAYS = 7
 # Frozen one-shot horizon: with the latest closed UTC day 2026-08-15 the 198
@@ -121,7 +126,11 @@ def _ingested_days(
     dataset = registry.resolve(dataset_id)
     binding = registry.provider_binding(dataset_id, _PROVIDER)
     try:
-        with sqlite_authority_lock(db_path, mode="shared"):
+        with sqlite_authority_lock(
+            db_path,
+            mode="shared",
+            timeout=_FACT_AUTHORITY_LOCK_WAIT_SECONDS,
+        ):
             uri = f"{db_path.resolve(strict=True).as_uri()}?mode=ro"
             with sqlite3.connect(uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only = ON")
@@ -510,10 +519,16 @@ def main() -> int:
             now=now,
             backfill_days=args.backfill_days,
         )
-    except Exception:
+    except Exception as exc:
+        # Surface the failure cause in the journal; the bare "state": "failed"
+        # line previously hid root causes such as lock contention.
         print(
             json.dumps(
-                {"mode": "execute" if args.execute else "plan", "state": "failed"},
+                {
+                    "mode": "execute" if args.execute else "plan",
+                    "state": "failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
                 sort_keys=True,
             )
         )

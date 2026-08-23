@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import io
+import json
+import os
 import sqlite3
+import sys
 from zipfile import ZipFile
 
 import pytest
@@ -915,3 +918,66 @@ def test_timed_lock_fails_closed_when_stuck(tmp_path, monkeypatch):
             canary._timed_lock(tmp_path / "collect.lock")
     finally:
         canary._release(holder)
+
+
+def test_ingested_days_waits_on_a_bounded_shared_lock(tmp_path, monkeypatch) -> None:
+    """The fact-authority read lock must wait for writers, not fail instantly."""
+
+    db_path = tmp_path / "facts.sqlite"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.executescript(PROVIDER_DATASET_ROWS_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+    os.chmod(db_path, 0o600)
+    # Materialize the authority-lock sidecar the way production writers do.
+    with oi_dump_canary.sqlite_authority_lock(db_path, mode="exclusive", create=True):
+        pass
+    registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
+    real_lock = oi_dump_canary.sqlite_authority_lock
+    observed: dict[str, object] = {}
+
+    def _recording_lock(db_path_arg, *, mode, create=False, timeout=0.0):
+        observed["mode"] = mode
+        observed["timeout"] = timeout
+        return real_lock(db_path_arg, mode=mode, create=create, timeout=timeout)
+
+    monkeypatch.setattr(oi_dump_canary, "sqlite_authority_lock", _recording_lock)
+
+    days = oi_dump_canary._ingested_days(
+        db_path, registry, "crypto.perp.binance.ethusdt.open_interest"
+    )
+
+    assert days == frozenset()
+    assert observed == {
+        "mode": "shared",
+        "timeout": oi_dump_canary._FACT_AUTHORITY_LOCK_WAIT_SECONDS,
+    }
+
+
+def test_main_failure_output_includes_error_detail(monkeypatch, capsys) -> None:
+    def _failing_run(**kwargs):
+        del kwargs
+        raise ValueError("daily-dump fact authority is unavailable")
+
+    monkeypatch.setattr(oi_dump_canary, "run", _failing_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_binance_oi_dump_canary.py",
+            "--db-path",
+            "unused.sqlite",
+            "--lock-path",
+            "unused.lock",
+        ],
+    )
+
+    exit_code = oi_dump_canary.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["state"] == "failed"
+    assert payload["error"] == "ValueError: daily-dump fact authority is unavailable"
