@@ -4605,3 +4605,62 @@ def test_main_wave_defers_registry_and_schedule_parsing_to_bound_run(
 
     assert code == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "plan"
+
+
+def test_budget_exhaustion_marks_remaining_plans_skipped_not_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Budget exhaustion is a consumption stop: skipped, not failed."""
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.equity.daily",
+            provider="tushare",
+            provider_api="daily",
+            cadence_class="postclose_daily",
+            request_window={"trade_date": "20260720"},
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.anns_d",
+            provider="tushare",
+            provider_api="anns_d",
+            cadence_class="event",
+            request_window={"trade_date": "20260720"},
+        ),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_plan_runs",
+        lambda **_kwargs: (plans, ()),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "validated_receipt_journal_entries_by_dataset",
+        lambda *_args, **_kwargs: {},
+        raising=False,
+    )
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id == "cn.dataset.anns_d":
+            raise scheduler.RequestBudgetExceeded(
+                "provider request budget exhausted"
+            )
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+    )
+
+    assert result.exit_code == 0
+    assert [item.state for item in result.executed] == ["success"]
+    assert [(item.dataset_id, item.state) for item in result.skipped] == [
+        ("cn.dataset.anns_d", "rate_budget_exhausted")
+    ]
