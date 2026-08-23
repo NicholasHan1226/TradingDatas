@@ -84,6 +84,16 @@ _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 _DAILY_REQUEST_LOG: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _ACTIVE_REQUESTS: dict[str, int] = {}
+# Cheap per-host pre-auth limiter: bounds PBKDF2 work spent on garbage bearer
+# tokens before any expensive key derivation runs. Counts every authentication
+# attempt (JWT-shaped or bearer) per client host inside a sliding window.
+_PREAUTH_WINDOW_SECONDS = 60.0
+_PREAUTH_MAX_ATTEMPTS = max(
+    1, int(os.environ.get("TRADINGDATAS_PREAUTH_RATE_LIMIT", "120"))
+)
+_PREAUTH_LOG: OrderedDict[str, deque[float]] = OrderedDict()
+_PREAUTH_MAX_HOSTS = 10000
+_ACTIVE_REQUESTS: dict[str, int] = {}
 _DEDUP_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _DEDUP_CACHE_BYTES = 0
 _TOKEN_HASHES: dict[str, dict[str, Any]] | None = None
@@ -164,6 +174,45 @@ def _cleanup_rate_log_locked(now: float) -> None:
     # Remove empty tenant buckets
     for tenant_id in empty_tenants:
         _REQUEST_LOG.pop(tenant_id, None)
+
+
+def _enforce_preauth_limit(host: str) -> None:
+    """Sliding-window per-host cap enforced before PBKDF2 key derivation.
+
+    Every authentication attempt is recorded cheaply; once a host exceeds
+    ``_PREAUTH_MAX_ATTEMPTS`` inside the window, further attempts are rejected
+    before any expensive token hashing happens so garbage-token floods cannot
+    burn CPU. Must not be called while _STATE_LOCK is held (authenticate
+    performs file I/O afterwards).
+    """
+    now = _now()
+    with _STATE_LOCK:
+        bucket = _PREAUTH_LOG.get(host)
+        if bucket is None:
+            bucket = deque()
+            _PREAUTH_LOG[host] = bucket
+        while bucket and now - bucket[0] > _PREAUTH_WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= _PREAUTH_MAX_ATTEMPTS:
+            raise RateLimitError(
+                f"pre-auth rate limit exceeded for host={host}"
+            )
+        bucket.append(now)
+        _PREAUTH_LOG.move_to_end(host)
+
+        # Drop expired/empty buckets and evict oldest hosts when over capacity.
+        expired_hosts = []
+        for known_host, known_bucket in _PREAUTH_LOG.items():
+            while (
+                known_bucket and now - known_bucket[0] > _PREAUTH_WINDOW_SECONDS
+            ):
+                known_bucket.popleft()
+            if not known_bucket:
+                expired_hosts.append(known_host)
+        for known_host in expired_hosts:
+            _PREAUTH_LOG.pop(known_host, None)
+        while len(_PREAUTH_LOG) > _PREAUTH_MAX_HOSTS:
+            _PREAUTH_LOG.pop(next(iter(_PREAUTH_LOG)), None)
 
     # Evict oldest (LRU) tenants when over capacity
     while len(_REQUEST_LOG) > RATE_MAX_TENANTS:
@@ -742,7 +791,8 @@ def _extract_bearer_token(headers: Any) -> str:
 
 
 def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
-    del client_host
+    host = str(client_host or "unknown")
+    _enforce_preauth_limit(host)
 
     token = _extract_bearer_token(headers)
     jwt_claims = _parse_jwt(token)

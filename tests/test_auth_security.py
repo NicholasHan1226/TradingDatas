@@ -902,3 +902,113 @@ def test_private_auth_file_closes_all_descriptors_on_base_exception(
 
     assert opened
     assert opened <= closed
+
+
+def test_preauth_rate_limit_rejects_before_pbkdf2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Garbage-token floods from one host must be capped before key derivation."""
+    auth_module = _reload_auth(monkeypatch)
+    auth_module._PREAUTH_MAX_ATTEMPTS = 5
+
+    hash_calls = {"count": 0}
+    real_hash_token = auth_module._hash_token
+
+    def counting_hash(token: str) -> str:
+        hash_calls["count"] += 1
+        return real_hash_token(token)
+
+    monkeypatch.setattr(auth_module, "_hash_token", counting_hash)
+
+    # The first five garbage tokens reach PBKDF2 and fail as invalid.
+    for _ in range(5):
+        with pytest.raises(auth_module.AuthError):
+            auth_module.authenticate(
+                {"Authorization": "Bearer garbage-token"}, "203.0.113.10"
+            )
+    assert hash_calls["count"] == 5
+
+    # The sixth attempt is rejected by the pre-auth limiter without hashing.
+    with pytest.raises(auth_module.RateLimitError):
+        auth_module.authenticate(
+            {"Authorization": "Bearer garbage-token"}, "203.0.113.10"
+        )
+    assert hash_calls["count"] == 5
+
+
+def test_preauth_rate_limit_isolated_per_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_module = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_HASHES_JSON=json.dumps(
+            {"tokens": [_token_config("iso-token", "tenant-iso", ["read"])]}
+        ),
+    )
+    auth_module._PREAUTH_MAX_ATTEMPTS = 2
+
+    for _ in range(2):
+        with pytest.raises(auth_module.AuthError):
+            auth_module.authenticate(
+                {"Authorization": "Bearer garbage-a"}, "203.0.113.10"
+            )
+    with pytest.raises(auth_module.RateLimitError):
+        auth_module.authenticate(
+            {"Authorization": "Bearer iso-token"}, "203.0.113.10"
+        )
+
+    # A different host is unaffected and authenticates normally.
+    account = auth_module.authenticate(
+        {"Authorization": "Bearer iso-token"}, "198.51.100.77"
+    )
+    assert account["tenant_id"] == "tenant-iso"
+
+
+def test_preauth_rate_limit_env_override_at_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_module = _reload_auth(
+        monkeypatch, TRADINGDATAS_PREAUTH_RATE_LIMIT="7"
+    )
+    assert auth_module._PREAUTH_MAX_ATTEMPTS == 7
+
+
+def test_preauth_limiter_bounds_and_recovers():
+    """Anonymous PBKDF2 spray is capped per source; window expiry restores."""
+    import api_server
+
+    monkey = {"t": 1000.0}
+    real_mono = api_server.time.monotonic
+    api_server.time.monotonic = lambda: monkey["t"]
+    try:
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+        for _ in range(api_server._AUTH_ATTEMPTS_PER_WINDOW):
+            assert api_server._auth_attempt_allowed("10.9.9.9")
+        assert not api_server._auth_attempt_allowed("10.9.9.9")
+        assert api_server._auth_attempt_allowed("10.9.9.8")  # other sources unaffected
+
+        monkey["t"] += api_server._AUTH_ATTEMPT_WINDOW_SECONDS + 1
+        assert api_server._auth_attempt_allowed("10.9.9.9")  # expired window recovers
+    finally:
+        api_server.time.monotonic = real_mono
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+
+
+def test_preauth_limiter_tracks_bounded_sources():
+    import api_server
+
+    real_mono = api_server.time.monotonic
+    api_server.time.monotonic = lambda: 5000.0
+    try:
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
+        cap = api_server._AUTH_ATTEMPT_TRACK_CAP
+        for i in range(cap + 5):
+            api_server._auth_attempt_allowed(f"10.1.{i // 256}.{i % 256}")
+        assert len(api_server._AUTH_ATTEMPT_TIMES) <= cap
+    finally:
+        api_server.time.monotonic = real_mono
+        with api_server._AUTH_LIMITER_LOCK:
+            api_server._AUTH_ATTEMPT_TIMES.clear()
