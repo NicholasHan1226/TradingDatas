@@ -182,6 +182,9 @@ export const TIER_TONES: Record<string, BadgeTone> = {
   starter: 'blue',
   research: 'violet',
   pro: 'green',
+  basic: 'blue',
+  standard: 'violet',
+  flagship: 'green',
   enterprise: 'violet',
   internal: 'amber',
 }
@@ -191,6 +194,9 @@ export const TIER_LABELS: Record<string, string> = {
   starter: 'Starter 入门',
   research: 'Research 研究',
   pro: 'Pro 专业',
+  basic: '基础版 Basic',
+  standard: '标准版 Standard',
+  flagship: '旗舰版 Flagship',
   enterprise: 'Enterprise 企业',
   internal: 'Internal 内部',
 }

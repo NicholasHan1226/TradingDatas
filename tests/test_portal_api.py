@@ -106,6 +106,10 @@ def portal_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
     monkeypatch.setattr(auth, "_REQUEST_LOG", auth.OrderedDict())
     monkeypatch.setattr(auth, "_DAILY_REQUEST_LOG", auth.OrderedDict())
     monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
+    # Also reset the pre-auth limiter: a prior file in the same worker process
+    # (e.g. test_auth_security's authenticate storm) otherwise leaves this host
+    # rate-limited and every portal request 429s.
+    monkeypatch.setattr(auth, "_PREAUTH_LOG", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
 
     server = api_server.TradingDatasHTTPServer(
@@ -154,6 +158,7 @@ def test_portal_me_returns_only_own_account(portal_server: _Harness) -> None:
         "enabled": True,
         "max_concurrent": 3,
         "hourly_request_limit": 60,
+        "minute_request_limit": None,
         "daily_limit": 5000,
         "expires_at": time.strftime(
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime(FUTURE_TS)
@@ -312,13 +317,18 @@ def test_effective_limits_resolution() -> None:
     assert internal == {
         "tier": "internal",
         "hourly_request_limit": None,
+        "minute_request_limit": None,
         "concurrency_limit": None,
         "daily_limit": None,
     }
     free = auth.effective_limits({"tenant_id": "t"})
     assert free["tier"] == "free"
     assert free["hourly_request_limit"] == auth.RATE_LIMITS["free"]
+    assert free["minute_request_limit"] is None
     assert free["concurrency_limit"] == auth.CONCURRENCY_LIMITS["free"]
+    standard = auth.effective_limits({"tenant_id": "t", "tier": "standard"})
+    assert standard["hourly_request_limit"] is None
+    assert standard["minute_request_limit"] == 600
     override = auth.effective_limits(
         {"tenant_id": "t", "tier": "research", "max_concurrent": 9}
     )

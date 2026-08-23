@@ -237,13 +237,30 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 ```json
 {
   "tenant_id": "new-tenant",
-  "tier": "research",
+  "tier": "standard",
   "scopes": ["read"],
   "daily_limit": 10000,
   "expires_at": "2027-12-31T23:59:59Z",
-  "max_concurrent": 4
+  "max_concurrent": 8
 }
 ```
+
+`tier` 决定请求频率与默认并发档位：
+
+| tier | 定位 | 频率上限 | 默认并发 |
+|---|---|---|---|
+| `free` / `starter` | 试用/入门 | 60 次/小时 | 2 |
+| `research` | 研究 | 300 次/小时 | 4 |
+| `pro` | 专业 | 600 次/小时 | 8 |
+| `basic` | 商业·基础版 | **200 次/分钟** | 4 |
+| `standard` | 商业·标准版 | **600 次/分钟** | 8 |
+| `flagship` | 商业·旗舰版 | **1000 次/分钟** | 16 |
+| `enterprise` / `internal` | 内部 | 不限（仅日配额管控） | 不限 |
+
+商业三档（basic/standard/flagship）按**滑动 60 秒窗口**计每分钟请求数，超限返回
+`429 code=rate_limited`；这三档不设小时窗，日配额（`daily_limit`）与有效期
+（`expires_at`）仍按 token 单独控制。并发默认值可被 per-token `max_concurrent`
+覆盖。
 
 响应包含明文 token（仅此一次可见）：
 
@@ -301,6 +318,7 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
     "enabled": true,
     "max_concurrent": 4,
     "hourly_request_limit": 300,
+    "minute_request_limit": null,
     "daily_limit": 10000,
     "expires_at": "2027-12-31T23:59:59Z",
     "usage": {
@@ -314,6 +332,8 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 ```
 
 `max_concurrent <= 0` 与 `daily_limit`/`hourly_request_limit` 为 null 均表示不限。
+`minute_request_limit` 仅商业三档（basic/standard/flagship）非空，表示每分钟请求上限
+（滑动 60 秒窗口）；其余档位为 null。
 
 ### GET /portal/api/me/usage?days=30
 

@@ -1140,6 +1140,7 @@ class Handler(BaseHTTPRequestHandler):
                 "enabled": bool(account.get("enabled", True)),
                 "max_concurrent": limits["concurrency_limit"],
                 "hourly_request_limit": limits["hourly_request_limit"],
+                "minute_request_limit": limits["minute_request_limit"],
                 "daily_limit": limits["daily_limit"],
                 "expires_at": expires_at_iso,
                 "usage": {

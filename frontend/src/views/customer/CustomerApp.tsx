@@ -61,7 +61,12 @@ export default function CustomerApp({
     }
   }, [client])
 
-  const curlExample = `curl -X POST ${client.baseUrl}/v1/query \\
+  const curlExample = `# 1) 浏览可用的数据集目录
+curl ${client.baseUrl}/v1/catalog \\
+  -H "Authorization: Bearer <你的API密钥>"
+
+# 2) 查询某个数据集的数据行
+curl -X POST ${client.baseUrl}/v1/query \\
   -H "Authorization: Bearer <你的API密钥>" \\
   -H "Content-Type: application/json" \\
   -d '{"dataset_id": "cn.equity.daily", "limit": 20}'`
@@ -135,8 +140,11 @@ export default function CustomerApp({
 
               <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-4">
                 {[
+                  // Commercial tiers are metered per minute; legacy tiers per hour.
+                  ...(me.minute_request_limit
+                    ? [['每分钟请求', `${me.minute_request_limit} 次`]]
+                    : [['每小时请求', me.hourly_request_limit === null ? '不限' : `${me.hourly_request_limit} 次`]]),
                   ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
-                  ['每小时请求', me.hourly_request_limit === null ? '不限' : `${me.hourly_request_limit} 次`],
                   ['每日请求', me.daily_limit === null ? '不限' : `${me.daily_limit.toLocaleString('zh-CN')} 次`],
                   ['今日已用', `${me.usage.today_count.toLocaleString('zh-CN')} 次`],
                 ].map(([k, v]) => (
@@ -240,7 +248,7 @@ export default function CustomerApp({
 
                 <div className="rounded-lg bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200 ring-inset">
                   ⚠️ API 密钥等同于账户凭证：请勿写入公开代码仓库或分享给他人；怀疑泄露时立即联系管理员重置。
-                  超出并发或频率限制时会收到 <code className="font-mono">429</code> 响应，请按提示退避重试。
+                  超出并发、频率（如每分钟请求上限）或每日限额时会收到 <code className="font-mono">429</code> 响应，请按提示退避重试。
                 </div>
               </div>
             </Card>

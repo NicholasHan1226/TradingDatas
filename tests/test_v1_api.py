@@ -314,6 +314,10 @@ def v1_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
     )
     monkeypatch.setattr(auth, "_REQUEST_LOG", auth.OrderedDict())
     monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
+    # Reset the pre-auth limiter too: a prior file in the same worker process
+    # (e.g. test_auth_security's authenticate storm) otherwise leaves this host
+    # rate-limited before any handler logic runs.
+    monkeypatch.setattr(auth, "_PREAUTH_LOG", auth.OrderedDict())
     monkeypatch.setattr(auth, "_DEDUP_CACHE", auth.OrderedDict())
     monkeypatch.setattr(api_server, "auth", auth)
     monkeypatch.setattr(
