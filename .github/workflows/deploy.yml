@@ -5,9 +5,18 @@ on:
     branches: [main]
     paths:
       - 'static/**'
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact main commit to publish after a Controller-gated auto-merge
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+env:
+  SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_sha || github.sha }}
 
 concurrency:
   group: tradingdatas-cloudflare-pages-main
@@ -19,6 +28,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify checkout identity
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
       
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
