@@ -1,0 +1,125 @@
+version: 1
+bundle_id: polymarket-public-snapshot-contracts.v1
+provider: polymarket
+provenance:
+  index_path: docs/design/prediction-market-pipeline.v1.md
+  # Placeholder checksum of the literal word "unverified"; replace with a
+  # content checksum of the reviewed Gamma document before compilation.
+  index_sha256: 6d8fe2f4c4c16969107257c9ee22b1952d1376e781f4e95d1ceac3a2b6cc207b
+  pinned_commit: b46b50e8fdb75286fd63a972ce38a4c9f05bd838
+  repository_url: https://github.com/NicholasHan1226/TradingDatas.git
+contracts:
+- dataset_id: pm.dataset.polymarket_market
+  aliases: [polymarket.market]
+  domain: provider_data
+  market: PREDICTION_MARKET
+  entity_type: provider_row
+  data_classification: objective_factual
+  provider: polymarket
+  api_name: market_snapshot
+  source_document_url: https://docs.polymarket.com/developers/gamma-markets-api/overview
+  # Draft sentinel only; it is not a hash of the source document.
+  source_document_sha256: 97b7e2db799e2b79e65f418b42a7d3054c95b2d3ab1dba243039597e44a38084
+  schema_version: 1.0.0
+  input_fields:
+  - {name: slug, declared_source_type: str, required: true}
+  fields:
+  - {name: question_id, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: slug, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: question, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: category, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: end_date, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: outcomes, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: active, declared_source_type: bool, logical_type: integer, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: closed, declared_source_type: bool, logical_type: integer, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: resolution, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+  primary_key: [question_id]
+  default_projection: [question_id, slug, question, category, end_date, outcomes, active, closed, resolution]
+  as_of_field: null
+  as_of_format: null
+  range_field: null
+  partition_field: null
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 3600
+  point_in_time: current_snapshot
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
+  activation: {activation_state: paused, entitlement_state: unknown, evidence_ref: draft/polymarket-unverified}
+  request_shape: snapshot_or_date_range
+  request_template: {page_size: "1", max_pages: "1", timeout_seconds: "30"}
+  request_variants: [{}]
+  fanout:
+    strategy: literal_values
+    parameter: slug
+    values: [will-the-fed-cut-rates-in-september-2026, will-the-fed-hold-rates-in-september-2026, will-the-fed-cut-rates-in-november-2026, will-the-fed-hold-rates-in-november-2026, will-bitcoin-hit-125k-in-2026, will-bitcoin-hit-150k-in-2026, will-bitcoin-hit-200k-in-2026, will-bitcoin-fall-to-75k-in-2026, will-ethereum-hit-4000-in-2026, will-ethereum-hit-5000-in-2026, will-ethereum-hit-7500-in-2026, will-ethereum-fall-to-2000-in-2026, will-the-us-and-china-reach-a-trade-deal-in-2026, will-the-us-raise-tariffs-on-china-in-2026, will-china-retaliate-to-us-tariffs-in-2026, will-us-china-trade-tariffs-be-reduced-in-2026, will-china-conduct-military-exercises-near-taiwan-in-2026, will-the-us-impose-new-china-tech-restrictions-in-2026, will-the-us-and-china-hold-a-leader-summit-in-2026, will-us-china-relations-improve-in-2026]
+    batch_size: 1
+  pagination: {strategy: offset, limit_parameter: page_size, offset_parameter: offset, page_size: 1, max_pages: 1}
+  request_window_policy: null
+  response_completeness: null
+  requested_fields: []
+  budgets: {max_rows_per_attempt: 1, max_payload_bytes_per_row: 65536, max_batch_bytes: 1048576, max_nesting_depth: 16}
+  reviewed_type_overrides: []
+  probe_state: blocked
+  probe_block_reasons: [official_requiredness_unknown, required_parameter_unresolved]
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons: [official_requiredness_unknown, required_parameter_unresolved]
+- dataset_id: pm.dataset.polymarket_snapshot
+  aliases: [polymarket.snapshot]
+  domain: provider_data
+  market: PREDICTION_MARKET
+  entity_type: provider_row
+  data_classification: objective_factual
+  provider: polymarket
+  api_name: market_snapshot
+  source_document_url: https://docs.polymarket.com/developers/gamma-markets-api/overview
+  # Draft sentinel only; it is not a hash of the source document.
+  source_document_sha256: 97b7e2db799e2b79e65f418b42a7d3054c95b2d3ab1dba243039597e44a38084
+  schema_version: 1.0.0
+  input_fields:
+  - {name: slug, declared_source_type: str, required: true}
+  fields:
+  - {name: snapshot_id, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: question_id, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: captured_at, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: outcome_prices, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: false, sortable: false}
+  - {name: volume, declared_source_type: float, logical_type: float, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: liquidity, declared_source_type: float, logical_type: float, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: active, declared_source_type: bool, logical_type: integer, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: closed, declared_source_type: bool, logical_type: integer, nullable: false, selectable: true, filterable: true, sortable: true}
+  - {name: resolution, declared_source_type: str, logical_type: text, nullable: true, selectable: true, filterable: true, sortable: true}
+  primary_key: [question_id, captured_at]
+  default_projection: [question_id, captured_at, outcome_prices, volume, liquidity, active, closed, resolution]
+  as_of_field: captured_at
+  as_of_format: rfc3339
+  range_field: captured_at
+  partition_field: null
+  cadence_class: on_demand
+  timezone: UTC
+  freshness_sla_seconds: 3600
+  point_in_time: append_only
+  backfill_policy: provider_limited
+  empty_data_policy: allowed
+  required_scope: market_data
+  quota_class: beta_standard
+  activation: {activation_state: paused, entitlement_state: unknown, evidence_ref: draft/polymarket-unverified}
+  request_shape: snapshot_or_date_range
+  request_template: {page_size: "1", max_pages: "1", timeout_seconds: "30"}
+  request_variants: [{}]
+  fanout:
+    strategy: literal_values
+    parameter: slug
+    values: [will-the-fed-cut-rates-in-september-2026, will-the-fed-hold-rates-in-september-2026, will-the-fed-cut-rates-in-november-2026, will-the-fed-hold-rates-in-november-2026, will-bitcoin-hit-125k-in-2026, will-bitcoin-hit-150k-in-2026, will-bitcoin-hit-200k-in-2026, will-bitcoin-fall-to-75k-in-2026, will-ethereum-hit-4000-in-2026, will-ethereum-hit-5000-in-2026, will-ethereum-hit-7500-in-2026, will-ethereum-fall-to-2000-in-2026, will-the-us-and-china-reach-a-trade-deal-in-2026, will-the-us-raise-tariffs-on-china-in-2026, will-china-retaliate-to-us-tariffs-in-2026, will-us-china-trade-tariffs-be-reduced-in-2026, will-china-conduct-military-exercises-near-taiwan-in-2026, will-the-us-impose-new-china-tech-restrictions-in-2026, will-the-us-and-china-hold-a-leader-summit-in-2026, will-us-china-relations-improve-in-2026]
+    batch_size: 1
+  pagination: {strategy: offset, limit_parameter: page_size, offset_parameter: offset, page_size: 1, max_pages: 1}
+  request_window_policy: null
+  response_completeness: null
+  requested_fields: []
+  budgets: {max_rows_per_attempt: 1, max_payload_bytes_per_row: 65536, max_batch_bytes: 1048576, max_nesting_depth: 16}
+  reviewed_type_overrides: []
+  probe_state: blocked
+  probe_block_reasons: [official_requiredness_unknown, required_parameter_unresolved]
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons: [official_requiredness_unknown, required_parameter_unresolved]

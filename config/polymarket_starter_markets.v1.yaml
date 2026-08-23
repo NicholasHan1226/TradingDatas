@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "status": "draft_unverified_candidates",
+  "markets": [
+    {"slug":"will-the-fed-cut-rates-in-september-2026","question":"Will the Fed cut rates in September 2026?","category":"fed_rates","verification_required":true},
+    {"slug":"will-the-fed-hold-rates-in-september-2026","question":"Will the Fed hold rates in September 2026?","category":"fed_rates","verification_required":true},
+    {"slug":"will-the-fed-cut-rates-in-november-2026","question":"Will the Fed cut rates in November 2026?","category":"fed_rates","verification_required":true},
+    {"slug":"will-the-fed-hold-rates-in-november-2026","question":"Will the Fed hold rates in November 2026?","category":"fed_rates","verification_required":true},
+    {"slug":"will-bitcoin-hit-125k-in-2026","question":"Will Bitcoin hit $125k in 2026?","category":"bitcoin_price","verification_required":true},
+    {"slug":"will-bitcoin-hit-150k-in-2026","question":"Will Bitcoin hit $150k in 2026?","category":"bitcoin_price","verification_required":true},
+    {"slug":"will-bitcoin-hit-200k-in-2026","question":"Will Bitcoin hit $200k in 2026?","category":"bitcoin_price","verification_required":true},
+    {"slug":"will-bitcoin-fall-to-75k-in-2026","question":"Will Bitcoin fall to $75k in 2026?","category":"bitcoin_price","verification_required":true},
+    {"slug":"will-ethereum-hit-4000-in-2026","question":"Will Ethereum hit $4k in 2026?","category":"ethereum_price","verification_required":true},
+    {"slug":"will-ethereum-hit-5000-in-2026","question":"Will Ethereum hit $5k in 2026?","category":"ethereum_price","verification_required":true},
+    {"slug":"will-ethereum-hit-7500-in-2026","question":"Will Ethereum hit $7.5k in 2026?","category":"ethereum_price","verification_required":true},
+    {"slug":"will-ethereum-fall-to-2000-in-2026","question":"Will Ethereum fall to $2k in 2026?","category":"ethereum_price","verification_required":true},
+    {"slug":"will-the-us-and-china-reach-a-trade-deal-in-2026","question":"Will the US and China reach a trade deal in 2026?","category":"us_china_trade","verification_required":true},
+    {"slug":"will-the-us-raise-tariffs-on-china-in-2026","question":"Will the US raise tariffs on China in 2026?","category":"us_china_trade","verification_required":true},
+    {"slug":"will-china-retaliate-to-us-tariffs-in-2026","question":"Will China retaliate to US tariffs in 2026?","category":"us_china_trade","verification_required":true},
+    {"slug":"will-us-china-trade-tariffs-be-reduced-in-2026","question":"Will US-China trade tariffs be reduced in 2026?","category":"us_china_trade","verification_required":true},
+    {"slug":"will-china-conduct-military-exercises-near-taiwan-in-2026","question":"Will China conduct military exercises near Taiwan in 2026?","category":"geopolitics","verification_required":true},
+    {"slug":"will-the-us-impose-new-china-tech-restrictions-in-2026","question":"Will the US impose new China tech restrictions in 2026?","category":"geopolitics","verification_required":true},
+    {"slug":"will-the-us-and-china-hold-a-leader-summit-in-2026","question":"Will US and China leaders hold a summit in 2026?","category":"geopolitics","verification_required":true},
+    {"slug":"will-us-china-relations-improve-in-2026","question":"Will US-China relations improve in 2026?","category":"geopolitics","verification_required":true}
+  ]
+}
