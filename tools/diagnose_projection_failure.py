@@ -41,7 +41,10 @@ def diagnose(db_path: Path) -> dict[str, object]:
             "example_run_id": example_run_id,
         }
         for source, count, last_finished_at, example_run_id in rows
-        if type(source) is str and source not in known
+        # ``source`` is intentionally nullable in the physical envelope.  A
+        # NULL or other non-registry value is exactly the fail-closed evidence
+        # this diagnostic must expose rather than silently skipping.
+        if source not in known
     ]
     return {"unmapped_sources": unmapped, "unmapped_source_count": len(unmapped)}
 
