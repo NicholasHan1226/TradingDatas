@@ -225,6 +225,29 @@ class RuntimeProjectionError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class UnattributedReceiptAnomaly:
+    """One receipt row that no registered dataset claims.
+
+    Emitted by the global tripwire surface instead of failing every dataset's
+    projection; ``reason`` uses the same vocabulary as per-dataset validation.
+    """
+
+    receipt_id: str | None
+    source: str | None
+    reason: str
+    observed_at: str | None
+
+
+@dataclass(frozen=True)
+class UnattributedReceiptHealth:
+    """Global tamper-tripwire health over rows outside the known dataset set."""
+
+    scanned_at: str
+    anomalies: tuple[UnattributedReceiptAnomaly, ...]
+    benign_tombstones: int
+
+
+@dataclass(frozen=True)
 class DatasetRuntimeProjection:
     dataset_id: str
     state: RuntimeState
@@ -739,12 +762,15 @@ def _scan_ingest_run_rows_for_dataset_authority(
 ) -> tuple[_ScannedIngestRunRow, ...]:
     """Read one bounded per-dataset authority snapshot or fail closed.
 
-    Materializes exactly the rows that can influence ``dataset_id``'s
-    validation: rows owned by the dataset itself plus rows whose source is
-    outside ``known_dataset_ids`` (the unknown-source tombstone path).  Rows
-    owned by other known datasets always classify to inert rows and are
-    excluded by the query instead of being materialized, so the row budget
-    binds the dataset's own history rather than the whole append-only table.
+    Materializes only the rows owned by ``dataset_id`` itself.  Rows owned by
+    other known datasets always classify to inert rows and are excluded by the
+    query; rows whose source is outside ``known_dataset_ids`` (tampered or
+    unattributed rows) no longer poison this dataset's projection either —
+    they are reported globally by ``project_unattributed_receipts`` instead,
+    so one foreign row cannot fail every dataset at once.  The row budget
+    therefore binds the dataset's own history rather than the whole
+    append-only table.  ``known_dataset_ids`` remains part of the signature as
+    the authority contract of the caller.
     """
 
     if not isinstance(conn, sqlite3.Connection):
@@ -753,23 +779,126 @@ def _scan_ingest_run_rows_for_dataset_authority(
         raise TypeError("dataset_id must be a non-empty string")
     if type(known_dataset_ids) is not frozenset:
         raise TypeError("known_dataset_ids must be frozenset")
-    other_known = sorted(source for source in known_dataset_ids if source != dataset_id)
+    scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
+    cursor = conn.execute(_RECEIPT_QUERY_BY_DATASET, (dataset_id, scan_limit))
+    raw_rows = tuple(tuple(row) for row in cursor.fetchall())
+    if len(raw_rows) == scan_limit:
+        raise RuntimeProjectionError("receipt scan row budget exceeded")
+    return tuple(_classify_ingest_run_row(row) for row in raw_rows)
+
+
+def project_unattributed_receipts(
+    conn: sqlite3.Connection,
+    *,
+    now: datetime,
+    registry: DatasetRegistry,
+) -> UnattributedReceiptHealth:
+    """Global tamper tripwire over rows no registered dataset claims.
+
+    This is the narrowed blast radius of the former per-dataset contagion: a
+    tampered or foreign receipt row used to fail *every* dataset's projection;
+    it is now reported here (and via ``/admin/api/health/alerts``) while
+    per-dataset projections stay accurate.  Tampering still cannot escape
+    visibility — every receipt-like row whose envelope source is outside
+    ``registry``'s known dataset ids is classified with the same reason
+    vocabulary as per-dataset validation.  Historical unmapped-tushare
+    tombstones that pass the deliberate-retirement marker are counted as
+    benign and do not alert.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    _canonical_now(now)
+    if not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
+    known_dataset_ids = frozenset(item.dataset_id for item in registry.datasets)
+    other_known = sorted(known_dataset_ids)
     scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
     if not other_known:
         cursor = conn.execute(_RECEIPT_QUERY, (scan_limit,))
+        params: tuple[object, ...] = (scan_limit,)
     else:
         placeholders = ", ".join("?" for _ in other_known)
         query = _RECEIPT_QUERY.replace(
             "FROM market_ingest_runs\nLIMIT ?",
             "FROM market_ingest_runs\n"
-            f"WHERE source = ? OR source NOT IN ({placeholders})\n"
+            f"WHERE source IS NULL OR source NOT IN ({placeholders})\n"
             "LIMIT ?",
         )
-        cursor = conn.execute(query, (dataset_id, *other_known, scan_limit))
+        params = (*other_known, scan_limit)
+        cursor = conn.execute(query, params)
     raw_rows = tuple(tuple(row) for row in cursor.fetchall())
     if len(raw_rows) == scan_limit:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
-    return tuple(_classify_ingest_run_row(row) for row in raw_rows)
+
+    anomalies: list[UnattributedReceiptAnomaly] = []
+    benign = 0
+    for scanned in (_classify_ingest_run_row(row) for row in raw_rows):
+        source = scanned.raw[9]
+        observed_at = (
+            scanned.raw[5] if type(scanned.raw[5]) is str else None
+        )
+        receipt_id = scanned.raw[1] if type(scanned.raw[1]) is str else None
+        if scanned.invalid is not None:
+            anomalies.append(
+                UnattributedReceiptAnomaly(
+                    receipt_id=receipt_id,
+                    source=source if type(source) is str else None,
+                    reason=scanned.invalid.reason,
+                    observed_at=observed_at,
+                )
+            )
+            continue
+        payload = scanned.payload
+        assert payload is not None
+        payload_dataset_id = payload.get("dataset_id")
+        if payload.get("schema_version") != RECEIPT_SCHEMA_VERSION:
+            anomalies.append(
+                UnattributedReceiptAnomaly(
+                    receipt_id=receipt_id,
+                    source=source if type(source) is str else None,
+                    reason="unknown_receipt_schema",
+                    observed_at=observed_at,
+                )
+            )
+            continue
+        if type(source) is not str or type(payload_dataset_id) is not str:
+            anomalies.append(
+                UnattributedReceiptAnomaly(
+                    receipt_id=receipt_id,
+                    source=source if type(source) is str else None,
+                    reason="receipt_envelope_invalid",
+                    observed_at=observed_at,
+                )
+            )
+            continue
+        if source != payload_dataset_id:
+            anomalies.append(
+                UnattributedReceiptAnomaly(
+                    receipt_id=receipt_id,
+                    source=source,
+                    reason="receipt_envelope_mismatch",
+                    observed_at=observed_at,
+                )
+            )
+            continue
+        # source == payload.dataset_id and outside the known registry set.
+        if _is_valid_unmapped_tushare_attempt(scanned, now=now):
+            benign += 1
+            continue
+        anomalies.append(
+            UnattributedReceiptAnomaly(
+                receipt_id=receipt_id,
+                source=source,
+                reason="receipt_dataset_unknown",
+                observed_at=observed_at,
+            )
+        )
+    return UnattributedReceiptHealth(
+        scanned_at=_canonical_now(now),
+        anomalies=tuple(anomalies),
+        benign_tombstones=benign,
+    )
 
 
 def _scan_recent_ingest_run_rows(
@@ -1129,13 +1258,12 @@ def _validate_receipt_row(
         return None
     if scanned.invalid is not None:
         source = scanned.raw[9]
-        if (
-            type(source) is str
-            and source in known_dataset_ids
-            and source != dataset.dataset_id
-        ):
-            return None
-        return scanned.invalid
+        # Only a malformed receipt owned by this dataset poisons this dataset.
+        # Foreign-source or unattributed malformed rows are inert here and are
+        # surfaced globally by project_unattributed_receipts instead.
+        if type(source) is str and source == dataset.dataset_id:
+            return scanned.invalid
+        return None
     payload = scanned.payload
     assert payload is not None
     (
@@ -1159,37 +1287,15 @@ def _validate_receipt_row(
     receipt_id = run_id if type(run_id) is str else None
     observed_at = finished_at if type(finished_at) is str else None
 
-    if (
-        type(source) is str
-        and source in known_dataset_ids
-        and source != dataset.dataset_id
-    ):
+    related = _related_to_dataset(payload, source, dataset.dataset_id)
+    if not related:
+        # Rows that do not claim this dataset are inert here.  The tamper
+        # tripwire is preserved globally: project_unattributed_receipts
+        # reports unknown-dataset/schema/malformed payloads so tampering can
+        # still not escape visibility, without failing every dataset at once.
         return None
     if payload.get("schema_version") != RECEIPT_SCHEMA_VERSION:
         return _InvalidReceipt("unknown_receipt_schema", receipt_id, observed_at)
-    if not _related_to_dataset(payload, source, dataset.dataset_id):
-        payload_dataset_id = payload.get("dataset_id")
-        if type(source) is not str or type(payload_dataset_id) is not str:
-            return _InvalidReceipt(
-                "receipt_envelope_invalid",
-                receipt_id,
-                observed_at,
-            )
-        if source != payload_dataset_id:
-            return _InvalidReceipt(
-                "receipt_envelope_mismatch",
-                receipt_id,
-                observed_at,
-            )
-        if source not in known_dataset_ids:
-            if _is_valid_unmapped_tushare_attempt(scanned, now=now):
-                return None
-            return _InvalidReceipt(
-                "receipt_dataset_unknown",
-                receipt_id,
-                observed_at,
-            )
-        return None
 
     if set(payload) != _RECEIPT_PAYLOAD_KEYS or _canonical_json(payload) != notes:
         return _InvalidReceipt("receipt_payload_invalid", receipt_id, observed_at)
