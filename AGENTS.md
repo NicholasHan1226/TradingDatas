@@ -98,6 +98,8 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 `enforce_daily_limit` 在 `enforce_rate_limit`（商业档为每分钟窗口、存量档为每小时窗口）之后执行，超限时返回 429 `daily_limit_exceeded`。
 
+**限流键与前置墙**（2026-08-24 起）：所有 per-IP 前置墙以**客户端真实 IP** 为键——公网流量经 Cloudflare 橙云代理回源时，TCP 对端是 CF 边缘而非客户，`api_server._effective_client_ip` 仅在 peer 属于 CF 回源网段时信任 `CF-Connecting-IP` 头（头缺失/畸形则回落共享边缘桶，防伪造）。两层前置墙必须高于最高商业档分钟限（flagship 1000），否则付费客户先被墙挡：`auth._PREAUTH_MAX_ATTEMPTS` 默认 1200/60s（env `TRADINGDATAS_PREAUTH_RATE_LIMIT`）、`api_server._AUTH_ATTEMPTS_PER_WINDOW` 默认 1200/60s（env `TRADINGDATAS_AUTH_ATTEMPT_RATE_LIMIT`），loopback 豁免仅 api 层有。
+
 ## 首期范围
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
