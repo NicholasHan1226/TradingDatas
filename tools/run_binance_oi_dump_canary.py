@@ -52,11 +52,15 @@ from storage.receipt_projection import validated_success_receipt_ids  # noqa: E4
 from storage.sqlite_authority_lock import sqlite_authority_lock  # noqa: E402
 from tools.run_binance_spot_canary import (  # noqa: E402
     _LOCK_RETRY_INTERVAL,
-    _LOCK_WAIT_SECONDS,
     _collect_with_one_provider_retry,
     _private_lock,
 )
 from tools.run_binance_usdm_canary import _perp_datasets  # noqa: E402
+
+# The oi-dump timer fires infrequently while funding-rate and book-ticker
+# batches legitimately hold the shared lock for minutes; wait them out up to
+# a bound well inside the unit's TimeoutStartSec=10min instead of failing.
+_OI_DUMP_LOCK_WAIT_SECONDS = 480.0
 
 _PROVIDER = BinanceUsdmMetricsDumpCollector.provider
 _LOOKBACK_DAYS = 7
@@ -166,7 +170,7 @@ def _timed_lock(path: Path):
     if not path.is_absolute() or path.parent.is_symlink():
         raise ValueError("lock path must be an absolute non-symlink child")
     descriptor = path.open("a+", encoding="utf-8")
-    deadline = time.monotonic() + _LOCK_WAIT_SECONDS
+    deadline = time.monotonic() + _OI_DUMP_LOCK_WAIT_SECONDS
     while True:
         try:
             fcntl.flock(descriptor.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
