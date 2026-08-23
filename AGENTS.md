@@ -71,6 +71,18 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 三个数据端点通过 `build_data_plane_runtime()` + `CatalogService.list_datasets` 聚合真实 catalog runtime（与 `/v1/catalog` 同一数据面），不引入旁路读法；功能测试见 `tests/test_v1_api.py::test_admin_data_endpoints_serve_real_catalog_runtime`。
 
+**客户门户**：`GET /portal/api/me` 与 `GET /portal/api/me/usage?days=N` 让任意有效
+token（read scope 即可）查看自身套餐/限额/用量，仅返回本租户数据；不计日配额、不做
+scope 检查（门户自加载不烧客户配额），但完整认证、每小时频率与并发限制照常执行。
+路由冻结白名单已显式登记这三个 `/portal/api*` 字面量（见
+`tests/test_v1_api_clean_slate.py`）。合同详见 `docs/API.md` Customer Portal API。
+
+**前端构建**：管理台/门户的 React 源码在 `frontend/`（Vite + TS + Tailwind），
+构建产物提交在 `static/app/`（`base: '/app/'`），随 `static/**` 由同一 Pages 通道发布，
+生产 URL 为 `tradingdatas-admin.pages.dev/app/`。旧单文件控制台 `static/index.html`
+保留为回退入口。改前端后需在本机重新构建并一并提交 dist：
+`cd frontend && npm ci && npm run build`（输出直接落到 `static/app/`）。
+
 Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 - `enabled`（bool）：是否启用，默认 true

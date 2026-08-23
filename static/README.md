@@ -2,6 +2,26 @@
 
 This directory contains the standalone admin console frontend for deployment to Cloudflare Pages.
 
+## React app (`app/`)
+
+`app/` holds the **committed build output** of the React portal (`frontend/` —
+Vite + TypeScript + Tailwind). It serves both roles at
+`tradingdatas-admin.pages.dev/app/`:
+
+- **Admin** (token with `admin` scope or `internal` tier): token management,
+  usage, collection status, health alerts, data browser.
+- **Customer** (any valid token): own plan, limits, expiry and usage.
+
+Rebuild after changing `frontend/` sources and commit the dist together:
+
+```bash
+cd frontend && npm ci && npm run build   # outputs directly to ../static/app/
+```
+
+The legacy single-file console `index.html` remains as the fallback entry at
+`/`. Both frontends call the same backend base URL
+(`https://td-admin-api.tradingagent.cc` by default; overridable in the UI).
+
 ## Deployment to Cloudflare Pages
 
 ### Option 1: Direct Upload

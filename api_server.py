@@ -40,6 +40,9 @@ from storage.receipt_projection import RuntimeProjectionError
 ROOT = Path(__file__).resolve().parent
 V1_CATALOG_PATH = "/v1/catalog"
 V1_QUERY_PATH = "/v1/query"
+PORTAL_ME_PATH = "/portal/api/me"
+PORTAL_ME_USAGE_PATH = "/portal/api/me/usage"
+PORTAL_API_PREFIX = "/portal/api/"
 V1_CATALOG_PARAMS = frozenset(
     {"market", "domain", "cadence", "state", "q", "cursor", "limit"}
 )
@@ -1014,6 +1017,142 @@ class Handler(BaseHTTPRequestHandler):
                 {"error": str(exc)}, status=503
             )
 
+    def _serve_portal_usage(
+        self,
+        account: dict[str, Any],
+        raw_query: str,
+        request_id: str,
+    ) -> None:
+        tenant_id = str(account.get("tenant_id") or "")
+        # Lenient ``days`` parsing (mirrors the admin usage-history endpoint):
+        # anything absent or unparsable falls back to the 30-day default.
+        days = 30
+        for component in raw_query.split("&") if raw_query else ():
+            raw_key, _, raw_value = component.partition("=")
+            if raw_key == "days":
+                try:
+                    days = int(_strict_percent_decode(raw_value))
+                except (ValueError, TypeError):
+                    days = 30
+                break
+        days = max(1, min(days, 365))
+        limits = auth.effective_limits(account)
+        daily = auth.get_daily_usage().get(tenant_id, {})
+        history = [
+            {
+                "date": row.get("date"),
+                "total": int(row.get("by_tenant", {}).get(tenant_id, 0)),
+            }
+            for row in auth.get_usage_history(days=days)
+        ]
+        self._v1_log_category = "success"
+        return self._write_v1_json(
+            {
+                "api_version": "v1",
+                "request_id": request_id,
+                "portal_usage": {
+                    "tenant_id": tenant_id,
+                    "daily_limit": limits["daily_limit"],
+                    "today_count": int(daily.get("count", 0)),
+                    "history": history,
+                },
+            },
+            status=200,
+        )
+
+    def _handle_portal(
+        self, method: str, path: str, raw_query: str, request_id: str
+    ) -> None:
+        """Customer self-service portal endpoints (self-info only).
+
+        Unlike /admin routes this runs the tenant rate limit so the endpoint
+        cannot be hammered, but deliberately skips scope checks (a token may
+        always read its own record) and daily-limit counting (checking your
+        dashboard must not burn API quota).
+        """
+
+        allow = "GET, OPTIONS"
+        if method == "OPTIONS":
+            return self._write_v1_options(allow)
+        if path not in {PORTAL_ME_PATH, PORTAL_ME_USAGE_PATH}:
+            return self._write_v1_error(
+                request_id, status=404, code="not_found", allow=allow
+            )
+        if method != "GET":
+            return self._write_v1_error(
+                request_id,
+                status=405,
+                code="method_not_allowed",
+                allow=allow,
+            )
+
+        try:
+            _ensure_auth_loaded()
+        except Exception:
+            return self._write_v1_error(
+                request_id, status=503, code="service_unavailable"
+            )
+        if not _auth_attempt_allowed(self.client_address[0]):
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
+        try:
+            account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
+        except auth.AuthError:
+            return self._write_v1_error(
+                request_id, status=401, code="unauthenticated"
+            )
+        try:
+            auth.enforce_rate_limit(account["tenant_id"], account["tier"])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
+
+        if path == PORTAL_ME_USAGE_PATH:
+            return self._serve_portal_usage(account, raw_query, request_id)
+
+        limits = auth.effective_limits(account)
+        tenant_id = str(account.get("tenant_id") or "")
+        daily = auth.get_daily_usage().get(tenant_id, {})
+        hourly = auth.get_hourly_usage().get(tenant_id, {})
+        expires_at_iso = None
+        raw_expires = account.get("expires_at")
+        if raw_expires is not None:
+            try:
+                expires_at_iso = datetime.fromtimestamp(
+                    float(raw_expires), tz=timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (TypeError, ValueError, OSError, OverflowError):
+                expires_at_iso = None
+
+        payload = {
+            "api_version": "v1",
+            "request_id": request_id,
+            "portal": {
+                "tenant_id": tenant_id,
+                "tier": limits["tier"],
+                "scopes": list(account.get("scopes", [])),
+                "enabled": bool(account.get("enabled", True)),
+                "max_concurrent": limits["concurrency_limit"],
+                "hourly_request_limit": limits["hourly_request_limit"],
+                "daily_limit": limits["daily_limit"],
+                "expires_at": expires_at_iso,
+                "usage": {
+                    "today_date": daily.get("date"),
+                    "today_count": int(daily.get("count", 0)),
+                    "hourly_count": int(hourly.get("count_in_window", 0)),
+                    "hourly_window_seconds": auth.RATE_WINDOW_SECONDS,
+                },
+            },
+        }
+        self._v1_log_category = "success"
+        return self._write_v1_json(payload, status=200)
+
     def _handle_v1(self, method: str) -> None:
         request_id = str(uuid.uuid4())
         self._v1_request_id = request_id
@@ -1023,6 +1162,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin" or path.startswith("/admin/"):
             return self._handle_admin(method, path, raw_query, request_id)
+
+        if path == PORTAL_ME_PATH or path.startswith(PORTAL_API_PREFIX):
+            return self._handle_portal(method, path, raw_query, request_id)
 
         # Redirect root path to admin console
         if path == "/":

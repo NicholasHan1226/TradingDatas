@@ -275,6 +275,68 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 返回数据概览（按市场、Provider、cadence 分类的数据集数量）。
 
+## Customer Portal API
+
+客户自助门户端点：任意有效 token（`read` scope 即可）认证后仅返回**该 token 自身**的
+套餐、限额与用量，不泄露其他租户。供 React 门户前端（Pages `/app/`）使用。
+
+### OPTIONS /portal/api/*
+
+与 admin 相同的无凭据 CORS 预检：返回 `204` 与允许的 methods/headers，bearer-only、
+无 cookie/session，响应使用 `Access-Control-Allow-Origin: *`。引入浏览器凭据时必须
+整体改为显式 allowlist，并同步本文件。
+
+### GET /portal/api/me
+
+返回当前 token 的套餐信息与当日/当小时用量：
+
+```json
+{
+  "api_version": "...",
+  "request_id": "...",
+  "portal": {
+    "tenant_id": "...",
+    "tier": "research",
+    "scopes": ["read"],
+    "enabled": true,
+    "max_concurrent": 4,
+    "hourly_request_limit": 300,
+    "daily_limit": 10000,
+    "expires_at": "2027-12-31T23:59:59Z",
+    "usage": {
+      "today_date": "2026-08-23",
+      "today_count": 123,
+      "hourly_count": 9,
+      "hourly_window_seconds": 3600
+    }
+  }
+}
+```
+
+`max_concurrent <= 0` 与 `daily_limit`/`hourly_request_limit` 为 null 均表示不限。
+
+### GET /portal/api/me/usage?days=30
+
+返回本租户最近 N 天（钳制 1..365，默认 30）的逐日调用量：
+
+```json
+{
+  "api_version": "...",
+  "request_id": "...",
+  "portal_usage": {
+    "tenant_id": "...",
+    "daily_limit": 10000,
+    "today_count": 123,
+    "history": [{"date": "2026-08-23", "total": 123}]
+  }
+}
+```
+
+**设计边界**：portal 查询是客户查看自身信息的入口，**不计入每日配额、不做 scope
+检查**（否则门户页面自身的加载会烧客户的日配额）；但仍执行完整的 token 认证
+（disabled/expired 拒绝）、每小时频率限制与并发限制。认证失败语义与 v1 一致
+（401/429，同一错误信封）。
+
 ## Token 配置扩展字段
 
 `api_tokens.json` 支持以下新增字段：
