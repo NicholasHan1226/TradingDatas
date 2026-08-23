@@ -61,15 +61,129 @@ export default function CustomerApp({
     }
   }, [client])
 
-  const curlExample = `# 1) 浏览可用的数据集目录
+  const curlExample = `# 1) 浏览可用的数据集目录（取 dataset_id 与 schema_major）
 curl ${client.baseUrl}/v1/catalog \\
   -H "Authorization: Bearer <你的API密钥>"
 
-# 2) 查询某个数据集的数据行
+# 2) 查询某个数据集的数据行（dataset_id 与 schema_major 来自目录）
 curl -X POST ${client.baseUrl}/v1/query \\
   -H "Authorization: Bearer <你的API密钥>" \\
   -H "Content-Type: application/json" \\
-  -d '{"dataset_id": "cn.equity.daily", "limit": 20}'`
+  -d '{"dataset_id": "cn.dataset.adj_factor", "schema_major": 2,
+       "filters": {"ts_code": {"eq": "000001.SZ"}}, "limit": 100}'`
+
+  const agentPrompt = `你是交易数据分析助手，通过 TradingDatas HTTP API 获取真实行情与基本面数据。
+
+## 连接信息
+- Base URL：${client.baseUrl}
+- 认证：所有请求携带 Header「Authorization: Bearer <你的API密钥>」。
+- 密钥由用户提供，不要把它写进代码仓库或日志。
+
+## 工作流程
+1) 找数据集：GET ${client.baseUrl}/v1/catalog
+   返回数据集列表，每个条目包含：
+   - dataset_id 与 schema_major（查询时两者都必须提供）
+   - default_fields / fields（可用字段）
+   - filter_operators（各字段支持的过滤操作符）
+   - limits.max_page_size（单页行数上限）
+2) 取数据：POST ${client.baseUrl}/v1/query，JSON 请求体：
+   必填：dataset_id（字符串）、schema_major（整数）
+   常用可选：
+   - filters：按字段过滤，操作符支持 eq / in / gte / lte / between
+     例："filters": {"ts_code": {"eq": "000001.SZ"}}
+     例："filters": {"trade_date": {"gte": "2026-08-01"}}
+   - order：排序数组，元素形如 "字段名:asc" 或 "字段名:desc"
+   - limit：单页行数，不超过该数据集 limits.max_page_size
+   - cursor：翻页时传上一页响应中的 next_cursor
+3) 读响应：
+   - data：数据行对象数组（每行是 字段名->值）
+   - next_cursor：非 null 表示还有下一页，用它继续翻页
+   - metadata.data_through：当前数据截至时间
+
+## 规则
+- 先查 catalog 确认 dataset_id、schema_major 和字段名后再 query，不要凭记忆猜。
+- 收到 429 表示超出套餐的频率或限额：停止请求并等待后重试（指数退避）。
+- 收到 401 表示密钥无效、已暂停或已过期：提示用户检查账号。
+- 这些是只读接口；响应里的 request_id 可用于向管理员反馈问题。`
+
+  const toolDefsJson = JSON.stringify(
+    [
+      {
+        type: 'function',
+        function: {
+          name: 'tradingdatas_catalog',
+          description:
+            '浏览 TradingDatas 数据集目录，返回每个数据集的 dataset_id、schema_major、可用字段、过滤操作符与单页上限。查询前必须先在这里获取参数。',
+          parameters: { type: 'object', properties: {}, required: [] },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'tradingdatas_query',
+          description:
+            '查询 TradingDatas 指定数据集的数据行。dataset_id 与 schema_major 必须来自 tradingdatas_catalog 的结果。',
+          parameters: {
+            type: 'object',
+            properties: {
+              dataset_id: { type: 'string', description: '数据集 ID，来自目录' },
+              schema_major: { type: 'integer', description: '数据集主版本号，来自目录' },
+              filters: {
+                type: 'object',
+                description:
+                  '按字段过滤，值为单操作符对象；操作符：eq/in/gte/lte/between。例：{"ts_code":{"eq":"000001.SZ"}}',
+              },
+              order: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '排序，元素形如 "trade_date:desc"',
+              },
+              limit: { type: 'integer', description: '单页行数，不超过目录中该数据集的上限' },
+              cursor: { type: 'string', description: '上一页响应中的 next_cursor，用于翻页' },
+            },
+            required: ['dataset_id', 'schema_major'],
+          },
+        },
+      },
+    ],
+    null,
+    2,
+  )
+
+  const pythonExample = `import json
+import os
+import urllib.request
+
+BASE = "${client.baseUrl}"
+KEY = os.environ["TRADINGDATAS_API_KEY"]  # 不要硬编码密钥
+
+def get_catalog():
+    req = urllib.request.Request(
+        BASE + "/v1/catalog",
+        headers={"Authorization": "Bearer " + KEY},
+    )
+    return json.load(urllib.request.urlopen(req, timeout=30))
+
+def query(dataset_id, schema_major, **extra):
+    body = dict(dataset_id=dataset_id, schema_major=schema_major, **extra)
+    req = urllib.request.Request(
+        BASE + "/v1/query",
+        data=json.dumps(body).encode(),
+        headers={"Authorization": "Bearer " + KEY,
+                 "Content-Type": "application/json"},
+    )
+    return json.load(urllib.request.urlopen(req, timeout=30))
+
+# 目录 -> 选数据集 -> 翻页取数
+catalog = get_catalog()
+resp = query("cn.dataset.adj_factor", 2,
+             filters={"ts_code": {"eq": "000001.SZ"}},
+             order=["trade_date:desc"], limit=100)
+rows, next_cursor = resp["data"], resp["next_cursor"]
+while next_cursor:
+    resp = query("cn.dataset.adj_factor", 2, cursor=next_cursor)
+    rows.extend(resp["data"])
+    next_cursor = resp["next_cursor"]`
 
   if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
 
@@ -217,7 +331,7 @@ curl -X POST ${client.baseUrl}/v1/query \\
                     <table className="w-full text-xs">
                       <tbody>
                         {[
-                          ['GET', '/v1/catalog', '浏览可用的数据集目录'],
+                          ['GET', '/v1/catalog', '浏览数据集目录（取 dataset_id 与 schema_major）'],
                           ['POST', '/v1/query', '查询具体数据集的数据行'],
                           ['GET', '/portal/api/me', '查看本页的套餐与配额信息'],
                         ].map(([method, path, desc]) => (
@@ -249,6 +363,45 @@ curl -X POST ${client.baseUrl}/v1/query \\
                 <div className="rounded-lg bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200 ring-inset">
                   ⚠️ API 密钥等同于账户凭证：请勿写入公开代码仓库或分享给他人；怀疑泄露时立即联系管理员重置。
                   超出并发、频率（如每分钟请求上限）或每日限额时会收到 <code className="font-mono">429</code> 响应，请按提示退避重试。
+                </div>
+              </div>
+            </Card>
+
+            {/* Agent onboarding: copy-ready prompt / tool defs / sample code */}
+            <Card title="Agent 接入 · 一键复制">
+              <div className="space-y-5">
+                <p className="text-xs leading-relaxed text-slate-500">
+                  把下面的内容复制进你的 AI Agent（系统提示、工具定义或脚本），即可让它直接使用你的数据接口。
+                </p>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-slate-600">给 AI 助手的接入提示词（粘贴到 Agent 的系统提示中）</p>
+                    <CopyButton text={agentPrompt} label="复制提示词" />
+                  </div>
+                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap">
+{agentPrompt}
+                  </pre>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-slate-600">Function Calling 工具定义（OpenAI 兼容格式）</p>
+                    <CopyButton text={toolDefsJson} label="复制工具定义" />
+                  </div>
+                  <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
+{toolDefsJson}
+                  </pre>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-slate-600">Python 调用示例（标准库，无需安装依赖）</p>
+                    <CopyButton text={pythonExample} label="复制 Python 示例" />
+                  </div>
+                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
+{pythonExample}
+                  </pre>
                 </div>
               </div>
             </Card>
