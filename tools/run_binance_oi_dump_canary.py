@@ -51,6 +51,8 @@ from dataset_registry import (  # noqa: E402
 from storage.receipt_projection import validated_success_receipt_ids  # noqa: E402
 from storage.sqlite_authority_lock import sqlite_authority_lock  # noqa: E402
 from tools.run_binance_spot_canary import (  # noqa: E402
+    _LOCK_RETRY_INTERVAL,
+    _LOCK_WAIT_SECONDS,
     _collect_with_one_provider_retry,
     _private_lock,
 )
@@ -151,6 +153,31 @@ def _blocking_lock(path: Path):
     return descriptor
 
 
+def _timed_lock(path: Path):
+    """Wait briefly for the shared store lock; fail closed if still busy.
+
+    Timer-driven one-shot batches collide with the high-frequency
+    book-ticker collector on the same lock file; an immediate non-blocking
+    acquisition turns every overlap into a failed systemd unit.  Waiting a
+    bounded window absorbs the collision while preserving fail-closed
+    behavior when the lock is genuinely stuck.
+    """
+
+    if not path.is_absolute() or path.parent.is_symlink():
+        raise ValueError("lock path must be an absolute non-symlink child")
+    descriptor = path.open("a+", encoding="utf-8")
+    deadline = time.monotonic() + _LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(descriptor.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return descriptor
+        except OSError:
+            if time.monotonic() >= deadline:
+                descriptor.close()
+                raise
+            time.sleep(_LOCK_RETRY_INTERVAL)
+
+
 def _release(lock) -> None:
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
@@ -200,7 +227,7 @@ def _run_lookback(
     now: datetime,
 ) -> dict[str, object]:
     candidates = lookback_days(now)
-    lock = _private_lock(lock_path)
+    lock = _timed_lock(lock_path)
     try:
         results = []
         for dataset_id in datasets:
