@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-23 02:35 CST。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-23 16:02 CST。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,15 +9,29 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（PR #267） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（PR #271） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（回滚点 `300182f935c7f9f35b01d08ef049d4ed911df652`） | immutable 运行源码，2026-08-23 02:20 CST 切换 |
-| Crypto 有效 release | `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`（回滚点 `300182f935c7f9f35b01d08ef049d4ed911df652`） | 隔离 immutable 运行源码，2026-08-23 02:23 CST 切换 |
+| A 股有效 release | `7f6ba42f41a90948666d00834139fefba5d2658c`（回滚点 `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`） | immutable 运行源码，2026-08-23 14:33 CST 切换 |
+| Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
 
 ## 2026-08-23 发布记录
+
+第五轮（15:26 CST，crypto 面 → `f538875`，PR #271）：oi-dump 共享锁等待上限由
+120s 提升至 480s（unit TimeoutStartSec=600s 内）。生产实弹验证 `systemctl start`
+后 ExecMainStatus=0，数据集按设计报 unchanged/unpublished 软缺口，unit 不再标红。
+回滚点 `7d04a1f`。
+
+第四轮（15:07 CST，crypto 面 → `7d04a1f`，PR #270）：oi-dump 入口锁从非阻塞
+flock 改为有界等待 `_timed_lock`，消除与 book-ticker/funding 批次的瞬时碰撞。
+首次实弹暴露 120s 不足，引出第五轮。
+
+第三轮（14:33 CST，A 股面 → `7f6ba42`，PR #269）：`daily_limit_exceeded` 补入
+`_V1_ERROR_DETAILS`（对齐冻结合同的 429 语义）；`GET /admin/api/usage/history`
+NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静态守卫测试。
+匿名 401 readback 通过；消费者级认证 readback 待 owner 执行。
 
 第二轮（02:20/02:23 CST，两面 → `5ca8e3e`，PR #267）：scheduled crypto 采集器
 （spot bars / book-ticker / USDM）从非阻塞抢锁改为有界 120s 等待
