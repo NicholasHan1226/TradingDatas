@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from collectors.polymarket.collector import (
+from collectors.prediction_markets.collector import (
     PolymarketSnapshotCollector,
     SshRelayTransport,
     StarterMarket,
