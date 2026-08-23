@@ -907,7 +907,7 @@ def test_timed_lock_fails_closed_when_stuck(tmp_path, monkeypatch):
     """A genuinely stuck lock still fails closed after the bounded window."""
     import tools.run_binance_oi_dump_canary as canary
 
-    monkeypatch.setattr(canary, "_LOCK_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(canary, "_OI_DUMP_LOCK_WAIT_SECONDS", 0.0)
     monkeypatch.setattr(canary, "_LOCK_RETRY_INTERVAL", 0.01)
     holder = canary._private_lock(tmp_path / "collect.lock")
     try:
