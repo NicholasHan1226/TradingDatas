@@ -626,6 +626,10 @@ class Handler(BaseHTTPRequestHandler):
         # Admin API routes require authentication
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
         except auth.AuthError:
             return self._write_v1_error(
                 request_id, status=401, code="unauthenticated"
@@ -973,6 +977,13 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id,
+                status=429,
+                code="rate_limited",
+                suppress_body=suppress_body,
+            )
         except auth.AuthError:
             return self._write_v1_error(
                 request_id,
