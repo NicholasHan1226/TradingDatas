@@ -121,7 +121,8 @@ PROVIDER_DATASET_ROWS_CONTRACT = Table(
 )
 
 MARKET_INGEST_RUNS_INDEX_COLUMNS: dict[str, tuple[str, ...]] = {
-    "market_ingest_runs_source_idx": ("source",)
+    "market_ingest_runs_source_idx": ("source",),
+    "market_ingest_runs_source_finished_idx": ("source", "finished_at DESC"),
 }
 
 MARKET_INGEST_RUNS_CONTRACT = Table(
@@ -195,7 +196,7 @@ def _sqlite_schema_sql(ddl: str) -> str:
 
 
 def _expected_sqlite_objects(
-    include_market_ingest_runs_source_index: bool = False,
+    market_ingest_run_indexes: frozenset[str] = frozenset(),
 ) -> dict[tuple[str, str, str], str]:
     expected = {
         ("table", table.name, table.name): _sqlite_schema_sql(
@@ -213,17 +214,18 @@ def _expected_sqlite_objects(
             for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
         }
     )
-    if include_market_ingest_runs_source_index:
-        expected.update(
-            {
-                ("index", name, "market_ingest_runs"): _sqlite_schema_sql(
-                    "CREATE INDEX IF NOT EXISTS "
-                    f"{name} ON market_ingest_runs "
-                    f"({', '.join(columns)});"
-                )
-                for name, columns in MARKET_INGEST_RUNS_INDEX_COLUMNS.items()
-            }
-        )
+    present = set(market_ingest_run_indexes) & set(MARKET_INGEST_RUNS_INDEX_COLUMNS)
+    expected.update(
+        {
+            ("index", name, "market_ingest_runs"): _sqlite_schema_sql(
+                "CREATE INDEX IF NOT EXISTS "
+                f"{name} ON market_ingest_runs "
+                f"({', '.join(columns)});"
+            )
+            for name, columns in MARKET_INGEST_RUNS_INDEX_COLUMNS.items()
+            if name in present
+        }
+    )
     return expected
 
 
@@ -256,10 +258,10 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
             "WHERE name NOT LIKE 'sqlite_%'"
         ).fetchall()
     }
+    observed_names = {name for (_type, name, _table) in objects}
     expected_objects = _expected_sqlite_objects(
-        include_market_ingest_runs_source_index=(
-            "market_ingest_runs_source_idx"
-            in {name for (_type, name, _table) in objects}
+        market_ingest_run_indexes=frozenset(
+            observed_names & set(MARKET_INGEST_RUNS_INDEX_COLUMNS)
         )
     )
     if objects != expected_objects:
@@ -297,23 +299,22 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
         ).fetchall()
         if str(row[3]) == "c"
     )
-    source_index_present = "market_ingest_runs_source_idx" in {
-        name for (_type, name, _table) in objects
-    }
-    if source_index_present:
-        allowed = MARKET_INGEST_RUNS_INDEX_COLUMNS
+    for name, expected_columns in MARKET_INGEST_RUNS_INDEX_COLUMNS.items():
+        if name not in {str(row[1]) for row in receipt_custom_indexes}:
+            continue
         columns = tuple(
             str(row[0])
             for row in conn.execute(
                 "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
-                ("market_ingest_runs_source_idx",),
+                (name,),
             ).fetchall()
         )
-        if columns != tuple(allowed["market_ingest_runs_source_idx"]):
+        if columns != tuple(
+            item.split()[0] for item in expected_columns
+        ):
             raise RuntimeError("market_ingest_runs indexes are incompatible")
         receipt_custom_indexes = tuple(
-            row for row in receipt_custom_indexes
-            if str(row[1]) != "market_ingest_runs_source_idx"
+            row for row in receipt_custom_indexes if str(row[1]) != name
         )
     if receipt_custom_indexes:
         raise RuntimeError("market_ingest_runs indexes are incompatible")
@@ -424,4 +425,9 @@ def ensure_market_ingest_runs_source_index(conn: sqlite3.Connection) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS market_ingest_runs_source_idx"
             " ON market_ingest_runs (source)"
+        )
+    if "market_ingest_runs_source_finished_idx" not in existing:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS market_ingest_runs_source_finished_idx"
+            " ON market_ingest_runs (source, finished_at DESC)"
         )

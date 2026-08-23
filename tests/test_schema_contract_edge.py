@@ -97,7 +97,11 @@ def test_market_ingest_runs_source_index_is_optional_and_validated() -> None:
             "ON market_ingest_runs (source)"
         )
         assert MARKET_INGEST_RUNS_INDEX_COLUMNS == {
-            "market_ingest_runs_source_idx": ("source",)
+            "market_ingest_runs_source_idx": ("source",),
+            "market_ingest_runs_source_finished_idx": (
+                "source",
+                "finished_at DESC",
+            ),
         }
 
         conn.execute("DROP INDEX market_ingest_runs_source_idx")
@@ -129,5 +133,45 @@ def test_ensure_market_ingest_runs_source_index_is_idempotent() -> None:
             "WHERE type='index' AND name='market_ingest_runs_source_idx'"
         ).fetchone()[0]
         assert count == 1
+    finally:
+        conn.close()
+
+
+def test_ensure_market_ingest_runs_projection_index_is_idempotent() -> None:
+    """The (source, finished_at DESC) catalog index follows the same
+    create-if-missing, validate-when-present contract as the source index."""
+    from storage.schema_contract import (
+        ensure_market_ingest_runs_source_index,
+        require_clean_sqlite_authority_schema,
+    )
+
+    conn = _authority_conn()
+    try:
+        require_clean_sqlite_authority_schema(conn)
+        ensure_market_ingest_runs_source_index(conn)
+        conn.commit()
+        require_clean_sqlite_authority_schema(conn)
+
+        columns = tuple(
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
+                ("market_ingest_runs_source_finished_idx",),
+            ).fetchall()
+        )
+        assert columns == ("source", "finished_at")
+
+        ensure_market_ingest_runs_source_index(conn)
+        conn.commit()
+        require_clean_sqlite_authority_schema(conn)
+
+        conn.execute("DROP INDEX market_ingest_runs_source_finished_idx")
+        conn.execute(
+            "CREATE INDEX market_ingest_runs_source_finished_idx "
+            "ON market_ingest_runs (source)"
+        )
+        conn.commit()
+        with pytest.raises(RuntimeError):
+            require_clean_sqlite_authority_schema(conn)
     finally:
         conn.close()
