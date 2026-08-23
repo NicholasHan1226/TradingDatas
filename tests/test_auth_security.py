@@ -1079,3 +1079,83 @@ def test_preauth_limiter_tracks_bounded_sources():
         api_server.time.monotonic = real_mono
         with api_server._AUTH_LIMITER_LOCK:
             api_server._AUTH_ATTEMPT_TIMES.clear()
+
+
+def test_preauth_defaults_above_highest_commercial_tier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both pre-auth walls key on the client IP and apply to authenticated
+    requests too, so either sitting below flagship's 1000/min would reject
+    paying customers before their purchased per-minute quota is consulted."""
+    import api_server
+
+    # Reload without overrides: earlier tests in this file mutate the shared
+    # module's threshold via env-var reloads.
+    auth_module = _reload_auth(monkeypatch)
+    assert auth_module._PREAUTH_MAX_ATTEMPTS >= 1000
+    assert api_server._AUTH_ATTEMPTS_PER_WINDOW >= 1000
+
+
+def test_effective_client_ip_trusts_cf_header_only_from_cf_peers():
+    import api_server
+
+    cf_edge = "172.70.1.2"  # inside 172.64.0.0/13
+    customer = "203.0.113.55"
+
+    # Cloudflare relay + valid header -> customer identity.
+    assert (
+        api_server._effective_client_ip(cf_edge, {"CF-Connecting-IP": customer})
+        == customer
+    )
+    # Direct peer forging the header -> ignored.
+    assert (
+        api_server._effective_client_ip(
+            "198.51.100.9", {"CF-Connecting-IP": "1.2.3.4"}
+        )
+        == "198.51.100.9"
+    )
+    # CF peer with a malformed header -> fail closed to the shared edge bucket.
+    assert (
+        api_server._effective_client_ip(
+            cf_edge, {"CF-Connecting-IP": "not-an-ip"}
+        )
+        == cf_edge
+    )
+    # CF peer without the header -> same fallback.
+    assert api_server._effective_client_ip(cf_edge, {}) == cf_edge
+    # IPv6 edges (2606:4700::/32) are trusted relays as well.
+    assert (
+        api_server._effective_client_ip(
+            "2606:4700:a::1", {"CF-Connecting-IP": "2001:db8::7"}
+        )
+        == "2001:db8::7"
+    )
+
+
+def test_preauth_buckets_follow_effective_client_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two customers behind one Cloudflare edge get independent buckets."""
+    import api_server
+
+    auth_module = _reload_auth(monkeypatch)
+    # monkeypatch (not bare assignment): the shared module object survives
+    # into later files, and a leaked threshold of 2 would 429 their requests.
+    monkeypatch.setattr(auth_module, "_PREAUTH_MAX_ATTEMPTS", 2)
+
+    def attempt(customer_ip: str) -> None:
+        headers = {
+            "Authorization": "Bearer garbage-token",
+            "CF-Connecting-IP": customer_ip,
+        }
+        client_ip = api_server._effective_client_ip("172.70.9.9", headers)
+        with pytest.raises(auth_module.AuthError):
+            auth_module.authenticate(headers, client_ip)
+
+    attempt("203.0.113.55")
+    attempt("203.0.113.55")
+    with pytest.raises(auth_module.RateLimitError):
+        attempt("203.0.113.55")
+
+    # Same edge peer, different real customer -> unaffected by the first.
+    attempt("198.51.100.77")

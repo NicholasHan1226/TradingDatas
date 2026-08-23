@@ -313,6 +313,7 @@ def v1_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
         auth, "CONCURRENCY_LIMITS", {**auth.CONCURRENCY_LIMITS, "internal": None}
     )
     monkeypatch.setattr(auth, "_REQUEST_LOG", auth.OrderedDict())
+    monkeypatch.setattr(auth, "_DAILY_REQUEST_LOG", auth.OrderedDict())
     monkeypatch.setattr(auth, "_ACTIVE_REQUESTS", {})
     # Reset the pre-auth limiter too: a prior file in the same worker process
     # (e.g. test_auth_security's authenticate storm) otherwise leaves this host

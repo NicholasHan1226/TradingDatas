@@ -103,11 +103,76 @@ _INVALID_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 # anonymous client spraying bearer tokens converts request volume directly
 # into CPU load.  Bound attempts per source address well above any legit
 # internal consumer while capping the unauthenticated work multiplier.
+# Must stay above the highest commercial per-minute tier (flagship 1000)
+# or paying customers get rejected before their real quota applies.
 _AUTH_ATTEMPT_WINDOW_SECONDS = 60.0
-_AUTH_ATTEMPTS_PER_WINDOW = 600
+_AUTH_ATTEMPTS_PER_WINDOW = max(
+    1,
+    int(os.environ.get("TRADINGDATAS_AUTH_ATTEMPT_RATE_LIMIT", "1200")),
+)
 _AUTH_ATTEMPT_TRACK_CAP = 4096
 _AUTH_LIMITER_LOCK = threading.Lock()
 _AUTH_ATTEMPT_TIMES: dict[str, list[float]] = {}
+
+# Cloudflare origin-facing networks (https://www.cloudflare.com/ips/).  When a
+# request arrives from one of these addresses the TCP peer is Cloudflare's
+# edge, not the customer; the rate-limiting identity is then taken from the
+# CF-Connecting-IP header Cloudflare appends.  Peers outside these networks
+# are direct connections and their forged headers are ignored.
+_CF_SOURCE_NETWORKS = tuple(
+    ipaddress.ip_network(net)
+    for net in (
+        "173.245.48.0/20",
+        "103.21.244.0/22",
+        "103.22.200.0/22",
+        "103.31.4.0/22",
+        "141.101.64.0/18",
+        "108.162.192.0/18",
+        "190.93.240.0/20",
+        "188.114.96.0/20",
+        "197.234.240.0/22",
+        "198.41.128.0/17",
+        "162.158.0.0/15",
+        "104.16.0.0/13",
+        "104.24.0.0/14",
+        "172.64.0.0/13",
+        "131.0.72.0/22",
+        "2400:cb00::/32",
+        "2606:4700::/32",
+        "2803:f800::/32",
+        "2405:b500::/32",
+        "2405:8100::/32",
+        "2a06:98c0::/29",
+        "2c0f:f248::/32",
+    )
+)
+
+
+def _effective_client_ip(peer_ip: str, headers: Any) -> str:
+    """Return the rate-limiting identity for a request.
+
+    Direct peers are their own identity.  Peers inside the Cloudflare origin
+    networks are only relays: trust CF-Connecting-IP when it carries a valid
+    address so each customer is limited by their own IP instead of sharing a
+    bucket with every other visitor behind the same edge server.  A missing or
+    malformed header falls back to the peer address (fail closed to the
+    coarser shared bucket rather than trusting attacker-controlled input).
+    """
+    try:
+        peer = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return peer_ip
+    if not any(peer in net for net in _CF_SOURCE_NETWORKS):
+        return peer_ip
+    claimed = headers.get("CF-Connecting-IP") if headers is not None else None
+    if claimed:
+        claimed = claimed.strip()
+        try:
+            ipaddress.ip_address(claimed)
+        except ValueError:
+            return peer_ip
+        return claimed
+    return peer_ip
 
 
 def _auth_attempt_allowed(client_ip: str) -> bool:
@@ -667,12 +732,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_options("GET, POST, PATCH, DELETE, OPTIONS")
 
         # Admin API routes require authentication
-        if not _auth_attempt_allowed(self.client_address[0]):
+        client_ip = _effective_client_ip(self.client_address[0], self.headers)
+        if not _auth_attempt_allowed(client_ip):
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
             )
         try:
-            account = auth.authenticate(self.headers, self.client_address[0])
+            account = auth.authenticate(self.headers, client_ip)
         except auth.RateLimitError:
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
@@ -1092,12 +1158,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_error(
                 request_id, status=503, code="service_unavailable"
             )
-        if not _auth_attempt_allowed(self.client_address[0]):
+        client_ip = _effective_client_ip(self.client_address[0], self.headers)
+        if not _auth_attempt_allowed(client_ip):
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
             )
         try:
-            account = auth.authenticate(self.headers, self.client_address[0])
+            account = auth.authenticate(self.headers, client_ip)
         except auth.RateLimitError:
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
@@ -1229,12 +1296,13 @@ class Handler(BaseHTTPRequestHandler):
                 suppress_body=suppress_body,
             )
 
-        if not _auth_attempt_allowed(self.client_address[0]):
+        client_ip = _effective_client_ip(self.client_address[0], self.headers)
+        if not _auth_attempt_allowed(client_ip):
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
             )
         try:
-            account = auth.authenticate(self.headers, self.client_address[0])
+            account = auth.authenticate(self.headers, client_ip)
         except auth.RateLimitError:
             return self._write_v1_error(
                 request_id,

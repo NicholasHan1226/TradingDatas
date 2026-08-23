@@ -107,8 +107,12 @@ _ACTIVE_REQUESTS: dict[str, int] = {}
 # tokens before any expensive key derivation runs. Counts every authentication
 # attempt (JWT-shaped or bearer) per client host inside a sliding window.
 _PREAUTH_WINDOW_SECONDS = 60.0
+# Must stay above the highest commercial per-minute tier (flagship 1000):
+# this limiter keys on the client IP and applies to authenticated requests
+# too, so a lower default would reject paying customers before their real
+# per-minute quota is ever consulted.
 _PREAUTH_MAX_ATTEMPTS = max(
-    1, int(os.environ.get("TRADINGDATAS_PREAUTH_RATE_LIMIT", "120"))
+    1, int(os.environ.get("TRADINGDATAS_PREAUTH_RATE_LIMIT", "1200"))
 )
 _PREAUTH_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 _PREAUTH_MAX_HOSTS = 10000

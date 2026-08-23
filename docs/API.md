@@ -262,6 +262,11 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 （`expires_at`）仍按 token 单独控制。并发默认值可被 per-token `max_concurrent`
 覆盖。
 
+滥用防护墙（对认证与匿名请求一视同仁）按**来源 IP** 计 1200 次/60 秒，远高于
+最高套餐额度；经 Cloudflare 访问时以 `CF-Connecting-IP` 识别真实来源，正常
+使用不会触墙。若你的出口 IP 由多台机器共享且触发该墙，返回的同样是
+`429 code=rate_limited`，等待窗口滑过即可恢复。
+
 响应包含明文 token（仅此一次可见）：
 
 ```json
