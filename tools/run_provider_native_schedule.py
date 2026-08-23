@@ -212,7 +212,11 @@ class ScheduleResult:
                 "provider": item.provider,
                 "state": item.state,
             }
-            if item.state == "invalid_receipt_authority" and item.reasons:
+            if (
+                item.state
+                in ("invalid_receipt_authority", "rate_budget_exhausted")
+                and item.reasons
+            ):
                 skip["reasons"] = list(item.reasons)
             skipped.append(skip)
         return {
@@ -452,6 +456,7 @@ def run_schedule(
     rate_ledger = RuntimeRateBudgetLedger(schedule)
     run_attempt_id = str(uuid.uuid4())
     results: list[DatasetResult] = []
+    runtime_skipped: list[SkippedResult] = list(skipped)
     for plan_index, plan in enumerate(plans):
         try:
             result = (
@@ -469,6 +474,20 @@ def run_schedule(
                     rate_ledger=rate_ledger,
                 )
             )
+        except RequestBudgetExceeded:
+            # Budget exhaustion is a planned consumption stop, not a dataset
+            # failure: the remaining same-budget-class plans never ran, so
+            # marking them "failed" would both misreport health and let one
+            # high-frequency dataset drag its whole budget class into failed.
+            runtime_skipped.append(
+                SkippedResult(
+                    plan.dataset_id,
+                    plan.provider,
+                    "rate_budget_exhausted",
+                    ("provider request budget exhausted",),
+                )
+            )
+            continue
         except Exception:
             result = DatasetResult(plan.dataset_id, plan.provider, "failed", 4)
         if (
@@ -500,7 +519,13 @@ def run_schedule(
         for item in results
     ]
     failed = any(item.state not in _SUCCESS_STATES for item in results)
-    return ScheduleResult(1 if failed else 0, "execute", tuple(results), skipped, plans)
+    return ScheduleResult(
+        1 if failed else 0,
+        "execute",
+        tuple(results),
+        tuple(runtime_skipped),
+        plans,
+    )
 
 
 @contextmanager
