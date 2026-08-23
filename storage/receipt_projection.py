@@ -3550,6 +3550,22 @@ def _require_bound_path_identities(expected: _ReceiptDatabaseBinding) -> None:
         raise RuntimeProjectionError("receipt database binding changed")
 
 
+def _expected_provider_indexes_snapshot(
+    observed: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    """Expected provider-row index map, tolerating a missing coverage index.
+
+    Stores created before ``provider_dataset_rows_coverage_idx`` keep passing
+    the read-only snapshot validation; a present index must still match its
+    declared column order exactly.
+    """
+
+    expected = dict(PROVIDER_DATASET_ROWS_INDEX_COLUMNS)
+    if "provider_dataset_rows_coverage_idx" not in observed:
+        expected.pop("provider_dataset_rows_coverage_idx", None)
+    return expected
+
+
 def _open_bound_receipt_database_ro(
     binding: _ReceiptDatabaseBinding,
 ) -> sqlite3.Connection:
@@ -3650,7 +3666,9 @@ def _open_bound_receipt_database_ro(
             or int(provider_table_entries[0][3]) != len(PROVIDER_DATASET_ROWS_COLUMNS)
             or int(provider_table_entries[0][4]) != 0
             or int(provider_table_entries[0][5]) != 0
-            or provider_indexes != PROVIDER_DATASET_ROWS_INDEX_COLUMNS
+            or provider_indexes != _expected_provider_indexes_snapshot(
+                provider_indexes
+            )
             or authority_tables != {PROVIDER_DATASET_ROWS_TABLE, "market_ingest_runs"}
         ):
             raise RuntimeProjectionError("receipt database schema is unavailable")

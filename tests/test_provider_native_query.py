@@ -175,6 +175,13 @@ def _create_table(conn: sqlite3.Connection) -> None:
         "CREATE INDEX provider_dataset_rows_quality_idx "
         "ON provider_dataset_rows(dataset_id, provider, schema_major, quality_state)"
     )
+    # Production DDL always carries the mandatory partition index; the
+    # latest-partition MAX path force-uses it via INDEXED BY.
+    conn.execute(
+        "CREATE INDEX provider_dataset_rows_partition_idx "
+        "ON provider_dataset_rows("
+        "dataset_id, provider, schema_major, partition_value, row_key)"
+    )
     conn.execute(
         "CREATE TABLE market_ingest_runs ("
         "run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, "
@@ -1975,11 +1982,6 @@ def test_current_exact_partition_uses_only_projected_receipt_cohort(
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
-    conn.execute(
-        "CREATE INDEX provider_dataset_rows_partition_idx "
-        "ON provider_dataset_rows(dataset_id, provider, schema_major, "
-        "partition_value, row_key)"
-    )
     _insert_row(
         conn,
         provider="provider-a",
@@ -2645,11 +2647,6 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
-    conn.execute(
-        "CREATE INDEX provider_dataset_rows_partition_idx "
-        "ON provider_dataset_rows(dataset_id, provider, schema_major, "
-        "partition_value, row_key)"
-    )
     rows: list[tuple[object, ...]] = []
     for index in range(25_000):
         trade_date = "20260716" if index < 10 else "20260715"

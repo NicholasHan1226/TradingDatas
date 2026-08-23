@@ -73,6 +73,11 @@ PROVIDER_DATASET_ROWS_INDEX_COLUMNS: dict[str, tuple[str, ...]] = {
         "schema_major",
         "quality_state",
     ),
+    "provider_dataset_rows_coverage_idx": (
+        "dataset_id",
+        "schema_major",
+        "observed_at",
+    ),
     "provider_dataset_rows_receipt_idx": ("receipt_id",),
 }
 PROVIDER_DATASET_ROWS_CREATE_SQL = """CREATE TABLE IF NOT EXISTS provider_dataset_rows (
@@ -196,6 +201,7 @@ def _sqlite_schema_sql(ddl: str) -> str:
 
 def _expected_sqlite_objects(
     include_market_ingest_runs_source_index: bool = False,
+    include_provider_coverage_index: bool = True,
 ) -> dict[tuple[str, str, str], str]:
     expected = {
         ("table", table.name, table.name): _sqlite_schema_sql(
@@ -203,6 +209,13 @@ def _expected_sqlite_objects(
         )
         for table in TABLES
     }
+    provider_index_names = PROVIDER_DATASET_ROWS_INDEX_COLUMNS
+    if not include_provider_coverage_index:
+        provider_index_names = {
+            name: columns
+            for name, columns in provider_index_names.items()
+            if name != "provider_dataset_rows_coverage_idx"
+        }
     expected.update(
         {
             ("index", name, PROVIDER_DATASET_ROWS_TABLE): _sqlite_schema_sql(
@@ -210,7 +223,7 @@ def _expected_sqlite_objects(
                 f"{name} ON {PROVIDER_DATASET_ROWS_TABLE} "
                 f"({', '.join(columns)});"
             )
-            for name, columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items()
+            for name, columns in provider_index_names.items()
         }
     )
     if include_market_ingest_runs_source_index:
@@ -260,7 +273,11 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
         include_market_ingest_runs_source_index=(
             "market_ingest_runs_source_idx"
             in {name for (_type, name, _table) in objects}
-        )
+        ),
+        include_provider_coverage_index=(
+            "provider_dataset_rows_coverage_idx"
+            in {name for (_type, name, _table) in objects}
+        ),
     )
     if objects != expected_objects:
         raise RuntimeError(
@@ -277,9 +294,25 @@ def require_clean_sqlite_authority_schema(conn: sqlite3.Connection) -> None:
     expected_provider_indexes = {
         name: (0, "c", 0) for name in PROVIDER_DATASET_ROWS_INDEX_COLUMNS
     }
+    # The coverage index is optional on pre-existing stores: the first writer
+    # transaction upgrades them in place via
+    # ensure_provider_dataset_rows_coverage_index.  Absence is tolerated here,
+    # but a present index must match the declared column order exactly.
+    coverage_index_declared = (
+        "provider_dataset_rows_coverage_idx" in expected_provider_indexes
+    )
+    coverage_index_present = (
+        "provider_dataset_rows_coverage_idx" in provider_indexes
+    )
+    if coverage_index_declared and not coverage_index_present:
+        expected_provider_indexes.pop("provider_dataset_rows_coverage_idx")
     if provider_indexes != expected_provider_indexes:
         raise RuntimeError("provider_dataset_rows indexes are incompatible")
     for name, expected_columns in PROVIDER_DATASET_ROWS_INDEX_COLUMNS.items():
+        if name == "provider_dataset_rows_coverage_idx" and (
+            not coverage_index_present
+        ):
+            continue
         columns = tuple(
             str(row[0])
             for row in conn.execute(
@@ -424,4 +457,30 @@ def ensure_market_ingest_runs_source_index(conn: sqlite3.Connection) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS market_ingest_runs_source_idx"
             " ON market_ingest_runs (source)"
+        )
+
+
+def ensure_provider_dataset_rows_coverage_index(
+    conn: sqlite3.Connection,
+) -> None:
+    """Create the provider_dataset_rows coverage index if missing (idempotent).
+
+    Serves the catalog coverage aggregation (COUNT / MIN / MAX(observed_at)
+    per ``dataset_id`` + ``schema_major``).  Same upgrade-on-first-write
+    contract as ensure_market_ingest_runs_source_index: read-only releases
+    created before this index keep validating clean, and the first writer
+    transaction creates it in place.
+    """
+
+    existing = {
+        row[1]
+        for row in conn.execute(
+            "PRAGMA index_list(provider_dataset_rows)"
+        ).fetchall()
+    }
+    if "provider_dataset_rows_coverage_idx" not in existing:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS provider_dataset_rows_coverage_idx"
+            f" ON {PROVIDER_DATASET_ROWS_TABLE}"
+            " (dataset_id, schema_major, observed_at)"
         )
