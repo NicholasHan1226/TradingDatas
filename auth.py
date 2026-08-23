@@ -1148,6 +1148,26 @@ def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
     )
 
 
+def effective_limits(account: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the limits enforce_rate_limit/claim_concurrency would apply.
+
+    Portal-facing helper: returns only what the caller's own account resolves
+    to, never other tenants' state. ``None`` values mean unlimited.
+    """
+
+    tier = str(account.get("tier") or "free").lower()
+    raw_daily = account.get("daily_limit")
+    daily_limit = (
+        int(raw_daily) if isinstance(raw_daily, int) and raw_daily > 0 else None
+    )
+    return {
+        "tier": tier,
+        "hourly_request_limit": RATE_LIMITS.get(tier, RATE_LIMITS["free"]),
+        "concurrency_limit": _account_concurrency_limit(account),
+        "daily_limit": daily_limit,
+    }
+
+
 def claim_concurrency(account: dict[str, Any]) -> bool:
     """Claim one counted tenant slot and report whether release is required."""
 
