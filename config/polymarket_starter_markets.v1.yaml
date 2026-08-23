@@ -1,26 +1,92 @@
 {
-  "version": 1,
-  "status": "draft_unverified_candidates",
-  "markets": [
-    {"slug":"will-the-fed-cut-rates-in-september-2026","question":"Will the Fed cut rates in September 2026?","category":"fed_rates","verification_required":true},
-    {"slug":"will-the-fed-hold-rates-in-september-2026","question":"Will the Fed hold rates in September 2026?","category":"fed_rates","verification_required":true},
-    {"slug":"will-the-fed-cut-rates-in-november-2026","question":"Will the Fed cut rates in November 2026?","category":"fed_rates","verification_required":true},
-    {"slug":"will-the-fed-hold-rates-in-november-2026","question":"Will the Fed hold rates in November 2026?","category":"fed_rates","verification_required":true},
-    {"slug":"will-bitcoin-hit-125k-in-2026","question":"Will Bitcoin hit $125k in 2026?","category":"bitcoin_price","verification_required":true},
-    {"slug":"will-bitcoin-hit-150k-in-2026","question":"Will Bitcoin hit $150k in 2026?","category":"bitcoin_price","verification_required":true},
-    {"slug":"will-bitcoin-hit-200k-in-2026","question":"Will Bitcoin hit $200k in 2026?","category":"bitcoin_price","verification_required":true},
-    {"slug":"will-bitcoin-fall-to-75k-in-2026","question":"Will Bitcoin fall to $75k in 2026?","category":"bitcoin_price","verification_required":true},
-    {"slug":"will-ethereum-hit-4000-in-2026","question":"Will Ethereum hit $4k in 2026?","category":"ethereum_price","verification_required":true},
-    {"slug":"will-ethereum-hit-5000-in-2026","question":"Will Ethereum hit $5k in 2026?","category":"ethereum_price","verification_required":true},
-    {"slug":"will-ethereum-hit-7500-in-2026","question":"Will Ethereum hit $7.5k in 2026?","category":"ethereum_price","verification_required":true},
-    {"slug":"will-ethereum-fall-to-2000-in-2026","question":"Will Ethereum fall to $2k in 2026?","category":"ethereum_price","verification_required":true},
-    {"slug":"will-the-us-and-china-reach-a-trade-deal-in-2026","question":"Will the US and China reach a trade deal in 2026?","category":"us_china_trade","verification_required":true},
-    {"slug":"will-the-us-raise-tariffs-on-china-in-2026","question":"Will the US raise tariffs on China in 2026?","category":"us_china_trade","verification_required":true},
-    {"slug":"will-china-retaliate-to-us-tariffs-in-2026","question":"Will China retaliate to US tariffs in 2026?","category":"us_china_trade","verification_required":true},
-    {"slug":"will-us-china-trade-tariffs-be-reduced-in-2026","question":"Will US-China trade tariffs be reduced in 2026?","category":"us_china_trade","verification_required":true},
-    {"slug":"will-china-conduct-military-exercises-near-taiwan-in-2026","question":"Will China conduct military exercises near Taiwan in 2026?","category":"geopolitics","verification_required":true},
-    {"slug":"will-the-us-impose-new-china-tech-restrictions-in-2026","question":"Will the US impose new China tech restrictions in 2026?","category":"geopolitics","verification_required":true},
-    {"slug":"will-the-us-and-china-hold-a-leader-summit-in-2026","question":"Will US and China leaders hold a summit in 2026?","category":"geopolitics","verification_required":true},
-    {"slug":"will-us-china-relations-improve-in-2026","question":"Will US-China relations improve in 2026?","category":"geopolitics","verification_required":true}
-  ]
+ "version": 1,
+ "status": "relay_verified_phase0_2026-08-24",
+ "harvested_at": "2026-08-24T00:25Z",
+ "note": "real slugs harvested from gamma top-volume via GZ-SG relay 2026-08-24",
+ "markets": [
+  {
+   "slug": "will-ethereum-dip-to-1000-by-december-31-2026-273-175",
+   "question": "Will Ethereum dip to $1,000 by December 31, 2026?",
+   "category": "ethereum_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-ethereum-dip-to-800-by-december-31-2026-568",
+   "question": "Will Ethereum dip to $800 by December 31, 2026?",
+   "category": "ethereum_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-reach-100k-in-august-2026",
+   "question": "Will Bitcoin reach $100,000 in August?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-the-fed-decrease-interest-rates-by-25-bps-after-the-september-2026-meeting-586",
+   "question": "Will the Fed decrease interest rates by 25 bps after the September 2026 meeting?",
+   "category": "fed_rate",
+   "verification_required": true
+  },
+  {
+   "slug": "will-the-fed-decrease-interest-rates-by-50-bps-after-the-september-2026-meeting-863",
+   "question": "Will the Fed decrease interest rates by 50+ bps after the September 2026 meeting?",
+   "category": "fed_rate",
+   "verification_required": true
+  },
+  {
+   "slug": "will-there-be-no-change-in-fed-interest-rates-after-the-september-2026-meeting-615",
+   "question": "Will there be no change in Fed interest rates after the September 2026 meeting?",
+   "category": "fed_rate",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-dip-to-45000-by-december-31-2026-674-923-755-971-998-525-926-245-316-517-544-589-965-923-986-841-815-224-586-231-289-533-573",
+   "question": "Will Bitcoin dip to $45,000 by December 31, 2026?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-reach-80k-in-august-2026",
+   "question": "Will Bitcoin reach $80,000 in August?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-dip-to-50000-by-december-31-2026-454-325-222-878-949-487-451-853-523-111",
+   "question": "Will Bitcoin dip to $50,000 by December 31, 2026?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-reach-90k-in-august-2026",
+   "question": "Will Bitcoin reach $90,000 in August?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-the-fed-increase-interest-rates-by-50-bps-after-the-september-2026-meeting-664",
+   "question": "Will the Fed increase interest rates by 50+ bps after the September 2026 meeting?",
+   "category": "fed_rate",
+   "verification_required": true
+  },
+  {
+   "slug": "will-china-invade-taiwan-by-december-31-2027",
+   "question": "Will China invade Taiwan by December 31, 2027?",
+   "category": "geopolitics",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-dip-to-75k-in-august-2026",
+   "question": "Will Bitcoin dip to $75,000 in August?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  },
+  {
+   "slug": "will-bitcoin-reach-85000-by-december-31-2026-from-june-8",
+   "question": "Will Bitcoin reach $85,000 by December 31, 2026?",
+   "category": "bitcoin_price",
+   "verification_required": true
+  }
+ ]
 }
