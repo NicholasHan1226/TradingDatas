@@ -679,3 +679,29 @@ def test_usdm_collector_accepts_live_funding_rate_extra_fields(
         "funding_time",
         "funding_rate",
     }
+
+
+def test_usdm_main_failure_output_includes_error_detail(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    import tools.run_binance_usdm_canary as usdm_canary
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_binance_usdm_canary.py",
+            "--db-path",
+            str(tmp_path / "db.sqlite"),
+            "--lock-path",
+            str(tmp_path / "lock"),
+        ],
+    )
+
+    def fail(**kwargs):
+        raise RuntimeError("collection lock is still held after 120s")
+
+    monkeypatch.setattr(usdm_canary, "run", fail)
+    assert usdm_canary.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "failed"
+    assert "collection lock is still held after 120s" in payload["error"]

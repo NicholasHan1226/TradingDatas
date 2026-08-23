@@ -14,6 +14,7 @@ import fcntl
 import json
 from pathlib import Path
 import sys
+import time
 import uuid
 
 
@@ -133,6 +134,37 @@ def _private_lock(path: Path):
     return descriptor
 
 
+_LOCK_WAIT_SECONDS = 120.0
+_LOCK_RETRY_INTERVAL = 0.5
+
+
+def _bounded_lock(path: Path, wait_seconds: float = _LOCK_WAIT_SECONDS):
+    """Take the shared store lock, waiting out one-shot batch holders.
+
+    OI-dump and backfill batches can hold the shared lock for minutes; the
+    scheduled five-minute collectors used to fail instantly whenever one
+    overlapped their window, leaving permanent bar gaps.  The wait stays
+    bounded so a stuck holder still surfaces as a timer failure instead of a
+    hung unit.
+    """
+
+    if not path.is_absolute() or path.parent.is_symlink():
+        raise ValueError("lock path must be an absolute non-symlink child")
+    descriptor = path.open("a+", encoding="utf-8")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            fcntl.flock(descriptor.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return descriptor
+        except OSError:
+            if time.monotonic() >= deadline:
+                descriptor.close()
+                raise RuntimeError(
+                    f"collection lock is still held after {wait_seconds:.0f}s"
+                ) from None
+            time.sleep(_LOCK_RETRY_INTERVAL)
+
+
 def _collect_with_one_provider_retry(
     *,
     db_path: Path,
@@ -225,7 +257,9 @@ def run(
         != BINANCE_SPOT_CANARY_MODE
     ):
         raise RuntimeError("Binance canary mode is required")
-    lock = _private_lock(lock_path)
+    lock_wait_started = time.monotonic()
+    lock = _bounded_lock(lock_path)
+    lock_wait_seconds = time.monotonic() - lock_wait_started
     try:
         collector = BinanceSpotPublicCollector()
         results = []
@@ -264,6 +298,7 @@ def run(
                 else "bars"
             ),
             "datasets": results,
+            "lock_wait_seconds": round(lock_wait_seconds, 3),
             "mode": "execute",
             "state": "success",
             "window_count": len(windows),
@@ -295,10 +330,14 @@ def main() -> int:
             collect_book_ticker=args.book_ticker,
             backfill_days=args.backfill_days,
         )
-    except Exception:
+    except Exception as error:  # noqa: BLE001 - preserve the systemd nonzero failure boundary
         print(
             json.dumps(
-                {"mode": "execute" if args.execute else "plan", "state": "failed"},
+                {
+                    "error": f"{type(error).__name__}: {error}",
+                    "mode": "execute" if args.execute else "plan",
+                    "state": "failed",
+                },
                 sort_keys=True,
             )
         )
