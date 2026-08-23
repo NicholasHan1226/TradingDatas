@@ -876,3 +876,42 @@ def test_oi_dump_backfill_yields_only_near_a_boundary(
     )
     assert result["state"] == "success"
     assert yields == []
+
+
+def test_timed_lock_waits_out_brief_collision(tmp_path, monkeypatch):
+    """A brief lock holder must not fail the timer batch (2026-08-23 review)."""
+    import threading
+    import time as time_mod
+
+    import tools.run_binance_oi_dump_canary as canary
+
+    lock_path = tmp_path / "collect.lock"
+    holder = canary._private_lock(lock_path)
+    acquired: dict[str, object] = {}
+
+    def grab():
+        acquired["lock"] = canary._timed_lock(lock_path)
+
+    thread = threading.Thread(target=grab)
+    thread.start()
+    time_mod.sleep(0.3)
+    assert "lock" not in acquired
+    canary._release(holder)
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert "lock" in acquired
+    canary._release(acquired["lock"])
+
+
+def test_timed_lock_fails_closed_when_stuck(tmp_path, monkeypatch):
+    """A genuinely stuck lock still fails closed after the bounded window."""
+    import tools.run_binance_oi_dump_canary as canary
+
+    monkeypatch.setattr(canary, "_OI_DUMP_LOCK_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(canary, "_LOCK_RETRY_INTERVAL", 0.01)
+    holder = canary._private_lock(tmp_path / "collect.lock")
+    try:
+        with pytest.raises(OSError):
+            canary._timed_lock(tmp_path / "collect.lock")
+    finally:
+        canary._release(holder)

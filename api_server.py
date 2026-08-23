@@ -103,6 +103,7 @@ _V1_ERROR_DETAILS: dict[str, tuple[str, bool]] = {
     "budget_exceeded": ("request exceeds allowed budget", False),
     "unsupported_media_type": ("unsupported media type", False),
     "rate_limited": ("rate limit exceeded", True),
+    "daily_limit_exceeded": ("daily request limit exceeded", True),
     "service_unavailable": ("service temporarily unavailable", True),
     "internal_error": ("internal error", False),
 }
@@ -625,6 +626,10 @@ class Handler(BaseHTTPRequestHandler):
         # Admin API routes require authentication
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id, status=429, code="rate_limited"
+            )
         except auth.AuthError:
             return self._write_v1_error(
                 request_id, status=401, code="unauthenticated"
@@ -703,8 +708,9 @@ class Handler(BaseHTTPRequestHandler):
             }, status=200)
 
         if path == "/admin/api/usage/history" and method == "GET":
+            params = _parse_catalog_query(raw_query)
             try:
-                days = int(query_params.get("days", ["30"])[0])
+                days = int(params.get("days", "30"))
             except (ValueError, TypeError):
                 days = 30
             days = max(1, min(days, 365))
@@ -971,6 +977,13 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             account = auth.authenticate(self.headers, self.client_address[0])
+        except auth.RateLimitError:
+            return self._write_v1_error(
+                request_id,
+                status=429,
+                code="rate_limited",
+                suppress_body=suppress_body,
+            )
         except auth.AuthError:
             return self._write_v1_error(
                 request_id,
