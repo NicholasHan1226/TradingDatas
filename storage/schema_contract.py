@@ -73,6 +73,11 @@ PROVIDER_DATASET_ROWS_INDEX_COLUMNS: dict[str, tuple[str, ...]] = {
         "schema_major",
         "quality_state",
     ),
+    "provider_dataset_rows_coverage_idx": (
+        "dataset_id",
+        "schema_major",
+        "observed_at",
+    ),
     "provider_dataset_rows_receipt_idx": ("receipt_id",),
 }
 PROVIDER_DATASET_ROWS_CREATE_SQL = """CREATE TABLE IF NOT EXISTS provider_dataset_rows (
