@@ -913,8 +913,75 @@ class Handler(BaseHTTPRequestHandler):
                             f"{state}"
                         ),
                     })
+
+            # Global tamper tripwire: receipt rows no registered dataset claims.
+            # Proposal A narrowed their blast radius — they no longer fail every
+            # dataset's projection — so this surface is where they must stay
+            # visible.  A failing scan is itself an alert, never silent.
+            unattributed_count: int | None = None
+            try:
+                import sqlite3
+
+                from data_plane_runtime import build_data_plane_runtime
+                from runtime_paths import marketdata_sqlite_path
+                from storage.receipt_projection import (
+                    project_unattributed_receipts,
+                )
+
+                db_path = Path(
+                    os.path.abspath(os.fspath(marketdata_sqlite_path()))
+                )
+                if db_path.exists():
+                    runtime = build_data_plane_runtime()
+                    ro_conn = sqlite3.connect(
+                        db_path.as_uri() + "?mode=ro",
+                        uri=True,
+                        timeout=1.0,
+                    )
+                    try:
+                        ro_conn.execute("PRAGMA query_only = ON")
+                        unattributed = project_unattributed_receipts(
+                            ro_conn,
+                            now=datetime.now(timezone.utc),
+                            registry=runtime.registry,
+                        )
+                    finally:
+                        ro_conn.close()
+                    unattributed_count = len(unattributed.anomalies)
+                    for anomaly in unattributed.anomalies[:20]:
+                        alerts.append({
+                            "severity": "critical",
+                            "title": (
+                                "unattributed receipt row: "
+                                f"{anomaly.reason} source={anomaly.source or '-'}"
+                            ),
+                            "detail": (
+                                f"receipt_id={anomaly.receipt_id or '-'} "
+                                f"observed_at={anomaly.observed_at or '-'}"
+                            ),
+                        })
+                    if unattributed_count > 20:
+                        alerts.append({
+                            "severity": "critical",
+                            "title": (
+                                f"unattributed receipts: "
+                                f"{unattributed_count - 20} more suppressed"
+                            ),
+                            "detail": (
+                                "list via project_unattributed_receipts for "
+                                "the full set"
+                            ),
+                        })
+            except Exception as exc:
+                alerts.append({
+                    "severity": "warning",
+                    "title": "unattributed receipt scan unavailable",
+                    "detail": str(exc),
+                })
+
             return self._write_v1_json({
                 "alert_count": len(alerts),
+                "unattributed_receipt_count": unattributed_count,
                 "alerts": alerts,
             }, status=200)
         except Exception as exc:

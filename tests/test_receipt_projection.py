@@ -688,11 +688,20 @@ def test_dataset_scoped_history_keeps_unknown_receipt_owner_global(
     histories = projection_module.validated_receipt_histories_by_dataset(
         conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
     )
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+        registry=registry,
+    )
 
-    assert set(histories.failures_by_dataset) == {
-        first.dataset_id,
-        second.dataset_id,
-    }
+    # The unknown-owner row fails neither dataset's history; the tripwire
+    # keeps it visible on the global surface instead.  The envelope source was
+    # rewritten, so the precise global reason is an envelope mismatch.
+    assert histories.failures_by_dataset == {}
+    assert [
+        (anomaly.receipt_id, anomaly.source, anomaly.reason)
+        for anomaly in health.anomalies
+    ] == [(receipt_id, "unknown.dataset", "receipt_envelope_mismatch")]
 
 
 def test_projector_returns_paused_from_registry_activation() -> None:
@@ -1672,11 +1681,11 @@ def test_scheduler_run_uses_max_target_window_for_current_state(
     assert projection.reasons == ("provider_returned_no_rows",)
 
 
-def test_unassignable_malformed_receipt_like_row_cannot_hide_terminal_failure(
+def test_unassignable_malformed_receipt_like_row_reported_globally(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = _memory_db()
-    _insert_receipt(
+    success_receipt_id = _insert_receipt(
         monkeypatch,
         conn,
         status="success",
@@ -1705,19 +1714,35 @@ def test_unassignable_malformed_receipt_like_row_cannot_hide_terminal_failure(
         _dataset(),
         now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
     )
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
 
-    assert projection.state == "failed"
-    assert projection.degraded is True
+    # A malformed receipt-like row from an unknown source is inert for the
+    # dataset's own projection and reported by the global tripwire instead.
+    assert projection.state == "stale"
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
-    assert projection.receipt_id == failed_receipt_id
-    assert projection.reasons == ("receipt_payload_invalid",)
+    assert projection.receipt_id == success_receipt_id
+    assert projection.reasons == ("freshness_sla_exceeded",)
+    assert [
+        (anomaly.receipt_id, anomaly.source, anomaly.reason)
+        for anomaly in health.anomalies
+    ] == [(failed_receipt_id, "ghost.dataset", "receipt_payload_invalid")]
 
 
-def test_jointly_tampered_unknown_dataset_cannot_hide_terminal_failure(
+def test_jointly_tampered_unknown_dataset_reported_globally_not_per_dataset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A receipt stolen to a ghost dataset no longer fails every dataset.
+
+    Proposal A narrows the tamper tripwire blast radius: the stolen row is
+    inert for per-dataset projections but must remain globally visible via
+    ``project_unattributed_receipts`` so tampering cannot escape notice.
+    """
     conn = _memory_db()
-    _insert_receipt(
+    success_receipt_id = _insert_receipt(
         monkeypatch,
         conn,
         status="success",
@@ -1752,12 +1777,20 @@ def test_jointly_tampered_unknown_dataset_cannot_hide_terminal_failure(
         _dataset(),
         now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
     )
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
 
-    assert projection.state == "failed"
-    assert projection.degraded is True
+    assert projection.state == "stale"
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
-    assert projection.receipt_id == failed_receipt_id
-    assert projection.reasons == ("receipt_dataset_unknown",)
+    assert projection.receipt_id == success_receipt_id
+    assert projection.reasons == ("freshness_sla_exceeded",)
+    assert [
+        (anomaly.receipt_id, anomaly.source, anomaly.reason)
+        for anomaly in health.anomalies
+    ] == [(failed_receipt_id, "ghost.dataset", "receipt_dataset_unknown")]
 
 
 def test_valid_unmapped_tushare_attempt_does_not_poison_registered_dataset(
@@ -1813,7 +1846,7 @@ def test_valid_unmapped_tushare_attempt_does_not_poison_registered_dataset(
         },
     ],
 )
-def test_tombstone_like_unknown_receipt_still_fails_closed(
+def test_tombstone_like_unknown_receipt_reported_as_global_anomaly(
     monkeypatch: pytest.MonkeyPatch,
     overrides: dict[str, object],
 ) -> None:
@@ -1839,13 +1872,22 @@ def test_tombstone_like_unknown_receipt_still_fails_closed(
         now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
 
-    assert projection.state == "failed"
-    assert projection.degraded is True
+    # Per-dataset projection stays accurate; the invalid tombstone variant is
+    # surfaced globally instead of failing the dataset.
+    assert projection.state == "success"
+    assert projection.degraded is False
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
-    assert projection.receipt_id == tombstone_receipt_id
-    assert projection.receipt_id != success_receipt_id
-    assert projection.reasons == ("receipt_dataset_unknown",)
+    assert projection.receipt_id == success_receipt_id
+    assert projection.reasons == ()
+    assert [
+        (anomaly.receipt_id, anomaly.reason) for anomaly in health.anomalies
+    ] == [(tombstone_receipt_id, "receipt_dataset_unknown")]
 
 
 def test_historical_unmapped_tombstone_stays_isolated_after_api_onboarding(
@@ -1943,12 +1985,21 @@ def test_run_id_and_source_tampering_cannot_escape_receipt_scan(
         _dataset(),
         now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
     )
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
 
-    assert projection.state == "failed"
-    assert projection.degraded is True
+    # Tampering cannot escape: the row leaves the dataset's projection alone
+    # but is reported globally under the same reason vocabulary.
+    assert projection.state == "stale"
     assert projection.data_through == "2026-07-15T08:00:00+08:00"
-    assert projection.receipt_id == "tampered-no-prefix"
-    assert projection.reasons == (expected_reason,)
+    assert projection.reasons == ("freshness_sla_exceeded",)
+    assert [
+        (anomaly.receipt_id, anomaly.source, anomaly.reason)
+        for anomaly in health.anomalies
+    ] == [("tampered-no-prefix", "ghost.dataset", expected_reason)]
 
 
 def test_uppercase_receipt_marker_with_plain_notes_cannot_hide_failure(
@@ -3669,25 +3720,90 @@ def test_scan_ingest_run_rows_for_dataset_authority_bounds_by_dataset() -> None:
         _insert_run(conn, "run-b2", "ds.b")
         _insert_run(conn, "run-x1", "rogue.unknown")
 
+        # Own rows only: foreign known-dataset rows AND unattributed rows are
+        # excluded from the per-dataset authority snapshot; they are reported
+        # globally by project_unattributed_receipts instead of poisoning this
+        # dataset.
         own_rows = projection_module._scan_ingest_run_rows_for_dataset_authority(
             conn,
             dataset_id="ds.a",
             known_dataset_ids=frozenset({"ds.a", "ds.b"}),
         )
-        assert [row.raw[1] for row in own_rows] == ["run-a1", "run-a2", "run-x1"]
-        assert all(row.raw[9] == "ds.a" or row.raw[9] == "rogue.unknown" for row in own_rows)
-        assert not any(row.raw[9] == "ds.b" for row in own_rows)
+        assert [row.raw[1] for row in own_rows] == ["run-a1", "run-a2"]
+        assert all(row.raw[9] == "ds.a" for row in own_rows)
 
         sole_rows = projection_module._scan_ingest_run_rows_for_dataset_authority(
             conn,
             dataset_id="ds.a",
             known_dataset_ids=frozenset({"ds.a"}),
         )
-        assert [row.raw[1] for row in sole_rows] == [
-            "run-a1", "run-a2", "run-b1", "run-b2", "run-x1",
-        ]
+        assert [row.raw[1] for row in sole_rows] == ["run-a1", "run-a2"]
 
         full_rows = projection_module._scan_ingest_run_rows(conn)
         assert len(full_rows) == 5
     finally:
         conn.close()
+
+
+def test_unattributed_health_counts_valid_tombstones_as_benign(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    _insert_unmapped_tushare_receipt(monkeypatch, conn)
+
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 0, 30, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    # A deliberate historical tombstone is counted, not alerted.
+    assert health.anomalies == ()
+    assert health.benign_tombstones == 1
+
+
+def test_unattributed_health_reports_envelope_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    notes = conn.execute(
+        "SELECT notes FROM market_ingest_runs WHERE run_id = ?",
+        (receipt_id,),
+    ).fetchone()[0]
+    payload = json.loads(notes)
+    payload["dataset_id"] = "other.ghost"
+    conn.execute(
+        "UPDATE market_ingest_runs SET source = ?, notes = ? WHERE run_id = ?",
+        ("ghost.dataset", _canonical_json(payload), receipt_id),
+    )
+    conn.commit()
+
+    health = projection_module.project_unattributed_receipts(
+        conn,
+        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        registry=load_dataset_registry(),
+    )
+
+    assert [
+        (anomaly.receipt_id, anomaly.source, anomaly.reason)
+        for anomaly in health.anomalies
+    ] == [(receipt_id, "ghost.dataset", "receipt_envelope_mismatch")]
+    assert health.benign_tombstones == 0
