@@ -151,7 +151,7 @@ export default function DataView({ client }: { client: ApiClient }) {
   if (error) return <ErrorBanner message={error} />
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageIntro
         eyebrow="DATA EXPLORER"
         title="数据目录浏览"
@@ -160,37 +160,40 @@ export default function DataView({ client }: { client: ApiClient }) {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,2fr)_3fr]">
         {/* Catalog list */}
         <Card title="数据目录" action={<span className="text-xs text-slate-400">{filtered.length} 项</span>} className="max-h-[72vh] overflow-hidden flex flex-col" bodyClassName="!p-0">
-        <div className="border-b border-slate-100 p-3">
-          <SearchField
-            aria-label="搜索数据目录"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索数据集…"
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <EmptyState title="没有匹配的数据集" />
-          ) : (
-            filtered.map((d) => (
-              <button
-                key={`${d.dataset_id}|${d.provider}`}
-                onClick={() => void runSample(d)}
-                className={`flex w-full items-center justify-between gap-2 ${TABLE_ROW_CLASS} px-4 py-2.5 text-left ${
-                  selected?.dataset_id === d.dataset_id && selected?.provider === d.provider
-                    ? 'bg-blue-50/70'
-                    : ''
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
-                  <div className="text-[10px] text-slate-400">v{d.schema_major} · {d.market} · {d.cadence}</div>
-                </div>
-                <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{d.runtime_state ?? '-'}</Badge>
-              </button>
-            ))
-          )}
-        </div>
+          <div className="border-b border-slate-100 p-3">
+            <SearchField
+              aria-label="搜索数据目录"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索数据集…"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <EmptyState title="没有匹配的数据集" />
+            ) : (
+              filtered.map((d) => {
+                const active = selected?.dataset_id === d.dataset_id && selected?.provider === d.provider
+                return (
+                  <button
+                    key={`${d.dataset_id}|${d.provider}`}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => void runSample(d)}
+                    className={`flex w-full items-center justify-between gap-2 border-l-2 ${TABLE_ROW_CLASS} px-4 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 ${
+                      active ? 'border-l-[var(--td-accent)] bg-[var(--td-accent-quiet)]' : 'border-l-transparent'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
+                      <div className="text-[10px] text-slate-400">v{d.schema_major} · {d.market} · {d.cadence}</div>
+                    </div>
+                    <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{d.runtime_state ?? '-'}</Badge>
+                  </button>
+                )
+              })
+            )}
+          </div>
         </Card>
 
         {/* Sample data */}

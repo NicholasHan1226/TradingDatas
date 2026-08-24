@@ -192,13 +192,16 @@ while next_cursor:
   if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-[var(--td-canvas)]">
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-6">
-          <div>
-            <div className="text-[17px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
-            <div className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-slate-400">DATA ACCESS PORTAL</div>
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-bold tracking-[-0.04em] text-white shadow-[0_8px_16px_rgb(21_94_239/0.22)]">TD</div>
+            <div>
+              <div className="text-[17px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
+              <div className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-slate-400">DATA ACCESS PORTAL</div>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500 sm:inline">{tenantId}</span>
@@ -212,7 +215,7 @@ while next_cursor:
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-5 py-7 pb-16 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-7xl space-y-7 px-5 py-7 pb-16 sm:px-6 sm:py-8">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           {error && <ErrorBanner message={error} />}
         </motion.div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Card, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
+import { Card, ControlBar, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -89,7 +89,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageIntro
         eyebrow="RUNTIME HEALTH"
         title="系统健康与告警"
@@ -101,7 +101,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
         <StatCard label="警告" value={severityCounts.warning} tone={severityCounts.warning > 0 ? 'warn' : 'default'} />
         <StatCard label="提示" value={severityCounts.info} />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+      <ControlBar className="justify-between">
         <div className="flex flex-wrap gap-1" aria-label="按严重程度筛选告警">
           {([
             ['all', '全部'],
@@ -125,7 +125,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
           ))}
         </div>
         <span className="text-xs text-slate-400">显示 {visibleAlerts.length} / {alerts.length} 条</span>
-      </div>
+      </ControlBar>
       <div className="space-y-3">
         {visibleAlerts.map((a, idx) => {
           const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info

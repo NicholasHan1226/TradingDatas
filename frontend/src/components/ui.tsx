@@ -18,10 +18,10 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[0_1px_2px_rgb(15_23_42/0.16)] disabled:bg-blue-300',
+    'bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[0_1px_2px_rgb(16_24_40/0.16)] disabled:bg-blue-300',
   secondary:
-    'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:bg-slate-100 shadow-sm',
-  ghost: 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900',
+    'bg-white text-slate-700 border border-slate-300 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100 shadow-[0_1px_1px_rgb(16_24_40/0.03)]',
+  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   danger:
     'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 active:bg-rose-100',
 }
@@ -109,17 +109,25 @@ export function PageIntro({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200/80 pb-5">
-      <div className="max-w-2xl">
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200/80 pb-6">
+      <div className="relative max-w-2xl border-l-2 border-[var(--td-accent)] pl-4">
         {eyebrow && (
           <p className="mb-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-xl font-semibold tracking-[-0.035em] text-slate-950">{title}</h2>
-        {description && <p className="mt-1.5 text-sm leading-6 text-slate-500">{description}</p>}
+        <h2 className="text-[22px] font-semibold tracking-[-0.04em] text-[var(--td-ink)]">{title}</h2>
+        {description && <p className="mt-1.5 text-sm leading-6 text-[var(--td-muted)]">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
+    </div>
+  )
+}
+
+export function ControlBar({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/85 bg-white p-3 shadow-[var(--td-shadow-1)] ${className}`}>
+      {children}
     </div>
   )
 }
@@ -145,7 +153,7 @@ export function SearchField({
 export const TABLE_HEAD_CLASS =
   'sticky top-0 z-[1] border-b border-slate-200 bg-slate-50/95 text-left text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase backdrop-blur'
 export const TABLE_ROW_CLASS =
-  'border-b border-slate-100/90 transition-colors last:border-0 hover:bg-blue-50/[0.38]'
+  'border-b border-slate-100/90 transition-colors last:border-0 hover:bg-[var(--td-accent-quiet)]/70'
 
 // ---------- Cards & stats ----------
 
@@ -164,11 +172,11 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface)] shadow-[var(--td-shadow-1)] ${className}`}
+      className={`rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-1)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <h2 className="text-sm font-semibold tracking-[-0.01em] text-slate-800">{title}</h2>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+          <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
           {action}
         </header>
       )}
@@ -194,15 +202,21 @@ export function StatCard({
     warn: 'text-amber-600',
     bad: 'text-rose-600',
   }[tone]
+  const toneDot = {
+    default: 'bg-slate-300',
+    good: 'bg-emerald-500',
+    warn: 'bg-amber-500',
+    bad: 'bg-rose-500',
+  }[tone]
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface)] p-5 shadow-[var(--td-shadow-1)]"
+      className="rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface-raised)] p-5 shadow-[var(--td-shadow-1)]"
     >
-      <div className="text-xs font-medium tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1.5 text-2xl font-semibold leading-none ${toneClass}`}>{value}</div>
+      <div className="flex items-center gap-2 text-xs font-medium tracking-wide text-slate-500"><span className={`h-1.5 w-1.5 rounded-full ${toneDot}`} />{label}</div>
+      <div className={`mt-2 text-2xl font-semibold leading-none tabular-nums ${toneClass}`}>{value}</div>
       {sub && <div className="mt-2 text-xs text-slate-400">{sub}</div>}
     </motion.div>
   )
