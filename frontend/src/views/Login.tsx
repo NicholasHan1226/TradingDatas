@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Eye, EyeOff, Info } from 'lucide-react'
 import { DEFAULT_API_BASE } from '../lib/api'
 import { Spinner } from '../components/ui'
 
@@ -147,9 +148,7 @@ export default function Login({ onLogin }: { onLogin: (token: string, base: stri
                     </button>
                   ) : (
                     <button type="button" onClick={() => setShowToken((value) => !value)} aria-label={showToken ? '隐藏密钥' : '显示密钥'} className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--td-muted)] hover:bg-slate-100 hover:text-[var(--td-ink)] focus-visible:outline-2 focus-visible:outline-[var(--td-accent)]">
-                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4" aria-hidden>
-                        {showToken ? <><path d="m3 3 14 14" /><path d="M8.2 5.2A8.8 8.8 0 0 1 10 5c4 0 7 3.5 7 5 0 .7-.7 1.8-1.8 2.8M12.7 14.6A9 9 0 0 1 10 15c-4 0-7-3.5-7-5 0-.8.8-2 2.1-3" /></> : <><path d="M3 10c0-1.5 3-5 7-5s7 3.5 7 5-3 5-7 5-7-3.5-7-5Z" /><circle cx="10" cy="10" r="2.2" /></>}
-                      </svg>
+                      {showToken ? <EyeOff aria-hidden size={16} /> : <Eye aria-hidden size={16} />}
                     </button>
                   )}
                 </div>
@@ -166,7 +165,7 @@ export default function Login({ onLogin }: { onLogin: (token: string, base: stri
               </button>
 
               <p id="login-help" className="mt-4 flex items-center gap-2 text-[11px] leading-5 text-[var(--td-faint)]">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 shrink-0" aria-hidden><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z" /><path d="M10 9v5m0-8h.01" /></svg>
+                <Info aria-hidden className="h-3.5 w-3.5 shrink-0" />
                 密钥仅保存在当前浏览器，不会在页面中再次展示。
               </p>
             </form>

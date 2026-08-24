@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { CircleCheckBig } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
 import { Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
@@ -76,9 +77,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
         <Card>
           <div className="flex flex-col items-center py-10 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 text-emerald-600">
-                <path d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
+              <CircleCheckBig aria-hidden className="h-7 w-7 text-emerald-600" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-800">全部正常</h3>
             <p className="mt-1 text-sm text-slate-500">当前没有任何健康告警</p>

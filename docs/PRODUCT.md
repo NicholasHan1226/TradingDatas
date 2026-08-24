@@ -67,6 +67,25 @@ legacy tiers remain readable and editable for compatibility but are not offered
 for new credentials. Exact numeric defaults remain authoritative in `auth.py`
 and the API contract, not in marketing copy.
 
+## Console roles
+
+The Pages application contains two task-specific workspaces behind the same
+bearer-token login:
+
+- the **customer workspace** is for paying API customers. It shows only that
+  token's plan, enabled data categories, rate/concurrency/daily limits, expiry,
+  usage history, and copy-ready API/Agent integration documentation;
+- the **admin workspace** is for the platform owner. It manages customer keys,
+  quotas, collection state, alerts, and catalog/query readback;
+- a customer token enters the customer workspace and cannot enter admin;
+- an owner token is intended to carry both `read` and `admin` scopes. It enters
+  admin by default and may switch to a customer-view preview using the same
+  account projection, then return to admin without re-authenticating.
+
+The preview is a presentation mode, not impersonation: it never reads another
+customer's portal data and never changes the token. The frontend derives the
+initial workspace from server-projected scopes/tier; it does not grant access.
+
 ## Implementation truth and stop line
 
 As of 2026-08-24, bearer authentication, endpoint scopes, per-minute commercial
@@ -88,6 +107,8 @@ mutation. Production availability remains a separate release/readback fact in
 - `docs/ARCHITECTURE.md`: authority chain and technical boundaries;
 - `docs/API.md`: current implemented HTTP and token contract;
 - `docs/OPERATIONS.md`: deployment, runtime, verification, rollback;
+- `docs/design/console-product-system-v4.md`: shared console information
+  architecture, design language, role-switching and visual QA contract;
 - `STATUS.md`: time-sensitive production evidence and known gaps;
 - `AGENTS.md`: development and release rules.
 

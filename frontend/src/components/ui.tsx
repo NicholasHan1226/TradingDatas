@@ -3,11 +3,11 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useId,
   useState,
   type ReactNode,
 } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Bitcoin, ChartCandlestick, Check, CircleAlert, Copy, LoaderCircle, Newspaper, Search, Tag, X, type LucideIcon } from 'lucide-react'
 
 // ---------- Buttons ----------
 
@@ -50,18 +50,7 @@ export function Button({
 }
 
 export function Spinner({ size = 16, className = '' }: { size?: number; className?: string }) {
-  return (
-    <svg
-      className={`animate-spin text-current ${className}`}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-      <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  )
+  return <LoaderCircle aria-hidden className={`animate-spin text-current ${className}`} size={size} />
 }
 
 export function LoadingPanel({ label = '加载中…' }: { label?: string }) {
@@ -84,9 +73,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 export function ErrorBanner({ message }: { message: string }) {
   return (
     <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-      <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-9-4a1 1 0 1 1 2 0v4a1 1 0 1 1-2 0V6Zm2 7a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" clipRule="evenodd" />
-      </svg>
+      <CircleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
       <span>{message}</span>
     </div>
   )
@@ -106,15 +93,15 @@ export function PageIntro({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--td-line)] pb-5">
+    <div className="flex flex-wrap items-end justify-between gap-5 pb-1">
       <div className="max-w-2xl">
         {eyebrow && (
-          <p className="mb-1.5 text-[11px] font-medium tracking-[0.08em] text-[var(--td-faint)] uppercase">
+          <p className="mb-2 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-[var(--td-accent)] uppercase before:h-px before:w-5 before:bg-[var(--td-accent)]">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-[24px] font-semibold tracking-[-0.035em] text-[var(--td-ink)]">{title}</h2>
-        {description && <p className="mt-1.5 text-sm leading-6 text-[var(--td-muted)]">{description}</p>}
+        <h2 className="text-[26px] font-semibold leading-tight tracking-[-0.04em] text-[var(--td-ink)] sm:text-[30px]">{title}</h2>
+        {description && <p className="mt-2 max-w-xl text-[13px] leading-6 text-[var(--td-muted)]">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
     </div>
@@ -123,7 +110,7 @@ export function PageIntro({
 
 export function ControlBar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-3 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-3 shadow-[var(--td-shadow-1)] ${className}`}>
       {children}
     </div>
   )
@@ -135,9 +122,7 @@ export function SearchField({
 }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className={`relative min-w-0 ${className}`}>
-      <svg aria-hidden viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400">
-        <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
-      </svg>
+      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
       <input
         type="search"
         {...props}
@@ -148,9 +133,9 @@ export function SearchField({
 }
 
 export const TABLE_HEAD_CLASS =
-  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f8f9fb] text-left text-[11px] font-medium tracking-[0.04em] text-[var(--td-muted)]'
+  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f7f8fa] text-left text-[10px] font-semibold tracking-[0.07em] text-[var(--td-muted)] uppercase'
 export const TABLE_ROW_CLASS =
-  'border-b border-slate-100 transition-colors last:border-0 hover:bg-[#f8f9fb] focus-within:bg-[var(--td-accent-quiet)]/70'
+  'border-b border-slate-100 transition-colors last:border-0 hover:bg-[#f6f8fc] focus-within:bg-[var(--td-accent-quiet)]/70'
 
 // ---------- Cards & stats ----------
 
@@ -169,10 +154,10 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] ${className}`}
+      className={`overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-1)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
           <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
           {action}
         </header>
@@ -206,9 +191,10 @@ export function StatCard({
     bad: 'bg-rose-500',
   }[tone]
   return (
-    <div className="rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4">
-      <div className="flex items-center gap-2 text-xs font-medium text-[var(--td-muted)]"><span className={`h-1.5 w-1.5 rounded-full ${toneDot}`} />{label}</div>
-      <div className={`mt-2.5 text-2xl font-semibold leading-none tracking-[-0.03em] tabular-nums ${toneClass}`}>{value}</div>
+    <div className="relative overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4 shadow-[var(--td-shadow-1)]">
+      <span className={`absolute inset-y-0 left-0 w-0.5 ${toneDot}`} />
+      <div className="flex items-center gap-2 text-xs font-medium text-[var(--td-muted)]">{label}</div>
+      <div className={`mt-3 text-2xl font-semibold leading-none tracking-[-0.04em] tabular-nums ${toneClass}`}>{value}</div>
       {sub && <div className="mt-2 text-xs text-[var(--td-faint)]">{sub}</div>}
     </div>
   )
@@ -219,18 +205,18 @@ export function StatCard({
 type BadgeTone = 'slate' | 'blue' | 'green' | 'amber' | 'rose' | 'violet'
 
 const BADGE_STYLES: Record<BadgeTone, string> = {
-  slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-  blue: 'bg-blue-50 text-blue-700 ring-blue-200',
-  green: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  amber: 'bg-amber-50 text-amber-700 ring-amber-200',
-  rose: 'bg-rose-50 text-rose-700 ring-rose-200',
-  violet: 'bg-violet-50 text-violet-700 ring-violet-200',
+  slate: 'border-slate-200 bg-slate-50 text-slate-600',
+  blue: 'border-blue-200 bg-blue-50 text-blue-700',
+  green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  amber: 'border-amber-200 bg-amber-50 text-amber-700',
+  rose: 'border-rose-200 bg-rose-50 text-rose-700',
+  violet: 'border-violet-200 bg-violet-50 text-violet-700',
 }
 
 export function Badge({ tone = 'slate', children }: { tone?: BadgeTone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${BADGE_STYLES[tone]}`}
+      className={`inline-flex min-h-5 items-center rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold tracking-[0.01em] ${BADGE_STYLES[tone]}`}
     >
       {children}
     </span>
@@ -263,10 +249,22 @@ export const TIER_LABELS: Record<string, string> = {
 
 export function ScopeChip({ scope }: { scope: string }) {
   return (
-    <code className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
-      {scope}
+    <code className="inline-flex min-h-5 items-center gap-1 rounded-[5px] border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-600 shadow-[0_1px_1px_rgb(13_19_32/0.03)]">
+      <span aria-hidden className="text-[var(--td-accent)]">/</span>{scope}
     </code>
   )
+}
+
+const CATEGORY_META: Record<string, { label: string; icon: LucideIcon; className: string }> = {
+  a_share: { label: 'A 股', icon: ChartCandlestick, className: 'border-blue-200 bg-blue-50 text-blue-700' },
+  crypto: { label: '加密资产', icon: Bitcoin, className: 'border-violet-200 bg-violet-50 text-violet-700' },
+  news: { label: '新闻', icon: Newspaper, className: 'border-orange-200 bg-orange-50 text-orange-700' },
+}
+
+export function DataCategoryTag({ category }: { category: string }) {
+  const meta = CATEGORY_META[category] ?? { label: category, icon: Tag, className: 'border-slate-200 bg-slate-50 text-slate-600' }
+  const Icon = meta.icon
+  return <span className={`inline-flex min-h-6 items-center gap-1.5 rounded-[7px] border px-2 py-1 text-[10px] font-semibold ${meta.className}`}><Icon aria-hidden size={12} strokeWidth={1.8} />{meta.label}</span>
 }
 
 export function fmtNumber(value: number | null | undefined): string {
@@ -376,36 +374,23 @@ export function Modal({
   width?: string
   children: ReactNode
 }) {
-  const titleId = useId()
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
-
-  if (!open) return null
-
   return (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
-          onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-        >
-          <div className={`w-full ${width} max-h-[88vh] overflow-y-auto rounded-[var(--td-radius-lg)] border border-slate-200 bg-white shadow-[var(--td-shadow-2)]`}>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/45" />
+        <Dialog.Content className={`fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] ${width} max-h-[88vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--td-radius-lg)] border border-slate-200 bg-white shadow-[var(--td-shadow-2)] focus:outline-none`}>
             <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 id={titleId} className="text-sm font-semibold text-slate-800">{title}</h3>
-              <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭">
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-                </svg>
-              </Button>
+              <Dialog.Title className="text-sm font-semibold text-slate-800">{title}</Dialog.Title>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="sm" aria-label="关闭">
+                  <X aria-hidden className="h-4 w-4" />
+                </Button>
+              </Dialog.Close>
             </header>
             <div className="px-5 py-4">{children}</div>
-          </div>
-        </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
@@ -445,13 +430,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               }`}
             >
               {t.kind === 'ok' ? (
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-emerald-400">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clipRule="evenodd" />
-                </svg>
+                <Check aria-hidden className="h-4 w-4 shrink-0 text-emerald-400" />
               ) : (
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0">
-                  <path fillRule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-9-4a1 1 0 1 1 2 0v4a1 1 0 1 1-2 0V6Zm2 7a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" clipRule="evenodd" />
-                </svg>
+                <CircleAlert aria-hidden className="h-4 w-4 shrink-0" />
               )}
               <span>{t.text}</span>
             </div>
@@ -484,7 +465,8 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
 
   return (
     <Button variant="secondary" size="sm" onClick={copy}>
-      {copied ? '已复制 ✓' : label}
+      {copied ? <Check aria-hidden size={13} /> : <Copy aria-hidden size={13} />}
+      {copied ? '已复制' : label}
     </Button>
   )
 }
