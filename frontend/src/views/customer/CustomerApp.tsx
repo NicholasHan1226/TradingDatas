@@ -1,20 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { BookOpen, Bot, ChartNoAxesCombined, Check, CircleGauge, Clock3, Code2, Database, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { BookOpen, Bot, Check, CircleGauge, Clock3, Code2, Sparkles } from 'lucide-react'
+import { Article, Check as PhosphorCheck, CirclesThree, CopySimple, Cube, House, Key, Sun, WaveSine } from '@phosphor-icons/react'
 import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
-import { Badge, Card, CopyButton, EmptyState, ErrorBanner, LoadingPanel, PageIntro, ProgressBar, TIER_LABELS, fmtNumber } from '../../components/ui'
+import { Card, CopyButton, ErrorBanner, LoadingPanel, PageIntro, TIER_LABELS, fmtNumber } from '../../components/ui'
+import { recordConsoleEvent } from '../../lib/consoleAnalytics'
 import type { CustomerSection, DocSection } from '../../lib/workspaceRoute'
 
 type SectionKey = CustomerSection
 type DocKey = DocSection
 
 const NAV: WorkspaceNavItem<SectionKey>[] = [
-  { key: 'overview', label: '首页', description: '账户与使用概览', icon: ChartNoAxesCombined, accent: 'blue' },
-  { key: 'access', label: '权限与额度', description: '市场、限额、有效期', icon: ShieldCheck, accent: 'cyan' },
-  { key: 'docs', label: '文档中心', description: 'API 与 Agent 接入', icon: BookOpen, accent: 'violet' },
+  { key: 'overview', label: '概览', description: 'Agent 接入与用量', icon: House, accent: 'blue' },
+  { key: 'access', label: '权限', description: '市场、限额、有效期', icon: Key, accent: 'cyan' },
+  { key: 'docs', label: '文档', description: 'API 与 Agent 接入', icon: Article, accent: 'violet' },
 ]
+
+const AGENTS = [
+  { name: 'Claude', icon: Sun },
+  { name: 'Codex', icon: Cube },
+  { name: 'OpenClaw', icon: CirclesThree },
+  { name: 'Hermes', icon: WaveSine },
+] as const
+type AgentName = (typeof AGENTS)[number]['name']
+type SetupTab = 'prompt' | 'tools' | 'api'
 
 const DATA_CATEGORY_DETAILS: Record<DataCategory, { label: string; detail: string; tone: string }> = {
   a_share: { label: 'A 股', detail: '行情、基础资料与基本面数据', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
@@ -60,6 +71,9 @@ export default function CustomerApp({
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedAgent, setSelectedAgent] = useState<AgentName>('Claude')
+  const [setupTab, setSetupTab] = useState<SetupTab>('prompt')
+  const [copiedSetup, setCopiedSetup] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -138,6 +152,43 @@ curl -X POST ${client.baseUrl}/v1/query \\
     },
   ], null, 2), [])
 
+  const visibleAgentPrompt = useMemo(() => `你是使用 TradingDatas 的金融数据 Agent。请遵循以下流程：
+
+1. 先调用 GET /v1/catalog，确认数据集、字段与查询约束。
+2. 再调用 POST /v1/query；数据集与 schema 版本必须来自本次目录响应。
+3. 检查 data_through、freshness_state、degraded 与 reasons。
+4. 收到 429 后停止当前批次，并按退避策略重试。
+5. 不得记录、输出或转发用户的 API 密钥。`, [])
+
+  const apiExampleVisible = useMemo(() => `# 先读取目录
+GET /v1/catalog
+Authorization: Bearer <你的 API 密钥>
+
+# 再提交查询
+POST /v1/query
+{
+  "dataset_id": "cn.dataset.adj_factor",
+  "schema_major": 2,
+  "limit": 100
+}`, [])
+
+  const setupContent = setupTab === 'prompt'
+    ? { label: '复制提示词', visible: visibleAgentPrompt, copy: `${agentPrompt}\n\n目标 Agent：${selectedAgent}` }
+    : setupTab === 'tools'
+      ? { label: '复制定义', visible: toolDefsJson, copy: toolDefsJson }
+      : { label: '复制示例', visible: apiExampleVisible, copy: curlExample }
+
+  const copySetup = async () => {
+    try {
+      await navigator.clipboard.writeText(setupContent.copy)
+      recordConsoleEvent('copy_succeeded', 'customer')
+      setCopiedSetup(true)
+      window.setTimeout(() => setCopiedSetup(false), 1600)
+    } catch {
+      setError('复制失败，请手动选择内容复制。')
+    }
+  }
+
   if (!me && !error) return <LoadingPanel label="加载账户工作台…" />
 
   const expiry = me ? expiryLabel(me.expires_at) : null
@@ -157,78 +208,165 @@ curl -X POST ${client.baseUrl}/v1/query \\
     >
       {error && <ErrorBanner message={error} />}
       {me && section === 'overview' && (
-        <div className="space-y-6">
-          <PageIntro eyebrow="CUSTOMER HOME" title="你的数据服务，一眼掌握" description="确认账户状态、市场权限与调用额度，然后把 API 接入你的 Agent。" />
-
-          <section className="relative overflow-hidden rounded-[18px] bg-[var(--td-shell)] px-6 py-6 text-white shadow-[0_18px_48px_rgb(13_19_32/0.16)] sm:px-8 sm:py-7">
-            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--td-accent),var(--td-cyan),var(--td-violet),var(--td-orange))]" />
-            <div className="grid gap-7 lg:grid-cols-[1.15fr_1fr] lg:items-end">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={me.enabled ? 'green' : 'rose'}>{me.enabled ? '服务可用' : '服务已暂停'}</Badge>
-                  <span className="font-mono text-[10px] text-slate-500">{tenantId}</span>
-                </div>
-                <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">Current plan</p>
-                <h1 className="mt-1 text-3xl font-semibold tracking-[-0.045em]">{TIER_LABELS[me.tier] ?? me.tier}</h1>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {me.data_categories.map((category) => (
-                    <span key={category} className="rounded-md border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-xs text-slate-200">
-                      {DATA_CATEGORY_DETAILS[category]?.label ?? category}
-                    </span>
-                  ))}
-                  {!me.data_categories.length && <span className="text-xs text-rose-300">尚未开通数据分类</span>}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-white/10 pt-5 sm:grid-cols-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-7">
-                {[
-                  ['今日请求', fmtNumber(me.usage.today_count)],
-                  [me.minute_request_limit ? '每分钟' : '每小时', fmtNumber(me.minute_request_limit ?? me.hourly_request_limit)],
-                  ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
-                  ['剩余有效期', expiry?.main ?? '—'],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <div className="text-[10px] text-slate-500">{label}</div>
-                    <div className="mt-1.5 text-[17px] font-semibold tracking-[-0.025em] tabular-nums text-white">{value}</div>
-                  </div>
-                ))}
-              </div>
+        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.88fr)]">
+          <div className="min-w-0 pr-0 xl:pr-10">
+            <div className="max-w-3xl">
+              <h1 className="text-[34px] font-semibold leading-[1.12] tracking-[-0.055em] text-[var(--td-ink)] sm:text-[38px]">Agent 接入</h1>
+              <p className="mt-3 text-[14px] leading-6 text-[var(--td-muted)]">复制提示词或工具定义，交给 Claude、Codex、OpenClaw 或 Hermes。</p>
             </div>
-          </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.75fr)]">
-            <Card title="近 30 天调用量" action={me.daily_limit !== null ? <ProgressBar value={me.usage.today_count} limit={me.daily_limit} /> : <span className="text-xs text-slate-400">每日不限额</span>}>
+            <section className="mt-8" aria-labelledby="agent-selector-heading">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h2 id="agent-selector-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">选择 Agent</h2>
+                  <div className="mt-3 flex max-w-full gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Agent">
+                    {AGENTS.map((agent) => {
+                      const AgentIcon = agent.icon
+                      return (
+                        <button
+                          key={agent.name}
+                          type="button"
+                          role="tab"
+                          aria-selected={selectedAgent === agent.name}
+                          onClick={() => setSelectedAgent(agent.name)}
+                          className={`inline-flex min-h-11 min-w-max items-center gap-1 rounded-[var(--td-radius-sm)] border px-1 text-[10px] font-medium transition-colors sm:gap-2 sm:px-3 sm:text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)] ${selectedAgent === agent.name ? 'border-[var(--td-accent)] bg-white text-[var(--td-ink)]' : 'border-transparent text-[var(--td-muted)] hover:border-[var(--td-line)] hover:bg-white hover:text-[var(--td-ink)]'}`}
+                        >
+                          <AgentIcon aria-hidden size={15} weight="regular" />
+                          {agent.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <p className="max-w-sm border-l-2 border-[var(--td-orange)] pl-3 text-[11px] leading-5 text-[var(--td-muted)]">为 {selectedAgent} 调整说明语境；目录与查询合同保持一致。</p>
+              </div>
+
+              <div className="mt-6 overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line-strong)] bg-white shadow-[var(--td-shadow-1)]">
+                <div className="flex flex-col border-b border-[var(--td-line)] bg-[#f4f4f2] sm:flex-row sm:items-stretch sm:justify-between">
+                  <div className="flex overflow-x-auto" role="tablist" aria-label="接入内容">
+                    {([
+                      ['prompt', '接入提示词'],
+                      ['tools', '工具定义'],
+                      ['api', 'API 示例'],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={setupTab === key}
+                        onClick={() => { setSetupTab(key); setCopiedSetup(false) }}
+                        className={`min-h-11 min-w-max border-r border-[var(--td-line)] px-5 text-[12px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)] ${setupTab === key ? 'bg-[var(--td-lilac-quiet)] text-[var(--td-ink)] shadow-[inset_0_-2px_0_#7a66e8]' : 'text-[var(--td-muted)] hover:bg-white/70 hover:text-[var(--td-ink)]'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copySetup}
+                    className="group flex min-h-11 items-center justify-between gap-3 border-t border-[var(--td-line)] px-4 text-[12px] font-semibold text-[var(--td-ink)] transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)] sm:border-t-0 sm:border-l"
+                    aria-live="polite"
+                  >
+                    <span>{copiedSetup ? '已复制' : setupContent.label}</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[var(--td-ink)] text-white transition-transform group-hover:translate-x-0.5">
+                      {copiedSetup ? <PhosphorCheck aria-hidden size={13} /> : <CopySimple aria-hidden size={13} />}
+                    </span>
+                  </button>
+                </div>
+                <pre className="min-h-[300px] overflow-auto whitespace-pre-wrap bg-[#fffefa] px-5 py-5 font-mono text-[12px] leading-6 text-[#343039] sm:px-7">{setupContent.visible}</pre>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[11px] leading-5 text-[var(--td-faint)]">复制内容会自动带入当前服务配置；密钥仍使用占位符。</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDocSectionChange(setupTab === 'api' ? 'quickstart' : 'agents')
+                    onSectionChange('docs')
+                  }}
+                  className="inline-flex min-h-9 items-center gap-2 rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-white px-3 text-[11px] font-semibold text-[var(--td-ink-soft)] transition-colors hover:border-[var(--td-line-strong)] hover:text-[var(--td-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]"
+                >
+                  <Article aria-hidden size={14} /> 打开接入文档
+                </button>
+              </div>
+            </section>
+
+            <section className="mt-9 border-t border-[var(--td-line)] pt-7" aria-labelledby="usage-heading">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <h2 id="usage-heading" className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--td-ink)]">近 30 天用量</h2>
+                  <p className="mt-1 text-[11px] text-[var(--td-muted)]">{history?.reduce((sum, item) => sum + item.total, 0).toLocaleString('zh-CN') ?? '—'} 次请求</p>
+                </div>
+                <span className="text-[11px] text-[var(--td-muted)]">今日 {fmtNumber(me.usage.today_count)}</span>
+              </div>
+
               {!history || history.every((item) => item.total === 0) ? (
-                <EmptyState icon={ChartNoAxesCombined} title="还没有调用记录" hint="完成首次 API 请求后，这里会出现调用趋势。" />
+                <div className="mt-5 border-y border-[var(--td-line)] py-8 text-[12px] text-[var(--td-muted)]">完成首次 API 请求后，这里会显示调用节奏。</div>
               ) : (
-                <div className="h-64 w-full">
+                <div className="mt-4 h-28 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={history} margin={{ top: 12, right: 8, bottom: 0, left: -18 }} accessibilityLayer>
-                      <defs><linearGradient id="customerUsageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--td-accent)" stopOpacity={0.25} /><stop offset="100%" stopColor="var(--td-accent)" stopOpacity={0.01} /></linearGradient></defs>
-                      <CartesianGrid stroke="#e8ebf0" vertical={false} />
-                      <XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5)} tick={{ fontSize: 10, fill: '#97a0af' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: '#97a0af' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '调用量']} contentStyle={{ borderRadius: 10, border: '1px solid #e2e6ec', boxShadow: '0 12px 32px rgb(13 19 32 / .1)', fontSize: 12 }} />
-                      <Area type="monotone" dataKey="total" stroke="var(--td-accent)" strokeWidth={2} fill="url(#customerUsageFill)" />
-                    </AreaChart>
+                    <BarChart data={history} margin={{ top: 6, right: 0, bottom: 0, left: 0 }} accessibilityLayer>
+                      <XAxis dataKey="date" hide />
+                      <YAxis hide allowDecimals={false} />
+                      <Tooltip formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '请求']} labelFormatter={(value) => String(value)} contentStyle={{ borderRadius: 6, border: '1px solid #e1e0dc', boxShadow: '0 8px 24px rgb(22 22 22 / .08)', fontSize: 11 }} />
+                      <Bar dataKey="total" fill="var(--td-accent)" radius={[2, 2, 0, 0]} maxBarSize={8} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               )}
-            </Card>
 
-            <Card title="开始使用" className="bg-[#fbfcff]">
-              <ol className="space-y-5">
-                {[
-                  [KeyRound, '准备 API 密钥', '当前登录密钥即可用于已授权的只读请求。'],
-                  [Database, '读取数据目录', '先读取 catalog，确认可用数据集与字段。'],
-                  [Bot, '连接你的 Agent', '复制接入说明与工具定义到 Claude、Codex 等 Agent。'],
-                ].map(([Icon, title, detail], index) => {
-                  const StepIcon = Icon as typeof KeyRound
-                  return <li key={String(title)} className="flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--td-accent-quiet)] text-[var(--td-accent)]"><StepIcon size={15} /></div><div><div className="text-sm font-semibold text-[var(--td-ink)]"><span className="mr-2 text-[10px] text-[var(--td-faint)]">0{index + 1}</span>{String(title)}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{String(detail)}</p></div></li>
-                })}
-              </ol>
-              <button type="button" onClick={() => onSectionChange('docs')} className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-[var(--td-accent)] hover:text-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--td-accent)]">打开接入文档 <Code2 size={14} /></button>
-            </Card>
+              <div className="mt-3 border-t border-[var(--td-line)]">
+                <div className="grid grid-cols-[1fr_auto] gap-4 py-3 text-[10px] font-semibold tracking-[0.04em] text-[var(--td-faint)] uppercase">
+                  <span>最近活跃日</span><span>请求</span>
+                </div>
+                {(history ?? []).filter((item) => item.total > 0).slice(-3).reverse().map((item) => (
+                  <div key={item.date} className="grid grid-cols-[1fr_auto] gap-4 border-t border-[var(--td-line)] py-3 text-[12px] text-[var(--td-ink-soft)]">
+                    <time dateTime={item.date}>{item.date}</time>
+                    <span className="tabular-nums">{item.total.toLocaleString('zh-CN')}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
+
+          <aside className="mt-10 min-w-0 border-t border-[var(--td-line)] bg-[#f3f4f5] px-5 py-7 xl:mt-0 xl:border-t-0 xl:border-l xl:px-8 xl:py-8" aria-labelledby="access-summary-heading">
+            <h2 id="access-summary-heading" className="text-[21px] font-semibold tracking-[-0.035em] text-[var(--td-ink)]">账户与权限</h2>
+
+            <div className="mt-8 border-b border-[var(--td-line)] pb-7">
+              <div className="text-[12px] font-semibold text-[var(--td-ink)]">账户与计划</div>
+              <div className="mt-4 flex flex-wrap gap-x-2 text-[13px] text-[var(--td-ink-soft)]"><span>{tenantId}</span><span aria-hidden>·</span><span>{TIER_LABELS[me.tier] ?? me.tier}</span></div>
+            </div>
+
+            <div className="border-b border-[var(--td-line)] py-7">
+              <div className="text-[12px] font-semibold text-[var(--td-ink)]">市场授权</div>
+              <div className="mt-4 divide-y divide-[var(--td-line)]">
+                {me.data_categories.map((category) => (
+                  <div key={category} className="flex items-center justify-between gap-4 py-3 text-[12px]">
+                    <span className="text-[var(--td-ink-soft)]">{DATA_CATEGORY_DETAILS[category]?.label ?? category}</span>
+                    <span className="text-[var(--td-muted)]">已授权</span>
+                  </div>
+                ))}
+                {!me.data_categories.length && <p className="py-3 text-[12px] text-[var(--td-danger)]">尚未开通市场</p>}
+              </div>
+            </div>
+
+            <div className="py-7">
+              <div className="text-[12px] font-semibold text-[var(--td-ink)]">额度与使用</div>
+              <dl className="mt-4 space-y-4 text-[12px]">
+                {[
+                  ['今日请求', fmtNumber(me.usage.today_count)],
+                  ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
+                  ['每日上限', fmtNumber(me.daily_limit)],
+                  ['有效期', expiry?.main ?? '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between gap-4">
+                    <dt className="text-[var(--td-muted)]">{label}</dt>
+                    <dd className="font-medium tabular-nums text-[var(--td-ink-soft)]">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </aside>
         </div>
       )}
 

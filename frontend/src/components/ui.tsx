@@ -263,10 +263,16 @@ export const TIER_LABELS: Record<string, string> = {
 }
 
 export function ScopeChip({ scope }: { scope: string }) {
+  const labels: Record<string, string> = {
+    read: '读取',
+    query: '查询',
+    catalog: '目录',
+    admin: '管理',
+  }
   return (
-    <code className="inline-flex min-h-5 items-center gap-1 rounded-[5px] border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-600 shadow-[0_1px_1px_rgb(13_19_32/0.03)]">
-      <span aria-hidden className="text-[var(--td-accent)]">/</span>{scope}
-    </code>
+    <span className="inline-flex min-h-6 items-center rounded-[5px] border border-[var(--td-line)] bg-[var(--td-surface-subtle)] px-2 py-1 text-[10px] font-semibold text-[var(--td-ink-soft)]">
+      {labels[scope] ?? scope}
+    </span>
   )
 }
 
@@ -473,7 +479,6 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
       const workspace = (document.querySelector('[data-workspace]')?.getAttribute('data-workspace') ?? 'customer') as ConsoleWorkspace
       recordConsoleEvent('copy_succeeded', workspace)
       setCopied(true)
-      toast('ok', `${label}成功`)
       setTimeout(() => setCopied(false), 1600)
     } catch {
       toast('err', '复制失败，请手动选择文本复制')

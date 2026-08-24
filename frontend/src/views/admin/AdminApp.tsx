@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Activity, BarChart3, Database, KeyRound, SearchCode } from 'lucide-react'
+import { ChartBar, Database, Key, MagnifyingGlass, Pulse } from '@phosphor-icons/react'
 import type { ApiClient } from '../../lib/api'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
 import TokensView from './TokensView'
@@ -12,11 +12,11 @@ import type { AdminSection } from '../../lib/workspaceRoute'
 type SectionKey = AdminSection
 
 const NAV: WorkspaceNavItem<SectionKey>[] = [
-  { key: 'tokens', label: '客户与密钥', description: '账户、套餐与授权', group: 'Access', icon: KeyRound, accent: 'blue' },
-  { key: 'usage', label: '用量与容量', description: '请求趋势与配额', group: 'Access', icon: BarChart3, accent: 'violet' },
-  { key: 'collection', label: '数据运行面', description: '采集与新鲜度', group: 'Data', icon: Database, accent: 'cyan' },
-  { key: 'health', label: '异常中心', description: '风险与诊断', group: 'Data', icon: Activity, accent: 'orange' },
-  { key: 'browser', label: '数据浏览器', description: '目录与样本验证', group: 'Data', icon: SearchCode, accent: 'blue' },
+  { key: 'tokens', label: '客户', description: '账户、套餐与授权', group: 'Access', icon: Key, accent: 'blue' },
+  { key: 'usage', label: '用量', description: '请求趋势与配额', group: 'Access', icon: ChartBar, accent: 'violet' },
+  { key: 'collection', label: '数据管道', description: '采集与新鲜度', group: 'Data', icon: Database, accent: 'cyan' },
+  { key: 'health', label: '运行健康', description: '风险与诊断', group: 'Data', icon: Pulse, accent: 'orange' },
+  { key: 'browser', label: '数据浏览', description: '目录与样本验证', group: 'Data', icon: MagnifyingGlass, accent: 'blue' },
 ]
 
 export default function AdminApp({
