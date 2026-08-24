@@ -60,7 +60,8 @@ body {
   --td-radius-sm: 5px;
   --td-radius: 7px;
   --td-radius-lg: 10px;
-  --td-shadow-1: 0 1px 2px rgb(22 22 22 / 0.045), 0 5px 16px rgb(22 22 22 / 0.025);
+  --td-shadow-hairline: 0 1px 0 rgb(22 22 22 / 0.018);
+  --td-shadow-1: 0 1px 2px rgb(22 22 22 / 0.04), 0 8px 24px rgb(22 22 22 / 0.025);
   --td-shadow-2: 0 24px 64px rgb(13 19 32 / 0.18);
   --td-duration-fast: 120ms;
 }

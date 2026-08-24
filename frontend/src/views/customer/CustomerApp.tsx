@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { BookOpen, Bot, Check, CircleGauge, Clock3, Code2, Sparkles } from 'lucide-react'
-import { Article, Check as PhosphorCheck, CirclesThree, CopySimple, Cube, House, Key, Sun, WaveSine } from '@phosphor-icons/react'
+import { Article, BookOpenText, Check as PhosphorCheck, CirclesThree, Code, CopySimple, Cube, House, Key, Robot, Sun, WaveSine } from '@phosphor-icons/react'
 import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
-import { Card, CopyButton, ErrorBanner, LoadingPanel, PageIntro, TIER_LABELS, fmtNumber } from '../../components/ui'
+import { CopyButton, ErrorBanner, LoadingPanel, PageIntro, TIER_LABELS, fmtNumber } from '../../components/ui'
 import { recordConsoleEvent } from '../../lib/consoleAnalytics'
 import type { CustomerSection, DocSection } from '../../lib/workspaceRoute'
 
@@ -372,54 +371,79 @@ POST /v1/query
 
       {me && section === 'access' && (
         <div className="space-y-6">
-          <PageIntro eyebrow="ACCESS PROFILE" title="权限与额度" description="这里展示当前 API 密钥实际生效的市场范围、请求限制和账户有效期。" />
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Card title="账户状态"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Check size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{me.enabled ? '可用' : '已暂停'}</div><div className="text-xs text-[var(--td-muted)]">{TIER_LABELS[me.tier] ?? me.tier}</div></div></div></Card>
-            <Card title="有效期"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Clock3 size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{expiry?.main}</div><div className="text-xs text-[var(--td-muted)]">{expiry?.detail}</div></div></div></Card>
-            <Card title="请求频率"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><CircleGauge size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{fmtNumber(me.minute_request_limit ?? me.hourly_request_limit)}</div><div className="text-xs text-[var(--td-muted)]">{me.minute_request_limit ? '次 / 分钟' : '次 / 小时'}</div></div></div></Card>
-            <Card title="并发上限"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Sparkles size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`}</div><div className="text-xs text-[var(--td-muted)]">每日 {fmtNumber(me.daily_limit)} 次</div></div></div></Card>
+          <PageIntro eyebrow="账户能力" title="权限与额度" description="查看这把 API 密钥当前真正生效的市场、速率和账户期限。" />
+          <div className="grid overflow-hidden rounded-[var(--td-radius-lg)] border border-[var(--td-line)] bg-white shadow-[var(--td-shadow-hairline)] xl:grid-cols-[360px_minmax(0,1fr)]">
+            <section className="border-b border-[var(--td-line)] bg-[#17181c] p-6 text-white xl:border-r xl:border-b-0 xl:p-8" aria-labelledby="account-contract-heading">
+              <div className="text-[11px] font-medium tracking-[0.04em] text-white/50">当前账户</div>
+              <h2 id="account-contract-heading" className="mt-3 text-[22px] font-semibold tracking-[-0.035em]">{tenantId}</h2>
+              <div className="mt-2 flex items-center gap-2 text-[12px] text-white/60"><span className={`h-1.5 w-1.5 rounded-full ${me.enabled ? 'bg-[#7aa2ff]' : 'bg-[#ff718e]'}`} />{me.enabled ? '服务可用' : '服务已暂停'} · {TIER_LABELS[me.tier] ?? me.tier}</div>
+              <dl className="mt-10 divide-y divide-white/10 border-y border-white/10">
+                {[
+                  ['账户有效期', expiry?.main ?? '—', expiry?.detail ?? ''],
+                  ['今日请求', fmtNumber(me.usage.today_count), `每日上限 ${fmtNumber(me.daily_limit)}`],
+                ].map(([label, value, detail]) => <div key={label} className="grid grid-cols-[1fr_auto] gap-6 py-5"><dt className="text-[11px] text-white/45">{label}</dt><dd className="text-right"><div className="text-[17px] font-medium tabular-nums">{value}</div><div className="mt-1 text-[10px] text-white/40">{detail}</div></dd></div>)}
+              </dl>
+              <p className="mt-6 text-[11px] leading-5 text-white/45">权限数据来自当前账户，不是示例套餐或静态说明。</p>
+            </section>
+
+            <div className="min-w-0 p-6 xl:p-8">
+              <section aria-labelledby="runtime-limits-heading">
+                <div className="flex items-end justify-between gap-4"><div><div className="text-[11px] font-medium text-[var(--td-accent)]">运行额度</div><h2 id="runtime-limits-heading" className="mt-1 text-[18px] font-semibold tracking-[-0.025em] text-[var(--td-ink)]">调用能力</h2></div><span className="font-mono text-[10px] text-[var(--td-faint)]">ACCOUNT LIMITS</span></div>
+                <dl className="mt-5 grid border-y border-[var(--td-line)] sm:grid-cols-3 sm:divide-x sm:divide-[var(--td-line)]">
+                  {[
+                    ['请求频率', fmtNumber(me.minute_request_limit ?? me.hourly_request_limit), me.minute_request_limit ? '次 / 分钟' : '次 / 小时'],
+                    ['并发上限', me.max_concurrent === null ? '不限' : String(me.max_concurrent), me.max_concurrent === null ? '不限制并行数' : '并行请求'],
+                    ['每日上限', fmtNumber(me.daily_limit), '次 / 自然日'],
+                  ].map(([label, value, detail]) => <div key={label} className="border-b border-[var(--td-line)] py-5 last:border-b-0 sm:border-b-0 sm:px-5 sm:first:pl-0 sm:last:pr-0"><dt className="text-[11px] text-[var(--td-muted)]">{label}</dt><dd className="mt-2 text-[26px] font-semibold tracking-[-0.05em] tabular-nums text-[var(--td-ink)]">{value}</dd><div className="mt-1 text-[10px] text-[var(--td-faint)]">{detail}</div></div>)}
+                </dl>
+              </section>
+
+              <section className="mt-9" aria-labelledby="market-access-heading">
+                <div className="flex items-center justify-between gap-4"><h2 id="market-access-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">已开通市场</h2><span className="text-[10px] text-[var(--td-faint)]">{me.data_categories.length} 个分类</span></div>
+                <div className="mt-3 divide-y divide-[var(--td-line)] border-y border-[var(--td-line)]">
+                  {me.data_categories.map((category, index) => { const item = DATA_CATEGORY_DETAILS[category]; return <div key={category} className="grid gap-2 py-4 sm:grid-cols-[32px_120px_1fr_auto] sm:items-center"><span className={`flex h-7 w-7 items-center justify-center rounded-[5px] text-[10px] font-semibold ${index === 0 ? 'bg-[#edf3ff] text-[#315cff]' : index === 1 ? 'bg-[#f1eeff] text-[#7057d6]' : 'bg-[#fff1e8] text-[#bb5c24]'}`}>{String(index + 1).padStart(2, '0')}</span><span className="text-[13px] font-semibold text-[var(--td-ink)]">{item.label}</span><span className="text-[11px] text-[var(--td-muted)]">{item.detail}</span><span className="text-[10px] font-medium text-[var(--td-accent)]">已授权</span></div> })}
+                  {!me.data_categories.length && <div className="py-5 text-sm text-[var(--td-danger)]">当前密钥尚未开通数据分类，请联系管理员配置。</div>}
+                </div>
+                <p className="mt-3 text-[11px] leading-5 text-[var(--td-muted)]">最终可用数据集以当前密钥调用 <code className="rounded-[4px] bg-[var(--td-surface-subtle)] px-1.5 py-0.5 font-mono text-[10px]">GET /v1/catalog</code> 的实时返回为准。</p>
+              </section>
+
+              <section className="mt-9" aria-labelledby="endpoint-access-heading">
+                <h2 id="endpoint-access-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">接口能力</h2>
+                <div className="mt-3 grid border-t border-[var(--td-line)] md:grid-cols-3">
+                  {[
+                    ['01', '发现目录', '读取数据集、字段、过滤条件与分页限制。'],
+                    ['02', '读取与查询', '按已授权市场读取数据，不包含写入或交易能力。'],
+                    ['03', '查看账户', '查看自身权限、有效期与用量，不读取其他客户信息。'],
+                  ].map(([number, title, detail]) => <div key={title} className="border-b border-[var(--td-line)] py-4 md:border-r md:px-5 md:first:pl-0 md:last:border-r-0"><span className="font-mono text-[10px] text-[var(--td-accent)]">{number}</span><div className="mt-2 text-[12px] font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-[11px] leading-5 text-[var(--td-muted)]">{detail}</p></div>)}
+                </div>
+              </section>
+            </div>
           </div>
-          <Card title="已开通市场">
-            <div className="grid gap-3 md:grid-cols-3">
-              {me.data_categories.map((category) => {
-                const item = DATA_CATEGORY_DETAILS[category]
-                return <div key={category} className={`rounded-xl border p-5 ${item.tone}`}><div className="text-base font-semibold">{item.label}</div><p className="mt-2 text-xs leading-5 opacity-80">{item.detail}</p></div>
-              })}
-              {!me.data_categories.length && <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700 md:col-span-3">当前密钥尚未开通数据分类，请联系管理员配置。</div>}
-            </div>
-            <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">最终可用数据集以当前密钥调用 <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">GET /v1/catalog</code> 的实时返回为准。</p>
-          </Card>
-          <Card title="接口权限">
-            <div className="grid gap-4 sm:grid-cols-3">
-              {[
-                ['发现目录', '读取数据集、字段、过滤条件与分页限制。'],
-                ['读取与查询', '按已授权市场读取数据，不包含写入或交易能力。'],
-                ['查看账户', '查看自身权限、有效期与用量，不读取其他客户信息。'],
-              ].map(([title, detail]) => <div key={title} className="border-l-2 border-[var(--td-accent)] pl-4"><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div>)}
-            </div>
-          </Card>
         </div>
       )}
 
       {me && section === 'docs' && (
         <div className="space-y-6">
-          <PageIntro eyebrow="DOCUMENTATION" title="文档中心" description="从第一次请求到 Agent 工具配置，所有接入说明集中在这里。" />
-          <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-            <nav aria-label="文档目录" className="h-fit rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-2 shadow-[var(--td-shadow-1)]">
+          <PageIntro eyebrow="开发者资源" title="文档中心" description="从第一次请求到 Agent 工具配置，把接入所需内容放在一条清晰路径里。" />
+          <div className="grid overflow-hidden rounded-[var(--td-radius-lg)] border border-[var(--td-line)] bg-white shadow-[var(--td-shadow-hairline)] lg:grid-cols-[240px_minmax(0,1fr)]">
+            <nav aria-label="文档目录" className="h-fit border-b border-[var(--td-line)] bg-[var(--td-surface-subtle)] p-3 lg:min-h-[540px] lg:border-r lg:border-b-0 lg:p-4">
+              <div className="px-3 pt-2 pb-3 text-[10px] font-semibold tracking-[0.04em] text-[var(--td-faint)]">文档目录</div>
               {([
-                ['quickstart', Code2, 'API 快速开始', '认证与首次查询'],
-                ['agents', Bot, 'Agent 接入', '提示词与工具定义'],
-                ['reference', BookOpen, '使用约定', '分页、限流与安全'],
+                ['quickstart', Code, 'API 快速开始', '认证与首次查询'],
+                ['agents', Robot, 'Agent 接入', '提示词与工具定义'],
+                ['reference', BookOpenText, '使用约定', '分页、限流与安全'],
               ] as const).map(([key, Icon, label, detail]) => (
-                <button key={key} type="button" onClick={() => onDocSectionChange(key)} aria-current={docSection === key ? 'page' : undefined} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === key ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
+                <button key={key} type="button" onClick={() => onDocSectionChange(key)} aria-current={docSection === key ? 'page' : undefined} className={`relative flex w-full items-start gap-3 border-t border-[var(--td-line)] px-3 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--td-accent)] ${docSection === key ? 'bg-white text-[var(--td-accent-strong)] before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:bg-[var(--td-accent)]' : 'text-[var(--td-muted)] hover:bg-white/70 hover:text-[var(--td-ink)]'}`}>
                   <Icon aria-hidden size={16} className="mt-0.5 shrink-0" />
                   <span><span className="block text-xs font-semibold">{label}</span><span className="mt-0.5 block text-[10px] opacity-70">{detail}</span></span>
                 </button>
               ))}
             </nav>
 
-            {docSection === 'quickstart' && <Card title="API 快速开始" action={<CopyButton text={curlExample} label="复制示例" />}>
-              <div className="grid gap-5 xl:grid-cols-[1fr_1.35fr]">
+            <div className="min-w-0 p-5 sm:p-7 lg:p-9">
+            {docSection === 'quickstart' && <article>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--td-line)] pb-5"><div><div className="text-[10px] font-medium text-[var(--td-accent)]">QUICKSTART</div><h2 className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-[var(--td-ink)]">API 快速开始</h2></div><CopyButton text={curlExample} label="复制示例" /></div>
+              <div className="mt-7 grid gap-7 xl:grid-cols-[0.8fr_1.4fr]">
                 <div className="space-y-4">
                   {[
                     ['01', '认证请求', '所有请求都使用 Bearer API 密钥。'],
@@ -427,25 +451,28 @@ POST /v1/query
                     ['03', '查询与翻页', '通过 /v1/query 查询，使用 next_cursor 继续翻页。'],
                   ].map(([number, title, detail]) => <div key={number} className="flex gap-3"><span className="font-mono text-[10px] text-[var(--td-accent)]">{number}</span><div><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div></div>)}
                 </div>
-                <pre className="max-h-[420px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300 whitespace-pre-wrap">{curlExample}</pre>
+                <pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] border border-white/8 bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] whitespace-pre-wrap shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{curlExample}</pre>
               </div>
-            </Card>}
+            </article>}
 
-            {docSection === 'agents' && <div className="space-y-5">
-              <Card title="给 Agent 的接入提示词" action={<CopyButton text={agentPrompt} label="复制提示词" />}><pre className="max-h-[420px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300 whitespace-pre-wrap">{agentPrompt}</pre></Card>
-              <Card title="Function Calling 工具定义" action={<CopyButton text={toolDefsJson} label="复制定义" />}><pre className="max-h-[380px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300">{toolDefsJson}</pre></Card>
-            </div>}
+            {docSection === 'agents' && <article className="space-y-8">
+              <div className="border-b border-[var(--td-line)] pb-5"><div className="text-[10px] font-medium text-[var(--td-accent)]">AGENT SETUP</div><h2 className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-[var(--td-ink)]">Agent 接入</h2><p className="mt-2 text-[12px] leading-5 text-[var(--td-muted)]">把真实目录发现、查询和异常处理规则一次交给你的 Agent。</p></div>
+              <section aria-labelledby="agent-prompt-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="agent-prompt-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">接入提示词</h3><CopyButton text={agentPrompt} label="复制提示词" /></div><pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] whitespace-pre-wrap shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{agentPrompt}</pre></section>
+              <section aria-labelledby="tool-schema-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="tool-schema-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">Function Calling 定义</h3><CopyButton text={toolDefsJson} label="复制定义" /></div><pre className="max-h-[380px] overflow-auto rounded-[var(--td-radius)] bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{toolDefsJson}</pre></section>
+            </article>}
 
-            {docSection === 'reference' && <Card title="使用约定">
-              <div className="grid gap-6 md:grid-cols-2">
+            {docSection === 'reference' && <article>
+              <div className="border-b border-[var(--td-line)] pb-5"><div className="text-[10px] font-medium text-[var(--td-accent)]">REFERENCE</div><h2 className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-[var(--td-ink)]">使用约定</h2><p className="mt-2 text-[12px] leading-5 text-[var(--td-muted)]">查询边界、分页策略和密钥安全的最低要求。</p></div>
+              <div className="mt-5 grid md:grid-cols-2">
                 {[
                   ['只读边界', 'TradingDatas 提供数据目录与查询，不写入数据，也不生成或执行交易指令。'],
                   ['限流与重试', '收到 429 后停止当前批次，并采用指数退避；并发不得超过账户上限。'],
                   ['游标分页', 'next_cursor 非空时继续翻页；不要自行构造或复用其他查询的游标。'],
                   ['密钥安全', '密钥只放在环境变量或安全凭证存储中，不写入仓库、日志和公开提示词。'],
-                ].map(([title, detail]) => <div key={title}><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div>)}
+                ].map(([title, detail], index) => <section key={title} className="border-b border-[var(--td-line)] py-5 md:px-5 md:odd:border-r md:odd:pl-0"><span className="font-mono text-[10px] text-[var(--td-accent)]">0{index + 1}</span><div className="mt-2 text-[13px] font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-2 text-[11px] leading-5 text-[var(--td-muted)]">{detail}</p></section>)}
               </div>
-            </Card>}
+            </article>}
+            </div>
           </div>
         </div>
       )}

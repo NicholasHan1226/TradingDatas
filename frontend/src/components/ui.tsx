@@ -16,10 +16,10 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary:
-    'border border-transparent bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[var(--td-shadow-1)] disabled:bg-blue-300',
+    'border border-transparent bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-[#1838ae] shadow-[var(--td-shadow-1)] disabled:bg-[#a7b5ee]',
   secondary:
-    'bg-white text-[var(--td-ink-soft)] border border-[var(--td-line-strong)] hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100',
-  ghost: 'border border-transparent text-[var(--td-muted)] hover:bg-slate-100 hover:text-[var(--td-ink)]',
+    'bg-white text-[var(--td-ink-soft)] border border-[var(--td-line-strong)] hover:border-[#aaa9a4] hover:bg-[#f7f7f5] active:bg-[#efefec]',
+  ghost: 'border border-transparent text-[var(--td-muted)] hover:bg-[#f0f0ed] hover:text-[var(--td-ink)]',
   danger:
     'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 active:bg-rose-100',
 }
@@ -56,7 +56,7 @@ export function Spinner({ size = 16, className = '' }: { size?: number; classNam
 
 export function LoadingPanel({ label = '加载中…' }: { label?: string }) {
   return (
-    <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-slate-400">
+    <div role="status" className="flex min-h-64 items-center justify-center gap-2 py-16 text-sm text-[var(--td-muted)]">
       <Spinner /> {label}
     </div>
   )
@@ -75,7 +75,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex min-h-48 flex-col items-center justify-center px-5 py-12 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--td-accent-quiet)] text-[var(--td-accent)] ring-1 ring-blue-100">
+      <span className="flex h-10 w-10 items-center justify-center rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-subtle)] text-[var(--td-accent)]">
         <Icon aria-hidden size={19} strokeWidth={1.7} />
       </span>
       <div className="mt-4 text-sm font-semibold text-[var(--td-ink-soft)]">{title}</div>
@@ -108,15 +108,15 @@ export function PageIntro({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-5 pb-1">
-      <div className="max-w-2xl">
+    <div className="flex flex-wrap items-end justify-between gap-5 border-b border-[var(--td-line)] pb-5">
+      <div className="max-w-[720px]">
         {eyebrow && (
-          <p className="mb-2 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-[var(--td-accent)] uppercase before:h-px before:w-5 before:bg-[var(--td-accent)]">
+          <p className="mb-2.5 flex items-center gap-2 text-[11px] font-medium tracking-[0.02em] text-[var(--td-accent)] before:h-1.5 before:w-1.5 before:rounded-[2px] before:bg-[var(--td-accent)]">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-[26px] font-semibold leading-tight tracking-[-0.04em] text-[var(--td-ink)] sm:text-[30px]">{title}</h2>
-        {description && <p className="mt-2 max-w-xl text-[13px] leading-6 text-[var(--td-muted)]">{description}</p>}
+        <h1 className="text-[27px] font-semibold leading-[1.16] tracking-[-0.045em] text-[var(--td-ink)] sm:text-[32px]">{title}</h1>
+        {description && <p className="mt-2.5 max-w-2xl text-[13px] leading-6 text-[var(--td-muted)]">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
     </div>
@@ -125,7 +125,7 @@ export function PageIntro({
 
 export function ControlBar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-3 shadow-[var(--td-shadow-1)] ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2.5 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-subtle)] p-2.5 ${className}`}>
       {children}
     </div>
   )
@@ -148,9 +148,9 @@ export function SearchField({
 }
 
 export const TABLE_HEAD_CLASS =
-  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f7f8fa] text-left text-[10px] font-semibold tracking-[0.07em] text-[var(--td-muted)] uppercase'
+  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f5f5f2] text-left text-[10px] font-semibold tracking-[0.035em] text-[var(--td-muted)]'
 export const TABLE_ROW_CLASS =
-  'border-b border-slate-100 transition-colors last:border-0 hover:bg-[#f6f8fc] focus-within:bg-[var(--td-accent-quiet)]/70'
+  'border-b border-[var(--td-line)] transition-colors last:border-0 hover:bg-[#f8f8f6] focus-within:bg-[var(--td-accent-quiet)]/70'
 
 // ---------- Cards & stats ----------
 
@@ -169,11 +169,11 @@ export function Card({
 }) {
   return (
     <section
-      className={`overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-1)] ${className}`}
+      className={`overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-hairline)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 sm:px-5">
-          <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
+        <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-[var(--td-line)] px-4 py-3.5 sm:px-5">
+          <h2 className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
           {action}
         </header>
       )}
@@ -206,10 +206,10 @@ export function StatCard({
     bad: 'bg-rose-500',
   }[tone]
   return (
-    <div className="relative overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4 shadow-[var(--td-shadow-1)]">
-      <span className={`absolute inset-y-0 left-0 w-0.5 ${toneDot}`} />
-      <div className="flex items-center gap-2 text-xs font-medium text-[var(--td-muted)]">{label}</div>
-      <div className={`mt-3 text-2xl font-semibold leading-none tracking-[-0.04em] tabular-nums ${toneClass}`}>{value}</div>
+    <div className="relative overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4 shadow-[var(--td-shadow-hairline)]">
+      <span className={`absolute top-4 right-4 h-1.5 w-1.5 rounded-full ${toneDot}`} />
+      <div className="flex items-center gap-2 pr-5 text-[11px] font-medium text-[var(--td-muted)]">{label}</div>
+      <div className={`mt-3.5 text-[26px] font-semibold leading-none tracking-[-0.05em] tabular-nums ${toneClass}`}>{value}</div>
       {sub && <div className="mt-2 text-xs text-[var(--td-faint)]">{sub}</div>}
     </div>
   )
@@ -220,18 +220,18 @@ export function StatCard({
 type BadgeTone = 'slate' | 'blue' | 'green' | 'amber' | 'rose' | 'violet'
 
 const BADGE_STYLES: Record<BadgeTone, string> = {
-  slate: 'border-slate-200 bg-slate-50 text-slate-600',
-  blue: 'border-blue-200 bg-blue-50 text-blue-700',
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  amber: 'border-amber-200 bg-amber-50 text-amber-700',
-  rose: 'border-rose-200 bg-rose-50 text-rose-700',
-  violet: 'border-violet-200 bg-violet-50 text-violet-700',
+  slate: 'border-[#deddd8] bg-[#f5f5f2] text-[#62625f]',
+  blue: 'border-[#ccd6ff] bg-[#f0f3ff] text-[#274bc7]',
+  green: 'border-[#bfe5d7] bg-[#edf8f3] text-[#087553]',
+  amber: 'border-[#f1d5aa] bg-[#fff7e9] text-[#9b5800]',
+  rose: 'border-[#f0c6cf] bg-[#fff0f3] text-[#b32748]',
+  violet: 'border-[#d9d1f7] bg-[#f4f1ff] text-[#654dc7]',
 }
 
 export function Badge({ tone = 'slate', children }: { tone?: BadgeTone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex min-h-5 items-center rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold tracking-[0.01em] ${BADGE_STYLES[tone]}`}
+      className={`inline-flex min-h-5 items-center rounded-[4px] border px-1.5 py-0.5 text-[10px] font-medium tracking-[0.01em] ${BADGE_STYLES[tone]}`}
     >
       {children}
     </span>
@@ -260,6 +260,24 @@ export const TIER_LABELS: Record<string, string> = {
   flagship: '旗舰版',
   enterprise: '企业版',
   internal: '平台管理',
+}
+
+export const RUNTIME_STATE_LABELS: Record<string, string> = {
+  success: '运行正常',
+  empty: '本次无新增',
+  failed: '运行失败',
+  stale: '等待更新',
+  degraded: '质量降级',
+  unknown: '尚未观测',
+}
+
+export const ACTIVATION_LABELS: Record<string, string> = {
+  active: '已启用',
+  paused: '已暂停',
+  disabled: '未启用',
+  contract_ready: '合同就绪',
+  observed: '已观测',
+  stable: '稳定运行',
 }
 
 export function ScopeChip({ scope }: { scope: string }) {
@@ -367,8 +385,8 @@ export function ToggleSwitch({
       aria-label={label}
       disabled={disabled || busy}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
-        checked ? 'bg-emerald-500' : 'bg-slate-300'
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)] disabled:opacity-50 ${
+        checked ? 'bg-[var(--td-accent)]' : 'bg-[#c9c9c4]'
       }`}
     >
       <span

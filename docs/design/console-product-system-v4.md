@@ -63,10 +63,11 @@ context or navigation position, never authorization or runtime health.
   workspace switch, horizontally scrollable mobile navigation, and visible
   customer-preview notice. Route changes return page content to the top.
 - **Page header**: small contextual rule/eyebrow, one clear title, one sentence
-  of task guidance, and at most one action cluster.
+  of task guidance, and at most one action cluster. Context labels are concise
+  Chinese task nouns rather than decorative uppercase system language.
 - **Button / input**: minimum 36-40px hit area, explicit hover/focus/disabled/
   loading states, semantic danger styling, and readable icon labels.
-- **Card**: 12px radius, low elevation, clear internal header. Cards group tasks;
+- **Card**: 7px radius, hairline or low elevation, clear internal header. Cards group tasks;
   they are not used to give every metric equal weight.
 - **Table**: sticky quiet header, 44px minimum rows, tabular numbers, local
   horizontal scrolling, row actions at the end, and responsive containment.
@@ -102,9 +103,26 @@ context or navigation position, never authorization or runtime health.
    expiry and 30-day usage. It must never imply a one-click connection or MCP
    package that the product does not provide.
 2. Permissions and limits: server-projected market entitlements, endpoint
-   abilities, expiry and every active ceiling.
+   abilities, expiry and every active ceiling. This page uses one account
+   contract surface and a ledger hierarchy rather than four same-weight cards.
 3. Documentation: API quickstart, Agent prompt/tool definitions, pagination,
-   throttling, read-only boundary and secret-handling rules.
+   throttling, read-only boundary and secret-handling rules. Navigation and
+   article content share one editorial frame; code actions stay adjacent to the
+   artifact they copy.
+
+## Deep-surface conventions
+
+- Runtime and activation values retain their backend identifiers internally,
+  but visible labels use customer-readable Chinese (`运行正常`、`本次无新增`、
+  `已启用`、`已暂停`). Raw identifiers remain available in data and receipts.
+- Desktop credential management uses the full comparison table. Below 640px it
+  becomes a task card per customer so scopes, markets, quota, expiry and actions
+  remain legible without squeezing nine columns into the viewport.
+- Metric collections use bordered ledgers or divided strips before introducing
+  another layer of independent cards. Accent colour identifies focus or market
+  family; healthy state alone may use green.
+- Code panels use one near-black neutral surface, 11px monospace text and a
+  local copy action. They never expose or prefill an actual API key.
 
 ## Reference implementation choices
 

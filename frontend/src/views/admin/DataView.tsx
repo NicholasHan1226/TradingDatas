@@ -16,6 +16,8 @@ import {
   SearchField,
   TABLE_HEAD_CLASS,
   TABLE_ROW_CLASS,
+  ACTIVATION_LABELS,
+  RUNTIME_STATE_LABELS,
 } from '../../components/ui'
 
 type CatalogDatasetRow = Omit<DatasetRow, 'provider'> & { provider?: string }
@@ -163,7 +165,7 @@ export default function DataView({ client }: { client: ApiClient }) {
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="DATA EXPLORER"
+        eyebrow="目录验证"
         title="数据目录浏览"
         description="检索可用数据集，验证结构，并从当前目录直接发起只读样本查询。"
       />
@@ -198,7 +200,7 @@ export default function DataView({ client }: { client: ApiClient }) {
                       <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
                       <div className="text-[10px] text-slate-400">v{d.schema_major} · {d.market} · {d.cadence}</div>
                     </div>
-                    <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{d.runtime_state ?? '-'}</Badge>
+                    <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{RUNTIME_STATE_LABELS[d.runtime_state ?? ''] ?? d.runtime_state ?? '尚未观测'}</Badge>
                   </button>
                 )
               })
@@ -229,9 +231,9 @@ export default function DataView({ client }: { client: ApiClient }) {
                   ['领域', selected.domain ?? '—'],
                   ['频率', selected.cadence],
                   ['提供方', selected.provider],
-                  ['激活', selected.activation],
+                  ['激活', ACTIVATION_LABELS[selected.activation] ?? selected.activation],
                   ['数据截止', selected.data_through ?? '—'],
-                  ['新鲜度', selected.freshness_state ?? '—'],
+                  ['新鲜度', RUNTIME_STATE_LABELS[selected.freshness_state ?? ''] ?? selected.freshness_state ?? '—'],
                   ['已存记录', selected.coverage?.row_count?.toLocaleString('zh-CN') ?? '—'],
                 ].map(([k, v]) => (
                   <div key={k}>
