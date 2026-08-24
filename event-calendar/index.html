@@ -1,0 +1,137 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A股事件日历</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;900&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{--ground:#F8F7F4;--surface:#FFFFFF;--ink:#20242B;--muted:#68707C;--line:#E5E2DA;
+--accent:#31589E;--accent-ink:#FFFFFF;--up:#C43D2C;--down:#1F7A4D;--warn:#9A6B12;
+--chip1:#EEF0F4;--chip1t:#4A5568;--chip2:#E6ECF7;--chip2t:#31589E;--chip5:#31589E;--chip5t:#FFF;
+--ep:#F3EBD3;--ept:#7A5800;--en:#E0EFE9;--ent:#1F6E5E;
+--soft:#F2F0EB;--wknd:#FBFAF7;--mono:'IBM Plex Mono',ui-monospace,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ground:#15171C;--surface:#1E2127;--ink:#E9EAEC;--muted:#98A1AD;--line:#31363E;--accent:#94ABD8;--accent-ink:#14161B;--up:#E05947;--down:#46AA7B;--warn:#CBA44E;--chip1:#262B33;--chip1t:#A8B2BF;--chip2:#253048;--chip2t:#AFC3EC;--chip5:#94ABD8;--chip5t:#14161B;--ep:#332B14;--ept:#D9B45C;--en:#14302B;--ent:#7FC8B8;--soft:#23262D;--wknd:#191C22}}
+:root[data-theme="dark"]{--ground:#15171C;--surface:#1E2127;--ink:#E9EAEC;--muted:#98A1AD;--line:#31363E;--accent:#94ABD8;--accent-ink:#14161B;--up:#E05947;--down:#46AA7B;--warn:#CBA44E;--chip1:#262B33;--chip1t:#A8B2BF;--chip2:#253048;--chip2t:#AFC3EC;--chip5:#94ABD8;--chip5t:#14161B;--ep:#332B14;--ept:#D9B45C;--en:#14302B;--ent:#7FC8B8;--soft:#23262D;--wknd:#191C22}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font-family:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.65;padding:0 20px 80px}
+main{max-width:1120px;margin:0 auto}
+.serif{font-family:'Noto Serif SC','Songti SC',serif}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{padding:34px 0 6px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;border-bottom:2px solid var(--ink)}
+h1{font-size:30px;font-weight:900;letter-spacing:.02em;margin-right:auto}
+.regime{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:6px;padding:7px 13px;background:var(--surface)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.meta{color:var(--muted);font-size:12.5px;width:100%;padding-top:2px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;margin:22px 0 8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+.card b{display:block;font-size:24px;font-weight:600;font-family:var(--mono)}
+.card span{font-size:12.5px;color:var(--muted)}
+.seal{display:inline-block;border:1.5px solid var(--warn);color:var(--warn);border-radius:4px;padding:1px 8px;font-size:12px;font-weight:700;letter-spacing:.35em;text-indent:.35em}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:16px 0 4px;color:var(--muted);font-size:12.5px}
+.lg{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid var(--line)}
+/* ---- 日历网格 ---- */
+section.month{margin-top:40px}
+.mh{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.mh h2{font-size:22px;font-weight:900}
+.mh small{color:var(--muted)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.dowh{text-align:center;font-size:12px;color:var(--muted);padding:2px 0 6px;font-weight:500}
+.cell{position:relative;background:var(--surface);border:1px solid var(--line);border-top-width:3px;border-radius:7px;
+min-height:88px;padding:6px 7px;text-align:left;cursor:pointer;font:inherit;color:inherit;
+display:flex;flex-direction:column;gap:4px;transition:box-shadow .12s ease}
+.cell:hover{box-shadow:0 0 0 1.5px var(--accent)}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.cell.sel{box-shadow:0 0 0 2px var(--accent)}
+.cell.m5{border-top-color:var(--accent)}
+.cell.m3{border-top-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.cell.m2{border-top-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.cell.m1{border-top-color:var(--line)}
+.cell.me{border-top-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.cell.we{background:var(--wknd)}
+.cell.empty{background:none;border:none;border-top:3px solid transparent;cursor:default;min-height:88px}
+.dnum{display:flex;justify-content:space-between;align-items:baseline}
+.dnum .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--muted)}
+.cell.has .n{color:var(--ink)}
+.dnum .c{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.dnum .cbig{color:var(--accent);font-weight:600}
+.echips{display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.ec{display:flex;justify-content:space-between;gap:6px;align-items:center;border-radius:4px;
+padding:1.5px 6px;font-size:11px;line-height:1.5;white-space:nowrap;overflow:hidden}
+.ec .s{font-family:var(--mono);letter-spacing:.02em}
+.ec .r{font-family:var(--mono);opacity:.85}
+.ec.b1{background:var(--chip1);color:var(--chip1t)}
+.ec.b2{background:var(--chip2);color:var(--chip2t)}
+.ec.b5{background:var(--chip5);color:var(--chip5t);font-weight:700}
+.ec.ep{background:var(--ep);color:var(--ept)}
+.ec.en{background:var(--en);color:var(--ent)}
+.ec.bu{background:none;border:1px dashed var(--line);color:var(--muted)}
+.ec.mac{background:none;border:1px dashed var(--line);color:var(--muted);justify-content:center}
+.more{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+.today{outline:2px dashed var(--warn);outline-offset:-2px}
+.tflag{font-size:9.5px;color:var(--warn);font-weight:700;letter-spacing:.1em}
+/* ---- 当日明细 ---- */
+.daydetail{margin-top:12px}
+.daydetail[hidden]{display:none}
+.evtable{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--surface);
+border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.scrollwrap{overflow-x:auto;border-radius:8px}
+.scrollwrap .evtable{border:none}
+.evtable td,.evtable th{padding:7px 14px;border-top:1px solid var(--line);vertical-align:baseline;text-align:left}
+.evtable tr:first-child td,.evtable tr:first-child th{border-top:none;background:var(--soft)}
+.code{font-family:var(--mono);white-space:nowrap}
+.nm{font-weight:500}
+.holder{color:var(--muted)}
+.ratio{font-family:var(--mono);text-align:right;white-space:nowrap}
+.chip{display:inline-block;border-radius:4px;padding:1px 8px;font-size:12px;font-weight:700;white-space:nowrap}
+.b1{background:var(--chip1);color:var(--chip1t)}
+.b2{background:var(--chip2);color:var(--chip2t)}
+.b5{background:var(--chip5);color:var(--chip5t)}
+.ep{background:var(--ep);color:var(--ept)}
+.en{background:var(--en);color:var(--ent)}
+.bu{background:none;color:var(--muted);border:1px dashed var(--line)}
+.stat{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+.pos{color:var(--up)}.neg{color:var(--down)}
+.dtitle{font-size:13.5px;font-weight:700;margin:14px 0 6px}
+.dtitle small{font-weight:400;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin-top:26px}
+.panel h3{font-size:16px;font-weight:700;margin-bottom:10px}
+.panel p{color:var(--muted);font-size:13.5px;margin-top:8px}
+table.st{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+table.st th{text-align:left;font-weight:500;color:var(--muted);font-size:12.5px;padding:6px 10px;border-bottom:1.5px solid var(--ink)}
+table.st td{padding:7px 10px;border-bottom:1px solid var(--line)}
+table.st td.n{font-family:var(--mono);text-align:right}
+footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+/* ---- 远期年份折叠 ---- */
+.yearfold{margin-top:30px;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.yearfold>summary{list-style:none;cursor:pointer;padding:15px 20px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.yearfold>summary::-webkit-details-marker{display:none}
+.yearfold>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.yearfold>summary h2{font-family:'Noto Serif SC','Songti SC',serif;font-size:19px;font-weight:900}
+.yearfold>summary .yc{color:var(--muted);font-size:13px}
+.yearfold>summary .hint{margin-left:auto;color:var(--muted);font-size:12.5px}
+.yearfold[open]>summary .hint{display:none}
+.ybody{padding:0 20px 24px}
+@media (max-width:640px){
+ body{padding:0 12px 60px;font-size:14px}
+ h1{font-size:24px}
+ .cal{gap:3px}
+ .cell{min-height:64px;padding:4px 5px;gap:2px;border-radius:5px}
+ .dnum .n{font-size:11.5px}
+ .ec{font-size:9px;padding:1px 3px}
+ .ec .r{display:none}
+ .more{font-size:9px}
+}
+@media (prefers-reduced-motion: reduce){.cell{transition:none}}
+</style></head><body><main>
+<header>
+<h1 class="serif">A股事件日历</h1>
+<div class="regime" id="regime" hidden></div>
+<span class="seal">仅供研究</span>
+<div class="meta" id="meta"></div>
+</header>
+<div class="cards" id="cards" hidden></div>
+<div class="legend" id="legend" hidden></div>
+<div id="status" class="panel" style="margin-top:26px">正在载入日历数据…</div>
+<div id="months"></div>
+<footer id="footer" hidden>存档模式 · 数据文件与页面同目录发布 · 上线需迁入网站发布目录(未上线)</footer>
+<script src="app.js"></script>
+</main></body></html>
