@@ -34,10 +34,12 @@ export default function CustomerApp({
   client,
   tenantId,
   onLogout,
+  onViewAdmin,
 }: {
   client: ApiClient
   tenantId: string
   onLogout: () => void
+  onViewAdmin?: () => void
 }) {
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
@@ -200,6 +202,11 @@ while next_cursor:
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500 sm:inline">{tenantId}</span>
+            {onViewAdmin && (
+              <Button variant="secondary" size="sm" onClick={onViewAdmin}>
+                返回管理端
+              </Button>
+            )}
             <Button variant="secondary" size="sm" onClick={onLogout}>退出</Button>
           </div>
         </div>

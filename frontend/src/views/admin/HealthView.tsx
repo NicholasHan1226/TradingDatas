@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Card, ErrorBanner, LoadingPanel, PageIntro } from '../../components/ui'
+import { Card, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -30,6 +30,7 @@ const SEVERITY_META: Record<string, { label: string; card: string; badge: string
 export default function HealthView({ client }: { client: ApiClient }) {
   const [alerts, setAlerts] = useState<HealthAlert[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [severityFilter, setSeverityFilter] = useState<'all' | (typeof SEVERITY_ORDER)[number]>('all')
 
   useEffect(() => {
     let alive = true
@@ -52,6 +53,14 @@ export default function HealthView({ client }: { client: ApiClient }) {
       alive = false
     }
   }, [client])
+
+  const severityCounts = useMemo(
+    () => Object.fromEntries(SEVERITY_ORDER.map((severity) => [severity, alerts?.filter((item) => item.severity === severity).length ?? 0])) as Record<(typeof SEVERITY_ORDER)[number], number>,
+    [alerts],
+  )
+  const visibleAlerts = severityFilter === 'all'
+    ? alerts ?? []
+    : (alerts ?? []).filter((item) => item.severity === severityFilter)
 
   if (alerts === null && !error) return <LoadingPanel />
   if (error) return <ErrorBanner message={error} />
@@ -87,8 +96,38 @@ export default function HealthView({ client }: { client: ApiClient }) {
         description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
         action={<span className="text-xs text-slate-400">{alerts.length} 条 · 已按严重程度排序</span>}
       />
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="严重" value={severityCounts.critical} tone={severityCounts.critical > 0 ? 'bad' : 'default'} />
+        <StatCard label="警告" value={severityCounts.warning} tone={severityCounts.warning > 0 ? 'warn' : 'default'} />
+        <StatCard label="提示" value={severityCounts.info} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+        <div className="flex flex-wrap gap-1" aria-label="按严重程度筛选告警">
+          {([
+            ['all', '全部'],
+            ['critical', '严重'],
+            ['warning', '警告'],
+            ['info', '提示'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={severityFilter === value}
+              onClick={() => setSeverityFilter(value)}
+              className={`min-h-8 rounded-[var(--td-radius-sm)] px-2.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
+                severityFilter === value
+                  ? 'bg-slate-900 text-white shadow-[0_1px_2px_rgb(15_23_42/0.15)]'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-slate-400">显示 {visibleAlerts.length} / {alerts.length} 条</span>
+      </div>
       <div className="space-y-3">
-        {alerts.map((a, idx) => {
+        {visibleAlerts.map((a, idx) => {
           const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
           return (
             <div
