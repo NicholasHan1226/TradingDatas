@@ -2,7 +2,7 @@
 
 @theme {
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
+    Inter, "SF Pro Text", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
@@ -29,43 +29,44 @@ body {
 /* Precision utility: a shared data-workspace language for operator and customer. */
 :root {
   color-scheme: light;
-  --td-canvas: #f3f5f8;
+  --td-canvas: #faf9f6;
   --td-surface: #ffffff;
-  --td-surface-subtle: #f6f7f9;
+  --td-surface-subtle: #f2f3f5;
   --td-surface-raised: #ffffff;
-  --td-shell: #0b1020;
-  --td-ink: #0d1320;
-  --td-ink-soft: #303847;
-  --td-muted: #687386;
-  --td-faint: #97a0af;
-  --td-line: #e2e6ec;
-  --td-line-strong: #cdd3dc;
-  --td-accent: #2f64f5;
-  --td-accent-strong: #194ddb;
-  --td-accent-quiet: #edf3ff;
+  --td-shell: #151515;
+  --td-ink: #161616;
+  --td-ink-soft: #34343a;
+  --td-muted: #686975;
+  --td-faint: #92939e;
+  --td-line: #e1e0dc;
+  --td-line-strong: #cfcec9;
+  --td-accent: #315cff;
+  --td-accent-strong: #2448d8;
+  --td-accent-quiet: #eef1ff;
+  --td-lilac-quiet: #eee9ff;
   --td-success: #0a8f63;
   --td-warning: #bd6b00;
   --td-danger: #cf3353;
   --td-info: #2774c7;
   --td-cyan: #13b8d0;
-  --td-violet: #826bf5;
-  --td-orange: #f08a3c;
+  --td-violet: #7867d9;
+  --td-orange: #ff6b35;
   --td-space-1: 4px;
   --td-space-2: 8px;
   --td-space-3: 12px;
   --td-space-4: 16px;
   --td-space-5: 20px;
   --td-space-6: 24px;
-  --td-radius-sm: 7px;
-  --td-radius: 12px;
-  --td-radius-lg: 16px;
-  --td-shadow-1: 0 1px 2px rgb(13 19 32 / 0.05), 0 6px 18px rgb(13 19 32 / 0.035);
+  --td-radius-sm: 5px;
+  --td-radius: 7px;
+  --td-radius-lg: 10px;
+  --td-shadow-1: 0 1px 2px rgb(22 22 22 / 0.045), 0 5px 16px rgb(22 22 22 / 0.025);
   --td-shadow-2: 0 24px 64px rgb(13 19 32 / 0.18);
   --td-duration-fast: 120ms;
 }
 
 .workspace-action {
-  @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--td-radius-sm)] border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400;
+  @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--td-radius-sm)] border border-transparent px-2.5 text-[11px] font-medium text-[var(--td-ink-soft)] transition-colors hover:border-[var(--td-line)] hover:bg-white hover:text-[var(--td-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)];
 }
 
 .workspace-nav {

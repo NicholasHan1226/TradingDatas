@@ -17,11 +17,11 @@ projection; it is not customer impersonation and does not mutate credentials.
 ## Design direction
 
 The shared direction is **precision infrastructure / calm fintech**. The login
-and both workspaces use the same typographic TradingDatas wordmark, graphite
-shell, neutral work canvas, cobalt action colour, and restrained market accents.
-The workspace is intentionally horizontal rather than a conventional tall
-admin sidebar: brand and role sit in the first header row, task navigation in
-the second, and every page follows decision summary -> primary task -> detail.
+and both workspaces use the same typography-only TradingDatas wordmark, warm
+porcelain canvas, ink text, cobalt action colour, and restrained lilac/orange
+accents. The workspace is intentionally horizontal rather than a conventional
+tall admin sidebar: brand and role sit in the first header row, task navigation
+in the second, and every page follows decision summary -> primary task -> detail.
 
 The design avoids ornamental glass, oversized gradients, excessive same-weight
 cards, fake live numbers, security-product language, and green link markers.
@@ -32,8 +32,8 @@ context or navigation position, never authorization or runtime health.
 
 ### Typography
 
-- UI: system sans with PingFang SC, Hiragino Sans GB, Microsoft YaHei and Noto
-  Sans SC fallbacks.
+- UI: Inter/SF Pro Text with PingFang SC, Hiragino Sans GB, Microsoft YaHei and
+  Noto Sans SC fallbacks.
 - Data and identifiers: system monospace.
 - Scale: 10 / 11 / 12 / 13 / 14 / 17 / 20 / 26 / 30 / 36px.
 - Headings use 600 weight and tight tracking. Labels use 500-600. Body text uses
@@ -41,7 +41,7 @@ context or navigation position, never authorization or runtime health.
 
 ### Colour
 
-- `--td-shell`: graphite application chrome.
+- `--td-shell`: near-black action and code chrome, not a persistent dark header.
 - `--td-canvas`, `--td-surface*`: neutral working layers.
 - `--td-ink*`, `--td-muted`, `--td-faint`: four text levels.
 - `--td-accent*`: selection, focus and primary actions.
@@ -51,7 +51,7 @@ context or navigation position, never authorization or runtime health.
 ### Geometry and motion
 
 - 4px base rhythm: 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40.
-- Radius: 7px controls, 12px panels, 16-18px feature surfaces/dialogs.
+- Radius: 5px compact controls, 7px task panels, 10px large surfaces/dialogs.
 - Shadow 1 separates interactive panels; shadow 2 is for dialogs and the login
   task. Dense data tables use borders rather than elevation.
 - Functional colour/border feedback uses 120ms. Pages and cards do not animate
@@ -59,9 +59,9 @@ context or navigation position, never authorization or runtime health.
 
 ## Component contract
 
-- **Workspace shell**: two-row graphite header, persistent logout, optional
+- **Workspace shell**: two-row warm light header, persistent logout, optional
   workspace switch, horizontally scrollable mobile navigation, and visible
-  customer-preview notice.
+  customer-preview notice. Route changes return page content to the top.
 - **Page header**: small contextual rule/eyebrow, one clear title, one sentence
   of task guidance, and at most one action cluster.
 - **Button / input**: minimum 36-40px hit area, explicit hover/focus/disabled/
@@ -74,8 +74,15 @@ context or navigation position, never authorization or runtime health.
   from the action, and one-time secrets clearly isolated.
 - **Chart**: Recharts with neutral grids, token-driven series colour, responsive
   container, readable tooltip, and explicit empty state.
-- **Icons**: Lucide React only for interface icons. The TradingDatas product mark
-  remains typography-only.
+- **Icons**: Phosphor regular-weight icons for the shared shell and first-level
+  navigation. Existing feature icons may migrate incrementally, but one visible
+  control cannot mix icon families. The TradingDatas product mark remains
+  typography-only.
+- **Copy actions**: the action sits inside the code/task surface and confirms
+  success in place (`已复制`). Success toasts are avoided; failures remain
+  explicit. Labels describe the real artifact: `复制提示词`、`复制定义`、`复制示例`.
+- **Permission tags**: known scopes are customer-readable nouns (`读取`、`查询`、
+  `目录`、`管理`), with neutral surfaces instead of slash-prefixed system tokens.
 
 ## Page information architecture
 
@@ -90,8 +97,10 @@ context or navigation position, never authorization or runtime health.
 
 ### Customer
 
-1. Home: account status, plan, enabled markets, current usage, rate/concurrency,
-   expiry, 30-day trend and a three-step onboarding path.
+1. Home: an Agent connection workbench with Claude/Codex/OpenClaw/Hermes
+   context tabs, truthful prompt/tool/API artifacts, account/market limits,
+   expiry and 30-day usage. It must never imply a one-click connection or MCP
+   package that the product does not provide.
 2. Permissions and limits: server-projected market entitlements, endpoint
    abilities, expiry and every active ceiling.
 3. Documentation: API quickstart, Agent prompt/tool definitions, pagination,
@@ -100,7 +109,8 @@ context or navigation position, never authorization or runtime health.
 ## Reference implementation choices
 
 - Recharts remains the chart layer to avoid an unnecessary migration.
-- Lucide React replaces locally drawn interface icons and is tree-shakable.
+- Phosphor React supplies the shared shell and first-level navigation icons and
+  is tree-shakable. No hand-drawn SVG or glyph substitutes are used.
 - shadcn/ui composition patterns inform the shell, tables and chart tokens, but
   its entire runtime is not installed; TradingDatas owns its visual language.
 - Radix Dialog provides focus trapping, Escape handling and screen-reader title
