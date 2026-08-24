@@ -72,6 +72,11 @@ body {
   display: none;
 }
 
+.analytics-icon-blue { color: #2f64f5; background: #edf3ff; }
+.analytics-icon-cyan { color: #087f94; background: #e8fafd; }
+.analytics-icon-violet { color: #6d57da; background: #f1eeff; }
+.analytics-icon-orange { color: #bd641f; background: #fff3e9; }
+
 button,
 input,
 select {

@@ -85,7 +85,10 @@ scope 检查（门户自加载不烧客户配额），但完整认证、每小�
 的管理员 token 默认进入管理工作台。平台 owner token 约定同时保留 `read` 与 `admin`，
 可在同一会话切换到明确标识的客户视角并返回，但该视角只投影管理员自身 portal 数据，
 不是客户冒充，不得修改 token 或绕过服务端授权。产品与设计合同见 `docs/PRODUCT.md`
-和 `docs/design/console-product-system-v4.md`。
+、`docs/design/console-product-system-v4.md` 和
+`docs/design/console-productivity-v5.md`。前端页面定位使用 hash route，避免 Pages
+刷新依赖 SPA fallback；排序、筛选、列布局和控制台体验计数只保存在当前浏览器，禁止
+写入 Token、tenant、dataset、请求体、响应内容或设备标识，也不得发送到服务端。
 
 **前端构建**：管理台/门户的 React 源码在 `frontend/`（Vite + TS + Tailwind），
 构建产物提交在 `static/app/`（`base: '/app/'`），随 `static/**` 由同一 Pages 通道发布，

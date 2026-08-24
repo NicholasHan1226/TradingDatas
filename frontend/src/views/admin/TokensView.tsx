@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { AdminToken, DataCategory, TokensResponse } from '../../lib/types'
+import { recordConsoleEvent } from '../../lib/consoleAnalytics'
+import { usePersistentState } from '../../lib/persistence'
 import {
   Badge,
   Button,
@@ -106,7 +108,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
   const toast = useToast()
   const [tokens, setTokens] = useState<AdminToken[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistentState('td.console.tokens.search.v1', '')
   const [busyHash, setBusyHash] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -152,9 +154,11 @@ export default function TokensView({ client }: { client: ApiClient }) {
     setBusyHash(t.token_hash_full)
     try {
       await client.patch(`/admin/api/tokens/${t.token_hash_full}`, { enabled: !t.enabled })
+      recordConsoleEvent('credential_toggled', 'admin')
       toast('ok', t.enabled ? `已暂停 ${t.tenant_id}` : `已恢复 ${t.tenant_id}`)
       await reload()
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       toast('err', err instanceof Error ? err.message : '操作失败')
     } finally {
       setBusyHash(null)
@@ -170,12 +174,14 @@ export default function TokensView({ client }: { client: ApiClient }) {
     setCreating(true)
     try {
       const result = await client.post<{ token?: string }>('/admin/api/tokens', buildPayload(form))
+      recordConsoleEvent('credential_created', 'admin')
       if (result.token) setRevealedToken(result.token)
       else toast('err', '创建返回异常：未包含密钥')
       setCreateOpen(false)
       setCreateForm(EMPTY_FORM)
       await reload()
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       toast('err', err instanceof Error ? err.message : '创建失败')
     } finally {
       setCreating(false)
@@ -187,10 +193,12 @@ export default function TokensView({ client }: { client: ApiClient }) {
     setEditing(true)
     try {
       await client.patch(`/admin/api/tokens/${editTarget.token_hash_full}`, buildPayload(editForm))
+      recordConsoleEvent('credential_updated', 'admin')
       toast('ok', `已更新 ${editTarget.tenant_id}`)
       setEditTarget(null)
       await reload()
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       toast('err', err instanceof Error ? err.message : '更新失败')
     } finally {
       setEditing(false)
@@ -202,10 +210,12 @@ export default function TokensView({ client }: { client: ApiClient }) {
     setDeleting(true)
     try {
       await client.del(`/admin/api/tokens/${deleteTarget.token_hash_full}`)
+      recordConsoleEvent('credential_deleted', 'admin')
       toast('ok', `已删除 ${deleteTarget.tenant_id}`)
       setDeleteTarget(null)
       await reload()
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       toast('err', err instanceof Error ? err.message : '删除失败')
     } finally {
       setDeleting(false)

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { CollectionStatus, DatasetRow, QueryResult } from '../../lib/types'
+import { recordConsoleEvent } from '../../lib/consoleAnalytics'
+import { usePersistentState } from '../../lib/persistence'
 import {
   Badge,
   Button,
@@ -30,7 +32,7 @@ const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'>
 export default function DataView({ client }: { client: ApiClient }) {
   const [rows, setRows] = useState<DatasetRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistentState('td.console.browser.search.v1', '')
   const [selected, setSelected] = useState<DatasetRow | null>(null)
   const [sample, setSample] = useState<{
     loading: boolean
@@ -96,6 +98,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         limit: 20,
       })
       const items = result.data ?? []
+      recordConsoleEvent('dataset_query_succeeded', 'admin')
       setSample({
         loading: false,
         error: null,
@@ -105,6 +108,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         metadata: result.metadata,
       })
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       setSample({
         loading: false,
         error: err instanceof Error ? err.message : '查询失败',
@@ -126,6 +130,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         cursor: sample.cursor,
       })
       const items = result.data ?? []
+      recordConsoleEvent('dataset_query_succeeded', 'admin')
       setSample({
         loading: false,
         error: null,
@@ -135,6 +140,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         metadata: result.metadata,
       })
     } catch (err) {
+      recordConsoleEvent('request_failed', 'admin')
       setSample({
         ...sample,
         loading: false,
