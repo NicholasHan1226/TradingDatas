@@ -17,10 +17,13 @@ import {
   Card,
   CopyButton,
   ErrorBanner,
-  LoadingPanel,
   ProgressBar,
+  Skeleton,
   TIER_LABELS,
 } from '../../components/ui'
+
+const CARD_SKELETON =
+  'rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900'
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null
@@ -185,7 +188,41 @@ while next_cursor:
     rows.extend(resp["data"])
     next_cursor = resp["next_cursor"]`
 
-  if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
+  // Skeleton first paint: mirrors the real page structure so nothing jumps.
+  if (!me && !error)
+    return (
+      <div className="min-h-full bg-slate-100 dark:bg-slate-950">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+            <Skeleton className="h-8 w-14" />
+          </div>
+        </header>
+        <main className="mx-auto max-w-5xl space-y-6 px-6 py-8 pb-16">
+          <section className="rounded-2xl bg-slate-900 p-6 dark:bg-slate-900">
+            <Skeleton className="h-3 w-16 bg-slate-700" />
+            <Skeleton className="mt-2 h-7 w-44 bg-slate-700" />
+            <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-4">
+              {['w-20', 'w-16', 'w-24', 'w-20'].map((w, i) => (
+                <div key={i}>
+                  <Skeleton className={`h-2.5 w-14 bg-slate-700`} />
+                  <Skeleton className={`mt-2 h-5 ${w} bg-slate-700`} />
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className={CARD_SKELETON}>
+            <Skeleton className="h-60 w-full" />
+          </section>
+          <section className={CARD_SKELETON}>
+            <Skeleton className="h-40 w-full" />
+          </section>
+        </main>
+      </div>
+    )
 
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950">

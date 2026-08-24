@@ -86,6 +86,11 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   )
 }
 
+// Shimmer block for skeleton loading states.
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div aria-hidden className={`animate-pulse rounded-lg bg-slate-200/80 dark:bg-slate-800 ${className}`} />
+}
+
 export function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300">

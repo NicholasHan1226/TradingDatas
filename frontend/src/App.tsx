@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiClient, clearSession, loadSession, saveSession } from './lib/api'
 import type { PortalMeResponse, Role } from './lib/types'
-import { LoadingPanel, ToastProvider } from './components/ui'
+import { ToastProvider } from './components/ui'
 import Login from './views/Login'
 import AdminApp from './views/admin/AdminApp'
 import CustomerApp from './views/customer/CustomerApp'
@@ -63,8 +63,14 @@ export default function App() {
 
   if (booting) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <LoadingPanel label="正在验证密钥…" />
+      <div className="flex h-full flex-col items-center justify-center gap-5 bg-slate-100 dark:bg-slate-950">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-600/30">
+          <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6 text-white">
+            <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 21h16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity=".45" />
+          </svg>
+        </div>
+        <p className="text-sm text-slate-400 dark:text-slate-500">正在验证密钥…</p>
       </div>
     )
   }
