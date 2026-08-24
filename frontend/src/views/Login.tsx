@@ -69,7 +69,7 @@ export default function Login({
   // The product mark is deliberately typographic: compact, neutral and
   // recognisable without borrowing a third-party icon language.
   const brandMark = (
-    <span className="font-sans text-[17px] font-bold tracking-[-0.045em] text-white">
+    <span className="font-sans text-[18px] font-bold tracking-[-0.06em] text-white">
       TradingDatas
     </span>
   )
@@ -95,6 +95,7 @@ export default function Login({
           className="relative"
         >
           {brandMark}
+          <div className="mt-1.5 text-[10px] font-medium tracking-[0.16em] text-slate-500">RESEARCH DATA INFRASTRUCTURE</div>
         </motion.div>
 
         <div className="relative">
@@ -180,7 +181,7 @@ export default function Login({
       </aside>
 
       {/* Form panel */}
-      <main className="relative flex min-h-full w-full flex-col px-5 py-8 lg:w-[54%] lg:px-14">
+      <main className="relative flex min-h-full w-full flex-col bg-[radial-gradient(circle_at_72%_44%,rgb(219_234_254_/_0.28),transparent_38%)] px-5 py-8 lg:w-[54%] lg:px-14">
         {/* Mobile-only compact brand row */}
         <div className="mb-10 lg:hidden">
           <span className="font-sans text-[15px] font-bold tracking-[-0.045em] text-slate-900 dark:text-white">
@@ -193,8 +194,11 @@ export default function Login({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full max-w-[400px]"
+            className="w-full max-w-[416px]"
           >
+            <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold tracking-[0.15em] text-slate-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" /> SECURE ACCESS
+            </div>
             <h1 className="text-[22px] font-semibold tracking-tight text-slate-900 dark:text-white">欢迎回来</h1>
             <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">输入访问密钥继续</p>
 
@@ -216,7 +220,7 @@ export default function Login({
                   autoComplete="off"
                   autoCapitalize="off"
                   spellCheck={false}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-[76px] text-sm text-slate-900 shadow-sm shadow-slate-900/[0.03] outline-none transition-all placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-600 dark:hover:border-slate-600 dark:focus:border-blue-500 dark:focus:ring-blue-500/15"
+                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-[76px] text-sm text-slate-900 shadow-[0_1px_2px_rgb(15_23_42/0.04)] outline-none transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-600 dark:hover:border-slate-600 dark:focus:border-blue-500 dark:focus:ring-blue-500/15"
                 />
                 <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-0.5">
                   {!token && (
@@ -311,7 +315,7 @@ export default function Login({
                 type="submit"
                 disabled={!token.trim() || busy}
                 whileTap={reducedMotion ? undefined : { scale: 0.985 }}
-                className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-medium text-white shadow-lg shadow-blue-600/20 outline-none transition-all hover:bg-blue-500 focus-visible:ring-4 focus-visible:ring-blue-500/25 active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-medium text-white shadow-[0_8px_18px_rgb(37_99_235_/_0.18)] outline-none transition-[background-color,box-shadow,transform] duration-[var(--td-duration-fast)] hover:bg-blue-500 hover:shadow-[0_10px_24px_rgb(37_99_235_/_0.24)] focus-visible:ring-4 focus-visible:ring-blue-500/25 active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {busy && <Spinner size={14} />}
                 {busy ? '正在验证…' : '登录'}
