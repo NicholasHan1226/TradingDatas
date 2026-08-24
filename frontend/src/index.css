@@ -15,9 +15,33 @@ body,
   height: 100%;
 }
 
+/* Native widgets (scrollbars, checkboxes, autofill) follow the same theme. */
+html {
+  color-scheme: light dark;
+}
+
 body {
   @apply bg-slate-100 text-slate-800 antialiased;
+  @apply dark:bg-slate-950 dark:text-slate-200;
   font-feature-settings: "tnum";
+}
+
+/* Chart palette shared with recharts via var() so one place drives both themes. */
+:root {
+  --chart-grid: #e2e8f0;
+  --chart-tick: #94a3b8;
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #e2e8f0;
+  --tooltip-text: #475569;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-grid: #1e293b;
+    --chart-tick: #64748b;
+    --tooltip-bg: #0f172a;
+    --tooltip-border: #1e293b;
+    --tooltip-text: #cbd5e1;
+  }
 }
 
 /* Slim scrollbars for dense data panels */
@@ -34,4 +58,16 @@ body {
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  *::-webkit-scrollbar-thumb {
+    background: rgb(71 85 105 / 0.55);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(100 116 139 / 0.75);
+  }
+}
+
+::selection {
+  background: rgb(59 130 246 / 0.22);
 }

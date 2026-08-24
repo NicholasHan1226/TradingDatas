@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { CollectionStatus, DatasetRow } from '../../lib/types'
 import {
+  INPUT_CLASS,
   Badge,
   Card,
   EmptyState,
@@ -98,7 +99,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="搜索数据集 ID…"
-          className="w-64 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+          className={`w-64 ${INPUT_CLASS}`}
         />
         <SelectInput value={market} onChange={(e) => setMarket(e.target.value)} className="!w-auto">
           <option value="">全部市场</option>
@@ -117,7 +118,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
           <option value="failed">failed</option>
           <option value="stale">stale</option>
         </SelectInput>
-        <span className="ml-auto text-xs text-slate-400">
+        <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
           显示 {filtered.length.toLocaleString('zh-CN')} / {datasets.length.toLocaleString('zh-CN')} 个数据集
         </span>
       </div>
@@ -128,8 +129,8 @@ export default function CollectionView({ client }: { client: ApiClient }) {
         ) : (
           <div className="max-h-[62vh] overflow-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 z-[1] bg-slate-50/95 backdrop-blur">
-                <tr className="border-b border-slate-100 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
+              <thead className="sticky top-0 z-[1] bg-slate-50 dark:bg-slate-900/95 backdrop-blur">
+                <tr className="border-b border-slate-100 dark:border-slate-800 text-left text-[11px] font-medium tracking-wide text-slate-500 dark:text-slate-400 uppercase">
                   <th className="px-5 py-3">数据集</th>
                   <th className="px-3 py-3">市场</th>
                   <th className="px-3 py-3">频率</th>
@@ -141,23 +142,23 @@ export default function CollectionView({ client }: { client: ApiClient }) {
               </thead>
               <tbody>
                 {filtered.map((d) => (
-                  <tr key={`${d.dataset_id}|${d.provider}`} className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/60">
-                    <td className="px-5 py-3 font-mono text-xs font-medium text-slate-700">{d.dataset_id}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{d.market}</td>
-                    <td className="px-3 py-3 text-xs whitespace-nowrap text-slate-600">{d.cadence}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{d.provider}</td>
+                  <tr key={`${d.dataset_id}|${d.provider}`} className="border-b border-slate-50 dark:border-slate-800/70 transition-colors last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                    <td className="px-5 py-3 font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{d.dataset_id}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-300">{d.market}</td>
+                    <td className="px-3 py-3 text-xs whitespace-nowrap text-slate-600 dark:text-slate-300">{d.cadence}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-300">{d.provider}</td>
                     <td className="px-3 py-3">
                       <Badge tone={d.activation === 'active' ? 'green' : 'slate'}>{d.activation}</Badge>
                     </td>
                     <td className="px-3 py-3">
                       <StateBadge row={d} />
                       {d.reasons && d.reasons.length > 0 && (
-                        <div className="mt-1 max-w-64 truncate text-[10px] text-slate-400" title={d.reasons.join('; ')}>
+                        <div className="mt-1 max-w-64 truncate text-[10px] text-slate-400 dark:text-slate-500" title={d.reasons.join('; ')}>
                           {d.reasons.join('; ')}
                         </div>
                       )}
                     </td>
-                    <td className="px-5 py-3 font-mono text-[11px] whitespace-nowrap text-slate-500">
+                    <td className="px-5 py-3 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400">
                       {d.data_through ?? '—'}
                     </td>
                   </tr>

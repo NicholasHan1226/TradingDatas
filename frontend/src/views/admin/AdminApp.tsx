@@ -141,9 +141,9 @@ export default function AdminApp({
       </aside>
 
       {/* Content */}
-      <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100">
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 px-8 py-4 backdrop-blur">
-          <h1 className="text-base font-semibold tracking-tight text-slate-900">{current.title}</h1>
+      <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-950">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 px-8 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+          <h1 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">{current.title}</h1>
         </header>
         <div className="mx-auto max-w-6xl px-8 py-6 pb-14">
           <AnimatePresence mode="wait">

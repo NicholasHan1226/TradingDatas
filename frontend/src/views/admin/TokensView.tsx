@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { AdminToken, TokensResponse } from '../../lib/types'
 import {
+  INPUT_CLASS,
   Badge,
   Button,
   Card,
@@ -195,14 +196,14 @@ export default function TokensView({ client }: { client: ApiClient }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-56">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400 dark:text-slate-500">
             <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
           </svg>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索客户 ID / 套餐 / 权限…"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+            className={`w-full ${INPUT_CLASS} py-2 pr-3 pl-9`}
           />
         </div>
         <Button variant="secondary" onClick={() => void reload()}>
@@ -240,7 +241,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 text-left text-[11px] font-medium tracking-wide text-slate-500 dark:text-slate-400 uppercase">
                   <th className="px-5 py-3">客户</th>
                   <th className="px-3 py-3">套餐</th>
                   <th className="px-3 py-3">API 权限</th>
@@ -253,10 +254,10 @@ export default function TokensView({ client }: { client: ApiClient }) {
               </thead>
               <tbody>
                 {filtered.map((t) => (
-                  <tr key={t.token_hash_full} className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/60">
+                  <tr key={t.token_hash_full} className="border-b border-slate-50 dark:border-slate-800/70 transition-colors last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                     <td className="px-5 py-3.5">
-                      <div className="font-medium text-slate-800">{t.tenant_id}</div>
-                      <div className="mt-0.5 font-mono text-[10px] text-slate-400">{t.token_hash_masked ?? ''}</div>
+                      <div className="font-medium text-slate-800 dark:text-slate-100">{t.tenant_id}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-slate-400 dark:text-slate-500">{t.token_hash_masked ?? ''}</div>
                     </td>
                     <td className="px-3 py-3.5">
                       <Badge tone={TIER_TONES[t.tier] ?? 'slate'}>{TIER_LABELS[t.tier] ?? t.tier}</Badge>
@@ -268,23 +269,23 @@ export default function TokensView({ client }: { client: ApiClient }) {
                         ))}
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 font-mono text-xs text-slate-600">{fmtNumber(t.max_concurrent)}</td>
+                    <td className="px-3 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300">{fmtNumber(t.max_concurrent)}</td>
                     <td className="px-3 py-3.5">
-                      <div className="font-mono text-xs text-slate-700">
-                        {t.daily_usage ?? 0} <span className="text-slate-400">/ {fmtNumber(t.daily_limit)}</span>
+                      <div className="font-mono text-xs text-slate-700 dark:text-slate-200">
+                        {t.daily_usage ?? 0} <span className="text-slate-400 dark:text-slate-500">/ {fmtNumber(t.daily_limit)}</span>
                       </div>
                       <div className="mt-1">
                         <ProgressBar value={t.daily_usage ?? 0} limit={t.daily_limit ?? null} />
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 text-xs whitespace-nowrap text-slate-600">
+                    <td className="px-3 py-3.5 text-xs whitespace-nowrap text-slate-600 dark:text-slate-300">
                       {t.expires_at ? (
                         <span className={t.expired ? 'font-medium text-rose-600' : ''}>
                           {t.expires_at.slice(0, 10)}
                           {t.expired && ' 已过期'}
                         </span>
                       ) : (
-                        <span className="text-slate-400">长期有效</span>
+                        <span className="text-slate-400 dark:text-slate-500">长期有效</span>
                       )}
                     </td>
                     <td className="px-3 py-3.5">
@@ -331,7 +332,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
 
       {/* Token reveal modal — deliberately separate from create modal */}
       <Modal open={revealedToken !== null} onClose={() => setRevealedToken(null)} title="✅ 密钥已创建">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           请立即复制并妥善保存，<strong className="text-rose-600">关闭后无法再次查看</strong>：
         </p>
         <div className="mt-3 flex items-center gap-2">
@@ -348,7 +349,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
       {/* Edit modal */}
       <Modal open={editTarget !== null} onClose={() => setEditTarget(null)} title={`编辑客户 · ${editTarget?.tenant_id ?? ''}`} width="max-w-xl">
         <TokenFields form={editForm} setForm={setEditForm} />
-        <p className="mt-4 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-4 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
           清空某个限制字段并保存，即表示解除该限制（恢复为套餐默认）。修改权限或套餐立即生效。
         </p>
         <div className="mt-5 flex justify-end gap-2">
@@ -359,7 +360,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
 
       {/* Delete confirm */}
       <Modal open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="确认删除" width="max-w-md">
-        <p className="text-sm leading-relaxed text-slate-600">
+        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           将永久删除客户 <strong className="font-mono">{deleteTarget?.tenant_id}</strong> 的 API
           密钥。该密钥会立即失效，客户的接口调用将收到 401 拒绝。此操作不可撤销。
         </p>
@@ -421,8 +422,8 @@ function TokenFields({
       </Field>
 
       <div className="col-span-2">
-        <span className="mb-1.5 block text-xs font-medium text-slate-600">API 权限范围</span>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-200 px-3.5 py-3">
+        <span className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">API 权限范围</span>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3.5 py-3">
           {SCOPE_OPTIONS.map((scope) => (
             <Checkbox
               key={scope}
@@ -431,7 +432,7 @@ function TokenFields({
               label={
                 <span className="flex items-center gap-1.5">
                   <ScopeChip scope={scope} />
-                  <span className="text-[11px] text-slate-400">{SCOPE_HINTS[scope]}</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">{SCOPE_HINTS[scope]}</span>
                 </span>
               }
             />

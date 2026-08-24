@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { DatasetRow, QueryResult } from '../../lib/types'
 import {
+  INPUT_CLASS,
   Badge,
   Button,
   Card,
@@ -121,12 +122,12 @@ export default function DataView({ client }: { client: ApiClient }) {
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,2fr)_3fr]">
       {/* Catalog list */}
       <Card title={`数据目录（${filtered.length}）`} className="overflow-hidden flex flex-col !p-0 max-h-[72vh]">
-        <div className="border-b border-slate-100 p-3">
+        <div className="border-b border-slate-100 dark:border-slate-800 p-3">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索数据集…"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+            className={`w-full ${INPUT_CLASS}`}
           />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -137,15 +138,15 @@ export default function DataView({ client }: { client: ApiClient }) {
               <button
                 key={`${d.dataset_id}|${d.provider}`}
                 onClick={() => void runSample(d)}
-                className={`flex w-full items-center justify-between gap-2 border-b border-slate-50 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-slate-50 ${
+                className={`flex w-full items-center justify-between gap-2 border-b border-slate-50 dark:border-slate-800/70 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
                   selected?.dataset_id === d.dataset_id && selected?.provider === d.provider
                     ? 'bg-blue-50/70'
                     : ''
                 }`}
               >
                 <div className="min-w-0">
-                  <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
-                  <div className="text-[10px] text-slate-400">{d.market} · {d.cadence}</div>
+                  <div className="truncate font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{d.dataset_id}</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">{d.market} · {d.cadence}</div>
                 </div>
                 <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{d.runtime_state ?? '-'}</Badge>
               </button>
@@ -180,8 +181,8 @@ export default function DataView({ client }: { client: ApiClient }) {
                   ['新鲜度', selected.freshness_state ?? '—'],
                 ].map(([k, v]) => (
                   <div key={k}>
-                    <span className="text-slate-400">{k}</span>
-                    <div className="mt-0.5 font-medium text-slate-700">{v}</div>
+                    <span className="text-slate-400 dark:text-slate-500">{k}</span>
+                    <div className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">{v}</div>
                   </div>
                 ))}
               </div>
@@ -196,22 +197,22 @@ export default function DataView({ client }: { client: ApiClient }) {
                 <EmptyState title="该窗口内没有返回数据行" />
               ) : (
                 <>
-                  <div className="max-h-80 overflow-auto rounded-lg border border-slate-100">
+                  <div className="max-h-80 overflow-auto rounded-lg border border-slate-100 dark:border-slate-800">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-50">
+                      <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900">
                         <tr>
                           {sample.fields.map((f) => (
-                            <th key={f} className="px-3 py-2 text-left font-medium whitespace-nowrap text-slate-500">{f}</th>
+                            <th key={f} className="px-3 py-2 text-left font-medium whitespace-nowrap text-slate-500 dark:text-slate-400">{f}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {sample.items.map((item, i) => (
-                          <tr key={i} className="border-t border-slate-50">
+                          <tr key={i} className="border-t border-slate-50 dark:border-slate-800/70">
                             {sample.fields.map((f) => {
                               const v = item[f]
                               return (
-                                <td key={f} className="max-w-56 truncate px-3 py-1.5 font-mono whitespace-nowrap text-slate-600" title={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')}>
+                                <td key={f} className="max-w-56 truncate px-3 py-1.5 font-mono whitespace-nowrap text-slate-600 dark:text-slate-300" title={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')}>
                                   {v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v)}
                                 </td>
                               )

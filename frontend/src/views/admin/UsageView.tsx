@@ -91,21 +91,23 @@ export default function UsageView({ client }: { client: ApiClient }) {
                     <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(v: string) => v.slice(5)}
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tick={{ fontSize: 11, fill: 'var(--chart-tick)' }}
                   axisLine={{ stroke: '#e2e8f0' }}
                   tickLine={false}
                 />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--chart-tick)' }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip
                   formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '请求量']}
-                  labelStyle={{ fontSize: 12, color: '#475569' }}
+                  labelStyle={{ fontSize: 12, color: 'var(--tooltip-text)' }}
                   contentStyle={{
                     borderRadius: 10,
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--tooltip-border)',
+                          backgroundColor: 'var(--tooltip-bg)',
+                          color: 'var(--tooltip-text)',
                     boxShadow: '0 4px 16px rgb(15 23 42 / 0.08)',
                     fontSize: 12,
                   }}
@@ -118,16 +120,16 @@ export default function UsageView({ client }: { client: ApiClient }) {
       </Card>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card title="今日 · 按客户" action={<span className="text-[11px] text-slate-400">已用 / 日限额</span>}>
+        <Card title="今日 · 按客户" action={<span className="text-[11px] text-slate-400 dark:text-slate-500">已用 / 日限额</span>}>
           {dailyRows.length === 0 ? (
             <EmptyState title="今天还没有调用" />
           ) : (
             <table className="w-full text-sm">
               <tbody>
                 {dailyRows.map(([tenant, v]) => (
-                  <tr key={tenant} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2.5 pr-3 font-medium text-slate-700">{tenant}</td>
-                    <td className="py-2.5 pr-3 font-mono text-xs whitespace-nowrap text-slate-600">
+                  <tr key={tenant} className="border-b border-slate-50 dark:border-slate-800/70 last:border-0">
+                    <td className="py-2.5 pr-3 font-medium text-slate-700 dark:text-slate-200">{tenant}</td>
+                    <td className="py-2.5 pr-3 font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300">
                       {v.count.toLocaleString('zh-CN')} / {fmtNumber(v.daily_limit)}
                     </td>
                     <td className="w-32 py-2.5 text-right">
@@ -140,16 +142,16 @@ export default function UsageView({ client }: { client: ApiClient }) {
           )}
         </Card>
 
-        <Card title="当前小时窗口 · 按客户" action={<span className="text-[11px] text-slate-400">窗口内 / 套餐上限</span>}>
+        <Card title="当前小时窗口 · 按客户" action={<span className="text-[11px] text-slate-400 dark:text-slate-500">窗口内 / 套餐上限</span>}>
           {hourlyRows.length === 0 ? (
             <EmptyState title="当前小时没有调用" />
           ) : (
             <table className="w-full text-sm">
               <tbody>
                 {hourlyRows.map(([tenant, v]) => (
-                  <tr key={tenant} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2.5 pr-3 font-medium text-slate-700">{tenant}</td>
-                    <td className="py-2.5 font-mono text-xs whitespace-nowrap text-slate-600">
+                  <tr key={tenant} className="border-b border-slate-50 dark:border-slate-800/70 last:border-0">
+                    <td className="py-2.5 pr-3 font-medium text-slate-700 dark:text-slate-200">{tenant}</td>
+                    <td className="py-2.5 font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300">
                       {v.count_in_window} / {fmtNumber(v.tier_limit)}
                     </td>
                   </tr>

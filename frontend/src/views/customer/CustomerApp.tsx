@@ -188,20 +188,20 @@ while next_cursor:
   if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
 
   return (
-    <div className="min-h-full bg-slate-100">
+    <div className="min-h-full bg-slate-100 dark:bg-slate-950">
       {/* Top bar */}
-      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-600/25">
-              <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5 text-white">
+              <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px] text-white">
                 <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <span className="text-sm font-semibold tracking-tight text-slate-900">TradingDatas</span>
+            <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">TradingDatas</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-mono text-xs text-slate-500">{tenantId}</span>
+            <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{tenantId}</span>
             <Button variant="secondary" size="sm" onClick={onLogout}>退出</Button>
           </div>
         </div>
@@ -297,13 +297,21 @@ while next_cursor:
                           <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                      <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                      <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fontSize: 11, fill: 'var(--chart-tick)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: 'var(--chart-tick)' }} axisLine={false} tickLine={false} allowDecimals={false} />
                       <Tooltip
                         formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '你的请求']}
-                        labelStyle={{ fontSize: 12, color: '#475569' }}
-                        contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgb(15 23 42 / 0.08)', fontSize: 12 }}
+                        labelStyle={{ fontSize: 12, color: 'var(--tooltip-text)' }}
+                        contentStyle={{
+                          borderRadius: 10,
+                          border: '1px solid var(--tooltip-border)',
+                          backgroundColor: 'var(--tooltip-bg)',
+                          color: 'var(--tooltip-text)',
+                          boxShadow: '0 4px 16px rgb(15 23 42 / 0.08)',
+                          fontSize: 12,
+                        }}
+                        itemStyle={{ color: 'var(--tooltip-text)' }}
                       />
                       <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#custFill)" />
                     </AreaChart>
@@ -316,9 +324,9 @@ while next_cursor:
             <Card title="API 接入指南">
               <div className="space-y-5">
                 <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">服务地址（Base URL）</p>
+                  <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">服务地址（Base URL）</p>
                   <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700">
+                    <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                       {client.baseUrl}
                     </code>
                     <CopyButton text={client.baseUrl} label="复制地址" />
@@ -326,8 +334,8 @@ while next_cursor:
                 </div>
 
                 <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">可用端点</p>
-                  <div className="overflow-hidden rounded-lg border border-slate-100">
+                  <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">可用端点</p>
+                  <div className="overflow-hidden rounded-lg border border-slate-100 dark:border-slate-800">
                     <table className="w-full text-xs">
                       <tbody>
                         {[
@@ -335,12 +343,12 @@ while next_cursor:
                           ['POST', '/v1/query', '查询具体数据集的数据行'],
                           ['GET', '/portal/api/me', '查看本页的套餐与配额信息'],
                         ].map(([method, path, desc]) => (
-                          <tr key={path} className="border-b border-slate-50 last:border-0">
+                          <tr key={path} className="border-b border-slate-50 last:border-0 dark:border-slate-800/60">
                             <td className="w-14 px-3 py-2.5">
                               <Badge tone={method === 'GET' ? 'green' : 'blue'}>{method}</Badge>
                             </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-700">{path}</td>
-                            <td className="px-3 py-2.5 text-slate-500">{desc}</td>
+                            <td className="px-3 py-2.5 font-mono text-slate-700 dark:text-slate-300">{path}</td>
+                            <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">{desc}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -349,8 +357,8 @@ while next_cursor:
                 </div>
 
                 <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">
-                    认证方式 · 所有请求携带 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">Authorization: Bearer 你的API密钥</code> 请求头
+                  <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                    认证方式 · 所有请求携带 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono dark:bg-slate-800">Authorization: Bearer 你的API密钥</code> 请求头
                   </p>
                   <pre className="overflow-x-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
 {curlExample}
@@ -360,7 +368,7 @@ while next_cursor:
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200 ring-inset">
+                <div className="rounded-lg bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200 ring-inset dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25">
                   ⚠️ API 密钥等同于账户凭证：请勿写入公开代码仓库或分享给他人；怀疑泄露时立即联系管理员重置。
                   超出并发、频率（如每分钟请求上限）或每日限额时会收到 <code className="font-mono">429</code> 响应，请按提示退避重试。
                 </div>
@@ -370,13 +378,13 @@ while next_cursor:
             {/* Agent onboarding: copy-ready prompt / tool defs / sample code */}
             <Card title="Agent 接入 · 一键复制">
               <div className="space-y-5">
-                <p className="text-xs leading-relaxed text-slate-500">
+                <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   把下面的内容复制进你的 AI Agent（系统提示、工具定义或脚本），即可让它直接使用你的数据接口。
                 </p>
 
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">给 AI 助手的接入提示词（粘贴到 Agent 的系统提示中）</p>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">给 AI 助手的接入提示词（粘贴到 Agent 的系统提示中）</p>
                     <CopyButton text={agentPrompt} label="复制提示词" />
                   </div>
                   <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap">
@@ -386,7 +394,7 @@ while next_cursor:
 
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">Function Calling 工具定义（OpenAI 兼容格式）</p>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Function Calling 工具定义（OpenAI 兼容格式）</p>
                     <CopyButton text={toolDefsJson} label="复制工具定义" />
                   </div>
                   <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
@@ -396,7 +404,7 @@ while next_cursor:
 
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">Python 调用示例（标准库，无需安装依赖）</p>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Python 调用示例（标准库，无需安装依赖）</p>
                     <CopyButton text={pythonExample} label="复制 Python 示例" />
                   </div>
                   <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">

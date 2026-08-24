@@ -65,8 +65,8 @@ export default function HealthView({ client }: { client: ApiClient }) {
               <path d="m4.5 12.75 6 6 9-13.5" />
             </svg>
           </div>
-          <h3 className="mt-4 text-base font-semibold text-slate-800">全部正常</h3>
-          <p className="mt-1 text-sm text-slate-500">当前没有任何健康告警</p>
+          <h3 className="mt-4 text-base font-semibold text-slate-800 dark:text-slate-100">全部正常</h3>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">当前没有任何健康告警</p>
         </div>
       </Card>
     )
@@ -74,7 +74,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         共 {alerts.length} 条告警 · 按严重程度排序
       </p>
       {alerts.map((a, idx) => {
@@ -82,16 +82,16 @@ export default function HealthView({ client }: { client: ApiClient }) {
         return (
           <div
             key={idx}
-            className={`rounded-xl border border-slate-200 border-l-4 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${meta.card}`}
+            className={`rounded-xl border border-slate-200 dark:border-slate-700 border-l-4 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${meta.card}`}
           >
             <div className="flex items-start justify-between gap-3">
-              <h3 className="text-sm font-semibold text-slate-800">{a.title}</h3>
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{a.title}</h3>
               <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}>
                 {meta.label}
               </span>
             </div>
             {a.detail && (
-              <p className="mt-1.5 text-xs leading-relaxed break-words text-slate-500">{a.detail}</p>
+              <p className="mt-1.5 text-xs leading-relaxed break-words text-slate-500 dark:text-slate-400">{a.detail}</p>
             )}
           </div>
         )
