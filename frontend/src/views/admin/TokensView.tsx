@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw } from 'lucide-react'
+import { KeyRound, Plus, RefreshCw } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { AdminToken, DataCategory, TokensResponse } from '../../lib/types'
 import { recordConsoleEvent } from '../../lib/consoleAnalytics'
@@ -261,6 +261,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
           <div className="p-5" />
         ) : filtered.length === 0 ? (
           <EmptyState
+            icon={KeyRound}
             title={tokens.length === 0 ? '还没有任何客户密钥' : '没有匹配的客户'}
             hint={tokens.length === 0 ? '点击右上角「新建客户密钥」开始' : '试试其他搜索条件'}
           />

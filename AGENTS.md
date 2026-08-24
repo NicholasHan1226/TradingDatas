@@ -86,7 +86,7 @@ scope 检查（门户自加载不烧客户配额），但完整认证、每小�
 可在同一会话切换到明确标识的客户视角并返回，但该视角只投影管理员自身 portal 数据，
 不是客户冒充，不得修改 token 或绕过服务端授权。产品与设计合同见 `docs/PRODUCT.md`
 、`docs/design/console-product-system-v4.md` 和
-`docs/design/console-productivity-v5.md`。前端页面定位使用 hash route，避免 Pages
+`docs/design/console-productivity-v5.md`、`docs/design/console-resilience-v6.md`。前端页面定位使用 hash route，避免 Pages
 刷新依赖 SPA fallback；排序、筛选、列布局和控制台体验计数只保存在当前浏览器，禁止
 写入 Token、tenant、dataset、请求体、响应内容或设备标识，也不得发送到服务端。
 
@@ -95,6 +95,8 @@ scope 检查（门户自加载不烧客户配额），但完整认证、每小�
 生产 URL 为 `tradingdatas-admin.pages.dev/app/`。旧单文件控制台 `static/index.html`
 保留为回退入口。改前端后需在本机重新构建并一并提交 dist：
 `cd frontend && npm ci && npm run build`（输出直接落到 `static/app/`）。
+千级采集目录的本地响应式/虚拟滚动验收使用 `cd frontend && npm run mock-api:stress`，
+它只生成内存中的 mock collection rows，不得作为生产数据规模或运行健康证据。
 
 Token 配置（`config/api_tokens.json`）支持扩展字段：
 

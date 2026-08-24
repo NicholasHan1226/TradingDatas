@@ -117,6 +117,8 @@ mutation. Production availability remains a separate release/readback fact in
   architecture, design language, role-switching and visual QA contract;
 - `docs/design/console-productivity-v5.md`: hash navigation, persisted operator
   table behavior, local anonymous console analytics and rollback boundary;
+- `docs/design/console-resilience-v6.md`: narrow-screen navigation, semantic
+  empty states, dense-table containment and the isolated stress-test lane;
 - `STATUS.md`: time-sensitive production evidence and known gaps;
 - `AGENTS.md`: development and release rules.
 

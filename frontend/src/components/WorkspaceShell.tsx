@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowLeftRight, LogOut } from 'lucide-react'
 
@@ -51,6 +51,12 @@ export default function WorkspaceShell<Key extends string>({
   children: ReactNode
 }) {
   const activeItem = items.find((item) => item.key === active) ?? items[0]
+  const navRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const activeButton = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    activeButton?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [active])
 
   return (
     <div className="min-h-full bg-[var(--td-canvas)]" data-workspace={workspace}>
@@ -70,7 +76,7 @@ export default function WorkspaceShell<Key extends string>({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {identity && <span className="hidden max-w-48 truncate rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 font-mono text-[10px] text-slate-400 md:inline">{identity}</span>}
-            {onSwitch && (
+            {onSwitch && !previewing && (
               <button type="button" onClick={onSwitch} className="workspace-action" aria-label={switchLabel}>
                 <ArrowLeftRight aria-hidden size={15} />
                 <span className="hidden sm:inline">{switchLabel}</span>
@@ -83,8 +89,8 @@ export default function WorkspaceShell<Key extends string>({
           </div>
         </div>
 
-        <div className="border-t border-white/[0.07]">
-          <nav aria-label={`${workspaceLabel}导航`} className="mx-auto flex max-w-[1440px] gap-1 overflow-x-auto px-3 sm:px-6 lg:px-9">
+        <div className="relative border-t border-white/[0.07] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8 after:bg-gradient-to-l after:from-[var(--td-shell)] after:to-transparent sm:after:hidden">
+          <nav ref={navRef} aria-label={`${workspaceLabel}导航`} className="workspace-nav mx-auto flex max-w-[1440px] snap-x snap-mandatory gap-1 overflow-x-auto px-3 pr-9 sm:px-6 lg:px-9">
             {items.map((item) => {
               const Icon = item.icon
               const selected = item.key === active
@@ -95,7 +101,7 @@ export default function WorkspaceShell<Key extends string>({
                   type="button"
                   onClick={() => onSelect(item.key)}
                   aria-current={selected ? 'page' : undefined}
-                  className={`group relative flex min-w-max items-center gap-2.5 px-3.5 py-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${selected ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
+                  className={`group relative flex min-h-12 min-w-max snap-center items-center gap-2.5 px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${selected ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
                 >
                   <span className={`flex h-7 w-7 items-center justify-center rounded-[8px] ring-1 ring-inset transition-colors ${selected ? ICON_CLASS[accent] : 'bg-white/[0.025] text-slate-600 ring-white/[0.05] group-hover:text-slate-300'}`}>
                     <Icon aria-hidden size={14} strokeWidth={1.8} />
@@ -114,9 +120,9 @@ export default function WorkspaceShell<Key extends string>({
 
       {previewing && (
         <div className="border-b border-blue-200 bg-blue-50">
-          <div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4 px-5 py-2 text-xs text-blue-800 sm:px-8">
+          <div className="mx-auto flex max-w-[1380px] flex-col items-start gap-2 px-4 py-2.5 text-xs leading-5 text-blue-800 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <span><strong className="font-semibold">客户视角预览</strong> · 当前使用管理员账户数据，仅用于检查客户界面。</span>
-            {onSwitch && <button type="button" onClick={onSwitch} className="shrink-0 font-semibold underline decoration-blue-300 underline-offset-4 hover:text-blue-950">返回管理工作台</button>}
+            {onSwitch && <button type="button" onClick={onSwitch} className="shrink-0 rounded-md bg-white/70 px-2.5 py-1 font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-white hover:text-blue-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 sm:bg-transparent sm:px-0 sm:py-0 sm:ring-0 sm:underline sm:decoration-blue-300 sm:underline-offset-4">返回管理工作台</button>}
           </div>
         </div>
       )}

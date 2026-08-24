@@ -56,3 +56,6 @@ server rollback or data migration is required.
 `VITE_API_BASE` is an isolated local-QA override only. Cloudflare Pages builds
 must leave it unset so the browser uses the fixed production API endpoint. The
 console must not expose the service address as an editable login field.
+
+The narrow-screen navigation, action-state, empty-state, and stress-fixture rules
+that extend this system are documented in `console-resilience-v6.md`.
