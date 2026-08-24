@@ -4241,6 +4241,66 @@ def test_event_evidence_wave_dry_run_plans_without_market_session_dependency(
     }
 
 
+def test_event_cadence_fix_wave_is_hash_bound_and_event_complete() -> None:
+    registry_payload = TARGET_REGISTRY.read_bytes()
+    schedule_payload = SCHEDULE_CONFIG.read_bytes()
+    registry = _active_registry()
+
+    wave = scheduler.load_activation_wave(
+        ACTIVATION_WAVES,
+        "event_cadence_fix_20260824",
+        registry=registry,
+        registry_payload=registry_payload,
+        schedule_payload=schedule_payload,
+    )
+
+    assert wave.dataset_ids == frozenset(
+        {
+            "cn.dataset.disclosure_date",
+            "cn.dataset.share_float",
+        }
+    )
+    for dataset_id in wave.dataset_ids:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "event"
+        assert dataset.partition_field == "ann_date"
+        assert binding.response_completeness is not None
+        assert binding.response_completeness.strategy == (
+            "single_partition_unique_primary_key"
+        )
+        assert binding.response_completeness.request_partition_key == "ann_date"
+
+
+def test_event_cadence_fix_wave_dry_run_plans_both_announcements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): False})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="event_cadence_fix_20260824",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+
+    assert {plan.dataset_id for plan in result.plans} == {
+        "cn.dataset.disclosure_date",
+        "cn.dataset.share_float",
+    }
+
+
 def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()
@@ -4273,13 +4333,11 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         {
             "cn.dataset.cb_issue",
             "cn.dataset.daily_info",
-            "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
             "cn.dataset.index_dailybasic",
             "cn.dataset.limit_cpt_list",
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
-            "cn.dataset.share_float",
             "cn.dataset.stock_st",
             "cn.dataset.stk_managers",
             "cn.dataset.sz_daily_info",
@@ -4292,16 +4350,10 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
     for dataset_id in direct.dataset_ids:
         dataset = registry.resolve(dataset_id)
         binding = dataset.provider_bindings[0]
-        # disclosure_date / share_float deliberately moved to the automatic
-        # daily_reference cadence (catalyst event feed); every other
-        # direct_wave_4 member remains on_demand.
-        if dataset_id in {
-            "cn.dataset.disclosure_date",
-            "cn.dataset.share_float",
-        }:
-            assert dataset.cadence_class == "daily_reference"
-        else:
-            assert dataset.cadence_class == "on_demand"
+        # disclosure_date / share_float moved to the automatic event wave
+        # (event_cadence_fix_20260824); every remaining direct_wave_4 member
+        # stays on_demand.
+        assert dataset.cadence_class == "on_demand"
         assert binding.fanout is not None
         assert binding.fanout.strategy == "none"
         assert binding.pagination is not None
@@ -4310,13 +4362,11 @@ def test_formal_direct_wave_4_is_hash_bound_and_disjoint_from_existing_waves() -
         assert set(binding.request_window_policy.formats.values()) == {"yyyymmdd"}
         if dataset_id in {
             "cn.dataset.daily_info",
-            "cn.dataset.disclosure_date",
             "cn.dataset.fund_div",
             "cn.dataset.index_dailybasic",
             "cn.dataset.limit_cpt_list",
             "cn.dataset.limit_step",
             "cn.dataset.moneyflow_hsgt",
-            "cn.dataset.share_float",
             "cn.dataset.stock_st",
             "cn.dataset.sz_daily_info",
         }:
@@ -4401,12 +4451,9 @@ def test_formal_direct_wave_4_dry_run_skips_on_demand_and_plans_scheduled(
         "cn.dataset.stk_managers",
         "cn.dataset.sz_daily_info",
     }
-    # disclosure_date / share_float left on_demand for daily_reference, so
-    # the wave dry-run must now plan them instead of skipping them.
-    expected_planned = {
-        "cn.dataset.disclosure_date",
-        "cn.dataset.share_float",
-    }
+    # disclosure_date / share_float moved out of this wave entirely
+    # (automatic event wave event_cadence_fix_20260824), so every remaining
+    # direct_wave_4 member is on_demand and the dry-run plans nothing.
 
     result = scheduler.run_schedule(
         registry=None,
@@ -4421,8 +4468,8 @@ def test_formal_direct_wave_4_dry_run_skips_on_demand_and_plans_scheduled(
     )
 
     planned = {plan.dataset_id for plan in result.plans}
+    assert not planned
     assert not planned & expected_on_demand
-    assert expected_planned <= planned
     assert {
         (item.dataset_id, item.state)
         for item in result.skipped
