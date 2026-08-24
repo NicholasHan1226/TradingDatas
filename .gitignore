@@ -9,6 +9,7 @@ backups/
 config/api_tokens.json
 *.log
 .preview
+.playwright-cli/
 node_modules/
 .DS_Store
 .venv/

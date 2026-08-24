@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Card, ControlBar, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
+import { Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -39,11 +39,11 @@ export default function HealthView({ client }: { client: ApiClient }) {
         const data = await client.get<AlertsResponse>('/admin/api/health/alerts')
         if (!alive) return
         const items = [...(data.alerts ?? [])]
-        items.sort(
-          (a, b) =>
-            SEVERITY_ORDER.indexOf(a.severity as (typeof SEVERITY_ORDER)[number]) -
-            SEVERITY_ORDER.indexOf(b.severity as (typeof SEVERITY_ORDER)[number]),
-        )
+        const rank = (severity: string) => {
+          const index = SEVERITY_ORDER.indexOf(severity as (typeof SEVERITY_ORDER)[number])
+          return index === -1 ? SEVERITY_ORDER.length : index
+        }
+        items.sort((a, b) => rank(a.severity) - rank(b.severity))
         setAlerts(items)
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : '加载失败')
@@ -126,7 +126,9 @@ export default function HealthView({ client }: { client: ApiClient }) {
         </div>
         <span className="text-xs text-slate-400">显示 {visibleAlerts.length} / {alerts.length} 条</span>
       </ControlBar>
-      <div className="space-y-3">
+      {visibleAlerts.length === 0 ? (
+        <Card><EmptyState title="当前筛选下没有告警" hint="切换严重程度查看其他告警" /></Card>
+      ) : <div className="space-y-3">
         {visibleAlerts.map((a, idx) => {
           const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
           return (
@@ -146,7 +148,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
             </div>
           )
         })}
-      </div>
+      </div>}
     </div>
   )
 }

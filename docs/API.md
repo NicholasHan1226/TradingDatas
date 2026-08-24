@@ -213,6 +213,20 @@ TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交�
 
 ## Admin Console API
 
+### Account category entitlement status
+
+The approved product model groups customer data access into A-share, Crypto,
+News, and future market/content categories. The intended key policy is an
+allowlist mapped to registry `market` and `domain` values, applied consistently
+to both catalog visibility and query authorization.
+
+This allowlist is **not part of the current API contract yet**. Current token
+records and admin mutations enforce endpoint `scopes`, tier limits,
+`max_concurrent`, and `daily_limit`; they do not filter datasets per account.
+Do not send or depend on a category-entitlement field until a separate contract
+adds schema validation, fail-closed catalog/query enforcement, portal
+projection, admin controls, and production readback. See `docs/PRODUCT.md`.
+
 管理控制台提供内部管理员使用的 token 管理、采集状态监控和用量统计接口。除 CORS 预检外，所有 admin API 路由需要 `admin` scope 或 `internal` tier 的认证。
 
 ### GET /admin/

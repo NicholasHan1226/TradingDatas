@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
 import {
   Area,
   AreaChart,
@@ -41,6 +40,8 @@ export default function CustomerApp({
   onLogout: () => void
   onViewAdmin?: () => void
 }) {
+  const [section, setSection] = useState<'overview' | 'docs'>('overview')
+  const [docSection, setDocSection] = useState<'platform' | 'api' | 'agent'>('platform')
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -197,10 +198,9 @@ while next_cursor:
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-bold tracking-[-0.04em] text-white shadow-[0_8px_16px_rgb(21_94_239/0.22)]">TD</div>
             <div>
-              <div className="text-[17px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
-              <div className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-slate-400">DATA ACCESS PORTAL</div>
+              <div className="text-[18px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
+              <div className="mt-0.5 text-[10px] font-medium tracking-[0.1em] text-[var(--td-faint)]">DATA ACCESS</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -216,21 +216,27 @@ while next_cursor:
       </header>
 
       <main className="mx-auto max-w-7xl space-y-7 px-5 py-7 pb-16 sm:px-6 sm:py-8">
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          {error && <ErrorBanner message={error} />}
-        </motion.div>
+        {error && <ErrorBanner message={error} />}
 
         {me && (
           <>
             <PageIntro
               eyebrow="DATA ACCESS"
-              title="你的数据访问概览"
-              description="在一个工作台内查看套餐、调用趋势，以及可直接复制的接入资产。"
+              title={section === 'overview' ? '你的数据访问概览' : '文档中心'}
+              description={section === 'overview' ? '查看套餐状态、请求额度和近 30 天调用趋势。' : '集中查看平台分类、API 快速开始、认证说明与 Agent 接入资源。'}
+              action={
+                <nav aria-label="用户前台页面" className="flex rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-white p-1">
+                  {([['overview', '概览'], ['docs', '文档']] as const).map(([value, label]) => (
+                    <button key={value} type="button" aria-pressed={section === value} onClick={() => setSection(value)} className={`min-h-8 rounded px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${section === value ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              }
             />
+            {section === 'overview' && <div className="contents">
             {/* Plan summary */}
-            <section className="relative overflow-hidden rounded-[var(--td-radius)] bg-slate-950 p-6 text-white shadow-[0_16px_36px_rgb(15_23_42/0.14)] sm:p-7">
-              <div className="pointer-events-none absolute -right-28 -top-32 h-72 w-72 rounded-full bg-blue-500/12 blur-3xl" />
-              <div className="pointer-events-none absolute right-8 bottom-0 h-24 w-72 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_23px,rgb(148_163_184_/_0.08)_24px)]" />
+            <section className="overflow-hidden rounded-[var(--td-radius)] border border-slate-800 bg-[#15181e] p-6 text-white sm:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-medium tracking-[0.16em] text-slate-400">ACCESS PROFILE</p>
@@ -326,8 +332,67 @@ while next_cursor:
                 </div>
               )}
             </Card>
+            </div>}
+
+            {section === 'docs' && (
+              <nav aria-label="文档分类" className="flex w-fit rounded-[var(--td-radius-sm)] bg-slate-100 p-1">
+                {([['platform', '平台说明'], ['api', 'API 快速开始'], ['agent', 'Agent 接入']] as const).map(([value, label]) => (
+                  <button key={value} type="button" aria-pressed={docSection === value} onClick={() => setDocSection(value)} className={`min-h-9 rounded px-4 text-xs font-medium focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === value ? 'bg-white text-[var(--td-ink)] shadow-[var(--td-shadow-1)]' : 'text-[var(--td-muted)] hover:text-[var(--td-ink)]'}`}>
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            {section === 'docs' && docSection === 'platform' && (
+              <div className="space-y-5">
+                <Card title="数据分类">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      ['A 股', '股票行情、基础资料与基本面等境内市场数据'],
+                      ['加密资产', '隔离运行面提供的公共行情与衍生数据'],
+                      ['新闻', '新闻、公告与事件类客观数据'],
+                    ].map(([title, detail]) => (
+                      <div key={title} className="rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-[#f8f9fb] p-4">
+                        <h3 className="text-sm font-semibold text-[var(--td-ink)]">{title}</h3>
+                        <p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">可用数据集始终以当前密钥请求 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">GET /v1/catalog</code> 返回的目录为准；不要根据名称猜测权限或可用状态。</p>
+                </Card>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <Card title="账户权限与额度">
+                    <dl className="divide-y divide-slate-100 text-sm">
+                      {[
+                        ['接口权限', '目录发现与数据读取 / 查询'],
+                        ['分钟上限', me.minute_request_limit ? `${me.minute_request_limit.toLocaleString('zh-CN')} 次 / 分钟` : '按当前账户档位执行'],
+                        ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
+                        ['每日上限', me.daily_limit === null ? '不限' : `${me.daily_limit.toLocaleString('zh-CN')} 次`],
+                      ].map(([term, detail]) => (
+                        <div key={term} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                          <dt className="text-[var(--td-muted)]">{term}</dt>
+                          <dd className="text-right font-medium text-[var(--td-ink)]">{detail}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </Card>
+                  <Card title="Agent-first 接入">
+                    <p className="text-sm leading-6 text-[var(--td-muted)]">TradingDatas 主要为能够调用 HTTP 工具的 Agent 提供金融数据基础设施。</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {['Claude', 'Codex', 'OpenClaw', 'Hermes'].map((agent) => (
+                        <span key={agent} className="rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">{agent}</span>
+                      ))}
+                    </div>
+                    <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">标准流程：先读取目录，再使用目录返回的 dataset ID、schema 与字段执行查询，并检查 freshness、lineage 和 degraded 状态。</p>
+                  </Card>
+                </div>
+              </div>
+            )}
 
             {/* Integration guide */}
+            {section === 'docs' && docSection === 'api' && <div>
             <Card title="API 接入指南">
               <div className="space-y-5">
                 <div>
@@ -381,8 +446,10 @@ while next_cursor:
                 </div>
               </div>
             </Card>
+            </div>}
 
             {/* Agent onboarding: copy-ready prompt / tool defs / sample code */}
+            {section === 'docs' && docSection === 'agent' && <div>
             <Card title="Agent 接入 · 一键复制">
               <div className="space-y-5">
                 <p className="text-xs leading-relaxed text-slate-500">
@@ -420,6 +487,7 @@ while next_cursor:
                 </div>
               </div>
             </Card>
+            </div>}
           </>
         )}
       </main>

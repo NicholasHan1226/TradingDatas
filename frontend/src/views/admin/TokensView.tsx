@@ -29,6 +29,7 @@ import {
 } from '../../components/ui'
 
 const SCOPE_OPTIONS = ['read', 'query', 'catalog', 'admin']
+const CURRENT_TIERS = ['basic', 'standard', 'flagship'] as const
 
 const SCOPE_HINTS: Record<string, string> = {
   read: '读取数据（含目录与查询）',
@@ -49,7 +50,7 @@ interface TokenForm {
 
 const EMPTY_FORM: TokenForm = {
   tenant_id: '',
-  tier: 'starter',
+  tier: 'basic',
   scopes: ['read'],
   customScopes: '',
   daily_limit: '',
@@ -297,6 +298,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
                       <ToggleSwitch
                         checked={t.enabled}
                         busy={busyHash === t.token_hash_full}
+                        label={`${t.enabled ? '暂停' : '启用'} ${t.tenant_id}`}
                         onChange={() => void toggleEnabled(t)}
                       />
                     </td>
@@ -398,17 +400,18 @@ function TokenFields({
     })
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field label="客户 ID（tenant）" hint="如 acme-capital，创建后不可改">
         <TextInput value={form.tenant_id} onChange={(e) => update({ tenant_id: e.target.value })} disabled={!isNew} spellCheck={false} />
       </Field>
-      <Field label="套餐档位" hint="决定默认并发与每小时请求上限">
+      <Field label="套餐档位" hint="决定默认并发与每分钟请求上限">
         <SelectInput value={form.tier} onChange={(e) => update({ tier: e.target.value })}>
-          {Object.entries(TIER_LABELS)
-            .filter(([k]) => k !== 'internal')
-            .map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
-            ))}
+          {!CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number]) && (
+            <option value={form.tier}>{TIER_LABELS[form.tier] ?? form.tier}（现有档位）</option>
+          )}
+          {CURRENT_TIERS.map((tier) => (
+            <option key={tier} value={tier}>{TIER_LABELS[tier]}</option>
+          ))}
         </SelectInput>
       </Field>
 
@@ -426,7 +429,7 @@ function TokenFields({
         <TextInput value={form.customScopes} onChange={(e) => update({ customScopes: e.target.value })} spellCheck={false} />
       </Field>
 
-      <div className="col-span-2">
+      <div className="sm:col-span-2">
         <span className="mb-1.5 block text-xs font-medium text-slate-600">API 权限范围</span>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-200 px-3.5 py-3">
           {SCOPE_OPTIONS.map((scope) => (

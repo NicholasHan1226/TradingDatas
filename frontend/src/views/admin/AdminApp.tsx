@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
 import type { ApiClient } from '../../lib/api'
 import { Button } from '../../components/ui'
 import TokensView from './TokensView'
@@ -13,65 +12,25 @@ type SectionKey = 'tokens' | 'usage' | 'collection' | 'health' | 'browser'
 interface NavItem {
   key: SectionKey
   label: string
-  title: string
-  group: 'ACCESS' | 'DATA PLANE'
-  icon: ReactNode
+  description: string
+  group: '访问管理' | '数据运行面'
+  path: string
 }
 
 function Icon({ path }: { path: string }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-[18px] w-[18px] shrink-0"
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-[17px] w-[17px] shrink-0" aria-hidden>
       <path d={path} />
     </svg>
   )
 }
 
 const NAV: NavItem[] = [
-  {
-    key: 'tokens',
-    label: '客户管理',
-    title: '客户管理',
-    group: 'ACCESS',
-    icon: (
-      <Icon path="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-    ),
-  },
-  {
-    key: 'usage',
-    label: '用量总览',
-    title: 'API 用量总览',
-    group: 'ACCESS',
-    icon: <Icon path="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />,
-  },
-  {
-    key: 'collection',
-    label: '采集状态',
-    title: '数据采集状态',
-    group: 'DATA PLANE',
-    icon: <Icon path="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />,
-  },
-  {
-    key: 'health',
-    label: '健康告警',
-    title: '系统健康与告警',
-    group: 'DATA PLANE',
-    icon: <Icon path="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />,
-  },
-  {
-    key: 'browser',
-    label: '数据浏览',
-    title: '数据目录浏览',
-    group: 'DATA PLANE',
-    icon: <Icon path="M7.5 3.75v16.5m0-16.5h9m-9 16.5h9m-9-16.5a48.67 48.67 0 0 0-3.75 9.75m14.25-9.75a48.67 48.67 0 0 1 3.75 9.75m-17.25 0a48.764 48.764 0 0 0 3 .75m14.25-.75a48.764 48.764 0 0 1-3 .75" />,
-  },
+  { key: 'tokens', label: '客户与密钥', description: '访问与套餐', group: '访问管理', path: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
+  { key: 'usage', label: '调用用量', description: '趋势与容量', group: '访问管理', path: 'M4 19V9m8 10V5m8 14v-7' },
+  { key: 'collection', label: '采集状态', description: '数据集运行状态', group: '数据运行面', path: 'M4 6c0-1.1 3.6-2 8-2s8 .9 8 2-3.6 2-8 2-8-.9-8-2Zm0 0v6c0 1.1 3.6 2 8 2s8-.9 8-2V6m-16 6v6c0 1.1 3.6 2 8 2s8-.9 8-2v-6' },
+  { key: 'health', label: '健康告警', description: '风险与异常', group: '数据运行面', path: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Zm-3-10 2 2 4-4' },
+  { key: 'browser', label: '数据浏览器', description: '目录与样本查询', group: '数据运行面', path: 'M4 5h16v14H4zM4 9h16M9 9v10' },
 ]
 
 export default function AdminApp({
@@ -92,120 +51,83 @@ export default function AdminApp({
     health: <HealthView client={client} />,
     browser: <DataView client={client} />,
   }
+  const activeItem = NAV.find((item) => item.key === section) ?? NAV[0]
 
   return (
     <div className="flex min-h-full bg-[var(--td-canvas)]">
-      {/* Sidebar */}
-      <aside className="hidden w-[17rem] shrink-0 flex-col border-r border-slate-800 bg-[#101828] text-slate-300 lg:flex">
-        <div className="px-5 pt-6 pb-7">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-[10px] font-bold tracking-[-0.04em] text-white shadow-[0_8px_16px_rgb(21_94_239/0.28)]">TD</div>
-            <div>
-              <div className="text-[17px] font-bold tracking-[-0.055em] text-white">TradingDatas</div>
-              <div className="mt-0.5 text-[9px] font-semibold tracking-[0.18em] text-slate-500">CONTROL ROOM</div>
-            </div>
+      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-blue-950 bg-[#0c1324] lg:flex">
+        <div className="flex h-16 items-center border-b border-white/10 px-5">
+          <div>
+            <div className="text-[18px] font-bold tracking-[-0.055em] text-white">TradingDatas</div>
+            <div className="mt-0.5 text-[10px] font-medium tracking-[0.1em] text-blue-300/70">ADMIN CONSOLE</div>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-6 px-3">
-          {(['ACCESS', 'DATA PLANE'] as const).map((group) => (
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="管理控制台导航">
+          {(['访问管理', '数据运行面'] as const).map((group) => (
             <div key={group}>
-              <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.14em] text-slate-600">{group}</div>
-              <div className="space-y-1">
-          {NAV.filter((item) => item.group === group).map((item) => {
-            const active = item.key === section
-            return (
-              <button
-                key={item.key}
-                onClick={() => setSection(item.key)}
-                title={item.title}
-                className={`relative flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${
-                  active
-                    ? 'bg-white/10 font-medium text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-                }`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="nav-active"
-                    className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-blue-400"
-                  />
-                )}
-                {item.icon}
-                {item.label}
-              </button>
-            )
-          })}
+              <p className="mb-1.5 px-2.5 text-[11px] font-medium text-slate-600">{group}</p>
+              <div className="space-y-0.5">
+                {NAV.filter((item) => item.group === group).map((item) => {
+                  const active = item.key === section
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSection(item.key)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex w-full items-center gap-3 rounded-[var(--td-radius-sm)] px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${active ? 'bg-blue-500/15 text-white ring-1 ring-inset ring-blue-400/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'}`}
+                    >
+                      <Icon path={item.path} />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-medium">{item.label}</span>
+                        <span className={`block truncate text-[10px] ${active ? 'text-blue-300' : 'text-slate-600'}`}>{item.description}</span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           ))}
         </nav>
 
-        <div className="border-t border-white/10 px-3 py-4">
-          <div className="mb-3 rounded-[10px] border border-white/8 bg-white/[0.035] px-3 py-2.5">
-            <div className="text-[10px] font-semibold tracking-[0.14em] text-slate-500">SESSION</div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />管理会话正常</div>
+        <div className="border-t border-white/10 p-3">
+          <div className="mb-2 flex items-center justify-between rounded-[var(--td-radius-sm)] border border-white/8 bg-white/[0.04] px-3 py-2.5">
+            <div>
+              <div className="text-[10px] text-slate-600">当前会话</div>
+              <div className="mt-0.5 text-xs font-medium text-slate-200">管理员</div>
+            </div>
+            <span className="rounded border border-blue-400/20 bg-blue-400/10 px-1.5 py-0.5 text-[9px] text-blue-300">ADMIN</span>
           </div>
-          <button
-            onClick={onLogout}
-            className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-xs text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-300"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
-            </svg>
+          <button type="button" onClick={onViewCustomer} className="flex w-full items-center gap-2 rounded-[var(--td-radius-sm)] px-3 py-2 text-xs text-slate-500 hover:bg-white/5 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-blue-400">
+            <Icon path="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            查看用户前台
+          </button>
+          <button type="button" onClick={onLogout} className="mt-0.5 flex w-full items-center gap-2 rounded-[var(--td-radius-sm)] px-3 py-2 text-xs text-slate-500 hover:bg-rose-500/10 hover:text-rose-300 focus-visible:outline-2 focus-visible:outline-rose-400">
+            <Icon path="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
             退出登录
           </button>
         </div>
       </aside>
 
-      {/* Content */}
-      <main className="min-w-0 flex-1 overflow-y-auto bg-[var(--td-canvas)]">
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur md:px-8">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div>
-              <div className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">TradingDatas / Control Plane</div>
-              <p className="text-xs text-slate-500">面向数据运营的管理工作区</p>
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <header className="sticky top-0 z-10 flex h-16 items-center border-b border-[var(--td-line)] bg-white/95 px-5 backdrop-blur md:px-8">
+          <div className="mx-auto flex w-full max-w-[1320px] items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-[var(--td-ink)]">{activeItem.label}</div>
+              <div className="mt-0.5 text-[11px] text-[var(--td-faint)]">TradingDatas · {activeItem.group}</div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:inline-flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> 已认证会话
-              </span>
-              <Button variant="secondary" size="sm" onClick={onViewCustomer}>
-                用户前台预览
-              </Button>
-              <select
-                aria-label="切换控制台页面"
-                value={section}
-                onChange={(event) => setSection(event.target.value as SectionKey)}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 lg:hidden"
-              >
+            <div className="flex items-center gap-2">
+              <span className="hidden text-xs text-[var(--td-muted)] sm:inline">管理员工作区</span>
+              <Button variant="secondary" size="sm" onClick={onViewCustomer} className="lg:hidden">用户前台</Button>
+              <select aria-label="切换控制台页面" value={section} onChange={(event) => setSection(event.target.value as SectionKey)} className="h-8 max-w-32 rounded-[var(--td-radius-sm)] border border-[var(--td-line-strong)] bg-white px-2 text-xs font-medium text-[var(--td-ink-soft)] outline-none focus-visible:ring-2 focus-visible:ring-blue-600/20 lg:hidden">
                 {NAV.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
               </select>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="lg:hidden"
-                aria-label="退出登录"
-                onClick={onLogout}
-              >
-                退出
-              </Button>
+              <Button variant="ghost" size="sm" className="lg:hidden" aria-label="退出登录" onClick={onLogout}>退出</Button>
             </div>
           </div>
         </header>
-        <div className="mx-auto max-w-7xl px-5 py-7 pb-14 md:px-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={section}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.18 }}
-            >
-              {views[section]}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+        <div className="mx-auto max-w-[1320px] px-5 py-7 pb-14 md:px-8">{views[section]}</div>
       </main>
     </div>
   )
