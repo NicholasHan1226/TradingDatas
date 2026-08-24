@@ -1,6 +1,6 @@
 # Prediction-market public snapshot pipeline (Polymarket provider)
 
-> Status: draft for human review only, 2026-08-24. This document creates no runtime capability. The root product contract currently keeps prediction markets paused; the contract file is intentionally unregistered, `paused`, and `blocked`.
+> Status: reviewed TD public-read-only data draft, 2026-08-24. Nicholas has resumed this TD data scope only; this document still creates no registry, timer, API or TA runtime capability. The two contracts remain intentionally unregistered, `paused`, and `blocked` until the stated integrity gates close.
 
 ## 1. Goals and non-goals
 
@@ -43,7 +43,7 @@ The adapter preserves every raw Gamma object key, then validates and adds the fr
 
 ## 6. Cadence and backfill proposal
 
-Phase 0 remains `on_demand`: manually run one <=20-market capture through the relay after first-live slug/schema verification. The draft CLI accepts `--lookback` as a bounded capture-intent argument; Gamma's current-market endpoint does not make it historical data, so it never fabricates or claims historical snapshots. If observed, propose a separate `event` cadence of 15 minutes for active markets and 6 hours for closed/unresolved markets; do not install a timer in this draft. Historical backfill is provider-limited: snapshots begin at first observed capture, and no reconstruction of past probabilities is claimed.
+Phase 0 remains `on_demand`: run one bounded 14-market capture through the relay after first-live slug/schema verification. The draft CLI accepts `--lookback` as a bounded capture-intent argument; Gamma's current-market endpoint does not make it historical data, so it never fabricates or claims historical snapshots. No registry/catalog/query exposure, timer, alert or consumer is enabled until official contract hashes, the one-api-name/two-dataset mapping, Yes/No semantic direction, persistence/receipt integration and authenticated API readback are separately proven. If observed, propose a separate `event` cadence of 15 minutes for active markets and 6 hours for closed/unresolved markets; do not install a timer in this draft. Historical backfill is provider-limited: snapshots begin at first observed capture, and no reconstruction of past probabilities is claimed.
 
 ## 7. Monitoring hooks
 
