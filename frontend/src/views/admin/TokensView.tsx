@@ -29,6 +29,7 @@ import {
 } from '../../components/ui'
 
 const SCOPE_OPTIONS = ['read', 'query', 'catalog', 'admin']
+const CURRENT_TIERS = ['basic', 'standard', 'flagship'] as const
 
 const SCOPE_HINTS: Record<string, string> = {
   read: '读取数据（含目录与查询）',
@@ -49,7 +50,7 @@ interface TokenForm {
 
 const EMPTY_FORM: TokenForm = {
   tenant_id: '',
-  tier: 'starter',
+  tier: 'basic',
   scopes: ['read'],
   customScopes: '',
   daily_limit: '',
@@ -403,13 +404,14 @@ function TokenFields({
       <Field label="客户 ID（tenant）" hint="如 acme-capital，创建后不可改">
         <TextInput value={form.tenant_id} onChange={(e) => update({ tenant_id: e.target.value })} disabled={!isNew} spellCheck={false} />
       </Field>
-      <Field label="套餐档位" hint="决定默认并发与每小时请求上限">
+      <Field label="套餐档位" hint="决定默认并发与每分钟请求上限">
         <SelectInput value={form.tier} onChange={(e) => update({ tier: e.target.value })}>
-          {Object.entries(TIER_LABELS)
-            .filter(([k]) => k !== 'internal')
-            .map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
-            ))}
+          {!CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number]) && (
+            <option value={form.tier}>{TIER_LABELS[form.tier] ?? form.tier}（现有档位）</option>
+          )}
+          {CURRENT_TIERS.map((tier) => (
+            <option key={tier} value={tier}>{TIER_LABELS[tier]}</option>
+          ))}
         </SelectInput>
       </Field>
 

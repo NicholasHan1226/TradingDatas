@@ -250,14 +250,14 @@ export const TIER_TONES: Record<string, BadgeTone> = {
 }
 
 export const TIER_LABELS: Record<string, string> = {
-  free: 'Free 免费',
-  starter: 'Starter 入门',
-  research: 'Research 研究',
-  pro: 'Pro 专业',
-  basic: '基础版 Basic',
-  standard: '标准版 Standard',
-  flagship: '旗舰版 Flagship',
-  enterprise: 'Enterprise 企业',
+  free: '免费版',
+  starter: '入门版',
+  research: '研究版',
+  pro: '专业版',
+  basic: '基础版',
+  standard: '标准版',
+  flagship: '旗舰版',
+  enterprise: '企业版',
   internal: '平台管理',
 }
 

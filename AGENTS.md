@@ -2,7 +2,11 @@
 
 ## 产品定位
 
-TradingDatas 是一个类似 Tushare 的 provider-neutral 金融数据平台。Tushare 是首个已接入上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。
+TradingDatas 是一个类似 Tushare 的、面向公共用户但所有数据请求均需认证的 provider-neutral 金融数据平台。它是 `Finance/TradingDatas` 下的独立仓库，不是 TradingAgent 模块。Tushare 是首个已接入上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。产品背景、Agent-first 消费模型、数据分类和账户权限目标以 `docs/PRODUCT.md` 为核心事实源。
+
+产品主要服务 Claude、Codex、OpenClaw、Hermes 等可调用 HTTP 工具的 Agent。用户侧按 A 股、加密资产、新闻等产品分类发现数据；技术 registry 仍以 `market` 与 `domain` 分开表达，公共 API 永远保持 catalog/query 两个 provider-neutral 端点。
+
+账户最终权限模型是 endpoint scope、市场/内容域 allowlist、运行限额三者取交集。商业档同时受每分钟请求上限、并发请求上限和每日查询上限约束。当前代码已实现 endpoint scope 与三类限额，但尚未实现 per-account 市场/内容域 allowlist；在 fail-closed 后端、管理 API、门户投影和生产 readback 完成前，前端不得展示为已生效能力，也不得据此声称公共账户已隔离。
 
 当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情与同一冻结 40 个 USDT 标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史共同构成独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 
@@ -171,6 +175,7 @@ registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并�
 ## 文档入口
 
 - `README.md`
+- `docs/PRODUCT.md`
 - `ROADMAP.md`
 - `STATUS.md`
 - `docs/ARCHITECTURE.md`

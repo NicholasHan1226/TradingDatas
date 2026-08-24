@@ -1,6 +1,6 @@
 # TradingDatas
 
-TradingDatas 是一个类似 Tushare 的、provider-neutral 的金融数据服务。
+TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数据服务，也是 `Finance/TradingDatas` 下独立管理的仓库。它以 Claude、Codex、OpenClaw、Hermes 等 Agent 为主要消费者，通过固定 catalog/query API 提供可发现、可追溯的金融数据。
 
 它在 Finance 中只承担跨市场数据平台职责：接入数据接口、稳定采集、规范化写入数据库、持续积累、保留 lineage/receipt，并通过固定 `catalog/query` API 稳定供应各市场。TradingAgent/Quant Core 才是终局个人自动量化交易系统；TradingCopilot 只是过渡性的 A 股实盘辅助与观察工具。TradingDatas 不拥有预测、策略、模型晋级、资金、风险或订单 authority。
 
@@ -8,7 +8,9 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的金融数据服�
 
 ## 当前开发优先级
 
-当前阶段只服务 Nicholas 自己的内部量化研究与模拟盘：先把已批准的 Tushare/QuickSync 数据稳定写入 SQLite，再通过 loopback `catalog/query` API 交给内部消费者。不得把这一目标扩展成公网数据产品、多账户、计费、配额、外部网关、专用数据路由或按接口拆分的服务/定时任务。受邀外部账户和更广的数据产品形态只保留为后续合同与合规评估项，除非另有明确批准，不进入当前实现或生产验收。
+当前实现先把已批准的数据稳定写入 SQLite，再通过统一 `catalog/query` API 供 Agent 和受控用户消费。公共产品定位不改变数据事实门禁：对外开放某一数据分类前，仍须完成上游再分发条款、dataset entitlement、真实 receipt、认证 API readback 和账户隔离验证。不得为公共产品按 provider 或单个接口拆分新的公共路由、业务表或定时任务。
+
+用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 分别表达市场和内容域。账户目标权限是 endpoint scope、分类 allowlist 与配额的交集。当前 endpoint scope、商业档每分钟限额、并发上限和每日限额已实现；per-account 分类 allowlist 尚未实现，因此不能把 UI 分类展示误称为已生效的数据隔离。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
 接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。
 
@@ -66,7 +68,7 @@ Tushare 官方接口文档用于生成普通数据集的请求、字段、schema
 
 QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制必须分别冻结证据。2026-07-21 CST（证据时间 2026-07-20Z）的受控实测只证明健康单一 HTTPS 节点的小响应 request-start 能力达到 210 次/分钟、并发 4；当前 `main` 代码设置更保守的保护门禁 200 次/60 秒、并发 4，但它不是 QuickSync 合同额度或已部署的 production 配置。混合大响应、每日额度和 DNS failover 仍待服务器验收，也不能由吞吐下限替代逐接口权限、schema、真实 receipt 和 API readback。timer 只能在 provider transport、权限矩阵、fresh server canary 与可回滚发布均通过后由受控发布流程显式启用；实际状态以 `STATUS.md` 和服务器 readback 为准。Tushare 官方说明仍只作为数据更新周期参考：[Tushare 接口文档](https://tushare.pro/document/1)。
 
-## 固定内部 API
+## 固定数据 API
 
 - `GET /v1/catalog`
 - `POST /v1/query`
@@ -76,6 +78,7 @@ API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 pr
 详见：
 
 - [产品与开发规则](AGENTS.md)
+- [产品合同与 Agent-first 背景](docs/PRODUCT.md)
 - [路线图](ROADMAP.md)
 - [当前状态](STATUS.md)
 - [架构](docs/ARCHITECTURE.md)
@@ -174,7 +177,7 @@ uv run --python 3.12 --with-requirements requirements.txt \
 query envelope 的 dataset、`degraded`、receipt、时间/lineage 任一绑定不一致时，结果保持
 `observed_isolated_only`，不能替代生产验收。
 
-外部账户、再分发、缓存和对外服务不属于当前开发计划；即使未来重新评估，也必须先完成独立的上游条款书面核验，不能由当前内部 API 或上游可调用性推导授权。
+外部账户、再分发、缓存和公共服务必须逐数据分类完成上游条款书面核验、账户隔离与生产 readback；不能由当前 API 可调用性、公共产品定位或单次 provider 成功推导授权。
 
 ## 内部消费者合同能力清单
 

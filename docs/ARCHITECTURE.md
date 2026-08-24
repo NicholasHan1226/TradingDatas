@@ -2,7 +2,9 @@
 
 ## 产品边界
 
-TradingDatas 是金融数据基础设施，不是研究或交易系统。它负责 provider catalog、采集、无损标准化、SQLite facts、transaction receipts、数据质量元数据和只读 API。
+TradingDatas 是独立的、Agent-first 公共金融数据基础设施，不是研究或交易系统。它负责 provider catalog、采集、无损标准化、SQLite facts、transaction receipts、数据质量元数据和认证只读 API。产品身份、A 股/加密资产/新闻分类及账户访问目标见 `docs/PRODUCT.md`。
+
+产品分类与技术字段必须分层：A 股和加密资产主要映射 `market`，新闻主要映射 `domain`；provider 只描述来源。账户最终授权由 endpoint scope、market/domain allowlist 和运行限额共同决定。当前 runtime 仅实现 endpoint scope 与限额，per-account market/domain allowlist 仍是未实现的安全边界，不能由 catalog 字段存在或前端分类代替。
 
 ## 权威顺序
 

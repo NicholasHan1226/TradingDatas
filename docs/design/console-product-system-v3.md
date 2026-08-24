@@ -71,8 +71,13 @@ floating glows, and decorative transitions are excluded.
   to the form without hiding security guidance.
 - Admin: access and data-plane navigation groups, global context header, one
   page intro, one action/filter row, then task-specific content.
-- Customer: Overview, API Guide, and Agent Setup are separate tabs so the
-  first screen is concise and each copy task has a stable home.
+- Customer: Overview and Documentation are the primary sections. Documentation
+  groups Platform, API Quickstart, and Agent Setup as secondary categories so
+  product background and integration material have one stable home without
+  crowding the product navigation.
+- Tier presentation: display one localized name per tier. New credentials use
+  the canonical Basic, Standard, and Flagship tier keys; legacy tier keys remain
+  visible only while editing an existing credential.
 
 ## Runtime and rollback boundary
 

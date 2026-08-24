@@ -66,7 +66,7 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/portal/api/me') {
     const portal = isCustomerSession
-      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], enabled: true, max_concurrent: 8, hourly_request_limit: 600, daily_limit: 50000, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 482, hourly_window_seconds: 60 } }
+      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], enabled: true, max_concurrent: 8, minute_request_limit: 600, hourly_request_limit: null, daily_limit: 50000, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 482, hourly_window_seconds: 60 } }
       : { tenant_id: 'research-team', tier: 'internal', scopes: ['read', 'admin'], enabled: true, max_concurrent: null, hourly_request_limit: null, daily_limit: null, expires_at: null, usage: { today_date: '2026-08-24', today_count: 1840, hourly_count: 121, hourly_window_seconds: 3600 } }
     return json(response, 200, { api_version: 'v1', request_id: 'mock-me', portal })
   }
