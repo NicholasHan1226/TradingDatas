@@ -476,7 +476,27 @@ def _validate_catalog_framing(headers: Any) -> None:
         raise _V1ProtocolError(400, "invalid_request", close_connection=True)
 
 
-def _access_context_from_account(account: object) -> QueryAccessContext:
+def _dataset_data_category(dataset: object) -> str | None:
+    """Map registry metadata to stable public entitlement categories."""
+
+    market = getattr(dataset, "market", None)
+    dataset_id = getattr(dataset, "dataset_id", None)
+    domain = getattr(dataset, "domain", None)
+    if type(market) is not str or type(dataset_id) is not str or type(domain) is not str:
+        raise RuntimeError("registry dataset is invalid")
+    if ".news." in f".{dataset_id}." or "news" in domain.casefold():
+        return "news"
+    if market == "CN":
+        return "a_share"
+    if market.startswith("CRYPTO_"):
+        return "crypto"
+    return None
+
+
+def _access_context_from_account(
+    account: object,
+    registry: object | None = None,
+) -> QueryAccessContext:
     if type(account) is not dict:
         raise RuntimeError("authenticated account is invalid")
     tenant_id = account.get("tenant_id")
@@ -485,10 +505,28 @@ def _access_context_from_account(account: object) -> QueryAccessContext:
         raise RuntimeError("authenticated account is invalid")
     if any(type(scope) is not str for scope in raw_scopes):
         raise RuntimeError("authenticated account is invalid")
+    allowed_dataset_ids: tuple[str, ...] = ()
+    access_scopes = tuple(raw_scopes)
+    if "data_categories" in account:
+        categories = tuple(auth.normalize_data_categories(account["data_categories"]))
+        datasets = getattr(registry, "datasets", None)
+        if type(datasets) is not tuple:
+            raise RuntimeError("dataset registry is unavailable")
+        allowed_dataset_ids = tuple(
+            sorted(
+                dataset.dataset_id
+                for dataset in datasets
+                if _dataset_data_category(dataset) in categories
+            )
+        )
+        # Endpoint scopes are checked before this context is built. Once a
+        # category allowlist is explicit, exact dataset IDs are the sole data
+        # grants so broad and dataset-required scopes cannot bypass it.
+        access_scopes = ()
     return QueryAccessContext.from_grants(
         tenant_id=tenant_id,
-        scopes=tuple(raw_scopes),
-        allowed_dataset_ids=(),
+        scopes=access_scopes,
+        allowed_dataset_ids=allowed_dataset_ids,
     )
 
 
@@ -794,6 +832,11 @@ class Handler(BaseHTTPRequestHandler):
                     request_id, status=400, code="invalid_request"
                 )
             try:
+                data_categories = (
+                    auth.normalize_data_categories(body["data_categories"])
+                    if "data_categories" in body
+                    else None
+                )
                 result = auth.create_token(
                     tenant_id=body.get("tenant_id", ""),
                     tier=body.get("tier", "free"),
@@ -801,6 +844,7 @@ class Handler(BaseHTTPRequestHandler):
                     max_concurrent=body.get("max_concurrent"),
                     daily_limit=body.get("daily_limit"),
                     expires_at=body.get("expires_at"),
+                    data_categories=data_categories,
                 )
                 return self._write_v1_json(result, status=201)
             except auth.AuthError as exc:
@@ -906,7 +950,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             for dataset in runtime.registry.datasets
         }
-        access = _access_context_from_account(account)
+        access = _access_context_from_account(account, runtime.registry)
         rows: list[dict[str, Any]] = []
         cursor: str | None = None
         for _ in range(50):
@@ -1210,6 +1254,10 @@ class Handler(BaseHTTPRequestHandler):
                 "tenant_id": tenant_id,
                 "tier": limits["tier"],
                 "scopes": list(account.get("scopes", [])),
+                "data_categories": auth.effective_data_categories(account),
+                "data_category_mode": (
+                    "restricted" if "data_categories" in account else "all"
+                ),
                 "enabled": bool(account.get("enabled", True)),
                 "max_concurrent": limits["concurrency_limit"],
                 "hourly_request_limit": limits["hourly_request_limit"],
@@ -1361,7 +1409,13 @@ class Handler(BaseHTTPRequestHandler):
             )
 
         try:
-            access = _access_context_from_account(account)
+            catalog_service, query_service = self._build_services_fail_closed()
+            registry = (
+                catalog_service._registry
+                if path == V1_CATALOG_PATH
+                else query_service._registry
+            )
+            access = _access_context_from_account(account, registry)
             now = datetime.now(timezone.utc)
             if path == V1_CATALOG_PATH:
                 response, max_response_bytes = self._dispatch_v1_catalog(

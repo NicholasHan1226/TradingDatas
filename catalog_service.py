@@ -310,7 +310,18 @@ def _validated_runtime_row(
 
 def _has_catalog_scope(access: QueryAccessContext, dataset: DatasetDefinition) -> bool:
     grants = set(access.scopes)
-    return dataset.required_scope in grants or bool(grants & _AGGREGATE_SCOPES)
+    return (
+        dataset.required_scope in grants
+        or bool(grants & _AGGREGATE_SCOPES)
+        # Exact dataset grants become catalog-visible only when broad scopes
+        # have deliberately been removed by the category entitlement adapter.
+        # This preserves the existing meaning of allowed_dataset_ids for
+        # mixed-scope internal contexts while supporting category-only access.
+        or (
+            not grants
+            and dataset.dataset_id in access.allowed_dataset_ids
+        )
+    )
 
 
 def _matches_filters(

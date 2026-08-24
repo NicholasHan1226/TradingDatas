@@ -8,6 +8,8 @@ let tokens = [
     tenant_id: 'research-team',
     tier: 'research',
     scopes: ['read', 'admin'],
+    data_categories: ['a_share', 'crypto', 'news'],
+    data_category_mode: 'all',
     enabled: true,
     daily_limit: 12000,
     daily_usage: 1840,
@@ -21,6 +23,8 @@ let tokens = [
     tenant_id: 'quant-lab',
     tier: 'standard',
     scopes: ['read'],
+    data_categories: ['a_share', 'news'],
+    data_category_mode: 'restricted',
     enabled: true,
     daily_limit: 50000,
     daily_usage: 9230,
@@ -66,8 +70,8 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/portal/api/me') {
     const portal = isCustomerSession
-      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], enabled: true, max_concurrent: 8, minute_request_limit: 600, hourly_request_limit: null, daily_limit: 50000, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 482, hourly_window_seconds: 60 } }
-      : { tenant_id: 'research-team', tier: 'internal', scopes: ['read', 'admin'], enabled: true, max_concurrent: null, hourly_request_limit: null, daily_limit: null, expires_at: null, usage: { today_date: '2026-08-24', today_count: 1840, hourly_count: 121, hourly_window_seconds: 3600 } }
+      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], data_categories: ['a_share', 'news'], data_category_mode: 'restricted', enabled: true, max_concurrent: 8, minute_request_limit: 600, hourly_request_limit: null, daily_limit: 50000, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 482, hourly_window_seconds: 60 } }
+      : { tenant_id: 'research-team', tier: 'internal', scopes: ['read', 'admin'], data_categories: ['a_share', 'crypto', 'news'], data_category_mode: 'all', enabled: true, max_concurrent: null, hourly_request_limit: null, daily_limit: null, expires_at: null, usage: { today_date: '2026-08-24', today_count: 1840, hourly_count: 121, hourly_window_seconds: 3600 } }
     return json(response, 200, { api_version: 'v1', request_id: 'mock-me', portal })
   }
   if (request.method === 'GET' && url.pathname === '/portal/api/me/usage') {
@@ -76,7 +80,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/admin/api/tokens') return json(response, 200, { tokens, count: tokens.length })
   if (request.method === 'POST' && url.pathname === '/admin/api/tokens') {
     const body = await readBody(request)
-    const item = { token_hash_full: `hash-${body.tenant_id}`, token_hash_masked: 'sha256:new…mock', tenant_id: body.tenant_id, tier: body.tier, scopes: body.scopes, enabled: true, daily_limit: body.daily_limit ?? null, daily_usage: 0, max_concurrent: body.max_concurrent ?? null, expires_at: body.expires_at ?? null, expired: false }
+    const item = { token_hash_full: `hash-${body.tenant_id}`, token_hash_masked: 'sha256:new…mock', tenant_id: body.tenant_id, tier: body.tier, scopes: body.scopes, data_categories: body.data_categories, data_category_mode: 'restricted', enabled: true, daily_limit: body.daily_limit ?? null, daily_usage: 0, max_concurrent: body.max_concurrent ?? null, expires_at: body.expires_at ?? null, expired: false }
     tokens = [...tokens, item]
     return json(response, 201, { token: 'td_mock_created_token' })
   }

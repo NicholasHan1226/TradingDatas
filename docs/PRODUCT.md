@@ -70,16 +70,17 @@ and the API contract, not in marketing copy.
 ## Implementation truth and stop line
 
 As of 2026-08-24, bearer authentication, endpoint scopes, per-minute commercial
-rate limits, simultaneous-request limits, and per-key daily limits are
-implemented. Catalog rows already carry market/domain metadata.
+rate limits, simultaneous-request limits, per-key daily limits, and per-account
+data-category allowlists are implemented. The allowlist is enforced server-side
+for both catalog visibility and query authorization, projected through the
+customer portal, and editable through the admin token API.
 
-Per-account category allowlists and catalog/query enforcement are an approved
-product requirement but are **not yet implemented**. Today, a valid `read`
-scope can access every dataset visible through the fixed API. The console must
-not present category controls as effective, and general public onboarding must
-not rely on category isolation, until the backend contract, fail-closed tests,
-admin mutation API, portal projection, and production readback are delivered in
-a separate security-sensitive change.
+The stable category keys are `a_share`, `crypto`, and `news`. Existing token
+records that omit `data_categories` retain their previous all-current-category
+access for compatibility; an explicit empty list grants no dataset access.
+Unknown category values fail closed during token configuration load or admin
+mutation. Production availability remains a separate release/readback fact in
+`STATUS.md`.
 
 ## Core documentation map
 

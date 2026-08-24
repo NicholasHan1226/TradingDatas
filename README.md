@@ -10,7 +10,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 当前实现先把已批准的数据稳定写入 SQLite，再通过统一 `catalog/query` API 供 Agent 和受控用户消费。公共产品定位不改变数据事实门禁：对外开放某一数据分类前，仍须完成上游再分发条款、dataset entitlement、真实 receipt、认证 API readback 和账户隔离验证。不得为公共产品按 provider 或单个接口拆分新的公共路由、业务表或定时任务。
 
-用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 分别表达市场和内容域。账户目标权限是 endpoint scope、分类 allowlist 与配额的交集。当前 endpoint scope、商业档每分钟限额、并发上限和每日限额已实现；per-account 分类 allowlist 尚未实现，因此不能把 UI 分类展示误称为已生效的数据隔离。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
+用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与配额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理台可配置，用户门户只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
 接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。
 

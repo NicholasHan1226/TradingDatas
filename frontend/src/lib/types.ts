@@ -5,6 +5,8 @@ export interface PortalInfo {
   tenant_id: string
   tier: string
   scopes: string[]
+  data_categories: DataCategory[]
+  data_category_mode: 'all' | 'restricted'
   enabled: boolean
   max_concurrent: number | null
   hourly_request_limit: number | null
@@ -42,6 +44,8 @@ export interface AdminToken {
   tenant_id: string
   tier: string
   scopes: string[]
+  data_categories: DataCategory[]
+  data_category_mode: 'all' | 'restricted'
   enabled: boolean
   daily_limit?: number | null
   daily_usage?: number
@@ -126,3 +130,4 @@ export interface QueryResult {
 }
 
 export type Role = 'admin' | 'customer'
+export type DataCategory = 'a_share' | 'crypto' | 'news'

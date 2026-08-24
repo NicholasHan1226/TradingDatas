@@ -14,6 +14,7 @@ import re
 import socket
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 import uuid
 
@@ -115,6 +116,80 @@ def _registry_with_limits(
         overrides["max_page_size"] = max_page_size
     defaults = replace(registry.query_defaults, **overrides)
     return DatasetRegistry(registry.datasets, query_defaults=defaults)
+
+
+def test_account_category_allowlist_maps_only_server_owned_registry_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(api_server, "auth", auth)
+    registry = load_dataset_registry()
+    legacy = api_server._access_context_from_account(  # noqa: SLF001
+        {"tenant_id": "legacy", "scopes": ["read"]},
+        registry,
+    )
+    assert legacy.scopes == ("read",)
+    assert legacy.allowed_dataset_ids == ()
+
+    a_share = api_server._access_context_from_account(  # noqa: SLF001
+        {
+            "tenant_id": "a-share-only",
+            "scopes": ["read", "market_data"],
+            "data_categories": ["a_share"],
+        },
+        registry,
+    )
+    assert a_share.scopes == ()
+    assert a_share.allowed_dataset_ids
+    assert all(dataset_id.startswith("cn.") for dataset_id in a_share.allowed_dataset_ids)
+    assert "global.news.flash" not in a_share.allowed_dataset_ids
+
+    news = api_server._access_context_from_account(  # noqa: SLF001
+        {
+            "tenant_id": "news-only",
+            "scopes": ["read"],
+            "data_categories": ["news"],
+        },
+        registry,
+    )
+    assert news.allowed_dataset_ids == (
+        "cn.dataset.news",
+        "cn.news.flash",
+        "global.news.flash",
+    )
+
+    crypto_registry = load_dataset_registry(
+        Path("config/crypto_binance_canary_registry.v1.yaml").absolute()
+    )
+    crypto = api_server._access_context_from_account(  # noqa: SLF001
+        {
+            "tenant_id": "crypto-only",
+            "scopes": ["read"],
+            "data_categories": ["crypto"],
+        },
+        crypto_registry,
+    )
+    assert crypto.allowed_dataset_ids
+    assert all(dataset_id.startswith("crypto.") for dataset_id in crypto.allowed_dataset_ids)
+
+    empty = api_server._access_context_from_account(  # noqa: SLF001
+        {
+            "tenant_id": "no-data",
+            "scopes": ["read"],
+            "data_categories": [],
+        },
+        registry,
+    )
+    assert empty.scopes == ()
+    assert empty.allowed_dataset_ids == ()
+
+
+def test_news_category_takes_precedence_over_market() -> None:
+    class _Dataset:
+        dataset_id = "cn.news.flash"
+        market = "CN"
+        domain = "provider_data"
+
+    assert api_server._dataset_data_category(_Dataset()) == "news"  # noqa: SLF001
 
 
 def _success_query_response(

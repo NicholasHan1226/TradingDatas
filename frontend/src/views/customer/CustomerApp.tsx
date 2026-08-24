@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { ApiClient } from '../../lib/api'
-import type { PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
+import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import {
   Badge,
   Button,
@@ -27,6 +27,12 @@ function daysUntil(iso: string | null): number | null {
   if (!iso) return null
   const ms = Date.parse(iso.endsWith('Z') ? iso : iso + 'Z') - Date.now()
   return Math.ceil(ms / 86_400_000)
+}
+
+const DATA_CATEGORY_DETAILS: Record<DataCategory, { label: string; detail: string }> = {
+  a_share: { label: 'A 股', detail: '境内市场行情、基础资料与基本面等数据' },
+  crypto: { label: '加密资产', detail: '隔离运行面提供的公共行情与衍生数据' },
+  news: { label: '新闻', detail: '新闻、公告与事件类客观数据' },
 }
 
 export default function CustomerApp({
@@ -250,6 +256,14 @@ while next_cursor:
                       </code>
                     ))}
                   </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {(me.data_categories ?? []).map((category) => (
+                      <span key={category} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-200">
+                        {DATA_CATEGORY_DETAILS[category]?.label ?? category}
+                      </span>
+                    ))}
+                    {me.data_categories.length === 0 && <span className="text-xs text-rose-300">尚未开通数据分类</span>}
+                  </div>
                 </div>
                 <div className="relative text-right">
                   <Badge tone={me.enabled ? 'green' : 'rose'}>{me.enabled ? '服务正常' : '已暂停'}</Badge>
@@ -348,18 +362,19 @@ while next_cursor:
               <div className="space-y-5">
                 <Card title="数据分类">
                   <div className="grid gap-3 sm:grid-cols-3">
-                    {[
-                      ['A 股', '股票行情、基础资料与基本面等境内市场数据'],
-                      ['加密资产', '隔离运行面提供的公共行情与衍生数据'],
-                      ['新闻', '新闻、公告与事件类客观数据'],
-                    ].map(([title, detail]) => (
-                      <div key={title} className="rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-[#f8f9fb] p-4">
-                        <h3 className="text-sm font-semibold text-[var(--td-ink)]">{title}</h3>
-                        <p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{detail}</p>
+                    {(me.data_categories ?? []).map((category) => (
+                      <div key={category} className="rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-[#f8f9fb] p-4">
+                        <h3 className="text-sm font-semibold text-[var(--td-ink)]">{DATA_CATEGORY_DETAILS[category]?.label ?? category}</h3>
+                        <p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{DATA_CATEGORY_DETAILS[category]?.detail}</p>
                       </div>
                     ))}
+                    {me.data_categories.length === 0 && (
+                      <div className="rounded-[var(--td-radius-sm)] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:col-span-3">
+                        当前密钥尚未开通任何数据分类，请联系管理员配置访问范围。
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">可用数据集始终以当前密钥请求 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">GET /v1/catalog</code> 返回的目录为准；不要根据名称猜测权限或可用状态。</p>
+                  <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">这里展示当前密钥已开通的分类；最终可用数据集仍以该密钥请求 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">GET /v1/catalog</code> 返回的目录为准。</p>
                 </Card>
 
                 <div className="grid gap-5 lg:grid-cols-2">
@@ -367,6 +382,7 @@ while next_cursor:
                     <dl className="divide-y divide-slate-100 text-sm">
                       {[
                         ['接口权限', '目录发现与数据读取 / 查询'],
+                        ['数据分类', me.data_categories.length ? me.data_categories.map((category) => DATA_CATEGORY_DETAILS[category]?.label ?? category).join('、') : '未开通'],
                         ['分钟上限', me.minute_request_limit ? `${me.minute_request_limit.toLocaleString('zh-CN')} 次 / 分钟` : '按当前账户档位执行'],
                         ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
                         ['每日上限', me.daily_limit === null ? '不限' : `${me.daily_limit.toLocaleString('zh-CN')} 次`],
