@@ -316,8 +316,13 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 ## Customer Portal API
 
-客户自助门户端点：任意有效 token（`read` scope 即可）认证后仅返回**该 token 自身**的
+客户自助门户端点：任意有效 token 认证后仅返回**该 token 自身**的
 套餐、限额与用量，不泄露其他租户。供 React 门户前端（Pages `/app/`）使用。
+
+客户 token 默认进入客户工作台；带 `admin` scope 或 `internal` tier 的管理员 token
+默认进入管理工作台，并可用同一 token 切换到客户视图。平台 owner token 约定同时
+保留 `read` 与 `admin`，以便在客户视图中验证目录/查询接入；该切换不冒充其他租户，
+也不改变任何 token、权限或服务状态。
 
 ### OPTIONS /portal/api/*
 

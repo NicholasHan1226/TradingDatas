@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Plus, RefreshCw } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { AdminToken, DataCategory, TokensResponse } from '../../lib/types'
 import {
@@ -8,6 +9,7 @@ import {
   Checkbox,
   ControlBar,
   CopyButton,
+  DataCategoryTag,
   EmptyState,
   ErrorBanner,
   Field,
@@ -79,11 +81,14 @@ function formFromToken(t: AdminToken): TokenForm {
 }
 
 function buildPayload(form: TokenForm): Record<string, unknown> {
+  const selectedScopes = form.scopes.includes('admin')
+    ? Array.from(new Set([...form.scopes, 'read']))
+    : form.scopes
   const payload: Record<string, unknown> = {
     tenant_id: form.tenant_id.trim(),
     tier: form.tier,
     scopes: [
-      ...form.scopes,
+      ...selectedScopes,
       ...form.customScopes
         .split(/[,\s]+/)
         .map((s) => s.trim())
@@ -223,9 +228,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
           placeholder="搜索客户 ID / 套餐 / 权限…"
         />
         <Button variant="secondary" onClick={() => void reload()}>
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-            <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 1 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.998a.75.75 0 0 0 1.5 0v-2.993l.358.357a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.106-.799ZM5.25 6.747a5.5 5.5 0 0 1 9.201-2.466l.312.311V3.626a.75.75 0 0 1 1.5 0V7.62a.75.75 0 0 1-.75.75h-4.116a.75.75 0 0 1 0-1.5h2.33l-.357-.357a7 7 0 0 0-11.712 3.138.75.75 0 0 0 1.106.8Z" clipRule="evenodd" />
-          </svg>
+          <RefreshCw aria-hidden size={14} />
           刷新
         </Button>
         <Button
@@ -234,9 +237,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
             setCreateOpen(true)
           }}
         >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-            <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-          </svg>
+          <Plus aria-hidden size={16} />
           新建客户密钥
         </Button>
       </ControlBar>
@@ -288,11 +289,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
                     </td>
                     <td className="px-3 py-3.5">
                       <div className="flex max-w-56 flex-wrap gap-1">
-                        {(t.data_categories ?? []).map((category) => (
-                          <Badge key={category} tone={category === 'a_share' ? 'blue' : category === 'crypto' ? 'violet' : 'amber'}>
-                            {DATA_CATEGORY_OPTIONS.find((item) => item.value === category)?.label ?? category}
-                          </Badge>
-                        ))}
+                        {(t.data_categories ?? []).map((category) => <DataCategoryTag key={category} category={category} />)}
                         {t.data_categories.length === 0 && <span className="text-xs text-rose-600">未授权</span>}
                       </div>
                     </td>
@@ -415,9 +412,13 @@ function TokenFields({
   const update = (patch: Partial<TokenForm>) => setForm((prev) => ({ ...prev, ...patch }))
   const toggleScope = (scope: string, checked: boolean) =>
     update({
-      scopes: checked
-        ? [...form.scopes, scope]
-        : form.scopes.filter((s) => s !== scope),
+      scopes: scope === 'admin' && checked
+        ? Array.from(new Set([...form.scopes, 'read', 'admin']))
+        : scope === 'read' && !checked && form.scopes.includes('admin')
+          ? form.scopes
+          : checked
+            ? [...form.scopes, scope]
+            : form.scopes.filter((s) => s !== scope),
     })
   const toggleCategory = (category: DataCategory, checked: boolean) =>
     update({
@@ -466,7 +467,7 @@ function TokenFields({
                 onChange={(checked) => toggleCategory(category.value, checked)}
                 label={
                   <span>
-                    <span className="block text-xs font-medium text-slate-700">{category.label}</span>
+                    <DataCategoryTag category={category.value} />
                     <span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{category.hint}</span>
                   </span>
                 }
@@ -496,6 +497,7 @@ function TokenFields({
             />
           ))}
         </div>
+        {form.scopes.includes('admin') && <p className="mt-1.5 text-[11px] text-[var(--td-muted)]">管理员凭证固定保留 read 权限，因此可预览并验证客户工作台。</p>}
       </div>
     </div>
   )

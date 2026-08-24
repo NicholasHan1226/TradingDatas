@@ -1,38 +1,40 @@
-import { useEffect, useState } from 'react'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { useEffect, useMemo, useState } from 'react'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { BookOpen, Bot, ChartNoAxesCombined, Check, CircleGauge, Clock3, Code2, Database, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
-import {
-  Badge,
-  Button,
-  Card,
-  CopyButton,
-  ErrorBanner,
-  LoadingPanel,
-  PageIntro,
-  ProgressBar,
-  TABLE_ROW_CLASS,
-  TIER_LABELS,
-} from '../../components/ui'
+import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
+import { Badge, Card, CopyButton, ErrorBanner, LoadingPanel, PageIntro, ProgressBar, TIER_LABELS, fmtNumber } from '../../components/ui'
+
+type SectionKey = 'overview' | 'access' | 'docs'
+type DocKey = 'quickstart' | 'agents' | 'reference'
+
+const NAV: WorkspaceNavItem<SectionKey>[] = [
+  { key: 'overview', label: '首页', description: '账户与使用概览', icon: ChartNoAxesCombined, accent: 'blue' },
+  { key: 'access', label: '权限与额度', description: '市场、限额、有效期', icon: ShieldCheck, accent: 'cyan' },
+  { key: 'docs', label: '文档中心', description: 'API 与 Agent 接入', icon: BookOpen, accent: 'violet' },
+]
+
+const DATA_CATEGORY_DETAILS: Record<DataCategory, { label: string; detail: string; tone: string }> = {
+  a_share: { label: 'A 股', detail: '行情、基础资料与基本面数据', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+  crypto: { label: '加密资产', detail: '公共现货与衍生市场数据', tone: 'border-violet-200 bg-violet-50 text-violet-700' },
+  news: { label: '新闻', detail: '新闻、公告与客观事件数据', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+}
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null
-  const ms = Date.parse(iso.endsWith('Z') ? iso : iso + 'Z') - Date.now()
-  return Math.ceil(ms / 86_400_000)
+  return Math.ceil((Date.parse(iso.endsWith('Z') ? iso : `${iso}Z`) - Date.now()) / 86_400_000)
 }
 
-const DATA_CATEGORY_DETAILS: Record<DataCategory, { label: string; detail: string }> = {
-  a_share: { label: 'A 股', detail: '境内市场行情、基础资料与基本面等数据' },
-  crypto: { label: '加密资产', detail: '隔离运行面提供的公共行情与衍生数据' },
-  news: { label: '新闻', detail: '新闻、公告与事件类客观数据' },
+function expiryLabel(expiresAt: string | null): { main: string; detail: string; tone: 'green' | 'amber' | 'rose' } {
+  if (!expiresAt) return { main: '长期有效', detail: '账户没有设置到期日', tone: 'green' }
+  const days = daysUntil(expiresAt)
+  if (days !== null && days <= 0) return { main: '已过期', detail: expiresAt.slice(0, 10), tone: 'rose' }
+  return {
+    main: `${days} 天`,
+    detail: `有效期至 ${expiresAt.slice(0, 10)}`,
+    tone: days !== null && days <= 14 ? 'amber' : 'green',
+  }
 }
 
 export default function CustomerApp({
@@ -46,8 +48,8 @@ export default function CustomerApp({
   onLogout: () => void
   onViewAdmin?: () => void
 }) {
-  const [section, setSection] = useState<'overview' | 'docs'>('overview')
-  const [docSection, setDocSection] = useState<'platform' | 'api' | 'agent'>('platform')
+  const [section, setSection] = useState<SectionKey>('overview')
+  const [docSection, setDocSection] = useState<DocKey>('quickstart')
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,446 +69,241 @@ export default function CustomerApp({
         if (alive) setError(err instanceof Error ? err.message : '加载失败')
       }
     })()
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [client])
 
-  const curlExample = `# 1) 浏览可用的数据集目录（取 dataset_id 与 schema_major）
+  const curlExample = useMemo(() => `# 先读取目录，确认 dataset_id 与 schema_major
 curl ${client.baseUrl}/v1/catalog \\
   -H "Authorization: Bearer <你的API密钥>"
 
-# 2) 查询某个数据集的数据行（dataset_id 与 schema_major 来自目录）
+# 再查询数据
 curl -X POST ${client.baseUrl}/v1/query \\
   -H "Authorization: Bearer <你的API密钥>" \\
   -H "Content-Type: application/json" \\
-  -d '{"dataset_id": "cn.dataset.adj_factor", "schema_major": 2,
-       "filters": {"ts_code": {"eq": "000001.SZ"}}, "limit": 100}'`
+  -d '{"dataset_id":"cn.dataset.adj_factor","schema_major":2,
+       "filters":{"ts_code":{"eq":"000001.SZ"}},"limit":100}'`, [client.baseUrl])
 
-  const agentPrompt = `你是交易数据分析助手，通过 TradingDatas HTTP API 获取真实行情与基本面数据。
+  const agentPrompt = useMemo(() => `你是金融数据分析 Agent。通过 TradingDatas 只读 API 获取真实数据。
 
-## 连接信息
-- Base URL：${client.baseUrl}
-- 认证：所有请求携带 Header「Authorization: Bearer <你的API密钥>」。
-- 密钥由用户提供，不要把它写进代码仓库或日志。
+连接规则
+- API Base：${client.baseUrl}
+- 每次请求携带 Authorization: Bearer <用户提供的API密钥>
+- 不得把密钥写入代码仓库、提示词日志或输出
 
-## 工作流程
-1) 找数据集：GET ${client.baseUrl}/v1/catalog
-   返回数据集列表，每个条目包含：
-   - dataset_id 与 schema_major（查询时两者都必须提供）
-   - default_fields / fields（可用字段）
-   - filter_operators（各字段支持的过滤操作符）
-   - limits.max_page_size（单页行数上限）
-2) 取数据：POST ${client.baseUrl}/v1/query，JSON 请求体：
-   必填：dataset_id（字符串）、schema_major（整数）
-   常用可选：
-   - filters：按字段过滤，操作符支持 eq / in / gte / lte / between
-     例："filters": {"ts_code": {"eq": "000001.SZ"}}
-     例："filters": {"trade_date": {"gte": "2026-08-01"}}
-   - order：排序数组，元素形如 "字段名:asc" 或 "字段名:desc"
-   - limit：单页行数，不超过该数据集 limits.max_page_size
-   - cursor：翻页时传上一页响应中的 next_cursor
-3) 读响应：
-   - data：数据行对象数组（每行是 字段名->值）
-   - next_cursor：非 null 表示还有下一页，用它继续翻页
-   - metadata.data_through：当前数据截至时间
+调用流程
+1. 先调用 GET /v1/catalog，读取可用 dataset_id、schema_major、字段、过滤操作符与单页上限。
+2. 再调用 POST /v1/query；dataset_id 与 schema_major 必须来自本次 catalog 响应。
+3. 使用 filters、order、limit 查询；有 next_cursor 时按游标继续翻页。
+4. 检查 metadata.data_through、freshness_state、degraded 与 reasons，再向用户说明数据状态。
 
-## 规则
-- 先查 catalog 确认 dataset_id、schema_major 和字段名后再 query，不要凭记忆猜。
-- 收到 429 表示超出套餐的频率或限额：停止请求并等待后重试（指数退避）。
-- 收到 401 表示密钥无效、已暂停或已过期：提示用户检查账号。
-- 这些是只读接口；响应里的 request_id 可用于向管理员反馈问题。`
+异常处理
+- 429：停止并按退避策略重试，不得并发轰击。
+- 401：提示用户检查密钥状态或有效期。
+- 只读数据服务，不生成或执行交易指令。`, [client.baseUrl])
 
-  const toolDefsJson = JSON.stringify(
-    [
-      {
-        type: 'function',
-        function: {
-          name: 'tradingdatas_catalog',
-          description:
-            '浏览 TradingDatas 数据集目录，返回每个数据集的 dataset_id、schema_major、可用字段、过滤操作符与单页上限。查询前必须先在这里获取参数。',
-          parameters: { type: 'object', properties: {}, required: [] },
-        },
+  const toolDefsJson = useMemo(() => JSON.stringify([
+    {
+      type: 'function',
+      function: {
+        name: 'tradingdatas_catalog',
+        description: '读取 TradingDatas 可用数据集目录。任何查询前必须先调用。',
+        parameters: { type: 'object', properties: {}, required: [] },
       },
-      {
-        type: 'function',
-        function: {
-          name: 'tradingdatas_query',
-          description:
-            '查询 TradingDatas 指定数据集的数据行。dataset_id 与 schema_major 必须来自 tradingdatas_catalog 的结果。',
-          parameters: {
-            type: 'object',
-            properties: {
-              dataset_id: { type: 'string', description: '数据集 ID，来自目录' },
-              schema_major: { type: 'integer', description: '数据集主版本号，来自目录' },
-              filters: {
-                type: 'object',
-                description:
-                  '按字段过滤，值为单操作符对象；操作符：eq/in/gte/lte/between。例：{"ts_code":{"eq":"000001.SZ"}}',
-              },
-              order: {
-                type: 'array',
-                items: { type: 'string' },
-                description: '排序，元素形如 "trade_date:desc"',
-              },
-              limit: { type: 'integer', description: '单页行数，不超过目录中该数据集的上限' },
-              cursor: { type: 'string', description: '上一页响应中的 next_cursor，用于翻页' },
-            },
-            required: ['dataset_id', 'schema_major'],
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'tradingdatas_query',
+        description: '查询目录中已授权的数据集。',
+        parameters: {
+          type: 'object',
+          properties: {
+            dataset_id: { type: 'string' },
+            schema_major: { type: 'integer' },
+            filters: { type: 'object' },
+            order: { type: 'array', items: { type: 'string' } },
+            limit: { type: 'integer' },
+            cursor: { type: 'string' },
           },
+          required: ['dataset_id', 'schema_major'],
         },
       },
-    ],
-    null,
-    2,
-  )
+    },
+  ], null, 2), [])
 
-  const pythonExample = `import json
-import os
-import urllib.request
+  if (!me && !error) return <LoadingPanel label="加载账户工作台…" />
 
-BASE = "${client.baseUrl}"
-KEY = os.environ["TRADINGDATAS_API_KEY"]  # 不要硬编码密钥
-
-def get_catalog():
-    req = urllib.request.Request(
-        BASE + "/v1/catalog",
-        headers={"Authorization": "Bearer " + KEY},
-    )
-    return json.load(urllib.request.urlopen(req, timeout=30))
-
-def query(dataset_id, schema_major, **extra):
-    body = dict(dataset_id=dataset_id, schema_major=schema_major, **extra)
-    req = urllib.request.Request(
-        BASE + "/v1/query",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + KEY,
-                 "Content-Type": "application/json"},
-    )
-    return json.load(urllib.request.urlopen(req, timeout=30))
-
-# 目录 -> 选数据集 -> 翻页取数
-catalog = get_catalog()
-resp = query("cn.dataset.adj_factor", 2,
-             filters={"ts_code": {"eq": "000001.SZ"}},
-             order=["trade_date:desc"], limit=100)
-rows, next_cursor = resp["data"], resp["next_cursor"]
-while next_cursor:
-    resp = query("cn.dataset.adj_factor", 2, cursor=next_cursor)
-    rows.extend(resp["data"])
-    next_cursor = resp["next_cursor"]`
-
-  if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
+  const expiry = me ? expiryLabel(me.expires_at) : null
 
   return (
-    <div className="min-h-full bg-[var(--td-canvas)]">
-      {/* Top bar */}
-      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="text-[18px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
-              <div className="mt-0.5 text-[10px] font-medium tracking-[0.1em] text-[var(--td-faint)]">DATA ACCESS</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500 sm:inline">{tenantId}</span>
-            {onViewAdmin && (
-              <Button variant="secondary" size="sm" onClick={onViewAdmin}>
-                返回管理端
-              </Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={onLogout}>退出</Button>
-          </div>
-        </div>
-      </header>
+    <WorkspaceShell
+      workspace="customer"
+      workspaceLabel="客户工作台"
+      items={NAV}
+      active={section}
+      onSelect={setSection}
+      onSwitch={onViewAdmin}
+      switchLabel="返回管理工作台"
+      onLogout={onLogout}
+      previewing={Boolean(onViewAdmin)}
+      identity={tenantId}
+    >
+      {error && <ErrorBanner message={error} />}
+      {me && section === 'overview' && (
+        <div className="space-y-6">
+          <PageIntro eyebrow="CUSTOMER HOME" title="你的数据服务，一眼掌握" description="确认账户状态、市场权限与调用额度，然后把 API 接入你的 Agent。" />
 
-      <main className="mx-auto max-w-7xl space-y-7 px-5 py-7 pb-16 sm:px-6 sm:py-8">
-        {error && <ErrorBanner message={error} />}
-
-        {me && (
-          <>
-            <PageIntro
-              eyebrow="DATA ACCESS"
-              title={section === 'overview' ? '你的数据访问概览' : '文档中心'}
-              description={section === 'overview' ? '查看套餐状态、请求额度和近 30 天调用趋势。' : '集中查看平台分类、API 快速开始、认证说明与 Agent 接入资源。'}
-              action={
-                <nav aria-label="用户前台页面" className="flex rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-white p-1">
-                  {([['overview', '概览'], ['docs', '文档']] as const).map(([value, label]) => (
-                    <button key={value} type="button" aria-pressed={section === value} onClick={() => setSection(value)} className={`min-h-8 rounded px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${section === value ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </nav>
-              }
-            />
-            {section === 'overview' && <div className="contents">
-            {/* Plan summary */}
-            <section className="overflow-hidden rounded-[var(--td-radius)] border border-slate-800 bg-[#15181e] p-6 text-white sm:p-7">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-medium tracking-[0.16em] text-slate-400">ACCESS PROFILE</p>
-                  <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-                    {TIER_LABELS[me.tier] ?? me.tier}
-                  </h1>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {(me.scopes ?? []).map((s) => (
-                      <code key={s} className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] text-blue-200">
-                        {s}
-                      </code>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    {(me.data_categories ?? []).map((category) => (
-                      <span key={category} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-200">
-                        {DATA_CATEGORY_DETAILS[category]?.label ?? category}
-                      </span>
-                    ))}
-                    {me.data_categories.length === 0 && <span className="text-xs text-rose-300">尚未开通数据分类</span>}
-                  </div>
+          <section className="relative overflow-hidden rounded-[18px] bg-[var(--td-shell)] px-6 py-6 text-white shadow-[0_18px_48px_rgb(13_19_32/0.16)] sm:px-8 sm:py-7">
+            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--td-accent),var(--td-cyan),var(--td-violet),var(--td-orange))]" />
+            <div className="grid gap-7 lg:grid-cols-[1.15fr_1fr] lg:items-end">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={me.enabled ? 'green' : 'rose'}>{me.enabled ? '服务可用' : '服务已暂停'}</Badge>
+                  <span className="font-mono text-[10px] text-slate-500">{tenantId}</span>
                 </div>
-                <div className="relative text-right">
-                  <Badge tone={me.enabled ? 'green' : 'rose'}>{me.enabled ? '服务正常' : '已暂停'}</Badge>
-                  <p className="mt-2 text-xs text-slate-400">
-                    {me.expires_at ? (
-                      (() => {
-                        const d = daysUntil(me.expires_at)
-                        if (d !== null && d <= 0) return (
-                          <span className="font-medium text-rose-300">已于 {me.expires_at.slice(0, 10)} 过期</span>
-                        )
-                        return (
-                          <>有效期至 {me.expires_at.slice(0, 10)}
-                            {d !== null && <span className={d! <= 14 ? ' font-medium text-amber-300' : ''}> · 剩余 {d} 天</span>}
-                          </>
-                        )
-                      })()
-                    ) : (
-                      '长期有效'
-                    )}
-                  </p>
+                <p className="mt-5 text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">Current plan</p>
+                <h1 className="mt-1 text-3xl font-semibold tracking-[-0.045em]">{TIER_LABELS[me.tier] ?? me.tier}</h1>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {me.data_categories.map((category) => (
+                    <span key={category} className="rounded-md border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-xs text-slate-200">
+                      {DATA_CATEGORY_DETAILS[category]?.label ?? category}
+                    </span>
+                  ))}
+                  {!me.data_categories.length && <span className="text-xs text-rose-300">尚未开通数据分类</span>}
                 </div>
               </div>
-
-              <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-white/10 pt-5 sm:grid-cols-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-7">
                 {[
-                  // Commercial tiers are metered per minute; legacy tiers per hour.
-                  ...(me.minute_request_limit
-                    ? [['每分钟请求', `${me.minute_request_limit} 次`]]
-                    : [['每小时请求', me.hourly_request_limit === null ? '不限' : `${me.hourly_request_limit} 次`]]),
+                  ['今日请求', fmtNumber(me.usage.today_count)],
+                  [me.minute_request_limit ? '每分钟' : '每小时', fmtNumber(me.minute_request_limit ?? me.hourly_request_limit)],
                   ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
-                  ['每日请求', me.daily_limit === null ? '不限' : `${me.daily_limit.toLocaleString('zh-CN')} 次`],
-                  ['今日已用', `${me.usage.today_count.toLocaleString('zh-CN')} 次`],
-                ].map(([k, v]) => (
-                  <div key={k}>
-                    <dt className="text-[11px] tracking-wide text-slate-400">{k}</dt>
-                    <dd className="mt-1 text-lg font-semibold tabular-nums">{v}</dd>
+                  ['剩余有效期', expiry?.main ?? '—'],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <div className="text-[10px] text-slate-500">{label}</div>
+                    <div className="mt-1.5 text-[17px] font-semibold tracking-[-0.025em] tabular-nums text-white">{value}</div>
                   </div>
                 ))}
-              </dl>
-            </section>
+              </div>
+            </div>
+          </section>
 
-            {/* Usage */}
-            <Card
-              title="近 30 天调用量"
-              action={
-                me.daily_limit !== null ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">今日额度</span>
-                    <ProgressBar value={me.usage.today_count} limit={me.daily_limit} />
-                  </div>
-                ) : undefined
-              }
-            >
-              {!history || history.every((d) => d.total === 0) ? (
-                <div className="py-10 text-center">
-                  <p className="text-sm font-medium text-slate-500">还没有调用记录</p>
-                  <p className="mt-1 text-xs text-slate-400">按下方接入指南发起第一次请求后，这里会出现用量曲线</p>
-                </div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.75fr)]">
+            <Card title="近 30 天调用量" action={me.daily_limit !== null ? <ProgressBar value={me.usage.today_count} limit={me.daily_limit} /> : <span className="text-xs text-slate-400">每日不限额</span>}>
+              {!history || history.every((item) => item.total === 0) ? (
+                <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">还没有调用记录</p><p className="mt-1 text-xs text-slate-400">完成首次请求后，这里会出现调用趋势。</p></div>
               ) : (
-                <div className="h-60 w-full">
+                <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={history} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-                      <defs>
-                        <linearGradient id="custFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#2563eb" stopOpacity={0.28} />
-                          <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                      <XAxis dataKey="date" tickFormatter={(v: string) => v.slice(5)} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '你的请求']}
-                        labelStyle={{ fontSize: 12, color: '#475569' }}
-                        contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgb(15 23 42 / 0.08)', fontSize: 12 }}
-                      />
-                      <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} fill="url(#custFill)" />
+                    <AreaChart data={history} margin={{ top: 12, right: 8, bottom: 0, left: -18 }} accessibilityLayer>
+                      <defs><linearGradient id="customerUsageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--td-accent)" stopOpacity={0.25} /><stop offset="100%" stopColor="var(--td-accent)" stopOpacity={0.01} /></linearGradient></defs>
+                      <CartesianGrid stroke="#e8ebf0" vertical={false} />
+                      <XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5)} tick={{ fontSize: 10, fill: '#97a0af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#97a0af' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '调用量']} contentStyle={{ borderRadius: 10, border: '1px solid #e2e6ec', boxShadow: '0 12px 32px rgb(13 19 32 / .1)', fontSize: 12 }} />
+                      <Area type="monotone" dataKey="total" stroke="var(--td-accent)" strokeWidth={2} fill="url(#customerUsageFill)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               )}
             </Card>
-            </div>}
 
-            {section === 'docs' && (
-              <nav aria-label="文档分类" className="flex w-fit rounded-[var(--td-radius-sm)] bg-slate-100 p-1">
-                {([['platform', '平台说明'], ['api', 'API 快速开始'], ['agent', 'Agent 接入']] as const).map(([value, label]) => (
-                  <button key={value} type="button" aria-pressed={docSection === value} onClick={() => setDocSection(value)} className={`min-h-9 rounded px-4 text-xs font-medium focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === value ? 'bg-white text-[var(--td-ink)] shadow-[var(--td-shadow-1)]' : 'text-[var(--td-muted)] hover:text-[var(--td-ink)]'}`}>
-                    {label}
-                  </button>
-                ))}
-              </nav>
-            )}
-
-            {section === 'docs' && docSection === 'platform' && (
-              <div className="space-y-5">
-                <Card title="数据分类">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {(me.data_categories ?? []).map((category) => (
-                      <div key={category} className="rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-[#f8f9fb] p-4">
-                        <h3 className="text-sm font-semibold text-[var(--td-ink)]">{DATA_CATEGORY_DETAILS[category]?.label ?? category}</h3>
-                        <p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{DATA_CATEGORY_DETAILS[category]?.detail}</p>
-                      </div>
-                    ))}
-                    {me.data_categories.length === 0 && (
-                      <div className="rounded-[var(--td-radius-sm)] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:col-span-3">
-                        当前密钥尚未开通任何数据分类，请联系管理员配置访问范围。
-                      </div>
-                    )}
-                  </div>
-                  <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">这里展示当前密钥已开通的分类；最终可用数据集仍以该密钥请求 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">GET /v1/catalog</code> 返回的目录为准。</p>
-                </Card>
-
-                <div className="grid gap-5 lg:grid-cols-2">
-                  <Card title="账户权限与额度">
-                    <dl className="divide-y divide-slate-100 text-sm">
-                      {[
-                        ['接口权限', '目录发现与数据读取 / 查询'],
-                        ['数据分类', me.data_categories.length ? me.data_categories.map((category) => DATA_CATEGORY_DETAILS[category]?.label ?? category).join('、') : '未开通'],
-                        ['分钟上限', me.minute_request_limit ? `${me.minute_request_limit.toLocaleString('zh-CN')} 次 / 分钟` : '按当前账户档位执行'],
-                        ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
-                        ['每日上限', me.daily_limit === null ? '不限' : `${me.daily_limit.toLocaleString('zh-CN')} 次`],
-                      ].map(([term, detail]) => (
-                        <div key={term} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                          <dt className="text-[var(--td-muted)]">{term}</dt>
-                          <dd className="text-right font-medium text-[var(--td-ink)]">{detail}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </Card>
-                  <Card title="Agent-first 接入">
-                    <p className="text-sm leading-6 text-[var(--td-muted)]">TradingDatas 主要为能够调用 HTTP 工具的 Agent 提供金融数据基础设施。</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {['Claude', 'Codex', 'OpenClaw', 'Hermes'].map((agent) => (
-                        <span key={agent} className="rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">{agent}</span>
-                      ))}
-                    </div>
-                    <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">标准流程：先读取目录，再使用目录返回的 dataset ID、schema 与字段执行查询，并检查 freshness、lineage 和 degraded 状态。</p>
-                  </Card>
-                </div>
-              </div>
-            )}
-
-            {/* Integration guide */}
-            {section === 'docs' && docSection === 'api' && <div>
-            <Card title="API 接入指南">
-              <div className="space-y-5">
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">服务地址（Base URL）</p>
-                  <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-700">
-                      {client.baseUrl}
-                    </code>
-                    <CopyButton text={client.baseUrl} label="复制地址" />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">可用端点</p>
-                  <div className="overflow-hidden rounded-lg border border-slate-100">
-                    <table className="w-full text-xs">
-                      <tbody>
-                        {[
-                          ['GET', '/v1/catalog', '浏览数据集目录（取 dataset_id 与 schema_major）'],
-                          ['POST', '/v1/query', '查询具体数据集的数据行'],
-                          ['GET', '/portal/api/me', '查看本页的套餐与配额信息'],
-                        ].map(([method, path, desc]) => (
-                          <tr key={path} className={TABLE_ROW_CLASS}>
-                            <td className="w-14 px-3 py-2.5">
-                              <Badge tone={method === 'GET' ? 'green' : 'blue'}>{method}</Badge>
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-700">{path}</td>
-                            <td className="px-3 py-2.5 text-slate-500">{desc}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-slate-600">
-                    认证方式 · 所有请求携带 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">Authorization: Bearer 你的API密钥</code> 请求头
-                  </p>
-                  <pre className="overflow-x-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
-{curlExample}
-                  </pre>
-                  <div className="mt-2 flex justify-end">
-                    <CopyButton text={curlExample} label="复制示例" />
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200 ring-inset">
-                  ⚠️ API 密钥等同于账户凭证：请勿写入公开代码仓库或分享给他人；怀疑泄露时立即联系管理员重置。
-                  超出并发、频率（如每分钟请求上限）或每日限额时会收到 <code className="font-mono">429</code> 响应，请按提示退避重试。
-                </div>
-              </div>
+            <Card title="开始使用" className="bg-[#fbfcff]">
+              <ol className="space-y-5">
+                {[
+                  [KeyRound, '准备 API 密钥', '当前登录密钥即可用于已授权的只读请求。'],
+                  [Database, '读取数据目录', '先读取 catalog，确认可用数据集与字段。'],
+                  [Bot, '连接你的 Agent', '复制接入说明与工具定义到 Claude、Codex 等 Agent。'],
+                ].map(([Icon, title, detail], index) => {
+                  const StepIcon = Icon as typeof KeyRound
+                  return <li key={String(title)} className="flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--td-accent-quiet)] text-[var(--td-accent)]"><StepIcon size={15} /></div><div><div className="text-sm font-semibold text-[var(--td-ink)]"><span className="mr-2 text-[10px] text-[var(--td-faint)]">0{index + 1}</span>{String(title)}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{String(detail)}</p></div></li>
+                })}
+              </ol>
+              <button type="button" onClick={() => setSection('docs')} className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-[var(--td-accent)] hover:text-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--td-accent)]">打开接入文档 <Code2 size={14} /></button>
             </Card>
-            </div>}
+          </div>
+        </div>
+      )}
 
-            {/* Agent onboarding: copy-ready prompt / tool defs / sample code */}
-            {section === 'docs' && docSection === 'agent' && <div>
-            <Card title="Agent 接入 · 一键复制">
-              <div className="space-y-5">
-                <p className="text-xs leading-relaxed text-slate-500">
-                  把下面的内容复制进你的 AI Agent（系统提示、工具定义或脚本），即可让它直接使用你的数据接口。
-                </p>
+      {me && section === 'access' && (
+        <div className="space-y-6">
+          <PageIntro eyebrow="ACCESS PROFILE" title="权限与额度" description="这里展示当前 API 密钥实际生效的市场范围、请求限制和账户有效期。" />
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <Card title="账户状态"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Check size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{me.enabled ? '可用' : '已暂停'}</div><div className="text-xs text-[var(--td-muted)]">{TIER_LABELS[me.tier] ?? me.tier}</div></div></div></Card>
+            <Card title="有效期"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Clock3 size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{expiry?.main}</div><div className="text-xs text-[var(--td-muted)]">{expiry?.detail}</div></div></div></Card>
+            <Card title="请求频率"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><CircleGauge size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{fmtNumber(me.minute_request_limit ?? me.hourly_request_limit)}</div><div className="text-xs text-[var(--td-muted)]">{me.minute_request_limit ? '次 / 分钟' : '次 / 小时'}</div></div></div></Card>
+            <Card title="并发上限"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Sparkles size={18} /></div><div><div className="text-lg font-semibold text-[var(--td-ink)]">{me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`}</div><div className="text-xs text-[var(--td-muted)]">每日 {fmtNumber(me.daily_limit)} 次</div></div></div></Card>
+          </div>
+          <Card title="已开通市场">
+            <div className="grid gap-3 md:grid-cols-3">
+              {me.data_categories.map((category) => {
+                const item = DATA_CATEGORY_DETAILS[category]
+                return <div key={category} className={`rounded-xl border p-5 ${item.tone}`}><div className="text-base font-semibold">{item.label}</div><p className="mt-2 text-xs leading-5 opacity-80">{item.detail}</p></div>
+              })}
+              {!me.data_categories.length && <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700 md:col-span-3">当前密钥尚未开通数据分类，请联系管理员配置。</div>}
+            </div>
+            <p className="mt-4 text-xs leading-5 text-[var(--td-muted)]">最终可用数据集以当前密钥调用 <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">GET /v1/catalog</code> 的实时返回为准。</p>
+          </Card>
+          <Card title="接口权限">
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                ['发现目录', '读取数据集、字段、过滤条件与分页限制。'],
+                ['读取与查询', '按已授权市场读取数据，不包含写入或交易能力。'],
+                ['查看账户', '查看自身权限、有效期与用量，不读取其他客户信息。'],
+              ].map(([title, detail]) => <div key={title} className="border-l-2 border-[var(--td-accent)] pl-4"><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div>)}
+            </div>
+          </Card>
+        </div>
+      )}
 
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">给 AI 助手的接入提示词（粘贴到 Agent 的系统提示中）</p>
-                    <CopyButton text={agentPrompt} label="复制提示词" />
-                  </div>
-                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap">
-{agentPrompt}
-                  </pre>
+      {me && section === 'docs' && (
+        <div className="space-y-6">
+          <PageIntro eyebrow="DOCUMENTATION" title="文档中心" description="从第一次请求到 Agent 工具配置，所有接入说明集中在这里。" />
+          <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <nav aria-label="文档目录" className="h-fit rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-2 shadow-[var(--td-shadow-1)]">
+              {([
+                ['quickstart', Code2, 'API 快速开始', '认证与首次查询'],
+                ['agents', Bot, 'Agent 接入', '提示词与工具定义'],
+                ['reference', BookOpen, '使用约定', '分页、限流与安全'],
+              ] as const).map(([key, Icon, label, detail]) => (
+                <button key={key} type="button" onClick={() => setDocSection(key)} aria-current={docSection === key ? 'page' : undefined} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === key ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
+                  <Icon aria-hidden size={16} className="mt-0.5 shrink-0" />
+                  <span><span className="block text-xs font-semibold">{label}</span><span className="mt-0.5 block text-[10px] opacity-70">{detail}</span></span>
+                </button>
+              ))}
+            </nav>
+
+            {docSection === 'quickstart' && <Card title="API 快速开始" action={<CopyButton text={curlExample} label="复制示例" />}>
+              <div className="grid gap-5 xl:grid-cols-[1fr_1.35fr]">
+                <div className="space-y-4">
+                  {[
+                    ['01', '认证请求', '所有请求都使用 Bearer API 密钥。'],
+                    ['02', '发现数据集', '先读取 /v1/catalog，确认数据合同。'],
+                    ['03', '查询与翻页', '通过 /v1/query 查询，使用 next_cursor 继续翻页。'],
+                  ].map(([number, title, detail]) => <div key={number} className="flex gap-3"><span className="font-mono text-[10px] text-[var(--td-accent)]">{number}</span><div><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div></div>)}
                 </div>
-
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">Function Calling 工具定义（OpenAI 兼容格式）</p>
-                    <CopyButton text={toolDefsJson} label="复制工具定义" />
-                  </div>
-                  <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
-{toolDefsJson}
-                  </pre>
-                </div>
-
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-600">Python 调用示例（标准库，无需安装依赖）</p>
-                    <CopyButton text={pythonExample} label="复制 Python 示例" />
-                  </div>
-                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-200">
-{pythonExample}
-                  </pre>
-                </div>
+                <pre className="max-h-[420px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300 whitespace-pre-wrap">{curlExample}</pre>
               </div>
-            </Card>
+            </Card>}
+
+            {docSection === 'agents' && <div className="space-y-5">
+              <Card title="给 Agent 的接入提示词" action={<CopyButton text={agentPrompt} label="复制提示词" />}><pre className="max-h-[420px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300 whitespace-pre-wrap">{agentPrompt}</pre></Card>
+              <Card title="Function Calling 工具定义" action={<CopyButton text={toolDefsJson} label="复制定义" />}><pre className="max-h-[380px] overflow-auto rounded-xl bg-[#0b1020] p-5 font-mono text-[11px] leading-6 text-slate-300">{toolDefsJson}</pre></Card>
             </div>}
-          </>
-        )}
-      </main>
-    </div>
+
+            {docSection === 'reference' && <Card title="使用约定">
+              <div className="grid gap-6 md:grid-cols-2">
+                {[
+                  ['只读边界', 'TradingDatas 提供数据目录与查询，不写入数据，也不生成或执行交易指令。'],
+                  ['限流与重试', '收到 429 后停止当前批次，并采用指数退避；并发不得超过账户上限。'],
+                  ['游标分页', 'next_cursor 非空时继续翻页；不要自行构造或复用其他查询的游标。'],
+                  ['密钥安全', '密钥只放在环境变量或安全凭证存储中，不写入仓库、日志和公开提示词。'],
+                ].map(([title, detail]) => <div key={title}><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-2 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div>)}
+              </div>
+            </Card>}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
   )
 }
