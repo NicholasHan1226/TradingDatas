@@ -18,7 +18,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm disabled:bg-blue-300',
+    'bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[0_1px_2px_rgb(15_23_42/0.16)] disabled:bg-blue-300',
   secondary:
     'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:bg-slate-100 shadow-sm',
   ghost: 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900',
@@ -42,8 +42,8 @@ export function Button({
     <button
       {...rest}
       disabled={rest.disabled || loading}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${
-        size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-4 py-2 text-sm'
+      className={`inline-flex items-center justify-center gap-1.5 rounded-[var(--td-radius-sm)] font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--td-duration-fast)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${
+        size === 'sm' ? 'min-h-8 px-2.5 py-1.5 text-xs' : 'min-h-10 px-4 py-2 text-sm'
       } ${BUTTON_STYLES[variant]} ${className}`}
     >
       {loading && <Spinner size={size === 'sm' ? 12 : 14} />}
@@ -110,11 +110,11 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${className}`}
+      className={`rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface)] shadow-[var(--td-shadow-1)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <h2 className="text-sm font-semibold tracking-[-0.01em] text-slate-800">{title}</h2>
           {action}
         </header>
       )}
@@ -145,7 +145,7 @@ export function StatCard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]"
+      className="rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface)] p-5 shadow-[var(--td-shadow-1)]"
     >
       <div className="text-xs font-medium tracking-wide text-slate-500">{label}</div>
       <div className={`mt-1.5 text-2xl font-semibold leading-none ${toneClass}`}>{value}</div>
@@ -217,7 +217,7 @@ export function fmtNumber(value: number | null | undefined): string {
 // ---------- Inputs ----------
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 transition-shadow focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none'
+  'min-h-10 w-full rounded-[var(--td-radius-sm)] border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 shadow-[0_1px_1px_rgb(15_23_42/0.02)] transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-none'
 
 export function Field({
   label,
@@ -336,7 +336,7 @@ export function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className={`w-full ${width} max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-xl`}
+            className={`w-full ${width} max-h-[88vh] overflow-y-auto rounded-[var(--td-radius-lg)] border border-white/70 bg-white shadow-[var(--td-shadow-2)]`}
           >
             <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <h3 className="text-sm font-semibold text-slate-800">{title}</h3>

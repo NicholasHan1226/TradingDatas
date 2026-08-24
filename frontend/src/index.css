@@ -16,8 +16,58 @@ body,
 }
 
 body {
-  @apply bg-slate-100 text-slate-800 antialiased;
+  @apply bg-slate-50 text-slate-800 antialiased;
   font-feature-settings: "tnum";
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgb(37 99 235 / 0.16);
+  color: rgb(15 23 42);
+}
+
+/* A restrained research-workstation palette: operational states and data
+   remain the first visual read, while chrome stays quiet. */
+:root {
+  color-scheme: light;
+  /* Canvas and surfaces: quiet neutrals give dense market data room to breathe. */
+  --td-canvas: #f8fafc;
+  --td-surface: #ffffff;
+  --td-surface-subtle: #f8fafc;
+  --td-ink: #0f172a;
+  --td-muted: #64748b;
+  --td-line: #e2e8f0;
+  --td-accent: #2563eb;
+  --td-accent-strong: #1d4ed8;
+  --td-success: #059669;
+  --td-warning: #d97706;
+  --td-danger: #e11d48;
+  /* 4pt rhythm; 14px is the default surface radius, never a random value. */
+  --td-space-1: 4px;
+  --td-space-2: 8px;
+  --td-space-3: 12px;
+  --td-space-4: 16px;
+  --td-space-5: 20px;
+  --td-space-6: 24px;
+  --td-radius-sm: 8px;
+  --td-radius: 14px;
+  --td-radius-lg: 20px;
+  --td-shadow-1: 0 1px 2px rgb(15 23 42 / 0.035);
+  --td-shadow-2: 0 16px 36px rgb(15 23 42 / 0.12);
+  --td-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --td-duration-fast: 120ms;
+  --td-duration: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Slim scrollbars for dense data panels */
