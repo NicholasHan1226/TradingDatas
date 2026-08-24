@@ -104,7 +104,8 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 - 中国境内只读数据和当前账号实际有权使用的数据集；
 - Binance 公共现货冻结的 40 个高流动性 USDT 标的只读 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结 40 标的的 Binance USDⓈ-M 永续 funding rate 与 open interest 公共只读历史，仅允许在隔离 Crypto 运行面接入；标的清单由版本化 universe 合同编译，不能由运行时临时扩张；在 `fapi.binance.com` 被 SNI 级阻断期间，open interest 允许以 `https://data.binance.vision` 的 USDⓈ-M 日度 metrics dump 作为同一 dataset 的降级公共来源，premium index（funding 压力代理，非 funding rate 本身）允许以同站的日度 premiumIndexKlines dump 作为独立新 dataset 家族采集（funding rate 无 dump，仍不可得）；
-- 港股、美股、其它加密资产、预测市场和 provider 写/账号管理操作排除；
+- 港股、美股和其它加密资产排除；预测市场仅限 TD 的公共只读数据面：受限采集、provider-native 校验、规范化事实、transaction receipt/lineage，以及在独立合同、官方来源 hash、relay/权限证据、真实 receipt 和认证 API readback 齐备后向 A-share/Crypto 分析供数；这不构成 activation；
+- 预测市场的 TA 交易/模拟、Copilot、钱包/账户/经纪、资金、订单、执行、promotion、live 与任何 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
 - `activation`/稳定生产的每个数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence；`contract_ready` 候选只需保留上述缺口，不得被误标为已激活。
 
@@ -132,7 +133,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 ## clean-slate 与退役
 
-当前代码树不保留旧 SharedSignals 公共 route、双注册表、opening gate、旧 Crypto 路由/采集器、预测市场、DuckDB、邮件、旧 cron、旧 reader 或交易式控制。新的 Binance 公共数据切片只能通过独立 provider-level adapter 和隔离运行面接入；Git 历史承担旧实现追溯。
+当前代码树不保留旧 SharedSignals 公共 route、双注册表、opening gate、旧 Crypto 路由/采集器、旧预测市场产品、DuckDB、邮件、旧 cron、旧 reader 或交易式控制。`collectors/prediction_markets/` 如存在，只能是当前经审查的公共只读 TD provider adapter；在官方合同 hash、双 dataset 映射、Yes/No 语义交叉核对、持久化/receipt 合同与认证 API readback 完成前，不得注册、启用 timer 或对外供数，更不得形成 TA/Copilot 交易控制。新的 Binance 公共数据切片只能通过独立 provider-level adapter 和隔离运行面接入；Git 历史承担旧实现追溯。
 
 旧生产系统只在 TradingDatas 真实采集、API readback、消费者切换和回滚证明完成前作为短期回滚源；不得把其接口或数据结构带回新架构。数据库和历史数据删除需要单独保留策略。
 
