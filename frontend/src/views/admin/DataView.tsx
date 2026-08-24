@@ -63,14 +63,15 @@ export default function DataView({ client }: { client: ApiClient }) {
     try {
       const result = await client.post<QueryResult>('/v1/query', {
         dataset_id: dataset.dataset_id,
+        schema_major: dataset.schema_major,
         limit: 20,
       })
-      const inner = result.data ?? {}
+      const items = result.data ?? []
       setSample({
         loading: false,
         error: null,
-        fields: inner.fields ?? (inner.items?.[0] ? Object.keys(inner.items[0]) : []),
-        items: inner.items ?? [],
+        fields: items[0] ? Object.keys(items[0]) : [],
+        items,
         cursor: result.next_cursor ?? null,
       })
     } catch (err) {
@@ -90,15 +91,16 @@ export default function DataView({ client }: { client: ApiClient }) {
     try {
       const result = await client.post<QueryResult>('/v1/query', {
         dataset_id: selected.dataset_id,
+        schema_major: selected.schema_major,
         limit: 20,
         cursor: sample.cursor,
       })
-      const inner = result.data ?? {}
+      const items = result.data ?? []
       setSample({
         loading: false,
         error: null,
-        fields: sample.fields.length ? sample.fields : inner.fields ?? [],
-        items: [...sample.items, ...(inner.items ?? [])],
+        fields: sample.fields.length ? sample.fields : items[0] ? Object.keys(items[0]) : [],
+        items: [...sample.items, ...items],
         cursor: result.next_cursor ?? null,
       })
     } catch (err) {
@@ -111,7 +113,7 @@ export default function DataView({ client }: { client: ApiClient }) {
   }
 
   const curlExample = selected
-    ? `curl -X POST ${client.baseUrl}/v1/query \\\n  -H "Authorization: Bearer <你的API密钥>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"dataset_id": "${selected.dataset_id}", "limit": 20}'`
+    ? `curl -X POST ${client.baseUrl}/v1/query \\\n  -H "Authorization: Bearer <你的API密钥>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"dataset_id": "${selected.dataset_id}", "schema_major": ${selected.schema_major}, "limit": 20}'`
     : ''
 
   if (!rows && !error) return <LoadingPanel label="加载数据目录…" />
@@ -145,7 +147,7 @@ export default function DataView({ client }: { client: ApiClient }) {
               >
                 <div className="min-w-0">
                   <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
-                  <div className="text-[10px] text-slate-400">{d.market} · {d.cadence}</div>
+                  <div className="text-[10px] text-slate-400">v{d.schema_major} · {d.market} · {d.cadence}</div>
                 </div>
                 <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{d.runtime_state ?? '-'}</Badge>
               </button>
@@ -172,6 +174,7 @@ export default function DataView({ client }: { client: ApiClient }) {
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
                 {[
                   ['市场', selected.market],
+                  ['Schema', `v${selected.schema_major}`],
                   ['领域', selected.domain ?? '—'],
                   ['频率', selected.cadence],
                   ['提供方', selected.provider],

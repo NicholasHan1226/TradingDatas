@@ -188,26 +188,22 @@ while next_cursor:
   if (!me && !error) return <LoadingPanel label="加载你的套餐信息…" />
 
   return (
-    <div className="min-h-full bg-slate-100">
+    <div className="min-h-full bg-slate-50">
       {/* Top bar */}
-      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-600/25">
-              <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5 text-white">
-                <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold tracking-tight text-slate-900">TradingDatas</span>
+      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-6">
+          <div>
+            <div className="text-[17px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
+            <div className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-slate-400">DATA ACCESS PORTAL</div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-mono text-xs text-slate-500">{tenantId}</span>
+            <span className="hidden rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500 sm:inline">{tenantId}</span>
             <Button variant="secondary" size="sm" onClick={onLogout}>退出</Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8 pb-16">
+      <main className="mx-auto max-w-6xl space-y-6 px-5 py-7 pb-16 sm:px-6 sm:py-8">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           {error && <ErrorBanner message={error} />}
         </motion.div>
@@ -215,11 +211,13 @@ while next_cursor:
         {me && (
           <>
             {/* Plan summary */}
-            <section className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-blue-950 p-6 text-white shadow-lg">
+            <section className="relative overflow-hidden rounded-[var(--td-radius)] bg-slate-950 p-6 text-white shadow-[0_16px_36px_rgb(15_23_42/0.14)] sm:p-7">
+              <div className="pointer-events-none absolute -right-28 -top-32 h-72 w-72 rounded-full bg-blue-500/12 blur-3xl" />
+              <div className="pointer-events-none absolute right-8 bottom-0 h-24 w-72 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_23px,rgb(148_163_184_/_0.08)_24px)]" />
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs tracking-wide text-slate-400">我的套餐</p>
-                  <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+                  <p className="text-[10px] font-medium tracking-[0.16em] text-slate-400">ACCESS PROFILE</p>
+                  <h1 className="mt-2 text-2xl font-semibold tracking-tight">
                     {TIER_LABELS[me.tier] ?? me.tier}
                   </h1>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -230,7 +228,7 @@ while next_cursor:
                     ))}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="relative text-right">
                   <Badge tone={me.enabled ? 'green' : 'rose'}>{me.enabled ? '服务正常' : '已暂停'}</Badge>
                   <p className="mt-2 text-xs text-slate-400">
                     {me.expires_at ? (

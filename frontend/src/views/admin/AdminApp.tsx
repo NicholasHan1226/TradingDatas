@@ -86,29 +86,22 @@ export default function AdminApp({
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex min-h-full bg-slate-50">
       {/* Sidebar */}
-      <aside className="flex w-56 shrink-0 flex-col bg-slate-950 text-slate-300">
-        <div className="flex items-center gap-2.5 px-5 pt-6 pb-7">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-600/30">
-            <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5 text-white">
-              <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight text-white">TradingDatas</div>
-            <div className="text-[10px] tracking-widest text-slate-500">ADMIN CONSOLE</div>
-          </div>
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-white/10 bg-slate-950 text-slate-300 lg:flex">
+        <div className="px-6 pt-7 pb-8">
+          <div className="text-[17px] font-bold tracking-[-0.055em] text-white">TradingDatas</div>
+          <div className="mt-1 text-[10px] font-medium tracking-[0.18em] text-slate-500">ADMIN WORKSPACE</div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3">
+        <nav className="flex-1 space-y-1 px-4">
           {NAV.map((item) => {
             const active = item.key === section
             return (
               <button
                 key={item.key}
                 onClick={() => setSection(item.key)}
-                className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${
                   active
                     ? 'bg-white/10 font-medium text-white'
                     : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
@@ -127,7 +120,8 @@ export default function AdminApp({
           })}
         </nav>
 
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-white/10 px-4 py-4">
+          <div className="mb-3 px-3 text-[10px] font-medium tracking-[0.16em] text-slate-600">CONTROL PLANE</div>
           <button
             onClick={onLogout}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-300"
@@ -141,11 +135,29 @@ export default function AdminApp({
       </aside>
 
       {/* Content */}
-      <main className="min-w-0 flex-1 overflow-y-auto bg-slate-100">
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 px-8 py-4 backdrop-blur">
-          <h1 className="text-base font-semibold tracking-tight text-slate-900">{current.title}</h1>
+      <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur md:px-8">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <div>
+              <div className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">运营控制台</div>
+              <h1 className="text-base font-semibold tracking-tight text-slate-900">{current.title}</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:inline-flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> 已认证会话
+              </span>
+              <select
+                aria-label="切换控制台页面"
+                value={section}
+                onChange={(event) => setSection(event.target.value as SectionKey)}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 lg:hidden"
+              >
+                {NAV.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+              </select>
+            </div>
+          </div>
         </header>
-        <div className="mx-auto max-w-6xl px-8 py-6 pb-14">
+        <div className="mx-auto max-w-6xl px-5 py-6 pb-14 md:px-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={section}

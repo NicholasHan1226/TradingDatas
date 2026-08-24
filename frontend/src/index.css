@@ -16,8 +16,26 @@ body,
 }
 
 body {
-  @apply bg-slate-100 text-slate-800 antialiased;
+  @apply bg-slate-50 text-slate-800 antialiased;
   font-feature-settings: "tnum";
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgb(37 99 235 / 0.16);
+  color: rgb(15 23 42);
+}
+
+/* A restrained research-workstation palette: operational states and data
+   remain the first visual read, while chrome stays quiet. */
+:root {
+  color-scheme: light;
+  --td-canvas: #f8fafc;
+  --td-ink: #0f172a;
+  --td-muted: #64748b;
+  --td-line: #e2e8f0;
+  --td-accent: #2563eb;
+  --td-radius: 14px;
 }
 
 /* Slim scrollbars for dense data panels */

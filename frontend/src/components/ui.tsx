@@ -18,7 +18,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm disabled:bg-blue-300',
+    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-[0_1px_2px_rgb(15_23_42/0.16)] disabled:bg-blue-300',
   secondary:
     'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:bg-slate-100 shadow-sm',
   ghost: 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900',
@@ -42,7 +42,7 @@ export function Button({
     <button
       {...rest}
       disabled={rest.disabled || loading}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg font-medium transition-[color,background-color,border-color,box-shadow] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${
         size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-4 py-2 text-sm'
       } ${BUTTON_STYLES[variant]} ${className}`}
     >
@@ -110,7 +110,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${className}`}
+      className={`rounded-[var(--td-radius)] border border-slate-200/90 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.035)] ${className}`}
     >
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
@@ -145,7 +145,7 @@ export function StatCard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]"
+      className="rounded-[var(--td-radius)] border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.035)]"
     >
       <div className="text-xs font-medium tracking-wide text-slate-500">{label}</div>
       <div className={`mt-1.5 text-2xl font-semibold leading-none ${toneClass}`}>{value}</div>

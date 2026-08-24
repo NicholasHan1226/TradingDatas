@@ -74,6 +74,7 @@ export interface UsageOverview {
 
 export interface DatasetRow {
   dataset_id: string
+  schema_major: number
   provider: string
   market: string
   domain?: string
@@ -109,9 +110,7 @@ export interface DataOverview {
 }
 
 export interface QueryResult {
-  data?: { items?: Record<string, unknown>[]; fields?: string[] }
-  items?: Record<string, unknown>[]
-  fields?: string[]
+  data?: Record<string, unknown>[]
   next_cursor?: string | null
 }
 
