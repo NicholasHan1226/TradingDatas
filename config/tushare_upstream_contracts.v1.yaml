@@ -9752,9 +9752,6 @@ contracts:
   range_field: ann_date
   partition_field: ann_date
   as_of_format: yyyymmdd
-  # 2026-08-24: daily_reference -> event; same ann_date publication-window
-  # rationale as share_float (00:30 daily sweep only observed trusted-empty
-  # windows; the event wave re-observes until rows appear).
   cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -29353,11 +29350,6 @@ contracts:
   api_name: share_float
   source_document_url: https://tushare.pro/wctapi/documents/160.md
   source_document_sha256: 9bfbf3d0ff4c8d43cdd4c669a6199fddc22c0c34997c7512a3b357b7c47d5216
-  # 2026-08-24: daily_reference -> event.  ann_date-partitioned announcements
-  # publish throughout the announcement day (mostly 15:00-24:00 local), so the
-  # 00:30 daily sweep only ever observed a trusted-empty window for the
-  # just-started date (2026-08-18..24 receipts all empty while upstream held
-  # the rows).  The event wave re-observes the current date every >=15 min.
   schema_version: 1.0.0
   input_fields:
   - name: ts_code

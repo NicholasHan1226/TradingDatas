@@ -848,7 +848,13 @@ contracts:
     as_of_format: yyyymmdd
     range_field: ann_date
     partition_field: ann_date
-    cadence_class: daily_reference
+    # 2026-08-24: daily_reference -> event.  ann_date-partitioned announcements
+    # publish throughout the announcement day (mostly 15:00-24:00 CST), so the
+    # 00:30 daily sweep only observed a trusted-empty window for the just-started
+    # date and froze partitions at 20260731 (2026-08-18..24 receipts all empty
+    # while upstream held the rows).  The event wave re-observes the current
+    # date every >=15 min; storage dedups by payload_hash.
+    cadence_class: event
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -893,7 +899,10 @@ contracts:
     as_of_format: yyyymmdd
     range_field: ann_date
     partition_field: ann_date
-    cadence_class: daily_reference
+    # 2026-08-24: daily_reference -> event; same ann_date publication-window
+    # rationale as disclosure_date (00:30 sweep only observed trusted-empty
+    # windows; the event wave re-observes until rows appear).
+    cadence_class: event
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
