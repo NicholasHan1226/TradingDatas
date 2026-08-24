@@ -104,8 +104,10 @@ context or navigation position, never authorization or runtime health.
 - shadcn/ui composition patterns inform the shell, tables and chart tokens, but
   its entire runtime is not installed; TradingDatas owns its visual language.
 - Radix Dialog provides focus trapping, Escape handling and screen-reader title
-  semantics for credential workflows. TanStack Table remains a later candidate
-  if sorting or large-table virtualization becomes a real product requirement.
+  semantics for credential workflows. The later productivity contract in
+  `console-productivity-v5.md` adopts TanStack Table and Virtual for operator
+  sorting, column visibility and large-row rendering without replacing this
+  visual system.
 
 ## Responsive and QA contract
 

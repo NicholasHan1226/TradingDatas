@@ -5,9 +5,10 @@ import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
 import { Badge, Card, CopyButton, ErrorBanner, LoadingPanel, PageIntro, ProgressBar, TIER_LABELS, fmtNumber } from '../../components/ui'
+import type { CustomerSection, DocSection } from '../../lib/workspaceRoute'
 
-type SectionKey = 'overview' | 'access' | 'docs'
-type DocKey = 'quickstart' | 'agents' | 'reference'
+type SectionKey = CustomerSection
+type DocKey = DocSection
 
 const NAV: WorkspaceNavItem<SectionKey>[] = [
   { key: 'overview', label: '首页', description: '账户与使用概览', icon: ChartNoAxesCombined, accent: 'blue' },
@@ -40,16 +41,22 @@ function expiryLabel(expiresAt: string | null): { main: string; detail: string; 
 export default function CustomerApp({
   client,
   tenantId,
+  section,
+  docSection,
+  onSectionChange,
+  onDocSectionChange,
   onLogout,
   onViewAdmin,
 }: {
   client: ApiClient
   tenantId: string
+  section: SectionKey
+  docSection: DocKey
+  onSectionChange: (section: SectionKey) => void
+  onDocSectionChange: (section: DocKey) => void
   onLogout: () => void
   onViewAdmin?: () => void
 }) {
-  const [section, setSection] = useState<SectionKey>('overview')
-  const [docSection, setDocSection] = useState<DocKey>('quickstart')
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -141,7 +148,7 @@ curl -X POST ${client.baseUrl}/v1/query \\
       workspaceLabel="客户工作台"
       items={NAV}
       active={section}
-      onSelect={setSection}
+      onSelect={onSectionChange}
       onSwitch={onViewAdmin}
       switchLabel="返回管理工作台"
       onLogout={onLogout}
@@ -219,7 +226,7 @@ curl -X POST ${client.baseUrl}/v1/query \\
                   return <li key={String(title)} className="flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--td-accent-quiet)] text-[var(--td-accent)]"><StepIcon size={15} /></div><div><div className="text-sm font-semibold text-[var(--td-ink)]"><span className="mr-2 text-[10px] text-[var(--td-faint)]">0{index + 1}</span>{String(title)}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{String(detail)}</p></div></li>
                 })}
               </ol>
-              <button type="button" onClick={() => setSection('docs')} className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-[var(--td-accent)] hover:text-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--td-accent)]">打开接入文档 <Code2 size={14} /></button>
+              <button type="button" onClick={() => onSectionChange('docs')} className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-[var(--td-accent)] hover:text-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--td-accent)]">打开接入文档 <Code2 size={14} /></button>
             </Card>
           </div>
         </div>
@@ -266,7 +273,7 @@ curl -X POST ${client.baseUrl}/v1/query \\
                 ['agents', Bot, 'Agent 接入', '提示词与工具定义'],
                 ['reference', BookOpen, '使用约定', '分页、限流与安全'],
               ] as const).map(([key, Icon, label, detail]) => (
-                <button key={key} type="button" onClick={() => setDocSection(key)} aria-current={docSection === key ? 'page' : undefined} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === key ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
+                <button key={key} type="button" onClick={() => onDocSectionChange(key)} aria-current={docSection === key ? 'page' : undefined} className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${docSection === key ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
                   <Icon aria-hidden size={16} className="mt-0.5 shrink-0" />
                   <span><span className="block text-xs font-semibold">{label}</span><span className="mt-0.5 block text-[10px] opacity-70">{detail}</span></span>
                 </button>

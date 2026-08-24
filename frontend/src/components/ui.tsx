@@ -8,6 +8,7 @@ import {
 } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Bitcoin, ChartCandlestick, Check, CircleAlert, Copy, LoaderCircle, Newspaper, Search, Tag, X, type LucideIcon } from 'lucide-react'
+import { recordConsoleEvent, type ConsoleWorkspace } from '../lib/consoleAnalytics'
 
 // ---------- Buttons ----------
 
@@ -455,6 +456,8 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text)
+      const workspace = (document.querySelector('[data-workspace]')?.getAttribute('data-workspace') ?? 'customer') as ConsoleWorkspace
+      recordConsoleEvent('copy_succeeded', workspace)
       setCopied(true)
       toast('ok', `${label}成功`)
       setTimeout(() => setCopied(false), 1600)

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Activity, BarChart3, Database, KeyRound, SearchCode } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
@@ -7,8 +7,9 @@ import UsageView from './UsageView'
 import CollectionView from './CollectionView'
 import HealthView from './HealthView'
 import DataView from './DataView'
+import type { AdminSection } from '../../lib/workspaceRoute'
 
-type SectionKey = 'tokens' | 'usage' | 'collection' | 'health' | 'browser'
+type SectionKey = AdminSection
 
 const NAV: WorkspaceNavItem<SectionKey>[] = [
   { key: 'tokens', label: '客户与密钥', description: '账户、套餐与授权', group: 'Access', icon: KeyRound, accent: 'blue' },
@@ -20,15 +21,17 @@ const NAV: WorkspaceNavItem<SectionKey>[] = [
 
 export default function AdminApp({
   client,
+  section,
+  onSectionChange,
   onLogout,
   onViewCustomer,
 }: {
   client: ApiClient
+  section: SectionKey
+  onSectionChange: (section: SectionKey) => void
   onLogout: () => void
   onViewCustomer: () => void
 }) {
-  const [section, setSection] = useState<SectionKey>('tokens')
-
   const views: Record<SectionKey, ReactNode> = {
     tokens: <TokensView client={client} />,
     usage: <UsageView client={client} />,
@@ -43,7 +46,7 @@ export default function AdminApp({
       workspaceLabel="管理员工作台"
       items={NAV}
       active={section}
-      onSelect={setSection}
+      onSelect={onSectionChange}
       onSwitch={onViewCustomer}
       switchLabel="预览客户门户"
       onLogout={onLogout}

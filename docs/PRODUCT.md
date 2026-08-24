@@ -86,6 +86,12 @@ The preview is a presentation mode, not impersonation: it never reads another
 customer's portal data and never changes the token. The frontend derives the
 initial workspace from server-projected scopes/tier; it does not grant access.
 
+Workspace sections have durable hash routes so reload, copied links and browser
+history preserve the current admin/customer task without requiring a Pages SPA
+fallback. Table preferences and the console-experience counters are browser-local
+only. The counters are aggregate product-QA signals and never contain or transmit
+tokens, tenant IDs, dataset IDs, request bodies, API responses or device identity.
+
 ## Implementation truth and stop line
 
 As of 2026-08-24, bearer authentication, endpoint scopes, per-minute commercial
@@ -109,6 +115,8 @@ mutation. Production availability remains a separate release/readback fact in
 - `docs/OPERATIONS.md`: deployment, runtime, verification, rollback;
 - `docs/design/console-product-system-v4.md`: shared console information
   architecture, design language, role-switching and visual QA contract;
+- `docs/design/console-productivity-v5.md`: hash navigation, persisted operator
+  table behavior, local anonymous console analytics and rollback boundary;
 - `STATUS.md`: time-sensitive production evidence and known gaps;
 - `AGENTS.md`: development and release rules.
 

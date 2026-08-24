@@ -4,7 +4,7 @@
 // server's wildcard CORS policy valid — do not introduce cookie storage here
 // without changing docs/API.md and the backend CORS headers together.
 
-export const DEFAULT_API_BASE = 'https://td-admin-api.tradingagent.cc'
+export const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE || 'https://td-admin-api.tradingagent.cc'
 
 const TOKEN_KEY = 'td_app_token'
 const BASE_KEY = 'td_app_base'

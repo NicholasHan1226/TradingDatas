@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ApiClient, ApiError, clearSession, loadSession, saveSession } from './lib/api'
 import type { PortalMeResponse, Role } from './lib/types'
 import { LoadingPanel, ToastProvider } from './components/ui'
 import Login from './views/Login'
-import AdminApp from './views/admin/AdminApp'
-import CustomerApp from './views/customer/CustomerApp'
+import { recordConsoleEvent } from './lib/consoleAnalytics'
+import {
+  clearWorkspaceRoute,
+  commitWorkspaceRoute,
+  defaultWorkspaceRoute,
+  resolveWorkspaceRoute,
+  routeHash,
+  type WorkspaceRoute,
+} from './lib/workspaceRoute'
+
+const AdminApp = lazy(() => import('./views/admin/AdminApp'))
+const CustomerApp = lazy(() => import('./views/customer/CustomerApp'))
 
 interface Session {
   client: ApiClient
@@ -21,18 +31,23 @@ function resolveRole(scopes: string[], tier: string): Role {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [booting, setBooting] = useState(true)
-  const [previewingCustomer, setPreviewingCustomer] = useState(false)
+  const [route, setRoute] = useState<WorkspaceRoute>({ workspace: 'admin', section: 'tokens' })
 
   const bootstrap = useCallback(async (token: string, base: string) => {
     const probe = new ApiClient(base, token)
     try {
       const me = await probe.get<PortalMeResponse>('/portal/api/me')
+      const role = resolveRole(me.portal.scopes, me.portal.tier)
+      const nextRoute = resolveWorkspaceRoute(role)
       setSession({
         client: probe,
-        role: resolveRole(me.portal.scopes, me.portal.tier),
+        role,
         tenantId: me.portal.tenant_id,
         tier: me.portal.tier,
       })
+      setRoute(nextRoute)
+      commitWorkspaceRoute(nextRoute, true)
+      recordConsoleEvent('login_success', nextRoute.workspace)
       return null
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -51,6 +66,23 @@ export default function App() {
     bootstrap(token, base).finally(() => setBooting(false))
   }, [bootstrap])
 
+  useEffect(() => {
+    if (!session) return
+    const syncFromLocation = () => {
+      const next = resolveWorkspaceRoute(session.role)
+      setRoute(next)
+      if (window.location.hash !== routeHash(next)) {
+        commitWorkspaceRoute(next, true)
+      }
+    }
+    window.addEventListener('hashchange', syncFromLocation)
+    window.addEventListener('popstate', syncFromLocation)
+    return () => {
+      window.removeEventListener('hashchange', syncFromLocation)
+      window.removeEventListener('popstate', syncFromLocation)
+    }
+  }, [session])
+
   const handleLogin = useCallback(
     async (token: string, base: string) => {
       const error = await bootstrap(token, base)
@@ -63,7 +95,13 @@ export default function App() {
   const handleLogout = useCallback(() => {
     clearSession()
     setSession(null)
-    setPreviewingCustomer(false)
+    clearWorkspaceRoute()
+  }, [])
+
+  const navigate = useCallback((next: WorkspaceRoute) => {
+    setRoute(next)
+    commitWorkspaceRoute(next)
+    recordConsoleEvent('workspace_view', next.workspace)
   }, [])
 
   if (booting) {
@@ -80,20 +118,38 @@ export default function App() {
 
   return (
     <ToastProvider>
-      {session.role === 'admin' && !previewingCustomer ? (
-        <AdminApp
-          client={session.client}
-          onLogout={handleLogout}
-          onViewCustomer={() => setPreviewingCustomer(true)}
-        />
-      ) : (
-        <CustomerApp
-          client={session.client}
-          tenantId={session.tenantId}
-          onLogout={handleLogout}
-          onViewAdmin={session.role === 'admin' ? () => setPreviewingCustomer(false) : undefined}
-        />
-      )}
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><LoadingPanel label="正在打开工作台…" /></div>}>
+        {session.role === 'admin' && route.workspace === 'admin' ? (
+          <AdminApp
+            client={session.client}
+            section={route.section}
+            onSectionChange={(section) => navigate({ workspace: 'admin', section })}
+            onLogout={handleLogout}
+            onViewCustomer={() => {
+              recordConsoleEvent('workspace_switch', 'admin')
+              navigate(defaultWorkspaceRoute('customer'))
+            }}
+          />
+        ) : (
+          <CustomerApp
+            client={session.client}
+            tenantId={session.tenantId}
+            section={route.workspace === 'customer' ? route.section : 'overview'}
+            docSection={route.workspace === 'customer' ? route.doc : 'quickstart'}
+            onSectionChange={(section) => navigate({
+              workspace: 'customer',
+              section,
+              doc: route.workspace === 'customer' ? route.doc : 'quickstart',
+            })}
+            onDocSectionChange={(doc) => navigate({ workspace: 'customer', section: 'docs', doc })}
+            onLogout={handleLogout}
+            onViewAdmin={session.role === 'admin' ? () => {
+              recordConsoleEvent('workspace_switch', 'customer')
+              navigate(defaultWorkspaceRoute('admin'))
+            } : undefined}
+          />
+        )}
+      </Suspense>
     </ToastProvider>
   )
 }
