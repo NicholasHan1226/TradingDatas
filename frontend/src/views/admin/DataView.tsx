@@ -18,8 +18,10 @@ import {
   TABLE_ROW_CLASS,
 } from '../../components/ui'
 
+type CatalogDatasetRow = Omit<DatasetRow, 'provider'> & { provider?: string }
+
 interface CatalogResponse {
-  data?: DatasetRow[]
+  data?: CatalogDatasetRow[]
 }
 
 const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'> = {
@@ -54,25 +56,26 @@ export default function DataView({ client }: { client: ApiClient }) {
         try {
           const collection = await client.get<CollectionStatus>('/admin/api/collection/status')
           runtimeByDataset = new Map(
-            (collection.datasets ?? []).map((row) => [`${row.dataset_id}|${row.provider}`, row]),
+            (collection.datasets ?? []).map((row) => [row.dataset_id, row]),
           )
         } catch {
           // Catalog is independently useful; runtime decoration is best-effort.
         }
         if (!alive) return
         setRows((catalog.data ?? []).map((row) => {
-          const runtime = runtimeByDataset.get(`${row.dataset_id}|${row.provider}`)
-          return runtime
-            ? {
-                ...row,
-                runtime_state: runtime.runtime_state,
-                degraded: runtime.degraded,
-                freshness_state: runtime.freshness_state,
-                data_through: runtime.data_through,
-                observed_at: runtime.observed_at,
-                reasons: runtime.reasons,
-              }
-            : row
+          const runtime = runtimeByDataset.get(row.dataset_id)
+          return {
+            ...row,
+            provider: runtime?.provider ?? row.provider ?? '—',
+            activation: runtime?.activation ?? row.activation,
+            runtime_state: runtime?.runtime_state ?? row.runtime_state,
+            degraded: runtime?.degraded ?? row.degraded,
+            freshness_state: runtime?.freshness_state ?? row.freshness_state,
+            data_through: runtime?.data_through ?? row.data_through,
+            observed_at: runtime?.observed_at ?? row.observed_at,
+            reasons: runtime?.reasons ?? row.reasons,
+            coverage: runtime?.coverage ?? row.coverage,
+          }
         }))
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : '加载目录失败')

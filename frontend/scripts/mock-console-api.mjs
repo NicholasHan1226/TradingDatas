@@ -41,6 +41,10 @@ const datasets = [
   { dataset_id: 'cn.news.flash', schema_major: 1, provider: 'tushare', market: 'CN', domain: 'news', cadence: 'on_demand', activation: 'paused', entitlement: 'unknown', runtime_state: 'failed', degraded: true, freshness_state: 'unknown', data_through: null, observed_at: '2026-08-24T08:10:00Z', reasons: ['provider_unavailable'], coverage: { row_count: 0 } },
 ]
 
+// The public catalog intentionally omits provider identity; the admin runtime
+// endpoint supplies operational provider and freshness decoration.
+const catalogDatasets = datasets.map(({ provider: _provider, ...dataset }) => dataset)
+
 const requestedCollectionRows = Number(process.env.TD_CONSOLE_MOCK_COLLECTION_ROWS || datasets.length)
 const collectionRowCount = Number.isFinite(requestedCollectionRows)
   ? Math.max(datasets.length, Math.min(5000, Math.floor(requestedCollectionRows)))
@@ -139,7 +143,7 @@ const server = http.createServer(async (request, response) => {
     return json(response, 200, { datasets: collectionDatasets, total: collectionDatasets.length, active, paused: collectionDatasets.length - active })
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/health/alerts') return json(response, 200, { alerts: [{ severity: 'critical', title: '新闻数据源连接失败', detail: 'cn.news.flash 最近一次采集返回 provider_unavailable。' }, { severity: 'warning', title: '复权因子数据已过新鲜度窗口', detail: 'cn.dataset.adj_factor 需要检查下一次 post-close 采集。' }, { severity: 'info', title: 'Crypto 数据集本窗口为空', detail: '当前窗口未产生新增行，历史覆盖仍保留。' }] })
-  if (request.method === 'GET' && url.pathname === '/v1/catalog') return json(response, 200, { api_version: 'v1', data: datasets })
+  if (request.method === 'GET' && url.pathname === '/v1/catalog') return json(response, 200, { api_version: 'v1', data: catalogDatasets })
   if (request.method === 'POST' && url.pathname === '/v1/query') {
     const body = await readBody(request)
     const rows = body.dataset_id === 'crypto.spot.kline_5m' ? [] : [
