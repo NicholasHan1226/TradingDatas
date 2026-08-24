@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Checkbox,
+  ControlBar,
   CopyButton,
   EmptyState,
   ErrorBanner,
@@ -196,13 +197,13 @@ export default function TokensView({ client }: { client: ApiClient }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageIntro
         eyebrow="ACCESS CONTROL"
         title="客户与访问凭证"
         description="集中管理客户套餐、访问范围与调用上限；变更会即时写入当前服务。"
       />
-      <div className="flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+      <ControlBar>
         <SearchField
           className="min-w-56 flex-1"
           aria-label="搜索客户密钥"
@@ -227,7 +228,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
           </svg>
           新建客户密钥
         </Button>
-      </div>
+      </ControlBar>
 
       {error && <ErrorBanner message={error} />}
 

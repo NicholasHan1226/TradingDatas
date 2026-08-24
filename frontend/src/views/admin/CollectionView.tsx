@@ -4,6 +4,7 @@ import type { CollectionStatus, DatasetRow } from '../../lib/types'
 import {
   Badge,
   Card,
+  ControlBar,
   EmptyState,
   ErrorBanner,
   LoadingPanel,
@@ -15,8 +16,11 @@ import {
   TABLE_ROW_CLASS,
 } from '../../components/ui'
 
-const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'slate'> = {
+const EMPTY_DATASETS: DatasetRow[] = []
+
+const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'> = {
   success: 'green',
+  empty: 'blue',
   failed: 'rose',
   stale: 'amber',
   degraded: 'amber',
@@ -55,10 +59,14 @@ export default function CollectionView({ client }: { client: ApiClient }) {
     }
   }, [client])
 
-  const datasets = status?.datasets ?? []
+  const datasets = status?.datasets ?? EMPTY_DATASETS
 
   const markets = useMemo(
     () => [...new Set(datasets.map((d) => d.market))].filter(Boolean).sort(),
+    [datasets],
+  )
+  const runtimeStates = useMemo(
+    () => [...new Set(datasets.map((d) => d.runtime_state).filter(Boolean))].sort(),
     [datasets],
   )
 
@@ -81,7 +89,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
   if (error) return <ErrorBanner message={error} />
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageIntro
         eyebrow="COLLECTION CONTROL"
         title="数据采集状态"
@@ -102,7 +110,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+      <ControlBar>
         <SearchField
           className="w-full md:w-64"
           aria-label="搜索数据集"
@@ -123,14 +131,12 @@ export default function CollectionView({ client }: { client: ApiClient }) {
         </SelectInput>
         <SelectInput value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="!w-auto">
           <option value="">全部运行状态</option>
-          <option value="success">success</option>
-          <option value="failed">failed</option>
-          <option value="stale">stale</option>
+          {runtimeStates.map((state) => <option key={state} value={state}>{state}</option>)}
         </SelectInput>
         <span className="ml-auto text-xs text-slate-400">
           显示 {filtered.length.toLocaleString('zh-CN')} / {datasets.length.toLocaleString('zh-CN')} 个数据集
         </span>
-      </div>
+      </ControlBar>
 
       <Card className="overflow-hidden" bodyClassName="!p-0">
         {filtered.length === 0 ? (

@@ -26,23 +26,25 @@ body {
   color: rgb(15 23 42);
 }
 
-/* A restrained research-workstation palette: operational states and data
-   remain the first visual read, while chrome stays quiet. */
+/* Calm-fintech research workstation: operational data leads, chrome recedes. */
 :root {
   color-scheme: light;
-  /* Canvas and surfaces: quiet neutrals give dense market data room to breathe. */
-  --td-canvas: #f8fafc;
+  /* Canvas and surfaces: quiet neutrals leave room for dense operational data. */
+  --td-canvas: #f6f7fb;
   --td-surface: #ffffff;
   --td-surface-subtle: #f8fafc;
-  --td-ink: #0f172a;
-  --td-muted: #64748b;
-  --td-line: #e2e8f0;
-  --td-accent: #2563eb;
-  --td-accent-strong: #1d4ed8;
+  --td-surface-raised: #ffffff;
+  --td-ink: #101828;
+  --td-ink-soft: #344054;
+  --td-muted: #667085;
+  --td-line: #e4e7ec;
+  --td-accent: #155eef;
+  --td-accent-strong: #004eeb;
+  --td-accent-quiet: #eff4ff;
   --td-success: #059669;
   --td-warning: #d97706;
   --td-danger: #e11d48;
-  /* 4pt rhythm; 14px is the default surface radius, never a random value. */
+  /* 4pt rhythm; panel radius is deliberately restrained for dense work. */
   --td-space-1: 4px;
   --td-space-2: 8px;
   --td-space-3: 12px;
@@ -50,10 +52,10 @@ body {
   --td-space-5: 20px;
   --td-space-6: 24px;
   --td-radius-sm: 8px;
-  --td-radius: 14px;
-  --td-radius-lg: 20px;
-  --td-shadow-1: 0 1px 2px rgb(15 23 42 / 0.035);
-  --td-shadow-2: 0 16px 36px rgb(15 23 42 / 0.12);
+  --td-radius: 12px;
+  --td-radius-lg: 18px;
+  --td-shadow-1: 0 1px 2px rgb(16 24 40 / 0.035), 0 1px 3px rgb(16 24 40 / 0.04);
+  --td-shadow-2: 0 18px 42px rgb(16 24 40 / 0.14);
   --td-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --td-duration-fast: 120ms;
   --td-duration: 180ms;

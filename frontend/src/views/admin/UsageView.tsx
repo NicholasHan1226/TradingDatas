@@ -71,11 +71,12 @@ export default function UsageView({ client }: { client: ApiClient }) {
   if (error) return <ErrorBanner message={error} />
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageIntro
         eyebrow="USAGE INTELLIGENCE"
         title="调用与容量概览"
         description="从实时窗口到月度趋势，持续观察客户请求与服务容量。"
+        action={<span className="rounded-full bg-[var(--td-accent-quiet)] px-2.5 py-1 text-[11px] font-medium text-blue-700">30 天观察窗口</span>}
       />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="今日请求总数" value={todayTotal.toLocaleString('zh-CN')} sub={`${dailyRows.length} 个客户有调用`} />
