@@ -1627,10 +1627,10 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
             "cn.dataset.top_list",
         )
     } == {"on_demand"}
-    # disclosure_date / share_float moved from on_demand to daily_reference
-    # (deliberate cadence change for the catalyst event feed): they are
-    # ann_date-partitioned announcements, so a 7-day-week daily sweep with
-    # 7-day correction overlap covers weekend announcements and late fixes.
+    # disclosure_date / share_float moved from daily_reference to the event
+    # cadence (2026-08-24 trusted-empty incident): ann_date-partitioned
+    # announcements publish throughout the announcement day, so the automatic
+    # event wave re-observes the current date until rows appear.
     planned = {item.dataset_id for item in result.plans}
     assert {
         "cn.dataset.disclosure_date",
