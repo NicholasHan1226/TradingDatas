@@ -1,13 +1,10 @@
-// Compact design system shared by the admin console and customer portal.
-// One visual language: white cards on slate ground, blue accent, soft borders,
-// tabular numerals, motion used sparingly for state changes.
-
-import { AnimatePresence, motion } from 'motion/react'
+// Shared precision-utility design system for the admin console and portal.
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useId,
   useState,
   type ReactNode,
 } from 'react'
@@ -18,10 +15,10 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[0_1px_2px_rgb(16_24_40/0.16)] disabled:bg-blue-300',
+    'border border-transparent bg-[var(--td-accent)] text-white hover:bg-[var(--td-accent-strong)] active:bg-blue-800 shadow-[var(--td-shadow-1)] disabled:bg-blue-300',
   secondary:
-    'bg-white text-slate-700 border border-slate-300 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100 shadow-[0_1px_1px_rgb(16_24_40/0.03)]',
-  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+    'bg-white text-[var(--td-ink-soft)] border border-[var(--td-line-strong)] hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100',
+  ghost: 'border border-transparent text-[var(--td-muted)] hover:bg-slate-100 hover:text-[var(--td-ink)]',
   danger:
     'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 active:bg-rose-100',
 }
@@ -42,7 +39,7 @@ export function Button({
     <button
       {...rest}
       disabled={rest.disabled || loading}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-[var(--td-radius-sm)] font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--td-duration-fast)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`inline-flex items-center justify-center gap-1.5 rounded-[var(--td-radius-sm)] font-medium transition-[color,background-color,border-color,box-shadow] duration-[var(--td-duration-fast)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
         size === 'sm' ? 'min-h-8 px-2.5 py-1.5 text-xs' : 'min-h-10 px-4 py-2 text-sm'
       } ${BUTTON_STYLES[variant]} ${className}`}
     >
@@ -109,14 +106,14 @@ export function PageIntro({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200/80 pb-6">
-      <div className="relative max-w-2xl border-l-2 border-[var(--td-accent)] pl-4">
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--td-line)] pb-5">
+      <div className="max-w-2xl">
         {eyebrow && (
-          <p className="mb-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+          <p className="mb-1.5 text-[11px] font-medium tracking-[0.08em] text-[var(--td-faint)] uppercase">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-[22px] font-semibold tracking-[-0.04em] text-[var(--td-ink)]">{title}</h2>
+        <h2 className="text-[24px] font-semibold tracking-[-0.035em] text-[var(--td-ink)]">{title}</h2>
         {description && <p className="mt-1.5 text-sm leading-6 text-[var(--td-muted)]">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
@@ -126,7 +123,7 @@ export function PageIntro({
 
 export function ControlBar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/85 bg-white p-3 shadow-[var(--td-shadow-1)] ${className}`}>
+    <div className={`flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-white p-3 ${className}`}>
       {children}
     </div>
   )
@@ -151,9 +148,9 @@ export function SearchField({
 }
 
 export const TABLE_HEAD_CLASS =
-  'sticky top-0 z-[1] border-b border-slate-200 bg-slate-50/95 text-left text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase backdrop-blur'
+  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f8f9fb] text-left text-[11px] font-medium tracking-[0.04em] text-[var(--td-muted)]'
 export const TABLE_ROW_CLASS =
-  'border-b border-slate-100/90 transition-colors last:border-0 hover:bg-[var(--td-accent-quiet)]/70'
+  'border-b border-slate-100 transition-colors last:border-0 hover:bg-[#f8f9fb] focus-within:bg-[var(--td-accent-quiet)]/70'
 
 // ---------- Cards & stats ----------
 
@@ -172,10 +169,10 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-1)] ${className}`}
+      className={`rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
           <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
           {action}
         </header>
@@ -209,16 +206,11 @@ export function StatCard({
     bad: 'bg-rose-500',
   }[tone]
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="rounded-[var(--td-radius)] border border-slate-200/90 bg-[var(--td-surface-raised)] p-5 shadow-[var(--td-shadow-1)]"
-    >
-      <div className="flex items-center gap-2 text-xs font-medium tracking-wide text-slate-500"><span className={`h-1.5 w-1.5 rounded-full ${toneDot}`} />{label}</div>
-      <div className={`mt-2 text-2xl font-semibold leading-none tabular-nums ${toneClass}`}>{value}</div>
-      {sub && <div className="mt-2 text-xs text-slate-400">{sub}</div>}
-    </motion.div>
+    <div className="rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4">
+      <div className="flex items-center gap-2 text-xs font-medium text-[var(--td-muted)]"><span className={`h-1.5 w-1.5 rounded-full ${toneDot}`} />{label}</div>
+      <div className={`mt-2.5 text-2xl font-semibold leading-none tracking-[-0.03em] tabular-nums ${toneClass}`}>{value}</div>
+      {sub && <div className="mt-2 text-xs text-[var(--td-faint)]">{sub}</div>}
+    </div>
   )
 }
 
@@ -266,7 +258,7 @@ export const TIER_LABELS: Record<string, string> = {
   standard: '标准版 Standard',
   flagship: '旗舰版 Flagship',
   enterprise: 'Enterprise 企业',
-  internal: 'Internal 内部',
+  internal: '平台管理',
 }
 
 export function ScopeChip({ scope }: { scope: string }) {
@@ -340,17 +332,20 @@ export function ToggleSwitch({
   onChange,
   disabled = false,
   busy = false,
+  label,
 }: {
   checked: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
   busy?: boolean
+  label?: string
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled || busy}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
@@ -381,6 +376,7 @@ export function Modal({
   width?: string
   children: ReactNode
 }) {
+  const titleId = useId()
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -388,26 +384,19 @@ export function Modal({
     return () => window.removeEventListener('keydown', handler)
   }, [open, onClose])
 
+  if (!open) return null
+
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]"
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
           onMouseDown={(e) => e.target === e.currentTarget && onClose()}
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className={`w-full ${width} max-h-[88vh] overflow-y-auto rounded-[var(--td-radius-lg)] border border-white/70 bg-white shadow-[var(--td-shadow-2)]`}
-          >
+          <div className={`w-full ${width} max-h-[88vh] overflow-y-auto rounded-[var(--td-radius-lg)] border border-slate-200 bg-white shadow-[var(--td-shadow-2)]`}>
             <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+              <h3 id={titleId} className="text-sm font-semibold text-slate-800">{title}</h3>
               <Button variant="ghost" size="sm" onClick={onClose} aria-label="关闭">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
                   <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -415,10 +404,8 @@ export function Modal({
               </Button>
             </header>
             <div className="px-5 py-4">{children}</div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+        </div>
   )
 }
 
@@ -447,15 +434,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={push}>
       {children}
       <div className="pointer-events-none fixed top-4 right-4 z-60 flex w-80 flex-col gap-2">
-        <AnimatePresence>
           {items.map((t) => (
-            <motion.div
+            <div
               key={t.id}
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.2 }}
-              className={`pointer-events-auto flex items-center gap-2 rounded-xl px-4 py-3 text-sm shadow-lg ${
+              role="status"
+              className={`pointer-events-auto flex items-center gap-2 rounded-[var(--td-radius)] px-4 py-3 text-sm shadow-lg ${
                 t.kind === 'ok'
                   ? 'bg-slate-900 text-white'
                   : 'border border-rose-200 bg-rose-50 text-rose-700'
@@ -471,9 +454,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 </svg>
               )}
               <span>{t.text}</span>
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   )

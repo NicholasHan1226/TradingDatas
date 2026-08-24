@@ -297,6 +297,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
                       <ToggleSwitch
                         checked={t.enabled}
                         busy={busyHash === t.token_hash_full}
+                        label={`${t.enabled ? '暂停' : '启用'} ${t.tenant_id}`}
                         onChange={() => void toggleEnabled(t)}
                       />
                     </td>
@@ -398,7 +399,7 @@ function TokenFields({
     })
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field label="客户 ID（tenant）" hint="如 acme-capital，创建后不可改">
         <TextInput value={form.tenant_id} onChange={(e) => update({ tenant_id: e.target.value })} disabled={!isNew} spellCheck={false} />
       </Field>
@@ -426,7 +427,7 @@ function TokenFields({
         <TextInput value={form.customScopes} onChange={(e) => update({ customScopes: e.target.value })} spellCheck={false} />
       </Field>
 
-      <div className="col-span-2">
+      <div className="sm:col-span-2">
         <span className="mb-1.5 block text-xs font-medium text-slate-600">API 权限范围</span>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-200 px-3.5 py-3">
           {SCOPE_OPTIONS.map((scope) => (

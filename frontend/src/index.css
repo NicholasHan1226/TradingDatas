@@ -26,39 +26,50 @@ body {
   color: rgb(15 23 42);
 }
 
-/* Calm-fintech research workstation: operational data leads, chrome recedes. */
+/* Precision utility: quiet product chrome, dense operational data, static form. */
 :root {
   color-scheme: light;
-  /* Canvas and surfaces: quiet neutrals leave room for dense operational data. */
-  --td-canvas: #f6f7fb;
+  --td-canvas: #f7f8fa;
   --td-surface: #ffffff;
-  --td-surface-subtle: #f8fafc;
+  --td-surface-subtle: #f4f5f7;
   --td-surface-raised: #ffffff;
-  --td-ink: #101828;
-  --td-ink-soft: #344054;
-  --td-muted: #667085;
-  --td-line: #e4e7ec;
-  --td-accent: #155eef;
-  --td-accent-strong: #004eeb;
-  --td-accent-quiet: #eff4ff;
-  --td-success: #059669;
-  --td-warning: #d97706;
-  --td-danger: #e11d48;
-  /* 4pt rhythm; panel radius is deliberately restrained for dense work. */
+  --td-ink: #111318;
+  --td-ink-soft: #30343b;
+  --td-muted: #68707c;
+  --td-faint: #939aa5;
+  --td-line: #e1e4e8;
+  --td-line-strong: #cfd4da;
+  --td-accent: #3157d5;
+  --td-accent-strong: #2446bb;
+  --td-accent-quiet: #eef2ff;
+  --td-success: #0a8f63;
+  --td-warning: #bd6b00;
+  --td-danger: #cf3353;
+  --td-info: #2774c7;
+  --td-cyan: #0891b2;
+  --td-violet: #6d5bd0;
   --td-space-1: 4px;
   --td-space-2: 8px;
   --td-space-3: 12px;
   --td-space-4: 16px;
   --td-space-5: 20px;
   --td-space-6: 24px;
-  --td-radius-sm: 8px;
-  --td-radius: 12px;
-  --td-radius-lg: 18px;
-  --td-shadow-1: 0 1px 2px rgb(16 24 40 / 0.035), 0 1px 3px rgb(16 24 40 / 0.04);
-  --td-shadow-2: 0 18px 42px rgb(16 24 40 / 0.14);
-  --td-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --td-radius-sm: 6px;
+  --td-radius: 10px;
+  --td-radius-lg: 14px;
+  --td-shadow-1: 0 1px 2px rgb(17 19 24 / 0.06);
+  --td-shadow-2: 0 20px 48px rgb(17 19 24 / 0.14);
   --td-duration-fast: 120ms;
-  --td-duration: 180ms;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

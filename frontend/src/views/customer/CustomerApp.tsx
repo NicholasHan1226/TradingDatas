@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
 import {
   Area,
   AreaChart,
@@ -41,6 +40,7 @@ export default function CustomerApp({
   onLogout: () => void
   onViewAdmin?: () => void
 }) {
+  const [section, setSection] = useState<'overview' | 'api' | 'agent'>('overview')
   const [me, setMe] = useState<PortalInfo | null>(null)
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -197,10 +197,9 @@ while next_cursor:
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-bold tracking-[-0.04em] text-white shadow-[0_8px_16px_rgb(21_94_239/0.22)]">TD</div>
             <div>
-              <div className="text-[17px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
-              <div className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-slate-400">DATA ACCESS PORTAL</div>
+              <div className="text-[18px] font-bold tracking-[-0.055em] text-slate-950">TradingDatas</div>
+              <div className="mt-0.5 text-[10px] font-medium tracking-[0.1em] text-[var(--td-faint)]">DATA ACCESS</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -216,21 +215,27 @@ while next_cursor:
       </header>
 
       <main className="mx-auto max-w-7xl space-y-7 px-5 py-7 pb-16 sm:px-6 sm:py-8">
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          {error && <ErrorBanner message={error} />}
-        </motion.div>
+        {error && <ErrorBanner message={error} />}
 
         {me && (
           <>
             <PageIntro
               eyebrow="DATA ACCESS"
-              title="你的数据访问概览"
-              description="在一个工作台内查看套餐、调用趋势，以及可直接复制的接入资产。"
+              title={section === 'overview' ? '你的数据访问概览' : section === 'api' ? 'API 接入指南' : 'Agent 接入资产'}
+              description={section === 'overview' ? '查看套餐状态、请求额度和近 30 天调用趋势。' : section === 'api' ? '从目录发现到数据查询，复制可直接使用的接口示例。' : '为 AI Agent 准备提示词、工具定义与 Python 示例。'}
+              action={
+                <nav aria-label="用户前台页面" className="flex rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-white p-1">
+                  {([['overview', '概览'], ['api', 'API 指南'], ['agent', 'Agent 接入']] as const).map(([value, label]) => (
+                    <button key={value} type="button" aria-pressed={section === value} onClick={() => setSection(value)} className={`min-h-8 rounded px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-[var(--td-accent)] ${section === value ? 'bg-[var(--td-accent-quiet)] text-[var(--td-accent-strong)]' : 'text-[var(--td-muted)] hover:bg-slate-50 hover:text-[var(--td-ink)]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              }
             />
+            <div className={section === 'overview' ? 'contents' : 'hidden'}>
             {/* Plan summary */}
-            <section className="relative overflow-hidden rounded-[var(--td-radius)] bg-slate-950 p-6 text-white shadow-[0_16px_36px_rgb(15_23_42/0.14)] sm:p-7">
-              <div className="pointer-events-none absolute -right-28 -top-32 h-72 w-72 rounded-full bg-blue-500/12 blur-3xl" />
-              <div className="pointer-events-none absolute right-8 bottom-0 h-24 w-72 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_23px,rgb(148_163_184_/_0.08)_24px)]" />
+            <section className="overflow-hidden rounded-[var(--td-radius)] border border-slate-800 bg-[#15181e] p-6 text-white sm:p-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-medium tracking-[0.16em] text-slate-400">ACCESS PROFILE</p>
@@ -326,8 +331,10 @@ while next_cursor:
                 </div>
               )}
             </Card>
+            </div>
 
             {/* Integration guide */}
+            <div className={section === 'api' ? 'block' : 'hidden'}>
             <Card title="API 接入指南">
               <div className="space-y-5">
                 <div>
@@ -381,8 +388,10 @@ while next_cursor:
                 </div>
               </div>
             </Card>
+            </div>
 
             {/* Agent onboarding: copy-ready prompt / tool defs / sample code */}
+            <div className={section === 'agent' ? 'block' : 'hidden'}>
             <Card title="Agent 接入 · 一键复制">
               <div className="space-y-5">
                 <p className="text-xs leading-relaxed text-slate-500">
@@ -420,6 +429,7 @@ while next_cursor:
                 </div>
               </div>
             </Card>
+            </div>
           </>
         )}
       </main>
