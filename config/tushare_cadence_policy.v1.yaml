@@ -210,7 +210,12 @@ entries:
   source_document_sha256: e3d4d590909224f5d9ca728fd9976031fb9f3e0ba367da882a1a8c6a584ba4c6
   reason_code: ambiguous_insufficient_document_frequency
 - api_name: disclosure_date
-  cadence_class: daily_reference
+  # 2026-08-24: moved from daily_reference to event.  ann_date-partitioned
+  # announcements publish throughout the announcement day (mostly
+  # 15:00-24:00 local), so the 00:30 daily sweep only ever observed a
+  # trusted-empty window for the just-started date; the event wave
+  # re-observes the current date every >=15 minutes until rows appear.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 6b1b360e8a79ca1d458ba5e784716021d97fc5a9bbbcee68ba867e79ac363594
   reason_code: reviewed_contract_exact
@@ -715,7 +720,10 @@ entries:
   source_document_sha256: e978faf8b69fbd0f353d734029617388232b0969744c31c5f9e1d60517f504bd
   reason_code: reviewed_contract_exact
 - api_name: share_float
-  cadence_class: daily_reference
+  # 2026-08-24: moved from daily_reference to event; same ann_date
+  # publication-window rationale as disclosure_date (2026-08-18..24 daily
+  # receipts were all trusted-empty while upstream held the rows).
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 9bfbf3d0ff4c8d43cdd4c669a6199fddc22c0c34997c7512a3b357b7c47d5216
   reason_code: reviewed_contract_exact

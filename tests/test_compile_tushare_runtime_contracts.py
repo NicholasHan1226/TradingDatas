@@ -488,10 +488,11 @@ def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition
 
     assert contract["schema_version"] == "1.0.0"
     assert contract["primary_key"] == ["ann_date", "end_date", "ts_code"]
-    # Deliberate cadence change (catalyst event feed automation):
-    # disclosure_date is now swept daily so forward disclosure dates are
-    # collected automatically instead of on demand.
-    assert contract["cadence_class"] == "daily_reference"
+    # Deliberate cadence change (2026-08-24 trusted-empty incident):
+    # ann_date-partitioned announcements publish throughout the announcement
+    # day, so the 00:30 daily sweep only recorded trusted-empty windows; the
+    # event cadence re-observes the current date until rows appear.
+    assert contract["cadence_class"] == "event"
     assert contract["as_of_field"] == "ann_date"
     assert contract["range_field"] == "ann_date"
     assert contract["partition_field"] == "ann_date"
@@ -510,13 +511,13 @@ def test_reviewed_disclosure_date_contract_binds_observed_announcement_partition
     ("api_name", "primary_key", "partition_field", "cadence_class"),
     [
         (
-            # Deliberate cadence change (catalyst event feed automation):
-            # share_float is now swept daily so forward lockup expiries are
-            # collected automatically instead of on demand.
+            # Deliberate cadence change (2026-08-24 trusted-empty incident):
+            # same ann_date publication-window rationale as disclosure_date;
+            # the event cadence re-observes until rows appear.
             "share_float",
             ["ann_date", "float_date", "ts_code", "holder_name", "share_type"],
             "ann_date",
-            "daily_reference",
+            "event",
         ),
         ("top_list", ["trade_date", "ts_code", "reason"], "trade_date", "on_demand"),
     ],

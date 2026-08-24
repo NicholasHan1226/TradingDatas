@@ -8958,7 +8958,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 2.0.0
-  cadence_class: daily_reference
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -27736,7 +27736,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: daily_reference
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
