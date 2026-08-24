@@ -66,16 +66,12 @@ export default function Login({
     setPasteBusy(false)
   }
 
+  // The product mark is deliberately typographic: compact, neutral and
+  // recognisable without borrowing a third-party icon language.
   const brandMark = (
-    <div className="flex items-center gap-2.5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-600/30">
-        <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px] text-white">
-          <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M4 21h16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity=".45" />
-        </svg>
-      </div>
-      <span className="text-base font-semibold tracking-tight text-white">TradingDatas</span>
-    </div>
+    <span className="font-sans text-[17px] font-bold tracking-[-0.045em] text-white">
+      TradingDatas
+    </span>
   )
 
   return (
@@ -186,14 +182,10 @@ export default function Login({
       {/* Form panel */}
       <main className="relative flex min-h-full w-full flex-col px-5 py-8 lg:w-[54%] lg:px-14">
         {/* Mobile-only compact brand row */}
-        <div className="mb-10 flex items-center gap-2 lg:hidden">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-600/25">
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-white">
-              <path d="M4 17l5-7 4.5 3.5L20 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M4 21h16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity=".45" />
-            </svg>
-          </div>
-          <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">TradingDatas</span>
+        <div className="mb-10 lg:hidden">
+          <span className="font-sans text-[15px] font-bold tracking-[-0.045em] text-slate-900 dark:text-white">
+            TradingDatas
+          </span>
         </div>
 
         <div className="flex flex-1 items-center justify-center">
@@ -304,6 +296,7 @@ export default function Login({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
                     transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                    role="alert"
                     className="mt-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300"
                   >
                     <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">

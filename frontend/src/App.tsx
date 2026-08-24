@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiClient, clearSession, loadSession, saveSession } from './lib/api'
+import { ApiClient, ApiError, clearSession, loadSession, saveSession } from './lib/api'
 import type { PortalMeResponse, Role } from './lib/types'
 import { LoadingPanel, ToastProvider } from './components/ui'
 import Login from './views/Login'
@@ -34,6 +34,9 @@ export default function App() {
       })
       return null
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        return '访问密钥未被当前服务识别。请使用当前有效密钥，或联系管理员重置。'
+      }
       return err instanceof Error ? err.message : '登录失败，请稍后重试'
     }
   }, [])
