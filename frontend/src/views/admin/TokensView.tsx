@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
-import type { AdminToken, TokensResponse } from '../../lib/types'
+import type { AdminToken, DataCategory, TokensResponse } from '../../lib/types'
 import {
   Badge,
   Button,
@@ -30,6 +30,11 @@ import {
 
 const SCOPE_OPTIONS = ['read', 'query', 'catalog', 'admin']
 const CURRENT_TIERS = ['basic', 'standard', 'flagship'] as const
+const DATA_CATEGORY_OPTIONS: { value: DataCategory; label: string; hint: string }[] = [
+  { value: 'a_share', label: 'A 股', hint: '境内市场行情、基础资料与基本面' },
+  { value: 'crypto', label: '加密资产', hint: '公共现货与衍生品市场数据' },
+  { value: 'news', label: '新闻', hint: '新闻、公告与事件类客观数据' },
+]
 
 const SCOPE_HINTS: Record<string, string> = {
   read: '读取数据（含目录与查询）',
@@ -42,6 +47,7 @@ interface TokenForm {
   tenant_id: string
   tier: string
   scopes: string[]
+  data_categories: DataCategory[]
   customScopes: string
   daily_limit: string
   max_concurrent: string
@@ -52,6 +58,7 @@ const EMPTY_FORM: TokenForm = {
   tenant_id: '',
   tier: 'basic',
   scopes: ['read'],
+  data_categories: DATA_CATEGORY_OPTIONS.map((item) => item.value),
   customScopes: '',
   daily_limit: '',
   max_concurrent: '',
@@ -63,6 +70,7 @@ function formFromToken(t: AdminToken): TokenForm {
     tenant_id: t.tenant_id,
     tier: t.tier,
     scopes: t.scopes.filter((s) => SCOPE_OPTIONS.includes(s)),
+    data_categories: t.data_categories ?? DATA_CATEGORY_OPTIONS.map((item) => item.value),
     customScopes: t.scopes.filter((s) => !SCOPE_OPTIONS.includes(s)).join(', '),
     daily_limit: t.daily_limit != null ? String(t.daily_limit) : '',
     max_concurrent: t.max_concurrent != null ? String(t.max_concurrent) : '',
@@ -81,6 +89,7 @@ function buildPayload(form: TokenForm): Record<string, unknown> {
         .map((s) => s.trim())
         .filter(Boolean),
     ],
+    data_categories: form.data_categories,
   }
   if (form.daily_limit.trim()) payload.daily_limit = parseInt(form.daily_limit, 10)
   if (form.max_concurrent.trim()) payload.max_concurrent = parseInt(form.max_concurrent, 10)
@@ -129,7 +138,8 @@ export default function TokensView({ client }: { client: ApiClient }) {
       (t) =>
         t.tenant_id.toLowerCase().includes(q) ||
         t.tier.toLowerCase().includes(q) ||
-        t.scopes.some((s) => s.toLowerCase().includes(q)),
+        t.scopes.some((s) => s.toLowerCase().includes(q)) ||
+        t.data_categories.some((category) => category.includes(q)),
     )
   }, [tokens, search])
 
@@ -251,6 +261,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
                   <th className="px-5 py-3">客户</th>
                   <th className="px-3 py-3">套餐</th>
                   <th className="px-3 py-3">API 权限</th>
+                  <th className="px-3 py-3">数据分类</th>
                   <th className="px-3 py-3">并发</th>
                   <th className="px-3 py-3">今日用量</th>
                   <th className="px-3 py-3">有效期至</th>
@@ -273,6 +284,16 @@ export default function TokensView({ client }: { client: ApiClient }) {
                         {(t.scopes ?? []).map((s) => (
                           <ScopeChip key={s} scope={s} />
                         ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <div className="flex max-w-56 flex-wrap gap-1">
+                        {(t.data_categories ?? []).map((category) => (
+                          <Badge key={category} tone={category === 'a_share' ? 'blue' : category === 'crypto' ? 'violet' : 'amber'}>
+                            {DATA_CATEGORY_OPTIONS.find((item) => item.value === category)?.label ?? category}
+                          </Badge>
+                        ))}
+                        {t.data_categories.length === 0 && <span className="text-xs text-rose-600">未授权</span>}
                       </div>
                     </td>
                     <td className="px-3 py-3.5 font-mono text-xs text-slate-600">{fmtNumber(t.max_concurrent)}</td>
@@ -398,6 +419,12 @@ function TokenFields({
         ? [...form.scopes, scope]
         : form.scopes.filter((s) => s !== scope),
     })
+  const toggleCategory = (category: DataCategory, checked: boolean) =>
+    update({
+      data_categories: checked
+        ? [...form.data_categories, category]
+        : form.data_categories.filter((value) => value !== category),
+    })
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -428,6 +455,29 @@ function TokenFields({
       <Field label="附加权限（可选）" hint="逗号分隔的自定义 scope">
         <TextInput value={form.customScopes} onChange={(e) => update({ customScopes: e.target.value })} spellCheck={false} />
       </Field>
+
+      <div className="sm:col-span-2">
+        <span className="mb-1.5 block text-xs font-medium text-slate-600">可访问数据分类</span>
+        <div className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-3">
+          {DATA_CATEGORY_OPTIONS.map((category) => (
+            <div key={category.value} className="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-slate-50">
+              <Checkbox
+                checked={form.data_categories.includes(category.value)}
+                onChange={(checked) => toggleCategory(category.value, checked)}
+                label={
+                  <span>
+                    <span className="block text-xs font-medium text-slate-700">{category.label}</span>
+                    <span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{category.hint}</span>
+                  </span>
+                }
+              />
+            </div>
+          ))}
+        </div>
+        {form.data_categories.length === 0 && (
+          <p className="mt-1.5 text-[11px] text-rose-600">未选择分类时，该密钥无法浏览或查询任何数据集。</p>
+        )}
+      </div>
 
       <div className="sm:col-span-2">
         <span className="mb-1.5 block text-xs font-medium text-slate-600">API 权限范围</span>

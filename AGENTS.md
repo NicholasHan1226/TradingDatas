@@ -6,7 +6,7 @@ TradingDatas 是一个类似 Tushare 的、面向公共用户但所有数据请�
 
 产品主要服务 Claude、Codex、OpenClaw、Hermes 等可调用 HTTP 工具的 Agent。用户侧按 A 股、加密资产、新闻等产品分类发现数据；技术 registry 仍以 `market` 与 `domain` 分开表达，公共 API 永远保持 catalog/query 两个 provider-neutral 端点。
 
-账户最终权限模型是 endpoint scope、市场/内容域 allowlist、运行限额三者取交集。商业档同时受每分钟请求上限、并发请求上限和每日查询上限约束。当前代码已实现 endpoint scope 与三类限额，但尚未实现 per-account 市场/内容域 allowlist；在 fail-closed 后端、管理 API、门户投影和生产 readback 完成前，前端不得展示为已生效能力，也不得据此声称公共账户已隔离。
+账户最终权限模型是 endpoint scope、数据分类 allowlist、运行限额三者取交集。商业档同时受每分钟请求上限、并发请求上限和每日查询上限约束。`data_categories` 只允许 `a_share`、`crypto`、`news`，由后端根据 immutable registry 推导 dataset grants，并在 catalog/query 同时强制执行；缺字段的存量 Token 保持兼容全量，显式空列表无数据授权，未知值 fail closed。管理 API、门户和前端只投影这一后端事实；生产是否生效仍须 exact-main 发布及认证 readback。
 
 当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情与同一冻结 40 个 USDT 标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史共同构成独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 

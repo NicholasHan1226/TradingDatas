@@ -2,12 +2,13 @@
 
 ## Direction
 
-The console follows a **modern data infrastructure** direction: crisp,
-technical, static, and data-first. The login page combines the task focus of
-Mem0's split layout with the strong colour field and stable form hierarchy of
-Stripe's sign-in surface. The authenticated workspace uses a deep control
-rail, a narrow context header, and bright dense content surfaces. It does not
-reuse either company's brand assets or product copy.
+The console follows a **calm-fintech / neo-industrial data infrastructure**
+direction: crisp, technical, static, and data-first. The login page now uses
+the same graphite data plane, cobalt action colour, neutral work surface, and
+typographic wordmark as the authenticated workspace. It presents TradingDatas
+as a public financial-data platform rather than a security-system surface.
+The authenticated workspace uses a deep control rail, a narrow
+context header, and bright dense content surfaces.
 
 Abstract decoration is static and structural only: fixed grids, crisp data
 lines, and restrained cobalt/cyan colour fields. Motion is reserved for
@@ -34,6 +35,9 @@ floating glows, and decorative transitions are excluded.
   primary actions only.
 - `--td-success`, `--td-warning`, `--td-danger`, `--td-info`: runtime states;
   they never substitute for navigation color.
+- Cyan, violet, and orange are sparse market-signal accents for A-share,
+  crypto, and news context. They never imply runtime health or become link
+  colours.
 
 ### Spacing, radius, and shadow
 
@@ -66,9 +70,11 @@ floating glows, and decorative transitions are excluded.
 
 ## Page model
 
-- Login: static 48/52 split on desktop; a single credential task on the left
-  and a compact product/data-plane explanation on the right. Mobile collapses
-  to the form without hiding security guidance.
+- Login: static 44/56 split on desktop; a single credential task on the left
+  and an integrated graphite product/data-plane narrative on the right. The
+  right side uses an abstract market signal and product capabilities rather
+  than fabricated live metrics. Mobile collapses to the form while retaining
+  public-platform context, market coverage, and credential guidance.
 - Admin: access and data-plane navigation groups, global context header, one
   page intro, one action/filter row, then task-specific content.
 - Customer: Overview and Documentation are the primary sections. Documentation

@@ -83,6 +83,51 @@ button {
   }
 }
 
+/* Preserve the complete login task and product narrative on laptop-height screens. */
+@media (min-width: 1024px) and (max-height: 850px) {
+  .login-product-panel {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .login-product-content {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .login-market-tags {
+    margin-bottom: 14px;
+  }
+
+  .login-product-title {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+
+  .login-product-copy {
+    margin-top: 12px;
+    line-height: 1.55;
+  }
+
+  .login-signal-wrap {
+    margin-top: 20px;
+  }
+
+  .login-market-signal {
+    padding: 16px;
+  }
+
+  .login-signal-chart {
+    height: 122px;
+    margin-top: 12px;
+  }
+
+  .login-market-signal > div:last-child {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+}
+
 /* Slim scrollbars for dense data panels */
 *::-webkit-scrollbar {
   width: 8px;

@@ -96,6 +96,12 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
     "admin": ADMIN_ENDPOINTS,
 }
 
+# Stable product-facing entitlements. They intentionally do not expose
+# provider names: registry market/domain metadata is mapped to these values at
+# the API boundary. A missing ``data_categories`` field remains the legacy
+# unrestricted mode so existing credentials keep their current access.
+DATA_CATEGORIES = ("a_share", "crypto", "news")
+
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 # Sliding per-minute window for commercial tiers; same shape as _REQUEST_LOG.
@@ -617,6 +623,27 @@ def _parse_expires_at(raw: Any) -> float | None:
     return None
 
 
+def normalize_data_categories(raw: Any) -> list[str]:
+    """Validate one explicit category allowlist in canonical product order."""
+
+    if type(raw) is not list:
+        raise AuthError("data_categories must be a list")
+    if any(type(value) is not str for value in raw):
+        raise AuthError("data_categories contains an invalid value")
+    unknown = sorted(set(raw) - set(DATA_CATEGORIES))
+    if unknown:
+        raise AuthError("data_categories contains an unknown category")
+    return [category for category in DATA_CATEGORIES if category in set(raw)]
+
+
+def effective_data_categories(account: dict[str, Any]) -> list[str]:
+    """Return effective categories without mutating the authenticated record."""
+
+    if "data_categories" not in account:
+        return list(DATA_CATEGORIES)
+    return normalize_data_categories(account["data_categories"])
+
+
 def _utc_today_key() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -688,6 +715,10 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
             "scopes": scopes,
             "auth_method": "token_hash",
         }
+        if "data_categories" in item:
+            parsed["data_categories"] = normalize_data_categories(
+                item["data_categories"]
+            )
         if max_concurrent is not None and max_concurrent >= 0:
             parsed["max_concurrent"] = max_concurrent
 
@@ -779,12 +810,17 @@ def _parse_jwt(token: str) -> dict[str, Any] | None:
     )
     if not tenant_id:
         return None
-    return {
+    account = {
         "tenant_id": tenant_id,
         "tier": tier,
         "scopes": _normalize_jwt_scopes(payload),
         "auth_method": "jwt",
     }
+    if "data_categories" in payload:
+        account["data_categories"] = normalize_data_categories(
+            payload["data_categories"]
+        )
+    return account
 
 
 def _header_values(headers: Any, name: str) -> tuple[str, ...]:
@@ -1089,6 +1125,10 @@ def list_tokens() -> list[dict[str, Any]]:
             "tier": binding.get("tier", "free"),
             "scopes": binding.get("scopes", []),
             "enabled": binding.get("enabled", True),
+            "data_categories": effective_data_categories(binding),
+            "data_category_mode": (
+                "restricted" if "data_categories" in binding else "all"
+            ),
         }
         if "max_concurrent" in binding:
             entry["max_concurrent"] = binding["max_concurrent"]
@@ -1136,6 +1176,7 @@ def create_token(
     max_concurrent: int | None = None,
     daily_limit: int | None = None,
     expires_at: str | None = None,
+    data_categories: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a new API token and return it (only time the raw token is visible)."""
     import secrets
@@ -1160,6 +1201,8 @@ def create_token(
         entry["daily_limit"] = daily_limit
     if expires_at is not None:
         entry["expires_at"] = expires_at
+    if data_categories is not None:
+        entry["data_categories"] = normalize_data_categories(data_categories)
 
     tokens.append(entry)
     payload = {"tokens": tokens}
@@ -1176,9 +1219,19 @@ def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
     for item in tokens:
         if str(item.get("token_hash", "")).lower() == token_hash.lower():
             found = True
-            for key in ("enabled", "daily_limit", "expires_at", "tier", "scopes", "max_concurrent"):
+            for key in (
+                "enabled",
+                "daily_limit",
+                "expires_at",
+                "tier",
+                "scopes",
+                "max_concurrent",
+                "data_categories",
+            ):
                 if key in updates:
-                    if updates[key] is None:
+                    if key == "data_categories":
+                        item[key] = normalize_data_categories(updates[key])
+                    elif updates[key] is None:
                         item.pop(key, None)
                     else:
                         item[key] = updates[key]

@@ -106,6 +106,7 @@ def portal_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
                 daily_limit=5000,
                 max_concurrent=3,
                 expires_at=FUTURE_TS,
+                data_categories=["a_share", "news"],
             ),
             _token_record("admin-token", "tenant-admin", ["read"], tier="internal"),
             _token_record(
@@ -170,6 +171,8 @@ def test_portal_me_returns_only_own_account(portal_server: _Harness) -> None:
         "tenant_id": "tenant-customer",
         "tier": "starter",
         "scopes": ["read"],
+        "data_categories": ["a_share", "news"],
+        "data_category_mode": "restricted",
         "enabled": True,
         "max_concurrent": 3,
         "hourly_request_limit": 60,

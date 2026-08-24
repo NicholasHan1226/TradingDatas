@@ -215,17 +215,20 @@ TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交�
 
 ### Account category entitlement status
 
-The approved product model groups customer data access into A-share, Crypto,
-News, and future market/content categories. The intended key policy is an
-allowlist mapped to registry `market` and `domain` values, applied consistently
-to both catalog visibility and query authorization.
+Customer data access is grouped into A-share, Crypto, and News using the stable
+keys `a_share`, `crypto`, and `news`. Token records and admin mutations accept
+`data_categories` as a JSON array of these keys. The server maps them to the
+active registry's `market`/`domain` metadata and applies the resulting exact
+dataset grants to both `GET /v1/catalog` and `POST /v1/query`.
 
-This allowlist is **not part of the current API contract yet**. Current token
-records and admin mutations enforce endpoint `scopes`, tier limits,
-`max_concurrent`, and `daily_limit`; they do not filter datasets per account.
-Do not send or depend on a category-entitlement field until a separate contract
-adds schema validation, fail-closed catalog/query enforcement, portal
-projection, admin controls, and production readback. See `docs/PRODUCT.md`.
+Omitting `data_categories` preserves legacy access to all current categories.
+An explicit empty array returns no catalog datasets and authorizes no dataset
+query. Unknown values or non-array values are rejected; invalid stored values
+fail token configuration loading closed. `GET /admin/api/tokens` returns the
+effective `data_categories` and `data_category_mode` (`all` or `restricted`).
+`GET /portal/api/me` returns the same two fields for the authenticated account.
+This field is independent of endpoint scopes and rate/concurrency/daily limits:
+all gates must pass.
 
 管理控制台提供内部管理员使用的 token 管理、采集状态监控和用量统计接口。除 CORS 预检外，所有 admin API 路由需要 `admin` scope 或 `internal` tier 的认证。
 
@@ -334,6 +337,8 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
     "tenant_id": "...",
     "tier": "research",
     "scopes": ["read"],
+    "data_categories": ["a_share", "news"],
+    "data_category_mode": "restricted",
     "enabled": true,
     "max_concurrent": 4,
     "hourly_request_limit": 300,

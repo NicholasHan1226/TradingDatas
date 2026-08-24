@@ -982,7 +982,7 @@ def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable()
     )
 
 
-def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
+def test_visibility_accepts_exact_grants_only_without_broad_scopes(
     catalog_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1029,7 +1029,10 @@ def test_visibility_requires_scope_but_ignores_allowed_dataset_grants(
         scopes=(),
         allowed_dataset_ids=("cn.catalog.hidden_scope",),
     )
-    assert _list(service, catalog_harness, access=allowed_only)["data"] == []
+    assert [
+        row["dataset_id"]
+        for row in _list(service, catalog_harness, access=allowed_only)["data"]
+    ] == ["cn.catalog.hidden_scope"]
 
     aggregate = QueryAccessContext.from_grants(
         tenant_id="tenant-a",
