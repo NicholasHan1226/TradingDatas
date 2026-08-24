@@ -2205,7 +2205,7 @@ def _merge_provider_native_quality(
 class QueryService:
     """Execute registry-owned queries from injected immutable dependencies."""
 
-    __slots__ = ("_db_path", "_registry", "_cursor_codec")
+    __slots__ = ("_db_path", "_registry", "_cursor_codec", "_validation_cache")
 
     def __init__(
         self,
@@ -2226,6 +2226,10 @@ class QueryService:
         self._db_path = canonical_path
         self._registry = registry
         self._cursor_codec = cursor_codec
+        # Process-wide receipt-validation memo shared with the catalog side so
+        # per-query evidence projections only validate receipts written since
+        # the previous query instead of the full append-only history (#297).
+        self._validation_cache: dict = {}
 
     def execute(
         self,
@@ -2326,6 +2330,7 @@ class QueryService:
                     ),
                     receipt_collection_window=receipt_collection_window,
                     request_partition=request_partition,
+                    validation_cache=self._validation_cache,
                 )
                 exact_session_minute_receipt_ids = None
                 if exact_session_minute_slot is not None:
