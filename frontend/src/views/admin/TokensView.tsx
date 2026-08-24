@@ -225,7 +225,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="ACCESS CONTROL"
+        eyebrow="客户访问"
         title="客户与访问凭证"
         description="集中管理客户套餐、访问范围与调用上限；变更会即时写入当前服务。"
       />
@@ -266,7 +266,25 @@ export default function TokensView({ client }: { client: ApiClient }) {
             hint={tokens.length === 0 ? '点击右上角「新建客户密钥」开始' : '试试其他搜索条件'}
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="divide-y divide-[var(--td-line)] sm:hidden">
+            {filtered.map((t) => (
+              <article key={t.token_hash_full} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><h3 className="truncate text-[13px] font-semibold text-[var(--td-ink)]">{t.tenant_id}</h3><div className="mt-1 font-mono text-[9px] text-[var(--td-faint)]">{t.token_hash_masked ?? ''}</div></div>
+                  <div className="flex shrink-0 items-center gap-2"><Badge tone={TIER_TONES[t.tier] ?? 'slate'}>{TIER_LABELS[t.tier] ?? t.tier}</Badge><ToggleSwitch checked={t.enabled} busy={busyHash === t.token_hash_full} label={`${t.enabled ? '暂停' : '启用'} ${t.tenant_id}`} onChange={() => void toggleEnabled(t)} /></div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-1">{(t.data_categories ?? []).map((category) => <DataCategoryTag key={category} category={category} />)}{t.data_categories.length === 0 && <span className="text-xs text-rose-600">未授权</span>}</div>
+                <dl className="mt-4 grid grid-cols-3 border-y border-[var(--td-line)] py-3 text-[10px]">
+                  <div><dt className="text-[var(--td-faint)]">并发</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{fmtNumber(t.max_concurrent)}</dd></div>
+                  <div><dt className="text-[var(--td-faint)]">今日用量</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{t.daily_usage ?? 0} / {fmtNumber(t.daily_limit)}</dd></div>
+                  <div><dt className="text-[var(--td-faint)]">有效期</dt><dd className={`mt-1 ${t.expired ? 'text-rose-600' : 'text-[var(--td-ink-soft)]'}`}>{t.expires_at ? t.expires_at.slice(0, 10) : '长期有效'}</dd></div>
+                </dl>
+                <div className="mt-3 flex items-center justify-between gap-3"><div className="flex flex-wrap gap-1">{(t.scopes ?? []).map((scope) => <ScopeChip key={scope} scope={scope} />)}</div><div className="flex"><Button variant="ghost" size="sm" onClick={() => { setEditForm(formFromToken(t)); setEditTarget(t) }}>编辑</Button><Button variant="ghost" size="sm" className="!text-rose-600 hover:!bg-rose-50" onClick={() => setDeleteTarget(t)}>删除</Button></div></div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className={TABLE_HEAD_CLASS}>
@@ -351,6 +369,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Card>
 

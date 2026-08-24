@@ -70,14 +70,14 @@ export default function HealthView({ client }: { client: ApiClient }) {
     return (
       <div className="space-y-5">
         <PageIntro
-          eyebrow="RUNTIME HEALTH"
+          eyebrow="运行诊断"
           title="系统健康与告警"
           description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
         />
         <Card>
           <div className="flex flex-col items-center py-10 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-              <CircleCheckBig aria-hidden className="h-7 w-7 text-emerald-600" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-[var(--td-radius)] border border-[#ccd6ff] bg-[var(--td-accent-quiet)]">
+              <CircleCheckBig aria-hidden className="h-6 w-6 text-[var(--td-accent)]" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-800">全部正常</h3>
             <p className="mt-1 text-sm text-slate-500">当前没有任何健康告警</p>
@@ -90,7 +90,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="RUNTIME HEALTH"
+        eyebrow="运行诊断"
         title="系统健康与告警"
         description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
         action={<span className="text-xs text-slate-400">{alerts.length} 条 · 已按严重程度排序</span>}

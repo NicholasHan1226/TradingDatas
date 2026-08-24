@@ -79,10 +79,10 @@ export default function UsageView({ client }: { client: ApiClient }) {
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="USAGE INTELLIGENCE"
+        eyebrow="请求分析"
         title="调用与容量概览"
         description="从实时窗口到月度趋势，持续观察客户请求与服务容量。"
-        action={<span className="rounded-full bg-[var(--td-accent-quiet)] px-2.5 py-1 text-[11px] font-medium text-blue-700">30 天观察窗口</span>}
+        action={<span className="border-l border-[var(--td-line)] pl-3 text-[11px] font-medium text-[var(--td-muted)]">最近 30 天</span>}
       />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="今日请求总数" value={todayTotal.toLocaleString('zh-CN')} sub={`${dailyRows.length} 个客户有调用`} />
@@ -134,18 +134,18 @@ export default function UsageView({ client }: { client: ApiClient }) {
         title={<span className="inline-flex items-center gap-2"><ShieldCheck aria-hidden size={15} className="text-[var(--td-accent)]" />控制台体验</span>}
         action={<Button variant="ghost" size="sm" onClick={() => setResetOpen(true)}><RotateCcw aria-hidden size={13} />重置本地统计</Button>}
       >
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid border-y border-[var(--td-line)] sm:grid-cols-2 xl:grid-cols-4">
           {([
             [Eye, '页面浏览', consoleAnalytics.workspaces.admin.views + consoleAnalytics.workspaces.customer.views, 'blue'],
             [CircleCheckBig, '完成任务', consoleAnalytics.workspaces.admin.completions + consoleAnalytics.workspaces.customer.completions, 'cyan'],
             [MousePointerClick, '工作区操作', consoleAnalytics.workspaces.admin.actions + consoleAnalytics.workspaces.customer.actions, 'violet'],
             [Activity, '界面错误', consoleAnalytics.workspaces.admin.errors + consoleAnalytics.workspaces.customer.errors, 'orange'],
           ] as const).map(([Icon, label, value, tone]) => (
-            <div key={label} className="rounded-xl border border-slate-200 bg-[#fbfcfe] p-4">
-              <div className="flex items-center gap-2 text-xs font-medium text-[var(--td-muted)]">
-                <span className={`flex h-7 w-7 items-center justify-center rounded-lg analytics-icon-${tone}`}><Icon aria-hidden size={14} /></span>{label}
+            <div key={label} className="border-b border-[var(--td-line)] px-4 py-5 sm:border-r xl:border-b-0 xl:last:border-r-0">
+              <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--td-muted)]">
+                <span className={`flex h-6 w-6 items-center justify-center rounded-[5px] analytics-icon-${tone}`}><Icon aria-hidden size={13} /></span>{label}
               </div>
-              <div className="mt-3 text-2xl font-semibold tracking-[-0.04em] tabular-nums text-[var(--td-ink)]">{value.toLocaleString('zh-CN')}</div>
+              <div className="mt-4 text-[25px] font-semibold tracking-[-0.05em] tabular-nums text-[var(--td-ink)]">{value.toLocaleString('zh-CN')}</div>
             </div>
           ))}
         </div>
@@ -154,10 +154,10 @@ export default function UsageView({ client }: { client: ApiClient }) {
             const metrics = consoleAnalytics.workspaces[workspace]
             const total = metrics.views + metrics.actions + metrics.completions + metrics.errors
             return (
-              <div key={workspace} className="rounded-xl border border-slate-200 px-4 py-3.5">
+              <div key={workspace} className="border-l-2 border-[var(--td-line-strong)] px-4 py-1">
                 <div className="flex items-center justify-between gap-4">
                   <div><div className="text-sm font-semibold text-[var(--td-ink)]">{workspace === 'admin' ? '管理员工作台' : '客户工作台'}</div><div className="mt-1 text-[11px] text-[var(--td-muted)]">浏览 {metrics.views} · 完成 {metrics.completions} · 错误 {metrics.errors}</div></div>
-                  <span className="font-mono text-xs text-[var(--td-faint)]">{total} events</span>
+                  <span className="font-mono text-xs text-[var(--td-faint)]">{total} 次</span>
                 </div>
               </div>
             )

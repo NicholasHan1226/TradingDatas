@@ -31,6 +31,8 @@ import {
   SearchField,
   SelectInput,
   StatCard,
+  ACTIVATION_LABELS,
+  RUNTIME_STATE_LABELS,
   TABLE_ROW_CLASS,
 } from '../../components/ui'
 
@@ -44,7 +46,7 @@ function StateBadge({ row }: { row: DatasetRow }) {
   const state = row.runtime_state || '-'
   return (
     <div>
-      <Badge tone={STATE_TONES[state] ?? 'slate'}>{state}{row.degraded ? ' · 降级' : ''}</Badge>
+      <Badge tone={STATE_TONES[state] ?? 'slate'}>{RUNTIME_STATE_LABELS[state] ?? state}{row.degraded ? ' · 降级' : ''}</Badge>
       {row.reasons && row.reasons.length > 0 && (
         <div className="mt-1 max-w-64 truncate text-[10px] text-slate-400" title={row.reasons.join('; ')}>{row.reasons.join('; ')}</div>
       )}
@@ -70,7 +72,10 @@ const COLUMNS = helper.columns([
   helper.accessor('provider', { header: '提供方', sortFn: 'alphanumeric' }),
   helper.accessor('activation', {
     header: '激活', sortFn: 'alphanumeric',
-    cell: ({ getValue }) => <Badge tone={getValue() === 'active' ? 'green' : 'slate'}>{getValue()}</Badge>,
+    cell: ({ getValue }) => {
+      const value = getValue() ?? ''
+      return <Badge tone={value === 'active' ? 'blue' : 'slate'}>{ACTIVATION_LABELS[value] || value || '未设置'}</Badge>
+    },
   }),
   helper.accessor((row) => row.runtime_state ?? '', {
     id: 'runtime_state', header: '最近运行', sortFn: 'alphanumeric', cell: ({ row }) => <StateBadge row={row.original} />,
@@ -113,7 +118,10 @@ export default function CollectionView({ client }: { client: ApiClient }) {
 
   const datasets = status?.datasets ?? EMPTY_DATASETS
   const markets = useMemo(() => [...new Set(datasets.map((d) => d.market))].filter(Boolean).sort(), [datasets])
-  const runtimeStates = useMemo(() => [...new Set(datasets.map((d) => d.runtime_state).filter(Boolean))].sort(), [datasets])
+  const runtimeStates = useMemo(
+    () => [...new Set(datasets.map((d) => d.runtime_state).filter((value): value is string => Boolean(value)))].sort(),
+    [datasets],
+  )
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return datasets.filter((d) =>
@@ -155,7 +163,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
 
   return (
     <div className="space-y-6">
-      <PageIntro eyebrow="COLLECTION CONTROL" title="数据采集状态" description="跟踪数据集激活状态、最新运行结果与质量降级信号。排序、筛选和列布局会保存在当前浏览器。" />
+      <PageIntro eyebrow="数据运行面" title="数据采集状态" description="跟踪数据集激活状态、最新运行结果与质量降级信号。排序、筛选和列布局会保存在当前浏览器。" />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="数据集总数" value={status?.total ?? datasets.length} />
         <StatCard label="采集激活" value={activeCount} tone="good" />
@@ -169,10 +177,10 @@ export default function CollectionView({ client }: { client: ApiClient }) {
           <option value="">全部市场</option>{markets.map((m) => <option key={m} value={m}>{m}</option>)}
         </SelectInput>
         <SelectInput value={activation} onChange={(e) => setActivation(e.target.value)} className="!w-auto flex-1 sm:flex-none">
-          <option value="">全部激活状态</option><option value="active">active</option><option value="paused">paused</option>
+          <option value="">全部激活状态</option><option value="active">已启用</option><option value="paused">已暂停</option>
         </SelectInput>
         <SelectInput value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="!w-auto flex-1 sm:flex-none">
-          <option value="">全部运行状态</option>{runtimeStates.map((state) => <option key={state} value={state}>{state}</option>)}
+          <option value="">全部运行状态</option>{runtimeStates.map((state) => <option key={state} value={state}>{RUNTIME_STATE_LABELS[state] ?? state}</option>)}
         </SelectInput>
         <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           <span className="hidden text-xs text-slate-400 xl:inline">{tableRows.length.toLocaleString('zh-CN')} / {datasets.length.toLocaleString('zh-CN')} 个数据集</span>
